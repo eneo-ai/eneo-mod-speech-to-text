@@ -95,6 +95,30 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.proxy_client.calls, [])
 
+    def test_proxy_rejects_encoded_dot_segment_traversal(self) -> None:
+        # `%2E%2E` survives ASGI path normalization and decodes to `..`, which
+        # would resolve upstream to /api/v1/flows/../runs/ -> /api/v1/runs/.
+        response = self.client.get("/api/eneo/flows/%2E%2E/runs/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_proxy_rejects_single_dot_segment(self) -> None:
+        response = self.client.get("/api/eneo/flows/%2E/runs/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_upload_route_rejects_dot_segment_flow_id(self) -> None:
+        response = self.client.post(
+            "/api/eneo/flows/%2E%2E/files/",
+            headers={"Origin": "https://module.example.test"},
+            files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()
