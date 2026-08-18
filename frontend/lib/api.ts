@@ -1,6 +1,7 @@
 // All requests go to same-origin /api/* — Next rewrites these to the backend.
 // The backend in turn proxies /api/eneo/* to Eneo with the module's service
-// key and the short-lived module-user token from its HttpOnly session.
+// key and, in Eneo SSO mode, the short-lived module-user token from its
+// HttpOnly session.
 
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -107,15 +108,27 @@ export interface AuthenticatedUser {
   username?: string;
 }
 
+export type AuthMode = "eneo_sso" | "access_code";
+
+export interface AuthStatus {
+  authenticated: boolean;
+  auth_mode: AuthMode;
+  user: AuthenticatedUser | null;
+}
+
+export async function loginWithAccessCode(accessCode: string) {
+  return request<{ ok: true }>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ access_code: accessCode }),
+  });
+}
+
 export async function logout() {
   return request<{ ok: true }>("/api/auth/logout", { method: "POST" });
 }
 
 export async function authStatus() {
-  return request<{
-    authenticated: boolean;
-    user: AuthenticatedUser | null;
-  }>("/api/auth/status");
+  return request<AuthStatus>("/api/auth/status");
 }
 
 // ---------- Eneo ----------

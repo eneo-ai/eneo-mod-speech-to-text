@@ -2,19 +2,25 @@ from __future__ import annotations
 
 import os
 import re
+from typing import Literal, cast
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel
+from pydantic import BaseModel, SecretStr
+
+
+AuthMode = Literal["eneo_sso", "access_code"]
 
 
 class Settings(BaseModel):
     eneo_backend_url: str
-    eneo_public_url: str
+    eneo_public_url: str | None
     module_public_url: str
     module_key: str
     eneo_api_key: str
     eneo_api_key_header_name: str = "X-API-Key"
     session_secret: str
+    auth_mode: AuthMode = "eneo_sso"
+    app_access_code: SecretStr | None = None
     cookie_secure: bool = True
     demo_space_id: str | None = None
     demo_space_name: str | None = None
@@ -48,14 +54,22 @@ def _required_url(name: str) -> str:
 
 
 def load_settings() -> Settings:
+    raw_auth_mode = os.environ.get("AUTH_MODE", "eneo_sso")
+    if raw_auth_mode not in {"eneo_sso", "access_code"}:
+        raise RuntimeError("AUTH_MODE must be either eneo_sso or access_code")
+    auth_mode = cast(AuthMode, raw_auth_mode)
+
     required = [
         "ENEO_BACKEND_URL",
-        "ENEO_PUBLIC_URL",
         "MODULE_PUBLIC_URL",
         "MODULE_KEY",
         "ENEO_API_KEY",
         "SESSION_SECRET",
     ]
+    if auth_mode == "eneo_sso":
+        required.append("ENEO_PUBLIC_URL")
+    else:
+        required.append("APP_ACCESS_CODE")
     missing = [name for name in required if not os.getenv(name)]
     if missing:
         raise RuntimeError(
@@ -78,14 +92,29 @@ def load_settings() -> Settings:
     if upload_timeout <= 0:
         raise RuntimeError("UPLOAD_PROXY_TIMEOUT_SECONDS must be greater than zero")
 
+    raw_access_code = os.environ.get("APP_ACCESS_CODE")
+    if auth_mode == "eneo_sso" and raw_access_code:
+        raise RuntimeError("APP_ACCESS_CODE may only be set with AUTH_MODE=access_code")
+    if auth_mode == "access_code" and raw_access_code is not None:
+        if not 16 <= len(raw_access_code) <= 256:
+            raise RuntimeError("APP_ACCESS_CODE must be between 16 and 256 characters")
+
     return Settings(
         eneo_backend_url=_required_url("ENEO_BACKEND_URL"),
-        eneo_public_url=_required_url("ENEO_PUBLIC_URL"),
+        eneo_public_url=(
+            _required_url("ENEO_PUBLIC_URL") if auth_mode == "eneo_sso" else None
+        ),
         module_public_url=_required_url("MODULE_PUBLIC_URL"),
         module_key=module_key,
         eneo_api_key=os.environ["ENEO_API_KEY"],
         eneo_api_key_header_name=api_key_header_name,
         session_secret=session_secret,
+        auth_mode=auth_mode,
+        app_access_code=(
+            SecretStr(raw_access_code)
+            if auth_mode == "access_code" and raw_access_code is not None
+            else None
+        ),
         cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
         demo_space_name=os.environ.get("DEMO_SPACE_NAME") or None,

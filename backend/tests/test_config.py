@@ -25,7 +25,59 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.eneo_backend_url, "http://backend:8000")
         self.assertEqual(settings.module_key, "speech-to-text")
         self.assertEqual(settings.eneo_api_key_header_name, "X-API-Key")
+        self.assertEqual(settings.auth_mode, "eneo_sso")
+        self.assertIsNone(settings.app_access_code)
         self.assertTrue(settings.cookie_secure)
+
+    def test_loads_access_code_mode_without_eneo_public_url(self) -> None:
+        environment = valid_environment()
+        environment.pop("ENEO_PUBLIC_URL")
+        environment["AUTH_MODE"] = "access_code"
+        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual(settings.auth_mode, "access_code")
+        self.assertIsNone(settings.eneo_public_url)
+        assert settings.app_access_code is not None
+        self.assertEqual(
+            settings.app_access_code.get_secret_value(),
+            "test-access-code-1234",
+        )
+
+    def test_rejects_unknown_auth_mode(self) -> None:
+        environment = valid_environment()
+        environment["AUTH_MODE"] = "automatic"
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "AUTH_MODE"):
+                load_settings()
+
+    def test_access_code_mode_requires_access_code(self) -> None:
+        environment = valid_environment()
+        environment["AUTH_MODE"] = "access_code"
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "APP_ACCESS_CODE"):
+                load_settings()
+
+    def test_rejects_short_access_code(self) -> None:
+        environment = valid_environment()
+        environment["AUTH_MODE"] = "access_code"
+        environment["APP_ACCESS_CODE"] = "abc"
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "between 16 and 256"):
+                load_settings()
+
+    def test_sso_mode_rejects_access_code(self) -> None:
+        environment = valid_environment()
+        environment["APP_ACCESS_CODE"] = "unused-access-code"
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "only be set"):
+                load_settings()
 
     def test_loads_custom_api_key_header_name(self) -> None:
         environment = valid_environment()
