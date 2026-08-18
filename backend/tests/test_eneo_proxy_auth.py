@@ -9,11 +9,17 @@ os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
+os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
-from app.module_auth import ModuleSession, ModuleUser, SESSION_COOKIE  # noqa: E402
+from app.module_auth import (  # noqa: E402
+    AccessCodeSession,
+    EneoSsoSession,
+    ModuleUser,
+    SESSION_COOKIE,
+)
 
 
 class FakeResponse:
@@ -37,7 +43,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.proxy_client = FakeProxyClient()
         main.http_client = self.proxy_client
         self.client = TestClient(main.app)
-        session = ModuleSession(
+        session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,
             module_key="speech-to-text",
@@ -52,6 +58,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
+        main.module_auth.settings.auth_mode = "eneo_sso"
         main.http_client = self.original_client
 
     def test_proxy_replaces_browser_credentials_with_module_credentials(self) -> None:
@@ -76,6 +83,27 @@ class EneoProxyAuthTests(unittest.TestCase):
             call["headers"]["Authorization"],
             "Bearer module-user-token",
         )
+
+    def test_access_code_session_uses_only_module_service_key(self) -> None:
+        main.module_auth.settings.auth_mode = "access_code"
+        main.module_auth.sessions.clear()
+        session_id = main.module_auth.sessions.create(
+            AccessCodeSession(expires_at=int(time.time()) + 60)
+        )
+        self.client.cookies.set(SESSION_COOKIE, session_id)
+
+        response = self.client.get(
+            "/api/eneo/flows/?published=true",
+            headers={
+                "Authorization": "Bearer browser-controlled-token",
+                "X-API-Key": "browser-controlled-key",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["headers"]["X-API-Key"], "test-key")
+        self.assertNotIn("Authorization", call["headers"])
 
     def test_mutation_rejects_cross_origin_request_before_proxying(self) -> None:
         response = self.client.post(

@@ -225,15 +225,11 @@ async def _proxy_multipart_upload(
     # would resolve to a different Eneo route than the upload endpoints exposed.
     if _has_dot_segment(upstream_url):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
-    session = module_auth.session_from_request(request)
     await upload_file.seek(0)
     try:
         upstream = await http_client.post(
             upstream_url,
-            headers={
-                settings.eneo_api_key_header_name: settings.eneo_api_key,
-                "Authorization": f"Bearer {session.access_token}",
-            },
+            headers=module_auth.upstream_auth_headers(request),
             files={
                 "upload_file": (
                     upload_file.filename,
@@ -371,16 +367,14 @@ async def eneo_proxy(path: str, request: Request) -> Response:
     if _has_dot_segment(path) or not _proxy_route_is_allowed(request.method, path):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
     upstream_url = f"{settings.eneo_backend_url}/api/v1/{path}"
-    session = module_auth.session_from_request(request)
-
-    # Forward request headers, but strip hop-by-hop and inject API key.
+    # Forward request headers, but replace browser-controlled credentials with
+    # the credentials owned by the configured module-auth session.
     fwd_headers: dict[str, str] = {}
     for name, value in request.headers.items():
         if name.lower() in _HOP_BY_HOP_REQUEST_HEADERS:
             continue
         fwd_headers[name] = value
-    fwd_headers[settings.eneo_api_key_header_name] = settings.eneo_api_key
-    fwd_headers["Authorization"] = f"Bearer {session.access_token}"
+    fwd_headers.update(module_auth.upstream_auth_headers(request))
 
     body = await request.body()
 
