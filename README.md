@@ -10,7 +10,11 @@ Browser  →  Next.js (3000 dev / 3001 prod)  →  FastAPI (intern, port 8000)
                                           └──service key + user token──→  Eneo
 ```
 
-Eneos API-nyckel stannar i backendprocessen. Module-user-token ligger endast i en signerad HttpOnly-session och returneras aldrig till frontend-JavaScript. Frontend pratar endast same-origin via Next.js rewrite.
+Eneos API-nyckel och module-user-token stannar i backendprocessen. Browserns HttpOnly-cookie innehåller bara ett slumpmässigt, opakt sessions-ID och returnerar aldrig credentials till frontend-JavaScript. Logout återkallar sessionen direkt. Frontend pratar endast same-origin via Next.js rewrite.
+
+Frontendens designsystem ägs lokalt i `frontend/components/ui` och följer shadcn-konventionen. Det finns inget runtime- eller byggberoende till `@sk-web-gui`; färgtokens och komponentvarianter kan därför utvecklas och granskas tillsammans med modulen.
+
+Sessionslagret är avsiktligt processlokalt eftersom produktionsimagen kör en backendprocess. En omstart kräver ny login. Innan flera backend-repliker används måste lagret flyttas till en delad store; annars kan en request landa hos en replik som inte äger sessionen.
 
 Produktionsimagen `ghcr.io/eneo-ai/eneo-mod-speech-to-text` paketerar båda processerna i en isolerad modulcontainer på port 3001. Supervisor övervakar och startar om processerna vid oväntade fel; imagen har dessutom ett healthcheck genom hela Next→FastAPI-kedjan. Den befintliga tvåcontainer-Compose-filen är avsedd för lokal utveckling.
 
@@ -117,6 +121,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
 - `MODULE_PUBLIC_URL=https://<module-domain>`
 - `MODULE_KEY=speech-to-text`
 - `ENEO_API_KEY=<module-specific sk_ key>`
+- `ENEO_API_KEY_HEADER_NAME=<Eneos API_KEY_HEADER_NAME, default X-API-Key>`
 - `SESSION_SECRET=<random 32+ characters>`
 
 Äldre exempelvärden som `MODULE_ID` och `TAL_TILL_TEXT_API_KEY` läses medvetet inte av imagen. Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`; då finns ett canonical konfigurationskontrakt i modulprocessen.
@@ -136,6 +141,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `MODULE_PUBLIC_URL` | `https://transkribering.sundsvall.dev` |
    | `MODULE_KEY` | `speech-to-text` |
    | `ENEO_API_KEY` | en `sk_…`-nyckel från Eneo med rätt space-scope |
+   | `ENEO_API_KEY_HEADER_NAME` | samma headernamn som Eneos `API_KEY_HEADER_NAME` (default `X-API-Key`) |
    | `SESSION_SECRET` | minst 32 tecken slumpmässigt (se ovan) |
    | `COOKIE_SECURE` | `true` |
    | `DEMO_SPACE_ID` | (valfritt) UUID för space; skippar space-väljaren |

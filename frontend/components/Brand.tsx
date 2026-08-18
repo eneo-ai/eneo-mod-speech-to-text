@@ -6,14 +6,7 @@ interface BrandProps {
   className?: string;
 }
 
-// Header-lockup enligt samma mönster som Verktygslådan: Sundsvalls kommuns
-// officiella logotyp (hela ordbilden, lokal SVG) · vertikal avdelare ·
-// produktnamnet "Flöden".
-//
-// Måtten speglar Verktygslådan (som kör html font-size 62.5%, dvs 1rem=10px),
-// översatta till absoluta px eftersom denna app kör 16px-bas:
-//   logo 4rem→40px, avdelare 3.2rem→32px, produkt 1.9rem→19px, gap 2.4rem→24px.
-// Produktnamnet sätts i header-typsnittet (Raleway) som i designsystemet.
+// Lokal header-lockup: Sundsvalls kommuns logotyp, avdelare och produktnamn.
 // Plain <img> är medvetet: en lokal SVG behöver ingen next/image-optimering.
 export function Brand({ href, className }: BrandProps) {
   const lockup = (
@@ -25,12 +18,7 @@ export function Brand({ href, className }: BrandProps) {
         className="block h-10 w-auto"
       />
       <span aria-hidden className="block h-8 w-px shrink-0 bg-rule" />
-      <span
-        className="whitespace-nowrap text-[19px] font-bold leading-none"
-        style={{
-          fontFamily: 'var(--sk-fontFamily-header), "Raleway", sans-serif',
-        }}
-      >
+      <span className="whitespace-nowrap text-[19px] font-bold leading-none">
         Flöden
       </span>
     </span>

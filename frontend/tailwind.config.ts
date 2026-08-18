@@ -1,21 +1,16 @@
 import type { Config } from "tailwindcss";
 
-// Officiell Sundsvalls kommun-preset (tokens, färger, typografi, spacing).
-const skPreset = require("@sk-web-gui/core").preset();
-
 const config: Config = {
-  presets: [skPreset],
   darkMode: "class",
   content: [
     "./app/**/*.{ts,tsx}",
     "./components/**/*.{ts,tsx}",
-    "./node_modules/@sk-web-gui/*/dist/**/*.js",
+    "./lib/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {
       fontFamily: {
-        // sans/header/display ärvs från SK-preseten (Arial brödtext, Raleway rubriker).
-        mono: ["Geist Mono", "ui-monospace", "monospace"],
+        mono: ["ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
       colors: {
         bg: "hsl(var(--bg))",
@@ -30,8 +25,6 @@ const config: Config = {
           DEFAULT: "hsl(var(--rule))",
           soft: "hsl(var(--rule-soft))",
         },
-        // App-egen brand-/CTA-färg. Krockar inte med SK:s color-scopade
-        // accent (t.ex. vattjom-surface-accent) som komponenterna använder.
         accent: {
           DEFAULT: "hsl(var(--accent))",
           soft: "hsl(var(--accent-soft))",
@@ -40,9 +33,6 @@ const config: Config = {
         record: "hsl(var(--record))",
         ochre: "hsl(var(--ochre))",
       },
-      // SK-preseten sätter en tjock default-border (--sk-spacing-2). Återställ
-      // till 1px så Tailwinds `border`-klass matchar .paper-card (hårdkodad 1px)
-      // och linjerna blir lika tunna överallt.
       borderWidth: {
         DEFAULT: "1px",
       },

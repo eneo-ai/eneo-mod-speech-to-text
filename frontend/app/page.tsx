@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Button } from "@sk-web-gui/react";
+import { Button } from "@/components/ui/button";
 import { authStatus } from "@/lib/api";
 import { Brand } from "@/components/Brand";
 
@@ -65,16 +65,12 @@ export default function LoginPage() {
         )}
         <Button
           type="button"
-          color="vattjom"
-          variant="primary"
-          size="md"
           onClick={startLogin}
-          loading={submitting}
-          loadingText="Öppnar Eneo…"
           disabled={submitting}
           className="w-full"
         >
-          Logga in med Eneo
+          {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+          {submitting ? "Öppnar Eneo…" : "Logga in med Eneo"}
         </Button>
       </div>
     </main>
