@@ -104,6 +104,7 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
     # Intern proxy-budget för stora uploads.
     "x-upload-timeout-seconds",
 }
+_HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
 
 # Headers we should not forward from upstream response back to client.
 _HOP_BY_HOP_RESPONSE_HEADERS = {
@@ -213,7 +214,7 @@ async def _proxy_multipart_upload(
         upstream = await http_client.post(
             upstream_url,
             headers={
-                "X-API-Key": settings.eneo_api_key,
+                settings.eneo_api_key_header_name: settings.eneo_api_key,
                 "Authorization": f"Bearer {session.access_token}",
             },
             files={
@@ -361,7 +362,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if name.lower() in _HOP_BY_HOP_REQUEST_HEADERS:
             continue
         fwd_headers[name] = value
-    fwd_headers["X-API-Key"] = settings.eneo_api_key
+    fwd_headers[settings.eneo_api_key_header_name] = settings.eneo_api_key
     fwd_headers["Authorization"] = f"Bearer {session.access_token}"
 
     body = await request.body()

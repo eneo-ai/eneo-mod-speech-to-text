@@ -13,6 +13,7 @@ class Settings(BaseModel):
     module_public_url: str
     module_key: str
     eneo_api_key: str
+    eneo_api_key_header_name: str = "X-API-Key"
     session_secret: str
     cookie_secure: bool = True
     demo_space_id: str | None = None
@@ -69,6 +70,10 @@ def load_settings() -> Settings:
     if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", module_key) is None:
         raise RuntimeError("MODULE_KEY must use lowercase kebab-case")
 
+    api_key_header_name = os.environ.get("ENEO_API_KEY_HEADER_NAME", "X-API-Key")
+    if re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", api_key_header_name) is None:
+        raise RuntimeError("ENEO_API_KEY_HEADER_NAME must be a valid HTTP header name")
+
     upload_timeout = float(os.environ.get("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800"))
     if upload_timeout <= 0:
         raise RuntimeError("UPLOAD_PROXY_TIMEOUT_SECONDS must be greater than zero")
@@ -79,6 +84,7 @@ def load_settings() -> Settings:
         module_public_url=_required_url("MODULE_PUBLIC_URL"),
         module_key=module_key,
         eneo_api_key=os.environ["ENEO_API_KEY"],
+        eneo_api_key_header_name=api_key_header_name,
         session_secret=session_secret,
         cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,

@@ -44,9 +44,11 @@ class EneoProxyAuthTests(unittest.TestCase):
             tenant_id="tenant-id",
             user=ModuleUser(id="user-id", email="user@example.test"),
         )
+        main.module_auth.sessions.clear()
+        session_id = main.module_auth.sessions.create(session)
         self.client.cookies.set(
             SESSION_COOKIE,
-            main.module_auth.session_serializer.dumps(session.model_dump()),
+            session_id,
         )
 
     def tearDown(self) -> None:

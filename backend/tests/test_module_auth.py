@@ -13,6 +13,7 @@ os.environ.setdefault("COOKIE_SECURE", "false")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
+from app.module_auth import SESSION_COOKIE  # noqa: E402
 
 
 class FakeResponse:
@@ -37,11 +38,16 @@ class FakeResponse:
 class FakeExchangeClient:
     def __init__(self, response: FakeResponse | None = None) -> None:
         self.response = response or FakeResponse()
+        self.validation_response = FakeResponse()
         self.calls: list[dict[str, object]] = []
 
     async def post(self, url: str, **kwargs):
-        self.calls.append({"url": url, **kwargs})
+        self.calls.append({"method": "POST", "url": url, **kwargs})
         return self.response
+
+    async def get(self, url: str, **kwargs):
+        self.calls.append({"method": "GET", "url": url, **kwargs})
+        return self.validation_response
 
 
 class ModuleAuthTests(unittest.TestCase):
@@ -49,6 +55,7 @@ class ModuleAuthTests(unittest.TestCase):
         self.original_client = main.module_auth.http_client
         self.exchange_client = FakeExchangeClient()
         main.module_auth.http_client = self.exchange_client
+        main.module_auth.sessions.clear()
         self.client = TestClient(main.app, follow_redirects=False)
 
     def tearDown(self) -> None:
@@ -86,7 +93,11 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertEqual(callback.headers["location"], "/flows")
         self.assertEqual(callback.headers["referrer-policy"], "no-referrer")
         self.assertIn("eneo_module_session", callback.cookies)
-        self.assertEqual(len(self.exchange_client.calls), 1)
+        self.assertNotIn(
+            "module-user-token",
+            callback.cookies[SESSION_COOKIE],
+        )
+        self.assertEqual(len(self.exchange_client.calls), 2)
         exchange = self.exchange_client.calls[0]
         self.assertEqual(
             exchange["url"],
@@ -94,6 +105,19 @@ class ModuleAuthTests(unittest.TestCase):
         )
         self.assertEqual(exchange["headers"], {"X-API-Key": "test-key"})
         self.assertEqual(exchange["json"], {"ticket": "one-time-ticket"})
+        validation = self.exchange_client.calls[1]
+        self.assertEqual(validation["method"], "GET")
+        self.assertEqual(
+            validation["url"],
+            "https://eneo.example.test/api/v1/module-auth/speech-to-text/session/",
+        )
+        self.assertEqual(
+            validation["headers"],
+            {
+                "X-API-Key": "test-key",
+                "Authorization": "Bearer module-user-token",
+            },
+        )
 
         status = self.client.get("/api/auth/status")
         self.assertEqual(status.headers["cache-control"], "no-store")
@@ -134,7 +158,7 @@ class ModuleAuthTests(unittest.TestCase):
 
         self.assertEqual(first.headers["location"], "/flows")
         self.assertEqual(second.headers["location"], "/?auth_error=invalid_state")
-        self.assertEqual(len(self.exchange_client.calls), 1)
+        self.assertEqual(len(self.exchange_client.calls), 2)
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)
@@ -152,6 +176,19 @@ class ModuleAuthTests(unittest.TestCase):
             {"authenticated": False, "user": None},
         )
 
+    def test_failed_dual_auth_validation_does_not_create_session(self) -> None:
+        self.exchange_client.validation_response = FakeResponse(status_code=403)
+        state, _ = self.start_login()
+
+        callback = self.client.get(
+            "/api/auth/callback",
+            params={"ticket": "one-time-ticket", "state": state},
+        )
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=validation_failed")
+        self.assertNotIn(SESSION_COOKIE, callback.cookies)
+        self.assertEqual(len(self.exchange_client.calls), 2)
+
     def test_protected_endpoint_rejects_missing_session(self) -> None:
         response = self.client.get("/api/config")
 
@@ -165,6 +202,26 @@ class ModuleAuthTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_logout_revokes_the_opaque_session(self) -> None:
+        state, _ = self.start_login()
+        callback = self.client.get(
+            "/api/auth/callback",
+            params={"ticket": "one-time-ticket", "state": state},
+        )
+        session_id = callback.cookies[SESSION_COOKIE]
+
+        response = self.client.post(
+            "/api/auth/logout",
+            headers={"Origin": "https://module.example.test"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(main.module_auth.sessions.get(session_id))
+        self.assertEqual(
+            self.client.get("/api/auth/status").json(),
+            {"authenticated": False, "user": None},
+        )
 
 
 if __name__ == "__main__":

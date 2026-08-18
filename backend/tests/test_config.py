@@ -24,7 +24,25 @@ class SettingsTests(unittest.TestCase):
 
         self.assertEqual(settings.eneo_backend_url, "http://backend:8000")
         self.assertEqual(settings.module_key, "speech-to-text")
+        self.assertEqual(settings.eneo_api_key_header_name, "X-API-Key")
         self.assertTrue(settings.cookie_secure)
+
+    def test_loads_custom_api_key_header_name(self) -> None:
+        environment = valid_environment()
+        environment["ENEO_API_KEY_HEADER_NAME"] = "X-Eneo-Module-Key"
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual(settings.eneo_api_key_header_name, "X-Eneo-Module-Key")
+
+    def test_rejects_invalid_api_key_header_name(self) -> None:
+        environment = valid_environment()
+        environment["ENEO_API_KEY_HEADER_NAME"] = "X-API-Key: injected"
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "valid HTTP header"):
+                load_settings()
 
     def test_rejects_unstable_module_key(self) -> None:
         environment = valid_environment()

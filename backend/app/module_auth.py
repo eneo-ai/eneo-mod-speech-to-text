@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import logging
 import secrets
+import threading
 import time
 from typing import Annotated, Literal
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
@@ -38,6 +39,12 @@ class ModuleTokenResponse(BaseModel):
     user: ModuleUser
 
 
+class ModuleResourceSessionResponse(BaseModel):
+    module_key: str
+    tenant_id: str
+    user: ModuleUser
+
+
 class ModuleSession(BaseModel):
     access_token: str
     expires_at: int
@@ -50,6 +57,57 @@ class PendingLogin(BaseModel):
     state: str
 
 
+class ModuleSessionStore:
+    """Process-local opaque sessions for the single-process module image.
+
+    The browser receives only a random identifier. Eneo's short-lived module
+    token remains in backend memory and logout removes it immediately. A
+    shared store is required before running more than one backend replica.
+    """
+
+    def __init__(self) -> None:
+        self._sessions: dict[str, ModuleSession] = {}
+        self._lock = threading.Lock()
+
+    def create(self, session: ModuleSession) -> str:
+        session_id = secrets.token_urlsafe(32)
+        with self._lock:
+            self._delete_expired_locked(time.time())
+            self._sessions[session_id] = session
+        return session_id
+
+    def get(self, session_id: str | None) -> ModuleSession | None:
+        if session_id is None:
+            return None
+        with self._lock:
+            now = time.time()
+            self._delete_expired_locked(now)
+            session = self._sessions.get(session_id)
+            if session is None or session.expires_at <= now:
+                self._sessions.pop(session_id, None)
+                return None
+            return session
+
+    def delete(self, session_id: str | None) -> None:
+        if session_id is None:
+            return
+        with self._lock:
+            self._sessions.pop(session_id, None)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._sessions.clear()
+
+    def _delete_expired_locked(self, now: float) -> None:
+        expired = [
+            session_id
+            for session_id, session in self._sessions.items()
+            if session.expires_at <= now
+        ]
+        for session_id in expired:
+            del self._sessions[session_id]
+
+
 class ModuleAuth:
     def __init__(
         self,
@@ -59,14 +117,11 @@ class ModuleAuth:
     ) -> None:
         self.settings = settings
         self.http_client = http_client
-        self.session_serializer = URLSafeTimedSerializer(
-            settings.session_secret,
-            salt="eneo-module-session",
-        )
         self.state_serializer = URLSafeTimedSerializer(
             settings.session_secret,
             salt="eneo-module-login-state",
         )
+        self.sessions = ModuleSessionStore()
         self.router = APIRouter()
         self.router.add_api_route("/login", self.login, methods=["GET"])
         self.router.add_api_route("/callback", self.callback, methods=["GET"])
@@ -124,7 +179,9 @@ class ModuleAuth:
         try:
             upstream = await self.http_client.post(
                 f"{self.settings.eneo_backend_url}/api/v1/module-auth/token/",
-                headers={"X-API-Key": self.settings.eneo_api_key},
+                headers={
+                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key
+                },
                 json={"ticket": ticket},
                 timeout=httpx.Timeout(10.0),
             )
@@ -149,6 +206,41 @@ class ModuleAuth:
             logger.error("Module ticket exchange returned the wrong module or expiry")
             return self._auth_error("exchange_invalid")
 
+        try:
+            validation = await self.http_client.get(
+                (
+                    f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
+                    f"{quote(self.settings.module_key, safe='')}/session/"
+                ),
+                headers={
+                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
+                    "Authorization": f"Bearer {token.access_token}",
+                },
+                timeout=httpx.Timeout(10.0),
+            )
+        except httpx.RequestError:
+            logger.exception("Module session validation could not reach Eneo")
+            return self._auth_error("validation_unavailable")
+
+        if validation.status_code != 200:
+            logger.warning(
+                "Module session validation failed with status %s",
+                validation.status_code,
+            )
+            return self._auth_error("validation_failed")
+        try:
+            validated = ModuleResourceSessionResponse.model_validate(validation.json())
+        except (ValueError, ValidationError):
+            logger.exception("Module session validation returned an invalid response")
+            return self._auth_error("validation_invalid")
+        if (
+            validated.module_key != token.module_key
+            or validated.tenant_id != token.tenant_id
+            or validated.user.id != token.user.id
+        ):
+            logger.error("Module session validation returned a different identity")
+            return self._auth_error("validation_invalid")
+
         max_age = min(token.expires_in, SESSION_MAX_AGE)
         session = ModuleSession(
             access_token=token.access_token,
@@ -158,9 +250,10 @@ class ModuleAuth:
             user=token.user,
         )
         response = RedirectResponse(url="/flows", status_code=303)
+        session_id = self.sessions.create(session)
         response.set_cookie(
             key=SESSION_COOKIE,
-            value=self.session_serializer.dumps(session.model_dump()),
+            value=session_id,
             httponly=True,
             secure=self.settings.cookie_secure,
             samesite="lax",
@@ -171,8 +264,17 @@ class ModuleAuth:
         self._secure_callback_response(response)
         return response
 
-    async def logout(self, request: Request, response: Response) -> dict[str, bool]:
+    async def logout(
+        self,
+        request: Request,
+        response: Response,
+        session_id: Annotated[
+            str | None,
+            Cookie(alias=SESSION_COOKIE),
+        ] = None,
+    ) -> dict[str, bool]:
         self.require_same_origin(request)
+        self.sessions.delete(session_id)
         response.delete_cookie(
             SESSION_COOKIE,
             path="/",
@@ -186,13 +288,13 @@ class ModuleAuth:
     async def status(
         self,
         response: Response,
-        session_cookie: Annotated[
+        session_id: Annotated[
             str | None,
             Cookie(alias=SESSION_COOKIE),
         ] = None,
     ) -> dict[str, object]:
         response.headers["Cache-Control"] = "no-store"
-        session = self._load_session(session_cookie)
+        session = self.sessions.get(session_id)
         if session is None:
             return {"authenticated": False, "user": None}
         return {
@@ -203,12 +305,12 @@ class ModuleAuth:
     async def require_session(
         self,
         request: Request,
-        session_cookie: Annotated[
+        session_id: Annotated[
             str | None,
             Cookie(alias=SESSION_COOKIE),
         ] = None,
     ) -> ModuleSession:
-        session = self._load_session(session_cookie)
+        session = self.sessions.get(session_id)
         if session is None:
             raise HTTPException(
                 status_code=401,
@@ -239,21 +341,6 @@ class ModuleAuth:
             return PendingLogin.model_validate(payload)
         except (BadSignature, SignatureExpired, ValidationError):
             return None
-
-    def _load_session(self, cookie: str | None) -> ModuleSession | None:
-        if cookie is None:
-            return None
-        try:
-            payload = self.session_serializer.loads(cookie, max_age=SESSION_MAX_AGE)
-            session = ModuleSession.model_validate(payload)
-        except (BadSignature, SignatureExpired, ValidationError):
-            return None
-        if (
-            session.module_key != self.settings.module_key
-            or session.expires_at <= time.time()
-        ):
-            return None
-        return session
 
     def _auth_error(self, code: str) -> RedirectResponse:
         response = RedirectResponse(
