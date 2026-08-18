@@ -3,19 +3,22 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Button, FormControl, FormLabel, Input } from "@sk-web-gui/react";
-import { authStatus, login } from "@/lib/api";
-import { friendlyError } from "@/lib/errors";
+import { Button } from "@sk-web-gui/react";
+import { authStatus } from "@/lib/api";
 import { Brand } from "@/components/Brand";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [code, setCode] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("auth_error")) {
+      setAuthError(true);
+      window.history.replaceState(null, "", "/");
+    }
     authStatus()
       .then((s) => {
         if (s.authenticated) router.replace("/flows");
@@ -24,17 +27,10 @@ export default function LoginPage() {
       .catch(() => setChecking(false));
   }, [router]);
 
-  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
+  function startLogin() {
     setSubmitting(true);
-    setError(null);
-    try {
-      await login(code);
-      router.push("/flows");
-    } catch (err) {
-      setError(friendlyError(err));
-      setSubmitting(false);
-    }
+    setAuthError(false);
+    window.location.assign("/api/auth/login");
   }
 
   if (checking) {
@@ -57,44 +53,30 @@ export default function LoginPage() {
           Spela in samtal — <span className="accent-em">i fickformat</span>
         </h1>
         <p className="text-[14px] text-ink-soft leading-relaxed pt-1">
-          Skriv åtkomstkoden för att fortsätta.
+          Logga in via Eneo för att fortsätta.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} className="space-y-6 mt-2">
-        <FormControl id="access-code" disabled={submitting} className="w-full">
-          <FormLabel className="eyebrow-sm">Åtkomstkod</FormLabel>
-          <Input
-            type="password"
-            autoComplete="off"
-            autoFocus
-            size="md"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            placeholder="••••••"
-            className="w-full"
-          />
-        </FormControl>
-
-        {error && (
+      <div className="space-y-6 mt-2">
+        {authError && (
           <p className="text-sm text-accent" role="alert">
-            {error}
+            Inloggningen kunde inte slutföras. Försök igen.
           </p>
         )}
-
         <Button
-          type="submit"
+          type="button"
           color="vattjom"
           variant="primary"
           size="md"
+          onClick={startLogin}
           loading={submitting}
-          loadingText="Loggar in…"
-          disabled={submitting || code.length === 0}
+          loadingText="Öppnar Eneo…"
+          disabled={submitting}
           className="w-full"
         >
-          Logga in
+          Logga in med Eneo
         </Button>
-      </form>
+      </div>
     </main>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   CheckCircle2,
@@ -47,7 +46,6 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  setSpaceContext,
   startRun,
   uploadStepRuntimeFile,
   type FlowGraph,
@@ -113,16 +111,6 @@ interface ResultFileRef {
 }
 
 function FlowDetail({ flowId }: { flowId: string }) {
-  // Läs space-id från ?s= och sätt modul-state SYNKRONT under render-pass
-  // så alla efterföljande API-anrop på sidan skickar X-Space-Id-headern.
-  const searchParams = useSearchParams();
-  const spaceFromQuery = searchParams.get("s");
-  setSpaceContext(spaceFromQuery);
-  // Rensa contexten när vi lämnar sidan (annars läcker den till /flows-listanrop).
-  useEffect(() => {
-    return () => setSpaceContext(null);
-  }, []);
-
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [graph, setGraph] = useState<FlowGraph | null>(null);

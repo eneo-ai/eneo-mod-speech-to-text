@@ -64,7 +64,7 @@ function useFlowInputFormats(
     Promise.all(
       published.map(async (f) => {
         try {
-          const contract = await getRunContract(f.id, { spaceId });
+          const contract = await getRunContract(f.id);
           const fmt = firstInputFormat(contract);
           return fmt ? ([f.id, fmt] as const) : null;
         } catch {
@@ -118,9 +118,7 @@ function FlowsListPage() {
               // Eneo:s scope:ade API-keys ser inte sina spaces via /spaces/-listning,
               // så vi hämtar direkt på /spaces/{id}/ istället.
               getSpace(id).catch(() => null),
-              listFlows(id, 50, 0, { spaceId: id }).then(
-                (res) => res.items ?? [],
-              ),
+              listFlows(id, 50, 0).then((res) => res.items ?? []),
             ])
               .then(([space, flowList]) => {
                 setSections((prev) =>

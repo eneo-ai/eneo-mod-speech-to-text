@@ -1,16 +1,18 @@
 # Eneo Speech-to-Text Module
 
-Lyssna är en webbapp som låter en åtkomstkod-skyddad användare spela in samtal i browsern, skicka det till ett publicerat Eneo-flöde, och visa resultatet (transkript + sammanfattning + ev. genererade filer).
+Lyssna är en Eneo-modul som låter en inloggad användare spela in samtal i browsern, skicka det till ett publicerat Eneo-flöde, och visa resultatet (transkript + sammanfattning + ev. genererade filer).
 
 ```
-Browser  →  Next.js (port 3000)  →  FastAPI (intern, port 8000)
+Browser  →  Next.js (3000 dev / 3001 prod)  →  FastAPI (intern, port 8000)
                 │                         │
-                UI                  cookie-auth + proxy
+                UI               module session + BFF proxy
                                           │
-                                          └──X-API-Key──→  Eneo
+                                          └──service key + user token──→  Eneo
 ```
 
-Eneos API-nyckel lever bara i backend-containern och lämnar den aldrig till browsern. Frontend pratar bara same-origin via Next.js rewrite.
+Eneos API-nyckel stannar i backendprocessen. Module-user-token ligger endast i en signerad HttpOnly-session och returneras aldrig till frontend-JavaScript. Frontend pratar endast same-origin via Next.js rewrite.
+
+Produktionsimagen `ghcr.io/eneo-ai/eneo-mod-speech-to-text` paketerar båda processerna i en isolerad modulcontainer på port 3001. Supervisor övervakar och startar om processerna vid oväntade fel; imagen har dessutom ett healthcheck genom hela Next→FastAPI-kedjan. Den befintliga tvåcontainer-Compose-filen är avsedd för lokal utveckling.
 
 ---
 
@@ -18,11 +20,20 @@ Eneos API-nyckel lever bara i backend-containern och lämnar den aldrig till bro
 
 ```bash
 cp .env.example .env
-# Fyll i ENEO_API_KEY, APP_ACCESS_CODE, SESSION_SECRET (samt valfri DEMO_SPACE_ID).
+# Fyll i Eneo/module-URL:er, ENEO_API_KEY och SESSION_SECRET
+# (samt valfri DEMO_SPACE_ID).
 # Sätt COOKIE_SECURE=false för lokal http://localhost.
 
 docker compose up --build
 open http://localhost:3000
+```
+
+Produktionsimagen kan verifieras lokalt med:
+
+```bash
+docker build -t eneo-mod-speech-to-text:test .
+docker run --rm --env-file .env -p 3001:3001 eneo-mod-speech-to-text:test
+curl -fsS http://localhost:3001/health
 ```
 
 Generera `SESSION_SECRET` med:
@@ -74,28 +85,41 @@ INTERNAL_API_BASE=http://127.0.0.1:8000 npm run dev
 Tester:
 
 ```bash
-docker run --rm -v "$PWD/frontend/lib:/app/lib:ro" transkribering-frontend npm run test
-docker run --rm -v "$PWD/backend/app:/app/app:ro" -v "$PWD/backend/tests:/app/tests:ro" \
-  -e ENEO_API_BASE=https://eneo.example.test \
-  -e ENEO_API_KEY=test-key \
-  -e APP_ACCESS_CODE=test-code \
-  -e SESSION_SECRET=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx \
-  transkribering-backend python -m unittest discover -s tests
+cd frontend && npm ci && npm test && npm run build
+cd ../backend && .venv/bin/python -m unittest discover -s tests
+cd .. && docker compose --env-file .env.example config -q
+docker build -t eneo-mod-speech-to-text:test .
 ```
 
 ---
 
-## Åtkomstkod (gate)
+## Inloggning via Eneo
 
-Hela appen är skyddad bakom **`APP_ACCESS_CODE`**. Backend kräver den vid start och fail-fast:ar om den saknas eller är kortare än 4 tecken.
+Modulen är ingen egen OIDC-klient. Eneo förblir installationens enda autentiseringsauktoritet.
 
 Flödet:
 
-1. Användaren kommer till `/`, möts av en login-vy och uppmanas ange koden.
-2. Backend (`POST /api/auth/login`) jämför mot `APP_ACCESS_CODE` och sätter en signerad, HTTP-only session-cookie (8 h TTL, signerad med `SESSION_SECRET` via `itsdangerous`).
-3. Alla anrop mot Eneo går genom `/api/eneo/{path}` som kräver giltig cookie. Saknas den får man 401 och kastas tillbaka till login.
+1. `GET /api/auth/login` skapar ett oförutsägbart, kortlivat `state`, binder det till en HttpOnly-cookie och skickar browsern till Eneos `/module-login` med `module_key=speech-to-text`.
+2. Eneo autentiserar användaren och skickar tillbaka en engångsticket till `/api/auth/callback`.
+3. Callbacken verifierar och förbrukar `state`, växlar ticket server-side med modulens registrerade service key och skapar en HttpOnly-modulsession.
+4. Varje proxat Eneo-anrop skickar både modulens service key och den kortlivade module-user-token som BFF:en hämtar ur sessionen.
 
-> **Byt kod efter behov:** ändra `APP_ACCESS_CODE` i `.env`/Dokploy-env och starta om backend. Aktiva sessioner förblir giltiga tills cookie-TTL går ut — för att även invalidera dem, byt `SESSION_SECRET`.
+Callbacken redirectar alltid till en ren URL och returnerar `Referrer-Policy: no-referrer`. Backendens Uvicorn-accesslogg är avstängd så att callbackens ticket och state inte hamnar i containerloggar. Ingress-/Traefik-loggning måste också exkludera callbackens query string.
+
+> Denna modulimplementation förutsätter Eneos stabila `module_key`-kontrakt, frontend-route `/module-login` och Flow-resurser som kräver både service key och module-user-token.
+
+### Kontrakt mot Eneos modul-overlay
+
+Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Compose-overlay ska ge tjänsten endast `module_net` och skicka följande canonical env-namn:
+
+- `ENEO_BACKEND_URL=http://backend:8000`
+- `ENEO_PUBLIC_URL=https://<eneo-domain>`
+- `MODULE_PUBLIC_URL=https://<module-domain>`
+- `MODULE_KEY=speech-to-text`
+- `ENEO_API_KEY=<module-specific sk_ key>`
+- `SESSION_SECRET=<random 32+ characters>`
+
+Äldre exempelvärden som `MODULE_ID` och `TAL_TILL_TEXT_API_KEY` läses medvetet inte av imagen. Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`; då finns ett canonical konfigurationskontrakt i modulprocessen.
 
 ---
 
@@ -107,9 +131,11 @@ Flödet:
 
    | Variabel | Värde |
    |---|---|
-   | `ENEO_API_BASE` | `https://flow.sundsvall.dev` |
+   | `ENEO_BACKEND_URL` | `http://backend:8000` på Eneos `module_net` |
+   | `ENEO_PUBLIC_URL` | `https://flow.sundsvall.dev` |
+   | `MODULE_PUBLIC_URL` | `https://transkribering.sundsvall.dev` |
+   | `MODULE_KEY` | `speech-to-text` |
    | `ENEO_API_KEY` | en `sk_…`-nyckel från Eneo med rätt space-scope |
-   | `APP_ACCESS_CODE` | det användarna ska skriva in |
    | `SESSION_SECRET` | minst 32 tecken slumpmässigt (se ovan) |
    | `COOKIE_SECURE` | `true` |
    | `DEMO_SPACE_ID` | (valfritt) UUID för space; skippar space-väljaren |
@@ -121,14 +147,14 @@ Flödet:
 4. **Deploy.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt — bara internt mot `frontend` på `http://backend:8000`.
 
 5. **Verifiera** efter deploy:
-   - `https://transkribering.sundsvall.dev/` → login-vy
+   - `https://transkribering.sundsvall.dev/` → login via Eneo
    - `https://transkribering.sundsvall.dev/api/healthz` → `{"ok":true}`
-   - Logga in med `APP_ACCESS_CODE` → flödeslistan ska visas
+   - Callback-URL:en blir ren efter lyckad login och flödeslistan visas
 
 ### Vid problem
 
-- **Backend kraschar vid start:** kontrollera Dokploy-loggen — sannolikt saknad/för kort `APP_ACCESS_CODE` eller `SESSION_SECRET`.
-- **Login lyckas men man kastas direkt tillbaka:** `COOKIE_SECURE=true` men sajten serveras över HTTP. Sätt antingen `COOKIE_SECURE=false` (osäkert) eller fixa HTTPS.
+- **Backend kraschar vid start:** kontrollera att samtliga URL:er, `MODULE_KEY`, `ENEO_API_KEY` och `SESSION_SECRET` är satta.
+- **Login misslyckas efter callback:** kontrollera exakt registrerad callback-URL, module key, bunden service key och att `COOKIE_SECURE=true` endast används bakom HTTPS.
 - **502 vid uppladdning:** Eneo-load-balancer-problem; kolla `docker compose logs backend` för exakt httpx-fel.
 - **504 vid uppladdning:** backendens upload-forwarding till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`.
 - **Tom flödeslista:** API-nyckeln har inget space scope, eller `DEMO_SPACE_ID` pekar på fel space.
