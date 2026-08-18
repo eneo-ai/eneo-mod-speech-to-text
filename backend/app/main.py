@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import unquote
 
 import httpx
 from fastapi import (
@@ -199,6 +200,18 @@ def _proxy_route_is_allowed(method: str, path: str) -> bool:
     )
 
 
+def _has_dot_segment(path: str) -> bool:
+    """True if any path segment decodes to "." or ".." (a traversal segment).
+
+    The allowlist matches on the decoded path, but a percent-encoded dot
+    segment such as ``%2E%2E`` still satisfies ``[^/]+`` and would let httpx
+    resolve ``flows/../runs/`` to a different upstream path than the one that
+    was authorized. Reject these before matching so the allowlist keeps
+    meaning exactly the routes it spells out.
+    """
+    return any(unquote(segment) in {".", ".."} for segment in path.split("/"))
+
+
 # Dedicated upload routes — bypass the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
@@ -208,6 +221,10 @@ async def _proxy_multipart_upload(
     request: Request,
     timeout_seconds: float | None = None,
 ) -> Response:
+    # Upstream URLs are built from decoded path params; a "." / ".." segment
+    # would resolve to a different Eneo route than the upload endpoints exposed.
+    if _has_dot_segment(upstream_url):
+        raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
     session = module_auth.session_from_request(request)
     await upload_file.seek(0)
     try:
@@ -351,7 +368,7 @@ async def eneo_upload_template_file(
     ],
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
-    if not _proxy_route_is_allowed(request.method, path):
+    if _has_dot_segment(path) or not _proxy_route_is_allowed(request.method, path):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
     upstream_url = f"{settings.eneo_backend_url}/api/v1/{path}"
     session = module_auth.session_from_request(request)

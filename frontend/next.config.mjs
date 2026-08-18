@@ -13,7 +13,26 @@ const nextConfig = {
           { key: "X-Frame-Options", value: "DENY" },
           {
             key: "Content-Security-Policy",
-            value: "base-uri 'self'; frame-ancestors 'none'; object-src 'none'",
+            // default-src locks every fetch directive to same-origin; the
+            // exceptions below are only what the module actually uses:
+            //   media/img blob: + data: — in-browser audio recording preview,
+            //   style 'unsafe-inline' — Tailwind/Next inline style attributes.
+            // script keeps 'unsafe-inline' because Next's hydration bootstrap
+            // is inline and would be blocked without per-request nonces
+            // (nonce middleware is a follow-up); everything else is denied.
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline'",
+              "style-src 'self' 'unsafe-inline'",
+              "img-src 'self' data: blob:",
+              "media-src 'self' blob:",
+              "font-src 'self'",
+              "connect-src 'self'",
+              "base-uri 'self'",
+              "form-action 'self'",
+              "frame-ancestors 'none'",
+              "object-src 'none'",
+            ].join("; "),
           },
           {
             key: "Permissions-Policy",

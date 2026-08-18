@@ -19,8 +19,12 @@ logger = logging.getLogger("eneo_module_auth")
 
 SESSION_COOKIE = "eneo_module_session"
 STATE_COOKIE = "eneo_module_login_state"
+# Upper bound on the browser session cookie. The effective lifetime is
+# min(this, Eneo's token expiry); keep it aligned with Eneo's
+# module_auth_token_expiry_minutes so this cap never silently shortens a
+# session below the token that backs it.
 STATE_MAX_AGE = 5 * 60
-SESSION_MAX_AGE = 15 * 60
+SESSION_MAX_AGE = 60 * 60
 CALLBACK_PATH = "/api/auth/callback"
 
 
