@@ -176,7 +176,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
 
 3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy/Traefik sköter HTTPS-certifikatet.
 
-4. **Deploy.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt — bara internt mot `frontend` på `http://backend:8000`.
+4. **Deploy.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt — bara internt mot `frontend` på `http://speech-to-text-backend:8000`. Det unika tjänstenamnet undviker DNS-kollision med Eneos egen backend på Dokploys gemensamma nätverk.
 
 5. **Verifiera** efter deploy:
    - `https://transkribering.sundsvall.dev/` → Eneo-login eller kodformulär enligt `AUTH_MODE`

@@ -1,5 +1,5 @@
 services:
-  backend:
+  speech-to-text-backend:
     build: ./backend
     environment:
       ENEO_BACKEND_URL: ${ENEO_BACKEND_URL}
@@ -30,12 +30,12 @@ services:
   frontend:
     build: ./frontend
     environment:
-      INTERNAL_API_BASE: http://backend:8000
+      INTERNAL_API_BASE: http://speech-to-text-backend:8000
       NODE_ENV: production
     expose:
       - "3000"
     depends_on:
-      backend:
+      speech-to-text-backend:
         condition: service_healthy
     healthcheck:
       test:
