@@ -1,16 +1,22 @@
 import io
 import os
+import time
 import unittest
 
 import httpx
+from fastapi import Request
 
-os.environ.setdefault("ENEO_API_BASE", "https://eneo.example.test")
+os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
+os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
-os.environ.setdefault("APP_ACCESS_CODE", "test-code")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
+os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800")
 
 from app import main  # noqa: E402
+from app.module_auth import ModuleSession, ModuleUser  # noqa: E402
 
 
 class UploadTimeoutTests(unittest.TestCase):
@@ -54,10 +60,12 @@ class FakeUploadFile:
 class FakeHttpClient:
     def __init__(self) -> None:
         self.files = None
+        self.headers = None
         self.timeout = None
 
     async def post(self, *args, **kwargs):
         self.files = kwargs["files"]
+        self.headers = kwargs["headers"]
         self.timeout = kwargs["timeout"]
 
         class FakeResponse:
@@ -76,6 +84,18 @@ class RaisingHttpClient:
         raise self.exc
 
 
+def authenticated_request() -> Request:
+    request = Request({"type": "http", "method": "POST", "path": "/"})
+    request.state.module_session = ModuleSession(
+        access_token="module-user-token",
+        expires_at=int(time.time()) + 60,
+        module_key="speech-to-text",
+        tenant_id="tenant-id",
+        user=ModuleUser(id="user-id", email="user@example.test"),
+    )
+    return request
+
+
 class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
     async def test_proxy_upload_passes_file_stream_without_reading_bytes(self) -> None:
         upload = FakeUploadFile()
@@ -86,6 +106,7 @@ class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
             response = await main._proxy_multipart_upload(
                 "https://eneo.example.test/api/v1/flows/flow/steps/step/runtime-files/",
                 upload,
+                authenticated_request(),
                 timeout_seconds=120.0,
             )
         finally:
@@ -97,6 +118,11 @@ class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
         _, file_obj, content_type = client.files["upload_file"]
         self.assertIs(file_obj, upload.file)
         self.assertEqual(content_type, "audio/webm")
+        self.assertEqual(client.headers["X-API-Key"], "test-key")
+        self.assertEqual(
+            client.headers["Authorization"],
+            "Bearer module-user-token",
+        )
         self.assertEqual(client.timeout.read, 120.0)
 
     async def test_proxy_upload_maps_upstream_timeout_to_504(self) -> None:
@@ -106,6 +132,7 @@ class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
             response = await main._proxy_multipart_upload(
                 "https://eneo.example.test/api/v1/flows/flow/steps/step/runtime-files/",
                 FakeUploadFile(),
+                authenticated_request(),
             )
         finally:
             main.http_client = original_client
@@ -119,6 +146,7 @@ class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
             response = await main._proxy_multipart_upload(
                 "https://eneo.example.test/api/v1/flows/flow/steps/step/runtime-files/",
                 FakeUploadFile(),
+                authenticated_request(),
             )
         finally:
             main.http_client = original_client

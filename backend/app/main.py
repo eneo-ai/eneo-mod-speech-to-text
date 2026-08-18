@@ -1,13 +1,10 @@
 from __future__ import annotations
 
 import logging
-import os
-import time
-from typing import Annotated
+import re
 
 import httpx
 from fastapi import (
-    Cookie,
     Depends,
     FastAPI,
     File,
@@ -17,103 +14,17 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.responses import JSONResponse
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from pydantic import BaseModel
+
+from app.config import load_settings
+from app.module_auth import ModuleAuth
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
 
 
-# ---------- Settings ----------
-
-class SpaceConfig(BaseModel):
-    id: str
-    api_key: str
-    name: str | None = None
-
-
-class Settings(BaseModel):
-    eneo_api_base: str
-    eneo_api_key: str  # primär nyckel; används som fallback om X-Space-Id saknas/inte matchar
-    app_access_code: str
-    session_secret: str
-    cookie_secure: bool = False
-    demo_space_id: str | None = None  # bakåtkomp — speglar spaces[0].id
-    demo_space_name: str | None = None  # bakåtkomp — speglar spaces[0].name
-    upload_proxy_timeout_seconds: float = 1800.0
-    spaces: list[SpaceConfig] = []
-
-
-def _parse_bool(raw: str | None, default: bool = False) -> bool:
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"true", "1", "yes", "on"}
-
-
-def load_settings() -> Settings:
-    required = ["ENEO_API_BASE", "ENEO_API_KEY", "APP_ACCESS_CODE", "SESSION_SECRET"]
-    missing = [k for k in required if not os.getenv(k)]
-    if missing:
-        raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
-    if len(os.environ["APP_ACCESS_CODE"]) < 4:
-        raise RuntimeError("APP_ACCESS_CODE must be at least 4 characters")
-    if len(os.environ["SESSION_SECRET"]) < 32:
-        raise RuntimeError("SESSION_SECRET must be at least 32 characters")
-
-    primary_key = os.environ["ENEO_API_KEY"]
-    primary_space_id = os.environ.get("DEMO_SPACE_ID") or None
-    primary_space_name = os.environ.get("DEMO_SPACE_NAME") or None
-
-    spaces: list[SpaceConfig] = []
-    if primary_space_id:
-        spaces.append(
-            SpaceConfig(id=primary_space_id, api_key=primary_key, name=primary_space_name)
-        )
-
-    second_key = os.environ.get("ENEO_API_KEY_2") or None
-    second_space_id = os.environ.get("DEMO_SPACE_ID_2") or None
-    second_space_name = os.environ.get("DEMO_SPACE_NAME_2") or None
-    if second_key and second_space_id:
-        spaces.append(
-            SpaceConfig(id=second_space_id, api_key=second_key, name=second_space_name)
-        )
-    elif second_key or second_space_id:
-        logger.warning(
-            "ENEO_API_KEY_2 and DEMO_SPACE_ID_2 must both be set to enable the second space; ignoring partial config."
-        )
-
-    return Settings(
-        eneo_api_base=os.environ["ENEO_API_BASE"].rstrip("/"),
-        eneo_api_key=primary_key,
-        app_access_code=os.environ["APP_ACCESS_CODE"],
-        session_secret=os.environ["SESSION_SECRET"],
-        cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=False),
-        demo_space_id=primary_space_id,
-        demo_space_name=primary_space_name,
-        upload_proxy_timeout_seconds=float(
-            os.environ.get("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800")
-        ),
-        spaces=spaces,
-    )
-
-
-def _key_for_space(space_id: str | None) -> str:
-    """Slå upp matching API-key för ett space-id. Faller tillbaka till primär nyckel."""
-    if space_id:
-        for s in settings.spaces:
-            if s.id == space_id:
-                return s.api_key
-    return settings.eneo_api_key
-
-
 settings = load_settings()
 
-SESSION_COOKIE = "eneo_demo_session"
-SESSION_MAX_AGE = 8 * 60 * 60  # 8 hours
-SESSION_NAMESPACE = "eneo-demo-session"
 MIN_UPLOAD_PROXY_TIMEOUT_SECONDS = 60.0
-
-serializer = URLSafeTimedSerializer(settings.session_secret, salt=SESSION_NAMESPACE)
 
 
 # ---------- App ----------
@@ -121,8 +32,10 @@ serializer = URLSafeTimedSerializer(settings.session_secret, salt=SESSION_NAMESP
 app = FastAPI(title="Eneo Speech-to-Text Module Backend")
 http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(60.0, connect=10.0),
-    follow_redirects=True,
+    follow_redirects=False,
 )
+module_auth = ModuleAuth(settings=settings, http_client=http_client)
+app.include_router(module_auth.router, prefix="/api/auth")
 
 
 def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
@@ -161,78 +74,18 @@ async def healthz():
     return {"ok": True}
 
 
-@app.get("/api/config")
+@app.get(
+    "/api/config",
+    dependencies=[Depends(module_auth.require_session)],
+)
 async def get_config():
     return {
         "demo_space_id": settings.demo_space_id,
         "demo_space_name": settings.demo_space_name,
-        "demo_space_ids": [s.id for s in settings.spaces],
+        "demo_space_ids": (
+            [settings.demo_space_id] if settings.demo_space_id is not None else []
+        ),
     }
-
-
-# ---------- Auth ----------
-
-class LoginRequest(BaseModel):
-    access_code: str
-
-
-def _make_session_token() -> str:
-    return serializer.dumps({"iat": int(time.time())})
-
-
-def _is_valid_session(token: str | None) -> bool:
-    if not token:
-        return False
-    try:
-        serializer.loads(token, max_age=SESSION_MAX_AGE)
-        return True
-    except (BadSignature, SignatureExpired):
-        return False
-
-
-def require_auth(
-    eneo_demo_session: Annotated[str | None, Cookie()] = None,
-) -> None:
-    if not _is_valid_session(eneo_demo_session):
-        # Headern särskiljer VÅR 401 (kräver omlogg) från en upstream-401 som
-        # Eneo råkar svara med (ogiltig nyckel etc). Frontend redirectar
-        # bara om denna header finns; annars visas felet i UI:t i stället
-        # för att skicka användaren till login-loopen.
-        raise HTTPException(
-            status_code=401,
-            detail="Not authenticated",
-            headers={"X-Auth-Required": "session"},
-        )
-
-
-@app.post("/api/auth/login")
-async def login(body: LoginRequest, response: Response):
-    if body.access_code != settings.app_access_code:
-        raise HTTPException(status_code=401, detail="Invalid access code")
-    token = _make_session_token()
-    response.set_cookie(
-        key=SESSION_COOKIE,
-        value=token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.cookie_secure,
-        max_age=SESSION_MAX_AGE,
-        path="/",
-    )
-    return {"ok": True}
-
-
-@app.post("/api/auth/logout")
-async def logout(response: Response):
-    response.delete_cookie(SESSION_COOKIE, path="/")
-    return {"ok": True}
-
-
-@app.get("/api/auth/status")
-async def auth_status(
-    eneo_demo_session: Annotated[str | None, Cookie()] = None,
-):
-    return {"authenticated": _is_valid_session(eneo_demo_session)}
 
 
 # ---------- Eneo proxy ----------
@@ -243,6 +96,7 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
     "connection",
     "content-length",
     "accept-encoding",
+    "authorization",
     "cookie",
     "x-api-key",
     # Intern routing-header — Eneo ska inte se den.
@@ -250,6 +104,7 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
     # Intern proxy-budget för stora uploads.
     "x-upload-timeout-seconds",
 }
+_HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
 
 # Headers we should not forward from upstream response back to client.
 _HOP_BY_HOP_RESPONSE_HEADERS = {
@@ -260,6 +115,89 @@ _HOP_BY_HOP_RESPONSE_HEADERS = {
     "content-length",
 }
 
+_RESOURCE_ID = r"[^/]+"
+_PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
+    (frozenset({"GET"}), re.compile(rf"spaces/$|spaces/{_RESOURCE_ID}/$")),
+    (frozenset({"GET"}), re.compile(r"flows/$")),
+    (
+        frozenset({"GET"}),
+        re.compile(rf"flows/{_RESOURCE_ID}/(?:published|run-contract|graph)/$"),
+    ),
+    (frozenset({"GET", "POST"}), re.compile(rf"flows/{_RESOURCE_ID}/runs/$")),
+    (
+        frozenset({"GET"}),
+        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/$"),
+    ),
+    (
+        frozenset({"GET"}),
+        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/$"),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/artifacts/"
+            rf"{_RESOURCE_ID}/signed-url/$"
+        ),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:cancel|redispatch)/$"
+        ),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
+            rf"{_RESOURCE_ID}/rerun/$"
+        ),
+    ),
+    (
+        frozenset({"GET"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/evidence/(?:export)?$"
+        ),
+    ),
+    (
+        frozenset({"GET"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/"
+            r"review-checkpoints/active/$"
+        ),
+    ),
+    (
+        frozenset({"PATCH"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
+            rf"{_RESOURCE_ID}/$"
+        ),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
+            rf"{_RESOURCE_ID}/(?:approve|reject|resume)/$"
+        ),
+    ),
+    (
+        frozenset({"GET"}),
+        re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
+    ),
+    (
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/template-files/{_RESOURCE_ID}/signed-url/$"
+        ),
+    ),
+)
+
+
+def _proxy_route_is_allowed(method: str, path: str) -> bool:
+    return any(
+        method in methods and pattern.fullmatch(path) is not None
+        for methods, pattern in _PROXY_ROUTE_RULES
+    )
+
 
 # Dedicated upload routes — bypass the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
@@ -267,15 +205,18 @@ _HOP_BY_HOP_RESPONSE_HEADERS = {
 async def _proxy_multipart_upload(
     upstream_url: str,
     upload_file: UploadFile,
-    space_id: str | None = None,
+    request: Request,
     timeout_seconds: float | None = None,
 ) -> Response:
-    api_key = _key_for_space(space_id)
+    session = module_auth.session_from_request(request)
     await upload_file.seek(0)
     try:
         upstream = await http_client.post(
             upstream_url,
-            headers={"X-API-Key": api_key},
+            headers={
+                settings.eneo_api_key_header_name: settings.eneo_api_key,
+                "Authorization": f"Bearer {session.access_token}",
+            },
             files={
                 "upload_file": (
                     upload_file.filename,
@@ -285,22 +226,22 @@ async def _proxy_multipart_upload(
             },
             timeout=_upload_timeout(timeout_seconds),
         )
-    except httpx.TimeoutException as exc:
+    except httpx.TimeoutException:
         logger.exception("Upload timed out: url=%s", upstream_url)
         return JSONResponse(
             status_code=504,
             content={
                 "error": "upstream_upload_timeout",
-                "detail": f"{type(exc).__name__}: {exc}",
+                "detail": "Eneo did not complete the upload before the timeout.",
             },
         )
-    except httpx.RequestError as exc:
+    except httpx.RequestError:
         logger.exception("Upload failed: url=%s", upstream_url)
         return JSONResponse(
             status_code=502,
             content={
                 "error": "upstream_unreachable",
-                "detail": f"{type(exc).__name__}: {exc}",
+                "detail": "Eneo could not be reached.",
             },
         )
 
@@ -313,34 +254,45 @@ async def _proxy_multipart_upload(
 
 @app.post(
     "/api/eneo/flows/{flow_id}/files",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 @app.post(
     "/api/eneo/flows/{flow_id}/files/",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 async def eneo_upload_file(
     flow_id: str,
     request: Request,
     upload_file: UploadFile = File(...),
 ) -> Response:
-    upstream_url = f"{settings.eneo_api_base}/api/v1/flows/{flow_id}/files/"
-    space_id = request.headers.get("x-space-id")
+    upstream_url = f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/files/"
     return await _proxy_multipart_upload(
         upstream_url,
         upload_file,
-        space_id,
+        request,
         _requested_upload_timeout_seconds(request),
     )
 
 
 @app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 @app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 async def eneo_upload_step_runtime_file(
     flow_id: str,
@@ -349,25 +301,30 @@ async def eneo_upload_step_runtime_file(
     upload_file: UploadFile = File(...),
 ) -> Response:
     upstream_url = (
-        f"{settings.eneo_api_base}/api/v1/flows/{flow_id}"
+        f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}"
         f"/steps/{step_id}/runtime-files/"
     )
-    space_id = request.headers.get("x-space-id")
     return await _proxy_multipart_upload(
         upstream_url,
         upload_file,
-        space_id,
+        request,
         _requested_upload_timeout_seconds(request),
     )
 
 
 @app.post(
     "/api/eneo/flows/{flow_id}/template-files",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 @app.post(
     "/api/eneo/flows/{flow_id}/template-files/",
-    dependencies=[Depends(require_auth)],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 async def eneo_upload_template_file(
     flow_id: str,
@@ -375,28 +332,29 @@ async def eneo_upload_template_file(
     upload_file: UploadFile = File(...),
 ) -> Response:
     upstream_url = (
-        f"{settings.eneo_api_base}/api/v1/flows/{flow_id}/template-files/"
+        f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/template-files/"
     )
-    space_id = request.headers.get("x-space-id")
     return await _proxy_multipart_upload(
         upstream_url,
         upload_file,
-        space_id,
+        request,
         _requested_upload_timeout_seconds(request),
     )
 
 
 @app.api_route(
     "/api/eneo/{path:path}",
-    methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
-    dependencies=[Depends(require_auth)],
+    methods=["GET", "POST", "PATCH"],
+    dependencies=[
+        Depends(module_auth.require_session),
+        Depends(module_auth.require_same_origin),
+    ],
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
-    upstream_url = f"{settings.eneo_api_base}/api/v1/{path}"
-
-    # Välj nyckel baserat på X-Space-Id-routing header (om frontend skickat).
-    space_id = request.headers.get("x-space-id")
-    api_key = _key_for_space(space_id)
+    if not _proxy_route_is_allowed(request.method, path):
+        raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
+    upstream_url = f"{settings.eneo_backend_url}/api/v1/{path}"
+    session = module_auth.session_from_request(request)
 
     # Forward request headers, but strip hop-by-hop and inject API key.
     fwd_headers: dict[str, str] = {}
@@ -404,7 +362,8 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if name.lower() in _HOP_BY_HOP_REQUEST_HEADERS:
             continue
         fwd_headers[name] = value
-    fwd_headers["X-API-Key"] = api_key
+    fwd_headers[settings.eneo_api_key_header_name] = settings.eneo_api_key
+    fwd_headers["Authorization"] = f"Bearer {session.access_token}"
 
     body = await request.body()
 
@@ -416,7 +375,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             content=body if body else None,
             headers=fwd_headers,
         )
-    except httpx.RequestError as exc:
+    except httpx.RequestError:
         logger.exception(
             "Upstream request failed: method=%s url=%s",
             request.method,
@@ -426,7 +385,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             status_code=502,
             content={
                 "error": "upstream_unreachable",
-                "detail": f"{type(exc).__name__}: {exc}",
+                "detail": "Eneo could not be reached.",
             },
         )
 

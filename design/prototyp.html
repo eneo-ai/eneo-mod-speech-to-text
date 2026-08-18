@@ -8,8 +8,7 @@
     <!--
       Fristående designprototyp för appen "Lyssna" (transkribering via Eneo).
       Speglar den riktiga frontend-designen: Sundsvalls kommuns profil
-      (vit/neutral + vattjom blå), Raleway-rubriker, Inter-brödtext,
-      Geist Mono-etiketter, @sk-web-gui-liknande knappar/fält.
+      (vit/neutral + vattjom blå), systemtypsnitt och shadcn-liknande knappar/fält.
 
       Syfte: iterera på design visuellt i claude.ai. Klassnamn och tokens
       matchar den riktiga koden (Tailwind + globals.css), så ändringar är
@@ -36,22 +35,15 @@
               ochre: "#CB950B",
             },
             fontFamily: {
-              sans: ["Inter", "system-ui", "sans-serif"],
-              heading: ["Raleway", "Arial", "sans-serif"],
-              mono: ['"Geist Mono"', "ui-monospace", "monospace"],
+              sans: ["system-ui", "sans-serif"],
+              heading: ["system-ui", "sans-serif"],
+              mono: ["ui-monospace", "monospace"],
             },
             borderRadius: { "2xl": "1rem" },
           },
         },
       };
     </script>
-
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Raleway:wght@500;600;700;800&family=Geist+Mono:wght@400;500&display=swap"
-      rel="stylesheet"
-    />
 
     <style>
       /* ---- Designtokens (speglar frontend/app/globals.css) ---- */
@@ -65,30 +57,30 @@
       body {
         background: #f0f0f0;
         color: #1f1f25;
-        font-family: "Inter", system-ui, sans-serif;
+        font-family: system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
 
-      /* Rubriker = Raleway */
+      /* Rubriker använder samma systemfont-stack som produktionsappen. */
       h1,
       h2,
       h3,
       h4,
       h5,
       h6 {
-        font-family: "Raleway", Arial, sans-serif;
+        font-family: system-ui, sans-serif;
       }
 
       /* ---- Custom-klasser (speglar globals.css) ---- */
       .eyebrow {
-        font-family: "Geist Mono", ui-monospace, monospace;
+        font-family: ui-monospace, monospace;
         font-size: 10px;
         letter-spacing: 0.18em;
         text-transform: uppercase;
         color: #68686d;
       }
       .eyebrow-sm {
-        font-family: "Geist Mono", ui-monospace, monospace;
+        font-family: ui-monospace, monospace;
         font-size: 9px;
         letter-spacing: 0.16em;
         text-transform: uppercase;
@@ -111,7 +103,7 @@
         min-height: 100%;
       }
 
-      /* ---- @sk-web-gui Button-approximation (color=vattjom) ---- */
+      /* ---- Lokala shadcn Button-varianter ---- */
       .btn {
         display: inline-flex;
         align-items: center;
@@ -150,9 +142,9 @@
         box-shadow: 0 0 0 3px #0c8ced66;
       }
 
-      /* ---- SK-liknande textfält (FormControl/Input) ---- */
-      .sk-label {
-        font-family: "Geist Mono", ui-monospace, monospace;
+      /* ---- Lokala Label/Input-komponenter ---- */
+      .ui-label {
+        font-family: ui-monospace, monospace;
         font-size: 9px;
         letter-spacing: 0.16em;
         text-transform: uppercase;
@@ -160,7 +152,7 @@
         display: block;
         margin-bottom: 0.4rem;
       }
-      .sk-input {
+      .ui-input {
         width: 100%;
         border: 1px solid #b7b7ba;
         border-radius: 0.5rem;
@@ -169,10 +161,10 @@
         color: #1f1f25;
         background: #fff;
       }
-      .sk-input::placeholder {
+      .ui-input::placeholder {
         color: #a2a2a7;
       }
-      .sk-input:focus {
+      .ui-input:focus {
         outline: none;
         border-color: var(--accent);
         box-shadow: 0 0 0 3px #0c8ced33;
@@ -262,8 +254,8 @@
 
           <form class="space-y-6" onsubmit="return false">
             <div>
-              <label class="sk-label">Åtkomstkod</label>
-              <input class="sk-input" type="password" placeholder="••••••" />
+              <label class="ui-label">Åtkomstkod</label>
+              <input class="ui-input" type="password" placeholder="••••••" />
             </div>
             <button class="btn btn-primary btn-lg w-full">Logga in</button>
           </form>
@@ -392,12 +384,12 @@
             <!-- Formulärfält -->
             <div class="flex flex-col gap-5 mb-6">
               <div>
-                <label class="sk-label">Mötestyp</label>
-                <input class="sk-input" type="text" placeholder="t.ex. Ledningsgrupp" />
+                <label class="ui-label">Mötestyp</label>
+                <input class="ui-input" type="text" placeholder="t.ex. Ledningsgrupp" />
               </div>
               <div>
-                <label class="sk-label">Deltagare</label>
-                <textarea class="sk-input" rows="3" placeholder="Namn, roller …"></textarea>
+                <label class="ui-label">Deltagare</label>
+                <textarea class="ui-input" rows="3" placeholder="Namn, roller …"></textarea>
               </div>
             </div>
 

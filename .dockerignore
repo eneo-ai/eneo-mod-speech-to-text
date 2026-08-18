@@ -1,0 +1,12 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+**/.DS_Store
+**/.next
+**/.test-build
+**/.venv
+**/__pycache__
+**/node_modules
+design

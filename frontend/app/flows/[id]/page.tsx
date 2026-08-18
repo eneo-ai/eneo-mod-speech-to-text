@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,14 +17,10 @@ import {
   XCircle,
 } from "lucide-react";
 import { use, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Button,
-  FormControl,
-  FormHelperText,
-  FormLabel,
-  Input,
-  Textarea,
-} from "@sk-web-gui/react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AuthGate } from "@/components/AuthGate";
@@ -47,7 +42,6 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  setSpaceContext,
   startRun,
   uploadStepRuntimeFile,
   type FlowGraph,
@@ -69,7 +63,7 @@ import {
 } from "@/lib/upload";
 
 interface PageProps {
-  // Next 15: params levereras som en Promise och packas upp med React.use().
+  // App Router levererar params som en Promise och packar upp dem med React.use().
   params: Promise<{ id: string }>;
 }
 
@@ -113,16 +107,6 @@ interface ResultFileRef {
 }
 
 function FlowDetail({ flowId }: { flowId: string }) {
-  // Läs space-id från ?s= och sätt modul-state SYNKRONT under render-pass
-  // så alla efterföljande API-anrop på sidan skickar X-Space-Id-headern.
-  const searchParams = useSearchParams();
-  const spaceFromQuery = searchParams.get("s");
-  setSpaceContext(spaceFromQuery);
-  // Rensa contexten när vi lämnar sidan (annars läcker den till /flows-listanrop).
-  useEffect(() => {
-    return () => setSpaceContext(null);
-  }, []);
-
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [graph, setGraph] = useState<FlowGraph | null>(null);
@@ -830,36 +814,36 @@ function SetupView({
                 f.type === "long_text" ||
                 (inputTypeAttr === "text" && value.length > 80);
               return (
-                <FormControl
-                  key={k}
-                  id={k}
-                  required={f.required}
-                  className="w-full"
-                >
-                  <FormLabel className="eyebrow-sm">
+                <div key={k} className="w-full space-y-2">
+                  <Label htmlFor={k} className="eyebrow-sm">
                     {f.label || f.name}
-                  </FormLabel>
+                    {f.required ? " *" : ""}
+                  </Label>
                   {f.description && (
-                    <FormHelperText className="text-xs text-ink-mute">
+                    <p id={`${k}-description`} className="text-xs text-ink-mute">
                       {f.description}
-                    </FormHelperText>
+                    </p>
                   )}
                   {isLong ? (
                     <Textarea
+                      id={k}
                       value={value}
                       onChange={(e) => setField(k, e.target.value)}
                       rows={4}
-                      className="w-full"
+                      required={f.required}
+                      aria-describedby={f.description ? `${k}-description` : undefined}
                     />
                   ) : (
                     <Input
+                      id={k}
                       type={inputTypeAttr}
                       value={value}
                       onChange={(e) => setField(k, e.target.value)}
-                      className="w-full"
+                      required={f.required}
+                      aria-describedby={f.description ? `${k}-description` : undefined}
                     />
                   )}
-                </FormControl>
+                </div>
               );
             })}
           </div>
@@ -988,16 +972,12 @@ function SetupView({
         <div className="pt-5 md:pt-6 flex justify-center">
           <Button
             type="button"
-            color="vattjom"
-            variant="primary"
-            size="md"
             onClick={onRun}
-            loading={submitting}
-            loadingText="Startar…"
             disabled={!canSubmit || submitting}
             className="text-[14px]"
           >
-            Kör flöde
+            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+            {submitting ? "Startar…" : "Kör flöde"}
           </Button>
         </div>
       </div>
@@ -1424,13 +1404,14 @@ function ReviewView({
           </button>
           <Button
             type="button"
-            color="vattjom"
-            variant="primary"
             onClick={saveAndApprove}
-            loading={working === "approve"}
             disabled={working !== null || saving}
-            leftIcon={<CheckCircle2 className="h-4 w-4" strokeWidth={2} />}
           >
+            {working === "approve" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+            )}
             {dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
           </Button>
         </div>
@@ -1628,24 +1609,18 @@ function NotesView({
           <Button
             type="button"
             variant="secondary"
-            color="vattjom"
             onClick={onRunAgain}
-            leftIcon={<Share2 className="h-3.5 w-3.5" strokeWidth={1.8} />}
             className="flex-1"
           >
+            <Share2 className="h-3.5 w-3.5" strokeWidth={1.8} />
             Kör igen
           </Button>
-          <Link href="/flows" className="flex-[1.6]">
-            <Button
-              as="span"
-              color="vattjom"
-              variant="primary"
-              leftIcon={<Send className="h-3.5 w-3.5" strokeWidth={1.8} />}
-              className="w-full"
-            >
+          <Button asChild className="flex-[1.6]">
+            <Link href="/flows">
+              <Send className="h-3.5 w-3.5" strokeWidth={1.8} />
               Klart
-            </Button>
-          </Link>
+            </Link>
+          </Button>
         </div>
       </footer>
     </>

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cd /workspaces/transkribering
+cd /workspaces/eneo-mod-speech-to-text
 
 python -m venv backend/.venv
 backend/.venv/bin/python -m pip install --upgrade pip

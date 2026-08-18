@@ -1,5 +1,6 @@
 // All requests go to same-origin /api/* — Next rewrites these to the backend.
-// The backend in turn proxies /api/eneo/* to Eneo with X-API-Key.
+// The backend in turn proxies /api/eneo/* to Eneo with the module's service
+// key and the short-lived module-user token from its HttpOnly session.
 
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -43,26 +44,10 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, msg, body, code);
 }
 
-// ---------- Space context (för flerspace-läge med olika API-nycklar) ----------
-// Backend mappar X-Space-Id-header → rätt API-nyckel. Vi sätter contexten
-// vid mount av flödesdetaljvyn så att alla efterföljande anrop använder rätt nyckel.
-
-let currentSpaceId: string | null = null;
-
-export function setSpaceContext(spaceId: string | null): void {
-  currentSpaceId = spaceId;
-}
-
-export function getSpaceContext(): string | null {
-  return currentSpaceId;
-}
-
 async function request<T>(
   path: string,
   init: RequestInit = {},
-  opts: { spaceId?: string | null } = {},
 ): Promise<T> {
-  const effectiveSpaceId = opts.spaceId ?? currentSpaceId;
   const res = await fetch(path, {
     ...init,
     credentials: "include",
@@ -71,7 +56,6 @@ async function request<T>(
       ...(init.body && !(init.body instanceof FormData)
         ? { "Content-Type": "application/json" }
         : {}),
-      ...(effectiveSpaceId ? { "X-Space-Id": effectiveSpaceId } : {}),
       ...init.headers,
     },
   });
@@ -117,11 +101,10 @@ export async function getConfig() {
 
 // ---------- Auth ----------
 
-export async function login(accessCode: string) {
-  return request<{ ok: true }>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ access_code: accessCode }),
-  });
+export interface AuthenticatedUser {
+  id: string;
+  email: string;
+  username?: string;
 }
 
 export async function logout() {
@@ -129,7 +112,10 @@ export async function logout() {
 }
 
 export async function authStatus() {
-  return request<{ authenticated: boolean }>("/api/auth/status");
+  return request<{
+    authenticated: boolean;
+    user: AuthenticatedUser | null;
+  }>("/api/auth/status");
 }
 
 // ---------- Eneo ----------
@@ -493,7 +479,6 @@ function requestMultipartWithProgress<T>(
     fileSizeBytes: 0,
   },
 ): Promise<T> {
-  const effectiveSpaceId = currentSpaceId;
   const initialTimeoutMs = resolveRuntimeUploadInitialTimeoutMs(
     opts.fileSizeBytes,
     opts.runtimeUploadPolicy,
@@ -609,7 +594,6 @@ function requestMultipartWithProgress<T>(
       "X-Upload-Timeout-Seconds",
       String(Math.ceil(initialTimeoutMs / 1000)),
     );
-    if (effectiveSpaceId) xhr.setRequestHeader("X-Space-Id", effectiveSpaceId);
     xhr.send(formData);
   });
 }
@@ -637,40 +621,29 @@ async function sha256Hex(value: string): Promise<string> {
 
 // ---------- API-anrop ----------
 
-export async function listSpaces(opts: { spaceId?: string } = {}) {
+export async function listSpaces() {
   return request<PaginatedResponse<SpaceSparse>>(
     "/api/eneo/spaces/?include_personal=true",
-    {},
-    opts,
   );
 }
 
 /** Hämtar en specifik space direkt. Funkar även när /spaces/-listning är tom (scope-begränsade keys). */
-export async function getSpace(spaceId: string, opts: { spaceId?: string } = {}) {
-  return request<SpaceSparse>(
-    `/api/eneo/spaces/${spaceId}/`,
-    {},
-    { spaceId: opts.spaceId ?? spaceId },
-  );
+export async function getSpace(spaceId: string) {
+  return request<SpaceSparse>(`/api/eneo/spaces/${spaceId}/`);
 }
 
 export async function listFlows(
   spaceId: string,
   limit = 50,
   offset = 0,
-  opts: { spaceId?: string } = {},
 ) {
   const qs = new URLSearchParams({
     space_id: spaceId,
     limit: String(limit),
     offset: String(offset),
   });
-  // Default: X-Space-Id matchar space_id-paramen om inget annat angetts.
-  const effective = { spaceId: opts.spaceId ?? spaceId };
   return request<PaginatedResponse<FlowSparsePublic>>(
     `/api/eneo/flows/?${qs.toString()}`,
-    {},
-    effective,
   );
 }
 
@@ -678,15 +651,8 @@ export async function getPublishedFlow(flowId: string) {
   return request<FlowPublished>(`/api/eneo/flows/${flowId}/published/`);
 }
 
-export async function getRunContract(
-  flowId: string,
-  opts: { spaceId?: string } = {},
-) {
-  return request<RunContract>(
-    `/api/eneo/flows/${flowId}/run-contract/`,
-    {},
-    opts,
-  );
+export async function getRunContract(flowId: string) {
+  return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
 }
 
 // input_format för det första steget som kräver input (lägst step_order).
