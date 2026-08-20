@@ -15,7 +15,7 @@ export function Brand({ href, className }: BrandProps) {
       <img
         src="/brand/sundsvalls-kommun-logotyp.svg"
         alt="Sundsvalls kommun"
-        className="block h-10 w-auto"
+        className="block h-10 w-auto dark:invert"
       />
       <span aria-hidden className="block h-8 w-px shrink-0 bg-rule" />
       <span className="whitespace-nowrap text-[19px] font-bold leading-none">

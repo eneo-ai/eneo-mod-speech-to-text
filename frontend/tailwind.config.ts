@@ -28,9 +28,12 @@ const config: Config = {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           soft: "hsl(var(--accent-soft))",
-          foreground: "hsl(var(--paper))",
+          foreground: "hsl(var(--accent-foreground))",
         },
-        record: "hsl(var(--record))",
+        record: {
+          DEFAULT: "hsl(var(--record))",
+          foreground: "hsl(var(--record-foreground))",
+        },
         ochre: "hsl(var(--ochre))",
       },
       borderWidth: {
