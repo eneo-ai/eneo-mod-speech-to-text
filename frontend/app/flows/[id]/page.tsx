@@ -10,7 +10,6 @@ import {
   FileAudio,
   Info,
   Loader2,
-  MoreVertical,
   Send,
   Share2,
   Upload,
@@ -24,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AuthGate } from "@/components/AuthGate";
+import { AccountMenu } from "@/components/AccountMenu";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import {
   approveReviewCheckpoint,
@@ -702,14 +702,9 @@ function NavBar({
       <div className="truncate px-3 text-[15px] md:text-[16px] font-semibold text-ink">
         {title}
       </div>
-      <button
-        type="button"
-        aria-label="Mer"
-        disabled
-        className="grid h-[42px] w-[42px] place-items-center rounded-full text-ink-soft opacity-40 shrink-0"
-      >
-        <MoreVertical strokeWidth={1.5} style={{ width: 20, height: 20 }} />
-      </button>
+      <div className="shrink-0">
+        <AccountMenu />
+      </div>
     </nav>
   );
 }
@@ -951,7 +946,7 @@ function SetupView({
 
         {runError && (
           <div
-            className="bg-accent text-paper rounded-2xl px-4 py-3.5 md:px-5 md:py-4 mt-4 flex items-start gap-3"
+            className="bg-accent text-accent-foreground rounded-2xl px-4 py-3.5 md:px-5 md:py-4 mt-4 flex items-start gap-3"
             role="alert"
           >
             <AlertCircle
@@ -959,7 +954,7 @@ function SetupView({
               strokeWidth={2}
             />
             <div className="flex-1 min-w-0">
-              <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-paper/80 mb-1">
+              <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-accent-foreground/80 mb-1">
                 Fel
               </div>
               <p className="text-[14px] md:text-[15px] font-medium leading-snug break-words">
@@ -1382,7 +1377,7 @@ function ReviewView({
                 type="button"
                 onClick={submitReject}
                 disabled={!rejectReason.trim() || working === "reject"}
-                className="inline-flex items-center gap-1.5 rounded-full bg-accent text-paper px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-full bg-accent text-accent-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
               >
                 {working === "reject" ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />

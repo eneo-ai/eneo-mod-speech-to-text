@@ -383,7 +383,7 @@ export function AudioRecorder({
           type="button"
           onClick={start}
           aria-label="Starta inspelning"
-          className="relative grid place-items-center h-[116px] w-[116px] md:h-[140px] md:w-[140px] rounded-full bg-record text-paper text-[16px] md:text-[18px] font-semibold tracking-[-0.01em] transition-transform active:scale-[0.96] focus:outline-none"
+          className="relative grid place-items-center h-[116px] w-[116px] md:h-[140px] md:w-[140px] rounded-full bg-record text-record-foreground text-[16px] md:text-[18px] font-semibold tracking-[-0.01em] transition-transform active:scale-[0.96] focus:outline-none"
           style={{
             boxShadow:
               "0 0 0 6px hsl(var(--bg)), 0 0 0 7px hsl(var(--record)), 0 18px 40px -10px hsl(var(--record) / 0.18)",
@@ -522,7 +522,7 @@ export function AudioRecorder({
             className="lyssna-pulse-ring absolute rounded-full border border-record"
             style={{ inset: 0, opacity: 0 }}
           />
-          <span className="block h-6 w-6 rounded-[4px] bg-paper" />
+          <span className="block h-6 w-6 rounded-[4px] bg-record-foreground" />
         </button>
         <button
           type="button"
