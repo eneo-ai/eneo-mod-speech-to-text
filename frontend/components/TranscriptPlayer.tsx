@@ -27,9 +27,10 @@ import {
 } from "@/lib/transcript";
 import {
   applyCorrections,
-  occurrenceForLine,
+  occurrencesForLine,
   withLineCorrection,
   withSpeakerEdit,
+  type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
 
@@ -52,29 +53,55 @@ export function speakerColor(label: string | null): string {
   return `hsl(var(--speaker-${index}))`;
 }
 
-type Piece = { text: string; word: TranscriptWord | null; wordIndex: number };
+type Piece = {
+  text: string;
+  word: TranscriptWord | null;
+  wordIndex: number;
+  /** Ursprunglig text när biten är ett rättat spann. */
+  correctedFrom: string | null;
+};
 
-/** Segmentets text uppdelad så att varje tidsatt ord blir sin egen bit. */
-function pieces(segment: TranscriptSegment): Piece[] {
+/**
+ * Segmentets text uppdelad vid varje ord- och rättningsgräns, så att en bit
+ * är antingen vanlig text, ett tidsatt ord eller ett rättat spann.
+ */
+function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[]): Piece[] {
+  const text = segment.text;
   const words = (segment.words ?? [])
     .map((w, i) => ({ w, i }))
-    .filter(({ w }) => w.charStart >= 0)
-    .sort((a, b) => a.w.charStart - b.w.charStart);
-  if (words.length === 0) {
-    return [{ text: segment.text, word: null, wordIndex: -1 }];
+    .filter(({ w }) => w.charStart >= 0);
+  const cuts = new Set<number>([0, text.length]);
+  for (const { w } of words) {
+    cuts.add(w.charStart);
+    cuts.add(w.charEnd);
   }
+  for (const r of ranges) {
+    cuts.add(r.start);
+    cuts.add(r.end);
+  }
+  const bounds = [...cuts].filter((c) => c >= 0 && c <= text.length).sort((a, b) => a - b);
   const out: Piece[] = [];
-  let cursor = 0;
-  for (const { w, i } of words) {
-    if (w.charStart < cursor) continue;
-    if (w.charStart > cursor) {
-      out.push({ text: segment.text.slice(cursor, w.charStart), word: null, wordIndex: -1 });
-    }
-    out.push({ text: segment.text.slice(w.charStart, w.charEnd), word: w, wordIndex: i });
-    cursor = w.charEnd;
+  for (let k = 0; k + 1 < bounds.length; k++) {
+    const start = bounds[k];
+    const end = bounds[k + 1];
+    if (end <= start) continue;
+    const word = words.find(({ w }) => w.charStart <= start && w.charEnd >= end);
+    const range = ranges.find((r) => r.start <= start && r.end >= end && r.end > r.start);
+    out.push({
+      text: text.slice(start, end),
+      word: word?.w ?? null,
+      wordIndex: word?.i ?? -1,
+      correctedFrom: range ? range.original : null,
+    });
   }
-  if (cursor < segment.text.length) {
-    out.push({ text: segment.text.slice(cursor), word: null, wordIndex: -1 });
+  // En ren radering lämnar inget spann att peka på; visa en smal markör.
+  for (const r of ranges) {
+    if (r.end === r.start) {
+      const at = out.findIndex((_, idx) => bounds[idx] >= r.start);
+      const marker: Piece = { text: "\u202f", word: null, wordIndex: -1, correctedFrom: r.original };
+      if (at < 0) out.push(marker);
+      else out.splice(at, 0, marker);
+    }
   }
   return out;
 }
@@ -139,6 +166,7 @@ export const TranscriptPlayer = forwardRef<
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
   const correctedIndices = applied.corrected;
+  const correctedRanges = applied.ranges;
   const turns = useMemo(() => computeTurns(shown), [shown]);
   const totalFiles = Math.max(fileCount, countFiles(shown));
   const withHours = useMemo(
@@ -304,8 +332,8 @@ export const TranscriptPlayer = forwardRef<
     const raw = segments[segmentIndex];
     if (!raw) return;
     const trimmed = newText.replace(/\s+$/g, "");
-    const occurrence = occurrenceForLine(segmentIndex, raw.text, trimmed);
-    const next = withLineCorrection(corrections, segmentIndex, occurrence);
+    const occurrences = occurrencesForLine(segmentIndex, raw.text, trimmed);
+    const next = withLineCorrection(corrections, segmentIndex, occurrences);
     if (JSON.stringify(next.occurrences) !== JSON.stringify(corrections.occurrences)) {
       onCorrectionsChange?.(next);
     }
@@ -532,6 +560,7 @@ export const TranscriptPlayer = forwardRef<
             turn={turn}
             rawSegments={segments}
             correctedIndices={correctedIndices}
+            correctedRanges={correctedRanges}
             showFileHeading={totalFiles > 1 && (i === 0 || turns[i - 1].fileIndex !== turn.fileIndex)}
             activeIndex={activeIndex}
             activeWordIndex={activeWordIndex}
@@ -562,6 +591,7 @@ function TurnBlock({
   turn,
   rawSegments,
   correctedIndices,
+  correctedRanges,
   showFileHeading,
   activeIndex,
   activeWordIndex,
@@ -582,6 +612,7 @@ function TurnBlock({
   turn: TranscriptTurn;
   rawSegments: readonly TranscriptSegment[];
   correctedIndices: ReadonlySet<number>;
+  correctedRanges: ReadonlyMap<number, CorrectedRange[]>;
   showFileHeading: boolean;
   activeIndex: number;
   activeWordIndex: number;
@@ -684,7 +715,7 @@ function TurnBlock({
           {turn.parts.map((part) => {
             const partActive = part.segmentIndex === activeIndex;
             const corrected = correctedIndices.has(part.segmentIndex);
-            const original = rawSegments[part.segmentIndex]?.text ?? "";
+            const ranges = correctedRanges.get(part.segmentIndex) ?? [];
             if (editingIndex === part.segmentIndex) {
               return (
                 <LineEditor
@@ -702,45 +733,44 @@ function TurnBlock({
                 <span
                   data-segment-index={part.segmentIndex}
                   onClick={(e) => onPartClick(part, e)}
-                  title={corrected ? `Rättad från: ${original}` : undefined}
                   className={cn(
                     "cursor-pointer rounded-sm box-decoration-clone transition-colors",
                     partActive && "bg-accent/10",
-                    corrected && "underline decoration-dotted decoration-accent underline-offset-[3px]",
                   )}
                 >
-                  {pieces(part.segment).map((piece, k) =>
-                    piece.word ? (
-                      <span
-                        key={k}
-                        data-word-start={piece.word.start}
-                        className={cn(
-                          "rounded-[3px]",
+                  {pieces(part.segment, ranges).map((piece, k) => (
+                    <span
+                      key={k}
+                      data-word-start={piece.word ? piece.word.start : undefined}
+                      className={cn(
+                        "rounded-[3px]",
+                        piece.word &&
                           partActive &&
-                            piece.wordIndex === activeWordIndex &&
-                            "bg-accent text-accent-foreground",
-                          piece.word.uncertain &&
-                            "underline decoration-wavy decoration-ochre underline-offset-2",
-                        )}
-                        title={
-                          piece.word.uncertain
+                          piece.wordIndex === activeWordIndex &&
+                          "bg-accent text-accent-foreground",
+                        piece.word?.uncertain &&
+                          "underline decoration-wavy decoration-ochre underline-offset-2",
+                        piece.correctedFrom !== null &&
+                          "underline decoration-dotted decoration-accent underline-offset-[3px]",
+                      )}
+                      title={
+                        piece.correctedFrom !== null
+                          ? `Rättad från: ${piece.correctedFrom}`
+                          : piece.word?.uncertain
                             ? "Osäker tidsstämpel: ordet kunde inte hittas i ljudet."
                             : undefined
-                        }
-                      >
-                        {piece.text}
-                      </span>
-                    ) : (
-                      <span key={k}>{piece.text}</span>
-                    ),
-                  )}
+                      }
+                    >
+                      {piece.text}
+                    </span>
+                  ))}
                 </span>
                 {canEdit && (
                   <button
                     type="button"
                     onClick={() => onStartEdit(part.segmentIndex)}
                     aria-label="Rätta repliken"
-                    className="mx-1 inline-grid h-5 w-5 translate-y-[3px] place-items-center rounded text-ink-mute opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover/part:opacity-100"
+                    className="mx-1 inline-grid h-5 w-5 translate-y-[3px] place-items-center rounded text-ink-mute opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover/part:opacity-100 [@media(pointer:coarse)]:opacity-60"
                   >
                     <Pencil className="h-3 w-3" strokeWidth={2} />
                   </button>
