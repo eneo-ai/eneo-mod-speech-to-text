@@ -1,3 +1,5 @@
+const isDev = process.env.NODE_ENV === "development";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
@@ -22,7 +24,11 @@ const nextConfig = {
             // (nonce middleware is a follow-up); everything else is denied.
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline'",
+              // 'unsafe-eval' bara i `next dev`: React dev-läge använder eval för
+              // källkartor/callstacks. Produktionsbygget får aldrig med det.
+              isDev
+                ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+                : "script-src 'self' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' data: blob:",
               "media-src 'self' blob:",
@@ -43,8 +49,11 @@ const nextConfig = {
     ];
   },
   async rewrites() {
+    // I `next dev` (devcontainer/lokalt) kör backend på samma host; Compose-
+    // tjänstenamnet gäller bara när frontend körs som container i Compose.
     const target =
-      process.env.INTERNAL_API_BASE || "http://speech-to-text-backend:8000";
+      process.env.INTERNAL_API_BASE ||
+      (isDev ? "http://127.0.0.1:8000" : "http://speech-to-text-backend:8000");
     return [
       {
         source: "/api/:path*",

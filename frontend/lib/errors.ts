@@ -18,6 +18,27 @@ const messages: Record<string, string> = {
     "API-nyckeln är ogiltig eller har återkallats. Uppdatera nyckeln i konfigurationen.",
   upstream_unreachable:
     "Uppladdningen tog för lång tid eller avbröts. Prova att starta om körningen, eller dela inspelningen i kortare delar.",
+  // Review-checkpoints (bl.a. speaker mapping)
+  flow_review_stale_revision:
+    "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats — kontrollera och försök igen.",
+  flow_review_expired:
+    "Tiden för granskningen har gått ut och körningen har avbrutits.",
+  flow_review_not_active:
+    "Granskningen är inte längre aktiv.",
+  flow_review_already_resumed:
+    "Flödet har redan återupptagits.",
+  flow_review_edit_not_allowed:
+    "Det här steget kan bara godkännas, inte redigeras.",
+  flow_review_idempotency_key_required:
+    "Återupptagning saknade idempotency-nyckel. Försök igen.",
+  typed_io_contract_violation:
+    "Talarmappningen godkändes inte av Eneo: varje talare måste finnas med exakt en gång.",
+  typed_io_validation_failed:
+    "Det redigerade värdet har fel format för det här steget.",
+  flow_run_input_file_not_found:
+    "Ljudfilen för den här körningen kunde inte hittas.",
+  flow_run_access_denied:
+    "Den här körningen tillhör en annan klient och kan inte granskas här.",
 };
 
 // Texten på en TypeError från fetch när nätverket bryts ("Failed to fetch" i

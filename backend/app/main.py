@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import unquote
+import time
+from typing import NamedTuple
+from urllib.parse import unquote, urlsplit, urlunsplit
 
 import httpx
 from fastapi import (
@@ -14,10 +16,11 @@ from fastapi import (
     Response,
     UploadFile,
 )
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
+from starlette.background import BackgroundTask
 
 from app.config import load_settings
-from app.module_auth import ModuleAuth
+from app.module_auth import SESSION_COOKIE, ModuleAuth
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -127,11 +130,18 @@ _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
     (frozenset({"GET", "POST"}), re.compile(rf"flows/{_RESOURCE_ID}/runs/$")),
     (
         frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/$"),
+        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:status/)?$"),
     ),
     (
         frozenset({"GET"}),
         re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/$"),
+    ),
+    (
+        frozenset({"GET"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
+            rf"{_RESOURCE_ID}/transcript-words/$"
+        ),
     ),
     (
         frozenset({"POST"}),
@@ -198,6 +208,24 @@ def _proxy_route_is_allowed(method: str, path: str) -> bool:
         method in methods and pattern.fullmatch(path) is not None
         for methods, pattern in _PROXY_ROUTE_RULES
     )
+
+
+def _resolve_proxy_path(method: str, path: str) -> str | None:
+    """Return the allowlisted upstream path for ``path`` or None if not exposed.
+
+    Eneo's routes carry a trailing slash, and the allowlist spells them that
+    way. Next.js strips the trailing slash from rewritten paths in ``next
+    dev`` (the dedicated upload routes already register both variants for the
+    same reason), so a slash-stripped path is accepted when — and only when —
+    its slash-suffixed form is allowlisted. Sending the canonical form upstream
+    also avoids Eneo answering with a redirect the proxy would not follow.
+    """
+    if _proxy_route_is_allowed(method, path):
+        return path
+    canonical = f"{path}/"
+    if not path.endswith("/") and _proxy_route_is_allowed(method, canonical):
+        return canonical
+    return None
 
 
 def _has_dot_segment(path: str) -> bool:
@@ -355,6 +383,170 @@ async def eneo_upload_template_file(
     )
 
 
+# ---------------------------------------------------------------------------
+# Audio playback for a run's input files.
+#
+# Eneo hands out a short-lived signed URL per input file. The browser must not
+# use it directly: the module's CSP only allows same-origin media, and the URL
+# is a bearer credential for the file. The module backend mints the URL with
+# its own credentials, caches it per session for the file's lifetime so the
+# browser's many Range requests do not each mint (and audit-log) a new one,
+# and streams the bytes through with Range semantics intact.
+# ---------------------------------------------------------------------------
+
+_AUDIO_SIGNED_URL_TTL_SECONDS = 15 * 60
+_AUDIO_SIGNED_URL_REFRESH_MARGIN_SECONDS = 60
+_AUDIO_FORWARD_REQUEST_HEADERS = frozenset({"range", "if-range", "accept"})
+_AUDIO_FORWARD_RESPONSE_HEADERS = frozenset(
+    {
+        "content-type",
+        "content-length",
+        "content-range",
+        "content-encoding",
+        "accept-ranges",
+        "etag",
+        "last-modified",
+    }
+)
+
+
+class _SignedAudioUrl(NamedTuple):
+    url: str
+    expires_at: float
+
+
+_signed_audio_urls: dict[tuple[str, str, str, str], _SignedAudioUrl] = {}
+
+
+def _rebase_signed_url(signed_url: str, base_url: str) -> str:
+    """Point a signed URL at the Eneo host the module backend can reach.
+
+    Eneo builds signed URLs on its public base URL; on the module network the
+    backend reaches Eneo on ``ENEO_BACKEND_URL`` instead. Only scheme and host
+    change — the path and the signed query survive untouched.
+    """
+    signed = urlsplit(signed_url)
+    base = urlsplit(base_url)
+    return urlunsplit((base.scheme, base.netloc, signed.path, signed.query, ""))
+
+
+def _prune_signed_audio_urls(now: float) -> None:
+    for key, entry in list(_signed_audio_urls.items()):
+        if entry.expires_at <= now:
+            _signed_audio_urls.pop(key, None)
+
+
+async def _signed_audio_url(
+    request: Request, key: tuple[str, str, str, str]
+) -> str:
+    now = time.time()
+    cached = _signed_audio_urls.get(key)
+    if cached and cached.expires_at - _AUDIO_SIGNED_URL_REFRESH_MARGIN_SECONDS > now:
+        return cached.url
+
+    _, flow_id, run_id, file_id = key
+    try:
+        upstream = await http_client.post(
+            f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/runs/{run_id}"
+            f"/input-files/{file_id}/signed-url/",
+            json={
+                "expires_in": _AUDIO_SIGNED_URL_TTL_SECONDS,
+                "content_disposition": "inline",
+            },
+            headers=module_auth.upstream_auth_headers(request),
+        )
+    except httpx.RequestError:
+        logger.exception("Signed audio URL request failed: run=%s file=%s", run_id, file_id)
+        raise HTTPException(status_code=502, detail="Eneo could not be reached.")
+    if upstream.status_code >= 400:
+        try:
+            detail = upstream.json()
+        except ValueError:
+            detail = {"detail": "Audio is not available for this run."}
+        raise HTTPException(status_code=upstream.status_code, detail=detail)
+
+    payload = upstream.json()
+    url = _rebase_signed_url(str(payload["url"]), settings.eneo_backend_url)
+    expires_at = float(payload.get("expires_at") or now + _AUDIO_SIGNED_URL_TTL_SECONDS)
+    _prune_signed_audio_urls(now)
+    _signed_audio_urls[key] = _SignedAudioUrl(url=url, expires_at=expires_at)
+    return url
+
+
+async def _stream_input_file_audio(
+    flow_id: str, run_id: str, file_id: str, request: Request
+) -> Response:
+    if any(_has_dot_segment(part) for part in (flow_id, run_id, file_id)):
+        raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
+
+    session_id = request.cookies.get(SESSION_COOKIE) or ""
+    key = (session_id, flow_id, run_id, file_id)
+    url = await _signed_audio_url(request, key)
+
+    fwd_headers = {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() in _AUDIO_FORWARD_REQUEST_HEADERS
+    }
+    upstream_request = http_client.build_request("GET", url, headers=fwd_headers)
+    try:
+        upstream = await http_client.send(upstream_request, stream=True)
+    except httpx.RequestError:
+        logger.exception("Audio stream request failed: run=%s file=%s", run_id, file_id)
+        return JSONResponse(
+            status_code=502,
+            content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
+        )
+
+    if upstream.status_code >= 400:
+        # A rejected token is not worth keeping around; the next request mints anew.
+        _signed_audio_urls.pop(key, None)
+        try:
+            body = await upstream.aread()
+        finally:
+            await upstream.aclose()
+        detail: object = "Audio is not available for this run."
+        if upstream.headers.get("content-type", "").startswith("application/json"):
+            try:
+                detail = httpx.Response(200, content=body).json()
+            except ValueError:
+                pass
+        raise HTTPException(status_code=upstream.status_code, detail=detail)
+
+    resp_headers = {
+        k: v
+        for k, v in upstream.headers.items()
+        if k.lower() in _AUDIO_FORWARD_RESPONSE_HEADERS
+    }
+    resp_headers["Cache-Control"] = "private, no-store"
+    return StreamingResponse(
+        upstream.aiter_raw(),
+        status_code=upstream.status_code,
+        headers=resp_headers,
+        background=BackgroundTask(upstream.aclose),
+    )
+
+
+@app.get(
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
+    dependencies=[Depends(module_auth.require_session)],
+)
+async def eneo_input_file_audio(
+    flow_id: str, run_id: str, file_id: str, request: Request
+) -> Response:
+    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
+
+
+@app.get(
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio/",
+    dependencies=[Depends(module_auth.require_session)],
+)
+async def eneo_input_file_audio_slash(
+    flow_id: str, run_id: str, file_id: str, request: Request
+) -> Response:
+    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
+
+
 @app.api_route(
     "/api/eneo/{path:path}",
     methods=["GET", "POST", "PATCH"],
@@ -364,9 +556,12 @@ async def eneo_upload_template_file(
     ],
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
-    if _has_dot_segment(path) or not _proxy_route_is_allowed(request.method, path):
+    resolved_path = (
+        None if _has_dot_segment(path) else _resolve_proxy_path(request.method, path)
+    )
+    if resolved_path is None:
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
-    upstream_url = f"{settings.eneo_backend_url}/api/v1/{path}"
+    upstream_url = f"{settings.eneo_backend_url}/api/v1/{resolved_path}"
     # Forward request headers, but replace browser-controlled credentials with
     # the credentials owned by the configured module-auth session.
     fwd_headers: dict[str, str] = {}

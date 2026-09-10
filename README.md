@@ -225,6 +225,58 @@ Appen bygger körningen från Eneos publicerade flow-kontrakt:
 }
 ```
 
+### Granskning och talarmappning (human-in-the-loop)
+
+Ett publicerat flöde kan innehålla steg med `review_policy` som pausar körningen
+i status `awaiting_review`. Appen pollar `GET /api/v1/flows/{flowId}/runs/{runId}/`
+och hämtar då den aktiva checkpointen via
+`GET …/runs/{runId}/review-checkpoints/active/`.
+
+Talarmappning (Eneo-stegtypen `output_mode = "speaker_mapping"`) är inget eget
+API utan en sådan checkpoint med `review_mode = "edit"`. Appen känner igen den på
+att `current_payload_json` innehåller nyckeln `speaker_mapping` med talarinventariet
+(`SPEAKER_00`, `SPEAKER_01` … med antal repliker och exempelrepliker) och
+`structured.speakers` med modellens namnförslag. Före körningen avslöjas steget i
+run-kontraktets `steps_requiring_review` genom det pinnade `output_contract`;
+appen visar då en hint i inställningsvyn.
+
+Vyn "Vem är vem?" låter användaren välja deltagare per talare (deltagarlistan
+från formulärfältet, "Annan person …" med fritext, eller "Ingen"). Vid
+"Spara och fortsätt" skickas mappningen som stegets output:
+
+```json
+PATCH /api/v1/flows/{flowId}/runs/{runId}/review-checkpoints/{checkpointId}/
+{
+  "expected_checkpoint_revision": 1,
+  "edited_value": {
+    "speakers": [
+      { "label": "SPEAKER_00", "name": "Anna", "confidence": "high", "evidence": "…" },
+      { "label": "SPEAKER_01", "name": null, "confidence": "low", "evidence": "" }
+    ]
+  }
+}
+```
+
+Vyn spelar samtidigt upp inspelningen med ett följande transkript. Segmenten
+(talare, start/slut per replik) hämtas från transkriberingsstegets
+`input_payload_json.transcription` via `GET …/runs/{runId}/steps/`, ordtiderna
+från `GET …/steps/{stepId}/transcript-words/` (404 = inga ordtider, då markeras
+bara repliken). Saknas segment parsas den renderade texten med sekundprecision.
+
+Ljudet strömmas same-origin via modulens backend:
+`GET /api/eneo/flows/{flowId}/runs/{runId}/input-files/{fileId}/audio`. Backend
+hämtar Eneos signerade URL (`POST …/input-files/{fileId}/signed-url/`) med sina
+egna credentials, cachar den per session tills den går ut och vidarebefordrar
+`Range`-förfrågningar oförändrat. Browsern ser aldrig Eneos token, och CSP:ns
+`media-src 'self'` behålls.
+
+Varje etikett i inventariet måste förekomma exakt en gång; talare utan namn
+behåller sin etikett. Eneo räknar om transkriptet med namnen och uppdaterar
+`{{transkribering}}` på körningen. Därefter anropas `…/approve/` och
+`…/resume/` (med `Idempotency-Key`) som för alla andra checkpoints, och appen
+fortsätter polla. `edited_value` är alltid stegets output i sig — en sträng för
+`text`-steg, ett JSON-värde för `json`-steg — aldrig payload-kuvertet.
+
 Browsern ska inte använda en hårdkodad 120-sekunders timeout för stora ljudfiler.
 Klienten räknar i stället upload-timeout från `runtime_upload_policy` i
 flow-kontraktet och håller uppladdningen vid liv så länge progress fortsätter.

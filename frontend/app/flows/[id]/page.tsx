@@ -13,6 +13,7 @@ import {
   Send,
   Share2,
   Upload,
+  Users,
   XCircle,
 } from "lucide-react";
 import { use, useEffect, useMemo, useRef, useState } from "react";
@@ -36,12 +37,18 @@ import {
   getPublishedFlow,
   getRun,
   getRunContract,
+  getRunStatus,
   getRunSteps,
+  getTranscriptWords,
+  inputFileAudioUrl,
+  isResumableRunStatus,
   isReviewCheckpointApproved,
   isTextualOutput,
+  listRuns,
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
+  speakerMappingReviewSteps,
   startRun,
   uploadStepRuntimeFile,
   type FlowGraph,
@@ -49,12 +56,39 @@ import {
   type FlowRunPublic,
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
+  type FlowRunSummary,
   type Json,
+  type ReviewEditedValue,
   type RuntimeUploadTimeoutEvent,
   type RunContract,
   type UploadProgress,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import {
+  buildEditedMapping,
+  buildSpeakerRows,
+  getSpeakerMappingInferNames,
+  getSpeakerMappingParticipants,
+  getSpeakerMappingSourceStep,
+  isSpeakerMappingCheckpoint,
+  proposalNameToLabel,
+  speakerNamesFromRows,
+  unmappedSpeakerLabels,
+  type SpeakerMappingRow,
+} from "@/lib/speaker-mapping";
+import {
+  attachWords,
+  fileIdsFromTranscription,
+  firstSegmentForSpeaker,
+  parseTranscriptText,
+  segmentsFromTranscription,
+  type TranscriptSegment,
+} from "@/lib/transcript";
+import { SpeakerMappingEditor } from "@/components/SpeakerMappingEditor";
+import {
+  TranscriptPlayer,
+  type TranscriptPlayerHandle,
+} from "@/components/TranscriptPlayer";
 import {
   formatBytes,
   isMimeAllowed,
@@ -106,6 +140,23 @@ interface ResultFileRef {
   size?: number;
 }
 
+// Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
+// delad länk, kan återuppta samma körning i stället för att tappa den.
+const RUN_QUERY_PARAM = "run";
+
+function readRunIdFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
+}
+
+function writeRunIdToUrl(runId: string | null) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (runId) url.searchParams.set(RUN_QUERY_PARAM, runId);
+  else url.searchParams.delete(RUN_QUERY_PARAM);
+  window.history.replaceState(window.history.state, "", url);
+}
+
 function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
@@ -125,6 +176,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [signedUrls, setSignedUrls] = useState<
     Record<string, { url: string }>
   >({});
+  const [resumableRuns, setResumableRuns] = useState<FlowRunSummary[]>([]);
 
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const submitAbortRef = useRef<AbortController | null>(null);
@@ -146,11 +198,28 @@ function FlowDetail({ flowId }: { flowId: string }) {
           if (f.default != null) defaults[f.name] = String(f.default);
         }
         setFormValues(defaults);
+
+        // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
+        // granskning). Annars: leta upp pågående körningar att erbjuda.
+        const urlRunId = readRunIdFromUrl();
+        if (urlRunId) {
+          resumeRun(urlRunId);
+        } else {
+          listRuns(flowId, 10)
+            .then((res) => {
+              if (cancelled) return;
+              setResumableRuns(
+                (res.items ?? []).filter((r) => isResumableRunStatus(r.status)),
+              );
+            })
+            .catch(() => undefined);
+        }
       })
       .catch((err) => !cancelled && setLoadError(friendlyError(err)));
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowId]);
 
   useEffect(() => {
@@ -357,6 +426,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
 
+      writeRunIdToUrl(initialRun.id);
       pollAbortRef.current = { aborted: false };
       setRun({ kind: "running", run: initialRun, steps: [] });
       pollUntilDone(initialRun.id, pollAbortRef.current);
@@ -368,6 +438,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
+  /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
+  function resumeRun(runId: string) {
+    pollAbortRef.current.aborted = true;
+    pollAbortRef.current = { aborted: false };
+    setRunError(null);
+    setSignedUrls({});
+    setResumableRuns([]);
+    writeRunIdToUrl(runId);
+    setRun({
+      kind: "running",
+      run: { id: runId, flow_id: flowId, status: "running" },
+      steps: [],
+    });
+    pollUntilDone(runId, pollAbortRef.current);
+  }
+
   async function pollUntilDone(
     runId: string,
     abort: { aborted: boolean },
@@ -375,15 +461,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const intervalMs = 1500;
     while (!abort.aborted) {
       try {
-        const [r, steps] = await Promise.all([
-          getRun(flowId, runId),
+        // Status-endpointen är gjord för polling; detaljen (med resultat)
+        // audit-loggas per läsning och hämtas därför först när körningen är klar.
+        const [summary, steps] = await Promise.all([
+          getRunStatus(flowId, runId),
           getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
         ]);
         if (abort.aborted) return;
+        const r: FlowRunPublic = summary;
         if (isTerminal(r.status)) {
-          setRun({ kind: "done", run: r, steps });
-          if (isSuccess(r.status)) {
-            await fetchSignedUrls(runId, r.result_files ?? []);
+          const detail = await getRun(flowId, runId).catch(() => r);
+          if (abort.aborted) return;
+          setRun({ kind: "done", run: detail, steps });
+          if (isSuccess(detail.status)) {
+            await fetchSignedUrls(runId, detail.result_files ?? []);
           }
           return;
         }
@@ -489,7 +580,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   async function onSaveEdit(
     checkpoint: FlowRunReviewCheckpointPublic,
-    newPayload: Json,
+    editedValue: ReviewEditedValue,
   ): Promise<FlowRunReviewCheckpointPublic | null> {
     setRunError(null);
     try {
@@ -499,7 +590,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         checkpoint.id,
         {
           expected_checkpoint_revision: checkpoint.revision,
-          current_payload_json: newPayload,
+          // Stegets output i sig (text-sträng eller JSON-värde), inte payload-kuvertet.
+          edited_value: editedValue,
         },
       );
       setRun((prev) =>
@@ -510,6 +602,19 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return updated;
     } catch (err) {
       setRunError(friendlyError(err));
+      // Vid t.ex. stale revision: hämta aktuell checkpoint så UI:t synkar om
+      // formuläret mot serverns version innan användaren försöker igen.
+      const latest = await getActiveReviewCheckpoint(
+        flowId,
+        checkpoint.flow_run_id,
+      ).catch(() => null);
+      if (latest && latest.id === checkpoint.id) {
+        setRun((prev) =>
+          prev.kind === "awaiting_review"
+            ? { ...prev, checkpoint: latest }
+            : prev,
+        );
+      }
       return null;
     }
   }
@@ -556,6 +661,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     pollAbortRef.current = { aborted: false };
     setSignedUrls({});
     setRunError(null);
+    writeRunIdToUrl(null);
     setRun({ kind: "idle" });
   }
 
@@ -626,6 +732,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         submitting={run.kind === "submitting"}
         onRun={onRun}
         runError={runError}
+        resumableRuns={resumableRuns}
+        onResume={resumeRun}
       />
     );
   }
@@ -646,6 +754,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (phase === "review" && run.kind === "awaiting_review") {
     return (
       <ReviewView
+        flowId={flowId}
         published={published}
         checkpoint={run.checkpoint}
         runState={{ run: run.run, steps: run.steps }}
@@ -729,6 +838,8 @@ function SetupView({
   submitting,
   onRun,
   runError,
+  resumableRuns,
+  onResume,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -747,8 +858,11 @@ function SetupView({
   submitting: boolean;
   onRun: () => void;
   runError: string | null;
+  resumableRuns: FlowRunSummary[];
+  onResume: (runId: string) => void;
 }) {
   const formFields = contract.form_fields ?? [];
+  const speakerMappingSteps = speakerMappingReviewSteps(contract);
   const [localFileUrl, setLocalFileUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -792,6 +906,59 @@ function SetupView({
             eller på annat sätt känsliga uppgifter.
           </p>
         </div>
+
+        {resumableRuns.length > 0 && (
+          <section className="paper-card p-4 mb-5">
+            <div className="text-[13px] font-semibold text-ink mb-1">
+              {resumableRuns.length === 1
+                ? "En körning pågår för det här flödet"
+                : `${resumableRuns.length} körningar pågår för det här flödet`}
+            </div>
+            <p className="text-[12px] text-ink-soft mb-3">
+              Följ en pågående körning, eller starta en ny inspelning nedan.
+            </p>
+            <ul className="flex flex-col gap-2">
+              {resumableRuns.map((r) => (
+                <li
+                  key={r.id}
+                  className="flex items-center justify-between gap-3 rounded-lg border border-rule-soft bg-bg-2/40 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[13px] text-ink truncate">
+                      {labelForResumableRun(r.status)}
+                    </div>
+                    {r.created_at && (
+                      <div className="text-[11px] text-ink-mute">
+                        Startad {formatDateTime(r.created_at)}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onResume(r.id)}
+                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium hover:border-ink/40 transition-colors"
+                  >
+                    Fortsätt
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {speakerMappingSteps.length > 0 && (
+          <div className="paper-card px-4 py-3 mb-5 flex items-start gap-3">
+            <Users
+              className="h-4 w-4 mt-0.5 shrink-0 text-accent"
+              strokeWidth={2}
+            />
+            <p className="text-[12px] text-ink-soft leading-relaxed">
+              Flödet pausar efter transkriberingen så att du kan bekräfta vem
+              som är vem bland talarna. Namnen skrivs sedan in i transkriptet
+              innan resten av flödet körs.
+            </p>
+          </div>
+        )}
 
         {formFields.length > 0 && (
           <div className="flex flex-col gap-5 mb-6">
@@ -1166,6 +1333,7 @@ function StepProgress({
 // ---------- Review (human-in-the-loop pause) ----------
 
 function ReviewView({
+  flowId,
   published,
   checkpoint,
   runState,
@@ -1174,6 +1342,7 @@ function ReviewView({
   onSaveEdit,
   onReject,
 }: {
+  flowId: string;
   published: FlowPublished;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
@@ -1181,36 +1350,129 @@ function ReviewView({
   onApprove: (cp: FlowRunReviewCheckpointPublic) => Promise<void>;
   onSaveEdit: (
     cp: FlowRunReviewCheckpointPublic,
-    newPayload: Json,
+    editedValue: ReviewEditedValue,
   ) => Promise<FlowRunReviewCheckpointPublic | null>;
   onReject: (cp: FlowRunReviewCheckpointPublic, reason: string) => Promise<void>;
 }) {
-  const initialText = extractCheckpointText(checkpoint.current_payload_json);
+  const payload = (checkpoint.current_payload_json as Json | null) ?? null;
+  const isSpeakerMapping = isSpeakerMappingCheckpoint(payload);
+  const participants = getSpeakerMappingParticipants(payload);
+  const inferNames = getSpeakerMappingInferNames(payload);
+  const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
+
+  const initialText = extractCheckpointText(payload);
   const [text, setText] = useState<string>(initialText);
+  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(proposals);
   const [editing, setEditing] = useState<boolean>(false);
   const [saving, setSaving] = useState<boolean>(false);
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
 
-  // Synka när checkpoint uppdateras (t.ex. efter PATCH).
+  // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
-    setText(extractCheckpointText(checkpoint.current_payload_json));
+    setText(extractCheckpointText(payload));
+    setSpeakerRows(buildSpeakerRows(payload));
   }, [checkpoint.revision, checkpoint.current_payload_json]);
 
-  const editable = checkpoint.review_mode === "edit";
-  const dirty = editing && text !== initialText;
+  // Transkriberingsstegets segment, ordtider och ljudfiler för spelaren.
+  const playerRef = useRef<TranscriptPlayerHandle | null>(null);
+  const [transcript, setTranscript] = useState<{
+    pending: boolean;
+    segments: TranscriptSegment[];
+    fileIds: string[];
+  }>({ pending: isSpeakerMapping, segments: [], fileIds: [] });
+
+  useEffect(() => {
+    if (!isSpeakerMapping) return;
+    let cancelled = false;
+    const runId = runState.run.id;
+    const fallbackSegments = () => {
+      const reverse = proposalNameToLabel(proposals);
+      return parseTranscriptText(initialText, (s) => reverse[s] ?? s);
+    };
+    (async () => {
+      let segments: TranscriptSegment[] | null = null;
+      let fileIds: string[] = [];
+      try {
+        const steps = await getRunSteps(flowId, runId);
+        const source = getSpeakerMappingSourceStep(payload);
+        const hasTranscription = (step: FlowRunStep) =>
+          segmentsFromTranscription(
+            (step.input_payload_json as { transcription?: unknown } | null)
+              ?.transcription,
+          ) !== null;
+        const step =
+          steps.find((st) => st.step_id === source.stepId) ??
+          steps.find((st) => st.step_order === source.stepOrder) ??
+          steps.find(hasTranscription);
+        const transcription = (
+          step?.input_payload_json as { transcription?: unknown } | null
+        )?.transcription;
+        segments = segmentsFromTranscription(transcription);
+        fileIds = fileIdsFromTranscription(transcription);
+        if (fileIds.length === 0 && Array.isArray(step?.runtime_input_file_ids)) {
+          fileIds = (step.runtime_input_file_ids as unknown[]).filter(
+            (id): id is string => typeof id === "string",
+          );
+        }
+        if (segments && step) {
+          // 404 är normalt: steget lagrade inga ordtider.
+          const words = await getTranscriptWords(flowId, runId, step.step_id).catch(
+            () => null,
+          );
+          segments = attachWords(segments, words);
+        }
+      } catch {
+        // Utan stegdata visar vi texten som den är, utan ljud.
+      }
+      if (cancelled) return;
+      setTranscript({
+        pending: false,
+        segments: segments ?? fallbackSegments(),
+        fileIds,
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [checkpoint.id, isSpeakerMapping]);
+
+  // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
+  // som edited_value för `text` och ett JSON-värde för `json`. Speaker
+  // mapping är json-steget vi redigerar strukturerat via talarrader.
+  const editable =
+    checkpoint.review_mode === "edit" &&
+    !isSpeakerMapping &&
+    (checkpoint.output_type == null || checkpoint.output_type === "text");
+  const textDirty = editing && text !== initialText;
+  const speakersDirty =
+    isSpeakerMapping &&
+    JSON.stringify(buildEditedMapping(speakerRows)) !==
+      JSON.stringify(buildEditedMapping(proposals));
+  const dirty = isSpeakerMapping ? speakersDirty : textDirty;
+
+  const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
+  const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
+  const hasAudio = transcript.fileIds.length > 0 && transcript.segments.length > 0;
+
+  function pendingEditedValue(): ReviewEditedValue {
+    return isSpeakerMapping ? buildEditedMapping(speakerRows) : text;
+  }
+
+  function listenTo(label: string) {
+    const target = firstSegmentForSpeaker(transcript.segments, label);
+    if (!target) return;
+    playerRef.current?.seekTo(target.fileIndex, target.time, true);
+  }
 
   async function saveAndApprove() {
     setWorking("approve");
     let cp = checkpoint;
     if (dirty) {
       setSaving(true);
-      const payload: Json = {
-        ...(checkpoint.current_payload_json as Json | null) ?? {},
-        text,
-      };
-      const updated = await onSaveEdit(checkpoint, payload);
+      const updated = await onSaveEdit(checkpoint, pendingEditedValue());
       setSaving(false);
       if (!updated) {
         setWorking(null);
@@ -1228,11 +1490,7 @@ function ReviewView({
   async function saveOnly() {
     if (!dirty) return;
     setSaving(true);
-    const payload: Json = {
-      ...((checkpoint.current_payload_json as Json | null) ?? {}),
-      text,
-    };
-    await onSaveEdit(checkpoint, payload);
+    await onSaveEdit(checkpoint, pendingEditedValue());
     setSaving(false);
     setEditing(false);
   }
@@ -1247,34 +1505,158 @@ function ReviewView({
     }
   }
 
+  const busy = working !== null || saving;
+
+  const rejectSection = showReject ? (
+    <section className="paper-card p-4 mb-5">
+      <div className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
+      <p className="text-[12px] text-ink-soft mb-3">
+        Ange en kort motivering. Körningen kommer att avbrytas.
+      </p>
+      <textarea
+        value={rejectReason}
+        onChange={(e) => setRejectReason(e.target.value)}
+        rows={3}
+        placeholder="Skäl …"
+        className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
+      />
+      <div className="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setShowReject(false);
+            setRejectReason("");
+          }}
+          disabled={working === "reject"}
+          className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
+        >
+          Avbryt
+        </button>
+        <button
+          type="button"
+          onClick={submitReject}
+          disabled={!rejectReason.trim() || working === "reject"}
+          className="inline-flex items-center gap-1.5 rounded-full bg-accent text-accent-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+        >
+          {working === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Bekräfta avvisning
+        </button>
+      </div>
+    </section>
+  ) : null;
+
+  const actions = (
+    <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+      <button
+        type="button"
+        onClick={() => setShowReject(true)}
+        disabled={working !== null || showReject}
+        className="text-[13px] text-ink-soft hover:text-accent transition-colors disabled:opacity-50"
+      >
+        Avvisa
+      </button>
+      <Button type="button" onClick={saveAndApprove} disabled={busy}>
+        {working === "approve" ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+        )}
+        {dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+      </Button>
+    </div>
+  );
+
+  const header = (
+    <header className="flex items-center justify-between px-5 md:px-8 pt-4 pb-2">
+      <Link
+        href="/flows"
+        aria-label="Tillbaka"
+        className="grid h-9 w-9 place-items-center rounded-full bg-paper border border-rule-soft text-ink transition-transform active:scale-95"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
+      </Link>
+      <div className="text-[12px] text-ink-mute">
+        Pausat i steg {checkpoint.step_order}
+      </div>
+      <div className="font-mono text-[10px] tracking-wider text-ink-mute">
+        v{published.published_version}
+      </div>
+    </header>
+  );
+
+  if (isSpeakerMapping) {
+    return (
+      <>
+        {header}
+        <main className="px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto max-w-5xl">
+          <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
+            Vem är vem?
+          </h1>
+          <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
+            Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet
+            när du fortsätter.
+          </p>
+
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+            <section className="paper-card p-4">
+              {speakerRows.length === 0 ? (
+                <p className="text-[13px] text-ink-soft">
+                  Inga talare kunde urskiljas i transkriptet. Du kan fortsätta
+                  utan att namnge någon.
+                </p>
+              ) : (
+                <SpeakerMappingEditor
+                  rows={speakerRows}
+                  proposals={proposals}
+                  participants={participants}
+                  inferred={inferNames}
+                  disabled={busy}
+                  showSamples={!transcript.pending && !hasAudio}
+                  onChange={setSpeakerRows}
+                  onListen={hasAudio ? listenTo : undefined}
+                />
+              )}
+              {unmapped.length > 0 && speakerRows.length > 0 && (
+                <p className="mt-3 text-[12px] text-ink-mute leading-snug">
+                  Talare utan namn behåller sin etikett i transkriptet.
+                </p>
+              )}
+            </section>
+
+            <TranscriptPlayer
+              ref={playerRef}
+              className="paper-card overflow-hidden lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)]"
+              segments={transcript.segments}
+              fileCount={transcript.fileIds.length}
+              audioSrcFor={(fileIndex) =>
+                inputFileAudioUrl(flowId, runState.run.id, transcript.fileIds[fileIndex] ?? "")
+              }
+              speakerNames={speakerNames}
+              textFallback={initialText}
+              audioPending={transcript.pending}
+            />
+          </div>
+
+          {runError && (
+            <p className="text-[13px] text-accent mt-4" role="alert">
+              {runError}
+            </p>
+          )}
+          <div className="mt-4">{rejectSection}</div>
+          {actions}
+        </main>
+      </>
+    );
+  }
+
   return (
     <>
-      <header className="flex items-center justify-between px-5 pt-4 pb-2">
-        <Link
-          href="/flows"
-          aria-label="Tillbaka"
-          className="grid h-9 w-9 place-items-center rounded-full bg-paper border border-rule-soft text-ink transition-transform active:scale-95"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
-        </Link>
-        <div className="eyebrow inline-flex items-center gap-1.5">
-          <span
-            aria-hidden
-            className="lyssna-live-pulse h-1.5 w-1.5 rounded-full bg-accent"
-          />
-          Granskning
-        </div>
-        <div className="font-mono text-[10px] tracking-wider text-ink-mute">
-          v{published.published_version}
-        </div>
-      </header>
-
+      {header}
       <main className="px-6 md:px-8 pt-2 md:pt-4 pb-6 flex-1 flex flex-col w-full mx-auto max-w-3xl">
         <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
           {checkpoint.step_label ?? "Granska resultatet"}
         </h1>
         <p className="text-[13px] text-ink-soft leading-relaxed mb-5">
-          Flödet är pausat i steg {checkpoint.step_order}.{" "}
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
@@ -1282,10 +1664,9 @@ function ReviewView({
 
         <section className="paper-card p-4 mb-5">
           <div className="flex items-center justify-between mb-3">
-            <div className="eyebrow-sm">Innehåll för granskning</div>
-            <div className="font-mono text-[9px] tracking-wider text-ink-mute uppercase">
-              rev {checkpoint.revision} ·{" "}
-              {editable ? "redigerbart" : "skrivskyddat"}
+            <div className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
+            <div className="text-[11px] text-ink-mute">
+              {editable ? "Redigerbart" : "Skrivskyddat"}
             </div>
           </div>
 
@@ -1323,9 +1704,7 @@ function ReviewView({
                     disabled={!dirty || saving}
                     className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
                   >
-                    {saving ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : null}
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                     Spara ändring
                   </button>
                 </>
@@ -1347,69 +1726,8 @@ function ReviewView({
             {runError}
           </p>
         )}
-
-        {showReject ? (
-          <section className="paper-card p-4 mb-5">
-            <div className="eyebrow-sm mb-2">Avvisa körningen</div>
-            <p className="text-[12px] text-ink-soft mb-3">
-              Ange en kort motivering. Körningen kommer att avbrytas.
-            </p>
-            <textarea
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              rows={3}
-              placeholder="Skäl …"
-              className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
-            />
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowReject(false);
-                  setRejectReason("");
-                }}
-                disabled={working === "reject"}
-                className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
-              >
-                Avbryt
-              </button>
-              <button
-                type="button"
-                onClick={submitReject}
-                disabled={!rejectReason.trim() || working === "reject"}
-                className="inline-flex items-center gap-1.5 rounded-full bg-accent text-accent-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
-              >
-                {working === "reject" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : null}
-                Bekräfta avvisning
-              </button>
-            </div>
-          </section>
-        ) : null}
-
-        <div className="mt-auto flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setShowReject(true)}
-            disabled={working !== null || showReject}
-            className="text-[13px] text-ink-soft hover:text-accent transition-colors disabled:opacity-50"
-          >
-            Avvisa
-          </button>
-          <Button
-            type="button"
-            onClick={saveAndApprove}
-            disabled={working !== null || saving}
-          >
-            {working === "approve" ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
-            )}
-            {dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
-          </Button>
-        </div>
+        {rejectSection}
+        {actions}
       </main>
     </>
   );
@@ -1678,6 +1996,22 @@ function labelForRunStatus(status: string): string {
   if (s === "running" || s === "in_progress") return "Bearbetar…";
   if (s === "queued" || s === "pending") return "I kö";
   return status;
+}
+
+function labelForResumableRun(status: string): string {
+  const s = status.toLowerCase();
+  if (s === "awaiting_review") return "Väntar på din granskning";
+  if (s === "queued") return "Står i kö";
+  return "Bearbetas";
+}
+
+function formatDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("sv-SE", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
 }
 
 function labelForUploadTimeout(reason: RuntimeUploadTimeoutEvent["reason"]): string {
