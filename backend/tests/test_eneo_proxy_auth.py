@@ -128,6 +128,23 @@ class EneoProxyAuthTests(unittest.TestCase):
             "https://eneo.example.test/api/v1/flows/",
         )
 
+    def test_proxy_exposes_transcript_review_routes(self) -> None:
+        base = "/api/eneo/flows/flow-1/runs/run-1"
+        for method, path in (
+            ("GET", f"{base}/status/"),
+            ("GET", f"{base}/steps/step-1/transcript-words/"),
+            ("GET", f"{base}/transcript-corrections/"),
+            ("PATCH", f"{base}/steps/step-1/transcript-corrections/"),
+        ):
+            response = self.client.request(
+                method,
+                path,
+                headers={"Origin": "https://module.example.test"},
+                json={} if method == "PATCH" else None,
+            )
+            self.assertEqual(response.status_code, 200, f"{method} {path}")
+        self.assertEqual(len(self.proxy_client.calls), 4)
+
     def test_proxy_slash_tolerance_does_not_widen_allowlist(self) -> None:
         response = self.client.get("/api/eneo/users")
 

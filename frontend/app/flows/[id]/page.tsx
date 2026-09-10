@@ -39,8 +39,8 @@ import {
   getRunContract,
   getRunStatus,
   getRunSteps,
-  getTranscriptWords,
   inputFileAudioUrl,
+  listTranscriptCorrections,
   isResumableRunStatus,
   isReviewCheckpointApproved,
   isTextualOutput,
@@ -48,6 +48,7 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
+  saveTranscriptCorrections,
   speakerMappingReviewSteps,
   startRun,
   uploadStepRuntimeFile,
@@ -76,19 +77,19 @@ import {
   unmappedSpeakerLabels,
   type SpeakerMappingRow,
 } from "@/lib/speaker-mapping";
+import { firstSegmentForSpeaker } from "@/lib/transcript";
 import {
-  attachWords,
-  fileIdsFromTranscription,
-  firstSegmentForSpeaker,
-  parseTranscriptText,
-  segmentsFromTranscription,
-  type TranscriptSegment,
-} from "@/lib/transcript";
+  EMPTY_CORRECTIONS,
+  sameCorrections,
+  type CorrectionSet,
+} from "@/lib/transcript-corrections";
 import { SpeakerMappingEditor } from "@/components/SpeakerMappingEditor";
 import {
   TranscriptPlayer,
+  type CorrectionsSaveState,
   type TranscriptPlayerHandle,
 } from "@/components/TranscriptPlayer";
+import { useTranscriptContext } from "@/components/useTranscriptContext";
 import {
   formatBytes,
   isMimeAllowed,
@@ -773,6 +774,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (phase === "notes" && run.kind === "done") {
     return (
       <NotesView
+        flowId={flowId}
         published={published}
         runState={run}
         signedUrls={signedUrls}
@@ -1375,69 +1377,70 @@ function ReviewView({
     setSpeakerRows(buildSpeakerRows(payload));
   }, [checkpoint.revision, checkpoint.current_payload_json]);
 
-  // Transkriberingsstegets segment, ordtider och ljudfiler för spelaren.
+  // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
+  // korrigeringar för spelaren.
   const playerRef = useRef<TranscriptPlayerHandle | null>(null);
-  const [transcript, setTranscript] = useState<{
-    pending: boolean;
-    segments: TranscriptSegment[];
-    fileIds: string[];
-  }>({ pending: isSpeakerMapping, segments: [], fileIds: [] });
+  const runId = runState.run.id;
+  const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
+  const [transcript] = useTranscriptContext({
+    flowId,
+    runId,
+    enabled: isSpeakerMapping,
+    source: getSpeakerMappingSourceStep(payload),
+    fallbackText: initialText,
+    labelFor: (speaker) => reverseNames[speaker] ?? speaker,
+  });
 
+  // Korrigeringar sparas direkt per ändring (replace-semantik med revision).
+  const [corrections, setCorrections] = useState<CorrectionSet>(EMPTY_CORRECTIONS);
+  const [saveState, setSaveState] = useState<CorrectionsSaveState>("idle");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const revisionRef = useRef<number | null>(null);
+  const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   useEffect(() => {
-    if (!isSpeakerMapping) return;
-    let cancelled = false;
-    const runId = runState.run.id;
-    const fallbackSegments = () => {
-      const reverse = proposalNameToLabel(proposals);
-      return parseTranscriptText(initialText, (s) => reverse[s] ?? s);
-    };
-    (async () => {
-      let segments: TranscriptSegment[] | null = null;
-      let fileIds: string[] = [];
+    if (transcript.pending) return;
+    setCorrections(transcript.corrections);
+    revisionRef.current = transcript.corrections.revision;
+  }, [transcript.pending, transcript.corrections]);
+
+  function onCorrectionsChange(next: CorrectionSet) {
+    setCorrections(next);
+    const stepId = transcript.stepId;
+    if (!stepId) return;
+    setSaveState("saving");
+    setLocalError(null);
+    saveQueue.current = saveQueue.current.then(async () => {
       try {
-        const steps = await getRunSteps(flowId, runId);
-        const source = getSpeakerMappingSourceStep(payload);
-        const hasTranscription = (step: FlowRunStep) =>
-          segmentsFromTranscription(
-            (step.input_payload_json as { transcription?: unknown } | null)
-              ?.transcription,
-          ) !== null;
-        const step =
-          steps.find((st) => st.step_id === source.stepId) ??
-          steps.find((st) => st.step_order === source.stepOrder) ??
-          steps.find(hasTranscription);
-        const transcription = (
-          step?.input_payload_json as { transcription?: unknown } | null
-        )?.transcription;
-        segments = segmentsFromTranscription(transcription);
-        fileIds = fileIdsFromTranscription(transcription);
-        if (fileIds.length === 0 && Array.isArray(step?.runtime_input_file_ids)) {
-          fileIds = (step.runtime_input_file_ids as unknown[]).filter(
-            (id): id is string => typeof id === "string",
-          );
-        }
-        if (segments && step) {
-          // 404 är normalt: steget lagrade inga ordtider.
-          const words = await getTranscriptWords(flowId, runId, step.step_id).catch(
-            () => null,
-          );
-          segments = attachWords(segments, words);
-        }
-      } catch {
-        // Utan stegdata visar vi texten som den är, utan ljud.
+        const saved = await saveTranscriptCorrections(flowId, runId, stepId, {
+          expected_revision: revisionRef.current,
+          occurrences: next.occurrences,
+          speaker_edits: next.speaker_edits,
+        });
+        revisionRef.current = saved.revision;
+        setCorrections((prev) =>
+          sameCorrections(prev, next) ? { ...prev, revision: saved.revision } : prev,
+        );
+        setSaveState("saved");
+        return true;
+      } catch (err) {
+        setSaveState("error");
+        setLocalError(friendlyError(err));
+        // Ladda om serverns version så nästa försök utgår från rätt revision.
+        const sets = await listTranscriptCorrections(flowId, runId).catch(() => []);
+        const own = sets.find((set) => set.step_id === stepId);
+        const reloaded: CorrectionSet = own
+          ? {
+              occurrences: own.occurrences,
+              speaker_edits: own.speaker_edits,
+              revision: own.revision,
+            }
+          : EMPTY_CORRECTIONS;
+        revisionRef.current = reloaded.revision;
+        setCorrections(reloaded);
+        return false;
       }
-      if (cancelled) return;
-      setTranscript({
-        pending: false,
-        segments: segments ?? fallbackSegments(),
-        fileIds,
-      });
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [checkpoint.id, isSpeakerMapping]);
+    });
+  }
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
@@ -1456,6 +1459,7 @@ function ReviewView({
   const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
   const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
   const hasAudio = transcript.fileIds.length > 0 && transcript.segments.length > 0;
+  const speakerLabels = useMemo(() => speakerRows.map((r) => r.label), [speakerRows]);
 
   function pendingEditedValue(): ReviewEditedValue {
     return isSpeakerMapping ? buildEditedMapping(speakerRows) : text;
@@ -1469,6 +1473,13 @@ function ReviewView({
 
   async function saveAndApprove() {
     setWorking("approve");
+    // Pågående korrigeringssparningar måste landa före godkännandet, som
+    // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
+    const correctionsSaved = await saveQueue.current;
+    if (!correctionsSaved) {
+      setWorking(null);
+      return;
+    }
     let cp = checkpoint;
     if (dirty) {
       setSaving(true);
@@ -1506,6 +1517,8 @@ function ReviewView({
   }
 
   const busy = working !== null || saving;
+  const canCorrect =
+    isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy;
 
   const rejectSection = showReject ? (
     <section className="paper-card p-4 mb-5">
@@ -1629,17 +1642,22 @@ function ReviewView({
               segments={transcript.segments}
               fileCount={transcript.fileIds.length}
               audioSrcFor={(fileIndex) =>
-                inputFileAudioUrl(flowId, runState.run.id, transcript.fileIds[fileIndex] ?? "")
+                inputFileAudioUrl(flowId, runId, transcript.fileIds[fileIndex] ?? "")
               }
               speakerNames={speakerNames}
               textFallback={initialText}
               audioPending={transcript.pending}
+              corrections={corrections}
+              editable={canCorrect}
+              onCorrectionsChange={onCorrectionsChange}
+              speakerOptions={speakerLabels}
+              saveState={saveState}
             />
           </div>
 
-          {runError && (
+          {(runError || localError) && (
             <p className="text-[13px] text-accent mt-4" role="alert">
-              {runError}
+              {runError ?? localError}
             </p>
           )}
           <div className="mt-4">{rejectSection}</div>
@@ -1748,6 +1766,7 @@ function extractCheckpointText(payload: Json | null | undefined): string {
 // ---------- Notes (result) ----------
 
 function NotesView({
+  flowId,
   published,
   runState,
   signedUrls,
@@ -1756,6 +1775,7 @@ function NotesView({
   onRunAgain,
   stepLabels,
 }: {
+  flowId: string;
   published: FlowPublished;
   runState: { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[] };
   signedUrls: Record<string, { url: string }>;
@@ -1767,6 +1787,14 @@ function NotesView({
   const { run, steps } = runState;
   const text = isTextual ? extractText(run.output_payload_json) : null;
   const success = isSuccess(run.status);
+  // Inspelning och transkript för körningar med ett transkriberingssteg.
+  const [transcript] = useTranscriptContext({
+    flowId,
+    runId: run.id,
+    enabled: success,
+    steps,
+  });
+  const showPlayer = success && !transcript.pending && transcript.segments.length > 0;
   const outputLabel = labelForOutputType(outputType);
   const finishedDate = run.finished_at
     ? new Date(run.finished_at).toLocaleDateString("sv-SE", {
@@ -1853,6 +1881,25 @@ function NotesView({
             Körningen avslutades med status:{" "}
             <span className="text-ink">{labelForRunStatus(run.status)}</span>.
           </p>
+        )}
+
+        {showPlayer && (
+          <section className={text ? "mt-6" : ""}>
+            <div className="mb-2.5 text-[13px] font-semibold text-ink">
+              Inspelning och transkript
+            </div>
+            <TranscriptPlayer
+              className="paper-card overflow-hidden max-h-[36rem]"
+              segments={transcript.segments}
+              fileCount={transcript.fileIds.length}
+              audioSrcFor={(fileIndex) =>
+                inputFileAudioUrl(flowId, run.id, transcript.fileIds[fileIndex] ?? "")
+              }
+              speakerNames={transcript.speakerNames}
+              textFallback=""
+              corrections={transcript.corrections}
+            />
+          </section>
         )}
 
         {fileCount > 0 && (

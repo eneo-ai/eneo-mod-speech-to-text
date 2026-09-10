@@ -3,7 +3,7 @@
 Lyssna är en Eneo-modul som låter en inloggad användare spela in samtal i browsern, skicka det till ett publicerat Eneo-flöde, och visa resultatet (transkript + sammanfattning + ev. genererade filer).
 
 ```
-Browser  →  Next.js (3000 dev / 3001 prod)  →  FastAPI (intern, port 8000)
+Browser  →  Next.js (3002 dev / 3001 prod)  →  FastAPI (intern, port 8000)
                 │                         │
                 UI               module session + BFF proxy
                                           │
@@ -83,10 +83,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 cd frontend
-INTERNAL_API_BASE=http://127.0.0.1:8000 npm run dev
+npm run dev
 ```
 
-Öppna sedan `http://localhost:3000`. VS Code forwardar port `3000` och `8000`.
+Öppna sedan `http://localhost:3002`. VS Code forwardar port `3002` och `8000`.
+Dev-servern lyssnar avsiktligt på `3002`: Eneos egen devcontainer tar `3000`
+(webb) och `8123` (API), och båda körs ofta samtidigt. I `next dev` proxas
+`/api` automatiskt till `http://127.0.0.1:8000`; sätt `INTERNAL_API_BASE` om
+backend körs någon annanstans. Produktionsimagen kör fortfarande på `3000`.
+
+Mot ett lokalt Eneo i devcontainer: `ENEO_BACKEND_URL=http://host.docker.internal:8123`,
+`ENEO_PUBLIC_URL=http://localhost:3000`, `MODULE_PUBLIC_URL=http://localhost:3002`
+och `COOKIE_SECURE=false`. Snabbaste vägen är `AUTH_MODE=access_code` med en
+`sk_`-nyckel (service, `flows = write`) skapad i Eneos admin; för riktig SSO
+installeras modulen i Eneo med callback `http://localhost:3002/api/auth/callback`.
 
 Tester:
 
@@ -269,6 +279,15 @@ hämtar Eneos signerade URL (`POST …/input-files/{fileId}/signed-url/`) med si
 egna credentials, cachar den per session tills den går ut och vidarebefordrar
 `Range`-förfrågningar oförändrat. Browsern ser aldrig Eneos token, och CSP:ns
 `media-src 'self'` behålls.
+
+Repliker kan rättas direkt i spelaren (hovra → penna) och en replikgrupp kan
+byta talare (klicka på namnet). Rättningarna är icke-destruktiva och sparas
+per ändring till Eneos `…/steps/{stepId}/transcript-corrections/` med
+replace-semantik och `expected_revision`; Eneo viker in dem i transkriptet när
+granskningen godkänns. Rättning kräver att steget lagrade `transcription.segments`
+(fallback-parsad text går inte att förankra). Samma spelare, skrivskyddad,
+visas på resultatsidan för alla körningar med ett transkriberingssteg, med
+namnen från ett eventuellt speaker-mapping-steg.
 
 Varje etikett i inventariet måste förekomma exakt en gång; talare utan namn
 behåller sin etikett. Eneo räknar om transkriptet med namnen och uppdaterar

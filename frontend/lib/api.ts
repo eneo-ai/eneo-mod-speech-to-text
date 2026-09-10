@@ -964,6 +964,62 @@ export function inputFileAudioUrl(
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
 }
 
+// --- Transkriptkorrigeringar ---
+
+export interface TranscriptCorrectionsPublic {
+  flow_run_id: string;
+  step_id: string;
+  occurrences: {
+    segment_index: number;
+    char_start: number;
+    char_end: number;
+    original: string;
+    corrected: string;
+  }[];
+  speaker_edits: {
+    segment_index: number;
+    char_start: number | null;
+    char_end: number | null;
+    original: string | null;
+    original_speaker: string;
+    speaker: string;
+  }[];
+  revision: number;
+  stale: boolean;
+  edited_by_principal_type?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Alla korrigeringsuppsättningar för körningen, en per transkriberingssteg. */
+export async function listTranscriptCorrections(flowId: string, runId: string) {
+  const res = await request<
+    TranscriptCorrectionsPublic[] | PaginatedResponse<TranscriptCorrectionsPublic>
+  >(`/api/eneo/flows/${flowId}/runs/${runId}/transcript-corrections/`);
+  if (Array.isArray(res)) return res;
+  return res.items ?? [];
+}
+
+export interface TranscriptCorrectionsEditRequest {
+  /** null skapar den första uppsättningen; annars senast kända revision. */
+  expected_revision: number | null;
+  occurrences: TranscriptCorrectionsPublic["occurrences"];
+  speaker_edits: TranscriptCorrectionsPublic["speaker_edits"];
+}
+
+/** Ersätter hela uppsättningen för steget (replace-semantik). */
+export async function saveTranscriptCorrections(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  body: TranscriptCorrectionsEditRequest,
+) {
+  return request<TranscriptCorrectionsPublic>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-corrections/`,
+    { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
 // --- Evidence ---
 
 export async function getRunEvidence(flowId: string, runId: string) {

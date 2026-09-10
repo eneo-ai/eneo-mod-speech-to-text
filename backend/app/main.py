@@ -144,6 +144,17 @@ _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         ),
     ),
     (
+        frozenset({"GET"}),
+        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/transcript-corrections/$"),
+    ),
+    (
+        frozenset({"PATCH"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
+            rf"{_RESOURCE_ID}/transcript-corrections/$"
+        ),
+    ),
+    (
         frozenset({"POST"}),
         re.compile(
             rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/artifacts/"
