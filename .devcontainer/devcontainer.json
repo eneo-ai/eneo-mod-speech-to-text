@@ -11,9 +11,9 @@
   },
   "workspaceFolder": "/workspaces/eneo-mod-speech-to-text",
   "postCreateCommand": "bash .devcontainer/post-create.sh",
-  "forwardPorts": [3000, 8000],
+  "forwardPorts": [3002, 8000],
   "portsAttributes": {
-    "3000": {
+    "3002": {
       "label": "Next.js frontend",
       "onAutoForward": "notify"
     },

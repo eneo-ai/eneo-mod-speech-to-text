@@ -63,7 +63,7 @@ export function AccountMenu() {
           <span className="block truncate text-sm font-semibold text-ink">
             {displayName}
           </span>
-          {displayName !== user.email && (
+          {user.email && displayName !== user.email && (
             <span className="mt-0.5 block truncate text-xs text-ink-mute">
               {user.email}
             </span>

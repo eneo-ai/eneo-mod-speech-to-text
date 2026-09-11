@@ -3,7 +3,7 @@
 Lyssna är en Eneo-modul som låter en inloggad användare spela in samtal i browsern, skicka det till ett publicerat Eneo-flöde, och visa resultatet (transkript + sammanfattning + ev. genererade filer).
 
 ```
-Browser  →  Next.js (3000 dev / 3001 prod)  →  FastAPI (intern, port 8000)
+Browser  →  Next.js (3002 dev / 3001 prod)  →  FastAPI (intern, port 8000)
                 │                         │
                 UI               module session + BFF proxy
                                           │
@@ -83,10 +83,20 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ```bash
 cd frontend
-INTERNAL_API_BASE=http://127.0.0.1:8000 npm run dev
+npm run dev
 ```
 
-Öppna sedan `http://localhost:3000`. VS Code forwardar port `3000` och `8000`.
+Öppna sedan `http://localhost:3002`. VS Code forwardar port `3002` och `8000`.
+Dev-servern lyssnar avsiktligt på `3002`: Eneos egen devcontainer tar `3000`
+(webb) och `8123` (API), och båda körs ofta samtidigt. I `next dev` proxas
+`/api` automatiskt till `http://127.0.0.1:8000`; sätt `INTERNAL_API_BASE` om
+backend körs någon annanstans. Produktionsimagen kör fortfarande på `3000`.
+
+Mot ett lokalt Eneo i devcontainer: `ENEO_BACKEND_URL=http://host.docker.internal:8123`,
+`ENEO_PUBLIC_URL=http://localhost:3000`, `MODULE_PUBLIC_URL=http://localhost:3002`
+och `COOKIE_SECURE=false`. Snabbaste vägen är `AUTH_MODE=access_code` med en
+`sk_`-nyckel (service, `flows = write`) skapad i Eneos admin; för riktig SSO
+installeras modulen i Eneo med callback `http://localhost:3002/api/auth/callback`.
 
 Tester:
 
@@ -224,6 +234,67 @@ Appen bygger körningen från Eneos publicerade flow-kontrakt:
   }
 }
 ```
+
+### Granskning och talarmappning (human-in-the-loop)
+
+Ett publicerat flöde kan innehålla steg med `review_policy` som pausar körningen
+i status `awaiting_review`. Appen pollar `GET /api/v1/flows/{flowId}/runs/{runId}/`
+och hämtar då den aktiva checkpointen via
+`GET …/runs/{runId}/review-checkpoints/active/`.
+
+Talarmappning (Eneo-stegtypen `output_mode = "speaker_mapping"`) är inget eget
+API utan en sådan checkpoint med `review_mode = "edit"`. Appen känner igen den på
+att `current_payload_json` innehåller nyckeln `speaker_mapping` med talarinventariet
+(`SPEAKER_00`, `SPEAKER_01` … med antal repliker och exempelrepliker) och
+`structured.speakers` med modellens namnförslag. Före körningen avslöjas steget i
+run-kontraktets `steps_requiring_review` genom det pinnade `output_contract`;
+appen visar då en hint i inställningsvyn.
+
+Vyn "Vem är vem?" låter användaren välja deltagare per talare (deltagarlistan
+från formulärfältet, "Annan person …" med fritext, eller "Ingen"). Vid
+"Spara och fortsätt" skickas mappningen som stegets output:
+
+```json
+PATCH /api/v1/flows/{flowId}/runs/{runId}/review-checkpoints/{checkpointId}/
+{
+  "expected_checkpoint_revision": 1,
+  "edited_value": {
+    "speakers": [
+      { "label": "SPEAKER_00", "name": "Anna", "confidence": "high", "evidence": "…" },
+      { "label": "SPEAKER_01", "name": null, "confidence": "low", "evidence": "" }
+    ]
+  }
+}
+```
+
+Vyn spelar samtidigt upp inspelningen med ett följande transkript. Segmenten
+(talare, start/slut per replik) hämtas från transkriberingsstegets
+`input_payload_json.transcription` via `GET …/runs/{runId}/steps/`, ordtiderna
+från `GET …/steps/{stepId}/transcript-words/` (404 = inga ordtider, då markeras
+bara repliken). Saknas segment parsas den renderade texten med sekundprecision.
+
+Ljudet strömmas same-origin via modulens backend:
+`GET /api/eneo/flows/{flowId}/runs/{runId}/input-files/{fileId}/audio`. Backend
+hämtar Eneos signerade URL (`POST …/input-files/{fileId}/signed-url/`) med sina
+egna credentials, cachar den per session tills den går ut och vidarebefordrar
+`Range`-förfrågningar oförändrat. Browsern ser aldrig Eneos token, och CSP:ns
+`media-src 'self'` behålls.
+
+Repliker kan rättas direkt i spelaren (hovra → penna) och en replikgrupp kan
+byta talare (klicka på namnet). Rättningarna är icke-destruktiva och sparas
+per ändring till Eneos `…/steps/{stepId}/transcript-corrections/` med
+replace-semantik och `expected_revision`; Eneo viker in dem i transkriptet när
+granskningen godkänns. Rättning kräver att steget lagrade `transcription.segments`
+(fallback-parsad text går inte att förankra). Samma spelare, skrivskyddad,
+visas på resultatsidan för alla körningar med ett transkriberingssteg, med
+namnen från ett eventuellt speaker-mapping-steg.
+
+Varje etikett i inventariet måste förekomma exakt en gång; talare utan namn
+behåller sin etikett. Eneo räknar om transkriptet med namnen och uppdaterar
+`{{transkribering}}` på körningen. Därefter anropas `…/approve/` och
+`…/resume/` (med `Idempotency-Key`) som för alla andra checkpoints, och appen
+fortsätter polla. `edited_value` är alltid stegets output i sig — en sträng för
+`text`-steg, ett JSON-värde för `json`-steg — aldrig payload-kuvertet.
 
 Browsern ska inte använda en hårdkodad 120-sekunders timeout för stora ljudfiler.
 Klienten räknar i stället upload-timeout från `runtime_upload_policy` i

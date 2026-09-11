@@ -184,11 +184,26 @@ export interface FlowRuntimeUploadPolicy {
   idle_timeout_seconds: number;
 }
 
+/**
+ * Steg som kan pausa körningen i en review-checkpoint. Finns i run-kontraktet
+ * så klienten kan förbereda granskningen innan körningen når awaiting_review.
+ */
+export interface FlowReviewStepContract {
+  step_id: string;
+  step_order: number;
+  label?: string | null;
+  review_mode: FlowStepReviewMode | string;
+  output_type: FlowOutputType | string;
+  expires_after_seconds?: number;
+  output_contract?: Json | null;
+}
+
 export interface RunContract {
   flow_id: string;
   published_flow_version: number;
   form_fields?: FormField[];
   steps_requiring_input?: RunContractStepInput[];
+  steps_requiring_review?: FlowReviewStepContract[];
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
   recommended_run_payload?: Json;
 }
@@ -335,13 +350,22 @@ export interface FlowRunReviewCheckpointPublic {
   rejected_at?: string | null;
   resumed_at?: string | null;
   cancelled_at?: string | null;
+  expires_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
+/**
+ * `edited_value` är stegets korrigerade output i sig — en sträng för ett
+ * `text`-steg, ett JSON-objekt/array för ett `json`-steg — inte payload-
+ * kuvertet. Eneo härleder `text`/`structured` server-side och avvisar
+ * okända fält (extra="forbid").
+ */
+export type ReviewEditedValue = string | Json | unknown[];
+
 export interface ReviewEditRequest {
   expected_checkpoint_revision: number;
-  current_payload_json: Json;
+  edited_value: ReviewEditedValue;
 }
 
 export interface ReviewApproveRequest {
@@ -370,6 +394,47 @@ export function reviewResumeIdempotencyKey(
   checkpointId: string,
 ): string {
   return `review-resume:${runId}:${checkpointId}`;
+}
+
+/**
+ * Run-kontraktet exponerar inte stegets output_mode, men Eneo pinnar ett
+ * speaker-mapping-steg till ett fast output_contract vars `speakers[]`-items
+ * har en `label` med mönstret `^SPEAKER_\d{2,}$`. Det räcker för att känna
+ * igen steget innan körningen startar.
+ */
+/** Körningar som fortfarande går att följa eller agera på. */
+export function isResumableRunStatus(status: string): boolean {
+  const s = status.toLowerCase();
+  return s === "queued" || s === "running" || s === "awaiting_review";
+}
+
+export function isSpeakerMappingReviewStep(
+  step: FlowReviewStepContract | null | undefined,
+): boolean {
+  if (!step || step.review_mode !== "edit" || step.output_type !== "json") {
+    return false;
+  }
+  const contract = step.output_contract as
+    | { properties?: Record<string, unknown> }
+    | null
+    | undefined;
+  const speakers = contract?.properties?.speakers as
+    | { items?: { properties?: Record<string, unknown> } }
+    | undefined;
+  const label = speakers?.items?.properties?.label as
+    | { pattern?: unknown }
+    | undefined;
+  return (
+    typeof label?.pattern === "string" && label.pattern.includes("SPEAKER_")
+  );
+}
+
+export function speakerMappingReviewSteps(
+  contract: RunContract | null | undefined,
+): FlowReviewStepContract[] {
+  return (contract?.steps_requiring_review ?? []).filter(
+    isSpeakerMappingReviewStep,
+  );
 }
 
 export interface FlowRunRedispatchResponse {
@@ -747,6 +812,29 @@ export async function deriveRunIdempotencyKey(params: {
   return `flow-run:${await sha256Hex(JSON.stringify(normalized))}`;
 }
 
+/**
+ * Lättviktig status för polling. Eneo audit-loggar varje läsning av
+ * körningens detalj (`GET …/runs/{id}/`), men inte status-endpointen, så
+ * polla den här och hämta detaljen först när körningen är klar.
+ */
+export interface FlowRunSummary {
+  id: string;
+  flow_id: string;
+  status: string;
+  flow_version?: number;
+  revision?: number;
+  trace_id?: string;
+  created_at?: string;
+  updated_at?: string;
+  [k: string]: unknown;
+}
+
+export async function getRunStatus(flowId: string, runId: string) {
+  return request<FlowRunSummary>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/status/`,
+  );
+}
+
 export async function getRun(flowId: string, runId: string) {
   return request<FlowRunPublic>(`/api/eneo/flows/${flowId}/runs/${runId}/`);
 }
@@ -798,7 +886,7 @@ export async function redispatchRun(flowId: string, runId: string) {
 
 export async function listRuns(flowId: string, limit = 50, offset = 0) {
   const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-  return request<OffsetPaginatedResponse<FlowRunPublic>>(
+  return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );
 }
@@ -835,6 +923,100 @@ export async function uploadStepRuntimeFile(
     `/api/eneo/flows/${flowId}/steps/${stepId}/runtime-files/`,
     fd,
     { ...opts, fileSizeBytes: file.size },
+  );
+}
+
+// --- Transkript: ordtider och ljud ---
+
+export interface TranscriptWordsResponse {
+  flow_run_id: string;
+  step_id: string;
+  segments_hash: string;
+  alignment: string | null;
+  stale: boolean;
+  segments: {
+    segment_index: number;
+    words: { word: string; start: number; end: number; probability: number | null }[];
+  }[];
+}
+
+/** Ordtider för ett transkriberingssteg. Eneo svarar 404 när inga finns. */
+export async function getTranscriptWords(
+  flowId: string,
+  runId: string,
+  stepId: string,
+) {
+  return request<TranscriptWordsResponse>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-words/`,
+  );
+}
+
+/**
+ * Same-origin ljudkälla för en av körningens inmatade filer. Modulens backend
+ * hämtar den signerade Eneo-URL:en med sina egna credentials och strömmar
+ * ljudet vidare med Range-stöd, så browsern aldrig ser Eneos token.
+ */
+export function inputFileAudioUrl(
+  flowId: string,
+  runId: string,
+  fileId: string,
+): string {
+  return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
+}
+
+// --- Transkriptkorrigeringar ---
+
+export interface TranscriptCorrectionsPublic {
+  flow_run_id: string;
+  step_id: string;
+  occurrences: {
+    segment_index: number;
+    char_start: number;
+    char_end: number;
+    original: string;
+    corrected: string;
+  }[];
+  speaker_edits: {
+    segment_index: number;
+    char_start: number | null;
+    char_end: number | null;
+    original: string | null;
+    original_speaker: string;
+    speaker: string;
+  }[];
+  revision: number;
+  stale: boolean;
+  edited_by_principal_type?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Alla korrigeringsuppsättningar för körningen, en per transkriberingssteg. */
+export async function listTranscriptCorrections(flowId: string, runId: string) {
+  const res = await request<
+    TranscriptCorrectionsPublic[] | PaginatedResponse<TranscriptCorrectionsPublic>
+  >(`/api/eneo/flows/${flowId}/runs/${runId}/transcript-corrections/`);
+  if (Array.isArray(res)) return res;
+  return res.items ?? [];
+}
+
+export interface TranscriptCorrectionsEditRequest {
+  /** null skapar den första uppsättningen; annars senast kända revision. */
+  expected_revision: number | null;
+  occurrences: TranscriptCorrectionsPublic["occurrences"];
+  speaker_edits: TranscriptCorrectionsPublic["speaker_edits"];
+}
+
+/** Ersätter hela uppsättningen för steget (replace-semantik). */
+export async function saveTranscriptCorrections(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  body: TranscriptCorrectionsEditRequest,
+) {
+  return request<TranscriptCorrectionsPublic>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-corrections/`,
+    { method: "PATCH", body: JSON.stringify(body) },
   );
 }
 

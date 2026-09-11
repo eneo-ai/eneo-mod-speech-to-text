@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authStatus, type AuthenticatedUser } from "@/lib/api";
+import { sessionUser } from "@/lib/user-identity";
 
 const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(null);
 
@@ -25,10 +26,13 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     authStatus()
       .then((s) => {
         if (cancelled) return;
-        if (!s.authenticated || !s.user) {
+        // I access_code-läget saknar sessionen användare; sessionUser ger då
+        // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
+        const sessionIdentity = sessionUser(s);
+        if (!sessionIdentity) {
           router.replace("/");
         } else {
-          setUser(s.user);
+          setUser(sessionIdentity);
         }
       })
       .catch(() => {
