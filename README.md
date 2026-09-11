@@ -297,6 +297,12 @@ behåller sin etikett. Eneo räknar om transkriptet med namnen och uppdaterar
 fortsätter polla. `edited_value` är alltid stegets output i sig — en sträng för
 `text`-steg, ett JSON-värde för `json`-steg — aldrig payload-kuvertet.
 
+Next.js proxar `/api/*` till FastAPI via rewrites och klonar då request-bodyn
+med ett standardtak på 10 MB; större bodies kapas tyst. `next.config.mjs`
+höjer taket (`experimental.proxyClientMaxBodySize`) så att ljudfiler upp till
+Eneos `max_file_size_bytes` passerar. Den klonade bodyn hålls i minnet under
+uppladdningen, så taket är samtidigt ett minnestak per upload i Next-processen.
+
 Browsern ska inte använda en hårdkodad 120-sekunders timeout för stora ljudfiler.
 Klienten räknar i stället upload-timeout från `runtime_upload_policy` i
 flow-kontraktet och håller uppladdningen vid liv så länge progress fortsätter.
