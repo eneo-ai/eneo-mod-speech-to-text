@@ -5,6 +5,15 @@ const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
   skipTrailingSlashRedirect: true,
+  experimental: {
+    // Next klonar request-bodyn för proxade rewrites (våra /api/*-anrop till
+    // FastAPI) och kapar den vid 10 MB som standard — en ljuduppladdning
+    // större än så trunkerades tyst och gick sönder hos Eneo. Filstorleken
+    // begränsas av Eneos flow-kontrakt (max_file_size_bytes), inte här.
+    // Obs: Next håller den klonade bodyn i minnet under uppladdningen, så
+    // taket är också ett tak för processens minnesåtgång per upload.
+    proxyClientMaxBodySize: "2gb",
+  },
   async headers() {
     return [
       {
