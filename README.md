@@ -138,7 +138,7 @@ Begränsningar:
 - `ENEO_API_KEY` är fortfarande obligatorisk och används för anrop till Eneo;
 - upstream-anrop skickar endast service key, aldrig en påhittad Bearer-token;
 - när Eneo kräver både service key och module-user-token kommer Flow-anrop därför att nekas;
-- sessionslagret är processlokalt, sessionen löper ut efter högst en timme och försvinner vid omstart;
+- sessionslagret är processlokalt, sessionen löper ut efter `SESSION_MAX_AGE_MINUTES` (default 8 timmar) och försvinner vid omstart;
 - skydda publika testmiljöer med ingress-rate-limit; korta koder som `komin` nekas redan vid startup men testgrinden ersätter fortfarande inte riktig användarautentisering.
 
 Avvecklingspunkt: när [eneo#536](https://github.com/eneo-ai/eneo/pull/536) är deployad och ett live-smoke-test har verifierat `/module-login` → callback/ticket exchange → `/api/v1/module-auth/speech-to-text/session/` samt ett Flow-anrop med dubbla credentials, byt till `AUTH_MODE=eneo_sso`, radera `APP_ACCESS_CODE` i Dokploy och ta bort access-code-koden, UI:t, dokumentationen och testerna i nästa cleanup-PR. Läget ska inte bli en permanent fallback.
@@ -183,6 +183,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `DEMO_SPACE_ID` | (valfritt) UUID för space; skippar space-väljaren |
    | `DEMO_SPACE_NAME` | (valfritt) visningsnamn för det space:t |
    | `UPLOAD_PROXY_TIMEOUT_SECONDS` | (valfritt) timeout för backendens upload-forwarding till Eneo, default `1800` |
+   | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_TOKEN_EXPIRY_MINUTES`), så höj båda |
 
 3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy/Traefik sköter HTTPS-certifikatet.
 

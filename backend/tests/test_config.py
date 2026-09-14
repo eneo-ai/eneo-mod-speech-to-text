@@ -46,6 +46,30 @@ class SettingsTests(unittest.TestCase):
             "test-access-code-1234",
         )
 
+    def test_session_max_age_defaults_to_eight_hours(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            settings = load_settings()
+
+        self.assertEqual(settings.session_max_age_seconds, 8 * 60 * 60)
+
+    def test_session_max_age_is_configurable_in_minutes(self) -> None:
+        environment = valid_environment()
+        environment["SESSION_MAX_AGE_MINUTES"] = "90"
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual(settings.session_max_age_seconds, 90 * 60)
+
+    def test_rejects_invalid_session_max_age(self) -> None:
+        for raw in ("0", "-5", "eight"):
+            environment = valid_environment()
+            environment["SESSION_MAX_AGE_MINUTES"] = raw
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, "SESSION_MAX_AGE_MINUTES"):
+                        load_settings()
+
     def test_rejects_unknown_auth_mode(self) -> None:
         environment = valid_environment()
         environment["AUTH_MODE"] = "automatic"

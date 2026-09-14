@@ -25,6 +25,9 @@ class Settings(BaseModel):
     demo_space_id: str | None = None
     demo_space_name: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
+    # Övre gräns för modulsessionen. I eneo_sso-läge är den effektiva
+    # livslängden min(denna, Eneos module_auth_token_expiry_minutes).
+    session_max_age_seconds: int = 8 * 60 * 60
 
     @property
     def module_origin(self) -> str:
@@ -92,6 +95,14 @@ def load_settings() -> Settings:
     if upload_timeout <= 0:
         raise RuntimeError("UPLOAD_PROXY_TIMEOUT_SECONDS must be greater than zero")
 
+    raw_session_minutes = os.environ.get("SESSION_MAX_AGE_MINUTES", "480")
+    try:
+        session_minutes = int(raw_session_minutes)
+    except ValueError:
+        raise RuntimeError("SESSION_MAX_AGE_MINUTES must be an integer") from None
+    if session_minutes <= 0:
+        raise RuntimeError("SESSION_MAX_AGE_MINUTES must be greater than zero")
+
     raw_access_code = os.environ.get("APP_ACCESS_CODE")
     if auth_mode == "eneo_sso" and raw_access_code:
         raise RuntimeError("APP_ACCESS_CODE may only be set with AUTH_MODE=access_code")
@@ -119,4 +130,5 @@ def load_settings() -> Settings:
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
         demo_space_name=os.environ.get("DEMO_SPACE_NAME") or None,
         upload_proxy_timeout_seconds=upload_timeout,
+        session_max_age_seconds=session_minutes * 60,
     )

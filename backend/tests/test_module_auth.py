@@ -258,6 +258,7 @@ class AccessCodeAuthTests(unittest.TestCase):
             auth_mode="access_code",
             app_access_code="test-access-code-1234",
             cookie_secure=True,
+            session_max_age_seconds=90 * 60,
         )
         self.module_auth = ModuleAuth(
             settings=settings,
@@ -297,6 +298,7 @@ class AccessCodeAuthTests(unittest.TestCase):
         self.assertIn("HttpOnly", response.headers["set-cookie"])
         self.assertIn("Secure", response.headers["set-cookie"])
         self.assertIn("SameSite=lax", response.headers["set-cookie"])
+        self.assertIn("Max-Age=5400", response.headers["set-cookie"])
         self.assertEqual(self.client.get("/protected").status_code, 200)
         self.assertEqual(
             self.client.get("/api/auth/status").json(),

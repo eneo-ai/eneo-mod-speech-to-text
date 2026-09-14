@@ -19,12 +19,11 @@ logger = logging.getLogger("eneo_module_auth")
 
 SESSION_COOKIE = "eneo_module_session"
 STATE_COOKIE = "eneo_module_login_state"
-# Upper bound on the browser session cookie. In SSO mode the effective
-# lifetime is min(this, Eneo's token expiry); keep it aligned with Eneo's
-# module_auth_token_expiry_minutes so this cap never silently shortens the
-# token-backed session.
+# The browser session cookie's upper bound is Settings.session_max_age_seconds
+# (SESSION_MAX_AGE_MINUTES). In SSO mode the effective lifetime is
+# min(that, Eneo's token expiry); keep Eneo's module_auth_token_expiry_minutes
+# aligned so neither side silently shortens the other.
 STATE_MAX_AGE = 5 * 60
-SESSION_MAX_AGE = 60 * 60
 CALLBACK_PATH = "/api/auth/callback"
 
 
@@ -208,7 +207,7 @@ class ModuleAuth:
                 headers={"Cache-Control": "no-store"},
             )
 
-        max_age = SESSION_MAX_AGE
+        max_age = self.settings.session_max_age_seconds
         session = AccessCodeSession(expires_at=int(time.time()) + max_age)
         self._set_session_cookie(response, session=session, max_age=max_age)
         response.headers["Cache-Control"] = "no-store"
@@ -298,7 +297,7 @@ class ModuleAuth:
             logger.error("Module session validation returned a different identity")
             return self._auth_error("validation_invalid")
 
-        max_age = min(token.expires_in, SESSION_MAX_AGE)
+        max_age = min(token.expires_in, self.settings.session_max_age_seconds)
         session = EneoSsoSession(
             access_token=token.access_token,
             expires_at=int(time.time()) + max_age,
