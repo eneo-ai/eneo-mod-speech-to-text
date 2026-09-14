@@ -20,6 +20,7 @@
     --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
     --record-foreground: 0 0% 100%;
     --ochre: 47 96% 45%; /* gul – info-/varningsruta */
+    --ok: 152 55% 32%; /* grön – bekräftat/klart */
     /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. */
     --speaker-0: 212 72% 40%;
     --speaker-1: 152 48% 33%;
@@ -47,6 +48,7 @@
     --record: 0 65% 48%;
     --record-foreground: 0 0% 100%;
     --ochre: 47 92% 58%;
+    --ok: 152 50% 58%;
     --speaker-0: 212 92% 72%;
     --speaker-1: 152 52% 62%;
     --speaker-2: 32 88% 66%;

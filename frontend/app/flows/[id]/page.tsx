@@ -90,6 +90,8 @@ import {
   type TranscriptPlayerHandle,
 } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
+import { useConfirmedWords } from "@/components/useConfirmedWords";
+import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import {
   formatBytes,
   isMimeAllowed,
@@ -1390,6 +1392,10 @@ function ReviewView({
     fallbackText: initialText,
     labelFor: (speaker) => reverseNames[speaker] ?? speaker,
   });
+  // Bekräftade osäkra ord lagras lokalt per steg (ryms inte i Eneos modell).
+  const [confirmedWords, toggleConfirmed] = useConfirmedWords(
+    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+  );
 
   // Korrigeringar sparas direkt per ändring (replace-semantik med revision).
   const [corrections, setCorrections] = useState<CorrectionSet>(EMPTY_CORRECTIONS);
@@ -1601,7 +1607,7 @@ function ReviewView({
     return (
       <>
         {header}
-        <main className="px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto max-w-5xl">
+        <main className="px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto max-w-7xl">
           <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
             Vem är vem?
           </h1>
@@ -1610,7 +1616,7 @@ function ReviewView({
             när du fortsätter.
           </p>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] lg:items-start">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start">
             <section className="paper-card p-4">
               {speakerRows.length === 0 ? (
                 <p className="text-[13px] text-ink-soft">
@@ -1652,6 +1658,8 @@ function ReviewView({
               onCorrectionsChange={onCorrectionsChange}
               speakerOptions={speakerLabels}
               saveState={saveState}
+              confirmedWords={confirmedWords}
+              onToggleConfirmed={toggleConfirmed}
             />
           </div>
 
@@ -1794,6 +1802,9 @@ function NotesView({
     enabled: success,
     steps,
   });
+  const [confirmedWords] = useConfirmedWords(
+    transcript.stepId ? confirmedWordsStorageKey(flowId, run.id, transcript.stepId) : null,
+  );
   const showPlayer = success && !transcript.pending && transcript.segments.length > 0;
   const outputLabel = labelForOutputType(outputType);
   const finishedDate = run.finished_at
@@ -1898,6 +1909,7 @@ function NotesView({
               speakerNames={transcript.speakerNames}
               textFallback=""
               corrections={transcript.corrections}
+              confirmedWords={confirmedWords}
             />
           </section>
         )}

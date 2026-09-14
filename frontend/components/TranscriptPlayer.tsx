@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Pause, Pencil, Play, RotateCcw, RotateCw } from "lucide-react";
+import { Check, ChevronDown, Pause, Pencil, Play, RotateCcw, RotateCw } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -11,10 +11,19 @@ import {
   useState,
 } from "react";
 import { cn } from "@/lib/utils";
+import { countUncertain, wordKey } from "@/lib/confirmed-words";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   computeTurns,
   countFiles,
-  countUncertainWords,
   findActiveSegmentIndex,
   findActiveWordIndex,
   formatClock,
@@ -42,6 +51,7 @@ export interface TranscriptPlayerHandle {
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
 const RATES = [1, 1.25, 1.5, 2];
+const EMPTY_SET: ReadonlySet<string> = new Set();
 const SKIP_SECONDS = 10;
 
 function rateLabel(rate: number): string {
@@ -128,6 +138,10 @@ export const TranscriptPlayer = forwardRef<
     /** Etiketter en replik kan tilldelas (SPEAKER_NN). */
     speakerOptions?: readonly string[];
     saveState?: CorrectionsSaveState;
+    /** Osäkra ord som granskaren lyssnat på och bekräftat (se lib/confirmed-words). */
+    confirmedWords?: ReadonlySet<string>;
+    /** Gör det möjligt att bekräfta/ångra ett osäkert ord. */
+    onToggleConfirmed?: (key: string) => void;
   }
 >(function TranscriptPlayer(
   {
@@ -143,6 +157,8 @@ export const TranscriptPlayer = forwardRef<
     onCorrectionsChange,
     speakerOptions,
     saveState = "idle",
+    confirmedWords = EMPTY_SET,
+    onToggleConfirmed,
   },
   ref,
 ) {
@@ -173,10 +189,12 @@ export const TranscriptPlayer = forwardRef<
     () => duration >= 3600 || shown.some((s) => s.end >= 3600),
     [duration, shown],
   );
-  const uncertainWords = useMemo(() => countUncertainWords(shown), [shown]);
+  const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
+  const uncertainWords = uncertain.remaining + uncertain.confirmed;
   const hasSegments = shown.length > 0;
   const hasAudio = fileCount > 0 && !audioPending;
   const canEdit = editable && typeof onCorrectionsChange === "function";
+  const canConfirm = typeof onToggleConfirmed === "function";
 
   const src = hasAudio ? audioSrcFor(currentFile) : undefined;
 
@@ -520,7 +538,22 @@ export const TranscriptPlayer = forwardRef<
             )}
             {uncertainWords > 0 && (
               <p className="text-ink-mute">
-                {uncertainWords} ord med osäker tidsstämpel är understrukna.
+                {uncertain.remaining > 0 ? (
+                  <>
+                    <span className="rounded-[3px] bg-ochre/25 px-1 text-ink">
+                      {uncertain.remaining} ord
+                    </span>{" "}
+                    kunde inte hittas i ljudet.
+                    {canConfirm
+                      ? " Lyssna och bekräfta att de stämmer, eller rätta repliken."
+                      : ""}
+                  </>
+                ) : (
+                  "Alla osäkra ord är bekräftade."
+                )}
+                {uncertain.confirmed > 0 && uncertain.remaining > 0 && (
+                  <span className="text-ink-mute"> {uncertain.confirmed} bekräftade.</span>
+                )}
               </p>
             )}
             {canEdit && !audioPending && (
@@ -569,6 +602,8 @@ export const TranscriptPlayer = forwardRef<
             displayName={displayName}
             labelOptions={labelOptions}
             canEdit={canEdit}
+            confirmedWords={confirmedWords}
+            onToggleConfirmed={onToggleConfirmed}
             editingIndex={editingIndex}
             onStartEdit={(idx) => {
               audioRef.current?.pause();
@@ -600,6 +635,8 @@ function TurnBlock({
   displayName,
   labelOptions,
   canEdit,
+  confirmedWords,
+  onToggleConfirmed,
   editingIndex,
   onStartEdit,
   onCancelEdit,
@@ -621,6 +658,8 @@ function TurnBlock({
   displayName: (label: string | null) => string;
   labelOptions: readonly string[];
   canEdit: boolean;
+  confirmedWords: ReadonlySet<string>;
+  onToggleConfirmed?: (key: string) => void;
   editingIndex: number;
   onStartEdit: (segmentIndex: number) => void;
   onCancelEdit: () => void;
@@ -632,7 +671,6 @@ function TurnBlock({
 }) {
   const color = speakerColor(turn.speaker);
   const isActive = turn.parts.some((p) => p.segmentIndex === activeIndex);
-  const [pickingSpeaker, setPickingSpeaker] = useState(false);
   const storedSpeaker = rawSegments[turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const reassigned = storedSpeaker !== null && storedSpeaker !== turn.speaker;
 
@@ -660,56 +698,68 @@ function TurnBlock({
           >
             {formatClock(turn.start, withHours)}
           </button>
-          {canEdit && pickingSpeaker && turn.speaker ? (
-            <select
-              autoFocus
-              aria-label="Byt talare"
-              value={turn.speaker}
-              onChange={(e) => {
-                onReassign(e.target.value);
-                setPickingSpeaker(false);
-              }}
-              onBlur={() => setPickingSpeaker(false)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") setPickingSpeaker(false);
-              }}
-              className="mt-0.5 w-full max-w-full rounded border border-rule bg-paper text-[12px] text-ink"
-            >
-              {labelOptions.map((label) => (
-                <option key={label} value={label}>
-                  {displayName(label)}
-                  {label === storedSpeaker ? " (ursprunglig)" : ""}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <button
-              type="button"
-              disabled={!canEdit || !turn.speaker}
-              onClick={() => setPickingSpeaker(true)}
-              title={
-                reassigned
-                  ? `Bytt från ${displayName(storedSpeaker)}`
-                  : canEdit
-                    ? "Byt talare"
-                    : undefined
-              }
-              className={cn(
-                "mt-0.5 flex max-w-full items-center gap-1.5 text-left text-[12px] font-semibold leading-tight",
-                canEdit && "hover:underline decoration-dotted underline-offset-2",
-                "disabled:cursor-default disabled:no-underline",
-              )}
-              style={{ color }}
-            >
-              <span
-                aria-hidden
-                className={cn("h-2 w-2 shrink-0 rounded-full", reassigned && "ring-2 ring-offset-1 ring-offset-paper")}
-                style={{ background: color, ["--tw-ring-color" as string]: color }}
-              />
-              <span className="truncate">{name}</span>
-              {canEdit && <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-70" />}
-            </button>
-          )}
+          {(() => {
+            const nameButton = (
+              <button
+                type="button"
+                disabled={!canEdit || !turn.speaker}
+                title={
+                  reassigned
+                    ? `Bytt från ${displayName(storedSpeaker)}`
+                    : canEdit
+                      ? "Byt talare"
+                      : undefined
+                }
+                className={cn(
+                  "mt-0.5 flex max-w-full items-center gap-1.5 rounded text-left text-[12px] font-semibold leading-tight",
+                  canEdit &&
+                    "hover:underline decoration-dotted underline-offset-2 data-[state=open]:underline",
+                  "disabled:cursor-default disabled:no-underline",
+                )}
+                style={{ color }}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "h-2 w-2 shrink-0 rounded-full",
+                    reassigned && "ring-2 ring-offset-1 ring-offset-paper",
+                  )}
+                  style={{ background: color, ["--tw-ring-color" as string]: color }}
+                />
+                <span className="truncate">{name}</span>
+                {canEdit && (
+                  <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-70 data-[state=open]:opacity-70" />
+                )}
+              </button>
+            );
+            if (!canEdit || !turn.speaker) return nameButton;
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>{nameButton}</DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-[12rem]">
+                  <DropdownMenuLabel className="text-[11px] font-normal text-ink-mute">
+                    Vem säger det här?
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuRadioGroup value={turn.speaker} onValueChange={onReassign}>
+                    {labelOptions.map((label) => (
+                      <DropdownMenuRadioItem key={label} value={label} className="gap-2 text-[13px]">
+                        <span
+                          aria-hidden
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: speakerColor(label) }}
+                        />
+                        <span className="truncate">{displayName(label)}</span>
+                        {label === storedSpeaker && (
+                          <span className="ml-auto pl-3 text-[11px] text-ink-mute">ursprunglig</span>
+                        )}
+                      </DropdownMenuRadioItem>
+                    ))}
+                  </DropdownMenuRadioGroup>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
         </div>
         <div className="text-[14px] leading-[1.65] text-ink">
           {turn.parts.map((part) => {
@@ -738,39 +788,76 @@ function TurnBlock({
                     partActive && "bg-accent/10",
                   )}
                 >
-                  {pieces(part.segment, ranges).map((piece, k) => (
-                    <span
-                      key={k}
-                      data-word-start={piece.word ? piece.word.start : undefined}
-                      className={cn(
-                        "rounded-[3px]",
-                        piece.word &&
-                          partActive &&
-                          piece.wordIndex === activeWordIndex &&
-                          "bg-accent text-accent-foreground",
-                        piece.word?.uncertain &&
-                          "underline decoration-wavy decoration-ochre underline-offset-2",
-                        piece.correctedFrom !== null &&
-                          "underline decoration-dotted decoration-accent underline-offset-[3px]",
-                      )}
-                      title={
-                        piece.correctedFrom !== null
-                          ? `Rättad från: ${piece.correctedFrom}`
-                          : piece.word?.uncertain
-                            ? "Osäker tidsstämpel: ordet kunde inte hittas i ljudet."
-                            : undefined
-                      }
-                    >
-                      {piece.text}
-                    </span>
-                  ))}
+                  {pieces(part.segment, ranges).map((piece, k, all) => {
+                    const key = piece.word ? wordKey(part.segmentIndex, piece.word) : null;
+                    const confirmed = key !== null && confirmedWords.has(key);
+                    const flagged = Boolean(piece.word?.uncertain) && !confirmed;
+                    const isWordActive =
+                      Boolean(piece.word) && partActive && piece.wordIndex === activeWordIndex;
+                    // Bekräftelseknappen sitter efter ordets sista bit.
+                    const lastOfWord =
+                      Boolean(piece.word?.uncertain) &&
+                      all[k + 1]?.wordIndex !== piece.wordIndex;
+                    return (
+                      <span key={k}>
+                        <span
+                          data-word-start={piece.word ? piece.word.start : undefined}
+                          className={cn(
+                            "rounded-[3px] box-decoration-clone",
+                            flagged &&
+                              "bg-ochre/25 px-[2px] -mx-[2px] underline decoration-wavy decoration-ochre underline-offset-[3px]",
+                            confirmed &&
+                              "bg-ok/15 px-[2px] -mx-[2px] text-ok underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
+                            isWordActive && "bg-accent text-accent-foreground",
+                            piece.correctedFrom !== null &&
+                              "underline decoration-dotted decoration-accent underline-offset-[3px]",
+                          )}
+                          title={
+                            piece.correctedFrom !== null
+                              ? `Rättad från: ${piece.correctedFrom}`
+                              : flagged
+                                ? "Ordet kunde inte hittas i ljudet. Lyssna och bekräfta, eller rätta repliken."
+                                : confirmed
+                                  ? "Bekräftat: ordet stämmer."
+                                  : undefined
+                          }
+                        >
+                          {piece.text}
+                        </span>
+                        {lastOfWord && onToggleConfirmed && key !== null && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onToggleConfirmed(key);
+                            }}
+                            aria-pressed={confirmed}
+                            aria-label={
+                              confirmed
+                                ? `Ångra bekräftelse av "${piece.word?.word}"`
+                                : `Bekräfta att "${piece.word?.word}" stämmer`
+                            }
+                            title={confirmed ? "Bekräftat – klicka för att ångra" : "Ordet stämmer"}
+                            className={cn(
+                              "ml-[3px] inline-grid h-[15px] w-[15px] translate-y-[-1px] place-items-center rounded-full border align-middle transition-colors",
+                              confirmed
+                                ? "border-transparent bg-ok text-paper hover:bg-ok/80"
+                                : "border-ochre text-ochre hover:bg-ochre hover:text-ink",
+                            )}
+                          >
+                            <Check className="h-[9px] w-[9px]" strokeWidth={3} />
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
                 </span>
                 {canEdit && (
                   <button
                     type="button"
                     onClick={() => onStartEdit(part.segmentIndex)}
                     aria-label="Rätta repliken"
-                    className="mx-1 inline-grid h-5 w-5 translate-y-[3px] place-items-center rounded text-ink-mute opacity-0 transition-opacity hover:text-ink focus-visible:opacity-100 group-hover/part:opacity-100 [@media(pointer:coarse)]:opacity-60"
+                    className="inline-grid h-5 w-0 translate-y-[3px] place-items-center overflow-hidden rounded text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-5 focus-visible:opacity-100 group-hover/part:mx-1 group-hover/part:w-5 group-hover/part:opacity-100 [@media(pointer:coarse)]:mx-1 [@media(pointer:coarse)]:w-5 [@media(pointer:coarse)]:opacity-60"
                   >
                     <Pencil className="h-3 w-3" strokeWidth={2} />
                   </button>

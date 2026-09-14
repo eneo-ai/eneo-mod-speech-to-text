@@ -35,6 +35,7 @@ const config: Config = {
           foreground: "hsl(var(--record-foreground))",
         },
         ochre: "hsl(var(--ochre))",
+        ok: "hsl(var(--ok))",
       },
       borderWidth: {
         DEFAULT: "1px",
