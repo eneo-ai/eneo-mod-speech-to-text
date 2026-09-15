@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev -H 0.0.0.0 -p 3002",
     "build": "next build --webpack",
-    "test": "rm -rf .test-build && tsc --module commonjs --target es2022 --lib es2022,dom --moduleResolution node --esModuleInterop --skipLibCheck --outDir .test-build lib/*.test.ts && node --test .test-build/*.test.js",
+    "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "tsc --noEmit"
   },

@@ -25,7 +25,19 @@ export interface TranscriptWord {
   uncertain: boolean;
 }
 
+export type SpeakerAttribution = "assigned" | "provisional" | "unassigned";
+export type SpeakerDecision = "confirmed" | "unresolved";
+
 export interface TranscriptSegment {
+  /** Immutable model evidence; speaker below is the effective overlay value. */
+  modelSpeaker?: string | null;
+  speakerAttribution?: SpeakerAttribution | null;
+  overlapIds?: readonly string[];
+  decision?: SpeakerDecision;
+  /** Display spans retain their original segment and character anchors. */
+  sourceSegmentIndex?: number;
+  sourceCharStart?: number;
+  sourceCharEnd?: number;
   fileIndex: number;
   start: number;
   end: number;
@@ -82,14 +94,14 @@ export function segmentsFromTranscription(
   const segments: TranscriptSegment[] = [];
   for (const item of raw) {
     const entry = record(item);
-    if (!entry) continue;
+    if (!entry) return null;
     const { start, end, text } = entry;
     if (
       typeof start !== "number" ||
       typeof end !== "number" ||
-      typeof text !== "string"
+      typeof text !== "string" || !Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end < start
     ) {
-      continue;
+      return null; // Never compact indices used by correction and word anchors.
     }
     segments.push({
       fileIndex: typeof entry.file_index === "number" ? entry.file_index : 0,
@@ -97,6 +109,13 @@ export function segmentsFromTranscription(
       end,
       speaker: typeof entry.speaker === "string" ? entry.speaker : null,
       text,
+      modelSpeaker: typeof entry.speaker === "string" ? entry.speaker : null,
+      speakerAttribution: entry.speaker_attribution == null ? null
+        : entry.speaker_attribution === "assigned" || entry.speaker_attribution === "unassigned"
+          ? entry.speaker_attribution : "provisional",
+      overlapIds: Array.isArray(entry.overlap_ids)
+        ? entry.overlap_ids.filter((id): id is string => typeof id === "string") : [],
+      ...(Array.isArray(entry.words) ? { words: locateWords(text, entry.words as RawTranscriptWord[], typeof meta?.alignment === "string" ? meta.alignment : null) } : {}),
     });
   }
   return segments.length > 0 ? segments : null;
@@ -145,8 +164,10 @@ export function parseTranscriptText(
       fileIndex,
       start: hms(h1, m1, s1),
       end: hms(h2, m2, s2),
-      speaker: speaker ? labelFor(speaker.trim()) : null,
+      speaker: speaker?.includes("Överlappande tal") || speaker?.includes("Talare går inte att avgöra") ? null : speaker ? labelFor(speaker.trim()) : null,
       text: body,
+      ...(speaker?.includes("Överlappande tal") ? { speakerAttribution: "provisional" as const } : {}),
+      ...(speaker?.includes("Talare går inte att avgöra") ? { decision: "unresolved" as const } : {}),
     });
   }
   return segments;
@@ -198,7 +219,8 @@ export function attachWords(
   segments: TranscriptSegment[],
   payload: TranscriptWordsPayload | null | undefined,
 ): TranscriptSegment[] {
-  if (!payload || payload.stale || !Array.isArray(payload.segments)) {
+  if (payload?.stale) return segments.map((s) => ({ ...s, words: undefined }));
+  if (!payload || !Array.isArray(payload.segments)) {
     return segments;
   }
   const result = segments.map((s) => ({ ...s }));
@@ -224,7 +246,8 @@ export function computeTurns(segments: readonly TranscriptSegment[]): Transcript
     if (
       !current ||
       current.speaker !== segment.speaker ||
-      current.fileIndex !== segment.fileIndex
+      current.fileIndex !== segment.fileIndex ||
+      reviewBoundary(current.parts[current.parts.length - 1].segment) !== reviewBoundary(segment)
     ) {
       current = {
         index: turns.length,
@@ -240,6 +263,28 @@ export function computeTurns(segments: readonly TranscriptSegment[]): Transcript
     current.parts.push({ segmentIndex, segment });
   });
   return turns;
+}
+
+/** Keep original evidence and each human decision boundary visible. */
+function reviewBoundary(segment: TranscriptSegment): string {
+  return JSON.stringify([segment.speakerAttribution ?? null, [...(segment.overlapIds ?? [])].sort(),
+    segment.decision ?? null, segment.decision ? segment.sourceSegmentIndex : null,
+    segment.decision ? segment.sourceCharStart : null]);
+}
+
+export function needsSpeakerReview(segment: TranscriptSegment): boolean {
+  return segment.speakerAttribution === "provisional" || Boolean(segment.overlapIds?.length);
+}
+
+export function effectiveSpeakerLabel(segment: TranscriptSegment, name: (label: string | null) => string): string {
+  if (segment.decision === "unresolved") return "Talare går inte att avgöra";
+  if (segment.decision !== "confirmed" && needsSpeakerReview(segment)) return "Överlappande tal – osäker talare";
+  return name(segment.speaker);
+}
+
+/** All intersecting display spans; silence is not an active utterance. */
+export function findActiveSegmentIndices(segments: readonly TranscriptSegment[], fileIndex: number, time: number): number[] {
+  return segments.flatMap((s, i) => s.fileIndex === fileIndex && time >= s.start && time < s.end ? [i] : []);
 }
 
 /** Antal ljudfiler som segmenten refererar. */
@@ -281,13 +326,35 @@ export function findActiveWordIndex(
   return lastStarted;
 }
 
+/** Actual simultaneous words stay active; silence holds the last completed word(s). */
+export function playbackWordHighlights(segments: readonly TranscriptSegment[], fileIndex: number, time: number): Set<TranscriptWord> {
+  const active = new Set<TranscriptWord>();
+  const previous = new Set<TranscriptWord>();
+  let lastEnd = -Infinity;
+  for (const segment of segments) {
+    if (segment.fileIndex !== fileIndex) continue;
+    for (const word of segment.words ?? []) {
+      if (word.charStart < 0 || word.charEnd <= word.charStart || !Number.isFinite(word.start) ||
+          !Number.isFinite(word.end) || word.end < word.start) continue;
+      if (word.start <= time && time < word.end) active.add(word);
+      if (word.end <= time) {
+        if (word.end > lastEnd) { previous.clear(); lastEnd = word.end; }
+        if (word.end === lastEnd) previous.add(word);
+      }
+    }
+  }
+  return active.size ? active : previous;
+}
+
 /** Första repliken för en talare, som hopp-mål för "Lyssna". */
 export function firstSegmentForSpeaker(
   segments: readonly TranscriptSegment[],
   speaker: string,
 ): { fileIndex: number; time: number; segmentIndex: number } | null {
   for (let i = 0; i < segments.length; i++) {
-    if (segments[i].speaker === speaker) {
+    if (segments[i].speaker === speaker && !needsSpeakerReview(segments[i]) &&
+        segments[i].decision !== "unresolved" &&
+        (segments[i].speakerAttribution == null || segments[i].speakerAttribution === "assigned")) {
       return { fileIndex: segments[i].fileIndex, time: segments[i].start, segmentIndex: i };
     }
   }

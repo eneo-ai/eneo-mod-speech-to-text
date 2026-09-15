@@ -60,7 +60,7 @@ docker compose logs -f frontend
 Projektet har en devcontainer med Python 3.12 och Node 20.
 
 1. Öppna repot i VS Code.
-2. Kör **Dev Containers: Reopen in Container**.
+2. Kör **Dev Containers: Reopen in Container** och öppna en **ny terminal i det VS Code-fönstret**. Kommandona nedan ska köras inne i containern, där repot ligger på `/workspaces/eneo-mod-speech-to-text`.
 3. Skapa lokal miljöfil om den saknas:
 
 ```bash
@@ -68,23 +68,35 @@ cp .env.example .env
 ```
 
 4. Fyll i `.env`. För lokal körning i devcontainern behöver `COOKIE_SECURE=false`.
-5. Starta backend i en terminal:
+5. Starta backend i en terminal inne i containern:
 
 ```bash
+cd /workspaces/eneo-mod-speech-to-text
 set -a
 source .env
 set +a
 cd backend
-source .venv/bin/activate
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
 ```
 
-6. Starta frontend i en annan terminal:
+6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:
 
 ```bash
+cd /workspaces/eneo-mod-speech-to-text
+set -a
+source .env
+set +a
 cd frontend
 npm run dev
 ```
+
+Starta om frontend efter att ha ändrat `NEXT_PUBLIC_`-inställningar.
+
+Om du får `uvicorn: command not found` efter att ha aktiverat `.venv`: kontrollera
+att terminalen verkligen är inne i containern. Miljön skapas där med Python 3.12;
+den kan inte användas från macOS även om prompten visar `(.venv)`. Från en vanlig
+terminal på datorn kan du gå in med `docker exec -it <containerns namn> bash`
+(hitta namnet med `docker ps`) och sedan köra startkommandona ovan.
 
 Öppna sedan `http://localhost:3002`. VS Code forwardar port `3002` och `8000`.
 Dev-servern lyssnar avsiktligt på `3002`: Eneos egen devcontainer tar `3000`
@@ -97,6 +109,25 @@ Mot ett lokalt Eneo i devcontainer: `ENEO_BACKEND_URL=http://host.docker.interna
 och `COOKIE_SECURE=false`. Snabbaste vägen är `AUTH_MODE=access_code` med en
 `sk_`-nyckel (service, `flows = write`) skapad i Eneos admin; för riktig SSO
 installeras modulen i Eneo med callback `http://localhost:3002/api/auth/callback`.
+
+### Granska transkriptet
+
+Med `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` visar spelaren ett sammanhängande
+transkript. Markera ord direkt med musen eller med Skift och piltangenter och välj
+**Tilldela talare**. Markeringen kan gå över flera ursprungliga textfragment.
+**Bekräfta [namn]** accepterar ett gemensamt talarförslag med ett klick.
+**Lyssna** spelar markeringen med lite sammanhang. Klicka på ett ord med heldragen
+understrykning för att flytta uppspelningen dit. Pausat ljud förblir pausat och
+pågående uppspelning fortsätter från den nya positionen. Om ordtiden saknas
+används passagens start. Det aktuella ordet visas med en tydlig blå bakgrund. **Rätta text** ändrar orden.
+**Ångra** återställer den senaste ändringen och **Återställ talare** tar bort
+beslut för de markerade orden.
+
+Prickad understrykning visar ord där talaren behöver granskas. Klicka på passagen
+för att markera hela, inklusive skiljetecken, eller använd Enter när den har fokus.
+Dra över text för att välja en mindre del. **Nästa** markerar
+nästa sådant ställe. Överlappsdetaljer finns under **Detaljer**. Namn som gäller
+hela talaren ändras separat under **Talare** ovanför transkriptet.
 
 Tester:
 

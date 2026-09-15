@@ -11,7 +11,7 @@
     --ink: 240 9% 13%; /* gray-900 #1F1F25 – primärtext */
     --ink-soft: 240 8% 29%; /* gray-700 #444450 – sekundärtext */
     --ink-mute: 240 2% 42%; /* gray-500 #68686D – mute */
-    --rule: 240 3% 72%; /* gray-300 #B7B7BA – tydligare kant */
+    --rule: 240 3% 52%; /* Control edges: >=3:1 on paper and secondary surfaces. */
     --rule-soft: 0 0% 90%; /* gray-200 #E5E5E5 – mjuk kant */
     --accent: 212 100% 29%; /* Sundsvall blue #004595 – brand/CTA */
     --accent-foreground: 0 0% 100%;
@@ -19,12 +19,12 @@
     --accent-glow: 212 100% 29% / 0.18;
     --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
     --record-foreground: 0 0% 100%;
-    --ochre: 47 96% 45%; /* gul – info-/varningsruta */
+    --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
     /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. */
     --speaker-0: 212 72% 40%;
-    --speaker-1: 152 48% 33%;
-    --speaker-2: 28 78% 40%;
+    --speaker-1: 152 48% 30%;
+    --speaker-2: 28 78% 34%;
     --speaker-3: 330 52% 42%;
     --speaker-4: 190 58% 33%;
     --speaker-5: 262 46% 48%;
@@ -39,7 +39,7 @@
     --ink: 0 0% 96%;
     --ink-soft: 240 5% 75%;
     --ink-mute: 240 4% 62%;
-    --rule: 240 5% 38%;
+    --rule: 240 5% 48%;
     --rule-soft: 240 6% 22%;
     --accent: 207 100% 66%;
     --accent-foreground: 240 10% 7%;
@@ -219,4 +219,56 @@
       ),
       hsl(var(--bg));
   }
+}
+
+
+/* Keyboard focus stays local to the control, including native selects. */
+.transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible,
+.speaker-mapping-editor :is(button, input, summary):focus-visible,
+.transcript-player:focus-visible {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 3px;
+}
+.transcript-editor:has(.transcript-editor-text:focus-visible) .transcript-focus-label {
+  outline: 2px solid hsl(var(--accent));
+  outline-offset: 3px;
+  border-radius: 2px;
+  color: hsl(var(--ink));
+}
+.transcript-editor-text [data-turn-index] {
+  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
+}
+.transcript-editor-text [data-text-span]:focus-visible {
+  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
+}
+
+/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
+@media (max-width: 639px), (max-height: 600px) {
+  .transcript-toolbar { position: static; }
+  .transcript-player { max-height: none !important; }
+  .transcript-scrollport { max-height: none; overflow: visible; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; }
+  .lyssna-pulse-ring, .lyssna-live-pulse, .lyssna-blink { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .transcript-editor-text [data-text-span] { text-decoration-color: CanvasText !important; }
+  .transcript-editor-text [aria-current="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    outline: 2px solid Highlight;
+  }
+}
+
+/* A local paragraph marker shows the editing focus without outlining the full page. */
+.transcript-editor-text:focus-visible [data-caret-paragraph="true"] {
+  box-shadow: inset 3px 0 0 hsl(var(--accent));
+}
+.transcript-editor-text button { scroll-margin-block-start: var(--transcript-toolbar-height, 0px); }
+@media (forced-colors: active) {
+  .transcript-editor-text:focus-visible [data-caret-paragraph="true"] { border-inline-start: 3px solid Highlight; }
 }

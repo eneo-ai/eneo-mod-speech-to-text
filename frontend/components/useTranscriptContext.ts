@@ -11,15 +11,22 @@ import {
   attachWords,
   fileIdsFromTranscription,
   parseTranscriptText,
+  needsSpeakerReview,
   segmentsFromTranscription,
   type TranscriptSegment,
 } from "@/lib/transcript";
 import {
   EMPTY_CORRECTIONS,
+  correctionsFromResponse,
+  correctionWriteProblem,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
 
+import { speakerReviewsFromTranscription, type FileSpeakerReview } from "@/lib/speaker-review";
+
 export interface TranscriptContext {
+  speakerReviews: FileSpeakerReview[];
+  correctionProblem: string | null;
   pending: boolean;
   /** Råa segment (etiketter SPEAKER_NN, okorrigerad text). */
   segments: TranscriptSegment[];
@@ -35,6 +42,8 @@ export interface TranscriptContext {
 
 const INITIAL: TranscriptContext = {
   pending: true,
+  speakerReviews: [],
+  correctionProblem: null,
   segments: [],
   fromMetadata: false,
   fileIds: [],
@@ -105,6 +114,8 @@ export function useTranscriptContext({
     let cancelled = false;
     (async () => {
       let segments: TranscriptSegment[] | null = null;
+      let speakerReviews: FileSpeakerReview[] = [];
+      let correctionProblem: string | null = null;
       let fileIds: string[] = [];
       let stepId: string | null = null;
       let corrections: CorrectionSet = EMPTY_CORRECTIONS;
@@ -121,9 +132,13 @@ export function useTranscriptContext({
           (source?.stepOrder != null
             ? steps.find((st) => st.step_order === source.stepOrder)
             : undefined) ??
-          steps.find((st) => segmentsFromTranscription(transcriptionOf(st)) !== null);
+          steps.find((st) => segmentsFromTranscription(transcriptionOf(st)) !== null || speakerReviewsFromTranscription(transcriptionOf(st)).length > 0);
         const transcription = transcriptionOf(step);
         segments = segmentsFromTranscription(transcription);
+        const hash = (transcription as { segments_hash?: unknown } | null)?.segments_hash;
+        const segmentsHash = typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash) ? hash : null;
+        corrections = { ...EMPTY_CORRECTIONS, ...(segmentsHash ? { schemaVersion: 3, segmentsHash } : {}) };
+        speakerReviews = speakerReviewsFromTranscription(transcription);
         fileIds = fileIdsFromTranscription(transcription);
         if (fileIds.length === 0 && Array.isArray(step?.runtime_input_file_ids)) {
           fileIds = (step.runtime_input_file_ids as unknown[]).filter(
@@ -136,26 +151,38 @@ export function useTranscriptContext({
           const [words, sets] = await Promise.all([
             // 404 är normalt: steget lagrade inga ordtider.
             getTranscriptWords(flowId, runId, stepId).catch(() => null),
-            listTranscriptCorrections(flowId, runId).catch(() => []),
+            listTranscriptCorrections(flowId, runId).catch(() => {
+              correctionProblem = "Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.";
+              return [];
+            }),
           ]);
           segments = attachWords(segments, words);
           const own = sets.find((set) => set.step_id === stepId);
-          if (own && !own.stale) {
-            corrections = {
-              occurrences: own.occurrences,
-              speaker_edits: own.speaker_edits,
-              revision: own.revision,
-            };
+          if (own) {
+            try {
+              corrections = correctionsFromResponse(own, segments, segmentsHash);
+              if (segmentsHash) corrections = { ...corrections, schemaVersion: 3, segmentsHash };
+              correctionProblem = correctionWriteProblem(corrections);
+            } catch (error) {
+              correctionProblem = error instanceof Error ? error.message : "Rättningarna kunde inte läsas.";
+            }
           }
         }
       } catch {
+        correctionProblem = "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner.";
         // Utan stegdata visas texten som den är, utan ljud.
       }
       if (cancelled) return;
       const fromMetadata = segments !== null;
+      const displaySegments = segments ?? (fallbackText ? parseTranscriptText(fallbackText, labelFor) : []);
+      if (!correctionProblem && corrections.schemaVersion !== 3 && (speakerReviews.length > 0 || displaySegments.some(needsSpeakerReview))) {
+        correctionProblem = "Talargranskningen visas skrivskyddat. Transkriptets originalunderlag saknas för sparande och godkännande.";
+      }
       setCtx({
         pending: false,
-        segments: segments ?? (fallbackText ? parseTranscriptText(fallbackText, labelFor) : []),
+        speakerReviews,
+        correctionProblem,
+        segments: displaySegments,
         fromMetadata,
         fileIds,
         stepId,

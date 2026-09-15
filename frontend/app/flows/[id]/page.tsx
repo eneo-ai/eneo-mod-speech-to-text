@@ -1,5 +1,7 @@
 "use client";
 
+import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
+
 import Link from "next/link";
 import {
   AlertCircle,
@@ -16,6 +18,7 @@ import {
   Users,
   XCircle,
 } from "lucide-react";
+import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,7 +43,6 @@ import {
   getRunStatus,
   getRunSteps,
   inputFileAudioUrl,
-  listTranscriptCorrections,
   isResumableRunStatus,
   isReviewCheckpointApproved,
   isTextualOutput,
@@ -48,7 +50,6 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  saveTranscriptCorrections,
   speakerMappingReviewSteps,
   startRun,
   uploadStepRuntimeFile,
@@ -77,16 +78,10 @@ import {
   unmappedSpeakerLabels,
   type SpeakerMappingRow,
 } from "@/lib/speaker-mapping";
-import { firstSegmentForSpeaker } from "@/lib/transcript";
-import {
-  EMPTY_CORRECTIONS,
-  sameCorrections,
-  type CorrectionSet,
-} from "@/lib/transcript-corrections";
+import { firstSegmentForSpeaker, speakerDisplayLabel } from "@/lib/transcript";
 import { SpeakerMappingEditor } from "@/components/SpeakerMappingEditor";
 import {
   TranscriptPlayer,
-  type CorrectionsSaveState,
   type TranscriptPlayerHandle,
 } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
@@ -1397,56 +1392,7 @@ function ReviewView({
     transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
   );
 
-  // Korrigeringar sparas direkt per ändring (replace-semantik med revision).
-  const [corrections, setCorrections] = useState<CorrectionSet>(EMPTY_CORRECTIONS);
-  const [saveState, setSaveState] = useState<CorrectionsSaveState>("idle");
-  const [localError, setLocalError] = useState<string | null>(null);
-  const revisionRef = useRef<number | null>(null);
-  const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
-  useEffect(() => {
-    if (transcript.pending) return;
-    setCorrections(transcript.corrections);
-    revisionRef.current = transcript.corrections.revision;
-  }, [transcript.pending, transcript.corrections]);
-
-  function onCorrectionsChange(next: CorrectionSet) {
-    setCorrections(next);
-    const stepId = transcript.stepId;
-    if (!stepId) return;
-    setSaveState("saving");
-    setLocalError(null);
-    saveQueue.current = saveQueue.current.then(async () => {
-      try {
-        const saved = await saveTranscriptCorrections(flowId, runId, stepId, {
-          expected_revision: revisionRef.current,
-          occurrences: next.occurrences,
-          speaker_edits: next.speaker_edits,
-        });
-        revisionRef.current = saved.revision;
-        setCorrections((prev) =>
-          sameCorrections(prev, next) ? { ...prev, revision: saved.revision } : prev,
-        );
-        setSaveState("saved");
-        return true;
-      } catch (err) {
-        setSaveState("error");
-        setLocalError(friendlyError(err));
-        // Ladda om serverns version så nästa försök utgår från rätt revision.
-        const sets = await listTranscriptCorrections(flowId, runId).catch(() => []);
-        const own = sets.find((set) => set.step_id === stepId);
-        const reloaded: CorrectionSet = own
-          ? {
-              occurrences: own.occurrences,
-              speaker_edits: own.speaker_edits,
-              revision: own.revision,
-            }
-          : EMPTY_CORRECTIONS;
-        revisionRef.current = reloaded.revision;
-        setCorrections(reloaded);
-        return false;
-      }
-    });
-  }
+  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
@@ -1482,7 +1428,7 @@ function ReviewView({
     // Pågående korrigeringssparningar måste landa före godkännandet, som
     // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
     const correctionsSaved = await saveQueue.current;
-    if (!correctionsSaved) {
+    if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
       setWorking(null);
       return;
     }
@@ -1574,7 +1520,7 @@ function ReviewView({
       >
         Avvisa
       </button>
-      <Button type="button" onClick={saveAndApprove} disabled={busy}>
+      <Button type="button" onClick={saveAndApprove} disabled={busy || (isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem)))}>
         {working === "approve" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -1607,17 +1553,20 @@ function ReviewView({
     return (
       <>
         {header}
-        <main className="px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto max-w-7xl">
+        <main className={`px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto ${SPEAKER_REVIEW_ENABLED ? "max-w-5xl" : "max-w-7xl"}`}>
           <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
-            Vem är vem?
+            {SPEAKER_REVIEW_ENABLED ? "Granska transkriptet" : "Vem är vem?"}
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
-            Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet
-            när du fortsätter.
+            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
           </p>
 
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start">
-            <section className="paper-card p-4">
+          <div className={SPEAKER_REVIEW_ENABLED ? "grid gap-3" : "grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start"}>
+            <details open={SPEAKER_REVIEW_ENABLED ? undefined : true} className="paper-card p-4">
+              <summary className={SPEAKER_REVIEW_ENABLED ? "cursor-pointer text-[13px] font-medium" : "hidden"}>
+                Talare <span className="ml-2 font-normal text-ink-mute">{speakerRows.map((row) => row.name || speakerDisplayLabel(row.label)).join(", ")}</span>
+              </summary>
+              {SPEAKER_REVIEW_ENABLED && <p className="mt-3 mb-4 text-[12px] text-ink-mute">Namn gäller för talaren i hela transkriptet. För att byta vem som säger vissa ord, markera orden nedan.</p>}
               {speakerRows.length === 0 ? (
                 <p className="text-[13px] text-ink-soft">
                   Inga talare kunde urskiljas i transkriptet. Du kan fortsätta
@@ -1633,6 +1582,7 @@ function ReviewView({
                   showSamples={!transcript.pending && !hasAudio}
                   onChange={setSpeakerRows}
                   onListen={hasAudio ? listenTo : undefined}
+                  listenUnavailableReason={(label) => !firstSegmentForSpeaker(transcript.segments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                 />
               )}
               {unmapped.length > 0 && speakerRows.length > 0 && (
@@ -1640,12 +1590,14 @@ function ReviewView({
                   Talare utan namn behåller sin etikett i transkriptet.
                 </p>
               )}
-            </section>
+            </details>
 
             <TranscriptPlayer
               ref={playerRef}
               className="paper-card overflow-hidden lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)]"
               segments={transcript.segments}
+              speakerReviews={transcript.speakerReviews}
+              correctionProblem={transcript.correctionProblem}
               fileCount={transcript.fileIds.length}
               audioSrcFor={(fileIndex) =>
                 inputFileAudioUrl(flowId, runId, transcript.fileIds[fileIndex] ?? "")
@@ -1668,6 +1620,10 @@ function ReviewView({
               {runError ?? localError}
             </p>
           )}
+          {saveState === "error" && <div className="mt-2 flex gap-4 text-[13px]">
+            <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
+            <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>
+          </div>}
           <div className="mt-4">{rejectSection}</div>
           {actions}
         </main>
@@ -1805,7 +1761,8 @@ function NotesView({
   const [confirmedWords] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(flowId, run.id, transcript.stepId) : null,
   );
-  const showPlayer = success && !transcript.pending && transcript.segments.length > 0;
+  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, run.id, transcript);
+  const showPlayer = success && !transcript.pending && (transcript.segments.length > 0 || transcript.speakerReviews.length > 0);
   const outputLabel = labelForOutputType(outputType);
   const finishedDate = run.finished_at
     ? new Date(run.finished_at).toLocaleDateString("sv-SE", {
@@ -1899,16 +1856,27 @@ function NotesView({
             <div className="mb-2.5 text-[13px] font-semibold text-ink">
               Inspelning och transkript
             </div>
+            {(saveState !== "idle" || (corrections.updatedAt && run.finished_at && Date.parse(corrections.updatedAt) > Date.parse(run.finished_at))) && <p className="mb-2 text-[13px]">Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade transkriptet som underlag för en ny sammanfattning.</p>}
+            {localError && <p role="alert" className="text-accent">{localError}</p>}
+            {saveState === "error" && <div className="flex gap-4 text-[13px]">
+              <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
+              <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>
+            </div>}
             <TranscriptPlayer
               className="paper-card overflow-hidden max-h-[36rem]"
               segments={transcript.segments}
+              speakerReviews={transcript.speakerReviews}
+              correctionProblem={transcript.correctionProblem}
               fileCount={transcript.fileIds.length}
               audioSrcFor={(fileIndex) =>
                 inputFileAudioUrl(flowId, run.id, transcript.fileIds[fileIndex] ?? "")
               }
               speakerNames={transcript.speakerNames}
               textFallback=""
-              corrections={transcript.corrections}
+              corrections={corrections}
+              editable={transcript.fromMetadata && !transcript.pending}
+              onCorrectionsChange={onCorrectionsChange}
+              saveState={saveState}
               confirmedWords={confirmedWords}
             />
           </section>

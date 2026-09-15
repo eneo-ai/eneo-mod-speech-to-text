@@ -29,6 +29,7 @@ export function SpeakerMappingEditor({
   showSamples = false,
   onChange,
   onListen,
+  listenUnavailableReason,
 }: {
   rows: SpeakerMappingRow[];
   /** Modellens ursprungliga förslag, för att beskriva raden oberoende av val. */
@@ -42,6 +43,7 @@ export function SpeakerMappingEditor({
   onChange: (rows: SpeakerMappingRow[]) => void;
   /** Hoppa till talarens första replik. Saknas när inget ljud finns. */
   onListen?: (label: string) => void;
+  listenUnavailableReason?: (label: string) => string | null;
 }) {
   const names = knownSpeakerNames(participants, rows);
   const proposalByLabel = new Map(proposals.map((p) => [p.label, p]));
@@ -65,11 +67,12 @@ export function SpeakerMappingEditor({
   }
 
   return (
-    <ul className="flex flex-col">
+    <ul className="speaker-mapping-editor flex flex-col">
       {rows.map((row) => {
         const color = `hsl(var(--speaker-${speakerColorIndex(row.label)}))`;
         const proposal = proposalByLabel.get(row.label);
         const title = speakerDisplayLabel(row.label);
+        const unavailable = listenUnavailableReason?.(row.label);
         return (
           <li
             key={row.label}
@@ -99,9 +102,9 @@ export function SpeakerMappingEditor({
                 <button
                   type="button"
                   onClick={() => onListen(row.label)}
-                  disabled={disabled}
-                  aria-label={`Lyssna på ${title}`}
-                  title="Lyssna"
+                  disabled={disabled || Boolean(unavailable)}
+                  aria-label={`Lyssna på ${title}${unavailable ? `: ${unavailable}` : ""}`}
+                  title={unavailable ?? "Lyssna"}
                   className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rule-soft bg-paper text-ink-soft transition-colors hover:border-ink/40 hover:text-ink disabled:opacity-50"
                 >
                   <Headphones className="h-4 w-4" strokeWidth={2} />
@@ -112,6 +115,7 @@ export function SpeakerMappingEditor({
             <div className="pl-[calc(0.625rem+0.625rem+4.5rem+0.625rem)]">
               <p className="mt-1.5 text-[12px] leading-snug text-ink-mute">
                 {describe(row)}
+                {unavailable && <span className="block">{unavailable}</span>}
               </p>
               {showSamples && row.samples.length > 0 && (
                 <ul className="mt-1.5 flex flex-col gap-0.5 text-[12px] italic leading-snug text-ink-soft">
@@ -124,7 +128,7 @@ export function SpeakerMappingEditor({
               )}
               {proposal?.evidence && (
                 <details className="mt-1 text-[12px] leading-snug">
-                  <summary className="cursor-pointer select-none text-ink-mute hover:text-ink">
+                  <summary className="min-h-6 cursor-pointer select-none text-ink-mute hover:text-ink">
                     Varför?
                   </summary>
                   <p className="mt-1 text-ink-soft">{proposal.evidence}</p>

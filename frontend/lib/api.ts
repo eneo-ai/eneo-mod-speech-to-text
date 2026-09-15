@@ -1,3 +1,4 @@
+import { correctionWriteProblem } from "./transcript-corrections";
 // All requests go to same-origin /api/* — Next rewrites these to the backend.
 // The backend in turn proxies /api/eneo/* to Eneo with the module's service
 // key and, in Eneo SSO mode, the short-lived module-user token from its
@@ -967,6 +968,8 @@ export function inputFileAudioUrl(
 // --- Transkriptkorrigeringar ---
 
 export interface TranscriptCorrectionsPublic {
+  schema_version?: number;
+  segments_hash?: string | null;
   flow_run_id: string;
   step_id: string;
   occurrences: {
@@ -981,8 +984,9 @@ export interface TranscriptCorrectionsPublic {
     char_start: number | null;
     char_end: number | null;
     original: string | null;
-    original_speaker: string;
-    speaker: string;
+    original_speaker: string | null;
+    speaker: string | null;
+    decision?: "confirmed" | "unresolved";
   }[];
   revision: number;
   stale: boolean;
@@ -1001,6 +1005,8 @@ export async function listTranscriptCorrections(flowId: string, runId: string) {
 }
 
 export interface TranscriptCorrectionsEditRequest {
+  schema_version?: 2 | 3;
+  segments_hash?: string;
   /** null skapar den första uppsättningen; annars senast kända revision. */
   expected_revision: number | null;
   occurrences: TranscriptCorrectionsPublic["occurrences"];
@@ -1014,6 +1020,8 @@ export async function saveTranscriptCorrections(
   stepId: string,
   body: TranscriptCorrectionsEditRequest,
 ) {
+  const problem = correctionWriteProblem({ ...body, schemaVersion: body.schema_version, segmentsHash: body.segments_hash, revision: body.expected_revision });
+  if (problem) throw new Error(problem);
   return request<TranscriptCorrectionsPublic>(
     `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-corrections/`,
     { method: "PATCH", body: JSON.stringify(body) },

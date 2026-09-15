@@ -1,0 +1,622 @@
+[
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "audio-unavailable",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "selected-passage",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "details",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "text-correction",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "confirmed",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "read-only",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "speaker-names-open",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 2\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 3\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(3) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "six-speaker-colors",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "text-spacing",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 1280,
+    "state": "forced-colors",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "audio-unavailable",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "selected-passage",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "details",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "text-correction",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "confirmed",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "read-only",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "speaker-names-open",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 2\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 3\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "six-speaker-colors",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "text-spacing",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "light",
+    "width": 320,
+    "state": "forced-colors",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "audio-unavailable",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "selected-passage",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "details",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "text-correction",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "confirmed",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "read-only",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "speaker-names-open",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 2\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 3\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(3) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "six-speaker-colors",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "text-spacing",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 1280,
+    "state": "forced-colors",
+    "overflow": {
+      "width": 1280,
+      "content": 1280
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "audio-unavailable",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "selected-passage",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "details",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "text-correction",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "confirmed",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "read-only",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "speaker-names-open",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": [
+      {
+        "id": "color-contrast",
+        "nodes": [
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(1) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 2\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > .mt-1\\.5.leading-snug"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              ".first\\:pt-0.last\\:border-0.last\\:pb-0:nth-child(2) > .pl-\\[calc\\(0\\.625rem\\+0\\.625rem\\+4\\.5rem\\+0\\.625rem\\)\\] > details > .select-none"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          },
+          {
+            "target": [
+              "input[aria-label=\"Namn för Talare 3\"]"
+            ],
+            "summary": "Fix any of the following:\n  Element's background color could not be determined because it is overlapped by another element"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "six-speaker-colors",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "text-spacing",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  },
+  {
+    "colorScheme": "dark",
+    "width": 320,
+    "state": "forced-colors",
+    "overflow": {
+      "width": 320,
+      "content": 320
+    },
+    "violations": [],
+    "incomplete": []
+  }
+]

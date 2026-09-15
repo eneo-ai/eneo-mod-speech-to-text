@@ -56,12 +56,12 @@ export function NameCombobox({
   const items = useMemo<Option[]>(() => {
     const names =
       typing && query ? options.filter((n) => n.toLowerCase().includes(query)) : [...options];
-    const out: Option[] = names.map((name) => ({ id: name, kind: "name", name }));
+    const out: Option[] = [...new Set(names)].map((name) => ({ id: `name:${name}`, kind: "name", name }));
     if (trimmed && !exact) {
       // Ett skrivet namn som inte finns bland alternativen: erbjud det som
       // tillägg medan det skrivs, visa det som valt när listan öppnas igen.
       if (typing) out.push({ id: ADD_ID, kind: "add", name: trimmed });
-      else out.unshift({ id: trimmed, kind: "name", name: trimmed });
+      else out.unshift({ id: `name:${trimmed}`, kind: "name", name: trimmed });
     }
     out.push({ id: NONE_ID, kind: "none" });
     return out;
@@ -118,7 +118,11 @@ export function NameCombobox({
     }
   }
 
-  const activeId = open && items[active] ? `${listId}-${items[active].id}` : undefined;
+  useEffect(() => {
+    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [active, open, listId]);
+
+  const activeId = open && items[active] ? `${listId}-${active}` : undefined;
 
   return (
     <div ref={rootRef} className={cn("relative min-w-0", className)}>
@@ -153,12 +157,13 @@ export function NameCombobox({
         tabIndex={-1}
         aria-label={open ? "Stäng listan" : "Visa namn"}
         disabled={disabled}
-        onPointerDown={(e) => {
+        onClick={(e) => {
           // Låt inte inputens onFocus öppna listan igen direkt efter en stängning.
           e.preventDefault();
-          setTyping(false);
-          setOpen((o) => !o);
+          const nextOpen = !open;
           inputRef.current?.focus();
+          setTyping(false);
+          setOpen(nextOpen);
         }}
         className="absolute inset-y-0 right-0 grid w-8 place-items-center text-ink-mute hover:text-ink disabled:opacity-50"
       >
@@ -168,6 +173,7 @@ export function NameCombobox({
       <ul
         id={listId}
         role="listbox"
+        aria-label={ariaLabel ? `Förslag: ${ariaLabel}` : "Namnförslag"}
         hidden={!open}
         className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-rule-soft bg-paper p-1 shadow-md"
       >
@@ -177,7 +183,7 @@ export function NameCombobox({
           return (
             <li
               key={option.id}
-              id={`${listId}-${option.id}`}
+              id={`${listId}-${i}`}
               role="option"
               aria-selected={selected}
               onMouseEnter={() => setActive(i)}
@@ -185,14 +191,14 @@ export function NameCombobox({
               onClick={() => choose(option)}
               className={cn(
                 "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px]",
-                i === active ? "bg-bg-2 text-ink" : "text-ink",
+                i === active ? "bg-bg-2 text-ink shadow-[inset_3px_0_0_hsl(var(--accent))]" : "text-ink",
                 option.kind === "none" && "text-ink-soft",
                 option.kind === "none" && items.length > 1 && "mt-1 border-t border-rule-soft pt-2",
               )}
             >
               {option.kind === "add" && <Plus className="h-3.5 w-3.5 shrink-0 text-accent" />}
               {option.kind === "none" && <UserX className="h-3.5 w-3.5 shrink-0" />}
-              <span className="min-w-0 flex-1 truncate">
+              <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
                 {option.kind === "add" ? (
                   <>
                     Lägg till <span className="font-semibold">“{option.name}”</span>

@@ -10,6 +10,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { TranscriptEditor } from "@/components/TranscriptEditor";
+import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
 import { cn } from "@/lib/utils";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
 import {
@@ -25,6 +27,9 @@ import {
   computeTurns,
   countFiles,
   findActiveSegmentIndex,
+  findActiveSegmentIndices,
+  effectiveSpeakerLabel,
+  needsSpeakerReview,
   findActiveWordIndex,
   formatClock,
   speakerColorIndex,
@@ -39,6 +44,9 @@ import {
   occurrencesForLine,
   withLineCorrection,
   withSpeakerEdit,
+  correctedSegmentText,
+  correctionWriteProblem,
+  renderReviewedTranscript,
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
@@ -50,7 +58,7 @@ export interface TranscriptPlayerHandle {
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
-const RATES = [1, 1.25, 1.5, 2];
+const RATES = [0.75, 1, 1.25, 1.5, 2];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const SKIP_SECONDS = 10;
 
@@ -121,6 +129,9 @@ export const TranscriptPlayer = forwardRef<
   {
     /** Råa segment; korrigeringar läggs på vid visning. */
     segments: readonly TranscriptSegment[];
+    speakerReviews?: readonly FileSpeakerReview[];
+    reviewEnabled?: boolean;
+    correctionProblem?: string | null;
     /** Antal ljudfiler; 0 = inget ljud, bara läsbart transkript. */
     fileCount: number;
     audioSrcFor: (fileIndex: number) => string;
@@ -146,6 +157,9 @@ export const TranscriptPlayer = forwardRef<
 >(function TranscriptPlayer(
   {
     segments,
+    speakerReviews = [],
+    reviewEnabled = SPEAKER_REVIEW_ENABLED,
+    correctionProblem,
     fileCount,
     audioSrcFor,
     speakerNames,
@@ -164,6 +178,7 @@ export const TranscriptPlayer = forwardRef<
 ) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
+  const replayEnd = useRef<{ fileIndex: number; time: number } | null>(null);
   const pendingSeek = useRef<{ time: number; autoplay: boolean } | null>(null);
   const programmaticScrollUntil = useRef(0);
 
@@ -174,17 +189,18 @@ export const TranscriptPlayer = forwardRef<
   const [rate, setRate] = useState(1);
   const [follow, setFollow] = useState(true);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [activeWordIndex, setActiveWordIndex] = useState(-1);
   const [audioUnavailable, setAudioUnavailable] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [editingIndex, setEditingIndex] = useState(-1);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
+  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, currentTime));
   const correctedIndices = applied.corrected;
   const correctedRanges = applied.ranges;
   const turns = useMemo(() => computeTurns(shown), [shown]);
-  const totalFiles = Math.max(fileCount, countFiles(shown));
+  const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
   const withHours = useMemo(
     () => duration >= 3600 || shown.some((s) => s.end >= 3600),
     [duration, shown],
@@ -193,14 +209,14 @@ export const TranscriptPlayer = forwardRef<
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
   const hasSegments = shown.length > 0;
   const hasAudio = fileCount > 0 && !audioPending;
-  const canEdit = editable && typeof onCorrectionsChange === "function";
+  const canEdit = editable && !correctionProblem && typeof onCorrectionsChange === "function";
+  const canReview = canEdit && reviewEnabled && corrections?.schemaVersion === 3 && !correctionWriteProblem(corrections);
   const canConfirm = typeof onToggleConfirmed === "function";
 
   const src = hasAudio ? audioSrcFor(currentFile) : undefined;
 
   useEffect(() => {
     setActiveIndex(-1);
-    setActiveWordIndex(-1);
   }, [segments]);
 
   const displayName = useCallback(
@@ -215,14 +231,13 @@ export const TranscriptPlayer = forwardRef<
   const labelOptions = useMemo(() => {
     const set = new Set<string>(speakerOptions ?? []);
     for (const s of segments) if (s.speaker) set.add(s.speaker);
+    for (const e of corrections?.speaker_edits ?? []) if (e.speaker) set.add(e.speaker);
     return [...set].sort();
-  }, [speakerOptions, segments]);
+  }, [speakerOptions, segments, corrections]);
 
   function syncActive(time: number) {
     const index = findActiveSegmentIndex(shown, currentFile, time);
     setActiveIndex(index);
-    const words = shown[index]?.words;
-    setActiveWordIndex(words ? findActiveWordIndex(words, time) : -1);
   }
 
   function onTimeUpdate() {
@@ -230,6 +245,9 @@ export const TranscriptPlayer = forwardRef<
     if (!audio) return;
     setCurrentTime(audio.currentTime);
     syncActive(audio.currentTime);
+    if (replayEnd.current?.fileIndex === currentFile && audio.currentTime >= replayEnd.current.time) {
+      audio.pause(); replayEnd.current = null;
+    }
   }
 
   function onLoadedMetadata() {
@@ -241,6 +259,7 @@ export const TranscriptPlayer = forwardRef<
     if (pending) {
       pendingSeek.current = null;
       audio.currentTime = pending.time;
+      setCurrentTime(pending.time);
       syncActive(pending.time);
       if (pending.autoplay) void audio.play().catch(ignoreAbort);
     }
@@ -248,16 +267,20 @@ export const TranscriptPlayer = forwardRef<
 
   const seekTo = useCallback(
     (fileIndex: number, time: number, autoplay = false) => {
+      replayEnd.current = null;
       if (!hasAudio) {
+        setCurrentTime(time);
         setCurrentFile(fileIndex);
         setActiveIndex(findActiveSegmentIndex(shown, fileIndex, time));
-        setActiveWordIndex(-1);
         return;
       }
       setFollow(true);
       const audio = audioRef.current;
       if (fileIndex !== currentFile || !audio) {
         pendingSeek.current = { time, autoplay };
+        setCurrentTime(time);
+        setDuration(0);
+        setAudioUnavailable(false);
         setCurrentFile(fileIndex);
         return;
       }
@@ -273,6 +296,7 @@ export const TranscriptPlayer = forwardRef<
   useImperativeHandle(ref, () => ({ seekTo }), [seekTo]);
 
   function togglePlay() {
+    replayEnd.current = null;
     const audio = audioRef.current;
     if (!audio) return;
     if (audio.paused) void audio.play().catch(ignoreAbort);
@@ -280,6 +304,7 @@ export const TranscriptPlayer = forwardRef<
   }
 
   function skip(delta: number) {
+    replayEnd.current = null;
     const audio = audioRef.current;
     if (!audio) return;
     const target = Math.min(Math.max(0, audio.currentTime + delta), audio.duration || Infinity);
@@ -296,8 +321,8 @@ export const TranscriptPlayer = forwardRef<
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
-    if (target.closest("input, select, textarea, [contenteditable]")) return;
-    if (!hasAudio) return;
+    if (target.closest("button, a, input, select, textarea, [role=menuitemradio], [contenteditable]")) return;
+    if (!hasAudio || audioUnavailable) return;
     if (e.key === " " || e.key.toLowerCase() === "k") {
       e.preventDefault();
       togglePlay();
@@ -323,7 +348,7 @@ export const TranscriptPlayer = forwardRef<
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: "smooth" });
+    block.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
   }, [activeIndex, follow, editingIndex]);
 
   function onUserScroll() {
@@ -347,11 +372,14 @@ export const TranscriptPlayer = forwardRef<
   function commitLine(segmentIndex: number, newText: string) {
     setEditingIndex(-1);
     if (!canEdit || !corrections) return;
+    segmentIndex = shown[segmentIndex]?.sourceSegmentIndex ?? segmentIndex;
     const raw = segments[segmentIndex];
     if (!raw) return;
     const trimmed = newText.replace(/\s+$/g, "");
     const occurrences = occurrencesForLine(segmentIndex, raw.text, trimmed);
     const next = withLineCorrection(corrections, segmentIndex, occurrences);
+    try { applyCorrections(segments, next); setEditError(null); }
+    catch (e) { setEditError(e instanceof Error ? e.message : "Texten kunde inte rättas."); return; }
     if (JSON.stringify(next.occurrences) !== JSON.stringify(corrections.occurrences)) {
       onCorrectionsChange?.(next);
     }
@@ -360,21 +388,22 @@ export const TranscriptPlayer = forwardRef<
   function revertLine(segmentIndex: number) {
     setEditingIndex(-1);
     if (!canEdit || !corrections) return;
-    onCorrectionsChange?.(withLineCorrection(corrections, segmentIndex, null));
+    onCorrectionsChange?.(withLineCorrection(corrections, shown[segmentIndex]?.sourceSegmentIndex ?? segmentIndex, null));
   }
 
   function reassignTurn(turn: TranscriptTurn, speaker: string) {
     if (!canEdit || !corrections) return;
     let next = corrections;
     for (const part of turn.parts) {
-      const stored = segments[part.segmentIndex]?.speaker;
+      const sourceIndex = part.segment.sourceSegmentIndex ?? part.segmentIndex;
+      const stored = segments[sourceIndex]?.speaker;
       if (!stored) continue;
-      next = withSpeakerEdit(next, part.segmentIndex, stored, speaker);
+      next = withSpeakerEdit(next, sourceIndex, stored, speaker);
     }
     onCorrectionsChange?.(next);
   }
 
-  if (!hasSegments) {
+  if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
     return (
       <section className={cn("flex flex-col", className)} aria-label="Transkript">
         <p className="px-4 pt-4 text-[12px] text-ink-mute">
@@ -389,7 +418,7 @@ export const TranscriptPlayer = forwardRef<
 
   return (
     <section
-      className={cn("flex min-h-0 flex-col", className)}
+      className={cn("transcript-player flex min-h-0 flex-col", className)}
       role="region"
       aria-label="Inspelning och transkript"
       tabIndex={0}
@@ -462,7 +491,8 @@ export const TranscriptPlayer = forwardRef<
             syncActive(t);
           }}
           aria-label="Position i inspelningen"
-          className="min-w-0 flex-1 accent-[hsl(var(--accent))]"
+          aria-valuetext={`${formatClock(currentTime, withHours)} av ${formatClock(duration, withHours)}`}
+          className="min-h-6 min-w-0 flex-1 accent-[hsl(var(--accent))]"
         />
         <span className="font-mono text-[11px] tabular-nums text-ink-mute shrink-0">
           {formatClock(duration, withHours)}
@@ -481,7 +511,7 @@ export const TranscriptPlayer = forwardRef<
           <button
             type="button"
             onClick={() => setFollow(true)}
-            className="text-[11px] text-accent hover:underline shrink-0"
+            className="min-h-8 min-w-8 text-[12px] text-accent hover:underline shrink-0"
           >
             Följ
           </button>
@@ -489,7 +519,7 @@ export const TranscriptPlayer = forwardRef<
       </div>
 
       {totalFiles > 1 && hasAudio && (
-        <div className="flex items-center gap-1.5 border-b border-rule-soft px-3 py-1.5">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-rule-soft px-3 py-1.5">
           {Array.from({ length: totalFiles }, (_, i) => (
             <button
               key={i}
@@ -497,7 +527,7 @@ export const TranscriptPlayer = forwardRef<
               onClick={() => seekTo(i, 0, false)}
               aria-pressed={i === currentFile}
               className={cn(
-                "rounded-full px-2.5 py-0.5 text-[11px]",
+                "min-h-8 min-w-8 rounded-full px-2.5 py-0.5 text-[12px]",
                 i === currentFile
                   ? "bg-accent text-accent-foreground"
                   : "text-ink-soft hover:text-ink border border-rule-soft",
@@ -558,7 +588,7 @@ export const TranscriptPlayer = forwardRef<
             )}
             {canEdit && !audioPending && (
               <p className="text-ink-mute">
-                Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta.
+                {reviewEnabled ? "Markera orden du vill granska direkt i transkriptet." : "Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta."}
               </p>
             )}
           </div>
@@ -580,14 +610,28 @@ export const TranscriptPlayer = forwardRef<
         </div>
       )}
 
+      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-accent">{correctionProblem}</p>}
+      {editError && <p role="alert" className="px-3 text-accent">{editError}</p>}
+      {corrections && !correctionProblem && <button type="button" className="self-start px-3 py-2 text-[12px] underline" onClick={() => {
+        const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
+        const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }}>Hämta granskat transkript</button>}
       {/* Transkript */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
-        className="min-h-0 flex-1 overflow-y-auto p-2 max-h-[60vh] lg:max-h-none"
+        className={cn("transcript-scrollport min-h-0 flex-1 overflow-y-auto max-h-[60vh] lg:max-h-none", !reviewEnabled && "p-2")}
       >
-        {turns.map((turn, i) => (
+        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews}
+          editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
+          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={currentTime} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
+            seekTo(fileIndex, time, autoplay);
+            if (end !== undefined) replayEnd.current = { fileIndex, time: end };
+          }}
+          confirmedWords={confirmedWords} onToggleConfirmed={onToggleConfirmed}
+          onInteract={() => setFollow(false)} /> : turns.map((turn, i) => (
           <TurnBlock
             key={turn.index}
             turn={turn}
@@ -595,13 +639,18 @@ export const TranscriptPlayer = forwardRef<
             correctedIndices={correctedIndices}
             correctedRanges={correctedRanges}
             showFileHeading={totalFiles > 1 && (i === 0 || turns[i - 1].fileIndex !== turn.fileIndex)}
-            activeIndex={activeIndex}
-            activeWordIndex={activeWordIndex}
+            activeIndices={activeIndices}
+            currentTime={currentTime}
             withHours={withHours}
-            name={displayName(turn.speaker)}
+            name={effectiveSpeakerLabel(turn.parts[0].segment, displayName)}
             displayName={displayName}
             labelOptions={labelOptions}
-            canEdit={canEdit}
+            canEdit={canEdit && (canReview || turn.parts.every((p) => !needsSpeakerReview(p.segment) &&
+              !corrections?.speaker_edits.some((e) => e.segment_index === (p.segment.sourceSegmentIndex ?? p.segmentIndex) && e.char_start !== null)))}
+            textForEdit={(index) => {
+              const source = shown[index]?.sourceSegmentIndex ?? index;
+              return correctedSegmentText(segments[source].text, corrections?.occurrences.filter((o) => o.segment_index === source) ?? []);
+            }}
             confirmedWords={confirmedWords}
             onToggleConfirmed={onToggleConfirmed}
             editingIndex={editingIndex}
@@ -628,8 +677,8 @@ function TurnBlock({
   correctedIndices,
   correctedRanges,
   showFileHeading,
-  activeIndex,
-  activeWordIndex,
+  activeIndices,
+  currentTime,
   withHours,
   name,
   displayName,
@@ -643,6 +692,8 @@ function TurnBlock({
   onCommitLine,
   onRevertLine,
   onReassign,
+  onReview,
+  textForEdit,
   onSeekTurn,
   onPartClick,
 }: {
@@ -651,8 +702,8 @@ function TurnBlock({
   correctedIndices: ReadonlySet<number>;
   correctedRanges: ReadonlyMap<number, CorrectedRange[]>;
   showFileHeading: boolean;
-  activeIndex: number;
-  activeWordIndex: number;
+  activeIndices: ReadonlySet<number>;
+  currentTime: number;
   withHours: boolean;
   name: string;
   displayName: (label: string | null) => string;
@@ -666,12 +717,16 @@ function TurnBlock({
   onCommitLine: (segmentIndex: number, text: string) => void;
   onRevertLine: (segmentIndex: number) => void;
   onReassign: (speaker: string) => void;
+  onReview?: () => void;
+  textForEdit: (index: number) => string;
   onSeekTurn: () => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
 }) {
-  const color = speakerColor(turn.speaker);
-  const isActive = turn.parts.some((p) => p.segmentIndex === activeIndex);
-  const storedSpeaker = rawSegments[turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
+  const review = needsSpeakerReview(turn.parts[0].segment);
+  const decision = turn.parts[0].segment.decision;
+  const color = speakerColor(review && !decision ? null : turn.speaker);
+  const isActive = turn.parts.some((p) => activeIndices.has(p.segmentIndex));
+  const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const reassigned = storedSpeaker !== null && storedSpeaker !== turn.speaker;
 
   return (
@@ -681,6 +736,7 @@ function TurnBlock({
       )}
       <div
         data-turn-index={turn.index}
+        data-active={isActive}
         className={cn(
           "group grid grid-cols-[4.25rem_minmax(0,1fr)] gap-x-3 rounded-lg px-2 py-2 sm:grid-cols-[5.5rem_minmax(0,1fr)]",
           isActive && "bg-bg-2/60",
@@ -702,7 +758,9 @@ function TurnBlock({
             const nameButton = (
               <button
                 type="button"
-                disabled={!canEdit || !turn.speaker}
+                disabled={!canEdit || (!turn.speaker && !onReview)}
+                onClick={onReview}
+                aria-label={name}
                 title={
                   reassigned
                     ? `Bytt från ${displayName(storedSpeaker)}`
@@ -726,13 +784,13 @@ function TurnBlock({
                   )}
                   style={{ background: color, ["--tw-ring-color" as string]: color }}
                 />
-                <span className="truncate">{name}</span>
+                <span>{review && !decision ? "Osäker talare" : decision === "unresolved" ? "Oavgjord" : name}</span>
                 {canEdit && (
                   <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-70 data-[state=open]:opacity-70" />
                 )}
               </button>
             );
-            if (!canEdit || !turn.speaker) return nameButton;
+            if (!canEdit || !turn.speaker || onReview) return nameButton;
             return (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>{nameButton}</DropdownMenuTrigger>
@@ -741,7 +799,7 @@ function TurnBlock({
                     Vem säger det här?
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuRadioGroup value={turn.speaker} onValueChange={onReassign}>
+                  <DropdownMenuRadioGroup value={turn.speaker ?? ""} onValueChange={onReassign}>
                     {labelOptions.map((label) => (
                       <DropdownMenuRadioItem key={label} value={label} className="gap-2 text-[13px]">
                         <span
@@ -762,15 +820,16 @@ function TurnBlock({
           })()}
         </div>
         <div className="text-[14px] leading-[1.65] text-ink">
+          {review && <p className="text-[11px] text-ink-mute">{decision === "unresolved" ? "Överlappande tal · Talare går inte att avgöra · Granskad" : decision === "confirmed" ? "Överlappande tal · Talare bekräftad" : "Överlappande tal – osäker talare · Inte granskat"}</p>}
           {turn.parts.map((part) => {
-            const partActive = part.segmentIndex === activeIndex;
+            const partActive = activeIndices.has(part.segmentIndex);
             const corrected = correctedIndices.has(part.segmentIndex);
             const ranges = correctedRanges.get(part.segmentIndex) ?? [];
             if (editingIndex === part.segmentIndex) {
               return (
                 <LineEditor
                   key={part.segmentIndex}
-                  initial={part.segment.text}
+                  initial={textForEdit(part.segmentIndex)}
                   corrected={corrected}
                   onCommit={(text) => onCommitLine(part.segmentIndex, text)}
                   onCancel={onCancelEdit}
@@ -789,11 +848,11 @@ function TurnBlock({
                   )}
                 >
                   {pieces(part.segment, ranges).map((piece, k, all) => {
-                    const key = piece.word ? wordKey(part.segmentIndex, piece.word) : null;
+                    const key = piece.word ? wordKey(part.segment.sourceSegmentIndex ?? part.segmentIndex, piece.word) : null;
                     const confirmed = key !== null && confirmedWords.has(key);
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
                     const isWordActive =
-                      Boolean(piece.word) && partActive && piece.wordIndex === activeWordIndex;
+                      Boolean(piece.word) && partActive && piece.wordIndex === findActiveWordIndex(part.segment.words ?? [], currentTime);
                     // Bekräftelseknappen sitter efter ordets sista bit.
                     const lastOfWord =
                       Boolean(piece.word?.uncertain) &&

@@ -40,7 +40,7 @@ export function countUncertain(
   segments.forEach((s, i) => {
     for (const w of s.words ?? []) {
       if (!w.uncertain) continue;
-      if (confirmed.has(wordKey(i, w))) done++;
+      if (confirmed.has(wordKey(s.sourceSegmentIndex ?? i, w))) done++;
       else remaining++;
     }
   });
