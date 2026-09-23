@@ -137,6 +137,8 @@ class EneoProxyAuthTests(unittest.TestCase):
             ("GET", f"{base}/steps/step-1/transcript-words/"),
             ("GET", f"{base}/transcript-corrections/"),
             ("PATCH", f"{base}/steps/step-1/transcript-corrections/"),
+            # Eneo keeps an attempt's segments here, paged; the step result no longer embeds them.
+            ("GET", f"{base}/steps/step-1/attempts/1/transcript-source/?start_segment_index=200"),
         ):
             response = self.client.request(
                 method,
@@ -145,7 +147,7 @@ class EneoProxyAuthTests(unittest.TestCase):
                 json={} if method == "PATCH" else None,
             )
             self.assertEqual(response.status_code, 200, f"{method} {path}")
-        self.assertEqual(len(self.proxy_client.calls), 4)
+        self.assertEqual(len(self.proxy_client.calls), 5)
 
     def test_config_tells_the_flow_list_how_to_ask_eneo(self) -> None:
         original_space = main.settings.demo_space_id
