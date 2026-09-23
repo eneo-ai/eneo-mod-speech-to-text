@@ -30,7 +30,10 @@ export interface PlaybackSnapshot {
   /** The position on the whole recording, and its length. */
   atMs: number;
   totalMs: number;
+  /** The audio plays, as its own events tell. */
   playing: boolean;
+  /** A start waits for the part's audio to load; toggle() and pause() cancel it. */
+  starting: boolean;
   /** Playback has started or been moved; until then the position is only where it begins. */
   started: boolean;
   rate: number;
@@ -40,22 +43,32 @@ export interface PlaybackSnapshot {
   lengthsMs: readonly number[];
 }
 
-/** A part's length from its header, or null when the audio cannot tell. */
-export function probeLength(url: string): Promise<number | null> {
+/** A part's length from its header, or null when the audio cannot tell or the probe is cancelled. */
+export function probeLength(url: string, signal?: AbortSignal): Promise<number | null> {
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve(null);
     const audio = new Audio();
     const done = (ms: number | null) => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      audio.onloadedmetadata = audio.onerror = null;
+      // Without a source, a load stops the element's request.
       audio.removeAttribute("src");
+      audio.load();
       resolve(ms);
     };
-    const timer = setTimeout(() => done(null), 10_000);
+    const cancel = () => done(null);
+    const timer = setTimeout(cancel, 10_000);
+    signal?.addEventListener("abort", cancel);
     audio.preload = "metadata";
     audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000) : null);
-    audio.onerror = () => done(null);
+    audio.onerror = cancel;
     audio.src = url;
   });
 }
+
+/** How many parts' lengths are probed at once. */
+const PROBES_AT_ONCE = 3;
 
 function ignore() {}
 
@@ -68,6 +81,10 @@ export class Playback {
   private learned: (number | null)[] = [];
   /** How far a part without a known length has played. */
   private seen: number[] = [];
+  /** Parts whose audio a probe has asked for its length, whatever it told. */
+  private probed = new Set<number>();
+  /** The probes under way; cancelled when the element goes or other parts come. */
+  private probing: AbortController | null = null;
   private part = 0;
   private withinMs = 0;
   private playing = false;
@@ -76,14 +93,17 @@ export class Playback {
   private unavailable = false;
   /** Where to go once a part's audio has loaded, and whether to play on. */
   private pending: { withinMs: number; play: boolean } | null = null;
-  /** Range playback: pause when the part reaches this position. */
+  /**
+   * Range playback: pause when the part reaches this position, or its end first. Kept until the next move, as the
+   * part's end can come right after the range's.
+   */
   private stopAt: { part: number; ms: number } | null = null;
   private listeners = new Set<() => void>();
   private snapshot: PlaybackSnapshot;
 
   constructor(
     sources: readonly PlayerSource[] = [],
-    private readonly probe: (url: string) => Promise<number | null> = probeLength,
+    private readonly probe: (url: string, signal: AbortSignal) => Promise<number | null> = probeLength,
   ) {
     this.sources = sources;
     this.snapshot = this.read();
@@ -105,6 +125,8 @@ export class Playback {
     const sameUrls = sources.length === this.sources.length && sources.every((s, i) => s.url === this.sources[i].url);
     this.sources = sources;
     if (!sameUrls) {
+      this.stopProbing();
+      this.probed.clear();
       this.learned = [];
       this.seen = [];
       this.part = 0;
@@ -128,7 +150,7 @@ export class Playback {
     if (media) {
       this.load(this.part, this.withinMs, false);
       this.probeUnknown();
-    }
+    } else this.stopProbing();
   }
 
   // ---------- Controls ----------
@@ -166,22 +188,31 @@ export class Playback {
     const media = this.media;
     if (!media) return;
     this.stopAt = null;
-    if (!media.paused) {
-      media.pause();
+    if (this.playingNow()) {
+      this.pause();
       return;
     }
-    const { totalMs } = this.snapshot;
-    if (totalMs > 0 && this.atMs() >= totalMs) {
-      // Played to the end: start over from the first part.
-      this.seek(0, 0, true);
+    if (this.atPartEnd()) {
+      // At a part's end, where a passage can stop: the next part plays; after the last, the recording starts over.
+      const next = this.part + 1;
+      this.seek(next < this.sources.length ? next : 0, 0, true);
       return;
     }
     this.started = true;
-    void media.play().catch(ignore);
+    // A part still loading plays once it has loaded.
+    if (this.pending) this.pending.play = true;
+    else void media.play().catch(ignore);
     this.emit();
   }
 
+  /** Pauses, also a start that waits for a part to load. */
   pause(): void {
+    if (this.pending?.play) {
+      // The load paused the element without a pause event, so none comes now either.
+      this.pending.play = false;
+      this.playing = false;
+      this.emit();
+    }
     this.media?.pause();
   }
 
@@ -246,18 +277,17 @@ export class Playback {
     const ms = media.currentTime * 1_000;
     if (!this.known(this.part)) this.seen[this.part] = Math.max(this.seen[this.part] ?? 0, ms);
     this.withinMs = this.clampWithin(this.part, ms);
-    if (this.stopAt && this.stopAt.part === this.part && ms >= this.stopAt.ms) {
-      this.stopAt = null;
-      media.pause();
-    }
+    if (this.stopAt && this.stopAt.part === this.part && ms >= this.stopAt.ms) media.pause();
     this.emit();
   };
 
   onEnded = (): void => {
     // A part nothing knew the length of has one now: where it ended.
     if (!this.known(this.part)) this.learned[this.part] = this.withinMs;
+    // A passage stops at its part's end, also when it asked for more.
+    const rangeEnds = this.stopAt?.part === this.part;
     this.stopAt = null;
-    if (this.part < this.sources.length - 1) {
+    if (!rangeEnds && this.part < this.sources.length - 1) {
       this.part += 1;
       this.withinMs = 0;
       this.load(this.part, 0, true);
@@ -282,33 +312,54 @@ export class Playback {
       this.pending = null;
       return;
     }
-    if (this.loaded === url) {
-      if (this.pending) {
-        // Still loading: land there once it has.
-        this.pending = { withinMs, play };
-        return;
-      }
+    if (this.loaded === url && !this.pending) {
       this.media.currentTime = withinMs / 1_000;
       if (play) void this.media.play().catch(ignore);
       return;
     }
+    // The part loads, which pauses the element without a pause event; it plays once loaded if asked to.
     this.pending = { withinMs, play };
+    if (!play) this.playing = false;
+    // Still loading: land there once it has.
+    if (this.loaded === url) return;
     this.loaded = url;
     this.unavailable = false;
     this.media.src = url;
     this.media.load();
   }
 
+  /** Asks the audio of the parts of unknown length for it, a few at a time, while the element is there. */
   private probeUnknown(): void {
+    if (!this.media || this.probing) return;
+    const run = new AbortController();
+    this.probing = run;
     const sources = this.sources;
-    sources.forEach((source, i) => {
-      if (source.durationMs != null || this.learned[i] != null || i === this.part) return;
-      void this.probe(source.url).then((ms) => {
-        if (this.sources !== sources || ms == null || this.learned[i] != null) return;
-        this.learned[i] = ms;
-        this.emit();
-      }, ignore);
-    });
+    // The loading part tells its own length.
+    const queue = sources.flatMap((source, i) =>
+      source.durationMs == null && this.learned[i] == null && !this.probed.has(i) && i !== this.part ? [i] : [],
+    );
+    const next = (): void => {
+      const i = queue.shift();
+      if (i === undefined || run.signal.aborted) return;
+      if (this.learned[i] != null) return next();
+      void this.probe(sources[i].url, run.signal)
+        .catch(() => null)
+        .then((ms) => {
+          if (run.signal.aborted) return;
+          this.probed.add(i);
+          if (ms != null && this.learned[i] == null) {
+            this.learned[i] = ms;
+            this.emit();
+          }
+          next();
+        });
+    };
+    for (let n = 0; n < PROBES_AT_ONCE; n++) next();
+  }
+
+  private stopProbing(): void {
+    this.probing?.abort();
+    this.probing = null;
   }
 
   /** Keeps a length the audio's metadata gave; true when it is new. */
@@ -324,6 +375,11 @@ export class Playback {
   private playingNow(): boolean {
     if (this.pending) return this.pending.play;
     return this.media ? !this.media.paused : this.playing;
+  }
+
+  /** At the end of the current part; a length only seen so far is no end, the audio may go on. */
+  private atPartEnd(): boolean {
+    return this.known(this.part) && this.withinMs >= this.lengths()[this.part];
   }
 
   private known(part: number): boolean {
@@ -366,6 +422,7 @@ export class Playback {
       atMs: this.atMs(),
       totalMs: lengthsMs.reduce((sum, ms) => sum + ms, 0),
       playing: this.playing,
+      starting: this.pending?.play === true,
       started: this.started,
       rate: this.rate,
       unavailable: this.unavailable,
