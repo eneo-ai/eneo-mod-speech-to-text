@@ -1,10 +1,9 @@
 "use client";
 
-import { ArrowLeft, ChevronDown, FileText, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { ClassificationNote } from "@/components/flow/ClassificationNote";
 import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
@@ -192,12 +192,7 @@ export function FlowInput({
             {published.description && (
               <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">{published.description}</p>
             )}
-            <Alert role="note">
-              <ShieldCheck aria-hidden />
-              <AlertDescription className="text-[15px] text-ink">
-                Öppen information. Ladda inte upp personuppgifter.
-              </AlertDescription>
-            </Alert>
+            <ClassificationNote classification={contract.security_classification} />
           </div>
           {holdsAudio && fields.length > 0 ? (
             // While recording and after, the details fold into one line on a phone or tablet.

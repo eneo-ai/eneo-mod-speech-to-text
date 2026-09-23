@@ -227,6 +227,17 @@ export interface FlowTranscriptionContract {
   speaker_labels: { selectable: boolean; required: boolean; default: boolean };
 }
 
+/**
+ * Säkerhetsklassningen för flödets space: vilken information flödet får ta
+ * emot, med namn och beskrivning som organisationen skrev dem.
+ */
+export interface FlowSecurityClassification {
+  name: string;
+  description: string | null;
+  /** Högre nivå tillåter känsligare information. */
+  security_level: number;
+}
+
 export interface RunContract {
   flow_id: string;
   published_flow_version: number;
@@ -236,6 +247,8 @@ export interface RunContract {
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
   /** Null när flödet inte transkriberar ljud. */
   transcription?: FlowTranscriptionContract | null;
+  /** Null när spacet saknar klassning eller organisationen stängt av klassningar. */
+  security_classification?: FlowSecurityClassification | null;
 }
 
 export interface FlowPublished {

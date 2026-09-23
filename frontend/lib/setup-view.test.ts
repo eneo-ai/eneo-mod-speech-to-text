@@ -3,10 +3,11 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { ClassificationNote } from "../components/flow/ClassificationNote";
 import { DetailsForm } from "../components/flow/DetailsForm";
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
-import type { FormField } from "./api";
+import type { FlowSecurityClassification, FormField } from "./api";
 
 const noop = () => {};
 
@@ -78,4 +79,25 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   assert.match(html, /id="detalj-motesnamn-fel"[^>]*>Fyll i det här för att skapa dokumentet\.</);
   assert.match(html, /<select[^>]*id="detalj-typ"/, "a select field offers its options");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
+});
+
+test("the information row is the flow's classification as Eneo sends it, and there is none without one", () => {
+  const row = (classification: FlowSecurityClassification | null) =>
+    renderToStaticMarkup(createElement(ClassificationNote, { classification }));
+
+  const full = row({
+    name: "Öppen information",
+    description: "Ladda inte upp personuppgifter eller uppgifter som omfattas av sekretess.",
+    security_level: 0,
+  });
+  assert.match(full, /^<div role="note"/, "a note, not an alert");
+  assert.match(full, />Öppen information<\/div>/);
+  assert.match(full, />Ladda inte upp personuppgifter eller uppgifter som omfattas av sekretess\.<\/div>/);
+  assert.doesNotMatch(full, /truncate|line-clamp/, "a long description wraps");
+
+  const nameOnly = row({ name: "Intern information", description: null, security_level: 1 });
+  assert.match(nameOnly, />Intern information<\/div>/);
+  assert.equal(nameOnly.match(/<div/g)?.length, 2, "the row and its name, no empty description");
+
+  assert.equal(row(null), "", "no classification: no row, and no invented rule");
 });
