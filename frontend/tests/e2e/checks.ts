@@ -4,7 +4,7 @@
  * what fails.
  */
 import AxeBuilder from "@axe-core/playwright";
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
@@ -128,6 +128,27 @@ export async function unnamedControls(page: Page) {
   );
   await cdp.detach();
   return described;
+}
+
+/** The role, name and description Chromium's own tree gives one element, the ones a screen reader reads. */
+export async function axNode(locator: Locator) {
+  const page = locator.page();
+  await locator.evaluate((element) => element.setAttribute("data-ax-probe", ""));
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    const { root } = (await cdp.send("DOM.getDocument", { depth: 0 })) as { root: { nodeId: number } };
+    const { nodeId } = (await cdp.send("DOM.querySelector", { nodeId: root.nodeId, selector: "[data-ax-probe]" })) as {
+      nodeId: number;
+    };
+    const { nodes } = (await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })) as {
+      nodes: { role?: { value: string }; name?: { value: string }; description?: { value: string } }[];
+    };
+    const [node] = nodes;
+    return { role: node.role?.value ?? "", name: node.name?.value ?? "", description: node.description?.value ?? "" };
+  } finally {
+    await cdp.detach();
+    await locator.evaluate((element) => element.removeAttribute("data-ax-probe"));
+  }
 }
 
 /** WCAG 1.4.10: no horizontal scroll, nothing past the right edge, nothing cut off; ellipsis is listed apart. */

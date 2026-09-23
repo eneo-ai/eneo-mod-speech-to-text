@@ -16,8 +16,8 @@ const touch = (width: number, height: number): Use => ({
 });
 const laptop: Use = { viewport: { width: 1440, height: 900 } };
 // Every project scans every state (a11y.spec); keyboard walks and screen-reader snapshots run where they differ.
-const scanOnly = /(keyboard|aria)\.spec\.ts/;
-const noSnapshots = /aria\.spec\.ts/;
+const scanOnly = /(keyboard|aria|names)\.spec\.ts/;
+const noSnapshots = /(aria|names)\.spec\.ts/;
 
 export default defineConfig({
   testDir: "tests/e2e",

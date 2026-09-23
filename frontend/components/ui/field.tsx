@@ -84,8 +84,9 @@ function Field({
   ...props
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
   return (
+    // No role of its own: an unnamed group around every field is noise to a screen reader,
+    // and inside a wrapping <label> it keeps Chromium from naming the control.
     <div
-      role="group"
       data-slot="field"
       data-orientation={orientation}
       className={cn(fieldVariants({ orientation }), className)}
