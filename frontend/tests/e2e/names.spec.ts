@@ -132,3 +132,9 @@ test("a review says when it must be done by", async ({ page }, info) => {
     await expect(page.getByRole("main")).toContainText(/Granska senast 8 okt \d\d:\d\d\. Därefter avbryts körningen\./);
   }
 });
+
+test("on a phone the docked primary action is part of the page's main content", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "the action docks on a phone");
+  await setup(page);
+  await expect(page.getByRole("main").getByRole("button", { name: "Starta strömning" })).toBeVisible();
+});

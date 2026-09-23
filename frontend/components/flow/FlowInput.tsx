@@ -283,9 +283,10 @@ export function FlowInput({
             <CaptureWorkspace input={input} />
           )}
         </section>
+        {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
+            form; inside main (it is the page's action), over main's side and bottom padding. */}
+        <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden" />
       </main>
-      {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its form. */}
-      <div ref={setDockSlot} className="sticky bottom-0 md:hidden" />
     </div>
   );
 }
