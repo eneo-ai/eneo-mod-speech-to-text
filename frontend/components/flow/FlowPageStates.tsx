@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { ApiError } from "@/lib/api";
-import { friendlyError } from "@/lib/errors";
+import { errorAdvice } from "@/lib/errors";
 
 /** The flow page's shape while it loads, so nothing moves when it arrives. */
 export function FlowSkeleton() {
@@ -44,13 +44,22 @@ export function FlowSkeleton() {
   );
 }
 
+/** What the page says when the flow cannot be opened; "Försök igen" only where trying again can help. */
+export function unavailableCopy(error: unknown): { title: string; detail: string; retry: boolean } {
+  if (error instanceof ApiError && (error.status === 404 || error.code === "flow_not_published")) {
+    return {
+      title: "Flödet är inte längre tillgängligt.",
+      detail: "Det kan ha avpublicerats eller tagits bort. Välj ett annat flöde.",
+      retry: false,
+    };
+  }
+  const { message, retry, ownerMustFix } = errorAdvice(error);
+  return { title: ownerMustFix ? "Flödet kan inte användas just nu." : "Flödet kunde inte laddas.", detail: message, retry };
+}
+
 /** The flow could not be loaded: unpublished (404) or another failure, with a way on. */
 export function FlowUnavailable({ error }: { error: unknown }) {
-  const gone = error instanceof ApiError && (error.status === 404 || error.code === "flow_not_published");
-  const title = gone ? "Flödet är inte längre tillgängligt." : "Flödet kunde inte laddas.";
-  const detail = gone
-    ? "Det kan ha avpublicerats eller tagits bort. Välj ett annat flöde."
-    : `${friendlyError(error)} Försök igen om en stund.`;
+  const { title, detail, retry } = unavailableCopy(error);
   return (
     <div className="flex min-h-dvh flex-col">
       <FlowTopBar title={title} />
@@ -67,7 +76,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
                 Till flödena
               </Link>
             </Button>
-            {!gone && (
+            {retry && (
               <Button type="button" variant="outline" className="h-11" onClick={() => window.location.reload()}>
                 Försök igen
               </Button>
