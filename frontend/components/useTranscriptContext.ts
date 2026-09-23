@@ -22,7 +22,7 @@ import {
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
 
-import { speakerReviewsFromTranscription, type FileSpeakerReview } from "@/lib/speaker-review";
+import { carriesTranscript, speakerReviewsFromTranscription, stepTranscription, type FileSpeakerReview } from "@/lib/speaker-review";
 
 export interface TranscriptContext {
   speakerReviews: FileSpeakerReview[];
@@ -51,11 +51,6 @@ const INITIAL: TranscriptContext = {
   corrections: EMPTY_CORRECTIONS,
   speakerNames: {},
 };
-
-function transcriptionOf(step: FlowRunStep | undefined): unknown {
-  return (step?.input_payload_json as { transcription?: unknown } | null | undefined)
-    ?.transcription;
-}
 
 /** Namn ur ett speaker-mapping-stegs output (`structured.speakers`). */
 function speakerNamesFromSteps(steps: readonly FlowRunStep[]): Record<string, string> {
@@ -133,8 +128,8 @@ export function useTranscriptContext({
           (source?.stepOrder != null
             ? steps.find((st) => st.step_order === source.stepOrder)
             : undefined) ??
-          steps.find((st) => segmentsFromTranscription(transcriptionOf(st)) !== null || speakerReviewsFromTranscription(transcriptionOf(st)).length > 0);
-        const transcription = transcriptionOf(step);
+          steps.find(carriesTranscript);
+        const transcription = stepTranscription(step);
         segments = segmentsFromTranscription(transcription);
         const hash = (transcription as { segments_hash?: unknown } | null)?.segments_hash;
         const segmentsHash = typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash) ? hash : null;

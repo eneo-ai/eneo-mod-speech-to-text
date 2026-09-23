@@ -26,7 +26,6 @@ import {
   cancelRun,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
-  getFlowGraph,
   getPublishedFlow,
   getRun,
   getRunContract,
@@ -54,7 +53,7 @@ import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
 import { resultFileViews } from "@/lib/run-files";
-import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
+import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
@@ -151,7 +150,6 @@ function writeRunIdToUrl(runId: string | null) {
 function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
-  const [graph, setGraph] = useState<FlowGraph | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -182,16 +180,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getPublishedFlow(flowId),
-      getRunContract(flowId),
-      getFlowGraph(flowId).catch(() => null),
-    ])
-      .then(([p, c, g]) => {
+    Promise.all([getPublishedFlow(flowId), getRunContract(flowId)])
+      .then(([p, c]) => {
         if (cancelled) return;
         setPublished(p);
         setContract(c);
-        setGraph(g);
 
         // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
         // granskning). Annars: visa flödets senaste körningar.
@@ -642,11 +635,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  // Den körningslåsta grafen namnger stegen; saknas den duger den publicerade.
-  const pinned = run.graph ?? graph;
-  const steps = runSteps(pinned, run.run, run.steps);
+  const { steps, transcribed, stepLabels } = finishedRun(run.graph, run.run, run.steps);
   const files = resultFileViews(run.run.result_files ?? []);
-  const transcribed = !pinned || steps.some((step) => step.transcribes && step.state === "done");
   const inputStep = selectRuntimeInputStep(contract);
   if (runOutcome(run.run.status) === "succeeded") {
     return (
@@ -666,8 +656,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       </>
     );
   }
-  const labels = Object.fromEntries((pinned?.nodes ?? []).map((node) => [node.id, node.label]));
-  const failure = run.run.error ? runErrorView(run.run.error, labels) : null;
+  const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
   // The same audio cannot help when the input itself has to change.
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";

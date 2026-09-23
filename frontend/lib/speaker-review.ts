@@ -1,4 +1,5 @@
-import { needsSpeakerReview, type TranscriptSegment } from "./transcript";
+import type { FlowRunStep } from "./api";
+import { needsSpeakerReview, segmentsFromTranscription, type TranscriptSegment } from "./transcript";
 
 /** Review controls are opt-in; evidence is always preserved. */
 export const SPEAKER_REVIEW_ENABLED = process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED === "true";
@@ -41,6 +42,17 @@ export function speakerReviewsFromTranscription(value: unknown): FileSpeakerRevi
     return [{ fileIndex, detailsOmitted: Boolean(review?.details_omitted_reason), version: typeof entry.version === "number" ? entry.version : 0,
       overlapDetection: entry.version === 1 && entry.overlap_detection === "available" ? "available" : "unavailable", overlaps }];
   });
+}
+
+/** The transcription a step result's input carries, as the transcription step stores it. */
+export function stepTranscription(step: FlowRunStep | undefined): unknown {
+  return (step?.input_payload_json as { transcription?: unknown } | null | undefined)?.transcription;
+}
+
+/** A step result that holds a transcript: its segments, or at least its speaker review. */
+export function carriesTranscript(step: FlowRunStep | undefined): boolean {
+  const transcription = stepTranscription(step);
+  return segmentsFromTranscription(transcription) !== null || speakerReviewsFromTranscription(transcription).length > 0;
 }
 
 export interface ReviewPassage {

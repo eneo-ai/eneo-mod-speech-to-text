@@ -799,10 +799,6 @@ export interface FlowGraph {
   edges: FlowGraphEdge[];
 }
 
-export async function getFlowGraph(flowId: string) {
-  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/`);
-}
-
 /**
  * The graph of the version a run pinned, each step annotated with its status
  * in that run. Unlike the step results it is not audited per read, so it is

@@ -5,6 +5,7 @@
  */
 
 import type { FlowGraph, FlowRunError, FlowRunStep } from "./api";
+import { carriesTranscript } from "./speaker-review";
 
 export type StepState = "waiting" | "running" | "done" | "failed" | "cancelled" | "not_run";
 
@@ -55,6 +56,24 @@ const STATE_LABELS: Record<StepState, string> = {
 
 export function stepStateLabel(state: StepState): string {
   return STATE_LABELS[state];
+}
+
+/**
+ * A finished run as the result views show it: its steps, whether its results
+ * hold a transcript, and step names by id. Only the run's own graph names its
+ * steps; without it the results stand alone, never the flow's current
+ * publication, whose steps may be other steps than this run's.
+ */
+export function finishedRun(
+  runGraph: FlowGraph | null,
+  run: { status: string; error?: Pick<FlowRunError, "step_order"> | null },
+  results: readonly FlowRunStep[],
+): { steps: StepView[]; transcribed: boolean; stepLabels: Record<string, string> } {
+  return {
+    steps: runSteps(runGraph, run, results),
+    transcribed: results.some(carriesTranscript),
+    stepLabels: Object.fromEntries((runGraph?.nodes ?? []).map((node) => [node.id, node.label])),
+  };
 }
 
 export function runSteps(
