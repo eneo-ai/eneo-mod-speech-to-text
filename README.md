@@ -212,8 +212,8 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `AUTH_MODE` | `eneo_sso` (standard) eller tillfälligt `access_code` |
    | `APP_ACCESS_CODE` | endast i `access_code`; en separat, slumpmässig Dokploy-secret |
    | `COOKIE_SECURE` | `true` |
-   | `DEMO_SPACE_ID` | (valfritt) UUID för space; skippar space-väljaren |
-   | `DEMO_SPACE_NAME` | (valfritt) visningsnamn för det space:t |
+   | `DEMO_SPACE_ID` | (valfritt) space vars flöden listas när modulens nyckel är en tjänstenyckel som måste ange sitt space (bara i `access_code`); med `eneo_sso` listas flödena i alla användarens spaces |
+   | `DEMO_SPACE_NAME` | (valfritt) används inte längre av flödeslistan; space-namnet kommer från Eneo |
    | `UPLOAD_PROXY_TIMEOUT_SECONDS` | (valfritt) timeout för backendens upload-forwarding till Eneo, default `1800` |
    | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_MAX_SESSION_HOURS`); den kortlivade modultoken förnyas automatiskt via Eneo under tiden |
 
@@ -234,7 +234,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
 - **Kodlogin fungerar men Flow-anrop nekas:** Eneo-routen kräver sannolikt module-user-token; byt till `eneo_sso` när handoff-kontraktet är deployat.
 - **502 vid uppladdning:** Eneo-load-balancer-problem; kolla `docker compose logs backend` för exakt httpx-fel.
 - **504 vid uppladdning:** backendens upload-forwarding till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`.
-- **Tom flödeslista:** API-nyckeln har inget space scope, eller `DEMO_SPACE_ID` pekar på fel space.
+- **Tom flödeslista:** användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space.
 
 ---
 

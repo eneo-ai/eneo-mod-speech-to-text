@@ -27,6 +27,7 @@ import { AudioRecorder } from "@/components/AudioRecorder";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
 import {
+  ApiError,
   approveReviewCheckpoint,
   cancelRun,
   editReviewCheckpoint,
@@ -199,7 +200,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
         if (urlRunId) resumeRun(urlRunId);
         else loadEarlierRuns();
       })
-      .catch((err) => !cancelled && setLoadError(friendlyError(err)));
+      .catch((err) => {
+        if (cancelled) return;
+        // Unpublished between the list and here: module-redesign's FlowUnavailable
+        // says the same and replaces this view at integration.
+        const gone = err instanceof ApiError && (err.status === 404 || err.code === "flow_not_published");
+        setLoadError(gone ? "Flödet är inte längre tillgängligt." : friendlyError(err));
+      });
     return () => {
       cancelled = true;
     };

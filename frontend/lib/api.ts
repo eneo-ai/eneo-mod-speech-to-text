@@ -145,13 +145,6 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface SpaceSparse {
-  id: string;
-  name: string;
-  description?: string | null;
-  personal?: boolean;
-}
-
 export interface PaginatedResponse<T> {
   items: T[];
   count?: number;
@@ -164,6 +157,11 @@ export interface FlowSparsePublic {
   description?: string | null;
   published_version?: number | null;
   is_published?: boolean;
+  /** The flow's space; discovery lists every space the user belongs to. */
+  space_id: string;
+  space_name: string;
+  /** How the flow takes its input: "audio", "document" or "file". */
+  input_type?: FlowRuntimeInputFormat | string | null;
 }
 
 export interface FormField {
@@ -721,30 +719,15 @@ async function sha256Hex(value: string): Promise<string> {
 
 // ---------- API-anrop ----------
 
-export async function listSpaces() {
-  return request<PaginatedResponse<SpaceSparse>>(
-    "/api/eneo/spaces/?include_personal=true",
-  );
-}
-
-/** Hämtar en specifik space direkt. Funkar även när /spaces/-listning är tom (scope-begränsade keys). */
-export async function getSpace(spaceId: string) {
-  return request<SpaceSparse>(`/api/eneo/spaces/${spaceId}/`);
-}
-
-export async function listFlows(
-  spaceId: string,
-  limit = 50,
-  offset = 0,
-) {
-  const qs = new URLSearchParams({
-    space_id: spaceId,
-    limit: String(limit),
-    offset: String(offset),
-  });
-  return request<PaginatedResponse<FlowSparsePublic>>(
-    `/api/eneo/flows/?${qs.toString()}`,
-  );
+/**
+ * One page of the published flows the user can run. Without `spaceId` Eneo
+ * lists every space the user belongs to, narrowed by the module key's scope;
+ * items come oldest first and `has_more` says whether another page follows.
+ */
+export async function listPublishedFlows({ limit, offset, spaceId }: { limit: number; offset: number; spaceId?: string }) {
+  const query = new URLSearchParams({ published_only: "true", limit: String(limit), offset: String(offset) });
+  if (spaceId) query.set("space_id", spaceId);
+  return request<OffsetPaginatedResponse<FlowSparsePublic>>(`/api/eneo/flows/?${query}`);
 }
 
 export async function getPublishedFlow(flowId: string) {
@@ -753,15 +736,6 @@ export async function getPublishedFlow(flowId: string) {
 
 export async function getRunContract(flowId: string) {
   return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
-}
-
-// input_format för det första steget som kräver input (lägst step_order).
-// "audio" → mikrofon, "document"/"file"/"image" → dokument/fil.
-export function firstInputFormat(contract: RunContract): string | null {
-  const steps = [...(contract.steps_requiring_input ?? [])].sort(
-    (a, b) => (a.step_order ?? 0) - (b.step_order ?? 0),
-  );
-  return steps[0]?.input_format?.toLowerCase() ?? null;
 }
 
 // ---------- Flow graph ----------

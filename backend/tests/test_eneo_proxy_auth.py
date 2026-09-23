@@ -147,6 +147,20 @@ class EneoProxyAuthTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, f"{method} {path}")
         self.assertEqual(len(self.proxy_client.calls), 4)
 
+    def test_proxy_forwards_flow_discovery_across_the_users_spaces(self) -> None:
+        response = self.client.get("/api/eneo/flows/?published_only=true&limit=200&offset=0")
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/")
+        self.assertEqual(dict(call["params"]), {"published_only": "true", "limit": "200", "offset": "0"})
+
+    def test_proxy_no_longer_exposes_spaces(self) -> None:
+        # Discovery lists flows across spaces; the spaces routes refuse module credentials anyway.
+        for path in ("/api/eneo/spaces/", "/api/eneo/spaces/space-1/"):
+            self.assertEqual(self.client.get(path).status_code, 403, path)
+        self.assertEqual(self.proxy_client.calls, [])
+
     def test_proxy_exposes_retry_from_the_failed_step_with_its_idempotency_key(self) -> None:
         response = self.client.post(
             "/api/eneo/flows/flow-1/runs/run-1/retry/",

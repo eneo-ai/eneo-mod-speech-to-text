@@ -14,16 +14,15 @@ import {
 import { AuthGate } from "@/components/AuthGate";
 import { AppHeader } from "@/components/AppHeader";
 import {
-  firstInputFormat,
   getConfig,
-  getRunContract,
-  getSpace,
-  listFlows,
-  listSpaces,
-  type AppConfig,
   type FlowSparsePublic,
-  type SpaceSparse,
 } from "@/lib/api";
+import {
+  DISCOVERY_PAGE_CAP,
+  DISCOVERY_PAGE_SIZE,
+  discoverFlows,
+  type FlowSpaceGroup,
+} from "@/lib/flow-discovery";
 import { friendlyError } from "@/lib/errors";
 
 export default function FlowsPage() {
@@ -34,13 +33,7 @@ export default function FlowsPage() {
   );
 }
 
-interface SpaceFlowsData {
-  spaceId: string;
-  space: SpaceSparse | null;
-  flows: FlowSparsePublic[] | null;
-  error: string | null;
-  loading: boolean;
-}
+type SpaceFlowsData = FlowSpaceGroup;
 
 function isFlowPublished(flow: FlowSparsePublic): boolean {
   return (
@@ -49,135 +42,36 @@ function isFlowPublished(flow: FlowSparsePublic): boolean {
   );
 }
 
-// Hämtar input_format för första steget per publicerat flöde (via run-kontraktet)
-// så vi kan välja en talande ikon: mikrofon för ljud, dokument för filuppladdning.
-function useFlowInputFormats(
-  flows: FlowSparsePublic[] | null,
-  spaceId: string,
-): Record<string, string> {
-  const [formats, setFormats] = useState<Record<string, string>>({});
+function FlowsListPage() {
+  const [flows, setFlows] = useState<FlowSparsePublic[] | null>(null);
+  const [loadingFlows, setLoadingFlows] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [truncated, setTruncated] = useState(false);
 
+  // Flera spaces: en sektion per space, med space-namnet som rubrik.
+  const [sections, setSections] = useState<SpaceFlowsData[] | null>(null);
+
+  // En läsning av de publicerade flödena i användarens alla spaces, sida för
+  // sida; inga space-anrop och inget körkontrakt per flöde. Kontraktet hämtas
+  // först när ett flöde öppnas.
   useEffect(() => {
-    if (!flows || !spaceId) return;
     let cancelled = false;
-    const published = flows.filter(isFlowPublished);
-    Promise.all(
-      published.map(async (f) => {
-        try {
-          const contract = await getRunContract(f.id);
-          const fmt = firstInputFormat(contract);
-          return fmt ? ([f.id, fmt] as const) : null;
-        } catch {
-          return null;
-        }
-      }),
-    ).then((entries) => {
-      if (cancelled) return;
-      const map: Record<string, string> = {};
-      for (const e of entries) if (e) map[e[0]] = e[1];
-      setFormats(map);
-    });
+    getConfig()
+      .then((cfg) => discoverFlows({ fallbackSpaceId: cfg.demo_space_id }))
+      .then(({ groups, truncated: cut }) => {
+        if (cancelled) return;
+        setTruncated(cut);
+        // En enda space visas utan rubrik.
+        if (groups.length > 1) setSections(groups);
+        else setFlows(groups[0]?.flows ?? []);
+      })
+      .catch((err) => !cancelled && setError(friendlyError(err)))
+      .finally(() => !cancelled && setLoadingFlows(false));
     return () => {
       cancelled = true;
     };
-  }, [flows, spaceId]);
-
-  return formats;
-}
-
-function FlowsListPage() {
-  const [config, setConfig] = useState<AppConfig | null>(null);
-  const [allSpaces, setAllSpaces] = useState<SpaceSparse[] | null>(null);
-  const [spaceId, setSpaceId] = useState<string>("");
-  const [flows, setFlows] = useState<FlowSparsePublic[] | null>(null);
-  const [loadingFlows, setLoadingFlows] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Flerspace-läge: en datapost per konfigurerad space.
-  const [sections, setSections] = useState<SpaceFlowsData[] | null>(null);
-
-  useEffect(() => {
-    getConfig()
-      .then((cfg) => {
-        setConfig(cfg);
-        const ids = cfg.demo_space_ids ?? [];
-
-        if (ids.length >= 1) {
-          // Flerspace-läget: hämta metadata + flöden per space parallellt med rätt key.
-          const init: SpaceFlowsData[] = ids.map((id) => ({
-            spaceId: id,
-            space: null,
-            flows: null,
-            error: null,
-            loading: true,
-          }));
-          setSections(init);
-
-          ids.forEach((id, idx) => {
-            Promise.all([
-              // Eneo:s scope:ade API-keys ser inte sina spaces via /spaces/-listning,
-              // så vi hämtar direkt på /spaces/{id}/ istället.
-              getSpace(id).catch(() => null),
-              listFlows(id, 50, 0).then((res) => res.items ?? []),
-            ])
-              .then(([space, flowList]) => {
-                setSections((prev) =>
-                  prev
-                    ? prev.map((s, i) =>
-                        i === idx
-                          ? { ...s, space, flows: flowList, loading: false }
-                          : s,
-                      )
-                    : prev,
-                );
-              })
-              .catch((err) => {
-                setSections((prev) =>
-                  prev
-                    ? prev.map((s, i) =>
-                        i === idx
-                          ? {
-                              ...s,
-                              error: friendlyError(err),
-                              loading: false,
-                            }
-                          : s,
-                      )
-                    : prev,
-                );
-              });
-          });
-          return;
-        }
-
-        // Fallback: gamla en-space-läget med spacev väljare.
-        if (cfg.demo_space_id) {
-          setSpaceId(cfg.demo_space_id);
-          return;
-        }
-        return listSpaces().then((res) => {
-          const items = res.items ?? [];
-          setAllSpaces(items);
-          if (items.length > 0) setSpaceId(items[0].id);
-        });
-      })
-      .catch((err) => setError(friendlyError(err)));
   }, []);
 
-  useEffect(() => {
-    if (!spaceId || sections) return;
-    setLoadingFlows(true);
-    setFlows(null);
-    setError(null);
-    listFlows(spaceId)
-      .then((res) => setFlows(res.items ?? []))
-      .catch((err) => setError(friendlyError(err)))
-      .finally(() => setLoadingFlows(false));
-  }, [spaceId, sections]);
-
-  const hardcodedSpace = !!config?.demo_space_id;
-  // Endast aktivt i fallback-läget (en space utan sektioner).
-  const fallbackInputFormats = useFlowInputFormats(flows, spaceId);
   const today = new Date().toLocaleDateString("sv-SE", {
     weekday: "long",
     day: "numeric",
@@ -207,27 +101,6 @@ function FlowsListPage() {
         ))
       ) : (
         <>
-          {!hardcodedSpace && allSpaces && allSpaces.length > 1 && (
-            <div className="mx-4 mb-3 paper-card p-4">
-              <label htmlFor="space-select" className="eyebrow-sm block mb-2">
-                Space
-              </label>
-              <select
-                id="space-select"
-                value={spaceId}
-                onChange={(e) => setSpaceId(e.target.value)}
-                className="w-full bg-transparent border-0 p-0 text-[16px] font-medium text-ink outline-none cursor-pointer"
-              >
-                {allSpaces.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                    {s.personal ? " (personlig)" : ""}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
-
           <div className="px-6 md:px-8 pb-2 flex items-center justify-between eyebrow">
             <span>Samtalstyper</span>
             {flows && (
@@ -248,7 +121,7 @@ function FlowsListPage() {
 
             {flows && flows.length === 0 && !loadingFlows && (
               <p className="px-2 py-6 text-ink-soft text-sm">
-                Inga flöden i det här space:t än.
+                Det finns inga publicerade flöden som du kan använda än.
               </p>
             )}
 
@@ -256,14 +129,19 @@ function FlowsListPage() {
               <FlowRow
                 key={flow.id}
                 flow={flow}
-                spaceId={spaceId}
                 isPublished={isFlowPublished(flow)}
                 iconIndex={idx}
-                inputFormat={fallbackInputFormats[flow.id]}
+                inputFormat={flow.input_type}
               />
             ))}
           </section>
         </>
+      )}
+
+      {truncated && (
+        <p className="px-6 md:px-8 pb-8 text-sm text-muted-foreground">
+          Visar de första {(DISCOVERY_PAGE_SIZE * DISCOVERY_PAGE_CAP).toLocaleString("sv-SE")} flödena.
+        </p>
       )}
     </>
   );
@@ -276,9 +154,7 @@ function SpaceFlowsSection({
   section: SpaceFlowsData;
   fallbackTitle: string;
 }) {
-  const title = section.space?.name ?? fallbackTitle;
-  const description = section.space?.description?.trim();
-  const inputFormats = useFlowInputFormats(section.flows, section.spaceId);
+  const title = section.spaceName || fallbackTitle;
 
   return (
     <section className="mx-4 md:mx-6 mb-7 md:mb-10 rounded-3xl bg-paper border border-rule-soft shadow-[0_6px_28px_-16px_rgba(0,0,0,0.12)] px-7 md:px-11 pt-8 md:pt-11 pb-8 md:pb-11">
@@ -288,35 +164,15 @@ function SpaceFlowsSection({
         </h2>
       </div>
 
-      {description && (
-        <p className="px-1 pb-6 text-[13px] text-ink-soft leading-relaxed max-w-4xl">
-          {description}
-        </p>
-      )}
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 md:gap-4">
-        {section.error && (
-          <p className="px-2 text-sm text-destructive" role="alert">
-            {section.error}
-          </p>
-        )}
-
-        {section.loading && <FlowRowSkeleton />}
-
-        {section.flows && section.flows.length === 0 && !section.loading && (
-          <p className="px-2 py-6 text-ink-soft text-sm">
-            Inga flöden i det här space:t än.
-          </p>
-        )}
 
         {section.flows?.map((flow, idx) => (
           <FlowRow
             key={flow.id}
             flow={flow}
-            spaceId={section.spaceId}
             isPublished={isFlowPublished(flow)}
             iconIndex={idx}
-            inputFormat={inputFormats[flow.id]}
+            inputFormat={flow.input_type}
           />
         ))}
       </div>
@@ -339,20 +195,16 @@ function iconForFlow(
 
 function FlowRow({
   flow,
-  spaceId,
   isPublished,
   iconIndex,
   inputFormat,
 }: {
   flow: FlowSparsePublic;
-  spaceId: string;
   isPublished: boolean;
   iconIndex: number;
   inputFormat?: string | null;
 }) {
-  const href = spaceId
-    ? `/flows/${flow.id}?s=${spaceId}`
-    : `/flows/${flow.id}`;
+  const href = `/flows/${flow.id}`;
   const Wrapper = isPublished ? Link : "div";
   const props = isPublished ? { href } : ({} as never);
   const Icon = iconForFlow(inputFormat, iconIndex);

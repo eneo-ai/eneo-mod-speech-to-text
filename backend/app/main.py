@@ -124,7 +124,6 @@ _HOP_BY_HOP_RESPONSE_HEADERS = {
 
 _RESOURCE_ID = r"[^/]+"
 _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
-    (frozenset({"GET"}), re.compile(rf"spaces/$|spaces/{_RESOURCE_ID}/$")),
     (frozenset({"GET"}), re.compile(r"flows/$")),
     (
         frozenset({"GET"}),
