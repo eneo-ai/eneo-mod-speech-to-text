@@ -93,3 +93,46 @@ test("a flow that cannot be opened says why in Swedish, and offers Försök igen
   assert.equal(unavailableCopy(eneo(503, undefined, "Service Unavailable")).retry, true);
   assert.equal(unavailableCopy(eneo(404, "not_found", "Flow not found.")).title, "Flödet är inte längre tillgängligt.");
 });
+
+test("a cancelled review says it has ended, and the way on is the run's status, never trying again", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const advice = errorAdvice(eneo(409, "flow_review_cancelled", "The review checkpoint was cancelled."));
+  assert.equal(advice.message, "Granskningen har avslutats. Ladda om sidan för att se hur det gick med körningen.");
+  assert.equal(advice.retry, false);
+  assert.doesNotMatch(advice.message, /försök igen/i);
+});
+
+test("the run limit is the service's, not the user's own", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const advice = errorAdvice(eneo(429, "flow_run_concurrency_limit_reached", "Too many runs."));
+  assert.equal(advice.message, "För många körningar pågår just nu. Försök igen om en stund.");
+  assert.equal(advice.retry, true);
+});
+
+test("access and output-shape refusals claim no narrower cause than Eneo gives", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  assert.equal(friendlyError(eneo(403, "flow_run_access_denied", "x")), "Du har inte tillgång till den här körningen.");
+  assert.equal(
+    friendlyError(eneo(422, "typed_io_contract_violation", "x")),
+    "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
+  );
+});
+
+test("an answer that is not the JSON it claims to be is said in Swedish, and trying again can help", async (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const original = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response("<html>Bad gateway</html>", { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+  const { getConfig } = await import("./api");
+  const error = await getConfig().then(
+    () => assert.fail("a broken answer is not a config"),
+    (caught: unknown) => caught,
+  );
+  assert.ok(error instanceof ApiError, "decoding failures are the request's own errors");
+  const advice = errorAdvice(error);
+  assert.doesNotMatch(advice.message, /JSON|Unexpected token|SyntaxError/);
+  assert.equal(advice.retry, true);
+});

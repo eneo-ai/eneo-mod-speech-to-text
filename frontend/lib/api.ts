@@ -92,7 +92,12 @@ async function request<T>(
 
   const ctype = res.headers.get("content-type") || "";
   if (ctype.includes("application/json")) {
-    return (await res.json()) as T;
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // As the upload client does: a body that is not the JSON it claims is the request's own error.
+      throw new ApiError(res.status, "Servern svarade med ogiltig JSON.", null, "invalid_json_response");
+    }
   }
   return (await res.text()) as unknown as T;
 }

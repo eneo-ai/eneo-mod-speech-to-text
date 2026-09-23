@@ -78,17 +78,17 @@ const CODES: Record<string, string> = {
   flow_input_invalid_list_type: FIELDS,
   flow_run_idempotency_conflict: "Inspelningen har redan skickats med andra uppgifter. Ladda om sidan för att se körningen.",
   flow_run_invalid_idempotency_key: "Dokumentet kunde inte skapas. Ladda om sidan och försök igen.",
-  flow_run_concurrency_limit_reached:
-    "Du har redan så många körningar igång som går. Vänta tills någon är klar och försök igen.",
+  flow_run_concurrency_limit_reached: "För många körningar pågår just nu. Försök igen om en stund.",
   flow_dispatch_failed: "Körningen kunde inte startas just nu. Försök igen om en stund.",
   flow_live_transcription_unavailable: "Livetexten är inte tillgänglig. Spela in som vanligt, texten skapas när du är klar.",
   flow_run_input_file_not_found: "Ljudfilen för den här körningen kunde inte hittas.",
-  flow_run_access_denied: "Den här körningen tillhör en annan klient och kan inte granskas här.",
+  flow_run_access_denied: "Du har inte tillgång till den här körningen.",
   // Access for Tal till text itself.
   insufficient_scope: MODULE_ACCESS,
   insufficient_resource_permission: MODULE_ACCESS,
   invalid_api_key: "Tal till text kan inte ansluta till Eneo just nu. Kontakta den som ansvarar för Tal till text.",
   upstream_unreachable: "Eneo gick inte att nå just nu. Försök igen om en stund.",
+  invalid_json_response: "Servern svarade med något som inte gick att läsa. Försök igen om en stund.",
   // Review pauses (among them, confirming who is who).
   flow_review_stale_revision:
     "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats — kontrollera och försök igen.",
@@ -101,12 +101,13 @@ const CODES: Record<string, string> = {
   flow_review_idempotency_key_required: REVIEW_CHANGED,
   flow_review_step_result_not_found: REVIEW_CHANGED,
   flow_review_checkpoint_not_found: REVIEW_CHANGED,
-  flow_review_cancelled: REVIEW_CHANGED,
+  // Ended with the run: nothing more can be done on it.
+  flow_review_cancelled: "Granskningen har avslutats. Ladda om sidan för att se hur det gick med körningen.",
   flow_review_not_approved: "Godkänn granskningen innan flödet kan fortsätta.",
   flow_review_reject_reason_required: "Skriv varför du avvisar resultatet.",
   flow_review_reject_reason_too_long: "Motiveringen är för lång. Korta den och försök igen.",
   flow_review_rejected: "Resultatet avvisades i granskningen och körningen avslutades.",
-  typed_io_contract_violation: "Talarmappningen godkändes inte av Eneo: varje talare måste finnas med exakt en gång.",
+  typed_io_contract_violation: "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
   typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget.",
   // Correcting a transcript.
   flow_transcript_corrections_stale_revision:
@@ -118,7 +119,12 @@ const CODES: Record<string, string> = {
 };
 
 // Busy or briefly unreachable: the same request may go through a moment later.
-const RETRY_CODES = new Set(["flow_run_concurrency_limit_reached", "flow_dispatch_failed", "upstream_unreachable"]);
+const RETRY_CODES = new Set([
+  "flow_run_concurrency_limit_reached",
+  "flow_dispatch_failed",
+  "upstream_unreachable",
+  "invalid_json_response",
+]);
 
 // Errors this app's own upload client makes; their words are already Swedish.
 const OWN_CODES = new Set([
@@ -127,7 +133,6 @@ const OWN_CODES = new Set([
   "not_started",
   "stalled",
   "server_not_responding",
-  "invalid_json_response",
 ]);
 
 // "Failed to fetch" in Chromium, "NetworkError when attempting to fetch resource." in Firefox, "Load failed" in Safari.
