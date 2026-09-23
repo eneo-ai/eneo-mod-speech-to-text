@@ -215,6 +215,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `DEMO_SPACE_ID` | krävs i `access_code` för flödeslistan: modulnyckeln listar bara flödena i detta space (utan det loggar backend ett fel vid start och sidan säger att flödena inte kan visas). Används inte med `eneo_sso`, där listan omfattar alla användarens spaces |
    | `UPLOAD_PROXY_TIMEOUT_SECONDS` | (valfritt) timeout för backendens upload-forwarding till Eneo, default `1800` |
    | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_MAX_SESSION_HOURS`); den kortlivade modultoken förnyas automatiskt via Eneo under tiden |
+   | `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION` | (valfritt) organisationen i sidhuvudet, se [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet); utan dem visas Sundsvalls kommun |
 
 3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy/Traefik sköter HTTPS-certifikatet.
 
@@ -225,6 +226,20 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    - `https://transkribering.sundsvall.dev/api/healthz` → `{"ok":true}`
    - `eneo_sso`: callback-URL:en blir ren efter lyckad login
    - båda lägen: flödeslistan visas och ett riktigt Flow-anrop lyckas
+
+### Egen organisation i sidhuvudet
+
+Sidhuvudet visar Sundsvalls kommuns logga bredvid "Tal till text" om inget annat anges. En annan kommun eller
+myndighet byter den utan att bygga om:
+
+1. Montera en mapp med loggan i backend-tjänsten, till exempel `./branding:/branding:ro`.
+2. Sätt `ORGANIZATION_NAME=Umeå kommun` och `ORGANIZATION_LOGO=/branding/logo.svg` (SVG eller PNG, högst 1 MiB); `ORGANIZATION_LOGO_DARK` är en valfri logga för mörkt tema.
+3. Starta om tjänsterna. `SHOW_ORGANIZATION=false` visar i stället bara "Tal till text".
+
+Namnet är loggans alternativtext. Ett namn utan logga visas som text. En fil som saknas eller inte är en SVG eller
+PNG loggas en gång vid start, och namnet visas i stället. Backend serverar loggan från samma origin
+(`/api/branding/logo/light` och `/dark`), eftersom sidans CSP bara tillåter egna bilder. Färgerna följer
+fortfarande modulens tema.
 
 ### Vid problem
 
