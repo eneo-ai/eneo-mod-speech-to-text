@@ -7,7 +7,8 @@ const APP = 3401;
 const STUB = 8401;
 
 type Use = NonNullable<PlaywrightTestConfig["use"]>;
-const phone = (width: number, height: number): Use => ({
+// A touch screen: Chromium then matches (pointer: coarse) and (hover: none).
+const touch = (width: number, height: number): Use => ({
   viewport: { width, height },
   deviceScaleFactor: 2,
   hasTouch: true,
@@ -36,16 +37,18 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   projects: [
-    { name: "phone-320-light", use: { ...phone(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },
-    { name: "phone-320-dark", use: { ...phone(320, 568), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "phone-390-light", use: { ...phone(390, 844), colorScheme: "light" } },
-    { name: "phone-390-dark", use: { ...phone(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
+    { name: "phone-320-light", use: { ...touch(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },
+    { name: "phone-320-dark", use: { ...touch(320, 568), colorScheme: "dark" }, testIgnore: scanOnly },
+    { name: "phone-390-light", use: { ...touch(390, 844), colorScheme: "light" } },
+    { name: "phone-390-dark", use: { ...touch(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
+    { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
+    { name: "tablet-landscape", use: { ...touch(1024, 768), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
     { name: "laptop-1440-light", use: { ...laptop, colorScheme: "light" } },
     { name: "laptop-1440-dark", use: { ...laptop, colorScheme: "dark" }, testIgnore: scanOnly },
     // 200 % zoom of a 1280 × 800 window.
     { name: "zoom-200", use: { viewport: { width: 640, height: 400 }, deviceScaleFactor: 2, colorScheme: "light" }, testIgnore: noSnapshots },
     { name: "forced-colors", use: { ...laptop, colorScheme: "light", forcedColors: "active" }, testIgnore: noSnapshots },
-    { name: "reduced-motion", use: { ...phone(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
+    { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
   ],
   webServer: [
     {

@@ -22,23 +22,23 @@
         - button "Hastighet 1×"
       - button "Del 1" [pressed]
       - button "Del 2"
-      - paragraph: Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta.
+      - paragraph: Peka på en replik och välj pennan för att rätta texten. Välj talarens namn för att byta talare.
       - text: Del 1
-      - button /Spela från \d+:\d+/
+      - button /Spela från 0:\d+/
       - button "Talare 1":
         - text: ""
         - img
       - text: Välkomna till kommunstyrelsens möte.
       - button "Rätta repliken":
         - img
-      - button /Spela från \d+:\d+/
+      - button /Spela från 0:\d+/
       - button "Talare 2":
         - text: ""
         - img
       - text: Första punkten gäller budgeten för nästa år.
       - button "Rätta repliken":
         - img
-      - button /Spela från \d+:\d+/
+      - button /Spela från 0:\d+/
       - button "Talare 1":
         - text: ""
         - img
@@ -46,14 +46,14 @@
       - button "Rätta repliken":
         - img
       - text: Del 2
-      - button /Spela från \d+:\d+/
+      - button /Spela från 0:\d+/
       - button "Talare 2":
         - text: ""
         - img
       - text: Andra punkten är skolskjutsarna.
       - button "Rätta repliken":
         - img
-      - button /Spela från \d+:\d+/
+      - button /Spela från 0:\d+/
       - button "Talare 1":
         - text: ""
         - img

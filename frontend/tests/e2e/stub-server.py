@@ -264,6 +264,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/auth/status/":
             return self.send(200, {"authenticated": True, "auth_mode": "eneo_sso",
                                    "user": {"id": "user-1", "email": "erik.lund@sundsvall.se", "username": "Erik Lund"}})
+        if path == "/api/branding/":
+            return self.send(200, {"organization": {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}})
         if path == "/api/config/":
             return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":

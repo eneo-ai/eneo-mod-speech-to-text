@@ -5,8 +5,7 @@
     - text: ""
   - button "Öppna konto för Erik Lund"
 - main:
-  - heading "Flödet kunde inte laddas." [level=1]
-  - paragraph: "Step 1 (Transkribera ljud): Assistant snapshot is missing or uses an unsupported schema_version. Republish the flow before running it. Försök igen om en stund."
+  - heading "Flödet kan inte användas just nu." [level=1]
+  - paragraph: Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.
   - link "Till flödena":
     - /url: /flows
-  - button "Försök igen"

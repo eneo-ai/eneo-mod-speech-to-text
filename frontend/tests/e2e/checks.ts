@@ -246,8 +246,10 @@ export function focusStop(page: Page): Promise<FocusStop | null> {
     };
     const focusVisible = el.matches(":focus-visible");
     const focused = await look(el);
-    // A menu closes when its item loses focus, so a menu item compares with an unfocused sibling.
-    const sibling = el.closest('[role="menu"]')?.querySelector<HTMLElement>(`[role="${el.getAttribute("role")}"]:not(:focus)`);
+    // A menu or picker closes when its item loses focus, so an item compares with an unfocused sibling.
+    const sibling = el
+      .closest('[role="menu"], [role="listbox"]')
+      ?.querySelector<HTMLElement>(`[role="${el.getAttribute("role")}"]:not(:focus)`);
     let resting: Look[];
     if (sibling) resting = await look(sibling);
     else {

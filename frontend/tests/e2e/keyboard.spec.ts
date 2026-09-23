@@ -94,6 +94,12 @@ test("the account menu holds focus and gives it back", async ({ page }) => {
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna konto för/ }), page.getByRole("menu"), 0);
 });
 
+test("the microphone picker holds focus and gives it back", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await holdsFocus(page, page.getByRole("combobox", { name: "Mikrofon" }), page.getByRole("listbox"), 0);
+});
+
 test("the input modes change with the arrow keys", async ({ page }) => {
   await setup(page);
   const cards = page.getByRole("radio");

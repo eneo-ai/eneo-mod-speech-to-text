@@ -345,7 +345,7 @@ export const STATES: State[] = [
     name: "flow-republish-required",
     go: async (page) => {
       await open(page, "/flows/flow-4");
-      await heading(page, "Flödet kunde inte laddas.");
+      await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
     },
   },
 ];

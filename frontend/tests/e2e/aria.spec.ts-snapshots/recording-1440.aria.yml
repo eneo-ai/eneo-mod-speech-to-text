@@ -13,14 +13,16 @@
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - group:
     - text: Deltagare (valfritt)
-    - list:
-      - listitem:
-        - text: Anna Berg
-        - button "Ta bort Anna Berg"
-    - textbox "Deltagare (valfritt)":
-      - /placeholder: Lägg till namn
-    - status
-    - paragraph: Skriv ett namn och tryck Enter.
+    - group:
+      - group:
+        - list:
+          - listitem:
+            - text: Anna Berg
+            - button "Ta bort Anna Berg"
+      - textbox "Deltagare (valfritt)":
+        - /placeholder: Lägg till namn
+      - status
+    - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - region "Ljudet":
     - status
     - heading "Inspelning" [level=2]

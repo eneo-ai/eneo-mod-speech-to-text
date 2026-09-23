@@ -9,10 +9,11 @@
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - group:
     - text: Deltagare (valfritt)
-    - textbox "Deltagare (valfritt)":
-      - /placeholder: Lägg till namn
-    - status
-    - paragraph: Skriv ett namn och tryck Enter.
+    - group:
+      - textbox "Deltagare (valfritt)":
+        - /placeholder: Lägg till namn
+      - status
+    - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - region "Ljudet":
     - status
     - group "Hur vill du ge ljudet?":
@@ -35,15 +36,11 @@
       - text: Märk upp talare
       - paragraph: Tar längre tid efter inspelningen.
       - switch "Märk upp talare"
-    - text: "Mikrofon:"
-    - combobox "Mikrofon:":
-      - option "Standard" [selected]
-      - option "Fake Audio Input 1"
-      - option "Fake Audio Input 2"
-    - button "Testa mikrofonen"
+    - group:
+      - text: Mikrofon
+      - combobox "Mikrofon": Standard (Fake Default Audio Input)
+      - button "Testa mikrofonen"
     - status
-    - button "Starta strömning"
-    - paragraph: Inspelningen sparas på enheten medan du spelar in.
     - region "Tidigare körningar":
       - heading "Tidigare körningar" [level=2]
       - list:
@@ -55,3 +52,5 @@
           - text: /\d+ sep \d+:\d+/
           - paragraph: Misslyckades
           - button /Öppna , körningen \d+ sep \d+:\d+/
+- button "Starta strömning"
+- paragraph: Inspelningen sparas på enheten medan du spelar in.

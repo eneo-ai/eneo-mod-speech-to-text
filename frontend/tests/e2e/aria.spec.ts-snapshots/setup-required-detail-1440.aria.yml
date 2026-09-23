@@ -5,10 +5,11 @@
   - paragraph: Gör ett protokoll av ett samrådsmöte.
   - group:
     - text: Deltagare (valfritt)
-    - textbox "Deltagare (valfritt)":
-      - /placeholder: Lägg till namn
-    - status
-    - paragraph: Skriv ett namn och tryck Enter.
+    - group:
+      - textbox "Deltagare (valfritt)":
+        - /placeholder: Lägg till namn
+      - status
+    - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - group:
     - text: Ärende
     - textbox "Ärende" [invalid]
