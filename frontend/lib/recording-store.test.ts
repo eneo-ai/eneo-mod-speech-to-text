@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
+import { fakeWebLocks } from "./fake-web-locks";
 import {
   openRecordingStore,
   type NewRecording,
@@ -30,29 +31,13 @@ function device(extra: Partial<StoreEnv> = {}): StoreEnv {
   return {
     indexedDB: new IDBFactory(),
     keyRange: IDBKeyRange,
-    locks: fakeLocks(),
+    locks: fakeWebLocks(),
     now: clock(),
     ...extra,
   };
 }
 
-/** Web Locks as the browser keeps them: held until the callback settles. */
-function fakeLocks(): NonNullable<StoreEnv["locks"]> {
-  const held = new Set<string>();
-  return {
-    async request(name: string, callback: unknown) {
-      held.add(name);
-      try {
-        return await (callback as () => Promise<unknown>)();
-      } finally {
-        held.delete(name);
-      }
-    },
-    async query() {
-      return { held: [...held].map((name) => ({ name, mode: "exclusive" })), pending: [] };
-    },
-  } as unknown as NonNullable<StoreEnv["locks"]>;
-}
+const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 const texts = (files: RecordingFile[]) => Promise.all(files.map((file) => file.blob.text()));
 
@@ -99,11 +84,11 @@ test("a recording cut off mid-meeting is listed as unsent when the app is opened
   const env = device();
   const tab = await openRecordingStore(env);
   const recording = await tab.create(meeting);
-  const release = tab.hold(recording.id);
   await tab.startPart(recording.id);
   await tab.append(recording.id, 0, new Blob(["audio"]), 2_000);
-  // The tab dies here (reload, crash, expired session): no stop, no state change.
-  release();
+  // The tab dies here (reload, crash, expired session): no stop, no state change,
+  // and the browser ends the tab's lease.
+  tab.release(recording.id);
 
   const reopened = await openRecordingStore(env);
   const unsent = await reopened.listUnsent("user-1");
@@ -114,42 +99,63 @@ test("a recording cut off mid-meeting is listed as unsent when the app is opened
   assert.deepEqual(await texts(await reopened.readParts(recording.id)), ["audio"]);
 });
 
-test("unsent recordings are listed newest first, without those being captured or already sent", async () => {
-  const env = device();
-  const store = await openRecordingStore(env);
-  const otherTab = await openRecordingStore(env);
+test("unsent recordings are listed newest first, without those still leased or already sent", async () => {
+  const store = await openRecordingStore(device());
   let changes = 0;
   store.subscribe(() => (changes += 1));
 
   const older = await store.create(meeting);
   await store.setState(older.id, "stopped");
-  const capturedHere = await store.create(meeting);
-  const releaseHere = store.hold(capturedHere.id);
-  const capturedInOtherTab = await otherTab.create(meeting);
-  const releaseOtherTab = otherTab.hold(capturedInOtherTab.id);
+  store.release(older.id);
+  const recording = await store.create(meeting); // leased by the tab that records it
   const sent = await store.create(meeting);
   await store.accept(sent.id, "run-1");
   const newest = await store.create({ ...meeting, flowName: "Intervju" });
+  store.release(newest.id);
 
   assert.deepEqual(
     (await store.listUnsent("user-1")).map((r) => r.id),
     [newest.id, older.id],
   );
   assert.ok(changes > 0, "lists showing recordings hear about changes");
-
-  // Without Web Locks (Safari before 15.4) this tab still knows what it captures.
-  const withoutLocks = await openRecordingStore(device({ locks: undefined }));
-  const capturing = await withoutLocks.create(meeting);
-  withoutLocks.hold(capturing.id);
-  assert.deepEqual(await withoutLocks.listUnsent("user-1"), []);
-
-  releaseHere();
-  releaseOtherTab();
-  await new Promise((resolve) => setImmediate(resolve));
+  store.release(recording.id);
+  await settle();
   assert.deepEqual(
     (await store.listUnsent("user-1")).map((r) => r.id),
-    [newest.id, capturedInOtherTab.id, capturedHere.id, older.id],
+    [newest.id, recording.id, older.id],
   );
+
+  // Without Web Locks (Safari before 15.4) a tab still knows what it records itself.
+  const withoutLocks = await openRecordingStore(device({ locks: undefined }));
+  const own = await withoutLocks.create(meeting);
+  assert.deepEqual(await withoutLocks.listUnsent("user-1"), []);
+  assert.equal(await withoutLocks.lease(own.id), false, "nothing else in this tab may write it");
+  withoutLocks.release(own.id);
+  assert.equal((await withoutLocks.listUnsent("user-1")).length, 1);
+});
+
+test("an active lease hides a recording from recovery and keeps other tabs from writing it; an ended lease offers it again", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["audio"]), 2_000);
+
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "hidden while it is being recorded");
+  assert.equal(await otherTab.lease(recording.id), false, "another tab cannot take it");
+  await assert.rejects(otherTab.remove(recording.id), {
+    message: "Inspelningen används i en annan flik.",
+  });
+
+  // Stopping ends the lease; so does the browser when the tab closes or crashes.
+  recordingTab.release(recording.id);
+  await settle();
+  assert.deepEqual((await otherTab.listUnsent("user-1")).map((r) => r.id), [recording.id]);
+  assert.equal(await otherTab.lease(recording.id), true);
+  assert.equal(await recordingTab.lease(recording.id), false, "now the other tab has it");
+  assert.deepEqual(await recordingTab.listUnsent("user-1"), []);
+  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
 test("a shared device offers each person only their own recordings, and 'Ta bort' removes one for good", async () => {
@@ -157,6 +163,9 @@ test("a shared device offers each person only their own recordings, and 'Ta bort
   const store = await openRecordingStore(env);
   const mine = await store.create(meeting);
   const colleagues = await store.create({ ...meeting, ownerId: "user-2" });
+  store.release(mine.id);
+  store.release(colleagues.id);
+  await settle();
   assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [mine.id]);
   assert.deepEqual((await store.listUnsent("user-2")).map((r) => r.id), [colleagues.id]);
 
@@ -175,6 +184,7 @@ test("the local copy stays through every upload state and is deleted once Eneo a
   await store.append(recording.id, 0, new Blob(["audio"]), 2_000);
 
   await store.setState(recording.id, "stopped");
+  store.release(recording.id);
   await store.setState(recording.id, "uploading");
   await store.setPartFileId(recording.id, 0, "file-1");
   await store.setState(recording.id, "uploaded");
@@ -215,8 +225,7 @@ test("a sent recording whose local copy cannot be deleted is never offered again
 
 test("chunks of a recording being captured are stored even when reading the database fails", async () => {
   const store = await openRecordingStore(device());
-  const recording = await store.create(meeting);
-  store.hold(recording.id);
+  const recording = await store.create(meeting); // leased: this tab records it
   await store.startPart(recording.id);
 
   const get = IDBObjectStore.prototype.get;
@@ -254,6 +263,7 @@ test("without IndexedDB the recording lives only in this tab, and the store says
     void store.append(recording.id, 0, new Blob(["a"]), 1_000);
     await store.append(recording.id, 0, new Blob(["b"]), 2_000);
     assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"]);
+    store.release(recording.id);
     assert.equal((await store.listUnsent("user-1")).length, 1);
     assert.equal((await (await openRecordingStore(env)).listUnsent("user-1")).length, 0);
   }

@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
 import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type Json, type RunContract } from "./api";
+import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
 import {
@@ -296,6 +298,7 @@ const meeting: NewRecording = {
   mimeType: "audio/webm;codecs=opus",
 };
 
+/** A recording made and stopped in a tab, whose lease has ended. */
 async function stoppedRecording(store: RecordingStore, parts: string[][]) {
   const recording = await store.create(meeting);
   for (const chunks of parts) {
@@ -303,6 +306,8 @@ async function stoppedRecording(store: RecordingStore, parts: string[][]) {
     for (const chunk of chunks) await store.append(recording.id, index, new Blob([chunk]), 1_000);
   }
   await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  await settle();
   return recording;
 }
 
@@ -385,4 +390,35 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
   const kept = await store.get(recording.id);
   assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["stopped", null]);
   assert.equal((await store.listUnsent("user-1")).length, 1);
+});
+
+test("a recording being sent from one tab cannot be sent or deleted from another", async () => {
+  const env = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const sendingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await stoppedRecording(sendingTab, [["a"]]);
+  const upload: { finish?: () => void } = {};
+  const sending = submitRecording(sendingTab, recording.id, params(), {
+    upload: () =>
+      new Promise((resolve) => {
+        upload.finish = () => resolve({ id: "file-a" });
+      }),
+    startRun: async () => queuedRun,
+  });
+  await until(() => upload.finish !== undefined);
+
+  const inUse = { message: "Inspelningen används i en annan flik." };
+  await assert.rejects(
+    submitRecording(otherTab, recording.id, params(), {
+      upload: async () => ({ id: "file-b" }),
+      startRun: async () => queuedRun,
+    }),
+    inUse,
+  );
+  await assert.rejects(otherTab.remove(recording.id), inUse);
+  assert.deepEqual(await otherTab.listUnsent("user-1"), []);
+
+  upload.finish?.();
+  assert.equal((await sending).id, "run-1");
+  assert.equal(await otherTab.get(recording.id), null);
 });

@@ -114,7 +114,7 @@ export class RecordingCapture {
       if (this.left(generation, stream)) return;
       const store = (this.store ??= await this.openStore());
       const recording = (created = await store.create(init));
-      this.release = store.hold(recording.id);
+      this.release = () => store.release(recording.id);
       void store.requestPersistence();
       this.maxBytes = maxBytes;
       this.earlierPartsMs = 0;

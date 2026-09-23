@@ -3,7 +3,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
-import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import {
+  IN_USE_ELSEWHERE,
+  recordingStore,
+  type StoredRecording,
+} from "@/lib/recording-store";
 
 /** The user's unsent recordings (of one flow, when given), kept current. */
 export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRecording[] {
@@ -133,9 +137,13 @@ function UnsentRecordingRow({
   async function remove() {
     try {
       await (await recordingStore()).remove(recording.id);
-    } catch {
+    } catch (error) {
       setConfirming(false);
-      setProblem("Inspelningen kunde inte tas bort. Försök igen.");
+      setProblem(
+        error instanceof Error && error.message === IN_USE_ELSEWHERE
+          ? IN_USE_ELSEWHERE
+          : "Inspelningen kunde inte tas bort. Försök igen.",
+      );
     }
   }
 

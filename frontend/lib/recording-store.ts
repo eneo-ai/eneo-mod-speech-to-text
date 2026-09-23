@@ -172,6 +172,8 @@ function memoryBackend(): Backend {
 
 const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
+export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
+
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
 export function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);
@@ -181,11 +183,20 @@ export function recordingFilename(recording: StoredRecording, index: number): st
   return `inspelning-${stamp}${part}.${extensionForAudioMime(recording.mimeType)}`;
 }
 
+/**
+ * Leases. A tab writes a recording only while it holds the recording's lease:
+ * the tab that records it (a new recording is born leased), and a tab that
+ * sends or deletes it. The lease is a Web Lock, not a heartbeat: the browser
+ * ends it the moment the tab closes, reloads or crashes, with no timeout to
+ * tune, and it cannot look expired while a background tab records (hidden
+ * tabs throttle timers to once a minute) or while the user has paused.
+ * Without Web Locks (Safari before 15.4) a lease covers only this tab.
+ */
 export class RecordingStore {
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
-  // Recordings captured in this tab, and their latest metadata.
-  private holds = new Set<string>();
+  // Leases this tab holds (with how to end each), and the latest metadata of those recordings.
+  private leases = new Map<string, () => void>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -202,11 +213,14 @@ export class RecordingStore {
     return this.durable && this.overflowed.size === 0;
   }
 
-  create(init: NewRecording): Promise<StoredRecording> {
+  /** A new recording, leased by this tab until `release`. */
+  async create(init: NewRecording): Promise<StoredRecording> {
+    const id = crypto.randomUUID();
+    await this.lease(id);
     return this.change(async () => {
       const recording: StoredRecording = {
         ...init,
-        id: crypto.randomUUID(),
+        id,
         startedAt: this.now(),
         durationMs: 0,
         state: "recording",
@@ -290,7 +304,7 @@ export class RecordingStore {
           (r) =>
             r.ownerId === ownerId &&
             r.state !== "submitted" &&
-            !this.holds.has(r.id) &&
+            !this.leases.has(r.id) &&
             !heldElsewhere.has(lockName(r.id)),
         )
         .sort((a, b) => b.startedAt - a.startedAt);
@@ -330,26 +344,47 @@ export class RecordingStore {
     });
   }
 
-  /** The user deleted the recording. */
-  remove(id: string): Promise<void> {
-    return this.change(() => this.delete(id));
+  /** The user deleted the recording; refused while another tab uses it. */
+  async remove(id: string): Promise<void> {
+    if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+    try {
+      await this.change(() => this.delete(id));
+    } finally {
+      this.release(id);
+    }
   }
 
-  /**
-   * Marks a recording as being captured in this tab. Other tabs see it through
-   * a Web Lock, which the browser releases when this tab closes or crashes.
-   */
-  hold(id: string): () => void {
-    this.holds.add(id);
-    let release = () => {};
-    const released = new Promise<void>((resolve) => (release = resolve));
-    this.env.locks?.request(lockName(id), () => released).catch(() => undefined);
-    return () => {
-      this.holds.delete(id);
-      this.live.delete(id);
-      release();
-      this.notify();
+  /** Takes the recording's lease for this tab; false while any tab holds it. */
+  lease(id: string): Promise<boolean> {
+    if (this.leases.has(id)) return Promise.resolve(false);
+    const locks = this.env.locks;
+    const inThisTab = () => {
+      this.leases.set(id, () => {});
+      return true;
     };
+    if (!locks) return Promise.resolve(inThisTab());
+    return new Promise((resolve) => {
+      locks
+        .request(lockName(id), { ifAvailable: true }, (lock) => {
+          if (!lock) return resolve(false);
+          // Held until `release` settles this promise.
+          return new Promise<void>((end) => {
+            this.leases.set(id, end);
+            resolve(true);
+          });
+        })
+        // A browser that refuses Web Locks here still leases within this tab.
+        .catch(() => resolve(inThisTab()));
+    });
+  }
+
+  release(id: string): void {
+    const end = this.leases.get(id);
+    if (!end) return;
+    this.leases.delete(id);
+    this.live.delete(id);
+    end();
+    this.notify();
   }
 
   async requestPersistence(): Promise<void> {
@@ -427,7 +462,7 @@ export class RecordingStore {
   }
 
   private async write(recording: StoredRecording, chunk?: Chunk): Promise<void> {
-    if (this.holds.has(recording.id)) this.live.set(recording.id, recording);
+    if (this.leases.has(recording.id)) this.live.set(recording.id, recording);
     if (!this.overflowed.has(recording.id)) {
       try {
         await this.backend.put(recording, chunk);

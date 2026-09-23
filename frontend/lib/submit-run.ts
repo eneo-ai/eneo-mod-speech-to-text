@@ -17,7 +17,7 @@ import {
   type RunContract,
 } from "./api";
 import type { OnlineStatus } from "./online-status";
-import type { RecordingStore } from "./recording-store";
+import { IN_USE_ELSEWHERE, type RecordingStore } from "./recording-store";
 import { formatBytes } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
@@ -173,11 +173,26 @@ export async function submitRun(
 }
 
 /**
- * Sends a stored recording through `submitRun`. Uploaded parts are remembered,
- * so a send that stops uploads only the rest next time; the local copy is
- * deleted once Eneo has accepted the run.
+ * Sends a stored recording through `submitRun`, holding its lease so no other
+ * tab sends or deletes it meanwhile. Uploaded parts are remembered, so a send
+ * that stops uploads only the rest next time; the local copy is deleted once
+ * Eneo has accepted the run.
  */
 export async function submitRecording(
+  store: RecordingStore,
+  id: string,
+  params: Omit<SubmitParams, "files" | "onUploaded">,
+  deps?: SubmitDeps,
+): Promise<FlowRunPublic> {
+  if (!(await store.lease(id))) throw new Error(IN_USE_ELSEWHERE);
+  try {
+    return await sendLeased(store, id, params, deps);
+  } finally {
+    store.release(id);
+  }
+}
+
+async function sendLeased(
   store: RecordingStore,
   id: string,
   params: Omit<SubmitParams, "files" | "onUploaded">,
