@@ -187,6 +187,15 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
 
+/**
+ * Sealed from its first send on: the audio sent is the audio kept, so no part
+ * is added and no send's end makes it "stopped" again. A send marks it
+ * uploading, then uploaded while Eneo is asked for the run, then submitted.
+ */
+export function sealed(recording: StoredRecording): boolean {
+  return recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
+}
+
 /** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
 export function continuable(recording: StoredRecording): boolean {
   return recording.state === "recording" || recording.state === "paused";
@@ -315,11 +324,6 @@ export class RecordingStore {
   /** Eneo is about to be asked for the run: the request is kept first, and the send is "uploaded". */
   startSubmission(id: string, request: RunRequest): Promise<void> {
     return this.update(id, (recording) => ({ ...recording, state: "uploaded", submission: request }));
-  }
-
-  /** Forgets a run request that can never be answered; the uploads stay for the next one. */
-  forgetSubmission(id: string): Promise<void> {
-    return this.update(id, (recording) => ({ ...recording, state: "stopped", submission: null }));
   }
 
   /** Forgets the uploads, and the run request made of them. */

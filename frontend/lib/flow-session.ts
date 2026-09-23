@@ -564,7 +564,7 @@ export class FlowSession {
     const fields = this.contract?.form_fields ?? [];
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
-    const repeated = input?.kind === "recording" && (await this.storedSubmission(input.recording.id));
+    const repeated = input?.kind === "recording" && !!(await this.stored(input.recording.id))?.submission;
     this.invalid = repeated
       ? []
       : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
@@ -579,7 +579,8 @@ export class FlowSession {
         speakerLabels: this.snapshot.speakerLabels ?? undefined,
       });
     } catch (error) {
-      // The input and the details stay for the next try.
+      // The input and the details stay for the next try; a recording as the send left it, sealed.
+      if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
       this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null);
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.
@@ -640,11 +641,11 @@ export class FlowSession {
     this.closeLive();
   }
 
-  private async storedSubmission(recordingId: string): Promise<boolean> {
+  private async stored(recordingId: string): Promise<StoredRecording | null> {
     try {
-      return !!(await (await this.options.openStore()).get(recordingId))?.submission;
+      return await (await this.options.openStore()).get(recordingId);
     } catch {
-      return false;
+      return null;
     }
   }
 

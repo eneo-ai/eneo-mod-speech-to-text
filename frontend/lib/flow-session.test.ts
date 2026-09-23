@@ -462,6 +462,7 @@ test("after a send whose answer never came, the stored request goes again even w
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(await session.createDocument(), false);
+  assert.equal(session.getSnapshot().recording?.state, "uploaded", "shown as sealed, so no Fortsätt spela in");
 
   session.setDetail("motesnamn", "");
   assert.equal(await session.createDocument(), true);

@@ -18,6 +18,7 @@ import {
   continuable,
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
+  sealed,
   type NewRecording,
   type RecordingStore,
   type StoredRecording,
@@ -95,10 +96,6 @@ type EndReason = "stop" | "interrupt" | "leave";
 
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
-
-// A send marks a recording uploading, then uploaded while Eneo makes the run, then submitted.
-const sendBegun = (recording: StoredRecording) =>
-  recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
 
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
@@ -237,7 +234,7 @@ export class RecordingCapture {
    * in a new part of it, as `adopt()` does, until a send of it has begun.
    */
   continueStopped(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
-    return this.takeOver(recordingId, limits, (found) => (sendBegun(found) ? SEND_BEGUN : null));
+    return this.takeOver(recordingId, limits, (found) => (sealed(found) ? SEND_BEGUN : null));
   }
 
   /** "Fortsätt spela in" after an interruption: a new part of the same recording. */
