@@ -243,3 +243,49 @@ test("Dela reads a file ahead only when its size is known and under the cap, and
   await known.unmount();
   assert.equal(fetched[0].signal?.aborted, true, "the read ahead is cancelled");
 });
+
+test("crossing the laptop breakpoint keeps an unfinished correction and its draft", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const { type } = await import("./test-dom");
+  const original = globalThis.fetch;
+  const realMatchMedia = window.matchMedia;
+  // A window that can be widened past 1024 px, telling whoever listens.
+  let wide = false;
+  const listeners = new Set<() => void>();
+  const matchMedia = (query: string) => ({
+    get matches() { return query.includes("min-width: 1024px") ? wide : false; },
+    media: query, onchange: null, dispatchEvent: () => false, addListener() {}, removeListener() {},
+    addEventListener: (_: string, cb: () => void) => void listeners.add(cb),
+    removeEventListener: (_: string, cb: () => void) => void listeners.delete(cb),
+  });
+  Object.defineProperty(window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
+  t.after(() => {
+    globalThis.fetch = original;
+    Object.defineProperty(window, "matchMedia", { value: realMatchMedia, configurable: true, writable: true });
+  });
+  globalThis.fetch = (async (url: string | URL | Request) =>
+    String(url).includes("transcript-words") ? Response.json({ code: "not_found" }, { status: 404 }) : Response.json([])) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: { transcription: { file_ids: [], segments: [
+      { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+      { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten." },
+    ] } },
+  };
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1", flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      steps: [], stepResults: [transcribe] as never, files: [pdf],
+      onNewRecording: () => undefined, onRegenerated: () => undefined,
+    }),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  await view.act(async () => button(view.container, "Rätta repliken från 0:00")!.click());
+  await view.act(async () => type(view.container.querySelector("textarea")!, "Välkomna allihop."));
+  wide = true;
+  await view.act(async () => listeners.forEach((listener) => listener()));
+  assert.ok(!view.container.querySelector('[role="tablist"]'), "side by side now");
+  assert.equal(view.container.querySelector("textarea")?.value, "Välkomna allihop.", "the draft is still being written");
+});

@@ -32,6 +32,8 @@ const subscribeWide = (onChange: () => void) => {
 const isWide = () => window.matchMedia(WIDE).matches;
 
 type View = "document" | "transcript";
+/** A panel shown as a plain column: no tab panel role, name or stop of its own. */
+const COLUMN = { role: undefined, "aria-labelledby": undefined, tabIndex: undefined } as const;
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -167,32 +169,44 @@ export function RunResult({
         </div>
       </header>
 
-      {tabs ? (
-        <Tabs value={view} onValueChange={(next) => switchView(next as View)} className="flex flex-col gap-4">
+      {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
+          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
+      <Tabs
+        value={view}
+        onValueChange={(next) => switchView(next as View)}
+        className={cn(
+          "flex flex-col gap-4",
+          showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
+        )}
+      >
+        {tabs && (
           <TabsList ref={tabList} aria-label="Visa" className="self-start">
             <TabsTrigger value="document">Dokument</TabsTrigger>
             <TabsTrigger value="transcript">Transkript</TabsTrigger>
           </TabsList>
-          {/* Both stay mounted: switching keeps the playback, the search, the filter and each tab's place. */}
-          <TabsContent value="document" forceMount className="mt-0 flex flex-col gap-6 data-[state=inactive]:hidden">
-            {documentColumn}
-            <PausePlayback playback={playback} onShow={() => switchView("transcript")} />
-          </TabsContent>
-          <TabsContent value="transcript" forceMount className="mt-0 data-[state=inactive]:hidden">
+        )}
+        {/* Both stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by
+            side they are plain columns, not tab panels. */}
+        <TabsContent
+          value="document"
+          forceMount
+          {...(tabs ? {} : COLUMN)}
+          className={cn("mt-0 flex min-w-0 flex-col gap-6", tabs && "data-[state=inactive]:hidden")}
+        >
+          {documentColumn}
+          {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
+        </TabsContent>
+        {transcriptColumn && (
+          <TabsContent
+            value="transcript"
+            forceMount
+            {...(tabs ? {} : COLUMN)}
+            className={cn("mt-0 min-w-0", tabs ? "data-[state=inactive]:hidden" : "lg:sticky lg:top-6")}
+          >
             {transcriptColumn}
           </TabsContent>
-        </Tabs>
-      ) : (
-        <div
-          className={cn(
-            "flex flex-col gap-8",
-            showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
-          )}
-        >
-          <div className="flex min-w-0 flex-col gap-6">{documentColumn}</div>
-          {transcriptColumn && <div className="min-w-0 lg:sticky lg:top-6">{transcriptColumn}</div>}
-        </div>
-      )}
+        )}
+      </Tabs>
       </div>
     </main>
   );
