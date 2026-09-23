@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -19,6 +19,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/in
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -74,6 +75,8 @@ const NONE_LIT: ReadonlySet<number> = new Set();
 const SKIP_SECONDS = 10;
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
+/** The filter value for the passages Eneo asks someone to check: a to-do, not a speaker. */
+const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
 const CHIP_LIMIT = 5;
 
@@ -310,9 +313,15 @@ export const TranscriptPlayer = forwardRef<
   }, [speakerOptions, segments, corrections]);
 
   // A filter whose speaker is gone (all their passages moved) shows everyone again.
-  const shownFilter = speakers.some((s) => s.label === filter) ? filter : "all";
+  const toCheck = turns.filter(pendingSpeakerReview).length;
+  const shownFilter =
+    filter === TO_CHECK ? (toCheck > 0 ? TO_CHECK : "all") : speakers.some((s) => s.label === filter) ? filter : "all";
   const visibleTurns =
-    shownFilter === "all" ? turns : turns.filter((turn) => turn.speaker === shownFilter && !pendingSpeakerReview(turn));
+    shownFilter === "all"
+      ? turns
+      : shownFilter === TO_CHECK
+        ? turns.filter(pendingSpeakerReview)
+        : turns.filter((turn) => turn.speaker === shownFilter && !pendingSpeakerReview(turn));
   const visibleSegments = useMemo(
     () => new Set(visibleTurns.flatMap((turn) => turn.parts.map((part) => part.segmentIndex))),
     [visibleTurns],
@@ -529,6 +538,16 @@ export const TranscriptPlayer = forwardRef<
                 {displayName(speaker.label)}
               </ToggleGroupItem>
             ))}
+            {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
+            {toCheck > 0 && (
+              <>
+                <Separator orientation="vertical" className="mx-1 h-6 self-center" />
+                <ToggleGroupItem value={TO_CHECK} className="shrink-0 gap-1.5 px-3">
+                  <AlertTriangle aria-hidden className="text-ochre" />
+                  Osäkra ({toCheck})
+                </ToggleGroupItem>
+              </>
+            )}
           </ToggleGroup>
           {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. */}
           {speakers.length > CHIP_LIMIT && (
@@ -544,6 +563,7 @@ export const TranscriptPlayer = forwardRef<
                       {displayName(speaker.label)}
                     </SelectItem>
                   ))}
+                  {toCheck > 0 && <SelectItem value={TO_CHECK}>Osäkra ({toCheck})</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

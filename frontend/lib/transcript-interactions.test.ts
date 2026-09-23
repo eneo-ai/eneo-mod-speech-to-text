@@ -126,8 +126,13 @@ test("an uncertain passage keeps Eneo's words in the name slot, and one action: 
   // An unnamed speaker is not uncertain: only the passage Eneo marked says so.
   assert.equal(view.container.querySelectorAll("li[data-turn-index]")[3].textContent?.includes("Osäker"), false);
 
-  // The speaker row holds speakers only; a status is not one.
-  assert.ok(!chip(view.container, "Osäker"), "no status among the speakers");
+  // The passages to check are a filter set apart from the speakers: after a divider, counted as a to-do.
+  const toDo = chip(view.container, "Osäkra");
+  assert.equal(toDo.textContent, "Osäkra (1)");
+  assert.equal(toDo.previousElementSibling?.getAttribute("data-orientation"), "vertical", "after a divider");
+  await view.act(async () => toDo.click());
+  assert.deepEqual(passages(view.container), ["Överlappande tal – osäker talare, 0:02"]);
+  await view.act(async () => chip(view.container, "Alla").click());
 
   await view.act(async () => button(view.container, "Ändra talare")!.click());
   const options = [...document.querySelectorAll('[role="dialog"] label')].map((l) => l.textContent?.trim());
