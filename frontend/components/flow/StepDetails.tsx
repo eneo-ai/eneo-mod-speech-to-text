@@ -7,20 +7,24 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type { StepView } from "@/lib/run-progress";
 import { StepList } from "./StepList";
 
-/** The steps behind a finished result, folded away; the flow version belongs here, not in the headline. */
+/**
+ * How the result was made, folded away: the flow's steps, in words a reader
+ * knows, and the flow version, which belongs here and not in the headline.
+ */
 export function StepDetails({ steps, version }: { steps: readonly StepView[]; version?: number }) {
   const [open, setOpen] = useState(false);
   if (steps.length === 0) return null;
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-3">
       <CollapsibleTrigger asChild>
-        <Button variant="ghost" className="group self-start px-3">
+        <Button variant="ghost" className="group -ml-3 self-start px-3">
           <ChevronDown
             data-icon="inline-start"
             aria-hidden
             className="transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
           />
-          {open ? "Dölj stegen" : `Visa stegen (${steps.length})`}
+          {open ? "Dölj hur resultatet togs fram" : "Hur resultatet togs fram"}
+          <span className="font-normal text-ink-mute">{steps.length} steg</span>
         </Button>
       </CollapsibleTrigger>
       {/* Closed content keeps its element with `hidden`; a display class on it would override that. */}

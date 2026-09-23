@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { ArrowLeft, Mic, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
@@ -11,16 +9,17 @@ import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
-import { CopyButton } from "./CopyButton";
+import { ResultDocument } from "./ResultDocument";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
 import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
-export const RESULT_PROSE =
-  "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h1:text-[22px] prose-h2:text-[19px] prose-h3:text-[16px] prose-p:text-[15px] prose-p:leading-relaxed prose-li:text-[15px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
-
-/** A finished run: the result, its files, the transcript, and what to do next. */
+/**
+ * A finished run: what the flow produced comes first, as a readable page with
+ * its file and one filled action; the transcript sits beside it from a laptop's
+ * width, and starting over is a quiet action in the header.
+ */
 export function RunResult({
   flowId,
   flowName,
@@ -48,69 +47,72 @@ export function RunResult({
   const heading = usePhaseHeading("Klart");
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
+  // The document's file is the first one that can be fetched; any others are listed under it.
+  const primary = files.find((file) => file.available) ?? null;
+  const others = files.filter((file) => file !== primary);
 
   return (
     <main
       className={cn(
-        "mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pb-12 pt-2 md:px-8",
-        // From a laptop's width the document and the transcript sit side by side, as the setup page's two columns do;
-        // the second row takes the transcript's extra height, so the steps follow the document without a gap.
-        showTranscript && "lg:grid lg:max-w-none lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-10",
+        "mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-12 pt-2 md:px-8 lg:pt-8",
+        showTranscript && "lg:max-w-7xl",
       )}
     >
-      <div className="flex min-w-0 flex-col gap-8">
-        <header className="flex flex-col gap-1">
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className={PHASE_HEADING}
-          >
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
             {delivered ? "Resultatet är skickat" : "Dokumentet är klart"}
           </h1>
-          {finished && <p className="text-sm text-muted-foreground">Skapad {formatRelativeDate(finished)}</p>}
-        </header>
-
-        {note && <p className="text-[15px] leading-relaxed">{note}</p>}
-
-        {text && (
-          <section aria-label="Resultat" className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:p-6">
-            <CopyButton text={text} label="Kopiera texten" className="self-end" />
-            <article className={RESULT_PROSE}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-            </article>
-          </section>
-        )}
-
-        {files.length > 0 && <ResultFiles flowId={flowId} runId={run.id} files={files} />}
-      </div>
-
-      {showTranscript && (
-        <div className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <RunTranscript
-            flowId={flowId}
-            runId={run.id}
-            steps={stepResults}
-            fileName={transcriptFileName(flowName, run.created_at)}
-            finishedAt={run.finished_at}
-          />
+          {finished && (
+            <p className="text-[14px] text-muted-foreground">
+              {/* On a phone the top bar already names the flow. */}
+              <span className="hidden lg:inline">{flowName} · </span>
+              Skapad {formatRelativeDate(finished)}
+            </p>
+          )}
         </div>
-      )}
-
-      <div className="flex min-w-0 flex-col gap-8">
-        <StepDetails steps={steps} version={run.flow_version} />
-
-        <div className="flex flex-wrap gap-3">
-          <Button type="button" onClick={onNewRecording}>
+        <div className="flex items-center gap-1">
+          <Button type="button" variant="outline" onClick={onNewRecording}>
             {audio ? <Mic data-icon="inline-start" aria-hidden /> : <Plus data-icon="inline-start" aria-hidden />}
             {audio ? "Ny inspelning" : "Ny körning"}
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="ghost" className="hidden lg:inline-flex">
             <Link href="/flows">
               <ArrowLeft data-icon="inline-start" aria-hidden />
               Till flödena
             </Link>
           </Button>
         </div>
+      </header>
+
+      <div
+        className={cn(
+          "flex flex-col gap-8",
+          showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
+        )}
+      >
+        <div className="flex min-w-0 flex-col gap-6">
+          {note && <p className="text-[15px] leading-relaxed">{note}</p>}
+          {(text || primary) && (
+            <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />
+          )}
+          {others.length > 0 && (
+            <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
+          )}
+          <StepDetails steps={steps} version={run.flow_version} />
+        </div>
+
+        {showTranscript && (
+          <div className="min-w-0 lg:sticky lg:top-6">
+            <RunTranscript
+              flowId={flowId}
+              runId={run.id}
+              steps={stepResults}
+              fileName={transcriptFileName(flowName, run.created_at)}
+              finishedAt={run.finished_at}
+            />
+          </div>
+        )}
       </div>
     </main>
   );

@@ -119,55 +119,70 @@ export function RunTranscriptView({
     Boolean(corrections.updatedAt && finishedAt && Date.parse(corrections.updatedAt) > Date.parse(finishedAt));
 
   return (
-    <section aria-labelledby="run-transcript" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="run-transcript" className="text-lg font-semibold tracking-tight">
+    // From a laptop's width the card keeps to the window and its text scrolls inside it, the player docked below.
+    <section
+      aria-labelledby="run-transcript"
+      className="flex min-h-0 flex-col rounded-xl border bg-card lg:max-h-[calc(100dvh-3rem)] lg:overflow-hidden"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-2 pt-3">
+        <h2 id="run-transcript" className="text-[17px] font-semibold tracking-tight">
           Transkript
         </h2>
-        <div className="flex flex-wrap gap-2">
-          <CopyButton text={plain} label="Kopiera transkriptet" disabled={unread} />
-          <Button type="button" variant="outline" disabled={unread} onClick={() => downloadText(plain, fileName)}>
+        <div className="-mr-2 flex flex-wrap gap-1">
+          <CopyButton
+            text={plain}
+            variant="ghost"
+            size="sm"
+            label={<>Kopiera<span className="sr-only"> transkriptet</span></>}
+            disabled={unread}
+          />
+          <Button type="button" variant="ghost" size="sm" disabled={unread} onClick={() => downloadText(plain, fileName)}>
             <Download data-icon="inline-start" aria-hidden />
-            Ladda ner<span className="sr-only"> transkriptet</span>
+            Ladda ner .txt<span className="sr-only">, transkriptet</span>
           </Button>
         </div>
       </div>
-      {unread && (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            {transcript.textPreview
-              ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
-              : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
-          </p>
-          <Button type="button" variant="outline" onClick={onReload}>
-            <RotateCcw data-icon="inline-start" aria-hidden />
-            Läs in igen
-          </Button>
-        </div>
-      )}
-      {edited && (
-        <p className="text-sm text-muted-foreground">
-          Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade
-          transkriptet som underlag för en ny sammanfattning.
-        </p>
-      )}
-      {localError && (
-        <p role="alert" className="text-sm text-destructive">
-          {localError}
-        </p>
-      )}
-      {saveState === "error" && (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={retryCorrections}>
-            Försök spara igen
-          </Button>
-          <Button type="button" variant="ghost" onClick={downloadUnsavedCorrections}>
-            Hämta osparade rättningar
-          </Button>
+      {/* Any save state counts as edited, a failed save included. */}
+      {(unread || edited || localError) && (
+        <div className="flex flex-col gap-2 px-4 pb-3">
+          {unread && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm text-muted-foreground">
+                {transcript.textPreview
+                  ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
+                  : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={onReload}>
+                <RotateCcw data-icon="inline-start" aria-hidden />
+                Läs in igen
+              </Button>
+            </div>
+          )}
+          {edited && (
+            <p className="text-sm text-muted-foreground">
+              Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade
+              transkriptet som underlag för en ny sammanfattning.
+            </p>
+          )}
+          {localError && (
+            <p role="alert" className="text-sm text-destructive">
+              {localError}
+            </p>
+          )}
+          {saveState === "error" && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>
+                Försök spara igen
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={downloadUnsavedCorrections}>
+                Hämta osparade rättningar
+              </Button>
+            </div>
+          )}
         </div>
       )}
       <TranscriptPlayer
-        className="max-h-[36rem] overflow-hidden rounded-xl border bg-card"
+        className="min-h-0 flex-1"
         segments={transcript.segments}
         speakerReviews={transcript.speakerReviews}
         correctionProblem={transcript.correctionProblem}

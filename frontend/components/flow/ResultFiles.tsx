@@ -1,5 +1,6 @@
 "use client";
 
+import { useRef } from "react";
 import {
   Download,
   ExternalLink,
@@ -15,10 +16,9 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
@@ -34,7 +34,7 @@ import {
 import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 
-const ICONS: Record<FileKind, LucideIcon> = {
+export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
   word: FileType,
   spreadsheet: FileSpreadsheet,
@@ -49,19 +49,21 @@ export function ResultFiles({
   flowId,
   runId,
   files,
+  title = "Filer",
 }: {
   flowId: string;
   runId: string;
   files: readonly ResultFileView[];
+  title?: string;
 }) {
   return (
     <section aria-labelledby="result-files" className="flex flex-col gap-3">
-      <h2 id="result-files" className="text-lg font-semibold tracking-tight">
-        Filer
+      <h2 id="result-files" className="text-[17px] font-semibold tracking-tight">
+        {title}
       </h2>
       <ItemGroup className="gap-2">
         {files.map((file) => {
-          const Icon = ICONS[file.kind];
+          const Icon = FILE_ICONS[file.kind];
           const download = runArtifactUrl(flowId, runId, file.fileId);
           return (
             <Item key={file.fileId} role="listitem" variant="outline" className="bg-card">
@@ -95,12 +97,27 @@ export function ResultFiles({
 
 /**
  * A PDF opens in the browser's own viewer: in a titled dialog where there is
- * room for it, in a new tab on a phone.
+ * room for it, in a new tab on a phone. The dialog opens on its title with its
+ * actions and Stäng before the viewer, which keeps many tab stops and Escape
+ * to itself once it has the focus.
  */
-function OpenFile({ file, url, download }: { file: ResultFileView; url: string; download: string }) {
+export function OpenFile({
+  file,
+  url,
+  download,
+  variant = "outline",
+  size,
+}: {
+  file: ResultFileView;
+  url: string;
+  download: string;
+  variant?: "outline" | "ghost";
+  size?: "sm";
+}) {
+  const title = useRef<HTMLHeadingElement | null>(null);
   return (
     <>
-      <Button asChild variant="outline" className="sm:hidden">
+      <Button asChild variant={variant} size={size} className="sm:hidden">
         <a href={url} target="_blank" rel="noopener noreferrer">
           <ExternalLink data-icon="inline-start" aria-hidden />
           Öppna<span className="sr-only"> {file.name} i en ny flik</span>
@@ -108,31 +125,47 @@ function OpenFile({ file, url, download }: { file: ResultFileView; url: string; 
       </Button>
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant="outline" className="hidden sm:inline-flex">
+          <Button variant={variant} size={size} className="hidden sm:inline-flex">
             <Eye data-icon="inline-start" aria-hidden />
             Öppna<span className="sr-only"> {file.name}</span>
           </Button>
         </DialogTrigger>
-        <DialogContent className="flex h-[85vh] max-w-5xl flex-col">
-          <DialogHeader className="pr-10">
-            <DialogTitle className="leading-snug [overflow-wrap:anywhere]">{file.name}</DialogTitle>
-            <DialogDescription>{file.meta}</DialogDescription>
-          </DialogHeader>
+        <DialogContent
+          hideClose
+          className="flex h-[85vh] max-w-5xl flex-col"
+          onOpenAutoFocus={(event) => {
+            event.preventDefault();
+            title.current?.focus();
+          }}
+        >
+          <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <DialogTitle ref={title} tabIndex={-1} className="leading-snug outline-none [overflow-wrap:anywhere]">
+                {file.name}
+              </DialogTitle>
+              <DialogDescription>{file.meta}</DialogDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild variant="outline">
+                <a href={url} target="_blank" rel="noopener noreferrer">
+                  <ExternalLink data-icon="inline-start" aria-hidden />
+                  Öppna i ny flik
+                </a>
+              </Button>
+              <Button asChild variant="outline">
+                <a href={download} download>
+                  <Download data-icon="inline-start" aria-hidden />
+                  Ladda ner
+                </a>
+              </Button>
+              <DialogClose asChild>
+                <Button type="button" variant="ghost">
+                  Stäng
+                </Button>
+              </DialogClose>
+            </div>
+          </div>
           <iframe src={url} title={file.name} className="min-h-0 w-full flex-1 rounded-md border bg-card" />
-          <DialogFooter>
-            <Button asChild variant="outline">
-              <a href={url} target="_blank" rel="noopener noreferrer">
-                <ExternalLink data-icon="inline-start" aria-hidden />
-                Öppna i ny flik
-              </a>
-            </Button>
-            <Button asChild>
-              <a href={download} download>
-                <Download data-icon="inline-start" aria-hidden />
-                Ladda ner
-              </a>
-            </Button>
-          </DialogFooter>
         </DialogContent>
       </Dialog>
     </>
