@@ -145,24 +145,44 @@ test("a failed graph read keeps the last graph; the status still moves on", asyn
   assert.equal(last?.graph?.nodes[0].run_status, "running");
 });
 
-test("a finished run whose result or steps cannot be read says so, never shows an empty result", async (t) => {
+const DETAIL = "/api/eneo/flows/flow-1/runs/run-1/";
+const STEPS = "/api/eneo/flows/flow-1/runs/run-1/steps/";
+
+/** Eneo answering the end-of-run reads, with exactly `failing` (one endpoint) answering 500. */
+function endOfRunReads(t: { after: (fn: () => void) => void }, failing: string | null) {
   const original = globalThis.fetch;
-  let failing = "";
+  const answered: [string, number][] = [];
   globalThis.fetch = (async (url: string | URL | Request) => {
-    const path = String(url);
-    if (failing && path.includes(failing)) return new Response(JSON.stringify({ detail: "fel" }), { status: 500 });
-    const body = path.endsWith("/steps/") ? [] : { id: "run-1", flow_id: "flow-1", status: "completed", result: { kind: "inline_text", text: "Klart" } };
+    const path = new URL(String(url), "http://module.test").pathname;
+    if (path === failing) {
+      answered.push([path, 500]);
+      return new Response(JSON.stringify({ detail: "fel" }), { status: 500 });
+    }
+    answered.push([path, 200]);
+    const body = path === STEPS ? [] : { id: "run-1", flow_id: "flow-1", status: "completed", result: { kind: "inline_text", text: "Klart" } };
     return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
   t.after(() => {
     globalThis.fetch = original;
   });
+  return answered;
+}
 
+test("a finished run reads its detail and its step results", async (t) => {
+  endOfRunReads(t, null);
   const read = await readFinishedRun("flow-1", run("completed"));
   assert.equal(read.run.result?.kind, "inline_text");
+  assert.deepEqual(read.steps, []);
+});
 
-  failing = "/runs/run-1/steps/";
-  await assert.rejects(readFinishedRun("flow-1", run("completed")), "missing steps would hide the transcript and step results");
-  failing = "/runs/run-1/";
-  await assert.rejects(readFinishedRun("flow-1", run("completed")), "a missing detail would show Klart without the document");
+test("a finished run whose detail cannot be read fails, never shows 'klart' without the document", async (t) => {
+  const answered = endOfRunReads(t, DETAIL);
+  await assert.rejects(readFinishedRun("flow-1", run("completed")));
+  assert.deepEqual(new Map(answered), new Map([[DETAIL, 500], [STEPS, 200]]), "only the detail failed");
+});
+
+test("a finished run whose step results cannot be read fails, never hides the transcript and steps", async (t) => {
+  const answered = endOfRunReads(t, STEPS);
+  await assert.rejects(readFinishedRun("flow-1", run("completed")));
+  assert.deepEqual(new Map(answered), new Map([[DETAIL, 200], [STEPS, 500]]), "only the steps failed");
 });
