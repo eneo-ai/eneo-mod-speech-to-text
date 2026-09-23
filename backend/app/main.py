@@ -4,6 +4,8 @@ import logging
 import re
 import time
 import unicodedata
+from email.message import Message
+from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
@@ -13,7 +15,6 @@ from fastapi import (
     FastAPI,
     File,
     HTTPException,
-    Query,
     Request,
     Response,
     UploadFile,
@@ -411,6 +412,7 @@ _SIGNED_URL_REFRESH_MARGIN_SECONDS = 60
 _STREAM_FORWARD_REQUEST_HEADERS = frozenset({"range", "if-range", "accept"})
 _STREAM_FORWARD_RESPONSE_HEADERS = frozenset(
     {
+        "content-disposition",
         "content-type",
         "content-length",
         "content-range",
@@ -573,9 +575,22 @@ async def eneo_input_file_audio_slash(
 _UNSAFE_FILENAME = re.compile(r'[\x00-\x1f\x7f"\\/]+')
 
 
-def _content_disposition(kind: str, filename: str) -> str:
-    """``kind`` with a readable name: an ASCII fallback and the UTF-8 original."""
-    name = " ".join(_UNSAFE_FILENAME.sub(" ", filename).split())[:200] or "fil"
+def _eneo_filename(header: str | None) -> str | None:
+    """The name Eneo gave the file; its UTF-8 ``filename*`` wins over the ASCII fallback (RFC 6266)."""
+    if not header:
+        return None
+    message = Message()
+    message["content-disposition"] = header
+    names = [value for key, value in message.get_params([], header="content-disposition") if key == "filename"]
+    chosen = next((value for value in names if isinstance(value, tuple)), names[0] if names else None)
+    return None if chosen is None else collapse_rfc2231_value(chosen)
+
+
+def _content_disposition(kind: str, filename: str | None) -> str:
+    """``kind`` with Eneo's name, if any: an ASCII fallback and the UTF-8 original."""
+    name = " ".join(_UNSAFE_FILENAME.sub(" ", filename or "").split())[:200]
+    if not name:
+        return kind
     fallback = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode() or "fil"
     return f"{kind}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 
@@ -590,9 +605,8 @@ async def eneo_run_artifact_content(
     file_id: str,
     request: Request,
     disposition: Literal["inline", "attachment"] = "attachment",
-    filename: str = Query("fil", max_length=255),
 ) -> Response:
-    """A generated file under a readable name: a PDF opens inline, anything else downloads."""
+    """A generated file under the name Eneo gave it: a PDF opens inline, anything else downloads."""
     response = await _stream_signed(
         request,
         flow_id,
@@ -604,7 +618,8 @@ async def eneo_run_artifact_content(
     media_type = response.headers.get("content-type", "").split(";")[0].strip().lower()
     inline = disposition == "inline" and media_type == "application/pdf"
     response.headers["Content-Disposition"] = _content_disposition(
-        "inline" if inline else "attachment", filename
+        "inline" if inline else "attachment",
+        _eneo_filename(response.headers.get("content-disposition")),
     )
     response.headers["X-Content-Type-Options"] = "nosniff"
     if inline:

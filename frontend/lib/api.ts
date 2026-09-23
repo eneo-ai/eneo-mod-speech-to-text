@@ -979,17 +979,12 @@ export function inputFileAudioUrl(
 }
 
 /**
- * Same-origin address of a file the run generated, under a readable name. The
- * module backend streams it from Eneo the same way; a PDF can open inline (a
- * frame on this origin, or a new tab), anything else downloads.
+ * Same-origin address of a file the run generated. The module backend streams
+ * it from Eneo the same way, under the name Eneo gave it; a PDF can open
+ * inline (a frame on this origin, or a new tab), anything else downloads.
  */
-export function runArtifactUrl(
-  flowId: string,
-  runId: string,
-  fileId: string,
-  { filename, inline = false }: { filename: string; inline?: boolean },
-): string {
-  const query = new URLSearchParams({ disposition: inline ? "inline" : "attachment", filename });
+export function runArtifactUrl(flowId: string, runId: string, fileId: string, inline = false): string {
+  const query = new URLSearchParams({ disposition: inline ? "inline" : "attachment" });
   return `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content?${query}`;
 }
 

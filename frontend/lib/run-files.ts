@@ -1,7 +1,7 @@
 /**
- * A run's generated files as people see them: named after the flow and the
- * day (until Eneo names files itself, bead eneo-ewq1), with their type and
- * size in Swedish, and whether the browser's own viewer can show them.
+ * A run's generated files as people see them: the name Eneo gave each file
+ * (eneo-ewq1 makes it readable at the source), its type and size in Swedish,
+ * and whether the browser's own viewer can show it. The page names nothing.
  */
 
 import type { ResultFile } from "./api";
@@ -11,10 +11,8 @@ export type FileKind = "pdf" | "word" | "spreadsheet" | "text" | "audio" | "imag
 
 export interface ResultFileView {
   fileId: string;
-  /** "Nämndmöte till rapport 2026-09-23" */
+  /** Eneo's name for the file, as it downloads. */
   name: string;
-  /** The name a download gets, with its extension. */
-  downloadName: string;
   kind: FileKind;
   /** "PDF, 13,3 kB", or why the file cannot be fetched. */
   meta: string;
@@ -34,44 +32,23 @@ const KNOWN: [ext: string, mime: string, kind: FileKind, label: string][] = [
   ["json", "application/json", "text", "JSON"],
 ];
 
-function fileType(file: ResultFile): { ext: string; kind: FileKind; label: string } {
+function fileType(file: ResultFile): { kind: FileKind; label: string } {
   const mime = (file.mimetype ?? "").split(";")[0].trim().toLowerCase();
   const ext = /\.([a-z0-9]{1,8})$/i.exec(file.name ?? "")?.[1].toLowerCase() ?? "";
   const known = KNOWN.find(([, m]) => m === mime) ?? KNOWN.find(([e]) => e === ext);
-  if (known) return { ext: known[0], kind: known[2], label: known[3] };
-  if (mime.startsWith("audio/")) return { ext, kind: "audio", label: "Ljud" };
-  if (mime.startsWith("image/")) return { ext, kind: "image", label: "Bild" };
-  return { ext, kind: "other", label: ext ? ext.toUpperCase() : "Fil" };
+  if (known) return { kind: known[2], label: known[3] };
+  if (mime.startsWith("audio/")) return { kind: "audio", label: "Ljud" };
+  if (mime.startsWith("image/")) return { kind: "image", label: "Bild" };
+  return { kind: "other", label: ext ? ext.toUpperCase() : "Fil" };
 }
 
-const two = (n: number) => String(n).padStart(2, "0");
-
-/** The flow's name without characters a file name cannot carry, and the run's day. */
-export function readableBaseName(flowName: string, createdAt?: string): string {
-  const name = flowName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim() || "Dokument";
-  const date = createdAt ? new Date(createdAt) : null;
-  if (!date || Number.isNaN(date.getTime())) return name;
-  return `${name} ${date.getFullYear()}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
-}
-
-export function resultFileViews(
-  files: readonly ResultFile[],
-  flowName: string,
-  createdAt?: string,
-): ResultFileView[] {
-  const base = readableBaseName(flowName, createdAt);
-  const taken = new Map<string, number>();
+export function resultFileViews(files: readonly ResultFile[]): ResultFileView[] {
   return files.map((file) => {
     const type = fileType(file);
-    const extension = type.ext ? `.${type.ext}` : "";
-    const count = (taken.get(extension) ?? 0) + 1;
-    taken.set(extension, count);
-    const name = count === 1 ? base : `${base} (${count})`;
     const available = file.availability == null || file.availability === "available";
     return {
       fileId: file.file_id,
-      name,
-      downloadName: `${name}${extension}`,
+      name: file.name?.trim() || "Fil",
       kind: type.kind,
       meta: available
         ? [type.label, file.size != null ? formatBytes(file.size) : null].filter(Boolean).join(", ")
@@ -82,4 +59,16 @@ export function resultFileViews(
       previewable: available && type.kind === "pdf",
     };
   });
+}
+
+/**
+ * The transcript .txt the page itself creates, named the way Eneo names a
+ * run's documents: the flow's name and the run's day in UTC.
+ */
+export function transcriptFileName(flowName: string, createdAt?: string): string {
+  const name = flowName.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim();
+  const created = createdAt ? new Date(createdAt) : null;
+  const day = created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : "";
+  const base = [name, day].filter(Boolean).join(" ");
+  return base ? `${base} transkript.txt` : "transkript.txt";
 }

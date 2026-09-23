@@ -47,31 +47,31 @@ const steps: StepView[] = [
 ];
 const report: ResultFileView = {
   fileId: "file-1",
-  name: "Nämndmöte till rapport 2026-09-23",
-  downloadName: "Nämndmöte till rapport 2026-09-23.pdf",
+  name: "Nämndmöte till rapport 2026-09-23.pdf",
   kind: "pdf",
   meta: "PDF, 13,3\u00a0kB",
   available: true,
   previewable: true,
 };
 
-test("a generated file is a row with its readable name and size, opened and downloaded on this origin", () => {
+test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
   const html = renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
   const words = text(html);
 
   // text() folds the no-break space in "13,3 kB" like any other space.
-  assert.match(words, /Nämndmöte till rapport 2026-09-23 PDF, 13,3 kB/);
-  const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline&amp;filename=N%C3%A4mndm%C3%B6te+till+rapport+2026-09-23.pdf";
-  const attachment = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment&amp;filename=N%C3%A4mndm%C3%B6te+till+rapport+2026-09-23.pdf";
+  assert.match(words, /Nämndmöte till rapport 2026-09-23\.pdf PDF, 13,3 kB/);
+  // The module's route names the file from Eneo's response; the page passes no name.
+  const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
+  const attachment = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
   // Phones open the PDF in a new tab; wider screens get a titled dialog (its trigger here).
   assert.ok(html.includes(`href="${inline}" target="_blank"`), html);
   assert.match(html, /aria-haspopup="dialog"[^>]*>(?:<[^>]+>)*Öppna/);
-  assert.ok(html.includes(`href="${attachment}" download="Nämndmöte till rapport 2026-09-23.pdf"`), html);
-  assert.doesNotMatch(html, /step_4_output/);
+  assert.ok(html.includes(`href="${attachment}" download=""`), html);
+  assert.doesNotMatch(html, /filename=/);
 });
 
 test("a Word file downloads; only a PDF offers Öppna", () => {
-  const word: ResultFileView = { ...report, fileId: "file-2", kind: "word", meta: "Word, 85,8\u00a0kB", previewable: false, downloadName: `${report.name}.docx` };
+  const word: ResultFileView = { ...report, fileId: "file-2", name: "Nämndmöte till rapport 2026-09-23.docx", kind: "word", meta: "Word, 85,8\u00a0kB", previewable: false };
   const words = text(renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [word] })));
   assert.doesNotMatch(words, /Öppna/);
   assert.match(words, /Ladda ner/);

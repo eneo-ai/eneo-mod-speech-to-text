@@ -7,7 +7,7 @@ import { ArrowLeft, Mic, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
-import { readableBaseName, type ResultFileView } from "@/lib/run-files";
+import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
@@ -79,7 +79,7 @@ export function RunResult({
           flowId={flowId}
           runId={run.id}
           steps={stepResults}
-          baseName={readableBaseName(flowName, run.created_at)}
+          fileName={transcriptFileName(flowName, run.created_at)}
           finishedAt={run.finished_at}
         />
       )}

@@ -23,7 +23,11 @@ from app.module_auth import (  # noqa: E402
 
 SIGNED = "https://eneo.example.test/api/v1/files/file-1/download/?token=abc"
 CONTENT = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content"
-READABLE = "Nämndmöte till rapport 2026-09-23.pdf"
+# What Eneo sends once it names files itself (eneo-ewq1): an ASCII fallback and the UTF-8 name.
+ENEO_DISPOSITION = (
+    'attachment; filename="Namndmote till rapport 2026-09-23.pdf"; '
+    "filename*=UTF-8''N%C3%A4mndm%C3%B6te%20till%20rapport%202026-09-23.pdf"
+)
 
 
 class FakeResponse:
@@ -51,6 +55,7 @@ class FakeStreamResponse:
 class FakeEneo:
     def __init__(self, content_type: str = "application/pdf", mint_status: int = 200) -> None:
         self.content_type = content_type
+        self.disposition: str | None = ENEO_DISPOSITION
         self.mint_status = mint_status
         self.mint_calls: list[dict[str, object]] = []
         self.stream_requests: list[httpx.Request] = []
@@ -66,15 +71,10 @@ class FakeEneo:
 
     async def send(self, request, stream=False):
         self.stream_requests.append(request)
-        return FakeStreamResponse(
-            {
-                "content-type": self.content_type,
-                "content-length": "8",
-                "content-disposition": 'attachment; filename="step_4_output.pdf"',
-                "set-cookie": "leak=1",
-            },
-            b"%PDF-1.7",
-        )
+        headers = {"content-type": self.content_type, "content-length": "8", "set-cookie": "leak=1"}
+        if self.disposition is not None:
+            headers["content-disposition"] = self.disposition
+        return FakeStreamResponse(headers, b"%PDF-1.7")
 
 
 class ArtifactProxyTests(unittest.TestCase):
@@ -100,10 +100,8 @@ class ArtifactProxyTests(unittest.TestCase):
         main.http_client = self.original_client
         main._signed_urls.clear()
 
-    def test_a_pdf_opens_inline_under_its_readable_name_in_a_same_origin_frame(self) -> None:
-        response = self.client.get(
-            CONTENT, params={"disposition": "inline", "filename": READABLE}
-        )
+    def test_a_pdf_opens_inline_under_eneos_name_in_a_same_origin_frame(self) -> None:
+        response = self.client.get(CONTENT, params={"disposition": "inline"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.content, b"%PDF-1.7")
@@ -129,35 +127,43 @@ class ArtifactProxyTests(unittest.TestCase):
         self.assertEqual(call["headers"]["Authorization"], "Bearer module-user-token")
         self.assertEqual(str(self.fake.stream_requests[0].url), SIGNED)
 
-    def test_a_download_is_an_attachment_under_its_readable_name(self) -> None:
-        response = self.client.get(
-            CONTENT, params={"disposition": "attachment", "filename": READABLE}
-        )
+    def test_a_download_is_an_attachment_under_eneos_name(self) -> None:
+        response = self.client.get(CONTENT, params={"disposition": "attachment"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(
-            response.headers["content-disposition"].startswith(
-                'attachment; filename="Namndmote till rapport 2026-09-23.pdf"'
-            )
-        )
+        self.assertEqual(response.headers["content-disposition"], ENEO_DISPOSITION)
         self.assertNotIn("x-frame-options", response.headers)
+
+    def test_eneo_names_the_file_and_the_page_cannot_rename_it(self) -> None:
+        self.fake.disposition = 'attachment; filename="step_4_output.pdf"'
+
+        response = self.client.get(CONTENT, params={"filename": "Annat namn.pdf"})
+
+        self.assertEqual(response.headers["content-disposition"], 'attachment; filename="step_4_output.pdf"; filename*=UTF-8\'\'step_4_output.pdf')
+
+    def test_without_a_name_from_eneo_the_module_invents_none(self) -> None:
+        self.fake.disposition = None
+
+        response = self.client.get(CONTENT)
+
+        self.assertEqual(response.headers["content-disposition"], "attachment")
 
     def test_only_a_pdf_is_ever_served_inline(self) -> None:
         self.fake.content_type = "text/html; charset=utf-8"
 
-        response = self.client.get(
-            CONTENT, params={"disposition": "inline", "filename": "rapport.html"}
-        )
+        self.fake.disposition = 'attachment; filename="rapport.html"'
+
+        response = self.client.get(CONTENT, params={"disposition": "inline"})
 
         self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
         self.assertNotIn("x-frame-options", response.headers)
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def test_a_file_name_cannot_break_out_of_the_header(self) -> None:
-        response = self.client.get(
-            CONTENT,
-            params={"filename": 'a"\r\nSet-Cookie: x=1\\..\\/b.pdf'},
-        )
+        # A flow name is user text; an encoded name can decode to quotes and line breaks.
+        self.fake.disposition = "attachment; filename*=UTF-8''a%22%0D%0ASet-Cookie%3A%20x%3D1%5C..%5C%2Fb.pdf"
+
+        response = self.client.get(CONTENT)
 
         disposition = response.headers["content-disposition"]
         self.assertTrue(disposition.startswith('attachment; filename="a Set-Cookie: x=1 .. b.pdf"'))
@@ -168,7 +174,7 @@ class ArtifactProxyTests(unittest.TestCase):
     def test_eneo_refusing_the_file_passes_through(self) -> None:
         self.fake.mint_status = 410
 
-        response = self.client.get(CONTENT, params={"filename": READABLE})
+        response = self.client.get(CONTENT)
 
         self.assertEqual(response.status_code, 410)
         self.assertEqual(self.fake.stream_requests, [])

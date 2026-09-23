@@ -687,7 +687,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     // Den körningslåsta grafen namnger stegen; saknas den duger den publicerade.
     const pinned = run.graph ?? graph;
     const steps = runSteps(pinned, run.run, run.steps);
-    const files = resultFileViews(run.run.result_files ?? [], published.name, run.run.created_at);
+    const files = resultFileViews(run.run.result_files ?? []);
     const transcribed = !pinned || steps.some((step) => step.transcribes && step.state === "done");
     if (runOutcome(run.run.status) === "succeeded") {
       return (

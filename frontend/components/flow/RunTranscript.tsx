@@ -29,15 +29,15 @@ export function RunTranscript({
   flowId,
   runId,
   steps,
-  baseName,
+  fileName,
   finishedAt,
 }: {
   flowId: string;
   runId: string;
   /** The step results, read once when the run ended. */
   steps: readonly FlowRunStep[];
-  /** "Nämndmöte till rapport 2026-09-23"; the download adds " transkript.txt". */
-  baseName: string;
+  /** The .txt the download saves, see transcriptFileName. */
+  fileName: string;
   finishedAt?: string;
 }) {
   const [transcript] = useTranscriptContext({ flowId, runId, enabled: true, steps });
@@ -70,7 +70,7 @@ export function RunTranscript({
         </h2>
         <div className="flex flex-wrap gap-2">
           <CopyButton text={plain} label="Kopiera transkriptet" />
-          <Button type="button" variant="outline" onClick={() => downloadText(plain, `${baseName} transkript.txt`)}>
+          <Button type="button" variant="outline" onClick={() => downloadText(plain, fileName)}>
             <Download data-icon="inline-start" aria-hidden />
             Ladda ner<span className="sr-only"> transkriptet</span>
           </Button>

@@ -9,7 +9,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Spinner } from "@/components/ui/spinner";
 import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
-import { readableBaseName, type ResultFileView } from "@/lib/run-files";
+import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import type { RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
@@ -103,7 +103,7 @@ export function RunFailure({
           flowId={flowId}
           runId={run.id}
           steps={stepResults}
-          baseName={readableBaseName(flowName, run.created_at)}
+          fileName={transcriptFileName(flowName, run.created_at)}
         />
       )}
 
