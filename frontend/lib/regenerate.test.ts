@@ -100,7 +100,7 @@ test("the notice starts the new run only when asked, and shows a refusal with th
     }),
   );
   assert.equal(calls, 0, "never on its own");
-  assert.match(view.container.textContent ?? "", /Dokumentet skapades före dina rättningar/);
+  assert.match(view.container.textContent ?? "", /^Transkriptet har rättats efter att dokumentet skapades\.Skapa dokumentet igen med rättningarna$/);
 
   await view.act(async () => button(view.container, "Skapa dokumentet igen med rättningarna")!.click());
   assert.equal(started.length, 0);

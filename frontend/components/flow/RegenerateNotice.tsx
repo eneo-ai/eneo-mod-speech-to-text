@@ -41,12 +41,8 @@ export function RegenerateNotice({
     // A note, not an alarm: it is there when the page opens and needs no announcement.
     <Alert role="note">
       <Info aria-hidden />
-      <AlertTitle>Dokumentet skapades före dina rättningar</AlertTitle>
-      <AlertDescription className="flex flex-col items-start gap-3">
-        <p>
-          Transkriptet har rättats efter att dokumentet skapades. Dokumentet och dess filer ändras inte av rättningarna,
-          men ett nytt dokument kan skapas från det rättade transkriptet.
-        </p>
+      <AlertTitle>Transkriptet har rättats efter att dokumentet skapades.</AlertTitle>
+      <AlertDescription className="mt-2 flex flex-col items-start gap-3">
         <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving} onClick={() => void start()}>
           {working ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin motion-reduce:animate-none" /> : <RotateCcw data-icon="inline-start" aria-hidden />}
           {working ? "Skapar dokumentet igen…" : saving ? "Sparar rättningarna…" : "Skapa dokumentet igen med rättningarna"}
