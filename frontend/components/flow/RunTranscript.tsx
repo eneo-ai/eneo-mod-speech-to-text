@@ -22,16 +22,25 @@ function downloadText(text: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
+/** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
+export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
+  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
+  const [confirmedWords] = useConfirmedWords(
+    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+  );
+  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  return { transcript, confirmedWords, editing, reload };
+}
+
 /**
- * The run's transcript on the result page: readable, with speakers when
- * labelled, the recording to listen to, and copy and download (.txt).
+ * The run's transcript on its own: readable, with speakers when labelled, the
+ * recording to listen to, and copy and download (.txt).
  */
 export function RunTranscript({
   flowId,
   runId,
   steps,
   fileName,
-  finishedAt,
 }: {
   flowId: string;
   runId: string;
@@ -39,19 +48,13 @@ export function RunTranscript({
   steps: readonly FlowRunStep[];
   /** The .txt the download saves, see transcriptFileName. */
   fileName: string;
-  finishedAt?: string;
 }) {
-  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled: true, steps });
-  const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
-  );
-  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, runId, steps);
   return (
     <RunTranscriptView
       flowId={flowId}
       runId={runId}
       fileName={fileName}
-      finishedAt={finishedAt}
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
@@ -65,7 +68,6 @@ export function RunTranscriptView({
   flowId,
   runId,
   fileName,
-  finishedAt,
   transcript,
   confirmedWords,
   editing,
@@ -74,7 +76,6 @@ export function RunTranscriptView({
   flowId: string;
   runId: string;
   fileName: string;
-  finishedAt?: string;
   transcript: TranscriptContext;
   confirmedWords: ReadonlySet<string>;
   editing: ReturnType<typeof useTranscriptCorrections>;
@@ -114,9 +115,6 @@ export function RunTranscriptView({
   // Unread or unreadable saved corrections, or only the start of a longer transcript: an export now
   // would silently drop the corrections or pass the start off as the whole.
   const unread = Boolean(transcript.correctionProblem) || transcript.textPreview;
-  const edited =
-    saveState !== "idle" ||
-    Boolean(corrections.updatedAt && finishedAt && Date.parse(corrections.updatedAt) > Date.parse(finishedAt));
 
   return (
     // From a laptop's width the card keeps to the window and its text scrolls inside it, the player docked below.
@@ -142,8 +140,7 @@ export function RunTranscriptView({
           </Button>
         </div>
       </div>
-      {/* Any save state counts as edited, a failed save included. */}
-      {(unread || edited || localError) && (
+      {(unread || localError || saveState === "error") && (
         <div className="flex flex-col gap-2 px-4 pb-3">
           {unread && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -157,12 +154,6 @@ export function RunTranscriptView({
                 Läs in igen
               </Button>
             </div>
-          )}
-          {edited && (
-            <p className="text-sm text-muted-foreground">
-              Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade
-              transkriptet som underlag för en ny sammanfattning.
-            </p>
           )}
           {localError && (
             <p role="alert" className="text-sm text-destructive">

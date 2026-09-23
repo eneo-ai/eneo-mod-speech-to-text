@@ -10,8 +10,10 @@ import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
+import { regenerationOffer } from "@/lib/regenerate";
+import { RegenerateNotice } from "./RegenerateNotice";
 import { ResultFiles } from "./ResultFiles";
-import { RunTranscript } from "./RunTranscript";
+import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
 import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
@@ -30,6 +32,7 @@ export function RunResult({
   showTranscript = true,
   audio = true,
   onNewRecording,
+  onRegenerated,
 }: {
   flowId: string;
   flowName: string;
@@ -42,6 +45,8 @@ export function RunResult({
   /** The flow takes audio, so a new run starts with a new recording. */
   audio?: boolean;
   onNewRecording: () => void;
+  /** A new run was started from the reviewed transcript; the page follows it. */
+  onRegenerated: (run: FlowRunPublic) => void;
 }) {
   const delivered = run.result?.kind === "outbound_http";
   const heading = usePhaseHeading("Klart");
@@ -50,6 +55,20 @@ export function RunResult({
   // The document's file is the first one that can be fetched; any others are listed under it.
   const primary = files.find((file) => file.available) ?? null;
   const others = files.filter((file) => file !== primary);
+  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
+  const offer =
+    showTranscript && !delivered && editing.saveState !== "error"
+      ? regenerationOffer({
+          flowId,
+          run,
+          stepId: transcript.stepId,
+          fromMetadata: transcript.fromMetadata,
+          corrections: editing.corrections,
+          hasDocument: Boolean(text || files.length),
+        })
+      : null;
+  // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
+  const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
 
   return (
     <main
@@ -69,6 +88,7 @@ export function RunResult({
               {/* On a phone the top bar already names the flow. */}
               <span className="hidden lg:inline">{flowName} · </span>
               Skapad {formatRelativeDate(finished)}
+              {fromReviewed && " från det rättade transkriptet"}
             </p>
           )}
         </div>
@@ -94,6 +114,9 @@ export function RunResult({
       >
         <div className="flex min-w-0 flex-col gap-6">
           {note && <p className="text-[15px] leading-relaxed">{note}</p>}
+          {offer && (
+            <RegenerateNotice offer={offer} saving={editing.saveState === "saving"} onStarted={onRegenerated} onReload={reload} />
+          )}
           {(text || primary) && (
             <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />
           )}
@@ -105,12 +128,14 @@ export function RunResult({
 
         {showTranscript && (
           <div className="min-w-0 lg:sticky lg:top-6">
-            <RunTranscript
+            <RunTranscriptView
               flowId={flowId}
               runId={run.id}
-              steps={stepResults}
               fileName={transcriptFileName(flowName, run.created_at)}
-              finishedAt={run.finished_at}
+              transcript={transcript}
+              confirmedWords={confirmedWords}
+              editing={editing}
+              onReload={reload}
             />
           </div>
         )}

@@ -1121,6 +1121,36 @@ export async function saveTranscriptCorrections(
   );
 }
 
+export interface FlowTranscriptRegenerationPublic {
+  /** The new run: the source run, its document and files stay as they were. */
+  run: FlowRunPublic;
+  /** False when the same request and key replayed an accepted run. */
+  created: boolean;
+  source_run_id: string;
+  correction_revision: number | null;
+  first_regenerated_step_id: string;
+}
+
+/**
+ * A new run of the same published flow version from the reviewed transcript:
+ * the transcription step (and a speaker naming step after it) is taken as
+ * reviewed, the steps after it run again. The same key and request replay the
+ * accepted run; stale revisions, a changed publication or an unsupported flow
+ * layout are refused before anything is created.
+ */
+export async function regenerateTranscript(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  body: { expected_run_revision: number; expected_correction_revision: number | null; segments_hash: string },
+  idempotencyKey: string,
+) {
+  return request<FlowTranscriptRegenerationPublic>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-regenerations/`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
+  );
+}
+
 // --- Evidence ---
 
 export async function getRunEvidence(flowId: string, runId: string) {

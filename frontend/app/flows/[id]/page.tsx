@@ -680,6 +680,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
             showTranscript={transcribed}
             audio={inputStep?.input_format?.toLowerCase() === "audio"}
             onNewRecording={onRunAgain}
+            onRegenerated={(regenerated) => {
+              // The new run is followed like any other, from its progress to its own result.
+              setRunError(null);
+              writeRunIdToUrl(regenerated.id);
+              setRun({ kind: "running", run: regenerated, graph: null });
+              void follow(regenerated.id);
+            }}
           />
         </div>
       </>

@@ -97,6 +97,7 @@ test("the result names its time like a person, keeps the steps behind plain word
       stepResults: [],
       files: [report],
       onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
     }),
   );
   const words = text(html);
