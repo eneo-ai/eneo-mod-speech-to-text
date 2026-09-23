@@ -102,8 +102,8 @@ import {
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { formatBytes } from "@/lib/format";
 import {
-  formatBytes,
   isMimeAllowed,
   isRuntimeFileInput,
   selectRuntimeInputStep,
