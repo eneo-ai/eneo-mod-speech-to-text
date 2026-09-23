@@ -17,6 +17,25 @@ function pickMimeType(accepted: string[] | undefined): string | null {
   return pickSupportedAudioMimetype(accepted, (mime) => MediaRecorder.isTypeSupported(mime));
 }
 
+/** A chosen file's length from its header, or null when the browser cannot tell. */
+function probeDuration(file: Blob): Promise<number | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const audio = new Audio();
+    const done = (ms: number | null) => {
+      clearTimeout(timer);
+      audio.removeAttribute("src");
+      URL.revokeObjectURL(url);
+      resolve(ms);
+    };
+    const timer = setTimeout(() => done(null), 10_000);
+    audio.preload = "metadata";
+    audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000) : null);
+    audio.onerror = () => done(null);
+    audio.src = url;
+  });
+}
+
 function browserCaptureDeps(): CaptureDeps {
   return {
     // The capture asks for mono speech; the chosen microphone joins its constraints.
@@ -48,20 +67,21 @@ export function useFlowSession({
   ownerId: string;
   contract: RunContract | null;
 }) {
-  const [session] = useState(
-    () =>
-      new FlowSession({
-        flowId,
-        flowName,
-        ownerId,
-        openStore: recordingStore,
-        captureDeps: browserCaptureDeps(),
-        pickMimeType,
-        storage: browserStorage(),
-        // SEAM(strömma): true once the live client can stream this browser's audio.
-        liveClient: false,
-      }),
-  );
+  const [session] = useState(() => {
+    const created = new FlowSession({
+      flowId,
+      flowName,
+      ownerId,
+      openStore: recordingStore,
+      captureDeps: browserCaptureDeps(),
+      pickMimeType,
+      storage: browserStorage(),
+      // SEAM(strömma): true once the live client can stream this browser's audio.
+      liveClient: false,
+    });
+    created.setProbeDuration(probeDuration);
+    return created;
+  });
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot, session.getSnapshot);
   const capture = useSyncExternalStore(
     session.capture.subscribe,
@@ -85,5 +105,15 @@ export function useFlowSession({
   // Leaving the page keeps what was recorded, paused, for recovery.
   useEffect(() => () => session.dispose(), [session]);
 
-  return { session, snapshot, capture, persistent: capture.recording ? capture.persistent : persistent };
+  return {
+    session,
+    snapshot,
+    capture,
+    persistent: capture.recording ? capture.persistent : persistent,
+    // SEAM(capture.adopt): "Fortsätt spela in" on a stopped recording needs the
+    // recorder to take the recording back and start a new part of it. When
+    // RecordingCapture can (capture.adopt(recording) then continueRecording()),
+    // return a function here; the ready state offers the action whenever it is set.
+    continueStopped: undefined as (() => void) | undefined,
+  };
 }

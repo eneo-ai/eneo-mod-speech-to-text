@@ -50,3 +50,9 @@ export function formatClock(ms: number): string {
   const seconds = String(total % 60).padStart(2, "0");
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
 }
+
+/** "Inspelning 23 sep 16:13": a recording named for people, not as a file. */
+export function recordingName(startedAt: number): string {
+  const date = new Date(startedAt);
+  return `Inspelning ${date.getDate()} ${MONTHS[date.getMonth()]} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}

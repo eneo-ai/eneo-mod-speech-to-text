@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { RunContract } from "./api";
+import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import type { CaptureDeps } from "./recording-session";
 import {
   FlowSession,
   availableModes,
+  acceptedFormats,
   lastUsedFlow,
   primaryActionLabel,
   speakerLabelsFor,
@@ -460,4 +461,147 @@ test("a recording a reload cut off continues from the unsent list as a new part 
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(session.getSnapshot().recording?.id, earlier.id);
   assert.equal(session.getSnapshot().recording?.parts.length, 2);
+});
+
+test("Ta bort removes the recording from the device for good and starts over with the details kept", async () => {
+  const { session, recorders, store } = await setup();
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  session.setDetail("deltagare", ["Anna Berg"]);
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  await session.discard();
+  assert.equal(session.getSnapshot().phase, "setup");
+  assert.equal(session.getSnapshot().recording, null);
+  assert.equal(await store.get(id), null);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
+  assert.deepEqual(session.getSnapshot().details.deltagare, ["Anna Berg"]);
+});
+
+test("Ta bort says so when another tab is using the recording, and keeps it", async () => {
+  const { session, recorders, store } = await setup();
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+  assert.ok(await store.lease(id), "another tab takes it, e.g. to send it");
+
+  await session.discard();
+  assert.deepEqual(session.getSnapshot().problem, { title: "Inspelningen används i en annan flik." });
+  assert.equal(session.getSnapshot().phase, "ready");
+  assert.ok(await store.get(id));
+});
+
+test("a chosen file is checked against the flow's types and size before anything is sent; a bad pick keeps the earlier file", async () => {
+  const probed: string[] = [];
+  const { session } = await setup();
+  session.setProbeDuration(async (file) => {
+    probed.push((file as File).name);
+    return 32 * 60_000;
+  });
+  session.setContract(audioContract());
+  session.selectMode("ladda-upp");
+
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  assert.equal(session.getSnapshot().file?.filename, "mote.mp3");
+  await until(() => session.getSnapshot().file?.durationMs != null, "the duration");
+  assert.equal(session.getSnapshot().file?.durationMs, 32 * 60_000);
+  assert.deepEqual(probed, ["mote.mp3"]);
+
+  session.chooseFile(new File(["text"], "protokoll.pdf", { type: "application/pdf" }));
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filtypen stöds inte.",
+    detail: "Flödet tar emot WebM och MP3.",
+  });
+  assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
+
+  const big = new File(["x"], "lang.mp3", { type: "audio/mpeg" });
+  Object.defineProperty(big, "size", { value: 60 * 1024 * 1024 });
+  session.chooseFile(big);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filen är större än flödet tar emot (högst 50\u00a0MB).",
+    detail: "Välj en kortare inspelning eller dela upp den.",
+  });
+  assert.equal(session.getSnapshot().file?.filename, "mote.mp3");
+
+  // A file the browser gives no type is judged by its name.
+  session.chooseFile(new File(["audio"], "inspelning.flac"));
+  assert.equal(session.getSnapshot().problem?.title, "Filtypen stöds inte.");
+  session.chooseFile(new File(["audio"], "Intervju.MP3"));
+  assert.equal(session.getSnapshot().file?.filename, "Intervju.MP3");
+  assert.equal(session.getSnapshot().problem, null);
+});
+
+test("accepted types are said in plain words", () => {
+  assert.equal(acceptedFormats(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-m4a", "audio/mp4", "audio/webm"]), "MP3, WAV, M4A och WebM");
+  assert.equal(acceptedFormats(["audio/amr"]), "AMR");
+  assert.equal(acceptedFormats([]), null);
+});
+
+test("a stale version refreshes the flow in place and keeps the audio and the details that still fit", async () => {
+  let reloads = 0;
+  const { session, recorders, store } = await setup();
+  session.setContract(audioContract());
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(409, "The flow has a newer published version.", null, "flow_run_stale_version");
+    },
+    reloadFlow: async () => {
+      reloads += 1;
+      session.setContract(
+        audioContract({
+          published_flow_version: 4,
+          form_fields: [{ name: "deltagare", label: "Deltagare", type: "list" }],
+        }),
+      );
+    },
+  });
+  session.selectMode("spela-in");
+  session.setDetail("deltagare", ["Anna Berg"]);
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(reloads, 1);
+  const after = session.getSnapshot();
+  assert.deepEqual(after.problem, {
+    title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen.",
+  });
+  assert.equal(after.phase, "ready");
+  assert.equal(after.recording?.id, id);
+  assert.ok(await store.get(id));
+  assert.deepEqual(after.details, { deltagare: ["Anna Berg"] });
+});
+
+test("a flow that is no longer published says so, with a way back, and the recording stays", async () => {
+  const { session, recorders } = await setup();
+  session.setContract(audioContract());
+  session.setDetail("motesnamn", "KS");
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(404, "Flow not found.", null, "flow_not_found");
+    },
+  });
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), false);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Flödet är inte längre tillgängligt.",
+    detail: "Inspelningen finns kvar. Spara den som fil om du vill behålla den.",
+    back: true,
+  });
+  assert.equal(session.getSnapshot().phase, "ready");
 });

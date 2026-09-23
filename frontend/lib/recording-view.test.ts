@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatClock } from "./format";
+import { formatClock, recordingName } from "./format";
 import {
   SilenceWatch,
   detailsSummary,
@@ -83,7 +83,7 @@ test("the details collapse to one line that names what is filled in", () => {
     detailsSummary(fields, { deltagare: ["Anna Berg", "Erik Lund", "Sara Holm"], motesnamn: "KS" }),
     "Deltagare: Anna Berg, Erik Lund, Sara Holm · Mötets namn: KS",
   );
-  assert.equal(detailsSummary(fields, { deltagare: [] }), "Uppgifter: inga ifyllda");
+  assert.equal(detailsSummary(fields, { deltagare: [] }), "Inga uppgifter ifyllda");
 });
 
 test("pause excludes time: the timer counts only recorded time", async () => {
@@ -242,4 +242,9 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
     assert.ok(html.includes(">0:00<"), "the timer is shown");
     assert.ok(live.every((inner) => !inner.includes("0:00")), "the timer is outside every live region");
   }
+});
+
+test("a recording is named for people", () => {
+  assert.equal(recordingName(new Date(2026, 8, 23, 16, 13).getTime()), "Inspelning 23 sep 16:13");
+  assert.equal(recordingName(new Date(2026, 4, 2, 9, 5).getTime()), "Inspelning 2 maj 09:05");
 });

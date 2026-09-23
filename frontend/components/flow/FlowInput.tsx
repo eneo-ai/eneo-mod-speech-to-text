@@ -1,8 +1,8 @@
 "use client";
 
-import { ArrowLeft, ChevronDown, FileAudio, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileText, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,10 @@ import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { ReadyPanel } from "@/components/flow/ReadyPanel";
 import { FocusedRecorder, RecordingBar } from "@/components/flow/Recorder";
 import { useDocumentTitle, useElapsed, useLeaveGuard, useSilence } from "@/components/flow/recording-hooks";
+import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UnsentRecordings } from "@/components/UnsentRecordings";
@@ -26,7 +28,7 @@ import { formatRelativeDate } from "@/lib/format";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import { detailsSummary, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
-import { formatBytes, selectRuntimeInputStep } from "@/lib/upload";
+import { selectRuntimeInputStep } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 
 type Session = ReturnType<typeof useFlowSession>;
@@ -187,7 +189,9 @@ export function FlowInput({
           aria-label="Ljudet"
           className={cn(
             "flex min-w-0 flex-col gap-4",
-            group === "capture" ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0" : "mt-8 gap-6 lg:mt-0",
+            group === "capture"
+              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0"
+              : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
           )}
         >
           <OfflineBanner waiting={group === "capture" ? "recording" : null} />
@@ -200,8 +204,15 @@ export function FlowInput({
               onResume={onResume}
               unsentRecordings={unsentRecordings}
             />
-          ) : group === "ready" ? (
-            <InterimReady input={input} />
+          ) : group === "ready" && snapshot.recording ? (
+            <ReadyPanel
+              recording={snapshot.recording}
+              persistent={input.persistent}
+              problem={snapshot.problem}
+              onCreate={() => void createDocument(session)}
+              onContinue={input.continueStopped}
+              onDiscard={() => void session.discard()}
+            />
           ) : (
             <CaptureWorkspace input={input} />
           )}
@@ -268,7 +279,7 @@ function SetupWorkspace({
   const step = selectRuntimeInputStep(contract);
   const audio = step?.input_format?.toLowerCase() === "audio";
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
-  const Icon = mode ? MODE_TEXT[mode].icon : null;
+  const Icon = mode === "ladda-upp" && file ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const label =
     !mode ? "Skapa dokument" : !audio && !file ? "Välj fil" : primaryActionLabel(mode, file != null);
 
@@ -333,18 +344,13 @@ function SetupWorkspace({
               event.target.value = "";
             }}
           />
-          {file && (
-            <div className="flex items-center gap-3 rounded-xl border border-rule-soft bg-paper p-4">
-              <FileAudio aria-hidden className="size-6 shrink-0 text-accent" strokeWidth={1.75} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[15px] font-medium text-ink">{file.filename}</p>
-                <p className="text-[13px] text-ink-soft">{formatBytes(file.blob.size)}</p>
-              </div>
-              <Button type="button" variant="outline" className="h-11" onClick={() => fileInput.current?.click()}>
-                Byt fil
-              </Button>
-            </div>
-          )}
+          <UploadPanel
+            step={step}
+            file={file}
+            audio={audio}
+            onPick={() => fileInput.current?.click()}
+            onDrop={(dropped) => session.chooseFile(dropped)}
+          />
         </>
       )}
 
@@ -397,18 +403,3 @@ function ResumableRuns({ runs, onResume }: { runs: FlowRunSummary[]; onResume: (
   );
 }
 
-// Interim view; the ready state replaces it.
-function InterimReady({ input }: { input: Session }): ReactNode {
-  const { session, snapshot } = input;
-  return (
-    <div className="flex flex-col gap-4">
-      <h2 data-phase-heading tabIndex={-1} className="text-[20px] font-semibold outline-none">
-        Inspelningen är klar
-      </h2>
-      {snapshot.problem && <ProblemAlert problem={snapshot.problem} />}
-      <Button type="button" className="h-12 rounded-xl" onClick={() => void createDocument(session)}>
-        Skapa dokument
-      </Button>
-    </div>
-  );
-}

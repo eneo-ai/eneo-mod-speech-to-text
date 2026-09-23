@@ -7,12 +7,19 @@
  * the page's run code.
  */
 
-import type { FlowTranscriptionContract, FormField, RunContract } from "./api";
+import {
+  ApiError,
+  type FlowTranscriptionContract,
+  type FormField,
+  type RunContract,
+  type RunContractStepInput,
+} from "./api";
 import { friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
-import type { RecordingStore, StoredRecording } from "./recording-store";
-import { isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
+import { IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
+import { formatBytes } from "./format";
+import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
 export type SessionPhase = "setup" | "starting" | "recording" | "paused" | "interrupted" | "ready";
@@ -25,11 +32,15 @@ export interface Problem {
   detail?: string;
   /** Offer "Försök igen". */
   retry?: boolean;
+  /** Offer the way back to the flows. */
+  back?: boolean;
 }
 
 export interface ChosenFile {
   blob: Blob;
   filename: string;
+  /** Known once the browser has read the file's header. */
+  durationMs?: number | null;
 }
 
 export interface SubmitRequest {
@@ -43,6 +54,105 @@ export interface SubmitRequest {
 export interface SessionHandlers {
   /** Uploads and starts the run; throws when it could not. */
   submit: (request: SubmitRequest) => Promise<void>;
+  /** Loads the published flow and its run contract again. */
+  reloadFlow?: () => Promise<void>;
+}
+
+const FORMAT_NAMES: Record<string, string> = {
+  mpeg: "MP3",
+  mp3: "MP3",
+  wav: "WAV",
+  "x-wav": "WAV",
+  wave: "WAV",
+  "vnd.wave": "WAV",
+  mp4: "M4A",
+  m4a: "M4A",
+  "x-m4a": "M4A",
+  aac: "AAC",
+  webm: "WebM",
+  ogg: "Ogg",
+  flac: "FLAC",
+  "x-flac": "FLAC",
+};
+
+/** "MP3, WAV, M4A och WebM": the flow's accepted types in plain words. */
+export function acceptedFormats(mimetypes: string[] | undefined): string | null {
+  const names = [
+    ...new Set(
+      (mimetypes ?? [])
+        .map((mime) => baseMimetype(mime).split("/")[1] ?? "")
+        .filter((subtype) => subtype && subtype !== "*")
+        .map((subtype) => FORMAT_NAMES[subtype] ?? subtype.replace(/^x-/, "").toUpperCase()),
+    ),
+  ];
+  if (names.length === 0) return null;
+  return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} och ${names[names.length - 1]}`;
+}
+
+// The browser gives no type for some files; their name says enough.
+const EXTENSION_TYPES: Record<string, string> = {
+  mp3: "audio/mpeg",
+  m4a: "audio/mp4",
+  mp4: "audio/mp4",
+  wav: "audio/wav",
+  webm: "audio/webm",
+  ogg: "audio/ogg",
+  oga: "audio/ogg",
+  flac: "audio/flac",
+  aac: "audio/aac",
+};
+
+function oversized(maxBytes: number): Problem {
+  return {
+    title: `Filen är större än flödet tar emot (högst ${formatBytes(maxBytes)}).`,
+    detail: "Välj en kortare inspelning eller dela upp den.",
+  };
+}
+
+function unsupported(accepted: string[] | undefined): Problem {
+  const formats = acceptedFormats(accepted);
+  return { title: "Filtypen stöds inte.", detail: formats ? `Flödet tar emot ${formats}.` : undefined };
+}
+
+/** Whether the flow's input step takes this file, said in plain words when it does not. */
+export function fileProblem(
+  file: { name: string; type: string; size: number },
+  step: RunContractStepInput | null,
+): Problem | null {
+  const accepted = step?.accepted_mimetypes;
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const type = file.type || EXTENSION_TYPES[extension] || "";
+  if (type && !isMimeAllowed(type, accepted)) return unsupported(accepted);
+  if (step?.max_file_size_bytes && file.size > step.max_file_size_bytes) return oversized(step.max_file_size_bytes);
+  return null;
+}
+
+/** A failed send in the product's words, with the next step. */
+export function submitProblem(
+  error: unknown,
+  step: RunContractStepInput | null,
+  inputKind: "recording" | "file" | null,
+): Problem {
+  if (error instanceof ApiError) {
+    if (error.code === "flow_run_stale_version") {
+      return { title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen." };
+    }
+    if (error.status === 404 || error.code === "flow_not_published") {
+      return {
+        title: "Flödet är inte längre tillgängligt.",
+        detail:
+          inputKind === "recording"
+            ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den."
+            : "Välj ett annat flöde.",
+        back: true,
+      };
+    }
+    if ((error.status === 413 || error.code === "file_too_large") && step?.max_file_size_bytes) {
+      return oversized(step.max_file_size_bytes);
+    }
+    if (error.status === 415 || error.code === "unsupported_media_type") return unsupported(step?.accepted_mimetypes);
+  }
+  return { title: friendlyError(error) };
 }
 
 export interface SessionSnapshot {
@@ -238,6 +348,7 @@ export class FlowSession {
   private invalid: string[] = [];
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
+  private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -353,10 +464,45 @@ export class FlowSession {
     this.handlers = handlers;
   }
 
-  /** Ladda upp: the file that becomes the document's input. */
+  /** Reads a chosen file's length, when the browser can. */
+  setProbeDuration(probe: (file: Blob) => Promise<number | null>): void {
+    this.probeDuration = probe;
+  }
+
+  /** Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one. */
   chooseFile(file: File): void {
-    this.file = { blob: file, filename: file.name };
+    this.problem = fileProblem(file, this.inputStep());
+    if (!this.problem) {
+      const chosen: ChosenFile = { blob: file, filename: file.name, durationMs: null };
+      this.file = chosen;
+      void this.probeDuration?.(file)
+        .then((durationMs) => {
+          if (this.file !== chosen || durationMs == null) return;
+          this.file = { ...chosen, durationMs };
+          this.emit();
+        })
+        .catch(() => undefined);
+    }
+    this.emit();
+  }
+
+  /** "Ta bort": the recording leaves the device for good; the details stay. */
+  async discard(): Promise<void> {
+    const recording = this.ready;
+    if (!recording || this.snapshot.phase !== "ready") return;
+    try {
+      await (await this.options.openStore()).remove(recording.id);
+    } catch (error) {
+      this.problem =
+        error instanceof Error && error.message === IN_USE_ELSEWHERE
+          ? { title: IN_USE_ELSEWHERE }
+          : { title: "Inspelningen kunde inte tas bort.", detail: "Försök igen." };
+      this.emit();
+      return;
+    }
+    this.ready = null;
     this.problem = null;
+    this.capture.reset();
     this.emit();
   }
 
@@ -397,7 +543,11 @@ export class FlowSession {
       });
     } catch (error) {
       // The input and the details stay for the next try.
-      this.problem = { title: friendlyError(error) };
+      this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null);
+      if (error instanceof ApiError && error.code === "flow_run_stale_version") {
+        // The newer version's contract decides which details still fit.
+        await this.handlers.reloadFlow?.().catch(() => undefined);
+      }
       this.emit();
       return false;
     }

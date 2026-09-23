@@ -279,7 +279,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }, [contract]);
 
   // The session hands the document to the run code below.
-  useEffect(() => session.setHandlers({ submit: sendInput }));
+  useEffect(() => session.setHandlers({ submit: sendInput, reloadFlow }));
+
+  /** A newer published version: the flow and its contract, loaded again in place. */
+  async function reloadFlow() {
+    const [p, c] = await Promise.all([getPublishedFlow(flowId), getRunContract(flowId)]);
+    setPublished(p);
+    setContract(c);
+  }
 
   /** Uploads the input and starts the run; throws, with the page back in its input state, when it could not. */
   async function sendInput({ input: runInput, payload, speakerLabels }: SubmitRequest) {

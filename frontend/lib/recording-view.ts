@@ -95,5 +95,5 @@ export function detailsSummary(fields: FormField[], details: Record<string, Deta
     const text = Array.isArray(value) ? value.join(", ") : (value ?? "").trim();
     return text ? [`${field.label || field.name}: ${text}`] : [];
   });
-  return parts.length > 0 ? parts.join(" · ") : "Uppgifter: inga ifyllda";
+  return parts.length > 0 ? parts.join(" · ") : "Inga uppgifter ifyllda";
 }

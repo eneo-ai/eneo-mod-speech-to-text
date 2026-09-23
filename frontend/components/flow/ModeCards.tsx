@@ -32,7 +32,7 @@ export const ModeCards = forwardRef<
     <FieldSet className="gap-0">
       {/* A legend does not take part in the fieldset's gap, so it keeps its own margin. */}
       <FieldLegend className="mb-4">
-        <h2 ref={heading} tabIndex={-1} className="text-[20px] font-semibold tracking-[-0.01em] text-ink outline-none">
+        <h2 ref={heading} data-phase-heading tabIndex={-1} className="text-[20px] font-semibold tracking-[-0.01em] text-ink outline-none">
           Hur vill du ge ljudet?
         </h2>
       </FieldLegend>

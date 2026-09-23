@@ -1,4 +1,5 @@
-import { CircleAlert } from "lucide-react";
+import { ArrowLeft, CircleAlert } from "lucide-react";
+import Link from "next/link";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import type { Problem } from "@/lib/flow-session";
@@ -13,6 +14,14 @@ export function ProblemAlert({ problem, onRetry }: { problem: Problem; onRetry?:
       {problem.retry && onRetry && (
         <Button type="button" variant="outline" className="mt-3 h-11" onClick={onRetry}>
           Försök igen
+        </Button>
+      )}
+      {problem.back && (
+        <Button asChild variant="outline" className="mt-3 h-11">
+          <Link href="/flows">
+            <ArrowLeft data-icon="inline-start" aria-hidden className="size-4" />
+            Till flödena
+          </Link>
         </Button>
       )}
     </Alert>
