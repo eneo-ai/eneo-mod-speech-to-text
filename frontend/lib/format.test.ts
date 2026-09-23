@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatBytes, formatDuration, formatRelativeDate } from "./format";
+import { formatBytes, formatDeadline, formatDuration, formatRelativeDate } from "./format";
 
 const nbsp = " ";
 
@@ -27,6 +27,14 @@ test("relative dates say i dag and i går, otherwise the date, and the year only
   assert.equal(formatRelativeDate(new Date(2026, 8, 30, 23, 50), new Date(2026, 9, 1, 0, 10)), "i går 23:50");
   assert.equal(formatRelativeDate(new Date(2026, 8, 23, 10, 12).toISOString(), now), "i dag 10:12");
   assert.equal(formatRelativeDate("inte ett datum", now), "");
+});
+
+test("a deadline always says its time, in another year too", () => {
+  const now = new Date(2026, 11, 20, 16, 30);
+  assert.equal(formatDeadline(new Date(2026, 11, 20, 23, 59), now), "i dag 23:59");
+  assert.equal(formatDeadline(new Date(2026, 11, 29, 9, 1), now), "29 dec 09:01");
+  assert.equal(formatDeadline(new Date(2027, 0, 3, 9, 1), now), "3 jan 2027 09:01");
+  assert.equal(formatDeadline("inte ett datum", now), "");
 });
 
 test("durations read as seconds under a minute, then minutes, then hours and minutes", () => {

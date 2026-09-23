@@ -138,10 +138,14 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   await expect.poll(() => statusCalls - renewed, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
 });
 
-test("a review says when it must be done by", async ({ page }, info) => {
-  for (const state of ["review", "review-text-edit"]) {
+test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
+  for (const [state, now, deadline] of [
+    ["review", "2026-09-24T12:00:00+02:00", "8 okt 11:01"],
+    ["review-text-edit", "2026-12-28T12:00:00+01:00", "3 jan 2027 09:01"],
+  ]) {
+    await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
-    await expect(page.getByRole("main")).toContainText(/Granska senast 8 okt \d\d:\d\d\. Därefter avbryts körningen\./);
+    await expect(page.getByRole("main")).toContainText(`Granska senast ${deadline}. Därefter avbryts körningen.`);
   }
 });
 

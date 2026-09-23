@@ -85,7 +85,7 @@ import {
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
-import { formatRelativeDate } from "@/lib/format";
+import { formatDeadline } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
 
 interface PageProps {
@@ -749,7 +749,7 @@ function ReviewView({
   useDocumentTitle(`${title} · Tal till text`);
   // Eneo ends an unanswered review at this time (WCAG 2.2.1: the limit is said, 14 days unless the flow sets less).
   const deadline = checkpoint.expires_at ? (
-    <> Granska senast {formatRelativeDate(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+    <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);

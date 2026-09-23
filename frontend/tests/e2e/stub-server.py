@@ -163,8 +163,10 @@ CHECKPOINT = {
     },
 }
 # A text step paused for review (run-review-text): its output can be edited before the flow goes on.
+# Paused in December, its deadline falls in the next year.
 TEXT_CHECKPOINT = {
     **{k: v for k, v in CHECKPOINT.items() if k != "current_payload_json"},
+    "created_at": "2026-12-20T08:01:00Z", "updated_at": "2026-12-20T08:01:00Z", "expires_at": "2027-01-03T08:01:00Z",
     "id": "cp-2", "flow_id": "flow-1", "flow_run_id": "run-review-text", "step_id": "s2", "step_label": "Sammanfattning",
     "output_type": "text", "current_payload_json": {"text": "Kommunstyrelsen beslutade att höja budgetramen med två procent."},
 }

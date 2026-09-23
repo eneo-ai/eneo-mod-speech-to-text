@@ -25,7 +25,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "run-progress", region: (page) => page.getByRole("main") },
   { state: "result", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "failure", region: (page) => page.getByRole("main"), fixedTime: true },
-  { state: "review", region: (page) => page.getByRole("main") },
+  { state: "review", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "flow-republish-required", region: (page) => page.locator(".app-shell") },
 ];
 
