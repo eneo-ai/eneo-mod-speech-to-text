@@ -14,7 +14,7 @@ import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FRAME, FRAME_WIDTH, ReadingMain } from "@/components/frame";
+import { FRAME, ReadingMain } from "@/components/frame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -674,27 +674,24 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return (
       <>
         {topBar}
-        {/* The result's views bring their own gutters; the frame gives them its width. */}
-        <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
-          <RunResult
-            flowId={flowId}
-            flowName={published.name}
-            run={run.run}
-            steps={steps}
-            stepResults={run.steps}
-            files={files}
-            showTranscript={transcribed}
-            audio={inputStep?.input_format?.toLowerCase() === "audio"}
-            onNewRecording={onRunAgain}
-            onRegenerated={(regenerated) => {
-              // The new run is followed like any other, from its progress to its own result.
-              setRunError(null);
-              writeRunIdToUrl(regenerated.id);
-              setRun({ kind: "running", run: regenerated, graph: null });
-              void follow(regenerated.id);
-            }}
-          />
-        </div>
+      <RunResult
+          flowId={flowId}
+          flowName={published.name}
+          run={run.run}
+          steps={steps}
+          stepResults={run.steps}
+          files={files}
+          showTranscript={transcribed}
+          audio={inputStep?.input_format?.toLowerCase() === "audio"}
+          onNewRecording={onRunAgain}
+          onRegenerated={(regenerated) => {
+            // The new run is followed like any other, from its progress to its own result.
+            setRunError(null);
+            writeRunIdToUrl(regenerated.id);
+            setRun({ kind: "running", run: regenerated, graph: null });
+            void follow(regenerated.id);
+          }}
+        />
       </>
     );
   }
@@ -706,22 +703,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
   return (
     <>
       {topBar}
-      <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
-        <RunFailure
-          flowId={flowId}
-          flowName={published.name}
-          run={run.run}
-          failure={failure}
-          steps={steps}
-          stepResults={run.steps}
-          files={files}
-          showTranscript={transcribed}
-          error={runError}
-          refusal={retryRefusal}
-          onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-          onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-        />
-      </div>
+      <RunFailure
+        flowId={flowId}
+        flowName={published.name}
+        run={run.run}
+        failure={failure}
+        steps={steps}
+        stepResults={run.steps}
+        files={files}
+        showTranscript={transcribed}
+        error={runError}
+        refusal={retryRefusal}
+        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+      />
     </>
   );
 }

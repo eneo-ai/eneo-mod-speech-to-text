@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { ArrowLeft, Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { FRAME, READING } from "@/components/frame";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -134,13 +135,9 @@ export function RunResult({
   );
 
   return (
-    <main
-      className={cn(
-        "mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-12 pt-2 md:px-8 lg:pt-8",
-        // The frame owns the page's width; from a laptop's width the result takes what it gives.
-        showTranscript && "lg:max-w-none",
-      )}
-    >
+    // The frame owns the width: the workspace for the document and its transcript, a reading column for a document alone.
+    <main id="innehall" className={cn(FRAME, "flex flex-1 flex-col pb-12 pt-2 lg:pt-8")}>
+      <div className={cn("flex flex-col gap-6", !showTranscript && READING)}>
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
@@ -195,6 +192,7 @@ export function RunResult({
           {transcriptColumn && <div className="min-w-0 lg:sticky lg:top-6">{transcriptColumn}</div>}
         </div>
       )}
+      </div>
     </main>
   );
 }
