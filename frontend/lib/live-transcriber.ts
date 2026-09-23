@@ -162,13 +162,17 @@ export class LiveTranscriber {
   /**
    * This connection cannot carry live text any further (it fell behind, or the
    * audio feeding it broke): it ends as a break, and live text tries again the
-   * way it does after a dropped connection.
+   * way it does after a dropped connection. The connection stays this
+   * client's until the browser has closed it (a close still sends what was
+   * queued), so nothing more goes to it and no replacement opens before its
+   * own close event; the audio meanwhile waits in the bounded buffer.
    */
   fail(): void {
     const socket = this.socket;
     if (!socket || this.stopping) return;
     this.failure = "retry";
-    this.onClose(socket);
+    this.ready = false;
+    if (this.snapshot.started) this.set({ status: "reconnecting" });
     try {
       socket.close(1000);
     } catch {

@@ -202,6 +202,9 @@ test("audio that cannot feed live text ends the connection as a break, and the n
     assert.equal(session.getSnapshot().status, "reconnecting", `not "live" without audio (${Object.keys(failure)})`);
     assert.equal(contexts[0].state, "closed", "the failed audio is let go");
     assert.equal(sockets[0].closedWith, 1000);
+    elapse(1_000);
+    assert.equal(sockets.length, 1, "the next try waits for the close");
+    sockets[0].onclose?.({ code: 1000 });
 
     elapse(1_000);
     await settle();

@@ -247,21 +247,38 @@ test("a connection coming back while a reconnect is under way opens no second so
   assert.equal(sockets[1].closedWith, 1000, "no socket is left open");
 });
 
-test("a connection that stops draining is retired once 30 s of audio waits in it; a new session takes over", () => {
-  const { live, sockets, elapse } = setup();
+test("a connection that stops draining is retired; no replacement opens before its close, and the wait stays bounded", () => {
+  const { live, sockets, elapse, browser } = setup();
   live.start();
   sockets[0].ready();
   sockets[0].stalled = true;
   for (let i = 0; i < 1_000; i += 1) live.pushFrame(frame(i % 256));
-  assert.ok(sockets[0].bufferedAmount <= 960_000, `at most 30 s queued, was ${sockets[0].bufferedAmount} bytes`);
-  assert.equal(sockets[0].closedWith, 1000, "the stalled connection is closed");
+  assert.equal(sockets[0].closedWith, 1000, "the stalled connection is asked to close");
   assert.equal(live.getSnapshot().status, "reconnecting");
+  assert.ok(sockets[0].bufferedAmount <= 960_000, `at most 30 s queued, was ${sockets[0].bufferedAmount} bytes`);
+  const sentBefore = sockets[0].frames().length;
+  // While it closes, its queue drains, but nothing new may join it.
+  sockets[0].stalled = false;
+  sockets[0].bufferedAmount = 0;
 
+  // The browser takes its time to close it: every chance to try again passes, and audio keeps coming.
+  for (let round = 0; round < 4; round += 1) {
+    elapse(60_000);
+    browser.go(false);
+    browser.go(true);
+    live.setRecording(false);
+    live.setRecording(true);
+    for (let i = 0; i < 1_000; i += 1) live.pushFrame(frame(i % 256));
+  }
+  assert.equal(sockets.length, 1, "no replacement while the retired connection is still closing");
+  assert.equal(sockets[0].frames().length, sentBefore, "nothing more is sent to it");
+
+  sockets[0].drop(1000); // now it has closed
   elapse(1_000);
-  assert.equal(sockets.length, 2, "a new session");
+  assert.equal(sockets.length, 2, "a new session after the close");
   sockets[1].ready();
   const sent = sockets[1].frames();
-  assert.ok(sent.length > 0 && sent.length <= 300, "the newest audio since, bounded");
+  assert.equal(sent.length, 300, "the newest 30 s waited for it");
   assert.equal(firstByte(sent[sent.length - 1]), 999 % 256);
   assert.equal(live.getSnapshot().status, "live");
 });
