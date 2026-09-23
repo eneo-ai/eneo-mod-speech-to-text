@@ -91,11 +91,29 @@ export function RunTranscriptView({
       </div>
     );
   }
-  if (transcript.segments.length === 0 && transcript.speakerReviews.length === 0) return null;
+  if (transcript.segments.length === 0 && transcript.speakerReviews.length === 0) {
+    // Nothing to show is only nothing to say when nothing went wrong reading it.
+    if (!transcript.correctionProblem) return null;
+    return (
+      <section aria-labelledby="run-transcript" className="flex flex-col gap-3">
+        <h2 id="run-transcript" className="text-lg font-semibold tracking-tight">
+          Transkript
+        </h2>
+        <p role="alert" className="text-sm text-destructive">
+          {transcript.correctionProblem}
+        </p>
+        <Button type="button" variant="outline" className="self-start" onClick={onReload}>
+          <RotateCcw data-icon="inline-start" aria-hidden />
+          Läs in igen
+        </Button>
+      </section>
+    );
+  }
 
   const plain = renderReviewedTranscript(transcript.segments, corrections, transcript.speakerNames);
-  // Unread or unreadable saved corrections: an export now would silently drop them.
-  const unread = Boolean(transcript.correctionProblem);
+  // Unread or unreadable saved corrections, or only the start of a longer transcript: an export now
+  // would silently drop the corrections or pass the start off as the whole.
+  const unread = Boolean(transcript.correctionProblem) || transcript.textPreview;
   const edited =
     saveState !== "idle" ||
     Boolean(corrections.updatedAt && finishedAt && Date.parse(corrections.updatedAt) > Date.parse(finishedAt));
@@ -117,7 +135,9 @@ export function RunTranscriptView({
       {unread && (
         <div className="flex flex-wrap items-center gap-3">
           <p className="text-sm text-muted-foreground">
-            Transkriptet kan kopieras och laddas ner när rättningarna har lästs in.
+            {transcript.textPreview
+              ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
+              : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
           </p>
           <Button type="button" variant="outline" onClick={onReload}>
             <RotateCcw data-icon="inline-start" aria-hidden />

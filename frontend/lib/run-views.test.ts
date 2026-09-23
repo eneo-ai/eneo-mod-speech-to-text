@@ -10,6 +10,7 @@ import { RunProgress, RunUnread } from "../components/flow/RunProgress";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
+import type { TranscriptContext } from "./transcript-context";
 import { EMPTY_CORRECTIONS } from "./transcript-corrections";
 import { listOwnRuns } from "./api";
 import type { ResultFileView } from "./run-files";
@@ -266,6 +267,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     stepId: "step-1",
     corrections: EMPTY_CORRECTIONS,
     speakerNames: {},
+    textPreview: false,
   };
   const editing = {
     corrections: EMPTY_CORRECTIONS,
@@ -314,4 +316,53 @@ test("a finished run whose result could not be read says so and offers to read i
   assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen<\/button>/);
   assert.match(html, /href="\/flows"/);
   assert.doesNotMatch(html, /klart|Dokumentet/i);
+});
+
+function transcriptView(overrides: Record<string, unknown>) {
+  return renderToStaticMarkup(
+    createElement(RunTranscriptView, {
+      flowId: "flow-1",
+      runId: "run-1",
+      fileName: "transkript.txt",
+      transcript: {
+        pending: false,
+        speakerReviews: [],
+        correctionProblem: null,
+        segments: [{ fileIndex: 0, start: 0, end: 300, speaker: null, text: "Välkomna till mötet." }],
+        fromMetadata: false,
+        fileIds: [],
+        stepId: "step-1",
+        corrections: EMPTY_CORRECTIONS,
+        speakerNames: {},
+        textPreview: false,
+        ...overrides,
+      } as TranscriptContext,
+      confirmedWords: new Set<string>(),
+      editing: {
+        corrections: EMPTY_CORRECTIONS,
+        saveState: "idle" as const,
+        localError: null,
+        saveQueue: { current: Promise.resolve(true) },
+        onCorrectionsChange: () => undefined,
+        retryCorrections: async () => undefined,
+        downloadUnsavedCorrections: () => undefined,
+      },
+      onReload: () => undefined,
+    }),
+  );
+}
+
+test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
+  const html = transcriptView({ textPreview: true });
+  assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Kopiera transkriptet/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Ladda ner/);
+  assert.match(html, />Läs in igen</);
+});
+
+test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner." });
+  assert.match(html, /Kunde inte läsa transkriptets underlag/);
+  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+  assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
 });
