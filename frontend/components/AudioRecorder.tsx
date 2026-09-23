@@ -1,19 +1,22 @@
 "use client";
 
 import {
+  Download,
   MoreHorizontal,
   Mic,
   Pause,
   Play,
   RotateCcw,
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
-  baseMimetype,
-  extensionForAudioMime,
-  formatBytes,
-  pickSupportedAudioMimetype,
-} from "@/lib/upload";
+  RecordingInterrupted,
+  RecordingStorageNotice,
+} from "@/components/RecordingNotices";
+import { saveRecordingAsFiles } from "@/components/save-recording";
+import { RecordingCapture, type CaptureDeps } from "@/lib/recording-session";
+import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import { formatBytes, pickSupportedAudioMimetype } from "@/lib/upload";
 
 type WakeLockSentinelLike = {
   release: () => Promise<void>;
@@ -26,19 +29,20 @@ type NavigatorWithWakeLock = Navigator & {
 };
 
 interface Props {
+  flowId: string;
+  flowName: string;
+  stepId: string;
   acceptedMimetypes?: string[];
   maxBytes?: number;
-  onChange: (blob: Blob | null, filename: string | null) => void;
+  /** The recording chosen as the run's input, shown as done. */
+  recording: StoredRecording | null;
+  onChange: (recording: StoredRecording | null) => void;
   onRecordingChange?: (recording: boolean) => void;
   /** Optional title shown above timer while recording (e.g. flow name) */
   title?: string;
   /** Optional subtitle (e.g. flow type) */
   subtitle?: string;
-  /** Whether to render the big landing record button. If false, parent shows it. */
-  variant?: "default" | "compact";
 }
-
-const RECORDING_CHUNK_MS = 10_000;
 
 function pickMimetype(accepted: string[] | undefined): string | null {
   if (typeof window === "undefined" || !("MediaRecorder" in window)) return null;
@@ -47,41 +51,53 @@ function pickMimetype(accepted: string[] | undefined): string | null {
   );
 }
 
+function browserCaptureDeps(): CaptureDeps {
+  return {
+    getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
+    // 32 kbps räcker gott för tal med opus och håller långa inspelningar
+    // hanterbart stora (~22 MB/timme i stället för ~60 MB/timme vid default).
+    createRecorder: (stream, mimeType) =>
+      new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 }),
+    requestWakeLock: async () =>
+      (await (navigator as NavigatorWithWakeLock).wakeLock?.request("screen")) ?? null,
+    page: typeof document === "undefined" ? undefined : document,
+  };
+}
+
 const NUM_BARS = 36;
 
 export function AudioRecorder({
+  flowId,
+  flowName,
+  stepId,
   acceptedMimetypes,
   maxBytes,
+  recording,
   onChange,
   onRecordingChange,
   title,
   subtitle,
 }: Props) {
-  const [recording, setRecording] = useState(false);
-  const [paused, setPaused] = useState(false);
+  const [capture] = useState(
+    () => new RecordingCapture(recordingStore, browserCaptureDeps()),
+  );
+  const snapshot = useSyncExternalStore(
+    capture.subscribe,
+    capture.getSnapshot,
+    capture.getSnapshot,
+  );
+  const { status } = snapshot;
+  const capturing =
+    status === "recording" || status === "paused" || status === "interrupted";
+
   const [elapsedMs, setElapsedMs] = useState(0);
-  const [blob, setBlob] = useState<Blob | null>(null);
-  const [recordedBytes, setRecordedBytes] = useState(0);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [supported, setSupported] = useState(true);
+  const [formatError, setFormatError] = useState<string | null>(null);
+  const [storePersistent, setStorePersistent] = useState(true);
+  const [previewUrls, setPreviewUrls] = useState<string[]>([]);
 
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
-  const recordedBytesRef = useRef(0);
-  const sizeLimitExceededRef = useRef(false);
-  const streamRef = useRef<MediaStream | null>(null);
-  const startedAtRef = useRef<number | null>(null);
-  const accumulatedRef = useRef<number>(0);
-  const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const rafRef = useRef<number | null>(null);
   const barsRef = useRef<Array<HTMLDivElement | null>>([]);
   const liveValuesRef = useRef<number[]>(new Array(NUM_BARS).fill(0));
-  const wakeLockRef = useRef<WakeLockSentinelLike | null>(null);
 
   useEffect(() => {
     const mime = pickMimetype(acceptedMimetypes);
@@ -89,246 +105,55 @@ export function AudioRecorder({
   }, [acceptedMimetypes]);
 
   useEffect(() => {
-    return cleanup;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    recordingStore().then((store) => setStorePersistent(store.persistent));
   }, []);
 
-  function stopTick() {
-    if (tickRef.current) {
-      clearInterval(tickRef.current);
-      tickRef.current = null;
-    }
-  }
+  // Leaving the page keeps what was recorded, paused, for recovery.
+  useEffect(() => () => capture.dispose(), [capture]);
 
-  function cleanup() {
-    stopTick();
-    onRecordingChange?.(false);
-    releaseWakeLock();
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-    try {
-      sourceRef.current?.disconnect();
-    } catch {
-      // ignore
-    }
-    sourceRef.current = null;
-    analyserRef.current = null;
-    if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-      audioCtxRef.current.close().catch(() => {});
-    }
-    audioCtxRef.current = null;
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      try {
-        recorderRef.current.stop();
-      } catch {
-        // ignore
-      }
-    }
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-  }
+  useEffect(() => {
+    onRecordingChange?.(capturing);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [capturing]);
+  useEffect(
+    () => () => onRecordingChange?.(false),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
 
-  function reset() {
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setPreviewUrl(null);
-    setBlob(null);
-    setRecordedBytes(0);
-    recordedBytesRef.current = 0;
-    sizeLimitExceededRef.current = false;
-    setError(null);
-    setElapsedMs(0);
-    accumulatedRef.current = 0;
-    onChange(null, null);
-  }
+  // A stop from the user or from the size limit hands the recording to the page.
+  useEffect(() => {
+    if (status === "stopped" && snapshot.recording) onChange(snapshot.recording);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, snapshot.recording]);
 
-  async function requestWakeLock() {
-    try {
-      const wakeLock = (navigator as NavigatorWithWakeLock).wakeLock;
-      wakeLockRef.current = wakeLock ? await wakeLock.request("screen") : null;
-    } catch {
-      wakeLockRef.current = null;
-    }
-  }
+  useEffect(() => {
+    if (!capturing) return;
+    setElapsedMs(capture.elapsedMs());
+    if (status !== "recording") return;
+    const tick = setInterval(() => setElapsedMs(capture.elapsedMs()), 80);
+    return () => clearInterval(tick);
+  }, [capture, capturing, status]);
 
-  function releaseWakeLock() {
-    const wakeLock = wakeLockRef.current;
-    wakeLockRef.current = null;
-    wakeLock?.release().catch(() => {});
-  }
-
-  async function start() {
-    setError(null);
-    const mime = pickMimetype(acceptedMimetypes);
-    if (!mime) {
-      setError(
-        "Webbläsaren stöder ingen kompatibel ljudformat för det här flödet.",
-      );
-      return;
-    }
-    try {
-      await requestWakeLock();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-
-      const AudioCtor =
-        window.AudioContext ||
-        (window as unknown as { webkitAudioContext?: typeof AudioContext })
-          .webkitAudioContext;
-      if (AudioCtor) {
-        const ctx = new AudioCtor();
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 1024;
-        analyser.smoothingTimeConstant = 0.55;
-        source.connect(analyser);
-        audioCtxRef.current = ctx;
-        sourceRef.current = source;
-        analyserRef.current = analyser;
-        startMeter();
-      }
-
-      // 32 kbps räcker gott för tal med opus och håller långa inspelningar
-      // hanterbart stora (~22 MB/timme i stället för ~60 MB/timme vid default).
-      const recorder = new MediaRecorder(stream, {
-        mimeType: mime,
-        audioBitsPerSecond: 32000,
-      });
-      recorderRef.current = recorder;
-      chunksRef.current = [];
-      recordedBytesRef.current = 0;
-      sizeLimitExceededRef.current = false;
-      setRecordedBytes(0);
-
-      recorder.ondataavailable = (ev) => {
-        if (!ev.data || ev.data.size === 0) return;
-        chunksRef.current.push(ev.data);
-        recordedBytesRef.current += ev.data.size;
-        setRecordedBytes(recordedBytesRef.current);
-        if (
-          maxBytes &&
-          recordedBytesRef.current > maxBytes &&
-          recorder.state !== "inactive"
-        ) {
-          sizeLimitExceededRef.current = true;
-          setError(
-            `Inspelningen passerade maxgränsen (${formatBytes(maxBytes)}). Stoppar inspelningen.`,
-          );
-          recorder.stop();
-        }
-      };
-      recorder.onstop = () => {
-        const uploadMime = baseMimetype(mime);
-        const finalBlob = new Blob(chunksRef.current, { type: uploadMime });
-        chunksRef.current = [];
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-
-        if (rafRef.current != null) {
-          cancelAnimationFrame(rafRef.current);
-          rafRef.current = null;
-        }
-        try {
-          sourceRef.current?.disconnect();
-        } catch {
-          // ignore
-        }
-        sourceRef.current = null;
-        analyserRef.current = null;
-        if (audioCtxRef.current && audioCtxRef.current.state !== "closed") {
-          audioCtxRef.current.close().catch(() => {});
-        }
-        audioCtxRef.current = null;
-        clearMeter();
-        setRecording(false);
-        onRecordingChange?.(false);
-        releaseWakeLock();
-
-        if (sizeLimitExceededRef.current || (maxBytes && finalBlob.size > maxBytes)) {
-          const maxLabel = maxBytes ? formatBytes(maxBytes) : "okänd";
-          setError(
-            `Inspelningen blev för stor (${formatBytes(finalBlob.size)}). Max: ${maxLabel}.`,
-          );
-          return;
-        }
-
-        const ext = extensionForAudioMime(mime);
-        const fname = `recording-${Date.now()}.${ext}`;
-        setBlob(finalBlob);
-        setPreviewUrl(URL.createObjectURL(finalBlob));
-        onChange(finalBlob, fname);
-      };
-
-      recorder.start(RECORDING_CHUNK_MS);
-      startedAtRef.current = Date.now();
-      accumulatedRef.current = 0;
-      setRecording(true);
-      onRecordingChange?.(true);
-      setPaused(false);
-      setElapsedMs(0);
-      tickRef.current = setInterval(() => {
-        if (startedAtRef.current != null) {
-          setElapsedMs(
-            accumulatedRef.current + (Date.now() - startedAtRef.current),
-          );
-        }
-      }, 80);
-    } catch (err) {
-      releaseWakeLock();
-      setError(
-        err instanceof Error
-          ? `Kunde inte starta inspelning: ${err.message}`
-          : "Kunde inte starta inspelning.",
-      );
-    }
-  }
-
-  function stop() {
-    stopTick();
-    setRecording(false);
-    onRecordingChange?.(false);
-    setPaused(false);
-    if (recorderRef.current && recorderRef.current.state !== "inactive") {
-      recorderRef.current.stop();
-    }
-  }
-
-  function pauseToggle() {
-    const r = recorderRef.current;
-    if (!r) return;
-    if (r.state === "recording") {
-      r.pause();
-      stopTick();
-      if (startedAtRef.current != null) {
-        accumulatedRef.current += Date.now() - startedAtRef.current;
-        startedAtRef.current = null;
-      }
-      setPaused(true);
-    } else if (r.state === "paused") {
-      r.resume();
-      startedAtRef.current = Date.now();
-      tickRef.current = setInterval(() => {
-        if (startedAtRef.current != null) {
-          setElapsedMs(
-            accumulatedRef.current + (Date.now() - startedAtRef.current),
-          );
-        }
-      }, 80);
-      setPaused(false);
-    }
-  }
-
-  function startMeter() {
-    const analyser = analyserRef.current;
-    if (!analyser) return;
+  useEffect(() => {
+    const stream = snapshot.stream;
+    if (!stream) return;
+    const AudioCtor =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!AudioCtor) return;
+    const ctx = new AudioCtor();
+    const source = ctx.createMediaStreamSource(stream);
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.55;
+    source.connect(analyser);
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    let raf = 0;
 
     const draw = () => {
-      const a = analyserRef.current;
-      if (!a) return;
-      a.getByteFrequencyData(dataArray);
+      analyser.getByteFrequencyData(dataArray);
       const bins = dataArray.length;
       const step = Math.max(1, Math.floor(bins / NUM_BARS));
       for (let i = 0; i < NUM_BARS; i++) {
@@ -351,10 +176,43 @@ export function AudioRecorder({
           el.style.opacity = `${0.4 + (1 - distFromCenter) * 0.6}`;
         }
       }
-      rafRef.current = requestAnimationFrame(draw);
+      raf = requestAnimationFrame(draw);
     };
-    rafRef.current = requestAnimationFrame(draw);
-  }
+    raf = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      try {
+        source.disconnect();
+      } catch {
+        // ignore
+      }
+      ctx.close().catch(() => {});
+      clearMeter();
+    };
+  }, [snapshot.stream]);
+
+  // Förhandslyssning av varje del av den valda inspelningen.
+  useEffect(() => {
+    if (!recording || capturing) {
+      setPreviewUrls([]);
+      return;
+    }
+    let cancelled = false;
+    let urls: string[] = [];
+    recordingStore()
+      .then((store) => store.readParts(recording.id))
+      .then((files) => {
+        if (cancelled) return;
+        urls = files.map((file) => URL.createObjectURL(file.blob));
+        setPreviewUrls(urls);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [recording, capturing]);
 
   function clearMeter() {
     liveValuesRef.current = new Array(NUM_BARS).fill(0);
@@ -366,6 +224,33 @@ export function AudioRecorder({
     });
   }
 
+  async function start() {
+    setFormatError(null);
+    const mime = pickMimetype(acceptedMimetypes);
+    if (!mime) {
+      setFormatError(
+        "Webbläsaren stöder inget ljudformat som det här flödet tar emot.",
+      );
+      return;
+    }
+    await capture.start(
+      { flowId, flowName, stepId, inputMode: "record", mimeType: mime },
+      { maxBytes },
+    );
+  }
+
+  function recordAgain() {
+    capture.reset();
+    onChange(null);
+  }
+
+  const error = formatError ?? snapshot.error;
+  const errorLine = error && (
+    <p className="text-sm text-record text-center mt-3" role="alert">
+      {error}
+    </p>
+  );
+
   if (!supported) {
     return (
       <p className="text-sm text-ink-soft">
@@ -376,7 +261,7 @@ export function AudioRecorder({
   }
 
   // ----- Idle (pre-recording) -----
-  if (!recording && !blob) {
+  if (!capturing && !recording) {
     return (
       <div className="flex flex-col items-center gap-7 md:gap-9 py-4 md:py-6">
         <button
@@ -397,40 +282,62 @@ export function AudioRecorder({
           Spela in
         </button>
         <div className="eyebrow">Tryck för att börja</div>
+        <RecordingStorageNotice persistent={storePersistent} lowSpace={false} />
+        {errorLine}
       </div>
     );
   }
 
   // ----- Done (recorded) -----
-  if (!recording && blob) {
+  if (!capturing && recording) {
+    const totalBytes = recording.parts.reduce((sum, part) => sum + part.bytes, 0);
     return (
       <div className="flex flex-col items-center gap-4 py-3">
         <div className="text-[13px] text-ink-soft">
-          Inspelning klar · {formatBytes(blob.size)}
+          Inspelning klar · {formatBytes(totalBytes)}
+          {recording.parts.length > 1 ? ` · ${recording.parts.length} delar` : ""}
         </div>
-        {previewUrl && (
+        {previewUrls.map((url, index) => (
           <audio
-            src={previewUrl}
+            key={url}
+            src={url}
             controls
+            aria-label={
+              previewUrls.length > 1 ? `Lyssna på del ${index + 1}` : "Lyssna på inspelningen"
+            }
             className="w-full max-w-[300px] md:max-w-md"
           />
-        )}
+        ))}
         <div className="text-[12px] text-ink-mute">
-          Sparad som komprimerad {blob.type || "ljudfil"}
+          {storePersistent
+            ? "Sparad på enheten tills den är skickad"
+            : "Sparad i den här fliken tills den är skickad"}
         </div>
-        <button
-          type="button"
-          onClick={reset}
-          className="inline-flex items-center gap-2 rounded-full bg-paper border border-rule-soft px-4 py-2 text-[13px] text-ink-soft transition-colors hover:border-ink/40"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Spela in på nytt
-        </button>
+        <div className="flex flex-wrap justify-center gap-2">
+          <button
+            type="button"
+            onClick={() => void saveRecordingAsFiles(recording.id)}
+            className="inline-flex items-center gap-2 rounded-full bg-paper border border-rule-soft px-4 py-2 text-[13px] text-ink-soft transition-colors hover:border-ink/40"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Spara som fil
+          </button>
+          <button
+            type="button"
+            onClick={recordAgain}
+            className="inline-flex items-center gap-2 rounded-full bg-paper border border-rule-soft px-4 py-2 text-[13px] text-ink-soft transition-colors hover:border-ink/40"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Spela in på nytt
+          </button>
+        </div>
+        {errorLine}
       </div>
     );
   }
 
-  // ----- Recording (active or paused) -----
+  // ----- Recording (active, paused or interrupted) -----
+  const interrupted = status === "interrupted";
   const totalSec = Math.floor(elapsedMs / 1000);
   const mm = Math.floor(totalSec / 60).toString().padStart(2, "0");
   const ss = (totalSec % 60).toString().padStart(2, "0");
@@ -444,7 +351,7 @@ export function AudioRecorder({
             aria-hidden
             className="lyssna-live-pulse h-1.5 w-1.5 rounded-full bg-record"
           />
-          {paused ? "Pausad" : "Spelar in"}
+          {status === "recording" ? "Spelar in" : "Pausad"}
         </div>
       </header>
 
@@ -475,9 +382,9 @@ export function AudioRecorder({
         </div>
 
         <div className="text-[12px] text-ink-mute mb-4">
-          {formatBytes(recordedBytes)}
-          {maxBytes ? ` av ${formatBytes(maxBytes)}` : ""} · sparar i korta
-          ljudsegment
+          {formatBytes(snapshot.partBytes)}
+          {maxBytes ? ` av ${formatBytes(maxBytes)}` : ""} ·{" "}
+          {snapshot.persistent ? "sparas på enheten" : "sparas i den här fliken"}
         </div>
 
         <div className="flex items-center gap-[3px] md:gap-1 h-20 md:h-24 w-full max-w-[280px] md:max-w-md justify-center mb-2">
@@ -495,14 +402,20 @@ export function AudioRecorder({
         </div>
       </div>
 
+      <RecordingInterrupted
+        interrupted={interrupted}
+        onContinue={() => void capture.continueRecording()}
+      />
+
       <div className="flex items-center justify-center gap-7 pt-4">
         <button
           type="button"
-          onClick={pauseToggle}
-          aria-label={paused ? "Återuppta inspelning" : "Pausa inspelning"}
-          className="grid h-12 w-12 place-items-center rounded-full bg-paper border border-rule text-ink transition-colors hover:border-ink/40 focus:outline-none focus-visible:ring-4 focus-visible:ring-record/30"
+          onClick={() => capture.togglePause()}
+          disabled={interrupted}
+          aria-label={status === "paused" ? "Återuppta inspelning" : "Pausa inspelning"}
+          className="grid h-12 w-12 place-items-center rounded-full bg-paper border border-rule text-ink transition-colors hover:border-ink/40 focus:outline-none focus-visible:ring-4 focus-visible:ring-record/30 disabled:opacity-50"
         >
-          {paused ? (
+          {status === "paused" ? (
             <Play className="h-[18px] w-[18px]" strokeWidth={1.5} />
           ) : (
             <Pause className="h-[18px] w-[18px]" strokeWidth={1.5} />
@@ -510,7 +423,7 @@ export function AudioRecorder({
         </button>
         <button
           type="button"
-          onClick={stop}
+          onClick={() => void capture.stop()}
           aria-label="Stoppa inspelning"
           className="relative grid h-[84px] w-[84px] place-items-center rounded-full bg-record transition-transform active:scale-[0.96] focus:outline-none focus-visible:ring-4 focus-visible:ring-record/30"
           style={{
@@ -534,11 +447,11 @@ export function AudioRecorder({
         </button>
       </div>
 
-      {error && (
-        <p className="text-sm text-record text-center mt-3" role="alert">
-          {error}
-        </p>
-      )}
+      <RecordingStorageNotice
+        persistent={snapshot.persistent}
+        lowSpace={snapshot.lowSpace}
+      />
+      {errorLine}
 
       {/* Hidden hint icon for screen readers — visual cue is the pulse-ring */}
       <span className="sr-only">

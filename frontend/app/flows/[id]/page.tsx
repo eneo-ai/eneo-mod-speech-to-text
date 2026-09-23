@@ -65,7 +65,14 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { onlineStatus } from "@/lib/online-status";
-import { submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
+import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import {
+  submitRecording,
+  submitRun,
+  withRetry,
+  type RetryWait,
+  type SubmitProgress,
+} from "@/lib/submit-run";
 import { runErrorView, runResultView } from "@/lib/run-result";
 import {
   buildEditedMapping,
@@ -133,6 +140,11 @@ type SubmissionState =
     }
   | { kind: "starting"; wait: RetryWait | null };
 
+/** Körningens indata: en vald fil eller en inspelning som finns på enheten. */
+type RunInput =
+  | { kind: "file"; blob: Blob; filename: string }
+  | { kind: "recording"; recording: StoredRecording };
+
 interface ResultFileRef {
   file_id: string;
   name?: string;
@@ -165,9 +177,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [file, setFile] = useState<{ blob: Blob; filename: string } | null>(
-    null,
-  );
+  const [input, setInput] = useState<RunInput | null>(null);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
@@ -266,7 +276,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const canSubmit = useMemo(() => {
     if (run.kind !== "idle") return false;
     if (!contract) return false;
-    if (requiresFile && !file) return false;
+    if (requiresFile && !input) return false;
     for (const f of formFields) {
       if (f.required) {
         const v = formValues[f.name];
@@ -274,7 +284,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       }
     }
     return true;
-  }, [run.kind, contract, requiresFile, file, formFields, formValues]);
+  }, [run.kind, contract, requiresFile, input, formFields, formValues]);
 
   function setField(key: string, value: string) {
     setFormValues((prev) => ({ ...prev, [key]: value }));
@@ -283,7 +293,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) {
-      setFile(null);
+      setInput((prev) => (prev?.kind === "file" ? null : prev));
       return;
     }
     if (maxFileSizeBytes && f.size > maxFileSizeBytes) {
@@ -301,15 +311,18 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return;
     }
     setRunError(null);
-    setFile({ blob: f, filename: f.name });
+    setInput({ kind: "file", blob: f, filename: f.name });
   }
 
-  async function onRecorded(blob: Blob | null, fname: string | null) {
-    if (blob && fname) setFile({ blob, filename: fname });
-    else setFile(null);
+  function onRecorded(recording: StoredRecording | null) {
+    setInput(recording ? { kind: "recording", recording } : null);
   }
 
-  async function onRun() {
+  function onRun() {
+    void sendInput(input);
+  }
+
+  async function sendInput(runInput: RunInput | null) {
     if (!contract) return;
     setRunError(null);
     setSignedUrls({});
@@ -319,22 +332,27 @@ function FlowDetail({ flowId }: { flowId: string }) {
     submitAbortRef.current = abortController;
 
     try {
-      const initialRun = await submitRun({
+      const params = {
         flowId,
         contract,
         stepId: runtimeInput?.step_id ?? null,
-        files: file ? [file] : [],
         inputPayload: formPayload(formFields, formValues),
         online: onlineStatus,
         signal: abortController.signal,
-        onProgress: (progress) =>
+        onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
         onStarting: () => setSubmission({ kind: "starting", wait: null }),
-        onWait: (wait) =>
+        onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
-      });
+      };
+      const initialRun =
+        runInput?.kind === "recording"
+          ? await submitRecording(await recordingStore(), runInput.recording.id, params)
+          : await submitRun({ ...params, files: runInput ? [runInput] : [] });
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
+      // Eneo har körningen; en skickad inspelning finns inte längre på enheten.
+      if (runInput?.kind === "recording") setInput(null);
 
       writeRunIdToUrl(initialRun.id);
       pollAbortRef.current = { aborted: false };
@@ -639,10 +657,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
         acceptsUpload={acceptsUpload}
         acceptedMimetypes={acceptedMimetypes}
         maxFileSizeBytes={maxFileSizeBytes}
-        file={file}
+        input={input}
+        inputStepId={runtimeInput?.step_id ?? ""}
         onFilePicked={onFilePicked}
         onRecorded={onRecorded}
         onRecordingChange={setRecordingActive}
+        recordingActive={recordingActive}
         canSubmit={canSubmit}
         submitting={run.kind === "submitting"}
         onRun={onRun}
@@ -746,10 +766,12 @@ function SetupView({
   acceptsUpload,
   acceptedMimetypes,
   maxFileSizeBytes,
-  file,
+  input,
+  inputStepId,
   onFilePicked,
   onRecorded,
   onRecordingChange,
+  recordingActive,
   canSubmit,
   submitting,
   onRun,
@@ -766,10 +788,12 @@ function SetupView({
   acceptsUpload: boolean;
   acceptedMimetypes: string[];
   maxFileSizeBytes?: number;
-  file: { blob: Blob; filename: string } | null;
+  input: RunInput | null;
+  inputStepId: string;
   onFilePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onRecorded: (blob: Blob | null, fname: string | null) => void;
+  onRecorded: (recording: StoredRecording | null) => void;
   onRecordingChange: (recording: boolean) => void;
+  recordingActive: boolean;
   canSubmit: boolean;
   submitting: boolean;
   onRun: () => void;
@@ -779,24 +803,14 @@ function SetupView({
 }) {
   const formFields = contract.form_fields ?? [];
   const speakerMappingSteps = speakerMappingReviewSteps(contract);
-  const [localFileUrl, setLocalFileUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!file) {
-      setLocalFileUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file.blob);
-    setLocalFileUrl(url);
-    return () => URL.revokeObjectURL(url);
-  }, [file]);
+  const file = input?.kind === "file" ? input : null;
 
   return (
     <>
       <NavBar title={published.name} />
 
       <div className="px-6 md:px-8 pt-2 md:pt-4 pb-6 flex-1 flex flex-col w-full mx-auto max-w-2xl">
-        <OfflineBanner waiting={null} />
+        <OfflineBanner waiting={recordingActive ? "recording" : null} />
         <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em] leading-[1.1] mb-1.5">
           Förbered <span className="accent-em">ditt möte</span>
         </h1>
@@ -932,8 +946,12 @@ function SetupView({
           <>
             <section className="mt-4 mb-8 md:mt-6 md:mb-12">
               <AudioRecorder
+                flowId={published.id}
+                flowName={published.name}
+                stepId={inputStepId}
                 acceptedMimetypes={acceptedMimetypes}
                 maxBytes={maxFileSizeBytes}
+                recording={input?.kind === "recording" ? input.recording : null}
                 onChange={onRecorded}
                 onRecordingChange={onRecordingChange}
                 title={published.name}
@@ -987,21 +1005,6 @@ function SetupView({
                 className="sr-only"
               />
             </label>
-            {file && localFileUrl && (
-              <div className="flex items-center justify-between gap-3 mb-2 px-1">
-                <p className="text-[12px] text-ink-mute">
-                  Spara gärna en kopia innan du startar. Om sidan stängs innan
-                  uppladdningen är klar kan inspelningen gå förlorad.
-                </p>
-                <a
-                  href={localFileUrl}
-                  download={file.filename}
-                  className="shrink-0 text-[12px] font-medium text-ink underline underline-offset-4"
-                >
-                  Spara kopia
-                </a>
-              </div>
-            )}
           </>
         )}
 

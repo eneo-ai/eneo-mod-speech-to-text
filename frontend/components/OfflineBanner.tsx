@@ -6,13 +6,14 @@ import { onlineStatus } from "@/lib/online-status";
 
 const subscribe = (onChange: () => void) => onlineStatus.subscribe(onChange);
 
-export function useOnlineStatus(): boolean {
+function useOnlineStatus(): boolean {
   return useSyncExternalStore(subscribe, () => onlineStatus.online, () => true);
 }
 
-export type OfflineWaiting = "upload" | "run" | null;
+export type OfflineWaiting = "recording" | "upload" | "run" | null;
 
 const MESSAGES: Record<NonNullable<OfflineWaiting>, string> = {
+  recording: "Ingen anslutning. Inspelningen fortsätter och sparas på enheten.",
   upload: "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.",
   run: "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.",
 };
