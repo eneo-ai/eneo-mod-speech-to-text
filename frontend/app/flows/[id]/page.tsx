@@ -29,9 +29,10 @@ import remarkGfm from "remark-gfm";
 import { AuthGate } from "@/components/AuthGate";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AudioRecorder } from "@/components/AudioRecorder";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { RetryNotice } from "@/components/RetryNotice";
 import {
   approveReviewCheckpoint,
-  deriveRunIdempotencyKey,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
   getArtifactSignedUrl,
@@ -51,21 +52,20 @@ import {
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
   speakerMappingReviewSteps,
-  startRun,
-  uploadStepRuntimeFile,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
   type FlowRunSummary,
+  type FormField,
   type Json,
   type ReviewEditedValue,
-  type RuntimeUploadTimeoutEvent,
   type RunContract,
-  type UploadProgress,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import { onlineStatus } from "@/lib/online-status";
+import { submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
 import { runErrorView, runResultView } from "@/lib/run-result";
 import {
   buildEditedMapping,
@@ -129,8 +129,9 @@ type SubmissionState =
       loaded: number;
       total: number | null;
       percent: number | null;
+      wait: RetryWait | null;
     }
-  | { kind: "starting" };
+  | { kind: "starting"; wait: RetryWait | null };
 
 interface ResultFileRef {
   file_id: string;
@@ -314,83 +315,24 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setSignedUrls({});
     setRun({ kind: "submitting" });
     setSubmission({ kind: "idle" });
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
 
     try {
-      let fileId: string | null = null;
-      if (file) {
-        if (!runtimeInput) {
-          throw new Error("Flödet saknar ett runtime-input-steg för filen.");
-        }
-        if (maxFileSizeBytes && file.blob.size > maxFileSizeBytes) {
-          throw new Error(
-            `Filen är för stor (${formatBytes(file.blob.size)}). Max: ${formatBytes(maxFileSizeBytes)}.`,
-          );
-        }
-
-        const abortController = new AbortController();
-        submitAbortRef.current = abortController;
-        setSubmission({
-          kind: "uploading",
-          filename: file.filename,
-          loaded: 0,
-          total: file.blob.size,
-          percent: 0,
-        });
-
-        const uploaded = await uploadStepRuntimeFile(
-          flowId,
-          runtimeInput.step_id,
-          file.blob,
-          file.filename,
-          {
-            signal: abortController.signal,
-            runtimeUploadPolicy: contract.runtime_upload_policy,
-            onProgress: (progress: UploadProgress) => {
-              setSubmission({
-                kind: "uploading",
-                filename: file.filename,
-                loaded: progress.loaded,
-                total: progress.total ?? file.blob.size,
-                percent:
-                  progress.percent ??
-                  Math.round((progress.loaded / file.blob.size) * 100),
-              });
-            },
-            onTimeout: (event: RuntimeUploadTimeoutEvent) => {
-              setRunError(labelForUploadTimeout(event.reason));
-            },
-          },
-        );
-        fileId = uploaded.id;
-      }
-
-      setSubmission({ kind: "starting" });
-
-      const body: Json = {
-        // Eneo Flows använder expected_flow_version som canonical versionsvakt i run-kontraktet.
-        expected_flow_version: contract.published_flow_version,
-      };
-
-      if (fileId && runtimeInput) {
-        body.step_inputs = { [runtimeInput.step_id]: { file_ids: [fileId] } };
-      }
-
-      const inputPayload: Record<string, unknown> = {};
-      for (const f of formFields) {
-        const v = formValues[f.name];
-        if (v == null || v === "") continue;
-        inputPayload[f.name] = v;
-      }
-      if (Object.keys(inputPayload).length > 0) {
-        body.input_payload_json = inputPayload;
-      }
-
-      const idempotencyKey = await deriveRunIdempotencyKey({
+      const initialRun = await submitRun({
         flowId,
-        expectedFlowVersion: contract.published_flow_version,
-        body,
+        contract,
+        stepId: runtimeInput?.step_id ?? null,
+        files: file ? [file] : [],
+        inputPayload: formPayload(formFields, formValues),
+        online: onlineStatus,
+        signal: abortController.signal,
+        onProgress: (progress) =>
+          setSubmission({ kind: "uploading", ...progress, wait: null }),
+        onStarting: () => setSubmission({ kind: "starting", wait: null }),
+        onWait: (wait) =>
+          setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       });
-      const initialRun = await startRun(flowId, body, idempotencyKey);
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
 
@@ -431,10 +373,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
       try {
         // Status-endpointen är gjord för polling; detaljen (med resultat)
         // audit-loggas per läsning och hämtas därför först när körningen är klar.
-        const [summary, steps] = await Promise.all([
-          getRunStatus(flowId, runId),
-          getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
-        ]);
+        // Körningen fortsätter i Eneo när anslutningen bryts; följ den igen när den är tillbaka.
+        const [summary, steps] = await withRetry(
+          () =>
+            Promise.all([
+              getRunStatus(flowId, runId),
+              getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
+            ]),
+          { online: onlineStatus },
+        );
         if (abort.aborted) return;
         const r: FlowRunPublic = summary;
         if (isTerminal(r.status)) {
@@ -849,6 +796,7 @@ function SetupView({
       <NavBar title={published.name} />
 
       <div className="px-6 md:px-8 pt-2 md:pt-4 pb-6 flex-1 flex flex-col w-full mx-auto max-w-2xl">
+        <OfflineBanner waiting={null} />
         <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em] leading-[1.1] mb-1.5">
           Förbered <span className="accent-em">ditt möte</span>
         </h1>
@@ -1136,7 +1084,10 @@ function RecordingView({
   const isUploading = submission.kind === "uploading";
   return (
     <>
-      <header className="flex items-center justify-between px-5 md:px-8 pt-4 md:pt-6 pb-2">
+      <div className="px-5 md:px-8 pt-4 md:pt-6">
+        <OfflineBanner waiting={submission.kind === "idle" ? "run" : "upload"} />
+      </div>
+      <header className="flex items-center justify-between px-5 md:px-8 pb-2">
         <div className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-accent">
           <span
             aria-hidden
@@ -1171,8 +1122,9 @@ function RecordingView({
             onCancel={onCancelSubmission}
           />
         ) : (
-          <div className="grid place-items-center mb-7 md:mb-10">
+          <div className="grid place-items-center mb-7 md:mb-10 w-full max-w-[340px] md:max-w-lg">
             <Loader2 className="h-9 w-9 md:h-12 md:w-12 animate-spin text-accent" />
+            {submission.kind === "starting" && <RetryNotice wait={submission.wait} />}
           </div>
         )}
 
@@ -1229,6 +1181,7 @@ function UploadProgressCard({
         </span>
         <span>{submission.percent != null ? `${percent}%` : "Pågår"}</span>
       </div>
+      <RetryNotice wait={submission.wait} />
     </div>
   );
 }
@@ -1994,15 +1947,17 @@ function formatDateTime(iso: string): string {
   });
 }
 
-function labelForUploadTimeout(reason: RuntimeUploadTimeoutEvent["reason"]): string {
-  switch (reason) {
-    case "not_started":
-      return "Uppladdningen startade inte i tid. Kontrollera nätverket och försök igen.";
-    case "stalled":
-      return "Uppladdningen verkar ha stannat. Kontrollera nätverket och försök igen.";
-    case "server_not_responding":
-      return "Filen skickades, men servern svarade inte i tid. Försök igen innan du spelar in på nytt.";
+/** Formulärvärdena som körningens input_payload_json; tomma fält skickas inte. */
+function formPayload(
+  fields: FormField[],
+  values: Record<string, string>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const f of fields) {
+    const v = values[f.name];
+    if (v != null && v !== "") payload[f.name] = v;
   }
+  return payload;
 }
 
 function labelForOutputType(outputType: string | null | undefined): string | null {

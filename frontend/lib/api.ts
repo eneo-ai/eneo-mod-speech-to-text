@@ -4,6 +4,7 @@ import { correctionWriteProblem } from "./transcript-corrections";
 // key and, in Eneo SSO mode, the short-lived module-user token from its
 // HttpOnly session.
 
+import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
   resolveRuntimeUploadInitialTimeoutMs,
@@ -50,17 +51,25 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...(init.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(init.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init.headers,
+      },
+    });
+  } catch (error) {
+    // fetch rejects with a TypeError when the network is down (not on abort).
+    if (error instanceof TypeError) onlineStatus.reportNetworkFailure();
+    throw error;
+  }
+  onlineStatus.reportReachable();
 
   if (!res.ok) {
     // Bounce to login bara om backend explicit signalerar att VÅR session
@@ -533,15 +542,9 @@ export type RuntimeUploadTimeoutReason =
   | "stalled"
   | "server_not_responding";
 
-export interface RuntimeUploadTimeoutEvent {
-  reason: RuntimeUploadTimeoutReason;
-  timeoutMs: number;
-}
-
 interface UploadRequestOptions {
   signal?: AbortSignal;
   onProgress?: (progress: UploadProgress) => void;
-  onTimeout?: (event: RuntimeUploadTimeoutEvent) => void;
   runtimeUploadPolicy?: FlowRuntimeUploadPolicy | null;
 }
 
@@ -611,7 +614,6 @@ function requestMultipartWithProgress<T>(
     ) => {
       clearScheduledTimeout();
       timeoutId = setTimeout(() => {
-        opts.onTimeout?.({ reason, timeoutMs });
         xhr.abort();
         rejectOnce(new ApiError(408, formatTimeoutReason(reason), null, reason));
       }, timeoutMs);
@@ -634,6 +636,7 @@ function requestMultipartWithProgress<T>(
     };
 
     xhr.onload = () => {
+      onlineStatus.reportReachable();
       if (settled) return;
       settled = true;
       clearScheduledTimeout();
@@ -665,6 +668,7 @@ function requestMultipartWithProgress<T>(
     };
 
     xhr.onerror = () => {
+      onlineStatus.reportNetworkFailure();
       rejectOnce(
         new ApiError(
           0,
