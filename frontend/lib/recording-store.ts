@@ -218,6 +218,9 @@ export class RecordingStore {
   // Locks another tab may have changed or deleted a recording: the copy
   // serves only when the device cannot read.
   private leases = new Map<string, () => void>();
+  // The leases an operation here (a capture, a send, a delete) is using. A
+  // lease no operation uses is kept for audio only this tab has.
+  private inUse = new Set<string>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -326,14 +329,15 @@ export class RecordingStore {
   listUnsent(ownerId: string): Promise<StoredRecording[]> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
-      const heldElsewhere = new Set(locks?.held?.map((lock) => lock.name) ?? []);
+      const held = new Set(locks?.held?.map((lock) => lock.name) ?? []);
       return (await this.all())
         .filter(
           (r) =>
             r.ownerId === ownerId &&
             r.state !== "submitted" &&
-            !this.leases.has(r.id) &&
-            !heldElsewhere.has(lockName(r.id)),
+            !this.inUse.has(r.id) &&
+            // A lock this tab keeps is its own; any other held lock is another tab's.
+            (this.leases.has(r.id) || !held.has(lockName(r.id))),
         )
         .sort((a, b) => b.startedAt - a.startedAt);
     });
@@ -389,9 +393,12 @@ export class RecordingStore {
     }
   }
 
-  /** Takes the recording's lease for this tab; false while any tab holds it. */
+  /** Takes the recording's lease for an operation in this tab; false while another operation or tab holds it. */
   lease(id: string): Promise<boolean> {
-    if (this.leases.has(id)) return Promise.resolve(false);
+    if (this.inUse.has(id)) return Promise.resolve(false);
+    this.inUse.add(id);
+    // Kept for audio only this tab has: this tab's next send or delete takes it over.
+    if (this.leases.has(id)) return Promise.resolve(true);
     const locks = this.env.locks;
     const inThisTab = () => {
       this.leases.set(id, () => {});
@@ -401,7 +408,10 @@ export class RecordingStore {
     return new Promise((resolve) => {
       locks
         .request(lockName(id), { ifAvailable: true }, (lock) => {
-          if (!lock) return resolve(false);
+          if (!lock) {
+            this.inUse.delete(id);
+            return resolve(false);
+          }
           // Held until `release` settles this promise.
           return new Promise<void>((end) => {
             this.leases.set(id, end);
@@ -414,11 +424,13 @@ export class RecordingStore {
   }
 
   release(id: string): void {
-    const end = this.leases.get(id);
-    if (!end) return;
-    this.leases.delete(id);
-    this.live.delete(id);
-    end();
+    if (!this.inUse.delete(id)) return;
+    // Part of its audio is only in this tab: no other tab may send or delete it without that part.
+    if (!this.overflowed.has(id)) {
+      this.leases.get(id)?.();
+      this.leases.delete(id);
+      this.live.delete(id);
+    }
     this.notify();
   }
 

@@ -312,6 +312,46 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal((await store.get(recording.id))?.parts[0].bytes, 3);
 });
 
+test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["prefix"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await recordingTab.append(recording.id, 0, new Blob(["suffix"]), 2_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  await recordingTab.setState(recording.id, "stopped");
+  recordingTab.release(recording.id); // Stoppa
+  await settle();
+
+  assert.equal(await otherTab.lease(recording.id), false, "no other tab sends or deletes it without the suffix");
+  assert.deepEqual(await otherTab.listUnsent("user-1"), []);
+  assert.deepEqual((await recordingTab.listUnsent("user-1")).map((r) => r.id), [recording.id], "this tab still offers it");
+
+  // This tab's send takes it over, and sends all of it.
+  assert.equal(await recordingTab.lease(recording.id), true);
+  assert.equal(await recordingTab.lease(recording.id), false, "one operation at a time");
+  assert.deepEqual(await texts(await recordingTab.readParts(recording.id)), ["prefixsuffix"]);
+  recordingTab.release(recording.id); // that send failed: the suffix is still only here
+  await settle();
+  assert.equal(await otherTab.lease(recording.id), false);
+
+  assert.equal(await recordingTab.lease(recording.id), true);
+  await recordingTab.accept(recording.id, "run-1");
+  recordingTab.release(recording.id);
+  await settle();
+  assert.equal(await otherTab.lease(recording.id), true, "sent: nothing is held any more");
+});
+
 test("recording asks for persistent storage and warns when little space is left", async () => {
   let persistCalls = 0;
   const storage = (usage: number): NonNullable<StoreEnv["storage"]> => ({
