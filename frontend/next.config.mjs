@@ -4,6 +4,8 @@ const isDev = process.env.NODE_ENV === "development";
 const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // `next dev` skriver annars ospårade AGENTS.md och CLAUDE.md i frontend/ vid varje start.
+  agentRules: false,
   skipTrailingSlashRedirect: true,
   experimental: {
     // Next klonar request-bodyn för proxade rewrites (våra /api/*-anrop till
