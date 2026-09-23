@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { ArrowLeft, Mic, Pause, Play, Plus } from "lucide-react";
+import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { FRAME, READING } from "@/components/frame";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
@@ -160,12 +160,7 @@ export function RunResult({
             {audio ? <Mic data-icon="inline-start" aria-hidden /> : <Plus data-icon="inline-start" aria-hidden />}
             {audio ? "Ny inspelning" : "Ny körning"}
           </Button>
-          <Button asChild variant="ghost" className="hidden lg:inline-flex">
-            <Link href="/flows">
-              <ArrowLeft data-icon="inline-start" aria-hidden />
-              Till flödena
-            </Link>
-          </Button>
+          <BackToFlows size="default" className="hidden lg:inline-flex" />
         </div>
       </header>
 

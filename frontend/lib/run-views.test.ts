@@ -106,7 +106,7 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Skapad (i dag|i går|\d+ \w+) 16:02/);
   assert.match(words, /Hur resultatet togs fram 4 steg/);
   assert.match(words, /Ny inspelning/);
-  assert.match(words, /Till flödena/);
+  assert.match(words, /Alla flöden/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
