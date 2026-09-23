@@ -18,7 +18,7 @@ import {
 } from "./api";
 import type { OnlineStatus } from "./online-status";
 import type { RecordingStore } from "./recording-store";
-import { formatBytes } from "./upload";
+import { formatBytes } from "./format";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
