@@ -146,3 +146,18 @@ test("a transcript without speaker labels names no speaker, and nothing is lit b
   assert.match(labelled, /Talare 1/);
   assert.match(labelled, /Talare 2/);
 });
+
+test("the review view names no speaker for an unlabelled transcript either", () => {
+  const html = renderToStaticMarkup(
+    createElement(TranscriptPlayer, {
+      segments: [{ fileIndex: 0, start: 0, end: 24, speaker: null, text: "Välkomna till nämndens möte." }],
+      fileCount: 1,
+      audioSrcFor: () => "/audio/0",
+      speakerNames: {},
+      textFallback: "",
+      reviewEnabled: true,
+    }),
+  );
+  assert.match(html, /Välkomna till nämndens möte\./);
+  assert.doesNotMatch(html, /Okänd talare/);
+});

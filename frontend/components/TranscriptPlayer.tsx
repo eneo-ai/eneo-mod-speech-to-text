@@ -517,7 +517,7 @@ export const TranscriptPlayer = forwardRef<
         onTouchMove={onUserScroll}
         className={cn("transcript-scrollport min-h-0 flex-1 overflow-y-auto max-h-[60vh] lg:max-h-none", !reviewEnabled && "p-2")}
       >
-        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews}
+        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
           audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
