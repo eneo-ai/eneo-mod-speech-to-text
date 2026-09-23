@@ -344,3 +344,22 @@ flödet accepterar det, och ber `MediaRecorder` om korta chunks under inspelning
 Det minskar risken att långa möten bygger upp en enda stor intern recorder-buffer.
 Det är fortfarande inte live-streaming till Eneo: Eneo-körningen startar när hela
 ljudfilen har laddats upp och ett `file_id` finns.
+
+### Inspelningen sparas på enheten
+
+Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB, under
+inspelningens id, del och löpnummer. En omladdning, en krasch eller en utgången
+session förlorar därför högst den senaste biten. Inspelningen visas sedan som
+osänd i flödeslistan och på flödets sida, med **Skicka**, **Spara som fil** och
+**Ta bort**, för den som spelade in den. Den lokala kopian tas bort först när
+Eneo har tagit emot körningen. Utan IndexedDB (vissa privata lägen) finns
+inspelningen bara i fliken, och det står i inspelaren.
+
+Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefon
+lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny
+del. Delarna skickas i ordning som filer i samma körning (`file_ids`).
+
+Uppladdning och start av körning försöker igen vid nätverksfel, 408, 429 och
+5xx, med en väntetid som börjar på 1 s och fördubblas upp till 60 s, och direkt
+när anslutningen är tillbaka. Körningen startas med samma idempotensnyckel vid
+varje försök. Andra 4xx-fel stoppar med Eneos felmeddelande.
