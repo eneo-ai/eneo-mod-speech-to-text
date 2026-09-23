@@ -892,7 +892,7 @@ function ReviewView({
             setRejectReason("");
           }}
           disabled={working === "reject"}
-          className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
+          className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
         >
           Avbryt
         </button>
@@ -900,7 +900,7 @@ function ReviewView({
           type="button"
           onClick={submitReject}
           disabled={!rejectReason.trim() || working === "reject"}
-          className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
         >
           {working === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Bekräfta avvisning
@@ -915,7 +915,7 @@ function ReviewView({
         type="button"
         onClick={() => setShowReject(true)}
         disabled={working !== null || showReject}
-        className="text-[13px] text-ink-soft hover:text-primary transition-colors disabled:opacity-50"
+        className="text-[13px] text-ink-soft hover:text-primary transition-colors disabled:opacity-50 [@media(pointer:coarse)]:min-h-11 [@media(pointer:coarse)]:px-3"
       >
         Avvisa
       </button>
@@ -1065,7 +1065,7 @@ function ReviewView({
                       setEditing(false);
                     }}
                     disabled={saving}
-                    className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
+                    className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                   >
                     Avbryt
                   </button>
@@ -1073,7 +1073,7 @@ function ReviewView({
                     type="button"
                     onClick={saveOnly}
                     disabled={!dirty || saving}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
                   >
                     {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                     Spara ändring
@@ -1083,7 +1083,7 @@ function ReviewView({
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors"
+                  className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors [@media(pointer:coarse)]:min-h-11"
                 >
                   Redigera
                 </button>

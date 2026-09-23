@@ -209,7 +209,7 @@ export function FlowInput({
           <Link
             href="/flows"
             onClick={onLeave}
-            className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:inline-flex"
+            className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:inline-flex [@media(pointer:coarse)]:min-h-11"
           >
             <ArrowLeft aria-hidden className="size-4" />
             Flöden
@@ -401,6 +401,8 @@ function SetupWorkspace({
             checked={snapshot.speakerLabels}
             onCheckedChange={(on) => session.setSpeakerLabels(on)}
             aria-describedby="talare-hjalp"
+            // A 44 px tall hit area for a finger around the 24 px switch.
+            className="relative after:absolute after:inset-x-0 after:-inset-y-2.5"
           />
         </Field>
       ) : speakerOption?.required || reviewsSpeakers ? (

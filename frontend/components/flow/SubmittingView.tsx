@@ -83,7 +83,7 @@ function UploadProgressCard({
         <button
           type="button"
           onClick={onCancel}
-          className="shrink-0 rounded-full border border-rule-soft px-3 py-1.5 text-[12px] text-ink-soft transition-colors hover:border-ink/40 hover:text-ink"
+          className="shrink-0 rounded-full border border-rule-soft px-3 py-1.5 text-[12px] text-ink-soft transition-colors hover:border-ink/40 hover:text-ink [@media(pointer:coarse)]:min-h-11"
         >
           Avbryt
         </button>

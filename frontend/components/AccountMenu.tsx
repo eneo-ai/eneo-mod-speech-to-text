@@ -49,7 +49,7 @@ export function AccountMenu() {
           variant="ghost"
           size="icon"
           aria-label={`Öppna konto för ${displayName}`}
-          className="rounded-full p-0"
+          className="shrink-0 rounded-full p-0"
         >
           <Avatar>
             <AvatarFallback className="bg-primary text-[15px] font-semibold text-primary-foreground">

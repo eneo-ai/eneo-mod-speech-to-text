@@ -68,7 +68,7 @@ export function Brand({ href, className }: BrandProps) {
     <Link
       href={href}
       aria-label={organization ? `Tal till text – ${organization.name}` : "Tal till text"}
-      className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+      className="inline-flex items-center rounded-md [@media(pointer:coarse)]:min-h-11 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
       {lockup}
     </Link>
