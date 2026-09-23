@@ -236,3 +236,45 @@ test("upload: the whole drop zone opens the file chooser, the chooser knows the 
   assert.deepEqual(chosen, ["underlag.md"]);
   await view.unmount();
 });
+
+/** A page's router and signed-in user, as the app gives them. */
+async function signedIn(element: import("react").ReactElement, navigated: string[]) {
+  const { createElement } = await import("react");
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const { AuthenticatedUserContext } = await import("../components/AuthGate");
+  const go = (href: string) => void navigated.push(href);
+  const router = { push: go, replace: go, prefetch: () => undefined, back: () => undefined, forward: () => undefined, refresh: () => undefined } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
+  const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
+  return createElement(AppRouterContext.Provider, { value: router }, createElement(AuthenticatedUserContext.Provider, { value: user }, element));
+}
+
+const exits = (container: HTMLElement) => ({
+  links: container.querySelectorAll('a[href="/flows"]').length,
+  account: [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto")).length,
+});
+
+test("upload under way: the header offers no way off the page, which would abort the upload unasked; Avbryt is the way out", async () => {
+  const { createElement } = await import("react");
+  const { SubmittingView } = await import("../components/flow/SubmittingView");
+  const navigated: string[] = [];
+  let cancelled = 0;
+  const published = { id: "flow-6", name: "Genomförandeplan IBIC", published_version: 2 } as import("./api").FlowPublished;
+  const submission = { kind: "uploading", filename: "underlag.pdf", loaded: 0, total: 2048, percent: 0, wait: null } as const;
+  const view = await mount(
+    await signedIn(createElement(SubmittingView, { published, submission, onCancelSubmission: () => (cancelled += 1) }), navigated),
+  );
+  assert.deepEqual(exits(view.container), { links: 0, account: 0 }, "no back link, no brand link, no sign-out while it uploads");
+
+  await view.act(async () => button(view.container, "Avbryt")!.click());
+  assert.equal(cancelled, 1);
+  assert.deepEqual(navigated, []);
+  await view.unmount();
+});
+
+test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
+  const { createElement } = await import("react");
+  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte", trailing: "Spelar in" }), []));
+  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay, asked through onLeave");
+  await view.unmount();
+});

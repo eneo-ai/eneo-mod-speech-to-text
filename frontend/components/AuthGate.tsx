@@ -7,7 +7,8 @@ import { authStatus, type AuthenticatedUser } from "@/lib/api";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
-const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(null);
+// Exported for component tests; pages get the user through AuthGate.
+export const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(null);
 
 export function useAuthenticatedUser(): AuthenticatedUser {
   const user = useContext(AuthenticatedUserContext);
