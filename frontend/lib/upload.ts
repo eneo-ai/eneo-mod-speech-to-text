@@ -135,8 +135,5 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
-export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
-}
+// ponytail: the recording branch still imports formatBytes from here; drop this line once it is merged.
+export { formatBytes } from "./format";

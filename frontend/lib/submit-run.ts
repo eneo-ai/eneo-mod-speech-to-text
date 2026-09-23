@@ -17,8 +17,8 @@ import {
   type RunContract,
 } from "./api";
 import type { OnlineStatus } from "./online-status";
+import { formatBytes } from "./format";
 import { IN_USE_ELSEWHERE, type RecordingStore } from "./recording-store";
-import { formatBytes } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 

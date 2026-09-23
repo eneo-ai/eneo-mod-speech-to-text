@@ -278,7 +278,7 @@ test("files the step cannot take stop the send before anything is uploaded", asy
   };
   await assert.rejects(
     submitRun(params({ files: [{ blob: new Blob(["x".repeat(2_048)]), filename: "stor.webm" }] }), deps),
-    { message: "Filen är för stor (2.0 kB). Max: 1.0 kB." },
+    { message: "Filen är för stor (2\u00a0kB). Max: 1\u00a0kB." },
   );
   const twoFiles: RunContract = {
     ...contract,

@@ -391,7 +391,7 @@ test("at the per-file size limit the recording goes on in a new part, until the 
   assert.ok(files.every((file) => file.blob.size <= 10));
   assert.equal(
     capture.getSnapshot().error,
-    "Inspelningen stoppades vid flödets gräns på 2 filer om 10 B. Det som spelats in är sparat.",
+    "Inspelningen stoppades vid flödets gräns på 2 filer om 10\u00a0B. Det som spelats in är sparat.",
   );
   assert.equal(streams[0].track.readyState, "ended");
 });
@@ -429,7 +429,7 @@ test("a flow that takes one file stops the recording before the file grows too l
   assert.equal(await file.blob.text(), "abcdef.");
   assert.equal(
     capture.getSnapshot().error,
-    "Inspelningen stoppades vid flödets gräns på 10 B. Det som spelats in är sparat.",
+    "Inspelningen stoppades vid flödets gräns på 10\u00a0B. Det som spelats in är sparat.",
   );
 });
 
