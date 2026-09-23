@@ -208,3 +208,38 @@ test("a failed later save keeps the note that the document is older, and says wh
   assert.equal(make.disabled, true, "a new document waits for the failed save");
   assert.match(note()!.textContent ?? "", /inte sparad/);
 });
+
+test("Dela reads a file ahead only when its size is known and under the cap, and stops reading when the page goes", async (t) => {
+  const realFetch = globalThis.fetch;
+  const fetched: { url: string; signal?: AbortSignal | null }[] = [];
+  const shared: ShareData[] = [];
+  Object.defineProperty(navigator, "share", { value: async (data: ShareData) => void shared.push(data), configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
+    fetched.push({ url: String(url), signal: init?.signal });
+    return new Promise<Response>(() => undefined); // a large file still arriving
+  }) as typeof fetch;
+  t.after(() => {
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "canShare");
+    globalThis.fetch = realFetch;
+  });
+
+  // Size unknown: nothing is read ahead; Dela shares the text.
+  const unknown = await document_({ text, file: { ...pdf, sizeBytes: null } });
+  await unknown.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.equal(fetched.length, 0, "no read ahead of a file of unknown size");
+  const more = [...unknown.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
+  await unknown.act(async () => more.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  const dela = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === "Dela")!;
+  await unknown.act(async () => dela.click());
+  assert.equal(shared[0]?.text, text, "the text is shared instead");
+  await unknown.unmount();
+
+  // Size known and small: read ahead, and the read stops when the document leaves the page.
+  const known = await document_({ text, file: pdf });
+  await known.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.equal(fetched.length, 1);
+  await known.unmount();
+  assert.equal(fetched[0].signal?.aborted, true, "the read ahead is cancelled");
+});
