@@ -160,7 +160,7 @@ function UnsentRecordingRow({
           // Without Web Locks another tab may still hold it: here it is only read.
           <div className="mt-3 flex flex-col items-start gap-2">
             <p className="text-[15px] text-ink-soft">I den här webbläsaren kan den bara sparas som fil.</p>
-            <Button type="button" variant="outline" className="h-11" aria-describedby={summaryId} onClick={() => void save()}>
+            <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => void save()}>
               Spara som fil
             </Button>
           </div>
