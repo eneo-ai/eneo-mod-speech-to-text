@@ -102,6 +102,12 @@ test("a Segment of known size grows with its Info", () => {
   const view = new DataView(patched.buffer);
   const segmentSize = Number(view.getBigUint64(segmentData - 8) & 0x00ffffffffffffffn);
   assert.equal(segmentSize, patched.length - segmentData);
+
+  // A part's first chunk holds only the start of its Segment.
+  const firstChunk = original.subarray(0, original.length - hex(CLUSTER_START).length);
+  const patchedChunk = withWebmDuration(firstChunk, 1_500);
+  assert.ok(patchedChunk);
+  assert.equal(readDurationMs(patchedChunk), 1_500);
 });
 
 test("files it does not recognise come back unchanged", () => {
@@ -112,6 +118,36 @@ test("files it does not recognise come back unchanged", () => {
   assert.equal(withWebmDuration(hex("0000001c6674797069736f6d"), 1_000), null, "MP4");
   assert.equal(withWebmDuration(chromeWebm().subarray(0, 60), 1_000), null, "cut off inside Info");
   assert.equal(withWebmDuration(new Uint8Array(), 1_000), null);
+});
+
+test("every prefix of Chrome's first bytes gets Duration only once its whole Info is there, and nothing throws", () => {
+  const whole = chromeWebm();
+  const infoEnd = hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + CHROME_INFO).length;
+  for (let length = 0; length <= whole.length; length += 1) {
+    const prefix = whole.subarray(0, length);
+    const patched = withWebmDuration(prefix, 5_000);
+    if (length < infoEnd) {
+      assert.equal(patched, null, `cut off at byte ${length}`);
+      continue;
+    }
+    assert.ok(patched, `whole Info at byte ${length}`);
+    assert.equal(readDurationMs(patched), 5_000, `at byte ${length}`);
+    assert.deepEqual(patched.subarray(patched.length - (length - infoEnd)), prefix.subarray(infoEnd), `the rest at byte ${length}`);
+  }
+});
+
+test("fields that run past their Info, or that no player could read, give null instead of an error", () => {
+  const info = (fields: string) => hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + element("1549a966", fields));
+  const cases: Array<[string, Uint8Array]> = [
+    ["a Duration longer than its Info", hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + element("1549a966", element("2ad7b1", "0f4240") + "448988" + "00000000") + CLUSTER_START)],
+    ["a TimecodeScale of nine bytes", info(element("2ad7b1", "000000000000000f42") + element("4489", "00000000"))],
+    ["a TimecodeScale of zero", info(element("2ad7b1", "00"))],
+    ["a field longer than the file", info(element("2ad7b1", "0f4240") + "4d8001ffffffffffff00")],
+    ["an Info size cut in half", hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + "1549a966" + "40")],
+  ];
+  for (const [what, bytes] of cases) {
+    assert.equal(withWebmDuration(bytes, 1_000), null, what);
+  }
 });
 
 const meeting: NewRecording = {
