@@ -150,6 +150,7 @@ CHECKPOINT = {
     "id": "cp-1", "flow_id": "flow-2", "flow_run_id": "run-review", "step_id": REVIEW_STEP_ID, "step_order": 2,
     "attempt_no": 1, "schema_version": 1, "step_label": "Talare", "state": "awaiting_review", "revision": 1,
     "review_mode": "edit", "output_type": "json", "created_at": "2026-09-24T09:01:00Z", "updated_at": "2026-09-24T09:01:00Z",
+    "expires_at": "2026-10-08T09:01:00Z",
     "current_payload_json": {
         "text": "\n".join(t for *_, t in SEGMENTS),
         "speaker_mapping": {

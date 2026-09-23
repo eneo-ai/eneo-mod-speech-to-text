@@ -1,6 +1,6 @@
 - main:
   - heading "Vem är vem?" [level=1]
-  - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter.
+  - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
   - group:
     - list:
       - listitem:

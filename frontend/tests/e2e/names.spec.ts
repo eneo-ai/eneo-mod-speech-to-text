@@ -125,3 +125,10 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   await expect(warning).toBeHidden();
   await expect(page).toHaveURL(/\/flows$/);
 });
+
+test("a review says when it must be done by", async ({ page }, info) => {
+  for (const state of ["review", "review-text-edit"]) {
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    await expect(page.getByRole("main")).toContainText(/Granska senast 8 okt \d\d:\d\d\. Därefter avbryts körningen\./);
+  }
+});

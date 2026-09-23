@@ -85,6 +85,7 @@ import {
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { formatRelativeDate } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
 
 interface PageProps {
@@ -746,6 +747,10 @@ function ReviewView({
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   useDocumentTitle(`${title} · Tal till text`);
+  // Eneo ends an unanswered review at this time (WCAG 2.2.1: the limit is said, 14 days unless the flow sets less).
+  const deadline = checkpoint.expires_at ? (
+    <> Granska senast {formatRelativeDate(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+  ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -939,6 +944,7 @@ function ReviewView({
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
+            {deadline}
           </p>
 
           <div className={SPEAKER_REVIEW_ENABLED ? "grid gap-3" : "grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start"}>
@@ -1023,6 +1029,7 @@ function ReviewView({
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
+          {deadline}
         </p>
 
         <section className="paper-card p-4 mb-5">
