@@ -1138,7 +1138,7 @@ function RecordingView({
   return (
     <>
       <div className="px-5 md:px-8 pt-4 md:pt-6">
-        <OfflineBanner waiting={submission.kind === "idle" ? "run" : "upload"} />
+        <OfflineBanner waiting={run ? "run" : "upload"} />
       </div>
       <header className="flex items-center justify-between px-5 md:px-8 pb-2">
         <div className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-accent">
