@@ -43,7 +43,8 @@ export function SessionEndWarning({ endsAt, canRenew }: { endsAt: number | null;
   }, [endsAt]);
 
   function renew() {
-    const login = window.open("/api/auth/login?next=%2Finloggad", "tal-till-text-inloggning", "popup,width=520,height=700");
+    // `renew`: the backend binds this login to the user signed in now.
+    const login = window.open("/api/auth/login?renew=1&next=%2Finloggad", "tal-till-text-inloggning", "popup,width=520,height=700");
     setBlocked(login === null);
   }
 

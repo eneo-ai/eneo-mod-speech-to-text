@@ -58,11 +58,12 @@ def token_payload(
 
 
 class FakeResponse:
-    def __init__(self, status_code: int = 200) -> None:
+    def __init__(self, status_code: int = 200, *, user_id: str = "user-id") -> None:
         self.status_code = status_code
+        self.user_id = user_id
 
     def json(self):
-        return token_payload()
+        return token_payload(user_id=self.user_id)
 
 
 class FakeExchangeClient:
@@ -254,6 +255,37 @@ class ModuleAuthTests(unittest.TestCase):
                 )
 
                 self.assertEqual(callback.headers["location"], "/flows")
+
+    def sign_in(self) -> str:
+        state, _ = self.start_login()
+        callback = self.client.get("/api/auth/callback", params={"ticket": "first", "state": state})
+        return callback.cookies[SESSION_COOKIE]
+
+    def start_renewal(self) -> str:
+        response = self.client.get("/api/auth/login", params={"renew": "1", "next": "/inloggad"})
+        return parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+    def test_a_renewal_by_the_same_user_replaces_the_session(self) -> None:
+        first = self.sign_in()
+        state = self.start_renewal()
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "again", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad")
+        self.assertNotEqual(callback.cookies[SESSION_COOKIE], first)
+
+    def test_a_renewal_by_another_user_keeps_the_page_s_session(self) -> None:
+        first = self.sign_in()
+        state = self.start_renewal()
+        self.exchange_client.response = FakeResponse(user_id="someone-else")
+        self.exchange_client.validation_response = FakeResponse(user_id="someone-else")
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "other-user", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/inloggad?fel=annan-anvandare")
+        self.assertNotIn(SESSION_COOKIE, callback.cookies)
+        self.assertEqual(self.client.cookies.get(SESSION_COOKIE), first)
+        self.assertEqual(self.client.get("/api/auth/status").json()["user"]["id"], "user-id")
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)

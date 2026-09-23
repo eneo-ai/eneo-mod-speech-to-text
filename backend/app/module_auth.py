@@ -111,6 +111,9 @@ class PendingLogin(BaseModel):
     state: str
     # Where the callback sends the browser: a path of this module, never elsewhere.
     next: str = "/flows"
+    # A renewal before the session ends may only renew the same user in the same tenant.
+    renew_user_id: str | None = None
+    renew_tenant_id: str | None = None
 
 
 def module_path(value: str | None) -> str:
@@ -230,14 +233,23 @@ class ModuleAuth:
     async def login(
         self,
         next_path: Annotated[str | None, Query(alias="next")] = None,
+        renew: Annotated[bool, Query()] = False,
+        session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
         self._require_auth_mode("eneo_sso")
         if self.settings.eneo_public_url is None:
             raise RuntimeError("ENEO_PUBLIC_URL is required for Eneo SSO")
         state = secrets.token_urlsafe(32)
-        # A login in a separate window (before the session ends) returns to a page that closes it.
+        # A login in a separate window (before the session ends) returns to a page that closes it, and is
+        # bound to the user signed in now, so the page's work never passes to someone else.
+        current = self.sessions.get(session_id) if renew else None
         pending = self.state_serializer.dumps(
-            PendingLogin(state=state, next=module_path(next_path)).model_dump()
+            PendingLogin(
+                state=state,
+                next=module_path(next_path),
+                renew_user_id=current.user.id if isinstance(current, EneoSsoSession) else None,
+                renew_tenant_id=current.tenant_id if isinstance(current, EneoSsoSession) else None,
+            ).model_dump()
         )
         query = urlencode(
             {
@@ -381,6 +393,16 @@ class ModuleAuth:
         ):
             logger.error("Module session validation returned a different identity")
             return self._auth_error("validation_invalid")
+
+        if pending.renew_user_id is not None and (
+            token.user.id != pending.renew_user_id or token.tenant_id != pending.renew_tenant_id
+        ):
+            logger.warning("A session renewal signed in a different user; the session is kept")
+            joiner = "&" if "?" in pending.next else "?"
+            response = RedirectResponse(url=f"{pending.next}{joiner}fel=annan-anvandare", status_code=303)
+            self._delete_state_cookie(response)
+            self._secure_callback_response(response)
+            return response
 
         session = EneoSsoSession(
             access_token=token.access_token,

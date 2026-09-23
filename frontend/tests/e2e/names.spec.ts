@@ -113,9 +113,11 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
     });
   });
   // Eneo's handoff, as a signed-in browser gets it: straight back to the page the login asked for.
+  const logins: URL[] = [];
   await context.route("**/api/auth/login?*", (route) => {
-    const next = new URL(route.request().url()).searchParams.get("next") ?? "/flows";
-    return route.fulfill({ status: 303, headers: { location: next } });
+    const url = new URL(route.request().url());
+    logins.push(url);
+    return route.fulfill({ status: 303, headers: { location: url.searchParams.get("next") ?? "/flows" } });
   });
   await open(page, "/flows");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
@@ -131,6 +133,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   await window.waitForEvent("close");
   await expect(warning).toBeHidden();
   await expect(page).toHaveURL(/\/flows$/);
+  expect(logins[0]?.searchParams.get("renew"), "the login is a renewal, bound to this user").toBe("1");
   const renewed = statusCalls;
   await expect.poll(() => statusCalls - renewed, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
 });
@@ -146,4 +149,10 @@ test("on a phone the docked primary action is part of the page's main content", 
   test.skip(info.project.name !== "phone-390-light", "the action docks on a phone");
   await setup(page);
   await expect(page.getByRole("main").getByRole("button", { name: "Starta strömning" })).toBeVisible();
+});
+
+test("a renewal that signed in someone else says so and keeps the page's login", async ({ page }) => {
+  await open(page, "/inloggad?fel=annan-anvandare");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Du loggade in som en annan användare");
+  await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
 });
