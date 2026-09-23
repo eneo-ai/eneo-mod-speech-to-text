@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
-import { formatDuration } from "@/lib/upload";
+import { formatDuration, formatRelativeDate } from "@/lib/format";
 import {
   continuable,
   IN_USE_ELSEWHERE,
@@ -36,17 +36,6 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRec
   return recordings;
 }
 
-function formatWhen(at: number, now: number): string {
-  const date = new Date(at);
-  const time = date.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-  const days = Math.round(
-    (new Date(now).setHours(0, 0, 0, 0) - new Date(at).setHours(0, 0, 0, 0)) / 86_400_000,
-  );
-  if (days === 0) return `i dag ${time}`;
-  if (days === 1) return `i går ${time}`;
-  return `${date.toLocaleDateString("sv-SE", { day: "numeric", month: "short" })} ${time}`;
-}
-
 /** "Osänd inspelning, Nämndmöte till rapport, 42 min, i dag 10:12" */
 export function recordingSummary(
   recording: StoredRecording,
@@ -56,7 +45,7 @@ export function recordingSummary(
     "Osänd inspelning",
     ...(withFlowName ? [recording.flowName] : []),
     formatDuration(recording.durationMs),
-    formatWhen(recording.startedAt, now),
+    formatRelativeDate(new Date(recording.startedAt), new Date(now)),
   ].join(", ");
 }
 

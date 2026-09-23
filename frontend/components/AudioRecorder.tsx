@@ -24,11 +24,8 @@ import {
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import { RecordingCapture, type CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
-import {
-  formatBytes,
-  formatDuration,
-  pickSupportedAudioMimetype,
-} from "@/lib/upload";
+import { formatBytes, formatDuration } from "@/lib/format";
+import { pickSupportedAudioMimetype } from "@/lib/upload";
 
 type WakeLockSentinelLike = {
   release: () => Promise<void>;

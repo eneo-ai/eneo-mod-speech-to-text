@@ -34,10 +34,10 @@ test("an unsent recording is told apart by flow, length and when it was made", (
     recordingSummary(recording("b", 65 * 60_000, at(22, 16, 40)), { now }),
     "Osänd inspelning, 1 h 5 min, i går 16:40",
   );
-  const older = at(20, 9, 5);
   assert.equal(
-    recordingSummary(recording("c", 20_000, older), { now }),
-    `Osänd inspelning, 20 s, ${new Date(older).toLocaleDateString("sv-SE", { day: "numeric", month: "short" })} 09:05`,
+    recordingSummary(recording("c", 30_000, at(20, 9, 5)), { now }),
+    "Osänd inspelning, 30 s, 20 sep 09:05",
+    "the same words as the rest of the app (lib/format)",
   );
 });
 

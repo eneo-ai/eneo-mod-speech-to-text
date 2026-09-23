@@ -16,7 +16,7 @@ import {
   type RecordingStore,
   type StoredRecording,
 } from "./recording-store";
-import { formatBytes } from "./upload";
+import { formatBytes } from "./format";
 
 export const CHUNK_MS = 2_000;
 
