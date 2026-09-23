@@ -2,10 +2,17 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import type { FormField } from "@/lib/api";
 import type { DetailValue, FlowSession } from "@/lib/flow-session";
+
+// Radix Select takes no empty value, so its items carry keys of their own:
+// "none" for no choice and "opt:<n>" for the flow's n-th option, which no
+// option string can be mistaken for.
+const NONE = "none";
+const optionKey = (index: number) => `opt:${index}`;
 
 /** The id a field's control carries, so a problem can move focus to it. */
 export const detailFieldId = (name: string) => `detalj-${name}`;
@@ -20,7 +27,8 @@ export async function createDocument(session: FlowSession): Promise<void> {
 
 function options(field: FormField): string[] {
   return Array.isArray(field.options)
-    ? field.options.filter((option): option is string => typeof option === "string")
+    ? // An empty option is the same as no choice, which "Välj"/"Inget val" already offers.
+      field.options.filter((option): option is string => typeof option === "string" && option !== "")
     : [];
 }
 
@@ -55,7 +63,7 @@ export function DetailsForm({
           const text = typeof value === "string" ? value : "";
           const help =
             field.type === "list"
-              ? [field.description, "Skriv ett namn och tryck Enter."].filter(Boolean).join(" ")
+              ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
           const describedBy = [help ? helpId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
           return (
@@ -75,23 +83,24 @@ export function DetailsForm({
                   invalid={isInvalid}
                 />
               ) : field.type === "select" && options(field).length > 0 ? (
-                <select
-                  id={id}
+                <Select
                   name={field.name}
-                  autoComplete="off"
-                  value={text}
-                  onChange={(event) => onChange(field.name, event.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={isInvalid || undefined}
-                  className="h-11 w-full rounded-xl border border-rule bg-paper px-3 text-[16px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={text && options(field).includes(text) ? optionKey(options(field).indexOf(text)) : NONE}
+                  onValueChange={(key) => onChange(field.name, key === NONE ? "" : options(field)[Number(key.slice(4))])}
                 >
-                  <option value="">Välj</option>
-                  {options(field).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={isInvalid || undefined} className="text-[16px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* An optional choice can be taken back; a required one starts unchosen. */}
+                    <SelectItem value={NONE}>{field.required ? "Välj" : "Inget val"}</SelectItem>
+                    {options(field).map((option, index) => (
+                      <SelectItem key={index} value={optionKey(index)}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : field.type === "textarea" || field.type === "long_text" ? (
                 <Textarea
                   id={id}

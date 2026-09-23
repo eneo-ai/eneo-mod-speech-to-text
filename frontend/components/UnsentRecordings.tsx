@@ -1,5 +1,6 @@
 "use client";
 
+import { Mic } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
@@ -36,16 +37,12 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRec
   return recordings;
 }
 
-/** "Inspelning 23 sep 10:12 · Nämndmöte till rapport · 42 min": the name the recording had when it was made. */
-export function recordingSummary(
+/** "Nämndmöte till rapport · 42 min": under the name the recording had when it was made. */
+export function recordingDetails(
   recording: StoredRecording,
   { withFlowName = false }: { withFlowName?: boolean } = {},
 ): string {
-  return [
-    recordingName(recording.startedAt),
-    ...(withFlowName ? [recording.flowName] : []),
-    formatDuration(recording.durationMs),
-  ].join(" · ");
+  return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)].join(" · ");
 }
 
 /** Recordings kept on this device that Eneo has not received yet. */
@@ -63,18 +60,20 @@ export function UnsentRecordings({
   const headingId = useId();
   if (recordings.length === 0) return null;
   return (
-    <section aria-labelledby={headingId} className="paper-card p-4 mb-5">
-      <h2 id={headingId} className="text-[13px] font-semibold text-ink mb-1">
-        {recordings.length === 1
-          ? "En inspelning är inte skickad"
-          : `${recordings.length} inspelningar är inte skickade`}
-      </h2>
-      <p className="text-[12px] text-ink-soft mb-3">
-        {recordings.length === 1
-          ? "Den finns kvar på den här enheten tills den har skickats."
-          : "De finns kvar på den här enheten tills de har skickats."}
-      </p>
-      <ul className="flex flex-col gap-2">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1">
+        <h2 id={headingId} className="text-[19px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+          {recordings.length === 1
+            ? "En inspelning är inte skickad"
+            : `${recordings.length} inspelningar är inte skickade`}
+        </h2>
+        <p className="text-[15px] leading-relaxed text-ink-soft">
+          {recordings.length === 1
+            ? "Den finns kvar på den här enheten tills den har skickats."
+            : "De finns kvar på den här enheten tills de har skickats."}
+        </p>
+      </div>
+      <ul className="flex flex-col gap-3">
         {recordings.map((recording) => (
           <UnsentRecordingRow
             key={recording.id}
@@ -139,75 +138,81 @@ function UnsentRecordingRow({
   }
 
   return (
-    <li className="rounded-lg border border-rule-soft bg-bg-2/40 px-3 py-2">
-      <p id={summaryId} className="text-[13px] text-ink">
-        {recordingSummary(recording, { withFlowName })}
-      </p>
-      {confirming ? (
-        <div role="group" aria-labelledby={questionId} className="mt-2 flex flex-wrap items-center gap-2">
-          <p id={questionId} className="basis-full text-[12px] text-ink-soft">
-            Ta bort inspelningen från enheten? Det går inte att ångra.
-          </p>
-          <Button
-            ref={cancelRef}
-            type="button"
-            variant="outline"
-            className="h-11"
-            onClick={() => setConfirming(false)}
-          >
-            Avbryt
-          </Button>
-          <Button type="button" className="h-11" onClick={() => void remove()}>
-            Ta bort
-          </Button>
+    <li className="flex gap-4 rounded-xl border border-border bg-card p-4">
+      <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+        <Mic className="size-5" strokeWidth={1.75} />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div id={summaryId} className="flex flex-col gap-0.5">
+          <p className="text-[17px] font-semibold leading-snug text-ink">{recordingName(recording.startedAt)}</p>
+          <p className="text-[15px] leading-snug text-ink-soft">{recordingDetails(recording, { withFlowName })}</p>
         </div>
-      ) : (
-        <div className="mt-2 flex flex-wrap gap-2">
-          {onContinue && (
+        {confirming ? (
+          <div role="group" aria-labelledby={questionId} className="mt-3 flex flex-wrap items-center gap-2">
+            <p id={questionId} className="basis-full text-[15px] text-ink">
+              Ta bort inspelningen från enheten? Det går inte att ångra.
+            </p>
+            <Button
+              ref={cancelRef}
+              type="button"
+              variant="outline"
+              className="h-11"
+              onClick={() => setConfirming(false)}
+            >
+              Avbryt
+            </Button>
+            <Button type="button" variant="destructive" className="h-11" onClick={() => void remove()}>
+              Ta bort
+            </Button>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {onContinue && (
+              <Button
+                type="button"
+                className="h-11"
+                aria-describedby={summaryId}
+                onClick={() => onContinue(recording)}
+              >
+                Fortsätt spela in
+              </Button>
+            )}
             <Button
               type="button"
+              variant={onContinue ? "outline" : "default"}
               className="h-11"
               aria-describedby={summaryId}
-              onClick={() => onContinue(recording)}
+              onClick={() => onSend(recording)}
             >
-              Fortsätt spela in
+              Skicka
             </Button>
-          )}
-          <Button
-            type="button"
-            variant={onContinue ? "outline" : "default"}
-            className="h-11"
-            aria-describedby={summaryId}
-            onClick={() => onSend(recording)}
-          >
-            Skicka
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            className="h-11"
-            aria-describedby={summaryId}
-            onClick={() => void save()}
-          >
-            Spara som fil
-          </Button>
-          <Button
-            ref={deleteRef}
-            type="button"
-            variant="ghost"
-            className="h-11"
-            aria-describedby={summaryId}
-            onClick={() => setConfirming(true)}
-          >
-            Ta bort
-          </Button>
-        </div>
-      )}
-      {problem && (
-        <p role="alert" className="mt-2 text-[12px] text-accent">
-          {problem}
-        </p>
-      )}
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11"
+              aria-describedby={summaryId}
+              onClick={() => void save()}
+            >
+              Spara som fil
+            </Button>
+            <Button
+              ref={deleteRef}
+              type="button"
+              variant="ghost"
+              className="h-11"
+              aria-describedby={summaryId}
+              onClick={() => setConfirming(true)}
+            >
+              Ta bort
+            </Button>
+          </div>
+        )}
+        {problem && (
+          <p role="alert" className="mt-2 text-[15px] text-destructive">
+            {problem}
+          </p>
+        )}
+      </div>
     </li>
   );
 }

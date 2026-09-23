@@ -79,7 +79,7 @@ export function UploadPanel({
       )}
     >
       <Upload aria-hidden className="size-6 text-primary" strokeWidth={1.75} />
-      <p className="hidden text-[15px] font-medium text-ink md:block">
+      <p className="hidden text-[15px] font-medium text-ink md:[@media(pointer:fine)]:block">
         {audio ? "Dra en ljudfil hit, eller välj en." : "Dra en fil hit, eller välj en."}
       </p>
       {takes && <p className="text-[14px] text-ink-soft">Flödet tar emot {takes}.</p>}

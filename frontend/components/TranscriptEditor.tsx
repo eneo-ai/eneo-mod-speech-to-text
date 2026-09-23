@@ -249,7 +249,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     return <span key={index} data-text-span={index} data-segment-index={index}
       role="button" tabIndex={0} aria-disabled={!uncertain && !audioAvailable ? true : undefined}
       aria-label={uncertain ? `Markera hela passagen: ${segment.text.trim()}.${said}` : `Flytta uppspelningen till: ${segment.text.trim()}.${said}`}
-      title={uncertain ? `Klicka för att markera hela passagen.${said}` : audioAvailable ? `Klicka på ett ord för att flytta uppspelningen hit.${said}` : `Ljudet är inte tillgängligt.${said}`}
+      title={uncertain ? `Välj för att markera hela passagen.${said}` : audioAvailable ? `Välj ett ord för att flytta uppspelningen hit.${said}` : `Ljudet är inte tillgängligt.${said}`}
       onClick={(e) => {
         // Leave native drag selection intact, including selections across passages.
         if (e.detail > 1 || !window.getSelection()?.isCollapsed) return;

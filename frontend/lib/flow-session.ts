@@ -14,7 +14,7 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { friendlyError } from "./errors";
+import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
@@ -138,16 +138,13 @@ export function submitProblem(
     if (error.code === "flow_run_stale_version") {
       return { title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen." };
     }
+    const kept =
+      inputKind === "recording" ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den." : "Välj ett annat flöde.";
     if (error.status === 404 || error.code === "flow_not_published") {
-      return {
-        title: "Flödet är inte längre tillgängligt.",
-        detail:
-          inputKind === "recording"
-            ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den."
-            : "Välj ett annat flöde.",
-        back: true,
-      };
+      return { title: "Flödet är inte längre tillgängligt.", detail: kept, back: true };
     }
+    const advice = errorAdvice(error);
+    if (advice.ownerMustFix) return { title: advice.message, detail: kept, back: true };
     if ((error.status === 413 || error.code === "file_too_large") && step?.max_file_size_bytes) {
       return oversized(step.max_file_size_bytes);
     }

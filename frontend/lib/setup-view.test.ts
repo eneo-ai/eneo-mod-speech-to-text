@@ -74,10 +74,13 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   );
   assert.match(html, /for="detalj-deltagare"[^>]*>Deltagare <span[^>]*>\(valfritt\)<\/span>/);
   assert.match(html, /for="detalj-motesnamn"[^>]*>Mötets namn <\/label>/, "a required field has no mark");
-  assert.match(html, /Skriv ett namn och tryck Enter\./);
+  assert.match(html, /Skriv ett namn och välj Lägg till\. Skilj flera namn med komma\./);
+  const shown = html.replace(/<[^>]+>/g, " ");
+  assert.doesNotMatch(shown, /Enter|retur|tryck|klicka|hovra/i, "no key or pointer a phone does not have");
   assert.match(html, /id="detalj-motesnamn"[^>]*aria-describedby="detalj-motesnamn-fel"[^>]*aria-invalid="true"/);
   assert.match(html, /id="detalj-motesnamn-fel"[^>]*>Fyll i det här för att skapa dokumentet\.</);
-  assert.match(html, /<select[^>]*id="detalj-typ"/, "a select field offers its options");
+  assert.match(html, /<button[^>]*role="combobox"[^>]*id="detalj-typ"|<button[^>]*id="detalj-typ"[^>]*role="combobox"/, "a select field is our own picker");
+  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "never the browser's own list");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
@@ -100,4 +103,16 @@ test("the information row is the flow's classification as Eneo sends it, and the
   assert.equal(nameOnly.match(/<div/g)?.length, 2, "the row and its name, no empty description");
 
   assert.equal(row(null), "", "no classification: no row, and no invented rule");
+});
+
+test("the microphone is a labelled field like the others: the label above, the chosen device in the trigger", async () => {
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  const html = renderToStaticMarkup(createElement(MicrophoneCheck, { active: true }));
+  const id = /<label[^>]*for="([^"]+)"[^>]*>Mikrofon<\/label>/.exec(html)?.[1];
+  assert.ok(id, "a label above the control, without a colon");
+  const trigger = new RegExp(`<button[^>]*role="combobox"[^>]*id="${id}"[^>]*>`).exec(html)?.[0] ?? new RegExp(`<button[^>]*id="${id}"[^>]*role="combobox"[^>]*>`).exec(html)?.[0];
+  assert.ok(trigger, "the label names the picker");
+  assert.doesNotMatch(trigger, /aria-label=/, "no name that hides the chosen device");
+  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "not the browser's own list (Radix keeps a hidden one for forms)");
+  assert.match(html, />Testa mikrofonen</);
 });

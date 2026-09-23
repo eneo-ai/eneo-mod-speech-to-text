@@ -763,3 +763,31 @@ test("live text that cannot even be set up never keeps the recording from starti
   assert.equal(recorders.length, 1);
   assert.equal(session.getSnapshot().live?.getSnapshot().status, "unavailable", "the preview says it could not start");
 });
+
+test("a flow its owner must republish says so in Swedish, with a way back, and the recording stays", async (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const { session, recorders } = await setup();
+  session.setContract(audioContract());
+  session.setDetail("motesnamn", "KS");
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(
+        409,
+        "Step 1 (Transkribera ljud): Assistant snapshot is missing. Republish the flow before running it.",
+        null,
+        "flow_assistant_snapshot_republish_required",
+      );
+    },
+  });
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), false);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.",
+    detail: "Inspelningen finns kvar. Spara den som fil om du vill behålla den.",
+    back: true,
+  });
+});

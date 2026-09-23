@@ -161,3 +161,27 @@ test("the review view names no speaker for an unlabelled transcript either", () 
   assert.match(html, /Välkomna till nämndens möte\./);
   assert.doesNotMatch(html, /Okänd talare/);
 });
+
+test("the editing hint names no hover or click: a mouse and a touch screen each get their own true line", () => {
+  const html = renderToStaticMarkup(
+    createElement(TranscriptPlayer, {
+      segments,
+      fileCount: 2,
+      audioSrcFor: (i: number) => `/audio/${i}`,
+      speakerNames: {},
+      textFallback: "",
+      reviewEnabled: false,
+      editable: true,
+      corrections: { occurrences: [], speaker_edits: [], revision: null },
+      onCorrectionsChange: () => undefined,
+    }),
+  );
+  const shown = html.replace(/<[^>]+>/g, " ");
+  assert.doesNotMatch(shown, /hovra|klicka/i);
+  assert.match(html, /\[@media\(pointer:coarse\)\]:hidden">Peka på en replik och välj pennan/);
+  assert.match(html, /\[@media\(pointer:coarse\)\]:inline">Tryck på pennan vid en replik/);
+  // The pencil is fully there on a touch screen, not faint.
+  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken"[^>]*class="([^"]*)"/g)].map(([, c]) => c);
+  assert.ok(pencils.length > 0);
+  for (const classes of pencils) assert.match(classes, /\[@media\(pointer:coarse\)\]:opacity-100/);
+});

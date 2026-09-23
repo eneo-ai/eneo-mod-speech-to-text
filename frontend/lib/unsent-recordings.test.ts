@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { recordingSummary, UnsentRecordings } from "../components/UnsentRecordings";
+import { recordingDetails, UnsentRecordings } from "../components/UnsentRecordings";
 import type { StoredRecording } from "./recording-store";
 
 const at = (day: number, hours: number, minutes: number) =>
@@ -25,16 +25,14 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
 });
 
 test("an unsent recording keeps the name it was made with, then its flow and length", () => {
-  assert.equal(
-    recordingSummary(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }),
-    "Inspelning 23 sep 10:12 · Nämndmöte till rapport · 42 min",
+  assert.equal(recordingDetails(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }), "Nämndmöte till rapport · 42 min");
+  assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1 h 5 min");
+  const html = renderToStaticMarkup(
+    createElement(UnsentRecordings, { recordings: [recording("c", 30_000, at(20, 9, 5))], onSend: () => {}, withFlowName: true }),
   );
-  assert.equal(recordingSummary(recording("b", 65 * 60_000, at(22, 16, 40))), "Inspelning 22 sep 16:40 · 1 h 5 min");
-  assert.equal(
-    recordingSummary(recording("c", 30_000, at(20, 9, 5))),
-    "Inspelning 20 sep 09:05 · 30 s",
-    "the name the ready panel shows (lib/format recordingName)",
-  );
+  // The name the ready panel shows (lib/format recordingName), then its flow and length, at the body's size.
+  assert.match(html, /<p class="text-\[17px\][^"]*">Inspelning 20 sep 09:05<\/p><p class="text-\[15px\][^"]*">Nämndmöte till rapport · 30 s<\/p>/);
+  assert.doesNotMatch(html, /text-\[1[23]px\]/, "no text below the body scale");
 });
 
 test("one unsent recording is spoken of in the singular", () => {
@@ -61,10 +59,10 @@ test("each unsent recording offers Skicka, Spara som fil and Ta bort, described 
     }),
   );
   assert.match(html, /2 inspelningar är inte skickade/);
-  const rows = html.split("<li").slice(1);
+  const rows = html.split("<li ").slice(1);
   assert.equal(rows.length, 2);
   for (const row of rows) {
-    const summaryId = /<p id="([^"]+)"/.exec(row)?.[1];
+    const summaryId = /<div id="([^"]+)"/.exec(row)?.[1];
     assert.ok(summaryId, "the summary has an id");
     const described = [...row.matchAll(/aria-describedby="([^"]+)"[^>]*>([^<]+)</g)];
     assert.deepEqual(
@@ -89,7 +87,7 @@ test("an interrupted recording can be continued from the flow page's list", () =
   const html = renderToStaticMarkup(
     createElement(UnsentRecordings, { recordings: [interrupted, finished], onSend: () => {}, onContinue: () => {} }),
   );
-  const [first, second] = html.split("<li").slice(1);
+  const [first, second] = html.split("<li ").slice(1);
   assert.deepEqual(labels(first), ["Fortsätt spela in", "Skicka", "Spara som fil", "Ta bort"]);
   assert.deepEqual(labels(second), ["Skicka", "Spara som fil", "Ta bort"]);
   assert.doesNotMatch(
