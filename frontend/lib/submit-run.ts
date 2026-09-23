@@ -10,6 +10,7 @@
 import {
   ApiError,
   deriveRunIdempotencyKey,
+  getRunContract,
   retryFlowRunFromFailedStep,
   startRun,
   uploadStepRuntimeFile,
@@ -326,56 +327,77 @@ export async function retryFailedRun(
   }
 }
 
+const INPUT_CHANGED =
+  "Flödet har ändrats sedan körningen och tar nu emot andra uppgifter eller filer. Gör en ny inspelning eller välj filen på nytt.";
+
 /**
- * A new run with the failed run's audio, already in Eneo, and its details:
- * the way on when Eneo cannot continue the run (the flow changed since, or
- * nothing finished) and after a cancelled run. Its key names the source, apart
- * from the retry's, since the source was keyed on this same body.
+ * A new run with the failed run's audio, already in Eneo, and its details,
+ * against `contract`: the way on when Eneo cannot continue the run (the flow
+ * changed since, or nothing finished) and after a cancelled run. Its key names
+ * the source, apart from the retry's, since the source was keyed on this same
+ * body. When the flow now takes its input at another step, fewer files or a
+ * detail the run lacks, the input needs another look: `review` says so. Null
+ * when the run has no audio to start again with.
  */
 export function startAgainRequest(
   failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
   steps: readonly FlowRunStep[],
   contract: RunContract,
-  stepId: string | null,
-): { body: Json; idempotencyKey: string } | null {
+): RunRequest | { review: string } | null {
   const inputStep = [...steps]
     .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))
     .find((step) => Array.isArray(step.runtime_input_file_ids) && step.runtime_input_file_ids.length > 0);
   const fileIds = (inputStep?.runtime_input_file_ids as unknown[] | undefined)?.filter(
     (id): id is string => typeof id === "string",
   );
-  if (!stepId || !fileIds?.length) return null;
+  if (!inputStep || !fileIds?.length) return null;
+  const step = selectRuntimeInputStep(contract);
+  const payload = failed.input_payload_json ?? {};
+  const fits =
+    step?.step_id === inputStep.step_id &&
+    fileIds.length <= (step.max_files ?? Infinity) &&
+    (contract.form_fields ?? []).every((field) => !field.required || payload[field.name] != null);
+  if (!step || !fits) return { review: INPUT_CHANGED };
   const body: Json = {
     expected_flow_version: contract.published_flow_version,
-    step_inputs: { [stepId]: { file_ids: fileIds } },
+    step_inputs: { [step.step_id]: { file_ids: fileIds } },
   };
-  if (failed.input_payload_json && Object.keys(failed.input_payload_json).length > 0) {
-    body.input_payload_json = failed.input_payload_json;
-  }
+  if (Object.keys(payload).length > 0) body.input_payload_json = payload;
   return { body, idempotencyKey: `flow-run-again:${failed.id}` };
 }
 
+export type StartAgainOutcome =
+  | { kind: "started"; run: FlowRunPublic; contract: RunContract }
+  | { kind: "review"; message: string; contract: RunContract };
+
 /**
- * "Starta en ny körning", for as long as the page that asked lives: a signal
- * that ends before, during or just after the request gives null, so the page
- * sends nothing more and neither shows nor follows a run.
+ * "Starta en ny körning", against the flow as it is published now, for as
+ * long as the page that asked lives: a signal that ends before, during or just
+ * after a request gives null, so the page sends nothing more and neither
+ * shows nor follows a run. Null too when there is no audio to start again with.
  */
 export async function startAgain(
   flowId: string,
   failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
   steps: readonly FlowRunStep[],
-  contract: RunContract,
   opts: RetryOptions,
-  deps: Pick<SubmitDeps, "startRun"> = { startRun },
-): Promise<FlowRunPublic | null> {
-  const request = startAgainRequest(failed, steps, contract, selectRuntimeInputStep(contract)?.step_id ?? null);
-  if (!request) return null;
+  deps: { getContract: typeof getRunContract } & Pick<SubmitDeps, "startRun"> = {
+    getContract: getRunContract,
+    startRun,
+  },
+): Promise<StartAgainOutcome | null> {
   try {
+    // A flow published again since the run takes the new run only at its current version.
+    const contract = await withRetry(() => deps.getContract(flowId), opts);
+    if (opts.signal?.aborted) return null;
+    const request = startAgainRequest(failed, steps, contract);
+    if (!request) return null;
+    if ("review" in request) return { kind: "review", message: request.review, contract };
     const run = await withRetry(
       () => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal),
       opts,
     );
-    return opts.signal?.aborted ? null : run;
+    return opts.signal?.aborted ? null : { kind: "started", run, contract };
   } catch (error) {
     if (opts.signal?.aborted) return null;
     throw error;

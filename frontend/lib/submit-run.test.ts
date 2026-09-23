@@ -757,9 +757,10 @@ test("a new run with the failed run's audio and details has a key of its own, ap
     { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
   ];
 
-  const request = startAgainRequest(failed, steps, contract, "step-audio");
+  const request = startAgainRequest(failed, steps, contract);
+  assert.ok(request && "body" in request);
 
-  assert.deepEqual(request?.body, {
+  assert.deepEqual(request.body, {
     expected_flow_version: 3,
     step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
     input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
@@ -769,8 +770,52 @@ test("a new run with the failed run's audio and details has a key of its own, ap
   assert.equal(request!.idempotencyKey, "flow-run-again:run-1");
   assert.notEqual(request!.idempotencyKey, replay);
   // Without the recording there is nothing to start again with.
-  assert.equal(startAgainRequest(failed, [steps[0]], contract, "step-audio"), null);
-  assert.equal(startAgainRequest(failed, steps, contract, null), null);
+  assert.equal(startAgainRequest(failed, [steps[0]], contract), null);
+});
+
+test("Starta en ny körning is asked against the flow as published now, and a changed input asks for a new one instead", async () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: { motesnamn: "KS" } };
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
+  ];
+  const republished: RunContract = { ...contract, published_flow_version: 4 };
+  const bodies: Json[] = [];
+  const outcome = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+    getContract: async () => republished,
+    startRun: async (_flowId, body) => {
+      bodies.push(body);
+      return queuedRun;
+    },
+  });
+  assert.equal(outcome?.kind, "started");
+  assert.equal(outcome?.contract, republished, "the page shows the flow as it is now");
+  assert.deepEqual(bodies, [
+    {
+      expected_flow_version: 4,
+      step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
+      input_payload_json: { motesnamn: "KS" },
+    },
+  ]);
+
+  const step = contract.steps_requiring_input![0];
+  const changed: Array<[string, RunContract]> = [
+    ["another input step", { ...republished, steps_requiring_input: [{ ...step, step_id: "step-upload" }] }],
+    ["fewer files", { ...republished, steps_requiring_input: [{ ...step, max_files: 1 }] }],
+    ["a new required detail", { ...republished, form_fields: [{ name: "datum", label: "Datum", type: "text", required: true }] }],
+  ];
+  for (const [what, current] of changed) {
+    let posts = 0;
+    const review = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+      getContract: async () => current,
+      startRun: async () => {
+        posts += 1;
+        return queuedRun;
+      },
+    });
+    assert.equal(review?.kind, "review", what);
+    assert.match(review?.kind === "review" ? review.message : "", /Flödet har ändrats sedan körningen/, what);
+    assert.equal(posts, 0, `${what}: nothing is sent`);
+  }
 });
 
 test("Starta en ny körning sends nothing more once the page is gone, and gives no run to follow", async (t) => {
@@ -783,11 +828,12 @@ test("Starta en ny körning sends nothing more once the page is gone, and gives 
   const leftWaiting = new AbortController();
   let posts = 0;
   let waiting = false;
-  const outcome = startAgain("flow-1", failed, steps, contract, {
+  const outcome = startAgain("flow-1", failed, steps, {
     online: createOnlineStatus(),
     signal: leftWaiting.signal,
     onWait: (wait) => (waiting = wait !== null),
   }, {
+    getContract: async () => contract,
     startRun: async () => {
       posts += 1;
       throw fetchFailed();
@@ -802,7 +848,8 @@ test("Starta en ny körning sends nothing more once the page is gone, and gives 
 
   // Left just as Eneo answered: the run exists, but this page follows nothing.
   const leftAnswering = new AbortController();
-  const answered = await startAgain("flow-1", failed, steps, contract, { online: createOnlineStatus(), signal: leftAnswering.signal }, {
+  const answered = await startAgain("flow-1", failed, steps, { online: createOnlineStatus(), signal: leftAnswering.signal }, {
+    getContract: async () => contract,
     startRun: async () => {
       leftAnswering.abort();
       return queuedRun;
@@ -810,10 +857,11 @@ test("Starta en ny körning sends nothing more once the page is gone, and gives 
   });
   assert.equal(answered, null);
 
-  const kept = await startAgain("flow-1", failed, steps, contract, { online: createOnlineStatus(), signal: new AbortController().signal }, {
+  const kept = await startAgain("flow-1", failed, steps, { online: createOnlineStatus(), signal: new AbortController().signal }, {
+    getContract: async () => contract,
     startRun: async () => queuedRun,
   });
-  assert.equal(kept?.id, "run-1");
+  assert.equal(kept?.kind === "started" && kept.run.id, "run-1");
 });
 
 test("Försök igen asks Eneo to continue the failed run under a key that names it, and returns the child run", async () => {

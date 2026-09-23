@@ -541,7 +541,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
   async function onStartAgain(failed: Extract<RunState, { kind: "done" }>) {
-    if (!contract) return;
     setRunError(null);
     setRun({ kind: "submitting" });
     setSubmission({ kind: "starting", wait: null });
@@ -549,7 +548,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const abortController = new AbortController();
     submitAbortRef.current = abortController;
     try {
-      const next = await startAgain(flowId, failed.run, failed.steps, contract, {
+      const outcome = await startAgain(flowId, failed.run, failed.steps, {
         online: onlineStatus,
         signal: abortController.signal,
         onWait: (wait) => setSubmission({ kind: "starting", wait }),
@@ -557,15 +556,26 @@ function FlowDetail({ flowId }: { flowId: string }) {
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
       // Avbryt goes back to the failed run; after the page left, no URL change and no following.
-      if (!next) {
+      if (!outcome) {
         setRun(failed);
+        return;
+      }
+      // The flow as it is published now.
+      setContract(outcome.contract);
+      if (outcome.kind === "review") {
+        // Back to the details and a new recording or file, against the flow as it is now.
+        setRetryRefusal(null);
+        writeRunIdToUrl(null);
+        setRunError(outcome.message);
+        setRun({ kind: "idle" });
+        loadEarlierRuns();
         return;
       }
       // A refusal that led here stays on the failure view until a new run exists.
       setRetryRefusal(null);
-      writeRunIdToUrl(next.id);
-      setRun({ kind: "running", run: next, graph: null });
-      void follow(next.id);
+      writeRunIdToUrl(outcome.run.id);
+      setRun({ kind: "running", run: outcome.run, graph: null });
+      void follow(outcome.run.id);
     } catch (err) {
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
@@ -684,8 +694,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // The same audio cannot help when the input itself has to change.
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";
-  const startAgainOffered =
-    sameInputHelps && startAgainRequest(run.run, run.steps, contract, inputStep?.step_id ?? null) !== null;
+  const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
   return (
     <>
       {topBar}
