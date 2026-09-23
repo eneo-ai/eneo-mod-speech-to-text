@@ -204,7 +204,7 @@ export function FlowInput({
         )}
       >
         <div className={cn("flex flex-col gap-5", group === "capture" && "lg:min-h-0 lg:overflow-y-auto lg:pb-2")}>
-          <BackToFlows onLeave={onLeave} flush className="hidden lg:inline-flex" />
+          <BackToFlows onLeave={onLeave} className="hidden lg:inline-flex" />
           <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
             {published.name}
           </h1>
