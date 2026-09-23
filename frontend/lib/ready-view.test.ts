@@ -56,6 +56,37 @@ test("the ready state names the recording for people, never as a file or a type,
   assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
 });
 
+test("a recording Eneo already has shows the earlier runs where the user is, and offers deleting it from the device", () => {
+  const sent = renderToStaticMarkup(
+    createElement(ReadyPanel, {
+      recording: { ...recording, state: "uploaded" },
+      persistent: true,
+      problem: { title: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.", sent: true },
+      onCreate: noop,
+      onDiscard: noop,
+      earlierRuns: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }],
+      onOpenRun: noop,
+    }),
+  );
+  assert.match(sent, /Tidigare körningar/);
+  assert.match(sent, />Öppna<span class="sr-only">/, "the run Eneo has, one tap away");
+  assert.match(sent, />Ta bort inspelningen från enheten<\/button>/);
+
+  const notSent = renderToStaticMarkup(
+    createElement(ReadyPanel, {
+      recording,
+      persistent: true,
+      problem: null,
+      onCreate: noop,
+      onDiscard: noop,
+      earlierRuns: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }],
+      onOpenRun: noop,
+    }),
+  );
+  assert.doesNotMatch(notSent, /Tidigare körningar/, "the ready state lists runs only once Eneo has this recording");
+  assert.match(notSent, />Ta bort<\/button>/);
+});
+
 test("the player is our own: a named play button, a named slider over the known length, and m:ss / m:ss", () => {
   const html = renderToStaticMarkup(
     createElement(AudioPlayer, {

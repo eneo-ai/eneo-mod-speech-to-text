@@ -186,6 +186,8 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
+/** Eneo has a run under the recording's key: sent, from this send or an earlier one. */
+export const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
 
 /**
  * Sealed from its first send on: the audio sent is the audio kept, so no part

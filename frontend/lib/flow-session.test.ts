@@ -568,6 +568,29 @@ test("after a cleanup the page set up again (React Strict Mode) still makes docu
   assert.equal(sends, 1);
 });
 
+test("a recording Eneo already has says so, has the earlier runs read again, and stays to be deleted", async () => {
+  const { session, recorders } = await setup();
+  let refreshed = 0;
+  session.setHandlers({
+    submit: async () => {
+      throw new Error("Inspelningen har redan skickats. Körningen finns under Tidigare körningar.");
+    },
+    refreshEarlierRuns: () => void (refreshed += 1),
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  assert.equal(await session.createDocument(), false);
+  const { phase, problem } = session.getSnapshot();
+  assert.equal(phase, "ready", "the recording stays, to be deleted from the device");
+  assert.deepEqual(problem, { title: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.", sent: true });
+  assert.equal(refreshed, 1, "the earlier runs are read again, with the run Eneo has");
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({

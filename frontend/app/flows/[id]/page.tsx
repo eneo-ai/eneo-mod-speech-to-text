@@ -247,7 +247,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }, [contract]);
 
   // The session hands the document to the run code below.
-  useEffect(() => session.setHandlers({ submit: sendInput, reloadFlow }));
+  useEffect(() => session.setHandlers({ submit: sendInput, reloadFlow, refreshEarlierRuns: loadEarlierRuns }));
 
   /** A newer published version: the flow and its contract, loaded again in place. */
   async function reloadFlow() {

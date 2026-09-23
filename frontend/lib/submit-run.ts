@@ -23,7 +23,7 @@ import { friendlyError } from "./errors";
 import { filledValue } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes } from "./format";
-import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
+import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
 import { selectRuntimeInputStep } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
@@ -189,7 +189,6 @@ export async function submitRun(
   return withRetry(() => deps.startRun(flowId, body, key, params.signal), params);
 }
 
-const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
 
 /**
  * Sends a stored recording through `submitRun`, holding its lease so no other

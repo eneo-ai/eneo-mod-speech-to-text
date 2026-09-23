@@ -17,7 +17,7 @@ import {
 import { friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
-import { IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
+import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes } from "./format";
 import type { LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
@@ -35,6 +35,8 @@ export interface Problem {
   retry?: boolean;
   /** Offer the way back to the flows. */
   back?: boolean;
+  /** Eneo already has a run for the recording: show the earlier runs, and offer deleting the copy. */
+  sent?: boolean;
 }
 
 export interface ChosenFile {
@@ -57,6 +59,8 @@ export interface SessionHandlers {
   submit: (request: SubmitRequest) => Promise<void>;
   /** Loads the published flow and its run contract again. */
   reloadFlow?: () => Promise<void>;
+  /** Reads this user's earlier runs of the flow again. */
+  refreshEarlierRuns?: () => void;
 }
 
 const FORMAT_NAMES: Record<string, string> = {
@@ -134,6 +138,7 @@ export function submitProblem(
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
 ): Problem {
+  if (error instanceof Error && error.message === ALREADY_SENT) return { title: ALREADY_SENT, sent: true };
   if (error instanceof ApiError) {
     if (error.code === "flow_run_stale_version") {
       return { title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen." };
@@ -592,6 +597,8 @@ export class FlowSession {
         // The newer version's contract decides which details still fit.
         await this.handlers.reloadFlow?.().catch(() => undefined);
       }
+      // The run Eneo has is among the earlier runs, which may have been read before it existed.
+      if (this.problem.sent) this.handlers.refreshEarlierRuns?.();
       this.emit();
       return false;
     }

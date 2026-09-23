@@ -241,6 +241,8 @@ export function FlowInput({
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}
+              earlierRuns={earlierRuns}
+              onOpenRun={onOpenRun}
             />
           ) : (
             <CaptureWorkspace input={input} />
