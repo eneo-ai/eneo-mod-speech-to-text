@@ -32,32 +32,48 @@ export function audioConstraints(
   return deviceId ? { ...base, deviceId: { ideal: deviceId } } : base;
 }
 
-export type MicrophonePermission = "granted" | "denied" | "prompt" | "unknown";
-
-/** Whether the browser already lets the app use the microphone; never asks. */
-export async function microphonePermission(): Promise<MicrophonePermission> {
-  try {
-    const status = await navigator.permissions.query({ name: "microphone" as PermissionName });
-    return status.state;
-  } catch {
-    // Firefox before 116 and some embedded browsers do not answer.
-    return "unknown";
-  }
-}
-
 // Chrome lists the system default and Windows' communications device as extra
 // entries for a real input; they would show every microphone twice.
 const ALIASES = new Set(["default", "communications"]);
 
-/** The inputs the browser names; without permission it names none. */
+/** The audio inputs the browser lists; until the microphone is allowed their names are empty. */
 export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
   try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    return devices.filter(
-      (device) =>
-        device.kind === "audioinput" && device.label && device.deviceId && !ALIASES.has(device.deviceId),
-    );
+    return (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === "audioinput");
   } catch {
     return [];
   }
+}
+
+export interface MicrophoneChoice {
+  /** The device's id; "" is Standard, whatever the system uses. */
+  value: string;
+  label: string;
+}
+
+/**
+ * The picker: "Standard" first, naming the microphone the system uses when
+ * the browser says which (Chrome's "default" entry), then each microphone by
+ * its name. A remembered microphone that is gone falls back to Standard, and
+ * `missing` says so once the devices are known.
+ */
+export function microphoneChoices(
+  inputs: readonly MediaDeviceInfo[],
+  preferred: string | null,
+): { choices: MicrophoneChoice[]; value: string; missing: boolean } {
+  const named = inputs.filter((device) => device.label && device.deviceId && !ALIASES.has(device.deviceId));
+  const system = inputs.find((device) => device.deviceId === "default" && device.label);
+  const systemName =
+    system &&
+    (named.find((device) => device.groupId && device.groupId === system.groupId)?.label ??
+      system.label.replace(/^\s*(default|standard)\s*[-–—:]\s*/i, ""));
+  const found = preferred !== null && named.some((device) => device.deviceId === preferred);
+  return {
+    choices: [
+      { value: "", label: systemName ? `Standard (${systemName})` : "Standard" },
+      ...named.map((device) => ({ value: device.deviceId, label: device.label })),
+    ],
+    value: found ? preferred : "",
+    missing: preferred !== null && named.length > 0 && !found,
+  };
 }

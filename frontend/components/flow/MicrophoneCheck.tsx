@@ -3,6 +3,8 @@
 import { Mic } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { browserStorage, microphoneProblem, type Problem } from "@/lib/flow-session";
@@ -10,21 +12,26 @@ import { SPEECH_RECORDING } from "@/lib/recording-session";
 import {
   audioConstraints,
   listMicrophones,
-  microphonePermission,
+  microphoneChoices,
   preferredMicrophone,
   setPreferredMicrophone,
 } from "@/lib/microphone";
 
+// Radix Select takes no empty value; Standard is "" everywhere else.
+const STANDARD = "standard";
+
 /**
- * "Testa mikrofonen": an optional check before recording. The microphone is
- * asked for only when the user presses the button; once the browser allows
- * it, the device picker shows at once and a test never asks again. The chosen
- * device is remembered and used when recording starts.
+ * The microphone and "Testa mikrofonen", an optional check before recording.
+ * The microphone is asked for only when the user presses the button; until
+ * the browser allows it, the picker offers only "Standard", and afterwards
+ * every microphone by name. The chosen device is remembered and used when
+ * recording starts; one that is gone falls back to Standard, and says so.
  */
 export function MicrophoneCheck({ active }: { active: boolean }) {
   const selectId = useId();
-  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
-  const [deviceId, setDeviceId] = useState("");
+  const noteId = useId();
+  const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
+  const [preferred, setPreferred] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [heard, setHeard] = useState(false);
   const [problem, setProblem] = useState<Problem | null>(null);
@@ -33,9 +40,9 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
 
   useEffect(() => {
     let cancelled = false;
-    setDeviceId(preferredMicrophone(browserStorage()) ?? "");
-    const refresh = () => void listMicrophones().then((found) => !cancelled && setDevices(found));
-    void microphonePermission().then((state) => state === "granted" && refresh());
+    setPreferred(preferredMicrophone(browserStorage()));
+    const refresh = () => void listMicrophones().then((found) => !cancelled && setInputs(found));
+    refresh();
     navigator.mediaDevices?.addEventListener?.("devicechange", refresh);
     return () => {
       cancelled = true;
@@ -57,7 +64,9 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     if (running && level > 0.35) setHeard(true);
   });
 
-  async function test(id = deviceId) {
+  const { choices, value, missing } = microphoneChoices(inputs, preferred);
+
+  async function test(id = value) {
     setProblem(null);
     setHeard(false);
     try {
@@ -69,7 +78,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
         return;
       }
       setStream(next);
-      setDevices(await listMicrophones());
+      setInputs(await listMicrophones());
     } catch (error) {
       setProblem(microphoneProblem(error instanceof DOMException ? error.name : null));
     }
@@ -77,48 +86,46 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
 
   function choose(id: string) {
     setPreferredMicrophone(browserStorage(), id);
-    setDeviceId(id);
+    setPreferred(id || null);
     if (stream) void test(id);
   }
 
-  const chosen = devices.some((device) => device.deviceId === deviceId) ? deviceId : "";
-
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        {devices.length > 1 ? (
-          // Wide enough to name the device; the test button wraps below it on a phone.
-          <div className="flex min-w-[min(100%,16rem)] flex-1 items-center gap-2">
-            <label htmlFor={selectId} className="shrink-0 text-[15px] text-ink-soft">
-              Mikrofon:
-            </label>
-            <select
-              id={selectId}
-              value={chosen}
-              onChange={(event) => choose(event.target.value)}
-              className="h-11 min-w-0 flex-1 truncate rounded-xl border border-rule bg-paper px-3 text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              <option value="">Standard</option>
-              {devices.map((device) => (
-                <option key={device.deviceId} value={device.deviceId}>
-                  {device.label}
-                </option>
+      <Field className="gap-2">
+        <FieldLabel htmlFor={selectId} className="text-[15px] font-semibold text-ink">
+          Mikrofon
+        </FieldLabel>
+        {/* Beside each other on a laptop; the test below the picker on a phone. */}
+        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
+          <Select value={value || STANDARD} onValueChange={(next) => choose(next === STANDARD ? "" : next)}>
+            <SelectTrigger id={selectId} aria-describedby={missing ? noteId : undefined} className="min-w-0 sm:flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {choices.map((choice) => (
+                <SelectItem key={choice.value || STANDARD} value={choice.value || STANDARD}>
+                  {choice.label}
+                </SelectItem>
               ))}
-            </select>
-          </div>
-        ) : devices.length === 1 ? (
-          <p className="min-w-0 flex-1 truncate text-[15px] text-ink-soft">Mikrofon: {devices[0].label}</p>
-        ) : null}
-        <Button
-          type="button"
-          variant="outline"
-          className="h-11"
-          onClick={() => (stream ? setStream(null) : void test())}
-        >
-          <Mic data-icon="inline-start" aria-hidden />
-          {stream ? "Sluta testa" : "Testa mikrofonen"}
-        </Button>
-      </div>
+            </SelectContent>
+          </Select>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0"
+            onClick={() => (stream ? setStream(null) : void test())}
+          >
+            <Mic data-icon="inline-start" aria-hidden />
+            {stream ? "Sluta testa" : "Testa mikrofonen"}
+          </Button>
+        </div>
+        {missing && (
+          <FieldDescription id={noteId} className="text-[13px]">
+            Den valda mikrofonen hittades inte. Standard används.
+          </FieldDescription>
+        )}
+      </Field>
       {stream && <LevelMeter stream={stream} bars={24} variant="steps" className="h-6" />}
       {/* Always rendered, so a screen reader hears the change once. */}
       <p role="status" className={stream ? "text-[13px] text-ink-soft" : "sr-only"}>

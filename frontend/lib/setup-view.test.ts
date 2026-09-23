@@ -103,3 +103,15 @@ test("the information row is the flow's classification as Eneo sends it, and the
 
   assert.equal(row(null), "", "no classification: no row, and no invented rule");
 });
+
+test("the microphone is a labelled field like the others: the label above, the chosen device in the trigger", async () => {
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  const html = renderToStaticMarkup(createElement(MicrophoneCheck, { active: true }));
+  const id = /<label[^>]*for="([^"]+)"[^>]*>Mikrofon<\/label>/.exec(html)?.[1];
+  assert.ok(id, "a label above the control, without a colon");
+  const trigger = new RegExp(`<button[^>]*role="combobox"[^>]*id="${id}"[^>]*>`).exec(html)?.[0] ?? new RegExp(`<button[^>]*id="${id}"[^>]*role="combobox"[^>]*>`).exec(html)?.[0];
+  assert.ok(trigger, "the label names the picker");
+  assert.doesNotMatch(trigger, /aria-label=/, "no name that hides the chosen device");
+  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "not the browser's own list (Radix keeps a hidden one for forms)");
+  assert.match(html, />Testa mikrofonen</);
+});
