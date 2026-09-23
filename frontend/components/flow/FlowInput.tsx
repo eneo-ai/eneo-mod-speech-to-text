@@ -146,7 +146,7 @@ export function FlowInput({
           <Link
             href="/flows"
             onClick={onLeave}
-            className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:inline-flex"
+            className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:inline-flex"
           >
             <ArrowLeft aria-hidden className="size-4" />
             Flöden
@@ -168,7 +168,7 @@ export function FlowInput({
           {holdsAudio && fields.length > 0 ? (
             // While recording and after, the details fold into one line on a phone or tablet.
             <Collapsible open={detailsOpen || snapshot.invalid.length > 0} onOpenChange={setDetailsOpen}>
-              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:hidden">
+              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
                 <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
                 <ChevronDown
                   aria-hidden

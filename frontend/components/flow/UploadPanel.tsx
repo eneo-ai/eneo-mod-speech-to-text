@@ -52,10 +52,10 @@ export function UploadPanel({
         {...dropTarget}
         className={cn(
           "flex items-center gap-3 rounded-xl border bg-paper p-4 transition-colors duration-150",
-          dragging ? "border-accent bg-accent-soft/40" : "border-rule-soft",
+          dragging ? "border-primary bg-primary-soft/40" : "border-rule-soft",
         )}
       >
-        <FileAudio aria-hidden className="size-6 shrink-0 text-accent" strokeWidth={1.75} />
+        <FileAudio aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[15px] font-medium text-ink">{file.filename}</p>
           <p className="text-[13px] text-ink-soft">
@@ -75,10 +75,10 @@ export function UploadPanel({
       {...dropTarget}
       className={cn(
         "flex flex-col items-center gap-2 rounded-xl border border-dashed px-5 py-6 text-center transition-colors duration-150",
-        dragging ? "border-accent bg-accent-soft/40" : "border-rule bg-paper",
+        dragging ? "border-primary bg-primary-soft/40" : "border-rule bg-paper",
       )}
     >
-      <Upload aria-hidden className="size-6 text-accent" strokeWidth={1.75} />
+      <Upload aria-hidden className="size-6 text-primary" strokeWidth={1.75} />
       <p className="hidden text-[15px] font-medium text-ink md:block">
         {audio ? "Dra en ljudfil hit, eller välj en." : "Dra en fil hit, eller välj en."}
       </p>

@@ -697,10 +697,10 @@ function RecordingView({
         <OfflineBanner waiting={run ? "run" : "upload"} />
       </div>
       <header className="flex items-center justify-between px-5 md:px-8 pb-2">
-        <div className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-accent">
+        <div className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-primary">
           <span
             aria-hidden
-            className="lyssna-live-pulse h-1.5 w-1.5 rounded-full bg-accent"
+            className="lyssna-live-pulse h-1.5 w-1.5 rounded-full bg-primary"
           />
           Bearbetar
         </div>
@@ -732,16 +732,16 @@ function RecordingView({
           />
         ) : (
           <div className="grid place-items-center mb-7 md:mb-10 w-full max-w-[340px] md:max-w-lg">
-            <Loader2 className="h-9 w-9 md:h-12 md:w-12 animate-spin text-accent" />
+            <Loader2 className="h-9 w-9 md:h-12 md:w-12 animate-spin text-primary" />
             {submission.kind === "starting" && <RetryNotice wait={submission.wait} />}
           </div>
         )}
 
         <div className="w-full max-w-[300px] md:max-w-lg lg:max-w-xl paper-card p-4 md:p-6 lg:p-7">
-          <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-accent mb-2 md:mb-3 inline-flex items-center gap-1.5">
+          <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-primary mb-2 md:mb-3 inline-flex items-center gap-1.5">
             <span
               aria-hidden
-              className="lyssna-live-pulse h-1 w-1 rounded-full bg-accent"
+              className="lyssna-live-pulse h-1 w-1 rounded-full bg-primary"
             />
             Pågår
           </div>
@@ -764,7 +764,7 @@ function UploadProgressCard({
     <div className="w-full max-w-[340px] md:max-w-lg paper-card p-4 md:p-5 mb-7 md:mb-10">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="min-w-0">
-          <div className="eyebrow-sm text-accent">Uppladdning</div>
+          <div className="eyebrow-sm text-primary">Uppladdning</div>
           <div className="text-[14px] md:text-[15px] font-medium text-ink truncate mt-1">
             {submission.filename}
           </div>
@@ -779,7 +779,7 @@ function UploadProgressCard({
       </div>
       <div className="h-2 rounded-full bg-bg-2 overflow-hidden mb-2">
         <div
-          className="h-full rounded-full bg-accent transition-[width]"
+          className="h-full rounded-full bg-primary transition-[width]"
           style={{ width: `${percent}%` }}
         />
       </div>
@@ -806,7 +806,7 @@ function StepProgress({
     return (
       <p className="text-[14px] md:text-[16px] text-ink-soft leading-relaxed">
         Väntar på första steget…
-        <span className="lyssna-blink text-accent ml-0.5">|</span>
+        <span className="lyssna-blink text-primary ml-0.5">|</span>
       </p>
     );
   }
@@ -827,9 +827,9 @@ function StepProgress({
         const iconClass = success
           ? "text-ink"
           : failed
-            ? "text-accent"
+            ? "text-primary"
             : running
-              ? "text-accent animate-spin"
+              ? "text-primary animate-spin"
               : "text-ink-mute";
         return (
           <li
@@ -1033,7 +1033,7 @@ function ReviewView({
           type="button"
           onClick={submitReject}
           disabled={!rejectReason.trim() || working === "reject"}
-          className="inline-flex items-center gap-1.5 rounded-full bg-accent text-accent-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
         >
           {working === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
           Bekräfta avvisning
@@ -1048,7 +1048,7 @@ function ReviewView({
         type="button"
         onClick={() => setShowReject(true)}
         disabled={working !== null || showReject}
-        className="text-[13px] text-ink-soft hover:text-accent transition-colors disabled:opacity-50"
+        className="text-[13px] text-ink-soft hover:text-primary transition-colors disabled:opacity-50"
       >
         Avvisa
       </button>
@@ -1148,7 +1148,7 @@ function ReviewView({
           </div>
 
           {(runError || localError) && (
-            <p className="text-[13px] text-accent mt-4" role="alert">
+            <p className="text-[13px] text-primary mt-4" role="alert">
               {runError ?? localError}
             </p>
           )}
@@ -1236,7 +1236,7 @@ function ReviewView({
         </section>
 
         {runError && (
-          <p className="text-[13px] text-accent mb-3" role="alert">
+          <p className="text-[13px] text-primary mb-3" role="alert">
             {runError}
           </p>
         )}
@@ -1332,8 +1332,8 @@ function NotesView({
 
       <div className="px-6 md:px-8 pb-6 flex-1 w-full mx-auto max-w-3xl">
         {failure && (
-          <div className="paper-card p-4 mb-4 border-accent/30">
-            <div className="eyebrow-sm text-accent mb-1">
+          <div className="paper-card p-4 mb-4 border-primary/30">
+            <div className="eyebrow-sm text-primary mb-1">
               {failure.step ? `Fel · ${failure.step}` : "Fel"}
             </div>
             <p className="text-[14px] text-ink">{failure.summary}</p>
@@ -1359,12 +1359,12 @@ function NotesView({
               prose-li:text-[14px] prose-li:leading-[1.55] prose-li:text-ink
               prose-strong:text-ink prose-strong:font-semibold
               prose-em:text-ink-soft prose-em:not-italic
-              prose-a:text-accent prose-a:no-underline hover:prose-a:underline
+              prose-a:text-primary prose-a:no-underline hover:prose-a:underline
               prose-code:font-mono prose-code:text-[12px]
               prose-code:before:hidden prose-code:after:hidden
               prose-code:bg-bg-2 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
               prose-pre:bg-ink prose-pre:text-paper prose-pre:rounded-xl
-              prose-blockquote:not-italic prose-blockquote:text-ink-soft prose-blockquote:border-accent prose-blockquote:font-normal
+              prose-blockquote:not-italic prose-blockquote:text-ink-soft prose-blockquote:border-primary prose-blockquote:font-normal
               prose-table:text-[13px]
               prose-hr:border-rule-soft
             "
@@ -1394,7 +1394,7 @@ function NotesView({
               Inspelning och transkript
             </div>
             {(saveState !== "idle" || (corrections.updatedAt && run.finished_at && Date.parse(corrections.updatedAt) > Date.parse(run.finished_at))) && <p className="mb-2 text-[13px]">Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade transkriptet som underlag för en ny sammanfattning.</p>}
-            {localError && <p role="alert" className="text-accent">{localError}</p>}
+            {localError && <p role="alert" className="text-primary">{localError}</p>}
             {saveState === "error" && <div className="flex gap-4 text-[13px]">
               <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
               <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>

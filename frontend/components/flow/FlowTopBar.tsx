@@ -29,7 +29,7 @@ export function FlowTopBar({
           href="/flows"
           aria-label="Till flödena"
           onClick={onLeave}
-          className="grid size-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          className="grid size-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         >
           <ChevronLeft aria-hidden className="size-6" strokeWidth={2} />
         </Link>

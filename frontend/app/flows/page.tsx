@@ -204,7 +204,7 @@ function FlowsListPage() {
           {today.charAt(0).toUpperCase() + today.slice(1)}
         </div>
         <h1 className="text-[30px] md:text-[40px] lg:text-[44px] font-semibold leading-[1.05] tracking-[-0.025em]">
-          Vad ska vi <span className="accent-em">spela in</span>?
+          Vad ska vi <span className="primary-em">spela in</span>?
         </h1>
       </section>
 
@@ -263,7 +263,7 @@ function FlowsListPage() {
 
           <section className="px-4 md:px-6 pb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
             {error && (
-              <p className="px-2 text-sm text-accent" role="alert">
+              <p className="px-2 text-sm text-primary" role="alert">
                 {error}
               </p>
             )}
@@ -322,7 +322,7 @@ function SpaceFlowsSection({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 md:gap-4">
         {section.error && (
-          <p className="px-2 text-sm text-accent" role="alert">
+          <p className="px-2 text-sm text-primary" role="alert">
             {section.error}
           </p>
         )}
@@ -399,7 +399,7 @@ function FlowRow({
           : "border-rule-soft opacity-60",
       ].join(" ")}
     >
-      <div className="grid place-items-center h-[38px] w-[38px] rounded-[10px] shrink-0 bg-accent-soft text-accent">
+      <div className="grid place-items-center h-[38px] w-[38px] rounded-[10px] shrink-0 bg-primary-soft text-primary">
         <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
       </div>
       <div className="flex-1 min-w-0">

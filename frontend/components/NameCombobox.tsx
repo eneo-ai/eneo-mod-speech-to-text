@@ -150,7 +150,7 @@ export function NameCombobox({
         onFocus={openList}
         onClick={openList}
         onKeyDown={onKeyDown}
-        className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
       />
       <button
         type="button"
@@ -191,12 +191,12 @@ export function NameCombobox({
               onClick={() => choose(option)}
               className={cn(
                 "flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px]",
-                i === active ? "bg-bg-2 text-ink shadow-[inset_3px_0_0_hsl(var(--accent))]" : "text-ink",
+                i === active ? "bg-bg-2 text-ink shadow-[inset_3px_0_0_hsl(var(--primary))]" : "text-ink",
                 option.kind === "none" && "text-ink-soft",
                 option.kind === "none" && items.length > 1 && "mt-1 border-t border-rule-soft pt-2",
               )}
             >
-              {option.kind === "add" && <Plus className="h-3.5 w-3.5 shrink-0 text-accent" />}
+              {option.kind === "add" && <Plus className="h-3.5 w-3.5 shrink-0 text-primary" />}
               {option.kind === "none" && <UserX className="h-3.5 w-3.5 shrink-0" />}
               <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
                 {option.kind === "add" ? (
@@ -209,7 +209,7 @@ export function NameCombobox({
                   option.name
                 )}
               </span>
-              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
             </li>
           );
         })}

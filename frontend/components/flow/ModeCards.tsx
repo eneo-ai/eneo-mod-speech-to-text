@@ -43,7 +43,7 @@ export const ModeCards = forwardRef<
           return (
             <FieldLabel key={value} htmlFor={id} className="transition-colors duration-150">
               <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
-                <Icon aria-hidden className="size-6 shrink-0 text-accent" strokeWidth={1.75} />
+                <Icon aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
                 <FieldContent className="gap-0.5">
                   <FieldTitle className="text-[17px] font-semibold text-ink">{name}</FieldTitle>
                   <FieldDescription className="text-[15px]">{line}</FieldDescription>

@@ -95,7 +95,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
               id={selectId}
               value={chosen}
               onChange={(event) => choose(event.target.value)}
-              className="h-11 min-w-0 flex-1 truncate rounded-xl border border-rule bg-paper px-3 text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="h-11 min-w-0 flex-1 truncate rounded-xl border border-rule bg-paper px-3 text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <option value="">Standard</option>
               {devices.map((device) => (

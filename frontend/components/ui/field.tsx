@@ -118,8 +118,8 @@ function FieldLabel({
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50",
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-xl has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-rule-soft has-[>[data-slot=field]]:bg-paper has-[>[data-slot=field]]:cursor-pointer [&>[data-slot=field]]:p-4",
         // Chained, so a checked or focused card wins over the base card by specificity.
-        "has-[>[data-slot=field]]:has-[[data-state=checked]]:border-accent has-[>[data-slot=field]]:has-[[data-state=checked]]:bg-accent-soft/60 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-1 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-accent",
-        "has-[>[data-slot=field]]:has-[:focus-visible]:outline has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-accent",
+        "has-[>[data-slot=field]]:has-[[data-state=checked]]:border-primary has-[>[data-slot=field]]:has-[[data-state=checked]]:bg-primary-soft/60 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-1 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-primary",
+        "has-[>[data-slot=field]]:has-[:focus-visible]:outline has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-primary",
         className
       )}
       {...props}
@@ -147,7 +147,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
       className={cn(
         "text-ink-soft text-sm font-normal leading-normal group-has-[[data-orientation=horizontal]]/field:text-balance",
         "nth-last-2:-mt-1 last:mt-0 [[data-variant=legend]+&]:-mt-1.5",
-        "[&>a:hover]:text-accent [&>a]:underline [&>a]:underline-offset-4",
+        "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
         className
       )}
       {...props}

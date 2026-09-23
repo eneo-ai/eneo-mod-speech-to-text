@@ -81,7 +81,7 @@ export function DetailsForm({
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
-                  className="h-11 w-full rounded-xl border border-rule bg-paper px-3 text-[16px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                  className="h-11 w-full rounded-xl border border-rule bg-paper px-3 text-[16px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <option value="">Välj</option>
                   {options(field).map((option) => (

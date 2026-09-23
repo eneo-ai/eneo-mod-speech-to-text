@@ -59,7 +59,7 @@ export function ParticipantsInput({
     <div
       className={cn(
         "flex flex-col gap-2 rounded-xl border border-rule bg-paper px-3 py-2 transition-colors",
-        "focus-within:border-accent focus-within:ring-1 focus-within:ring-accent",
+        "focus-within:border-primary focus-within:ring-1 focus-within:ring-primary",
         invalid && "border-destructive",
       )}
     >
@@ -79,7 +79,7 @@ export function ParticipantsInput({
                   input.current?.focus();
                 }}
                 // The pseudo-element makes the target 44 px without a 44 px chip.
-                className="relative grid size-7 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-rule-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent after:absolute after:-inset-2"
+                className="relative grid size-7 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-rule-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary after:absolute after:-inset-2"
               >
                 <X aria-hidden className="size-4" strokeWidth={2} />
               </button>

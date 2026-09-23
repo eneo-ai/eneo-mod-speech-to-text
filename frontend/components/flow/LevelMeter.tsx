@@ -109,8 +109,8 @@ export function LevelMeter({
           className={cn(
             "block w-[3px] shrink-0 rounded-full",
             variant === "steps"
-              ? "bg-rule-soft transition-colors duration-100 data-[lit=true]:bg-accent"
-              : "h-full origin-center scale-y-[0.12] bg-accent transition-transform duration-75",
+              ? "bg-rule-soft transition-colors duration-100 data-[lit=true]:bg-primary"
+              : "h-full origin-center scale-y-[0.12] bg-primary transition-transform duration-75",
           )}
           style={variant === "steps" ? { height: `${40 + (60 * (index + 1)) / bars}%` } : undefined}
         />
