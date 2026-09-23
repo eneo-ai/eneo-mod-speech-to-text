@@ -210,6 +210,23 @@ export interface FlowReviewStepContract {
   output_contract?: Json | null;
 }
 
+export type LiveTranscriptionUnavailableReason =
+  | "transcription_disabled"
+  | "transcription_service_mode"
+  | "model_unavailable"
+  | "model_not_realtime";
+
+/**
+ * Val för ett flöde som transkriberar inspelat ljud. `live` säger om ljudsteget
+ * kan visa live-text medan man spelar in. Körningen skickar `speaker_labels`
+ * (boolean) i POST …/runs/ bara när `speaker_labels.selectable` är sant;
+ * utan val gäller flödets `default`.
+ */
+export interface FlowTranscriptionContract {
+  live: { available: boolean; reason: LiveTranscriptionUnavailableReason | null };
+  speaker_labels: { selectable: boolean; required: boolean; default: boolean };
+}
+
 export interface RunContract {
   flow_id: string;
   published_flow_version: number;
@@ -217,6 +234,8 @@ export interface RunContract {
   steps_requiring_input?: RunContractStepInput[];
   steps_requiring_review?: FlowReviewStepContract[];
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
+  /** Null när flödet inte transkriberar ljud. */
+  transcription?: FlowTranscriptionContract | null;
 }
 
 export interface FlowPublished {
