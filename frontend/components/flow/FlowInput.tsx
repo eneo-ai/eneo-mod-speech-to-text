@@ -27,6 +27,7 @@ import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { ReadyPanel } from "@/components/flow/ReadyPanel";
+import { LiveSheet } from "@/components/flow/LiveSheet";
 import { FocusedRecorder, RecordingBar } from "@/components/flow/Recorder";
 import { useDocumentTitle, useElapsed, useLeaveGuard, useSilence } from "@/components/flow/recording-hooks";
 import { UploadPanel } from "@/components/flow/UploadPanel";
@@ -261,10 +262,11 @@ export function FlowInput({
   );
 }
 
-/** Recording (Spela in): the focused recorder above the bar, which never moves. */
+/** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
 function CaptureWorkspace({ input }: { input: Session }) {
   const { session, snapshot, capture, persistent } = input;
-  const { phase, problem } = snapshot;
+  const { phase, problem, live, mode } = snapshot;
+  const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
   const [wakeLock, setWakeLock] = useState(true);
   useEffect(() => setWakeLock("wakeLock" in navigator), []);
@@ -278,17 +280,21 @@ function CaptureWorkspace({ input }: { input: Session }) {
   return (
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
-      <FocusedRecorder
-        capture={session.capture}
-        phase={phase}
-        stream={capture.stream}
-        storageNote={persistent ? storageLine(true) : null}
-      />
+      {streaming ? (
+        <LiveSheet live={live} recorder={capture.status} />
+      ) : (
+        <FocusedRecorder
+          capture={session.capture}
+          phase={phase}
+          stream={capture.stream}
+          storageNote={persistent ? storageLine(true) : null}
+        />
+      )}
       <RecordingBar
         capture={session.capture}
         phase={phase}
         stream={capture.stream}
-        showStatus={false}
+        showStatus={streaming}
         notices={notices}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={() => void session.stop()}

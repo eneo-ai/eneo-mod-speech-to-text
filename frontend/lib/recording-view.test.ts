@@ -4,13 +4,16 @@ import test from "node:test";
 import { formatClock, recordingName } from "./format";
 import {
   SilenceWatch,
+  atBottom,
   detailsSummary,
+  liveStatusLine,
   pageTitle,
   recordingAnnouncement,
   recordingNotices,
 } from "./recording-view";
 import { guardHistory } from "./leave-guard";
-import { FlowSession } from "./flow-session";
+import { FlowSession, type LiveSession } from "./flow-session";
+import type { LiveSnapshot } from "./live-transcriber";
 import { openRecordingStore } from "./recording-store";
 
 test("the timer reads m:ss under an hour and h:mm:ss from an hour", () => {
@@ -252,4 +255,74 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
 test("a recording is named for people", () => {
   assert.equal(recordingName(new Date(2026, 8, 23, 16, 13).getTime()), "Inspelning 23 sep 16:13");
   assert.equal(recordingName(new Date(2026, 4, 2, 9, 5).getTime()), "Inspelning 2 maj 09:05");
+});
+
+test("the live sheet follows new text only while the reader is at the bottom", () => {
+  assert.equal(atBottom({ scrollTop: 600, clientHeight: 400, scrollHeight: 1_000 }), true);
+  assert.equal(atBottom({ scrollTop: 580, clientHeight: 400, scrollHeight: 1_000 }), true, "a few pixels short still counts");
+  assert.equal(atBottom({ scrollTop: 300, clientHeight: 400, scrollHeight: 1_000 }), false, "scrolled up to read: keep the place");
+  assert.equal(atBottom({ scrollTop: 0, clientHeight: 400, scrollHeight: 300 }), true, "nothing to scroll");
+});
+
+test("live text says what it is doing apart from the recording, and only while the recorder records", () => {
+  assert.equal(liveStatusLine("reconnecting", true, "recording"), "Livetexten pausades. Inspelningen fortsätter.");
+  assert.equal(liveStatusLine("reconnecting", true, "paused"), null, "a paused recorder is not claimed to record");
+  assert.equal(liveStatusLine("reconnecting", true, "interrupted"), null);
+  assert.equal(
+    liveStatusLine("unavailable", false, "recording"),
+    "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.",
+  );
+  assert.equal(
+    liveStatusLine("reconnecting", false, "recording"),
+    "Livetexten kan inte starta just nu. Inspelningen fortsätter.",
+    "not yet started: nothing was paused",
+  );
+  assert.equal(
+    liveStatusLine("stopped", true, "recording"),
+    "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.",
+  );
+  assert.equal(liveStatusLine("live", true, "recording"), null);
+  assert.equal(liveStatusLine("connecting", false, "recording"), null);
+});
+
+test("the live sheet is a named log of committed text; words still arriving are shown, not read", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const sheet = (snapshot: LiveSnapshot) => {
+    const live: LiveSession = {
+      getSnapshot: () => snapshot,
+      subscribe: () => () => {},
+      listen: () => {},
+      setRecording: () => {},
+      stop: () => {},
+      dispose: () => {},
+    };
+    return renderToStaticMarkup(createElement(LiveSheet, { live, recorder: "recording" }));
+  };
+
+  const html = sheet({
+    status: "reconnecting",
+    started: true,
+    pieces: [
+      { text: "Välkomna till nämndens möte.", opensParagraph: true },
+      { text: "Första punkten.", opensParagraph: false },
+      { text: "Budgeten.", opensParagraph: true },
+    ],
+    pending: " Ramen höjs",
+  });
+  const log = html.match(/<div[^>]*role="log"[^>]*>(.*)<\/div><p role="status"/s);
+  assert.ok(log, "one log, followed by the status line");
+  assert.match(log[0], /aria-label="Preliminär text"/);
+  assert.equal([...log[1].matchAll(/<p>/g)].length, 2, "a gap starts a new paragraph");
+  assert.match(log[1], /<span aria-hidden="true" class="text-muted-foreground"> Ramen höjs<\/span>/);
+  assert.match(html, /<p role="status"[^>]*>Livetexten pausades\. Inspelningen fortsätter\.<\/p>/);
+  assert.ok(!html.includes("Visa senaste"), "following the text: no jump button");
+
+  const empty = sheet({ status: "connecting", started: false, pieces: [], pending: "" });
+  assert.match(empty, /Texten visas här när du börjar prata\./);
+  assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status region is there before anything is said");
+  const refused = sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
+  assert.ok(!refused.includes("Texten visas här"), "no promise of text that will not come");
+  assert.match(refused, /Livetexten kunde inte starta\./);
 });

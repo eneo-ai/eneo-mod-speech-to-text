@@ -115,34 +115,42 @@ export function RecordingBar({
     >
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         {showStatus && (
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="flex flex-col gap-0.5 text-[15px] sm:flex-row sm:items-center sm:gap-3">
-              <RecordingStatus phase={phase} />
+          // On a phone: the status over the timer and level, so the buttons keep the same row.
+          <div className="flex min-w-0 flex-col gap-0.5 text-[15px] sm:flex-row sm:items-center sm:gap-4">
+            <RecordingStatus phase={phase} />
+            <div className="flex items-center gap-3 sm:gap-4">
               <Timer capture={capture} phase={phase} className="text-[17px] font-medium text-ink" />
+              <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className="h-6 sm:h-7" />
             </div>
-            <LevelMeter stream={running ? stream : null} bars={10} variant="steps" className="h-7" />
           </div>
         )}
-        <div className={cn("flex gap-3", showStatus ? "ml-auto" : "w-full lg:justify-center")}>
+        <div className={cn("flex", showStatus ? "ml-auto gap-2 sm:gap-3" : "w-full gap-3 lg:justify-center")}>
           <Button
             type="button"
             variant="outline"
-            className={cn("h-12 min-w-[8.5rem] rounded-xl text-[16px]", !showStatus && "flex-1 lg:w-44 lg:flex-none")}
+            className={cn(
+              "h-12 rounded-xl text-[16px]",
+              // Wide enough for "Fortsätt", so pausing moves nothing.
+              showStatus ? "min-w-24 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
+            )}
             onClick={onPause}
           >
             {running ? (
-              <Pause data-icon="inline-start" aria-hidden />
+              <Pause data-icon="inline-start" aria-hidden className={cn(showStatus && "max-sm:hidden")} />
             ) : (
-              <Play data-icon="inline-start" aria-hidden />
+              <Play data-icon="inline-start" aria-hidden className={cn(showStatus && "max-sm:hidden")} />
             )}
             {running ? "Pausa" : "Fortsätt"}
           </Button>
           <Button
             type="button"
-            className={cn("h-12 min-w-[8.5rem] rounded-xl text-[16px]", !showStatus && "flex-[1.4] lg:w-56 lg:flex-none")}
+            className={cn(
+              "h-12 rounded-xl text-[16px]",
+              showStatus ? "sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
+            )}
             onClick={onStop}
           >
-            <Square data-icon="inline-start" aria-hidden className="fill-current" />
+            <Square data-icon="inline-start" aria-hidden className={cn("fill-current", showStatus && "max-sm:hidden")} />
             Stoppa
           </Button>
         </div>

@@ -1,0 +1,230 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { createOnlineStatus, type OnlineTarget } from "./online-status";
+import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveSocket } from "./live-transcriber";
+
+class FakeSocket implements LiveSocket {
+  binaryType = "blob";
+  sent: Array<string | ArrayBuffer> = [];
+  closedWith: number | null = null;
+  onopen: (() => void) | null = null;
+  onmessage: ((event: { data: unknown }) => void) | null = null;
+  onclose: ((event: { code: number }) => void) | null = null;
+  onerror: (() => void) | null = null;
+  send(data: string | ArrayBuffer) {
+    this.sent.push(data);
+  }
+  close(code = 1000) {
+    this.closedWith = code;
+  }
+  // The relay's side.
+  event(payload: object) {
+    this.onmessage?.({ data: JSON.stringify(payload) });
+  }
+  ready() {
+    this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000 });
+  }
+  drop(code: number) {
+    this.onclose?.({ code });
+  }
+  frames() {
+    return this.sent.filter((data): data is ArrayBuffer => data instanceof ArrayBuffer);
+  }
+}
+
+function fakeBrowser(onLine: boolean) {
+  const target = Object.assign(new EventTarget(), { navigator: { onLine } });
+  return {
+    target: target as OnlineTarget,
+    go(online: boolean) {
+      target.navigator.onLine = online;
+      target.dispatchEvent(new Event(online ? "online" : "offline"));
+    },
+  };
+}
+
+function setup(options: { online?: boolean } = {}) {
+  const sockets: FakeSocket[] = [];
+  const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
+  const browser = fakeBrowser(options.online ?? true);
+  const live = new LiveTranscriber({
+    openSocket: () => {
+      const socket = new FakeSocket();
+      sockets.push(socket);
+      return socket;
+    },
+    setTimer: (fn, ms) => {
+      const timer = { fn, ms, cleared: false };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimer: (timer) => void ((timer as { cleared: boolean }).cleared = true),
+    online: createOnlineStatus(browser.target),
+  });
+  /** Runs the timers that would fire within `ms`. */
+  const elapse = (ms: number) => {
+    for (const timer of [...timers]) {
+      if (!timer.cleared && timer.ms <= ms) {
+        timer.cleared = true;
+        timer.fn();
+      }
+    }
+  };
+  return { live, sockets, elapse, browser };
+}
+
+const frame = (byte: number) => new Uint8Array(3_200).fill(byte).buffer;
+const firstByte = (data: ArrayBuffer) => new Uint8Array(data)[0];
+
+test("frames from the moment recording starts wait for ready, then go in order; none while paused", () => {
+  const { live, sockets } = setup();
+  live.start();
+  assert.equal(live.getSnapshot().status, "connecting");
+  assert.equal(sockets[0].binaryType, "arraybuffer");
+  live.pushFrame(frame(1));
+  live.pushFrame(frame(2));
+  assert.deepEqual(sockets[0].sent, [], "nothing before ready");
+
+  sockets[0].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  live.pushFrame(frame(3));
+  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3], "the first words are not lost");
+
+  live.setRecording(false);
+  live.pushFrame(frame(4));
+  live.setRecording(true);
+  live.pushFrame(frame(5));
+  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3, 5], "paused audio is not sent");
+});
+
+test("the wait for ready keeps a bounded buffer: the newest audio, not unbounded memory", () => {
+  const { live, sockets } = setup();
+  live.start();
+  for (let i = 0; i < 400; i += 1) live.pushFrame(frame(i % 256));
+  sockets[0].ready();
+  const sent = sockets[0].frames();
+  assert.equal(sent.length, 300, "30 s of 100 ms frames");
+  assert.equal(firstByte(sent[sent.length - 1]), 399 % 256);
+});
+
+test("words arrive as a draft and become pieces at a sentence's end or after a pause", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Välkomna till" });
+  sockets[0].event({ type: "transcript.delta", text: " nämndens möte." });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Välkomna till nämndens möte."]);
+  assert.equal(live.getSnapshot().pending, "");
+
+  sockets[0].event({ type: "transcript.delta", text: " Första punkten" });
+  assert.equal(live.getSnapshot().pending, " Första punkten", "still arriving: not yet a piece");
+  elapse(2_000);
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Välkomna till nämndens möte.", "Första punkten"]);
+  assert.equal(live.getSnapshot().pending, "");
+});
+
+test("stop sends the last audio, then the stop message, keeps the draft and ends the session", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(7));
+  sockets[0].event({ type: "transcript.delta", text: "Tack för i dag" });
+  live.stop();
+  assert.deepEqual(sockets[0].sent.at(-1), JSON.stringify({ type: "stop" }));
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Tack för i dag"]);
+  sockets[0].event({ type: "transcript.done", text: "Tack för i dag." });
+  sockets[0].drop(1000);
+  assert.equal(live.getSnapshot().status, "ended");
+  live.pushFrame(frame(8));
+  assert.equal(sockets[0].frames().length, 1, "nothing after stop");
+});
+
+test("a refused start makes live text unavailable, and a refused handshake (1006) too", () => {
+  const refused = setup();
+  refused.live.start();
+  refused.sockets[0].event({
+    type: "error",
+    code: "flow_live_transcription_unavailable",
+    message: "Live transcription is not available for this flow.",
+    retryable: false,
+  });
+  refused.sockets[0].drop(1000);
+  assert.equal(refused.live.getSnapshot().status, "unavailable");
+  refused.live.pushFrame(frame(1));
+  assert.equal(refused.sockets.length, 1, "no second try for a refusal");
+
+  const signedOut = setup();
+  signedOut.live.start();
+  signedOut.sockets[0].drop(1006);
+  assert.equal(signedOut.live.getSnapshot().status, "unavailable");
+});
+
+test("a break after ready pauses live text and tries again with a new session; the draft continues", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Budgeten för nästa år." });
+  sockets[0].drop(1011); // Eneo's socket broke
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  live.pushFrame(frame(9));
+
+  elapse(1_000);
+  assert.equal(sockets.length, 2, "a new session after the backoff");
+  sockets[1].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(sockets[1].frames().map(firstByte), [9], "audio from the break is sent once ready");
+  sockets[1].event({ type: "transcript.delta", text: " Ramen höjs." });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Budgeten för nästa år.", "Ramen höjs."]);
+
+  // A retryable error pauses too; one that is not ends live text for this recording.
+  sockets[1].event({ type: "error", code: "upstream_unreachable", message: "Eneo could not be reached.", retryable: true });
+  sockets[1].drop(1000);
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  elapse(2_000);
+  sockets[2].ready();
+  sockets[2].event({ type: "error", code: "duration_exceeded", message: "Too long.", retryable: false });
+  sockets[2].drop(1000);
+  assert.equal(live.getSnapshot().status, "stopped");
+  elapse(60_000);
+  assert.equal(sockets.length, 3, "no more tries");
+  assert.equal(live.getSnapshot().pieces.length, 2, "the draft stays");
+});
+
+test("offline, live text waits for the connection and starts again when it returns", () => {
+  const { live, sockets, browser } = setup({ online: false });
+  live.start();
+  sockets[0].drop(1006);
+  assert.equal(live.getSnapshot().status, "reconnecting", "not a refusal while offline");
+  browser.go(true);
+  assert.equal(sockets.length, 2, "at once when the connection is back");
+});
+
+test("a long pause may end the session for silence; live text starts again when recording goes on", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.setRecording(false);
+  sockets[0].event({ type: "error", code: "idle_timeout", message: "No audio arrived in time.", retryable: false });
+  sockets[0].drop(1000);
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  assert.equal(sockets.length, 1, "no new session while paused");
+  live.setRecording(true);
+  assert.equal(sockets.length, 2);
+});
+
+test("the socket is the page's own origin, with no subprotocol", () => {
+  assert.equal(
+    liveSocketUrl({ protocol: "https:", host: "taltilltext.sundsvall.se" }, "flow-1", "step-a"),
+    "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a",
+  );
+  assert.equal(liveSocketUrl({ protocol: "http:", host: "127.0.0.1:3002" }, "f", "s"), "ws://127.0.0.1:3002/api/live/f/s");
+  const calls: unknown[][] = [];
+  class Recorder {
+    constructor(...args: unknown[]) {
+      calls.push(args);
+    }
+  }
+  openLiveSocket(Recorder as unknown as typeof WebSocket, "wss://x/api/live/f/s");
+  assert.deepEqual(calls, [["wss://x/api/live/f/s"]], "a browser fails a handshake that offered a subprotocol");
+});

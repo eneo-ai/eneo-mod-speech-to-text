@@ -3,6 +3,8 @@
 import type { FormField } from "./api";
 import type { DetailValue, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
+import type { LiveStatus } from "./live-transcriber";
+import type { CaptureStatus } from "./recording-session";
 
 const APP = "Tal till text";
 const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
@@ -96,4 +98,38 @@ export function detailsSummary(fields: FormField[], details: Record<string, Deta
     return text ? [`${field.label || field.name}: ${text}`] : [];
   });
   return parts.length > 0 ? parts.join(" · ") : "Inga uppgifter ifyllda";
+}
+
+/** The reader is at the end of the draft (a line's height short still counts): new text may scroll it. */
+export function atBottom({
+  scrollTop,
+  clientHeight,
+  scrollHeight,
+}: {
+  scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
+}): boolean {
+  return scrollHeight - (scrollTop + clientHeight) <= 24;
+}
+
+/**
+ * What live text is doing, apart from the recording. Said only while the
+ * recorder confirms that it records, so a delayed draft never reads as a
+ * stopped microphone and "Inspelningen fortsätter" is never a guess.
+ */
+export function liveStatusLine(live: LiveStatus, started: boolean, recorder: CaptureStatus): string | null {
+  if (recorder !== "recording") return null;
+  switch (live) {
+    case "reconnecting":
+      return started
+        ? "Livetexten pausades. Inspelningen fortsätter."
+        : "Livetexten kan inte starta just nu. Inspelningen fortsätter.";
+    case "unavailable":
+      return "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
+    case "stopped":
+      return "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.";
+    default:
+      return null;
+  }
 }

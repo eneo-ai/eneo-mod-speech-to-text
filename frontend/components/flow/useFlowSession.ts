@@ -6,6 +6,7 @@ import { browserStorage, FlowSession } from "@/lib/flow-session";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import type { CaptureDeps } from "@/lib/recording-session";
 import { recordingStore } from "@/lib/recording-store";
+import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
 import { pickSupportedAudioMimetype } from "@/lib/upload";
 
 type NavigatorWithWakeLock = Navigator & {
@@ -76,8 +77,7 @@ export function useFlowSession({
       captureDeps: browserCaptureDeps(),
       pickMimeType,
       storage: browserStorage(),
-      // SEAM(strömma): true once the live client can stream this browser's audio.
-      liveClient: false,
+      live: supportsLiveText() ? browserLiveClient(flowId) : null,
     });
     created.setProbeDuration(probeDuration);
     return created;

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
+import type { LiveSnapshot } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
 import {
   FlowSession,
@@ -14,6 +15,7 @@ import {
   storageLine,
   withLastUsedFirst,
   type KeyValueStorage,
+  type LiveClient,
 } from "./flow-session";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -102,8 +104,35 @@ const audioContract = (overrides: Partial<RunContract> = {}): RunContract => ({
   ...overrides,
 });
 
+/** A live-text session as far as the flow session drives it. */
+function fakeLiveClient() {
+  const calls: string[] = [];
+  const opened: string[] = [];
+  const streams: unknown[] = [];
+  const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
+  const client: LiveClient = {
+    open(stepId) {
+      opened.push(stepId);
+      return {
+        getSnapshot: () => snapshot,
+        subscribe: () => () => undefined,
+        listen: (stream) => void streams.push(stream),
+        setRecording: (on) => void calls.push(on ? "recording" : "paused"),
+        stop: () => void calls.push("stop"),
+        dispose: () => void calls.push("dispose"),
+      };
+    },
+  };
+  return { client, calls, opened, streams };
+}
+
 async function setup(
-  options: { store?: RecordingStore; storage?: KeyValueStorage; getStream?: CaptureDeps["getStream"] } = {},
+  options: {
+    store?: RecordingStore;
+    storage?: KeyValueStorage;
+    getStream?: CaptureDeps["getStream"];
+    live?: LiveClient | null;
+  } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
   const streams: FakeStream[] = [];
@@ -129,7 +158,7 @@ async function setup(
     },
     pickMimeType: () => "audio/webm;codecs=opus",
     storage: options.storage ?? memoryStorage(),
-    liveClient: true,
+    live: options.live === undefined ? fakeLiveClient().client : options.live,
   });
   return { session, store, streams, recorders };
 }
@@ -604,4 +633,47 @@ test("a flow that is no longer published says so, with a way back, and the recor
     back: true,
   });
   assert.equal(session.getSnapshot().phase, "ready");
+});
+
+test("Strömma streams live text beside the recording: pause, a lost microphone and stop reach it; Spela in opens none", async () => {
+  const live = fakeLiveClient();
+  const { session, streams, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  assert.equal(session.getSnapshot().mode, "stromma");
+  await session.start();
+  assert.deepEqual(live.opened, ["step-audio"], "one live session for the audio step");
+  assert.deepEqual(live.streams, [streams[0]], "the recorder's own microphone stream");
+  assert.ok(session.getSnapshot().live, "the page reads the draft from it");
+
+  session.togglePause();
+  session.togglePause();
+  streams[0].track.dispatchEvent(new Event("ended")); // a phone call takes the microphone
+  await until(() => session.getSnapshot().phase === "interrupted", "the interruption");
+  await session.continueRecording();
+  assert.deepEqual(live.streams, [streams[0], streams[1]], "the new microphone stream feeds live text");
+  recorders[1].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.deepEqual(live.calls, ["recording", "paused", "recording", "paused", "recording", "stop"]);
+
+  const spelaIn = fakeLiveClient();
+  const other = await setup({ live: spelaIn.client });
+  other.session.setContract(audioContract());
+  other.session.selectMode("spela-in");
+  await other.session.start();
+  assert.deepEqual(spelaIn.opened, []);
+});
+
+test("a microphone that cannot start leaves no live session behind", async () => {
+  const live = fakeLiveClient();
+  const { session } = await setup({
+    live: live.client,
+    getStream: async () => {
+      throw new DOMException("Permission denied", "NotAllowedError");
+    },
+  });
+  session.setContract(audioContract());
+  await session.start();
+  assert.deepEqual(live.calls, ["dispose"]);
+  assert.equal(session.getSnapshot().live, null);
 });

@@ -19,6 +19,7 @@ import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes } from "./format";
+import type { LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
@@ -168,6 +169,8 @@ export interface SessionSnapshot {
   recording: StoredRecording | null;
   /** The file chosen in Ladda upp. */
   file: ChosenFile | null;
+  /** Strömma's live text for the recording, when there is one. */
+  live: LiveSession | null;
   problem: Problem | null;
 }
 
@@ -319,6 +322,22 @@ export function withLastUsedFirst<T extends { id: string }>(flows: T[], lastId: 
   return last ? [last, ...flows.filter((flow) => flow !== last)] : flows;
 }
 
+/** Strömma's live text for one recording, as the session drives it. */
+export interface LiveSession {
+  getSnapshot(): LiveSnapshot;
+  subscribe(listener: () => void): () => void;
+  /** Feeds a microphone stream's audio to the live text. */
+  listen(stream: MediaStream): void;
+  setRecording(on: boolean): void;
+  stop(): void;
+  dispose(): void;
+}
+
+export interface LiveClient {
+  /** Called in the start gesture, so the browser lets its audio run. */
+  open(stepId: string): LiveSession;
+}
+
 export interface FlowSessionOptions {
   flowId: string;
   flowName: string;
@@ -329,8 +348,8 @@ export interface FlowSessionOptions {
   /** A recording format the browser has and the flow takes, or null. */
   pickMimeType: (accepted: string[] | undefined) => string | null;
   storage?: KeyValueStorage | null;
-  /** The browser can stream live text (Strömma). */
-  liveClient?: boolean;
+  /** Streams live text (Strömma), when the browser can. */
+  live?: LiveClient | null;
 }
 
 export class FlowSession {
@@ -349,6 +368,10 @@ export class FlowSession {
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
+  // Strömma: the live session, the stream it hears and what it was last told.
+  private live: LiveSession | null = null;
+  private liveStream: MediaStream | null = null;
+  private liveRecording: boolean | null = null;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -382,7 +405,7 @@ export class FlowSession {
     this.contract = contract;
     this.modes = availableModes(contract, {
       canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
-      liveClient: this.options.liveClient ?? false,
+      liveClient: this.options.live != null,
     });
     const remembered = this.read(modeKey(this.options.flowId));
     this.mode =
@@ -437,6 +460,8 @@ export class FlowSession {
     this.microphoneError = null;
     this.starting = true;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    // Opened in the start gesture, so the browser lets its audio run; it connects while the microphone is asked for.
+    if (mode === "stromma") this.openLive(step.step_id);
     this.emit();
     try {
       await this.capture.start(
@@ -455,6 +480,7 @@ export class FlowSession {
     }
     if (this.capture.getSnapshot().status !== "recording") {
       this.problem = microphoneProblem(this.microphoneError);
+      this.closeLive();
     }
     this.emit();
   }
@@ -503,6 +529,7 @@ export class FlowSession {
     this.ready = null;
     this.problem = null;
     this.capture.reset();
+    this.closeLive();
     this.emit();
   }
 
@@ -555,6 +582,7 @@ export class FlowSession {
     if (input?.kind === "recording") {
       this.ready = null;
       this.capture.reset();
+      this.closeLive();
     }
     if (input?.kind === "file") this.file = null;
     this.emit();
@@ -571,12 +599,14 @@ export class FlowSession {
     this.mode = live ? "stromma" : "spela-in";
     this.problem = null;
     this.microphoneError = null;
+    if (live) this.openLive(recording.stepId);
     this.emit();
     await this.capture.adopt(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
     if (status === "interrupted") await this.continueRecording();
-    else if (error) {
-      this.problem = { title: error };
+    else {
+      this.closeLive();
+      if (error) this.problem = { title: error };
       this.emit();
     }
   }
@@ -603,6 +633,7 @@ export class FlowSession {
   /** The page goes away: what was recorded stays on the device for recovery. */
   dispose(): void {
     this.capture.dispose();
+    this.closeLive();
   }
 
   private inputStep() {
@@ -615,7 +646,42 @@ export class FlowSession {
     return { maxBytes: step?.max_file_size_bytes, maxFiles: step?.max_files };
   }
 
+  private openLive(stepId: string) {
+    this.closeLive();
+    this.live = this.options.live?.open(stepId) ?? null;
+  }
+
+  private closeLive() {
+    this.live?.dispose();
+    this.live = null;
+    this.liveStream = null;
+    this.liveRecording = null;
+  }
+
+  /** Live text follows the recorder: its microphone, pauses and the stop; its own failures never reach back. */
+  private followLive() {
+    const live = this.live;
+    if (!live) return;
+    const { status, stream } = this.capture.getSnapshot();
+    if (stream && stream !== this.liveStream) {
+      this.liveStream = stream;
+      live.listen(stream);
+    }
+    if (status === "recording" || status === "paused" || status === "interrupted") {
+      const recording = status === "recording";
+      if (recording !== this.liveRecording) {
+        this.liveRecording = recording;
+        live.setRecording(recording);
+      }
+    } else if (status === "stopped" && this.liveStream !== null) {
+      this.liveStream = null;
+      this.liveRecording = false;
+      live.stop();
+    }
+  }
+
   private onCapture = () => {
+    this.followLive();
     const { status, recording, error } = this.capture.getSnapshot();
     if (status === "stopped" && recording && this.ready?.id !== recording.id) {
       this.ready = recording;
@@ -649,6 +715,7 @@ export class FlowSession {
       ),
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
+      live: this.live,
       problem: this.problem,
     };
   }
