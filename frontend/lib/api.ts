@@ -888,26 +888,6 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export async function getArtifactSignedUrl(
-  flowId: string,
-  runId: string,
-  fileId: string,
-  expiresInSeconds = 3600,
-) {
-  // TODO(eneo-refactor): När Eneo-prod stabiliserats på nya specen, behåll bara `expires_in`
-  // och uppdatera responstypen till `expires_at?: number`.
-  return request<{ url: string; expires_at?: string | number }>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/signed-url/`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        expires_in_seconds: expiresInSeconds, // legacy fältnamn
-        expires_in: expiresInSeconds, // ny spec
-      }),
-    },
-  );
-}
-
 // --- Cancel / redispatch / list ---
 
 export async function cancelRun(flowId: string, runId: string) {

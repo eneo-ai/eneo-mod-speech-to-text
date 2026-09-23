@@ -173,6 +173,16 @@ class ArtifactProxyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 410)
         self.assertEqual(self.fake.stream_requests, [])
 
+    def test_the_browser_can_no_longer_mint_a_signed_url_itself(self) -> None:
+        # The URL is a bearer credential for the file; only the module backend mints it now.
+        response = self.client.post(
+            "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/signed-url/",
+            headers={"Origin": "https://module.example.test"},
+            json={"expires_in": 3600},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.fake.mint_calls, [])
+
     def test_the_route_rejects_dot_segments_and_needs_a_session(self) -> None:
         response = self.client.get(
             "/api/eneo/flows/flow-1/runs/%2E%2E/artifacts/file-1/content"

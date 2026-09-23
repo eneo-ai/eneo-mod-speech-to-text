@@ -33,7 +33,7 @@ test("file-backed text shows its preview and says the whole text is in the file"
 
   assert.equal(view.text, "Mötet började klockan nio");
   assert.match(view.note ?? "", /bara början/);
-  assert.match(view.note ?? "", /Genererade filer/);
+  assert.match(view.note ?? "", /under Filer/);
 });
 
 test("file-backed text whose file was purged does not point at the file", () => {
@@ -45,7 +45,7 @@ test("file-backed text whose file was purged does not point at the file", () => 
 
   assert.equal(view.text, "Mötet började klockan nio");
   assert.match(view.note ?? "", /bara början/);
-  assert.doesNotMatch(view.note ?? "", /Genererade filer/);
+  assert.doesNotMatch(view.note ?? "", /under Filer/);
 });
 
 test("a structured value renders as text when it is a string, otherwise as JSON", () => {
@@ -128,10 +128,13 @@ test("an input the flow cannot use says how to change it, and retry advice still
     typed_io_empty_extraction: "Filen behöver innehålla läsbar text.",
   };
   for (const [code, hint] of Object.entries(hints)) {
-    const { summary } = runErrorView(runError({ code, retryable: false }));
+    const { summary, inputMustChange } = runErrorView(runError({ code, retryable: false }));
     assert.ok(summary.endsWith(`${hint} ${checkFirst}`), `${code}: ${summary}`);
     assert.doesNotMatch(summary.slice(0, -checkFirst.length), /\bkör\b|\bigen\b/, code);
+    // The same audio cannot work, so the page offers no retry with it.
+    assert.equal(inputMustChange, true, code);
   }
+  assert.equal(runErrorView(runError({ code: "flow_task_timeout" })).inputMustChange, false);
 });
 
 test("the failed step is named from Eneo's description, else the flow graph", () => {
@@ -144,13 +147,13 @@ test("the failed step is named from Eneo's description, else the flow graph", ()
       }),
       { "step-2": "Sammanfattning" },
     ).step,
-    "Steg 2 · Sammanfatta mötet",
+    "Steg 2, Sammanfatta mötet",
   );
   assert.equal(
     runErrorView(runError({ step_id: "step-1", step_order: 1 }), {
       "step-1": "Transkribering",
     }).step,
-    "Steg 1 · Transkribering",
+    "Steg 1, Transkribering",
   );
   assert.equal(runErrorView(runError({ step_order: 3 })).step, "Steg 3");
   assert.equal(runErrorView(runError({})).step, null);

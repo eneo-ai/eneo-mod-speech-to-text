@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type Json, type RunContract } from "./api";
+import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type FlowRunStep, type Json, type RunContract } from "./api";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
 import {
+  retryRunRequest,
   submitRecording,
   submitRun,
   withRetry,
@@ -384,4 +385,33 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
   const kept = await store.get(recording.id);
   assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["stopped", null]);
   assert.equal((await store.listUnsent()).length, 1);
+});
+
+test("trying again starts a new run with the failed run's audio and details, under a key of its own", async () => {
+  const failed: FlowRunPublic = {
+    id: "run-1",
+    flow_id: "flow-1",
+    status: "failed",
+    input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
+  };
+  const steps: FlowRunStep[] = [
+    { id: "result-2", step_id: "step-summary", step_order: 2, status: "failed" },
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
+  ];
+
+  const request = retryRunRequest(failed, steps, contract, "step-audio");
+
+  assert.deepEqual(request?.body, {
+    expected_flow_version: 3,
+    step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
+    input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
+  });
+  // The failed run was keyed on this same body, so its key would replay it.
+  const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body });
+  assert.notEqual(request!.idempotencyKey, replay);
+  // A second press starts no second run.
+  assert.equal(retryRunRequest(failed, steps, contract, "step-audio")?.idempotencyKey, request!.idempotencyKey);
+  // Without the recording there is nothing to try again with.
+  assert.equal(retryRunRequest(failed, [steps[0]], contract, "step-audio"), null);
+  assert.equal(retryRunRequest(failed, steps, contract, null), null);
 });

@@ -13,6 +13,7 @@ import {
   startRun,
   uploadStepRuntimeFile,
   type FlowRunPublic,
+  type FlowRunStep,
   type Json,
   type RunContract,
 } from "./api";
@@ -214,4 +215,32 @@ export async function submitRecording(
   // Eneo has the run; tidying up the local copy must not turn it into a failure.
   await store.accept(id, run.id).catch(() => undefined);
   return run;
+}
+
+/**
+ * "Försök igen" after a failed run: a new run with the same audio, already in
+ * Eneo, and the same details. The failed run was keyed on this same body, so
+ * the key names the failure instead; a second press starts no second run.
+ */
+export function retryRunRequest(
+  failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
+  steps: readonly FlowRunStep[],
+  contract: RunContract,
+  stepId: string | null,
+): { body: Json; idempotencyKey: string } | null {
+  const inputStep = [...steps]
+    .sort((a, b) => (a.step_order ?? 0) - (b.step_order ?? 0))
+    .find((step) => Array.isArray(step.runtime_input_file_ids) && step.runtime_input_file_ids.length > 0);
+  const fileIds = (inputStep?.runtime_input_file_ids as unknown[] | undefined)?.filter(
+    (id): id is string => typeof id === "string",
+  );
+  if (!stepId || !fileIds?.length) return null;
+  const body: Json = {
+    expected_flow_version: contract.published_flow_version,
+    step_inputs: { [stepId]: { file_ids: fileIds } },
+  };
+  if (failed.input_payload_json && Object.keys(failed.input_payload_json).length > 0) {
+    body.input_payload_json = failed.input_payload_json;
+  }
+  return { body, idempotencyKey: `flow-run-retry:${failed.id}` };
 }

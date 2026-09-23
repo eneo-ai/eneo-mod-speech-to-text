@@ -153,6 +153,8 @@ export const TranscriptPlayer = forwardRef<
     confirmedWords?: ReadonlySet<string>;
     /** Gör det möjligt att bekräfta/ångra ett osäkert ord. */
     onToggleConfirmed?: (key: string) => void;
+    /** Egen länk för att hämta det granskade transkriptet; av när sidan har egna åtgärder. */
+    downloadable?: boolean;
   }
 >(function TranscriptPlayer(
   {
@@ -173,6 +175,7 @@ export const TranscriptPlayer = forwardRef<
     saveState = "idle",
     confirmedWords = EMPTY_SET,
     onToggleConfirmed,
+    downloadable = true,
   },
   ref,
 ) {
@@ -612,7 +615,7 @@ export const TranscriptPlayer = forwardRef<
 
       {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-destructive">{correctionProblem}</p>}
       {editError && <p role="alert" className="px-3 text-destructive">{editError}</p>}
-      {corrections && !correctionProblem && <button type="button" className="self-start px-3 py-2 text-[12px] underline" onClick={() => {
+      {downloadable && corrections && !correctionProblem && <button type="button" className="self-start px-3 py-2 text-[12px] underline" onClick={() => {
         const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
         const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);

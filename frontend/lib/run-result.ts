@@ -21,7 +21,7 @@ export function runResultView(
         note:
           result.file.availability === "content_purged"
             ? "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten har tagits bort och går inte längre att hämta."
-            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen under Genererade filer.",
+            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen under Filer.",
       };
     case "structured":
       return {
@@ -37,7 +37,7 @@ export function runResultView(
         note: "Resultatet skickades vidare till mottagaren som är inställd i flödet.",
       };
     default:
-      // Artefakter listas under Genererade filer.
+      // Artefakter listas under Filer.
       return { text: null, note: null };
   }
 }
@@ -95,10 +95,12 @@ const CHECK_FIRST_ADVICE =
 export interface RunErrorView {
   /** Vad som hände och ev. hur indata kan ändras, valt utifrån `code`; råd om att köra igen utifrån `retryable`. */
   summary: string;
-  /** "Steg 2 · Sammanfattning" när felet hör till ett steg. */
+  /** "Steg 2, Sammanfattning" när felet hör till ett steg. */
   step: string | null;
   /** Eneos tekniska beskrivning. Visas som detalj, tolkas aldrig. */
   detail: string;
+  /** Flödet kunde inte använda indata, så en ny körning med samma ljud hjälper inte. */
+  inputMustChange: boolean;
 }
 
 /** Vad resultatvyn visar för Eneos typade slutfel (`run.error`). */
@@ -119,7 +121,7 @@ export function runErrorView(
     error.details?.step_description ??
     (error.step_id ? stepLabels[error.step_id] : undefined);
   const step = error.step_order
-    ? [`Steg ${error.step_order}`, stepName].filter(Boolean).join(" · ")
+    ? [`Steg ${error.step_order}`, stepName].filter(Boolean).join(", ")
     : null;
-  return { summary, step, detail: error.message };
+  return { summary, step, detail: error.message, inputMustChange: error.code in INPUT_HINTS };
 }

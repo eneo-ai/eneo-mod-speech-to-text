@@ -7,16 +7,11 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronLeft,
-  Circle,
-  Download,
   FileAudio,
   Info,
   Loader2,
-  Send,
-  Share2,
   Upload,
   Users,
-  XCircle,
 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import { use, useEffect, useMemo, useRef, useState } from "react";
@@ -36,7 +31,6 @@ import {
   cancelRun,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
-  getArtifactSignedUrl,
   getFlowGraph,
   getFlowOutputType,
   getPublishedFlow,
@@ -46,12 +40,12 @@ import {
   inputFileAudioUrl,
   isResumableRunStatus,
   isReviewCheckpointApproved,
-  isTextualOutput,
   listRuns,
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
   speakerMappingReviewSteps,
+  startRun,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
@@ -65,11 +59,14 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { onlineStatus } from "@/lib/online-status";
-import { submitRun, type RetryWait } from "@/lib/submit-run";
+import { retryRunRequest, submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
 import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
-import { runErrorView, runResultView } from "@/lib/run-result";
+import { runErrorView } from "@/lib/run-result";
+import { resultFileViews } from "@/lib/run-files";
+import { RunFailure } from "@/components/flow/RunFailure";
+import { RunResult } from "@/components/flow/RunResult";
 import {
   buildEditedMapping,
   buildSpeakerRows,
@@ -138,13 +135,6 @@ type SubmissionState =
     }
   | { kind: "starting"; wait: RetryWait | null };
 
-interface ResultFileRef {
-  file_id: string;
-  name?: string;
-  mimetype?: string | null;
-  size?: number;
-}
-
 // Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
 // delad länk, kan återuppta samma körning i stället för att tappa den.
 const RUN_QUERY_PARAM = "run";
@@ -178,9 +168,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     kind: "idle",
   });
   const [recordingActive, setRecordingActive] = useState(false);
-  const [signedUrls, setSignedUrls] = useState<
-    Record<string, { url: string }>
-  >({});
   const [resumableRuns, setResumableRuns] = useState<FlowRunSummary[]>([]);
 
   const followAbortRef = useRef<AbortController | null>(null);
@@ -255,15 +242,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const acceptedMimetypes = runtimeInput?.accepted_mimetypes ?? [];
   const maxFileSizeBytes = runtimeInput?.max_file_size_bytes;
 
-  // Etiketter per step_id hämtas från grafen — nya specen tappar step_label på FlowRunStep.
-  const stepLabels = useMemo<Record<string, string>>(() => {
-    if (!graph) return {};
-    const m: Record<string, string> = {};
-    for (const n of graph.nodes) {
-      if (n.label) m[n.id] = n.label;
-    }
-    return m;
-  }, [graph]);
   const requiresFile = acceptsUpload && runtimeInput?.required !== false;
 
   const formFields = contract?.form_fields ?? [];
@@ -317,7 +295,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function onRun() {
     if (!contract) return;
     setRunError(null);
-    setSignedUrls({});
     setRun({ kind: "submitting" });
     setSubmission({ kind: "idle" });
     const abortController = new AbortController();
@@ -355,7 +332,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
   function resumeRun(runId: string) {
     setRunError(null);
-    setSignedUrls({});
     setResumableRuns([]);
     writeRunIdToUrl(runId);
     setRun({ kind: "opening" });
@@ -399,9 +375,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
       ]);
       if (signal.aborted) return;
       setRun({ kind: "done", run: detail, steps, graph: last.graph });
-      if (isSuccess(detail.status)) {
-        await fetchSignedUrls(runId, detail.result_files ?? []);
-      }
     } catch (err) {
       if (signal.aborted) return;
       setRunError(friendlyError(err));
@@ -548,38 +521,44 @@ function FlowDetail({ flowId }: { flowId: string }) {
         expected_checkpoint_revision: checkpoint.revision,
         reason,
       });
-      // Run blir cancelled — hämta uppdaterat tillstånd och gå till "done".
-      const r = await getRun(flowId, runState.run.id);
-      setRun({ kind: "done", run: r, steps: runState.steps, graph: null });
+      // Körningen avbryts; följ den till slutet så att stegen och resultatet läses som vanligt.
+      void follow(runState.run.id);
     } catch (err) {
       setRunError(friendlyError(err));
     }
   }
 
-  async function fetchSignedUrls(runId: string, files: ResultFileRef[]) {
-    const entries = await Promise.all(
-      files.map(async (a) => {
-        try {
-          const r = await getArtifactSignedUrl(flowId, runId, a.file_id);
-          return [a.file_id, { url: r.url }] as const;
-        } catch {
-          return null;
-        }
-      }),
-    );
-    const map: Record<string, { url: string }> = {};
-    for (const e of entries) {
-      if (e) map[e[0]] = e[1];
-    }
-    setSignedUrls(map);
-  }
-
+  /** Ny inspelning: samma flöde och uppgifter (deltagarna), men inget gammalt ljud. */
   function onRunAgain() {
     followAbortRef.current?.abort();
-    setSignedUrls({});
     setRunError(null);
+    setFile(null);
     writeRunIdToUrl(null);
     setRun({ kind: "idle" });
+  }
+
+  /** "Försök igen": en ny körning med den misslyckade körningens ljud och uppgifter. */
+  async function onRetry(
+    failed: Extract<RunState, { kind: "done" }>,
+    request: { body: Json; idempotencyKey: string },
+  ) {
+    setRunError(null);
+    setRun({ kind: "submitting" });
+    setSubmission({ kind: "starting", wait: null });
+    try {
+      const next = await withRetry(
+        () => startRun(flowId, request.body, request.idempotencyKey),
+        { online: onlineStatus, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
+      );
+      setSubmission({ kind: "idle" });
+      writeRunIdToUrl(next.id);
+      setRun({ kind: "running", run: next, graph: null });
+      void follow(next.id);
+    } catch (err) {
+      setSubmission({ kind: "idle" });
+      setRunError(friendlyError(err));
+      setRun(failed);
+    }
   }
 
   function onCancelSubmission() {
@@ -618,7 +597,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   const outputType = graph ? getFlowOutputType(graph) : null;
-  const isTextual = isTextualOutput(outputType);
 
   const phase: "setup" | "progress" | "review" | "notes" =
     run.kind === "done"
@@ -709,17 +687,50 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   if (phase === "notes" && run.kind === "done") {
+    // Den körningslåsta grafen namnger stegen; saknas den duger den publicerade.
+    const pinned = run.graph ?? graph;
+    const steps = runSteps(pinned, run.run, run.steps);
+    const files = resultFileViews(run.run.result_files ?? [], published.name, run.run.created_at);
+    const transcribed = !pinned || steps.some((step) => step.transcribes && step.state === "done");
+    if (runOutcome(run.run.status) === "succeeded") {
+      return (
+        <>
+          <NavBar title={published.name} />
+          <RunResult
+            flowId={flowId}
+            flowName={published.name}
+            run={run.run}
+            steps={steps}
+            stepResults={run.steps}
+            files={files}
+            showTranscript={transcribed}
+            audio={inputType === "audio"}
+            onNewRecording={onRunAgain}
+          />
+        </>
+      );
+    }
+    const labels = Object.fromEntries((pinned?.nodes ?? []).map((node) => [node.id, node.label]));
+    const failure = run.run.error ? runErrorView(run.run.error, labels) : null;
+    const retry = failure?.inputMustChange
+      ? null
+      : retryRunRequest(run.run, run.steps, contract, runtimeInput?.step_id ?? null);
     return (
-      <NotesView
-        flowId={flowId}
-        published={published}
-        runState={run}
-        signedUrls={signedUrls}
-        outputType={outputType}
-        isTextual={isTextual}
-        onRunAgain={onRunAgain}
-        stepLabels={stepLabels}
-      />
+      <>
+        <NavBar title={published.name} />
+        <RunFailure
+          flowId={flowId}
+          flowName={published.name}
+          run={run.run}
+          failure={failure}
+          steps={steps}
+          stepResults={run.steps}
+          files={files}
+          showTranscript={transcribed}
+          error={runError}
+          onRetry={retry ? () => onRetry(run, retry) : undefined}
+        />
+      </>
     );
   }
 
@@ -1191,72 +1202,6 @@ function UploadProgressCard({
   );
 }
 
-function StepProgress({
-  steps,
-  stepLabels,
-}: {
-  steps: FlowRunStep[];
-  stepLabels: Record<string, string>;
-}) {
-  if (steps.length === 0) {
-    return (
-      <p className="text-[14px] md:text-[16px] text-ink-soft leading-relaxed">
-        Väntar på första steget…
-        <span className="lyssna-blink text-primary ml-0.5">|</span>
-      </p>
-    );
-  }
-  return (
-    <ol className="space-y-1.5 md:space-y-2.5">
-      {steps.map((s, i) => {
-        const status = s.status.toLowerCase();
-        const success = SUCCESS_STATUSES.has(status);
-        const failed = FAILURE_STATUSES.has(status);
-        const running = status === "running" || status === "in_progress";
-        const Icon = success
-          ? CheckCircle2
-          : failed
-            ? XCircle
-            : running
-              ? Loader2
-              : Circle;
-        const iconClass = success
-          ? "text-ink"
-          : failed
-            ? "text-primary"
-            : running
-              ? "text-primary animate-spin"
-              : "text-ink-mute";
-        return (
-          <li
-            key={s.id}
-            className="flex items-start gap-2.5 md:gap-3.5 py-1 md:py-1.5"
-          >
-            <Icon
-              className={`h-3.5 w-3.5 md:h-5 md:w-5 mt-0.5 md:mt-1 shrink-0 ${iconClass}`}
-              strokeWidth={1.6}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="text-[13px] md:text-[16px] font-medium leading-snug md:leading-relaxed truncate md:whitespace-normal md:overflow-visible">
-                <span className="text-ink-mute font-mono text-[10px] md:text-[12px] mr-1.5 md:mr-2">
-                  {(i + 1).toString().padStart(2, "0")}
-                </span>
-                {(s.step_id && stepLabels[s.step_id]) ||
-                  s.step_label ||
-                  s.step_name ||
-                  s.step_id}
-              </div>
-              <div className="text-[10px] md:text-[11px] font-mono uppercase tracking-wider text-ink-mute mt-0.5 md:mt-1">
-                {labelForStepStatus(s.status)}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
-}
-
 // ---------- Review (human-in-the-loop pause) ----------
 
 function ReviewView({
@@ -1655,286 +1600,7 @@ function extractCheckpointText(payload: Json | null | undefined): string {
   }
 }
 
-// ---------- Notes (result) ----------
-
-function NotesView({
-  flowId,
-  published,
-  runState,
-  signedUrls,
-  outputType,
-  isTextual,
-  onRunAgain,
-  stepLabels,
-}: {
-  flowId: string;
-  published: FlowPublished;
-  runState: { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[] };
-  signedUrls: Record<string, { url: string }>;
-  outputType: string | null;
-  isTextual: boolean;
-  onRunAgain: () => void;
-  stepLabels: Record<string, string>;
-}) {
-  const { run, steps } = runState;
-  const { text, note } = runResultView(run.result);
-  const failure = run.error ? runErrorView(run.error, stepLabels) : null;
-  const success = isSuccess(run.status);
-  // Inspelning och transkript för körningar med ett transkriberingssteg.
-  const [transcript] = useTranscriptContext({
-    flowId,
-    runId: run.id,
-    enabled: success,
-    steps,
-  });
-  const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, run.id, transcript.stepId) : null,
-  );
-  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, run.id, transcript);
-  const showPlayer = success && !transcript.pending && (transcript.segments.length > 0 || transcript.speakerReviews.length > 0);
-  const outputLabel = labelForOutputType(outputType);
-  const finishedDate = run.finished_at
-    ? new Date(run.finished_at).toLocaleDateString("sv-SE", {
-        day: "numeric",
-        month: "long",
-      })
-    : null;
-  const fileCount = run.result_files?.length ?? 0;
-
-  return (
-    <>
-      <NavBar title={`Klar · ${labelForRunStatus(run.status).toLowerCase()}`} />
-
-      <div className="px-6 md:px-8 pt-2 md:pt-4 pb-5 w-full mx-auto max-w-3xl">
-        <h1 className="text-[26px] md:text-[32px] font-semibold tracking-[-0.025em] leading-[1.15] mb-2.5">
-          {published.name}
-        </h1>
-        <div className="flex flex-wrap gap-x-3.5 gap-y-1 font-mono text-[10px] tracking-wider uppercase text-ink-mute">
-          {finishedDate && (
-            <span className="after:content-['·'] after:ml-3.5 after:text-rule last:after:hidden">
-              {finishedDate}
-            </span>
-          )}
-          <span className="after:content-['·'] after:ml-3.5 after:text-rule last:after:hidden">
-            v{published.published_version}
-          </span>
-          {fileCount > 0 && (
-            <span className="after:content-['·'] after:ml-3.5 after:text-rule last:after:hidden">
-              {fileCount} {fileCount === 1 ? "fil" : "filer"}
-            </span>
-          )}
-        </div>
-      </div>
-
-      <div className="px-6 md:px-8 pb-6 flex-1 w-full mx-auto max-w-3xl">
-        {failure && (
-          <div className="paper-card p-4 mb-4 border-primary/30">
-            <div className="eyebrow-sm text-primary mb-1">
-              {failure.step ? `Fel · ${failure.step}` : "Fel"}
-            </div>
-            <p className="text-[14px] text-ink">{failure.summary}</p>
-            <details className="mt-2 text-[12px] text-ink-soft">
-              <summary className="min-h-6 cursor-pointer">Teknisk detalj</summary>
-              <p className="mt-1 whitespace-pre-wrap break-words">{failure.detail}</p>
-              <p className="mt-1 font-mono text-ink-mute">
-                {run.error?.code} · körnings-ID {run.id}
-              </p>
-            </details>
-          </div>
-        )}
-
-        {note && <p className="text-[14px] text-ink-soft mb-2">{note}</p>}
-
-        {success && text && (
-          <article
-            className="
-              prose prose-stone max-w-none
-              prose-headings:font-semibold prose-headings:tracking-tight prose-headings:text-ink
-              prose-h1:text-[22px] prose-h2:text-[18px] prose-h3:text-[15px]
-              prose-p:text-[14px] prose-p:leading-[1.6] prose-p:text-ink
-              prose-li:text-[14px] prose-li:leading-[1.55] prose-li:text-ink
-              prose-strong:text-ink prose-strong:font-semibold
-              prose-em:text-ink-soft prose-em:not-italic
-              prose-a:text-primary prose-a:no-underline hover:prose-a:underline
-              prose-code:font-mono prose-code:text-[12px]
-              prose-code:before:hidden prose-code:after:hidden
-              prose-code:bg-bg-2 prose-code:px-1 prose-code:py-0.5 prose-code:rounded
-              prose-pre:bg-ink prose-pre:text-paper prose-pre:rounded-xl
-              prose-blockquote:not-italic prose-blockquote:text-ink-soft prose-blockquote:border-primary prose-blockquote:font-normal
-              prose-table:text-[13px]
-              prose-hr:border-rule-soft
-            "
-          >
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-          </article>
-        )}
-
-        {/* För binär output (DOCX/PDF/etc): liten beskrivning ovanför fil-listan */}
-        {success && !isTextual && fileCount > 0 && outputLabel && (
-          <p className="text-[14px] text-ink-soft mb-2">
-            Det här flödet skapade ett <span className="text-ink">{outputLabel}</span>
-            {fileCount === 1 ? "" : ` (${fileCount} filer)`}.
-          </p>
-        )}
-
-        {!success && !run.error && (
-          <p className="text-[14px] text-ink-soft">
-            Körningen avslutades med status:{" "}
-            <span className="text-ink">{labelForRunStatus(run.status)}</span>.
-          </p>
-        )}
-
-        {showPlayer && (
-          <section className={text ? "mt-6" : ""}>
-            <div className="mb-2.5 text-[13px] font-semibold text-ink">
-              Inspelning och transkript
-            </div>
-            {(saveState !== "idle" || (corrections.updatedAt && run.finished_at && Date.parse(corrections.updatedAt) > Date.parse(run.finished_at))) && <p className="mb-2 text-[13px]">Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade transkriptet som underlag för en ny sammanfattning.</p>}
-            {localError && <p role="alert" className="text-primary">{localError}</p>}
-            {saveState === "error" && <div className="flex gap-4 text-[13px]">
-              <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
-              <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>
-            </div>}
-            <TranscriptPlayer
-              className="paper-card overflow-hidden max-h-[36rem]"
-              segments={transcript.segments}
-              speakerReviews={transcript.speakerReviews}
-              correctionProblem={transcript.correctionProblem}
-              fileCount={transcript.fileIds.length}
-              audioSrcFor={(fileIndex) =>
-                inputFileAudioUrl(flowId, run.id, transcript.fileIds[fileIndex] ?? "")
-              }
-              speakerNames={transcript.speakerNames}
-              textFallback=""
-              corrections={corrections}
-              editable={transcript.fromMetadata && !transcript.pending}
-              onCorrectionsChange={onCorrectionsChange}
-              saveState={saveState}
-              confirmedWords={confirmedWords}
-            />
-          </section>
-        )}
-
-        {fileCount > 0 && (
-          <section className={isTextual ? "mt-6" : ""}>
-            <div className="flex items-center justify-between mb-2.5">
-              <div className="eyebrow-sm">Genererade filer</div>
-              <div className="bg-ink text-paper px-2 py-0.5 rounded-full text-[9px] font-mono tracking-wider">
-                {fileCount}
-              </div>
-            </div>
-            <ul className="divide-y divide-rule-soft">
-              {run.result_files!.map((a) => {
-                const url = signedUrls[a.file_id]?.url;
-                const name = a.name || a.file_id;
-                return (
-                  <li
-                    key={a.file_id}
-                    className="flex items-center justify-between py-3"
-                  >
-                    <div className="flex-1 min-w-0 pr-3">
-                      <div className="text-[14px] truncate">{name}</div>
-                      {a.size != null && (
-                        <div className="text-[11px] text-ink-mute mt-0.5 font-mono">
-                          {formatBytes(a.size)}
-                        </div>
-                      )}
-                    </div>
-                    {url ? (
-                      <a
-                        href={url}
-                        download={name}
-                        className="inline-flex items-center gap-2 rounded-full bg-ink text-paper px-4 py-2 text-[13px] font-medium tracking-tight shadow-sm transition-all hover:bg-ink/90 active:scale-[0.97] shrink-0"
-                      >
-                        <Download className="h-4 w-4" strokeWidth={2} />
-                        Ladda ner
-                      </a>
-                    ) : a.availability === "content_purged" ? (
-                      <span className="rounded-full border border-rule-soft bg-bg-2/50 text-ink-mute px-4 py-2 text-[13px] font-mono tracking-wider shrink-0">
-                        borttagen
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-2 rounded-full border border-rule-soft bg-bg-2/50 text-ink-mute px-4 py-2 text-[13px] font-mono tracking-wider shrink-0">
-                        <span
-                          aria-hidden
-                          className="inline-block h-1.5 w-1.5 rounded-full bg-ink-mute lyssna-live-pulse"
-                        />
-                        genererar
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        )}
-
-        {steps.length > 0 && (
-          <details className="paper-card p-4 mt-6">
-            <summary className="cursor-pointer eyebrow-sm hover:text-ink transition-colors">
-              Visa stegdetaljer · {steps.length}
-            </summary>
-            <div className="mt-3">
-              <StepProgress steps={steps} stepLabels={stepLabels} />
-            </div>
-          </details>
-        )}
-      </div>
-
-      <footer className="sticky bottom-0 px-5 md:px-8 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t border-rule-soft bg-paper">
-        <div className="flex gap-2.5 w-full mx-auto max-w-3xl">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={onRunAgain}
-            className="flex-1"
-          >
-            <Share2 className="h-3.5 w-3.5" strokeWidth={1.8} />
-            Kör igen
-          </Button>
-          <Button asChild className="flex-[1.6]">
-            <Link href="/flows">
-              <Send className="h-3.5 w-3.5" strokeWidth={1.8} />
-              Klart
-            </Link>
-          </Button>
-        </div>
-      </footer>
-    </>
-  );
-}
-
 // ---------- Helpers ----------
-
-const SUCCESS_STATUSES = new Set(["succeeded", "completed", "success", "done"]);
-const FAILURE_STATUSES = new Set(["failed", "error", "errored"]);
-const CANCELLED_STATUSES = new Set(["cancelled", "canceled", "aborted"]);
-// "awaiting_review" är ett non-terminal status i nya Eneo-specen (human-in-the-loop).
-// Pollingen behöver inte ändras — men när vi bygger UI för review checkpoints
-// ska vi sluta visa "kör" och istället visa pending review.
-
-function isSuccess(status: string): boolean {
-  return SUCCESS_STATUSES.has(status.toLowerCase());
-}
-
-function isTerminal(status: string): boolean {
-  const s = status.toLowerCase();
-  return (
-    SUCCESS_STATUSES.has(s) ||
-    FAILURE_STATUSES.has(s) ||
-    CANCELLED_STATUSES.has(s)
-  );
-}
-
-function labelForRunStatus(status: string): string {
-  const s = status.toLowerCase();
-  if (SUCCESS_STATUSES.has(s)) return "Lyckades";
-  if (FAILURE_STATUSES.has(s)) return "Misslyckades";
-  if (CANCELLED_STATUSES.has(s)) return "Avbröts";
-  if (s === "running" || s === "in_progress") return "Bearbetar…";
-  if (s === "queued" || s === "pending") return "I kö";
-  return status;
-}
 
 function labelForResumableRun(status: string): string {
   const s = status.toLowerCase();
@@ -1963,45 +1629,4 @@ function formPayload(
     if (v != null && v !== "") payload[f.name] = v;
   }
   return payload;
-}
-
-function labelForOutputType(outputType: string | null | undefined): string | null {
-  if (!outputType) return null;
-  const t = outputType.toLowerCase();
-  switch (t) {
-    case "docx":
-      return "Word-dokument (DOCX)";
-    case "pdf":
-      return "PDF-dokument";
-    case "xlsx":
-      return "Excel-dokument (XLSX)";
-    case "pptx":
-      return "PowerPoint-dokument (PPTX)";
-    case "image":
-    case "png":
-    case "jpg":
-    case "jpeg":
-      return "Bild";
-    case "audio":
-      return "Ljudfil";
-    case "video":
-      return "Videofil";
-    case "text":
-    case "markdown":
-      return "Text";
-    case "json":
-      return "JSON-data";
-    default:
-      return outputType.toUpperCase();
-  }
-}
-
-function labelForStepStatus(status: string): string {
-  const s = status.toLowerCase();
-  if (SUCCESS_STATUSES.has(s)) return "Klar";
-  if (FAILURE_STATUSES.has(s)) return "Misslyckades";
-  if (CANCELLED_STATUSES.has(s)) return "Avbruten";
-  if (s === "running" || s === "in_progress") return "Kör…";
-  if (s === "queued" || s === "pending") return "I kö";
-  return status;
 }
