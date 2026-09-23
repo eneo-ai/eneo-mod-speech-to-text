@@ -176,6 +176,20 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.proxy_client.calls, [])
 
+    def test_proxy_rejects_an_encoded_query_or_fragment_in_a_segment(self) -> None:
+        # `flows/x%3F/runs/` matches the allowlist but would reach
+        # /api/v1/flows/x upstream, with the rest moved into the query.
+        for path in ("/api/eneo/flows/x%3F/runs/", "/api/eneo/flows/x%23/runs/"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 403, path)
+        response = self.client.post(
+            "/api/eneo/flows/x%3F/files/",
+            headers={"Origin": "https://module.example.test"},
+            files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
     def test_upload_route_rejects_dot_segment_flow_id(self) -> None:
         response = self.client.post(
             "/api/eneo/flows/%2E%2E/files/",
