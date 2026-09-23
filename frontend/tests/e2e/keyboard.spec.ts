@@ -8,7 +8,7 @@
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { focusStop, orderProblems, settle, stopProblems, tabWalk } from "./checks";
-import { backLink, isLaptop, run, setup, STATES } from "./screens";
+import { backLink, isLaptop, open, run, setup, STATES } from "./screens";
 
 const WALKS = [
   "signin-access-code",
@@ -94,6 +94,32 @@ test("the PDF preview holds focus and gives it back", async ({ page }, info) => 
 test("the account menu holds focus and gives it back", async ({ page }) => {
   await STATES.find((s) => s.name === "flow-list")!.go(page, test.info());
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna konto för/ }), page.getByRole("menu"), 0);
+});
+
+test("the warning before the login ends takes focus, holds it, and gives it back on Escape", async ({ page }) => {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
+    }),
+  );
+  await open(page, "/flows");
+  // Focus somewhere on the page before the warning opens (at five minutes before the end).
+  const link = page.getByRole("link", { name: /Nämndmöte till rapport/ });
+  await link.focus();
+  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
+  await expect(warning).toBeVisible({ timeout: 15_000 });
+  await settle(page);
+  const problems: string[] = [];
+  for (const key of ["Tab", "Tab", "Shift+Tab"]) {
+    const stop = await focusStop(page);
+    if (!stop || !(await warning.evaluate((element) => element.contains(document.activeElement)))) problems.push("focus left the warning");
+    else problems.push(...stopProblems([stop]));
+    await page.keyboard.press(key);
+  }
+  expect.soft(problems).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(warning).toBeHidden();
+  await expect(link, "focus goes back to where it was").toBeFocused();
 });
 
 test("the microphone picker holds focus and gives it back", async ({ page }) => {

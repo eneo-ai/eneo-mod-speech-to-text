@@ -27,6 +27,22 @@ async function loading(page: Page, path: string) {
   await expect(page.locator("main svg")).toBeVisible();
 }
 
+/** The flow list five minutes before the login ends: the warning is open. */
+export async function sessionWarning(page: Page) {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        auth_mode: "eneo_sso",
+        user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
+        session_ends_in: 200,
+      },
+    }),
+  );
+  await open(page, "/flows");
+  await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
+}
+
 export async function flows(page: Page) {
   await open(page, "/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
@@ -145,6 +161,14 @@ export const STATES: State[] = [
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
   { name: "flow-list", go: flows },
+  { name: "session-warning", go: sessionWarning },
+  {
+    name: "signed-in-again",
+    go: async (page) => {
+      await open(page, "/inloggad");
+      await heading(page, "Du är inloggad igen");
+    },
+  },
   {
     name: "flow-list-error",
     go: async (page) => {
