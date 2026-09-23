@@ -3,7 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { AudioPlayer } from "../components/flow/AudioPlayer";
+import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 import { ReadyPanel } from "../components/flow/ReadyPanel";
 import { UploadPanel } from "../components/flow/UploadPanel";
 import type { StoredRecording } from "./recording-store";
@@ -57,15 +57,14 @@ test("the ready state names the recording for people, never as a file or a type,
 });
 
 test("the player is our own: a named play button, a named slider over the known length, and m:ss / m:ss", () => {
-  const html = renderToStaticMarkup(
-    createElement(AudioPlayer, {
-      sources: [
-        { url: "blob:a", durationMs: 4_000 },
-        { url: "blob:b", durationMs: 2_000 },
-      ],
-      label: "Inspelning 23 sep 16:13",
-    }),
-  );
+  const sources = [
+    { url: "blob:a", durationMs: 4_000 },
+    { url: "blob:b", durationMs: 2_000 },
+  ];
+  function Ready() {
+    return createElement(AudioPlayer, { playback: usePlayback(sources), label: "Inspelning 23 sep 16:13" });
+  }
+  const html = renderToStaticMarkup(createElement(Ready));
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelning 23 sep 16:13"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
   assert.match(html, /role="slider"[^>]*aria-label="Position"|aria-label="Position"[^>]*role="slider"/);

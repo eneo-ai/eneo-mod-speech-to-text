@@ -14,11 +14,12 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { AudioPlayer, type PlayerSource } from "@/components/flow/AudioPlayer";
+import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import type { Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
+import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
 
 /** Each part of the recording as something the player can play, over its known length. */
@@ -66,6 +67,7 @@ export function ReadyPanel({
   onDiscard: () => void;
 }) {
   const sources = usePartSources(recording);
+  const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   const name = recordingName(recording.startedAt);
 
@@ -90,7 +92,7 @@ export function ReadyPanel({
         </p>
       </div>
 
-      {sources.length > 0 && <AudioPlayer key={recording.id} sources={sources} label={name} />}
+      {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="button" variant="outline" className="h-11" onClick={() => void save()}>
