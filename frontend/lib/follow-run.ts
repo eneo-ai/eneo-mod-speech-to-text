@@ -5,10 +5,32 @@
  * review, and polls rarely while the page is hidden.
  */
 
-import { getRunGraph, getRunStatus, type FlowGraph, type FlowRunSummary } from "./api";
+import {
+  getRun,
+  getRunGraph,
+  getRunStatus,
+  getRunSteps,
+  type FlowGraph,
+  type FlowRunPublic,
+  type FlowRunStep,
+  type FlowRunSummary,
+} from "./api";
 import { onlineStatus, type OnlineStatus } from "./online-status";
 import { runOutcome } from "./run-progress";
 import { withRetry } from "./submit-run";
+
+/**
+ * A finished run's detail (its result) and step results, read once at the
+ * end. Either read failing fails the whole: an empty stand-in would show a
+ * finished run without its document or transcript.
+ */
+export async function readFinishedRun(
+  flowId: string,
+  last: FlowRunSummary,
+): Promise<{ run: FlowRunPublic; steps: FlowRunStep[] }> {
+  const [run, steps] = await Promise.all([getRun(flowId, last.id), getRunSteps(flowId, last.id)]);
+  return { run, steps };
+}
 
 export const VISIBLE_POLL_MS = 2_000;
 export const HIDDEN_POLL_MS = 30_000;

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import Link from "next/link";
+import { ArrowLeft, Loader2, RotateCcw } from "lucide-react";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -110,6 +111,34 @@ export function RunOpening() {
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-5 w-1/2" />
       <Skeleton className="h-40 w-full rounded-xl" />
+    </main>
+  );
+}
+
+/** The run has ended but its result could not be read: say so, and read it again. */
+export function RunUnread({ message, onRetry }: { message: string; onRetry: () => void }) {
+  const heading = usePhaseHeading("Resultatet kunde inte hämtas");
+  return (
+    <main className={VIEW}>
+      <div className="flex flex-col gap-2">
+        <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
+          Resultatet kunde inte hämtas
+        </h1>
+        <p className="text-base">{message}</p>
+        <p className="text-sm text-muted-foreground">Körningen är avslutad och finns kvar i Eneo.</p>
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <Button type="button" onClick={onRetry}>
+          <RotateCcw data-icon="inline-start" aria-hidden />
+          Försök igen
+        </Button>
+        <Button asChild variant="outline">
+          <Link href="/flows">
+            <ArrowLeft data-icon="inline-start" aria-hidden />
+            Till flödena
+          </Link>
+        </Button>
+      </div>
     </main>
   );
 }

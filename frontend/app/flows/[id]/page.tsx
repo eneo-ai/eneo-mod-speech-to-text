@@ -15,7 +15,7 @@ import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { RunFailure } from "@/components/flow/RunFailure";
-import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
+import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -29,7 +29,6 @@ import {
   getPublishedFlow,
   getRun,
   getRunContract,
-  getRunSteps,
   inputFileAudioUrl,
   isReviewCheckpointApproved,
   listOwnRuns,
@@ -49,7 +48,7 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
-import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
+import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
 import { resultFileViews } from "@/lib/run-files";
@@ -107,6 +106,8 @@ type RunState =
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
   | { kind: "opening" }
+  // The run has ended, but its result or steps could not be read.
+  | { kind: "unread"; runId: string; message: string }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
@@ -342,12 +343,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
         }
         return;
       }
-      const [detail, steps] = await Promise.all([
-        getRun(flowId, runId).catch(() => last.run as FlowRunPublic),
-        getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
-      ]);
+      let finished: Awaited<ReturnType<typeof readFinishedRun>>;
+      try {
+        finished = await readFinishedRun(flowId, last.run);
+      } catch (err) {
+        if (!signal.aborted) setRun({ kind: "unread", runId, message: friendlyError(err) });
+        return;
+      }
       if (signal.aborted) return;
-      setRun({ kind: "done", run: detail, steps, graph: last.graph });
+      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph });
     } catch (err) {
       if (signal.aborted) return;
       setRunError(friendlyError(err));
@@ -616,6 +620,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <>
         {topBar}
         <RunOpening />
+      </>
+    );
+  }
+
+  if (run.kind === "unread") {
+    return (
+      <>
+        {topBar}
+        <RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />
       </>
     );
   }

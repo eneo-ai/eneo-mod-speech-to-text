@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { EarlierRuns } from "../components/flow/EarlierRuns";
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
-import { RunProgress } from "../components/flow/RunProgress";
+import { RunProgress, RunUnread } from "../components/flow/RunProgress";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
@@ -303,4 +303,15 @@ test("the transcript is not copied or downloaded while its saved corrections cou
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+});
+
+test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunUnread, { message: "Servern kunde inte nås just nu. Försök igen om en stund.", onRetry: () => undefined }),
+  );
+  assert.match(html, /<h1[^>]*>Resultatet kunde inte hämtas<\/h1>/);
+  assert.match(html, /Servern kunde inte nås just nu\./);
+  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen<\/button>/);
+  assert.match(html, /href="\/flows"/);
+  assert.doesNotMatch(html, /klart|Dokumentet/i);
 });
