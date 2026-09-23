@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
+import { formatDuration } from "@/lib/upload";
 import {
   IN_USE_ELSEWHERE,
   recordingStore,
@@ -34,13 +35,6 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRec
   return recordings;
 }
 
-function formatLength(ms: number): string {
-  const minutes = Math.round(ms / 60_000);
-  if (minutes < 1) return `${Math.round(ms / 1_000)} s`;
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
-
 function formatWhen(at: number, now: number): string {
   const date = new Date(at);
   const time = date.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
@@ -60,7 +54,7 @@ export function recordingSummary(
   return [
     "Osänd inspelning",
     ...(withFlowName ? [recording.flowName] : []),
-    formatLength(recording.durationMs),
+    formatDuration(recording.durationMs),
     formatWhen(recording.startedAt, now),
   ].join(", ");
 }

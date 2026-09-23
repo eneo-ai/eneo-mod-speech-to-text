@@ -13,6 +13,15 @@ import type { NewRecording, RecordingStore, StoredRecording } from "./recording-
 import { formatBytes } from "./upload";
 
 export const CHUNK_MS = 2_000;
+
+/**
+ * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
+ * it and its own format otherwise (Safari: audio/mp4, see the recorder's
+ * format choice). A 5-hour meeting is then about 72 MB (32 kbit/s for
+ * 18,000 s), well under a flow's per-file limit, and speech stays clearly
+ * intelligible.
+ */
+export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } as const;
 // Re-read the storage estimate about once a minute.
 const SPACE_CHECK_EVERY_CHUNKS = 30;
 
@@ -40,10 +49,11 @@ export interface PageLike {
 }
 
 export interface CaptureDeps {
-  getStream(): Promise<MediaStream>;
-  createRecorder(stream: MediaStream, mimeType: string): MediaRecorder;
+  getStream(constraints: MediaStreamConstraints): Promise<MediaStream>;
+  createRecorder(stream: MediaStream, options: MediaRecorderOptions): MediaRecorder;
   requestWakeLock?(): Promise<WakeLockLike | null>;
   page?: PageLike;
+  now?(): number;
 }
 
 type EndReason = "stop" | "interrupt" | "leave";
@@ -80,7 +90,9 @@ export class RecordingCapture {
   private ending: EndReason | null = null;
   private partEnded: Promise<void> = Promise.resolve();
   private maxBytes: number | undefined;
-  // Elapsed time: earlier parts, this part before its latest pause, and the running stretch.
+  // Recorded time on a monotonic clock, never by counting timer ticks (hidden
+  // tabs throttle timers): earlier parts, this part before its latest pause,
+  // and the running stretch.
   private earlierPartsMs = 0;
   private partMs = 0;
   private runningSince: number | null = null;
@@ -110,7 +122,9 @@ export class RecordingCapture {
     const generation = this.generation;
     let created: StoredRecording | null = null;
     try {
-      const stream = await this.deps.getStream();
+      const stream = await this.deps.getStream({
+        audio: { channelCount: SPEECH_RECORDING.channelCount },
+      });
       if (this.left(generation, stream)) return;
       const store = (this.store ??= await this.openStore());
       const recording = (created = await store.create(init));
@@ -139,7 +153,9 @@ export class RecordingCapture {
     this.set({ error: null });
     const generation = this.generation;
     try {
-      const stream = await this.deps.getStream();
+      const stream = await this.deps.getStream({
+        audio: { channelCount: SPEECH_RECORDING.channelCount },
+      });
       if (this.left(generation, stream)) return;
       await this.beginPart(stream);
     } catch (error) {
@@ -158,7 +174,7 @@ export class RecordingCapture {
       this.set({ status: "paused" });
     } else if (recorder?.state === "paused") {
       recorder.resume();
-      this.runningSince = Date.now();
+      this.runningSince = this.now();
       this.set({ status: "recording" });
     }
   }
@@ -199,7 +215,10 @@ export class RecordingCapture {
     let recorder: MediaRecorder;
     let part: number;
     try {
-      recorder = this.deps.createRecorder(stream, mimeType);
+      recorder = this.deps.createRecorder(stream, {
+        mimeType,
+        audioBitsPerSecond: SPEECH_RECORDING.audioBitsPerSecond,
+      });
       part = await store.startPart(id);
     } catch (error) {
       stream.getTracks().forEach((track) => track.stop());
@@ -268,7 +287,7 @@ export class RecordingCapture {
     this.ending = null;
     recorder.start(CHUNK_MS);
     this.partMs = 0;
-    this.runningSince = Date.now();
+    this.runningSince = this.now();
     this.set({ status: "recording", stream, partBytes: 0 });
     await this.takeWakeLock();
   }
@@ -328,7 +347,11 @@ export class RecordingCapture {
   }
 
   private partElapsed(): number {
-    return this.partMs + (this.runningSince == null ? 0 : Date.now() - this.runningSince);
+    return this.partMs + (this.runningSince == null ? 0 : this.now() - this.runningSince);
+  }
+
+  private now(): number {
+    return this.deps.now?.() ?? performance.now();
   }
 
   private finish() {

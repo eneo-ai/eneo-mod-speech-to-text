@@ -59,11 +59,13 @@ class FakeRecorder extends EventTarget {
   state: "inactive" | "recording" | "paused" = "inactive";
   timeslice: number | undefined;
   flushes = 0;
+  readonly mimeType: string;
   constructor(
     readonly stream: FakeStream,
-    readonly mimeType: string,
+    readonly options: MediaRecorderOptions,
   ) {
     super();
+    this.mimeType = options.mimeType ?? "";
   }
   start(timeslice?: number) {
     this.state = "recording";
@@ -105,22 +107,25 @@ function fakePage() {
   };
 }
 
-async function setup(options: { store?: RecordingStore; page?: PageLike } = {}) {
+async function setup(options: { store?: RecordingStore; page?: PageLike; now?: () => number } = {}) {
   const store = options.store ?? (await openRecordingStore({}));
   const streams: FakeStream[] = [];
+  const constraints: MediaStreamConstraints[] = [];
   const recorders: FakeRecorder[] = [];
   const wakeLocks = { requested: 0, released: 0 };
   const deps: CaptureDeps = {
-    getStream: async () => {
+    getStream: async (asked) => {
+      constraints.push(asked);
       const stream = new FakeStream();
       streams.push(stream);
       return stream as unknown as MediaStream;
     },
-    createRecorder: (stream, mimeType) => {
-      const recorder = new FakeRecorder(stream as unknown as FakeStream, mimeType);
+    createRecorder: (stream, recorderOptions) => {
+      const recorder = new FakeRecorder(stream as unknown as FakeStream, recorderOptions);
       recorders.push(recorder);
       return recorder as unknown as MediaRecorder;
     },
+    now: options.now,
     requestWakeLock: async () => {
       wakeLocks.requested += 1;
       return {
@@ -131,7 +136,7 @@ async function setup(options: { store?: RecordingStore; page?: PageLike } = {}) 
     },
     page: options.page,
   };
-  return { capture: new RecordingCapture(() => store, deps), store, streams, recorders, wakeLocks };
+  return { capture: new RecordingCapture(() => store, deps), store, streams, constraints, recorders, wakeLocks };
 }
 
 test("losing the microphone pauses the recording, keeps what was recorded, and 'Fortsätt spela in' records a new part", async () => {
@@ -223,6 +228,47 @@ test("starting asks to keep the recording and the screen on; leaving the page le
   assert.equal(wakeLocks.released, 1);
 });
 
+test("recordings are mono speech: one channel at 32 kbit/s, Opus where the browser has it, else its own format", async () => {
+  const { capture, constraints, recorders } = await setup();
+  await capture.start(meeting);
+  await capture.stop();
+  await capture.start({ ...meeting, mimeType: "audio/mp4" }); // Safari
+  assert.deepEqual(constraints, [{ audio: { channelCount: 1 } }, { audio: { channelCount: 1 } }]);
+  assert.deepEqual(
+    recorders.map((recorder) => recorder.options),
+    [
+      { mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 32_000 },
+      { mimeType: "audio/mp4", audioBitsPerSecond: 32_000 },
+    ],
+  );
+});
+
+test("the recorded time leaves out pauses and interruptions, whatever the timers do", async () => {
+  let now = 0;
+  const { capture, streams, recorders } = await setup({ now: () => now });
+  await capture.start(meeting);
+  now = 2_000;
+  recorders[0].emit("a");
+  now = 3_000;
+  capture.togglePause();
+  now = 10_000; // seven paused seconds are not recorded
+  capture.togglePause();
+  now = 12_000;
+  recorders[0].emit("b");
+  now = 13_000;
+  streams[0].track.lose("mute");
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  now = 60_000; // the interruption is not recorded either
+  await capture.continueRecording();
+  now = 62_000;
+  recorders[1].emit("c");
+  const stopped = await capture.stop();
+
+  assert.deepEqual(stopped?.parts.map((part) => part.durationMs), [6_000, 2_000]);
+  assert.equal(stopped?.durationMs, 8_000);
+  assert.equal(capture.elapsedMs(), 8_000);
+});
+
 test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
   const store = await openRecordingStore({});
   const stream = new FakeStream();
@@ -232,7 +278,7 @@ test("a page left while the browser asks for the microphone records nothing and 
     getStream: () => new Promise((resolve) => (grant = resolve)),
     createRecorder: () => {
       recorders += 1;
-      return new FakeRecorder(stream, "audio/webm") as unknown as MediaRecorder;
+      return new FakeRecorder(stream, { mimeType: "audio/webm" }) as unknown as MediaRecorder;
     },
   });
   const starting = capture.start(meeting);

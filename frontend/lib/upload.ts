@@ -127,6 +127,14 @@ export function selectRuntimeInputStep(
   return fileLikeStep ?? steps[0] ?? null;
 }
 
+/** A recording's length: "20 s", "42 min", "1 h 5 min". */
+export function formatDuration(ms: number): string {
+  const minutes = Math.round(ms / 60_000);
+  if (minutes < 1) return `${Math.round(ms / 1_000)} s`;
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} kB`;

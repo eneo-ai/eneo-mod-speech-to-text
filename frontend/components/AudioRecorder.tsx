@@ -17,7 +17,11 @@ import {
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import { RecordingCapture, type CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
-import { formatBytes, pickSupportedAudioMimetype } from "@/lib/upload";
+import {
+  formatBytes,
+  formatDuration,
+  pickSupportedAudioMimetype,
+} from "@/lib/upload";
 
 type WakeLockSentinelLike = {
   release: () => Promise<void>;
@@ -54,11 +58,8 @@ function pickMimetype(accepted: string[] | undefined): string | null {
 
 function browserCaptureDeps(): CaptureDeps {
   return {
-    getStream: () => navigator.mediaDevices.getUserMedia({ audio: true }),
-    // 32 kbps räcker gott för tal med opus och håller långa inspelningar
-    // hanterbart stora (~22 MB/timme i stället för ~60 MB/timme vid default).
-    createRecorder: (stream, mimeType) =>
-      new MediaRecorder(stream, { mimeType, audioBitsPerSecond: 32000 }),
+    getStream: (constraints) => navigator.mediaDevices.getUserMedia(constraints),
+    createRecorder: (stream, options) => new MediaRecorder(stream, options),
     requestWakeLock: async () =>
       (await (navigator as NavigatorWithWakeLock).wakeLock?.request("screen")) ?? null,
     page: typeof document === "undefined" ? undefined : document,
@@ -296,7 +297,7 @@ export function AudioRecorder({
     return (
       <div className="flex flex-col items-center gap-4 py-3">
         <div className="text-[13px] text-ink-soft">
-          Inspelning klar · {formatBytes(totalBytes)}
+          Inspelning klar · {formatDuration(recording.durationMs)} · {formatBytes(totalBytes)}
           {recording.parts.length > 1 ? ` · ${recording.parts.length} delar` : ""}
         </div>
         {previewUrls.map((url, index) => (
