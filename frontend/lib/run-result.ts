@@ -74,17 +74,16 @@ const RUN_ERROR_EXPLANATIONS: Record<string, string> = {
   flow_llm_request_timeout: STOPPED,
 };
 
-// När flödet inte kan använda indata är rådet att ändra indata. Det gör om
-// inget arbete, så det gäller oavsett `retryable`.
-const SPLIT_INPUT =
-  "Dela upp inspelningen eller filen i kortare delar och kör flödet för varje del.";
-const INPUT_REMEDIES: Record<string, string> = {
-  typed_io_transcription_empty: "Kontrollera att inspelningen innehåller tal.",
-  typed_io_empty_extraction: "Välj en fil med läsbar text.",
-  typed_io_audio_exceeds_limit: SPLIT_INPUT,
-  typed_io_transcript_too_large: SPLIT_INPUT,
-  typed_io_input_too_large: SPLIT_INPUT,
-  typed_io_input_exceeds_model_window: SPLIT_INPUT,
+// Hur indata kan ändras när flödet inte kunde använda den. Det säger inget om
+// att köra igen: arbete kan redan ha gjorts, så det rådet följer `retryable`.
+const SHORTER_PARTS = "Dela upp inspelningen eller filen i kortare delar.";
+const INPUT_HINTS: Record<string, string> = {
+  typed_io_transcription_empty: "Inspelningen kan sakna tal.",
+  typed_io_empty_extraction: "Filen behöver innehålla läsbar text.",
+  typed_io_audio_exceeds_limit: SHORTER_PARTS,
+  typed_io_transcript_too_large: SHORTER_PARTS,
+  typed_io_input_too_large: SHORTER_PARTS,
+  typed_io_input_exceeds_model_window: SHORTER_PARTS,
 };
 
 // Eneo sätter `retryable` bara när inget arbete hann tas emot och inget
@@ -94,7 +93,7 @@ const CHECK_FIRST_ADVICE =
   "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
 
 export interface RunErrorView {
-  /** Vad som hände, valt utifrån `code`, och råd: ändra indata, annars `retryable`. */
+  /** Vad som hände och ev. hur indata kan ändras, valt utifrån `code`; råd om att köra igen utifrån `retryable`. */
   summary: string;
   /** "Steg 2 · Sammanfattning" när felet hör till ett steg. */
   step: string | null;
@@ -109,10 +108,13 @@ export function runErrorView(
 ): RunErrorView {
   const explanation =
     RUN_ERROR_EXPLANATIONS[error.code] ?? "Körningen kunde inte slutföras.";
-  const advice =
-    INPUT_REMEDIES[error.code] ??
-    (error.retryable ? RETRY_ADVICE : CHECK_FIRST_ADVICE);
-  const summary = `${explanation} ${advice}`;
+  const summary = [
+    explanation,
+    INPUT_HINTS[error.code],
+    error.retryable ? RETRY_ADVICE : CHECK_FIRST_ADVICE,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const stepName =
     error.details?.step_description ??
     (error.step_id ? stepLabels[error.step_id] : undefined);

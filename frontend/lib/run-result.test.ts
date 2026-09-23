@@ -116,17 +116,21 @@ test("retry advice follows Eneo's retryable flag, never the code", () => {
   assert.ok(summary.endsWith("Det går bra att köra flödet igen om en stund."), summary);
 });
 
-test("an input the flow cannot use says how to change it, not whether to run again", () => {
-  const remedies: Record<string, RegExp> = {
-    typed_io_audio_exceeds_limit: /Dela upp inspelningen eller filen i kortare delar/,
-    typed_io_transcript_too_large: /Dela upp inspelningen eller filen i kortare delar/,
-    typed_io_transcription_empty: /Kontrollera att inspelningen innehåller tal\.$/,
-    typed_io_empty_extraction: /Välj en fil med läsbar text\.$/,
+test("an input the flow cannot use says how to change it, and retry advice still follows retryable", () => {
+  const checkFirst =
+    "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+  // typed_io_transcript_too_large can come after provider work (speaker
+  // mapping), so the hint must not tell the user to run the flow again.
+  const hints: Record<string, string> = {
+    typed_io_audio_exceeds_limit: "Dela upp inspelningen eller filen i kortare delar.",
+    typed_io_transcript_too_large: "Dela upp inspelningen eller filen i kortare delar.",
+    typed_io_transcription_empty: "Inspelningen kan sakna tal.",
+    typed_io_empty_extraction: "Filen behöver innehålla läsbar text.",
   };
-  for (const [code, remedy] of Object.entries(remedies)) {
+  for (const [code, hint] of Object.entries(hints)) {
     const { summary } = runErrorView(runError({ code, retryable: false }));
-    assert.match(summary, remedy, code);
-    assert.doesNotMatch(summary, /Kontrollera vad som hann göras/, code);
+    assert.ok(summary.endsWith(`${hint} ${checkFirst}`), `${code}: ${summary}`);
+    assert.doesNotMatch(summary.slice(0, -checkFirst.length), /\bkör\b|\bigen\b/, code);
   }
 });
 
