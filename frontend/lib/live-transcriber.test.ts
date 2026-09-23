@@ -228,3 +228,17 @@ test("the socket is the page's own origin, with no subprotocol", () => {
   openLiveSocket(Recorder as unknown as typeof WebSocket, "wss://x/api/live/f/s");
   assert.deepEqual(calls, [["wss://x/api/live/f/s"]], "a browser fails a handshake that offered a subprotocol");
 });
+
+test("a connection coming back while a reconnect is under way opens no second socket, and dispose closes the one there is", () => {
+  const { live, sockets, elapse, browser } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1011);
+  elapse(1_000);
+  assert.equal(sockets.length, 2, "the reconnect, not ready yet");
+  browser.go(false);
+  browser.go(true);
+  assert.equal(sockets.length, 2, "one connection at a time");
+  live.dispose();
+  assert.equal(sockets[1].closedWith, 1000, "no socket is left open");
+});

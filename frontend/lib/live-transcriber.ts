@@ -158,6 +158,8 @@ export class LiveTranscriber {
   }
 
   private connect() {
+    // One connection at a time: an attempt under way is never replaced.
+    if (this.socket) return;
     this.clear("retryTimer");
     this.ready = false;
     this.failure = null;
