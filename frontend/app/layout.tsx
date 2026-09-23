@@ -3,7 +3,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Flöden",
+  title: "Tal till text",
   description: "Spela in samtal, få transkript och anteckningar",
 };
 

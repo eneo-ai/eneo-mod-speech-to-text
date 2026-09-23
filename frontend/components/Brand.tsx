@@ -19,7 +19,7 @@ export function Brand({ href, className }: BrandProps) {
       />
       <span aria-hidden className="block h-8 w-px shrink-0 bg-rule" />
       <span className="whitespace-nowrap text-[19px] font-bold leading-none">
-        Flöden
+        Tal till text
       </span>
     </span>
   );
@@ -27,7 +27,7 @@ export function Brand({ href, className }: BrandProps) {
   return (
     <Link
       href={href}
-      aria-label="Flöden – Sundsvalls kommun"
+      aria-label="Tal till text – Sundsvalls kommun"
       className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
       {lockup}
