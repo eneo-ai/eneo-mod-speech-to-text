@@ -114,7 +114,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           className="h-11"
           onClick={() => (stream ? setStream(null) : void test())}
         >
-          <Mic data-icon="inline-start" aria-hidden className="size-4" />
+          <Mic data-icon="inline-start" aria-hidden />
           {stream ? "Sluta testa" : "Testa mikrofonen"}
         </Button>
       </div>

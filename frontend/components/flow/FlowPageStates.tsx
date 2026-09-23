@@ -63,7 +63,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
           <div className="flex flex-wrap gap-3">
             <Button asChild className="h-11">
               <Link href="/flows">
-                <ArrowLeft data-icon="inline-start" aria-hidden className="size-4" />
+                <ArrowLeft data-icon="inline-start" aria-hidden />
                 Till flödena
               </Link>
             </Button>

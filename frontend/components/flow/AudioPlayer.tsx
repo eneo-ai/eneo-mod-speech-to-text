@@ -104,9 +104,9 @@ export function AudioPlayer({ sources, label }: { sources: PlayerSource[]; label
         onClick={() => void toggle()}
       >
         {playing ? (
-          <Pause aria-hidden className="size-5" />
+          <Pause aria-hidden />
         ) : (
-          <Play aria-hidden className="size-5 translate-x-px" />
+          <Play aria-hidden className="translate-x-px" />
         )}
       </Button>
       <Slider

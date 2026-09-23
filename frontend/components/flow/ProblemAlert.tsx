@@ -9,7 +9,7 @@ export function ProblemAlert({ problem, onRetry }: { problem: Problem; onRetry?:
   return (
     <Alert>
       <CircleAlert aria-hidden />
-      <AlertTitle className="text-[15px] font-semibold text-ink">{problem.title}</AlertTitle>
+      <AlertTitle className="text-[15px] font-semibold leading-snug text-ink">{problem.title}</AlertTitle>
       {problem.detail && <AlertDescription className="text-[15px] text-ink-soft">{problem.detail}</AlertDescription>}
       {problem.retry && onRetry && (
         <Button type="button" variant="outline" className="mt-3 h-11" onClick={onRetry}>
@@ -19,7 +19,7 @@ export function ProblemAlert({ problem, onRetry }: { problem: Problem; onRetry?:
       {problem.back && (
         <Button asChild variant="outline" className="mt-3 h-11">
           <Link href="/flows">
-            <ArrowLeft data-icon="inline-start" aria-hidden className="size-4" />
+            <ArrowLeft data-icon="inline-start" aria-hidden />
             Till flödena
           </Link>
         </Button>

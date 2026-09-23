@@ -131,9 +131,9 @@ export function RecordingBar({
             onClick={onPause}
           >
             {running ? (
-              <Pause data-icon="inline-start" aria-hidden className="size-5" />
+              <Pause data-icon="inline-start" aria-hidden />
             ) : (
-              <Play data-icon="inline-start" aria-hidden className="size-5" />
+              <Play data-icon="inline-start" aria-hidden />
             )}
             {running ? "Pausa" : "Fortsätt"}
           </Button>
@@ -142,7 +142,7 @@ export function RecordingBar({
             className={cn("h-12 min-w-[8.5rem] rounded-xl text-[16px]", !showStatus && "flex-[1.4] lg:w-56 lg:flex-none")}
             onClick={onStop}
           >
-            <Square data-icon="inline-start" aria-hidden className="size-4 fill-current" />
+            <Square data-icon="inline-start" aria-hidden className="fill-current" />
             Stoppa
           </Button>
         </div>

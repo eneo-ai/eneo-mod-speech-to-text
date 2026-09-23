@@ -367,9 +367,9 @@ function SetupWorkspace({
             onClick={primary}
           >
             {phase === "starting" ? (
-              <Spinner data-icon="inline-start" aria-hidden className="size-5" />
+              <Spinner data-icon="inline-start" aria-hidden />
             ) : Icon ? (
-              <Icon data-icon="inline-start" aria-hidden className="size-5" />
+              <Icon data-icon="inline-start" aria-hidden />
             ) : null}
             {phase === "starting" ? "Startar…" : label}
           </Button>

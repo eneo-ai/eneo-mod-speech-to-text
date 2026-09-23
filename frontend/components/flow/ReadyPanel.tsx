@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { AudioPlayer, type PlayerSource } from "@/components/flow/AudioPlayer";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
@@ -93,7 +93,7 @@ export function ReadyPanel({
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="button" variant="outline" className="h-11" onClick={() => void save()}>
-          <Download data-icon="inline-start" aria-hidden className="size-4" />
+          <Download data-icon="inline-start" aria-hidden />
           Spara som fil
         </Button>
         <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-mute">
@@ -108,12 +108,12 @@ export function ReadyPanel({
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button type="button" size="lg" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onCreate}>
-          <FileText data-icon="inline-start" aria-hidden className="size-5" />
+          <FileText data-icon="inline-start" aria-hidden />
           Skapa dokument
         </Button>
         {onContinue && (
           <Button type="button" variant="outline" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onContinue}>
-            <Mic data-icon="inline-start" aria-hidden className="size-5" />
+            <Mic data-icon="inline-start" aria-hidden />
             Fortsätt spela in
           </Button>
         )}
@@ -122,7 +122,7 @@ export function ReadyPanel({
       <AlertDialog>
         <AlertDialogTrigger asChild>
           <Button type="button" variant="ghost" className="h-11 w-fit self-center text-ink-soft sm:self-start">
-            <Trash2 data-icon="inline-start" aria-hidden className="size-4" />
+            <Trash2 data-icon="inline-start" aria-hidden />
             Ta bort
           </Button>
         </AlertDialogTrigger>
@@ -133,7 +133,7 @@ export function ReadyPanel({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="h-11">Avbryt</AlertDialogCancel>
-            <AlertDialogAction className="h-11" onClick={onDiscard}>
+            <AlertDialogAction className={buttonVariants({ variant: "destructive", className: "h-11" })} onClick={onDiscard}>
               Ta bort
             </AlertDialogAction>
           </AlertDialogFooter>
