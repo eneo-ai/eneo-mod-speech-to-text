@@ -2,8 +2,19 @@
 
 import { ArrowLeft, ChevronDown, FileText, ShieldCheck } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -43,8 +54,6 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
-// One message for recording and ready: true for both, so the guard never changes mid-way.
-const LEAVE_MESSAGE = "Vill du lämna sidan? Det som spelats in finns kvar bland osända inspelningar.";
 
 const RESUMABLE_LABEL: Record<string, string> = {
   awaiting_review: "Väntar på din granskning",
@@ -98,9 +107,20 @@ export function FlowInput({
     workspace.current?.querySelector<HTMLElement>("[data-phase-heading]")?.focus();
   }, [group]);
 
-  useLeaveGuard(holdsAudio ? LEAVE_MESSAGE : null);
+  // Leaving while audio is held asks first, in the page's own dialog; beforeunload keeps the browser's.
+  const router = useRouter();
+  const [leave, setLeave] = useState<(() => void) | null>(null);
+  // The question has no trigger of its own: focus goes back to where it was.
+  const returnFocus = useRef<HTMLElement | null>(null);
+  const ask = (goOn: () => void) => {
+    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setLeave(() => goOn);
+  };
+  useLeaveGuard(holdsAudio, ask);
   const onLeave = (event: MouseEvent) => {
-    if (holdsAudio && !window.confirm(LEAVE_MESSAGE)) event.preventDefault();
+    if (!holdsAudio) return;
+    event.preventDefault();
+    ask(() => router.push("/flows"));
   };
 
   const details = (
@@ -128,6 +148,25 @@ export function FlowInput({
           ) : undefined
         }
       />
+      <AlertDialog open={leave !== null} onOpenChange={(open) => !open && setLeave(null)}>
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocus.current?.focus();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
+            <AlertDialogDescription>Det som spelats in finns kvar bland osända inspelningar.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="h-11">Stanna kvar</AlertDialogCancel>
+            <AlertDialogAction className="h-11" onClick={() => leave?.()}>
+              Lämna sidan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {/* Recording state changes are said once here; the timer never is. */}
       <p role="status" className="sr-only">
         {recordingAnnouncement(phase)}

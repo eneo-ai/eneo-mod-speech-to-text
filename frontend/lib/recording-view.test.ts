@@ -153,10 +153,14 @@ function fakeWindow() {
       entries.push(state);
       index += 1;
     },
-    back() {
-      if (index === 0) return;
-      index -= 1;
+    go(delta: number) {
+      const next = Math.max(0, Math.min(entries.length - 1, index + delta));
+      if (next === index) return;
+      index = next;
       queueMicrotask(() => target.dispatchEvent(Object.assign(new Event("popstate"), { state: entries[index] })));
+    },
+    back() {
+      history.go(-1);
     },
   };
   return {
@@ -170,35 +174,36 @@ function fakeWindow() {
   };
 }
 
-test("browser back asks before leaving a recording; staying keeps the page, leaving goes back", async () => {
+const settleEvents = async () => {
+  for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setImmediate(resolve));
+};
+
+test("browser back during a recording keeps the page and asks; staying needs nothing, leaving goes on back", async () => {
   const browser = fakeWindow();
-  const answers = [false, true];
-  const asked: string[] = [];
-  const release = guardHistory(browser.win, "Vill du lämna sidan?", (message) => {
-    asked.push(message);
-    return answers.shift() ?? false;
-  });
+  const attempts: Array<() => void> = [];
+  const release = guardHistory(browser.win, (leave) => attempts.push(leave));
   assert.equal(browser.index, 2, "a guard entry is added");
 
   browser.pressBack();
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(asked, ["Vill du lämna sidan?"]);
-  assert.equal(browser.index, 2, "staying puts the guard back");
+  await settleEvents();
+  assert.equal(attempts.length, 1, "the page asks");
+  assert.equal(browser.index, 2, "the page stays guarded while the question is open, and after Stanna kvar");
 
   browser.pressBack();
-  await new Promise((resolve) => setImmediate(resolve));
-  await new Promise((resolve) => setImmediate(resolve));
-  assert.equal(asked.length, 2);
-  assert.equal(browser.index, 0, "leaving goes on back to the list");
+  await settleEvents();
+  assert.equal(attempts.length, 2);
+  attempts[1]();
+  await settleEvents();
+  assert.equal(browser.index, 0, "Lämna sidan goes on back to the list");
   release();
 });
 
 test("when the recording is done with, the guard takes its history entry back", async () => {
   const browser = fakeWindow();
-  const release = guardHistory(browser.win, "Vill du lämna sidan?", () => true);
+  const release = guardHistory(browser.win, () => undefined);
   assert.equal(browser.index, 2);
   release();
-  await new Promise((resolve) => setImmediate(resolve));
+  await settleEvents();
   assert.equal(browser.index, 1, "back on the flow page's own entry");
 });
 

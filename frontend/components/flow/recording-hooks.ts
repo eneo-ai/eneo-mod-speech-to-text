@@ -52,10 +52,12 @@ export function useDocumentTitle(title: string): void {
   );
 }
 
-/** While `message` is set, browser back asks with it before leaving. */
-export function useLeaveGuard(message: string | null): void {
+/** While active, browser back asks first: `onAttempt` gets the way on, to call if the user leaves. */
+export function useLeaveGuard(active: boolean, onAttempt: (leave: () => void) => void): void {
+  const attempt = useRef(onAttempt);
+  attempt.current = onAttempt;
   useEffect(() => {
-    if (!message) return;
-    return guardHistory(window, message, (text) => window.confirm(text));
-  }, [message]);
+    if (!active) return;
+    return guardHistory(window, (leave) => attempt.current(leave));
+  }, [active]);
 }
