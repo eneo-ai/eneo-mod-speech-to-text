@@ -103,8 +103,6 @@ export interface SubmitProgress {
 export interface SubmitDeps {
   upload: typeof uploadStepRuntimeFile;
   startRun: typeof startRun;
-  /** The flow's run contract as published now, for a request a newer version refused. */
-  getContract?: typeof getRunContract;
 }
 
 export interface SubmitParams extends RetryOptions {
@@ -192,10 +190,6 @@ export async function submitRun(
 }
 
 const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
-const PUBLISHED_AGAIN =
-  "Flödet uppdaterades igen medan inspelningen skickades. Spara inspelningen som fil. Om körningen hann starta finns den under Tidigare körningar.";
-
-const staleVersion = (error: unknown) => error instanceof ApiError && error.code === "flow_run_stale_version";
 
 /**
  * Sends a stored recording through `submitRun`, holding its lease so no other
@@ -247,47 +241,29 @@ async function sendLeased(
     withRetry(() => attempt(params.flowId, request.body, request.idempotencyKey, params.signal), params);
   let run: FlowRunPublic;
   try {
-    try {
-      if (asked) {
-        // An earlier send never heard Eneo's answer: the same request gets the run it made.
-        await params.onStarting?.(asked);
-        run = await ask(asked);
-      } else {
-        const files = await store.readParts(id);
-        if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
-        // Sealed from here on: see `sealed`.
-        await store.setState(id, "uploading");
-        run = await submitRun(
-          {
-            ...params,
-            idempotencyKey: `flow-run:recording:${id}`,
-            files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
-            onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
-            onStarting: async (request) => {
-              await store.startSubmission(id, request);
-              asked = request;
-              await params.onStarting?.(request);
-            },
+    if (asked) {
+      // An earlier send never heard Eneo's answer: the same request gets the run it made.
+      await params.onStarting?.(asked);
+      run = await ask(asked);
+    } else {
+      const files = await store.readParts(id);
+      if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
+      // Sealed from here on: see `sealed`.
+      await store.setState(id, "uploading");
+      run = await submitRun(
+        {
+          ...params,
+          idempotencyKey: `flow-run:recording:${id}`,
+          files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
+          onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
+          onStarting: async (request) => {
+            await store.startSubmission(id, request);
+            asked = request;
+            await params.onStarting?.(request);
           },
-          { upload: deps?.upload ?? uploadStepRuntimeFile, startRun: attempt },
-        );
-      }
-    } catch (error) {
-      if (!asked || !staleVersion(error)) throw error;
-      // The flow was published again, and Eneo said so before looking at the key, so the run may
-      // exist. The same request at the current version, under the same key, either makes the run
-      // (there was none) or is refused as a conflict (there is one). The recording stays sealed,
-      // so what Eneo gets is what was sent.
-      const current = await withRetry(() => (deps?.getContract ?? getRunContract)(params.flowId), params);
-      const again = { ...asked, body: { ...asked.body, expected_flow_version: current.published_flow_version } };
-      await store.startSubmission(id, again);
-      asked = again;
-      try {
-        run = await ask(again);
-      } catch (repeated) {
-        if (staleVersion(repeated)) throw new Error(PUBLISHED_AGAIN);
-        throw repeated;
-      }
+        },
+        { upload: deps?.upload ?? uploadStepRuntimeFile, startRun: attempt },
+      );
     }
   } catch (error) {
     // The recording's key already made a run, from another request: it is
@@ -295,7 +271,13 @@ async function sendLeased(
     if (error instanceof ApiError && error.code === "flow_run_idempotency_conflict") {
       throw new Error(ALREADY_SENT);
     }
-    if (asked && !mayExist && refusedByEneo(error)) {
+    if (asked && error instanceof ApiError && error.code === "flow_run_stale_version") {
+      // The flow was published again, and Eneo said so before it looked at the key, so the run may
+      // exist. The request is dropped and the uploads kept: the next send, from the refreshed form
+      // at the current version under the same key, makes the run if there was none, and gets a
+      // conflict (already sent) if there is one. The recording stays sealed.
+      await store.forgetSubmission(id);
+    } else if (asked && !mayExist && refusedByEneo(error)) {
       // Eneo refused every attempt of this request, so it made no run; its uploads may be what it
       // refused. The next send uploads and asks anew; the recording stays sealed.
       await store.clearFileIds(id);

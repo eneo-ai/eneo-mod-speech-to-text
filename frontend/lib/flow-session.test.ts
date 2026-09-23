@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
+import { createOnlineStatus } from "./online-status";
+import { submitRecording } from "./submit-run";
 import type { LiveSnapshot } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
 import {
@@ -495,6 +497,62 @@ test("a page left while Skapa dokument reads the store sends nothing, and the re
   assert.notEqual(await store.get(id), null, "the recording stays on the device");
 });
 
+test("republished with a new required detail: the form asks for it before Eneo is asked again, then one request goes under the key", async () => {
+  const { session, store, recorders } = await setup();
+  let contract = audioContract();
+  const requests: Array<{ body: Record<string, unknown>; key: string }> = [];
+  let uploads = 0;
+  session.setHandlers({
+    submit: async ({ input, payload }) => {
+      if (input?.kind !== "recording") return;
+      await submitRecording(
+        store,
+        input.recording.id,
+        { flowId: "flow-1", contract, stepId: "step-audio", inputPayload: payload, online: createOnlineStatus() },
+        {
+          upload: async () => ({ id: `file-${++uploads}` }),
+          startRun: async (_flowId, body, key) => {
+            requests.push({ body, key });
+            // Published again with a required "datum": the old version is refused.
+            if (body.expected_flow_version !== 4) throw new ApiError(409, "stale", null, "flow_run_stale_version");
+            return { id: "run-1", flow_id: "flow-1", status: "queued" };
+          },
+        },
+      );
+    },
+    reloadFlow: async () => {
+      contract = audioContract({
+        published_flow_version: 4,
+        form_fields: [...(audioContract().form_fields ?? []), { name: "datum", label: "Datum", type: "text", required: true }],
+      });
+      session.setContract(contract);
+    },
+  });
+  session.setContract(contract);
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(
+    session.getSnapshot().problem?.title,
+    "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
+  );
+  assert.equal(await session.createDocument(), false, "the refreshed form asks for the new detail");
+  assert.deepEqual(session.getSnapshot().invalid, ["datum"]);
+  assert.equal(requests.length, 1, "Eneo is not asked meanwhile");
+
+  session.setDetail("datum", "2026-09-23");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].key, `flow-run:recording:${id}`, "the same key");
+  assert.equal(requests[1].body.expected_flow_version, 4);
+  assert.equal(uploads, 1, "the audio went up once");
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
@@ -747,7 +805,7 @@ test("a stale version refreshes the flow in place and keeps the audio and the de
   assert.equal(reloads, 1);
   const after = session.getSnapshot();
   assert.deepEqual(after.problem, {
-    title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen.",
+    title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
   });
   assert.equal(after.phase, "ready");
   assert.equal(after.recording?.id, id);

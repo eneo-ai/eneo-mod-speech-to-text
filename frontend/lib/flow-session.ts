@@ -136,7 +136,7 @@ export function submitProblem(
 ): Problem {
   if (error instanceof ApiError) {
     if (error.code === "flow_run_stale_version") {
-      return { title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen." };
+      return { title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen." };
     }
     if (error.status === 404 || error.code === "flow_not_published") {
       return {

@@ -326,6 +326,11 @@ export class RecordingStore {
     return this.update(id, (recording) => ({ ...recording, state: "uploaded", submission: request }));
   }
 
+  /** Drops a run request that can never be answered; the uploads stay, and the recording sealed. */
+  forgetSubmission(id: string): Promise<void> {
+    return this.update(id, (recording) => ({ ...recording, state: "uploading", submission: null }));
+  }
+
   /** Forgets the uploads, and the run request made of them. */
   clearFileIds(id: string): Promise<void> {
     return this.update(id, (recording) => ({

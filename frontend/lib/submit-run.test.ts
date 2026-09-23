@@ -629,59 +629,45 @@ test("an unresolved request stays through a 401 or 403 on its repeat, and after 
   t.mock.timers.reset();
 });
 
-test("a request refused as stale goes again at the current version under the same key; a run Eneo made answers as sent", async (t) => {
+test("a request refused as stale is dropped for one from the refreshed form, under the same key and with the same uploads", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const store = await openRecordingStore({});
   const eneo = fakeEneo();
   let uploads = 0;
   const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+  const published = { version: 3 };
+  const startRun: SubmitDeps["startRun"] = async (flowId, body, key) => {
+    // Eneo refuses an old version before it looks at the key.
+    if (body.expected_flow_version !== published.version) throw apiError(409, "flow_run_stale_version");
+    return eneo.startRun(flowId, body, key);
+  };
   const recording = await unresolvedSend(t, store, eneo, upload); // Eneo made the run; its answer was lost
 
-  // The flow is published again: Eneo refuses the old version before it looks at the key.
-  let version = 4;
-  const republished: SubmitDeps = {
-    upload,
-    getContract: async () => ({ ...contract, published_flow_version: version }),
-    startRun: async (flowId, body, key) => {
-      if (body.expected_flow_version !== version) throw apiError(409, "flow_run_stale_version");
-      return eneo.startRun(flowId, body, key);
-    },
-  };
-  await assert.rejects(submitRecording(store, recording.id, params(), republished), {
-    message: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.",
+  published.version = 4; // the flow is published again
+  await assert.rejects(submitRecording(store, recording.id, params(), { upload, startRun }), {
+    code: "flow_run_stale_version",
   });
   const kept = await store.get(recording.id);
-  assert.equal(kept?.state, "uploaded", "sealed: the audio Eneo has is the audio kept, and nothing is added to it");
-  assert.equal(uploads, 1, "the uploads stay");
-  assert.equal(eneo.runs.size, 1, "no second run");
+  assert.deepEqual([kept?.state, kept?.submission ?? null, kept?.parts[0].fileId], ["uploading", null, "file-1"], "sealed, with its uploads");
 
-  // No run behind the lost answer: the same key at the current version makes it.
-  const fresh = fakeEneo();
-  const other = await stoppedRecording(store, [["b"]]);
-  const run = await submitRecording(store, other.id, params(), {
-    upload,
-    getContract: async () => ({ ...contract, published_flow_version: 4 }),
-    startRun: async (flowId, body, key) => {
-      if (body.expected_flow_version !== 4) throw apiError(409, "flow_run_stale_version");
-      return fresh.startRun(flowId, body, key);
-    },
+  // Sent again from the refreshed form: the run Eneo made answers as a conflict.
+  const current = { ...contract, published_flow_version: 4 };
+  await assert.rejects(submitRecording(store, recording.id, params({ contract: current }), { upload, startRun }), {
+    message: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.",
   });
-  assert.equal(run.id, "run-1");
-  assert.equal(await store.get(other.id), null);
+  assert.equal(uploads, 1);
+  assert.equal(eneo.runs.size, 1, "no second run");
+  assert.equal((await store.get(recording.id))?.state, "uploaded", "still sealed");
 
-  // Published again while it went: the recording is kept, to save as a file.
-  const third = await stoppedRecording(store, [["c"]]);
-  await assert.rejects(
-    submitRecording(store, third.id, params(), {
-      upload,
-      getContract: async () => ({ ...contract, published_flow_version: ++version }),
-      startRun: async () => {
-        throw apiError(409, "flow_run_stale_version");
-      },
-    }),
-    { message: /Spara inspelningen som fil.*Tidigare körningar/ },
-  );
-  assert.equal((await store.get(third.id))?.state, "uploaded");
+  // Without a run behind it, the same key at the current version makes one.
+  const other = await stoppedRecording(store, [["b"]]);
+  published.version = 5;
+  await assert.rejects(submitRecording(store, other.id, params({ contract: current }), { upload, startRun }), {
+    code: "flow_run_stale_version",
+  });
+  const run = await submitRecording(store, other.id, params({ contract: { ...contract, published_flow_version: 5 } }), { upload, startRun });
+  assert.equal(run.id, "run-2");
+  assert.equal(uploads, 2, "one upload for each recording");
 });
 
 test("a recording being sent from one tab cannot be sent or deleted from another", async () => {
