@@ -236,7 +236,7 @@ export const STATES: State[] = [
       await setup(page);
       await addParticipants(page, ["Anna Berg", "Erik Lund"]);
       await record(page, "Spela in");
-      await page.getByRole("button", { name: /^Deltagare: Anna Berg/ }).click();
+      await page.getByRole("button", { name: /^Uppgifter, Deltagare: Anna Berg/ }).click();
       await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
     },
   },
