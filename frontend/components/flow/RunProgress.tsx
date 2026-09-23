@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { StepView } from "@/lib/run-progress";
 import { StepList } from "./StepList";
-import { usePhaseHeading } from "./usePhaseHeading";
+import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
 const VIEW = "mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 pb-10 pt-2 md:px-8";
 
@@ -54,7 +54,7 @@ export function RunProgress({
         <h1
           ref={heading}
           tabIndex={-1}
-          className="text-[26px] font-semibold leading-tight tracking-[-0.02em] outline-none md:text-[30px]"
+          className={PHASE_HEADING}
         >
           Dokumentet skapas
         </h1>
@@ -105,7 +105,7 @@ export function RunOpening() {
   return (
     <main aria-busy="true" className={VIEW}>
       <p role="status" className="sr-only">
-        Hämtar körningen
+        Hämtar körningen…
       </p>
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-5 w-1/2" />

@@ -16,7 +16,7 @@ import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
-import { usePhaseHeading } from "./usePhaseHeading";
+import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
 /**
  * A run that did not finish: which step stopped and why, what never ran,
@@ -67,7 +67,7 @@ export function RunFailure({
         <h1
           ref={heading}
           tabIndex={-1}
-          className="text-[26px] font-semibold leading-tight tracking-[-0.02em] outline-none md:text-[30px]"
+          className={PHASE_HEADING}
         >
           {cancelled ? "Körningen avbröts" : "Dokumentet kunde inte skapas"}
         </h1>
@@ -152,7 +152,9 @@ function SupportDetails({ runId, failure, code }: { runId: string; failure: RunE
       </h2>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <span className="text-sm text-muted-foreground">Körnings-ID</span>
-        <code className="rounded-md bg-muted px-2 py-1 font-mono text-sm [overflow-wrap:anywhere]">{runId}</code>
+        <code translate="no" className="rounded-md bg-muted px-2 py-1 font-mono text-sm [overflow-wrap:anywhere]">
+          {runId}
+        </code>
         <CopyButton text={runId} label="Kopiera körnings-ID" />
       </div>
       {failure?.detail && (

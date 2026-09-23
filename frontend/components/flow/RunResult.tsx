@@ -14,7 +14,7 @@ import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
-import { usePhaseHeading } from "./usePhaseHeading";
+import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
 export const RESULT_PROSE =
   "prose max-w-none prose-headings:tracking-tight prose-h1:text-[22px] prose-h2:text-[19px] prose-h3:text-[16px] prose-p:text-[15px] prose-p:leading-relaxed prose-li:text-[15px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
@@ -54,7 +54,7 @@ export function RunResult({
         <h1
           ref={heading}
           tabIndex={-1}
-          className="text-[26px] font-semibold leading-tight tracking-[-0.02em] outline-none md:text-[30px]"
+          className={PHASE_HEADING}
         >
           {delivered ? "Resultatet är skickat" : "Dokumentet är klart"}
         </h1>

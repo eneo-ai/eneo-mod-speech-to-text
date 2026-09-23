@@ -2,7 +2,7 @@ import {
   CheckCircle2,
   Circle,
   CircleDashed,
-  Loader2,
+  CircleDot,
   MinusCircle,
   XCircle,
   type LucideIcon,
@@ -12,7 +12,8 @@ import { stepStateLabel, type StepState, type StepView } from "@/lib/run-progres
 
 const ICONS: Record<StepState, [LucideIcon, string]> = {
   done: [CheckCircle2, "text-ok"],
-  running: [Loader2, "text-primary animate-spin motion-reduce:animate-none"],
+  // Static: the stage line above already shows that something is moving.
+  running: [CircleDot, "text-primary"],
   waiting: [Circle, "text-muted-foreground"],
   failed: [XCircle, "text-destructive"],
   cancelled: [MinusCircle, "text-muted-foreground"],
@@ -29,7 +30,7 @@ export function StepList({ steps }: { steps: readonly StepView[] }) {
           <li key={step.order} className="flex items-start gap-3">
             <Icon aria-hidden className={cn("mt-0.5 size-5 shrink-0", tone)} />
             <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-              <span className={cn("text-[15px] leading-snug", step.state === "running" && "font-semibold")}>
+              <span className={cn("min-w-0 text-[15px] leading-snug [overflow-wrap:anywhere]", step.state === "running" && "font-semibold")}>
                 {step.label}
               </span>
               <span className="text-sm text-muted-foreground">{stepStateLabel(step.state)}</span>

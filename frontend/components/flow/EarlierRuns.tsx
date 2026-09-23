@@ -45,7 +45,7 @@ export function EarlierRuns({
                 <Icon aria-hidden className={cn("size-5", tone)} />
               </ItemMedia>
               <ItemContent>
-                <ItemTitle className="text-[15px]">{when.replace(/^./, (c) => c.toUpperCase())}</ItemTitle>
+                <ItemTitle className="text-[15px] tabular-nums">{when.replace(/^./, (c) => c.toUpperCase())}</ItemTitle>
                 <ItemDescription>{runStatusLabel(run.status)}</ItemDescription>
               </ItemContent>
               <ItemActions>
