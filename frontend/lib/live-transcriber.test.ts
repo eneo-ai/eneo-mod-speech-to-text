@@ -8,12 +8,16 @@ class FakeSocket implements LiveSocket {
   binaryType = "blob";
   sent: Array<string | ArrayBuffer> = [];
   closedWith: number | null = null;
+  // A relay that stops reading leaves every sent frame queued.
+  stalled = false;
+  bufferedAmount = 0;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: ((event: { code: number }) => void) | null = null;
   onerror: (() => void) | null = null;
   send(data: string | ArrayBuffer) {
     this.sent.push(data);
+    if (this.stalled && data instanceof ArrayBuffer) this.bufferedAmount += data.byteLength;
   }
   close(code = 1000) {
     this.closedWith = code;
@@ -241,4 +245,23 @@ test("a connection coming back while a reconnect is under way opens no second so
   assert.equal(sockets.length, 2, "one connection at a time");
   live.dispose();
   assert.equal(sockets[1].closedWith, 1000, "no socket is left open");
+});
+
+test("a connection that stops draining is retired once 30 s of audio waits in it; a new session takes over", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].stalled = true;
+  for (let i = 0; i < 1_000; i += 1) live.pushFrame(frame(i % 256));
+  assert.ok(sockets[0].bufferedAmount <= 960_000, `at most 30 s queued, was ${sockets[0].bufferedAmount} bytes`);
+  assert.equal(sockets[0].closedWith, 1000, "the stalled connection is closed");
+  assert.equal(live.getSnapshot().status, "reconnecting");
+
+  elapse(1_000);
+  assert.equal(sockets.length, 2, "a new session");
+  sockets[1].ready();
+  const sent = sockets[1].frames();
+  assert.ok(sent.length > 0 && sent.length <= 300, "the newest audio since, bounded");
+  assert.equal(firstByte(sent[sent.length - 1]), 999 % 256);
+  assert.equal(live.getSnapshot().status, "live");
 });
