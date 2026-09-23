@@ -21,7 +21,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import type { PlayerSource } from "@/lib/playback";
+import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
 import { cn } from "@/lib/utils";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
@@ -216,6 +216,11 @@ export const TranscriptPlayer = forwardRef<
     onToggleConfirmed?: (key: string) => void;
     /** Egen länk för att hämta det granskade transkriptet; av när sidan har egna åtgärder. */
     downloadable?: boolean;
+    /**
+     * The page's own playback of these parts, when the page shows it elsewhere too
+     * (a pause control beside the document); otherwise the transcript owns one.
+     */
+    playback?: Playback;
   }
 >(function TranscriptPlayer(
   {
@@ -237,6 +242,7 @@ export const TranscriptPlayer = forwardRef<
     confirmedWords = EMPTY_SET,
     onToggleConfirmed,
     downloadable = true,
+    playback: shared,
   },
   ref,
 ) {
@@ -253,9 +259,10 @@ export const TranscriptPlayer = forwardRef<
 
   const hasAudio = fileCount > 0 && !audioPending;
   // The app's one set of playback controls; the transcript follows its position and seeks through it.
-  const playback = usePlayback(
-    hasAudio ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
+  const own = usePlayback(
+    hasAudio && !shared ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
   );
+  const playback = shared ?? own;
   const position = usePlaybackState(playback);
   const currentFile = position.part;
   const currentTime = position.withinMs / 1_000;
@@ -754,7 +761,7 @@ export const TranscriptPlayer = forwardRef<
 
       {hasAudio && (
         // Docked under the text: on a phone it stays in view while the transcript is on screen.
-        <div className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:static lg:pb-2">
+        <div data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:static lg:pb-2">
           <AudioPlayer playback={playback} label="Inspelningen">
             <Button
               type="button"

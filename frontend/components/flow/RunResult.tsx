@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Mic, Plus } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ArrowLeft, Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
-import { formatRelativeDate } from "@/lib/format";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
+import { formatClock, formatRelativeDate } from "@/lib/format";
+import type { Playback } from "@/lib/playback";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
@@ -15,7 +18,19 @@ import { RegenerateNotice } from "./RegenerateNotice";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
+import { usePlayback, usePlaybackState } from "./AudioPlayer";
 import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
+
+// From a laptop's width the document and the transcript sit side by side; narrower, they are two tabs.
+const WIDE = "(min-width: 1024px)";
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const isWide = () => window.matchMedia(WIDE).matches;
+
+type View = "document" | "transcript";
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -69,6 +84,54 @@ export function RunResult({
       : null;
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
+  // One playback for the page: the transcript's player, and the pause beside the document on a phone.
+  const sources = useMemo(
+    () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
+    [flowId, run.id, transcript.fileIds],
+  );
+  const playback = usePlayback(sources);
+  const tabs = !wide && showTranscript;
+  const [view, setView] = useState<View>("document");
+  const tabList = useRef<HTMLDivElement | null>(null);
+  // Each tab keeps its own reading position; the first visit starts at the top of the tab.
+  const positions = useRef<Partial<Record<View, number>>>({});
+  const switchView = (next: View) => {
+    positions.current[view] = window.scrollY;
+    setView(next);
+  };
+  useLayoutEffect(() => {
+    if (!tabs) return;
+    const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
+    const saved = positions.current[view];
+    window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+  }, [view, tabs]);
+
+  const documentColumn = (
+    <>
+      {note && <p className="text-[15px] leading-relaxed">{note}</p>}
+      {offer && (
+        <RegenerateNotice offer={offer} saving={editing.saveState === "saving"} onStarted={onRegenerated} onReload={reload} />
+      )}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />}
+      {others.length > 0 && (
+        <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
+      )}
+      <StepDetails steps={steps} version={run.flow_version} />
+    </>
+  );
+  const transcriptColumn = showTranscript && (
+    <RunTranscriptView
+      flowId={flowId}
+      runId={run.id}
+      fileName={transcriptFileName(flowName, run.created_at)}
+      transcript={transcript}
+      confirmedWords={confirmedWords}
+      editing={editing}
+      onReload={reload}
+      playback={playback}
+    />
+  );
 
   return (
     <main
@@ -106,40 +169,65 @@ export function RunResult({
         </div>
       </header>
 
-      <div
-        className={cn(
-          "flex flex-col gap-8",
-          showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
-        )}
-      >
-        <div className="flex min-w-0 flex-col gap-6">
-          {note && <p className="text-[15px] leading-relaxed">{note}</p>}
-          {offer && (
-            <RegenerateNotice offer={offer} saving={editing.saveState === "saving"} onStarted={onRegenerated} onReload={reload} />
+      {tabs ? (
+        <Tabs value={view} onValueChange={(next) => switchView(next as View)} className="flex flex-col gap-4">
+          <TabsList ref={tabList} aria-label="Visa" className="self-start">
+            <TabsTrigger value="document">Dokument</TabsTrigger>
+            <TabsTrigger value="transcript">Transkript</TabsTrigger>
+          </TabsList>
+          {/* Both stay mounted: switching keeps the playback, the search, the filter and each tab's place. */}
+          <TabsContent value="document" forceMount className="mt-0 flex flex-col gap-6 data-[state=inactive]:hidden">
+            {documentColumn}
+            <PausePlayback playback={playback} onShow={() => switchView("transcript")} />
+          </TabsContent>
+          <TabsContent value="transcript" forceMount className="mt-0 data-[state=inactive]:hidden">
+            {transcriptColumn}
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <div
+          className={cn(
+            "flex flex-col gap-8",
+            showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
           )}
-          {(text || primary) && (
-            <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />
-          )}
-          {others.length > 0 && (
-            <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
-          )}
-          <StepDetails steps={steps} version={run.flow_version} />
+        >
+          <div className="flex min-w-0 flex-col gap-6">{documentColumn}</div>
+          {transcriptColumn && <div className="min-w-0 lg:sticky lg:top-6">{transcriptColumn}</div>}
         </div>
-
-        {showTranscript && (
-          <div className="min-w-0 lg:sticky lg:top-6">
-            <RunTranscriptView
-              flowId={flowId}
-              runId={run.id}
-              fileName={transcriptFileName(flowName, run.created_at)}
-              transcript={transcript}
-              confirmedWords={confirmedWords}
-              editing={editing}
-              onReload={reload}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </main>
+  );
+}
+
+/**
+ * On a phone's Dokument tab, once the recording has played: its pause (or play)
+ * and time, docked at the bottom, driven by the transcript's player itself.
+ */
+function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () => void }): ReactNode {
+  const state = usePlaybackState(playback);
+  if (!state.started) return null;
+  const pauses = state.playing || state.starting;
+  return (
+    <div
+      data-docked-player
+      className="sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8"
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="shrink-0 rounded-full"
+        aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        onClick={() => playback.toggle()}
+      >
+        {pauses ? <Pause aria-hidden /> : <Play aria-hidden className="translate-x-px" />}
+      </Button>
+      <span className="text-[14px] tabular-nums text-ink-soft">
+        {formatClock(state.atMs)} / {formatClock(state.totalMs)}
+      </span>
+      <Button type="button" variant="link" className="ml-auto px-0" onClick={onShow}>
+        Visa i transkriptet
+      </Button>
+    </div>
   );
 }

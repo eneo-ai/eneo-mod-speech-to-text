@@ -100,21 +100,9 @@ export function ResultDocument({
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
 
   return (
-    <section aria-label="Dokumentet" className="flex flex-col rounded-xl border bg-card">
-      {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
-      <div className="hidden items-center justify-end gap-1 border-b border-border px-4 py-2.5 lg:flex">
-        {text && (
-          <Button type="button" variant={file ? "ghost" : "default"} onClick={copy}>
-            <Copy data-icon="inline-start" aria-hidden />
-            {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
-            {!copyLabel && file && <span className="sr-only"> texten</span>}
-          </Button>
-        )}
-        {primaryDownload}
-      </div>
-
-      {/* Narrower: the download first, opening the file beside it, the rest under Fler alternativ. */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 lg:hidden">
+    <>
+      {/* Narrower: above the document, the download first, opening the file beside it, the rest under Fler alternativ. */}
+      <div className="flex flex-wrap items-center gap-2 lg:hidden">
         {primaryDownload}
         {file?.previewable && inline && (
           <Button asChild variant="outline">
@@ -156,6 +144,19 @@ export function ResultDocument({
         )}
       </div>
 
+    <section aria-label="Dokumentet" className="flex flex-col rounded-xl border bg-card">
+      {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
+      <div className="hidden items-center justify-end gap-1 border-b border-border px-4 py-2.5 lg:flex">
+        {text && (
+          <Button type="button" variant={file ? "ghost" : "default"} onClick={copy}>
+            <Copy data-icon="inline-start" aria-hidden />
+            {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
+            {!copyLabel && file && <span className="sr-only"> texten</span>}
+          </Button>
+        )}
+        {primaryDownload}
+      </div>
+
       {text && (
         <article className={cn(RESULT_PROSE, "px-5 py-6 md:px-10 md:py-9")}>
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
@@ -181,5 +182,6 @@ export function ResultDocument({
       )}
       <CopyStatus state={copyState} />
     </section>
+    </>
   );
 }

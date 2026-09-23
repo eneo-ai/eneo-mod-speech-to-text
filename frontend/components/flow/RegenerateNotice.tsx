@@ -47,7 +47,7 @@ export function RegenerateNotice({
           Transkriptet har rättats efter att dokumentet skapades. Dokumentet och dess filer ändras inte av rättningarna,
           men ett nytt dokument kan skapas från det rättade transkriptet.
         </p>
-        <Button type="button" variant="outline" disabled={working || saving} onClick={() => void start()}>
+        <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving} onClick={() => void start()}>
           {working ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin motion-reduce:animate-none" /> : <RotateCcw data-icon="inline-start" aria-hidden />}
           {working ? "Skapar dokumentet igen…" : saving ? "Sparar rättningarna…" : "Skapa dokumentet igen med rättningarna"}
         </Button>

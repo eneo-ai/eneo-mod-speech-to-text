@@ -100,3 +100,55 @@ test("the PDF opens on its title, with its actions and Stäng before the viewer"
   const order = [...dialog.querySelectorAll("button, a, iframe")].map((el) => el.tagName === "IFRAME" ? "viewer" : el.textContent?.trim());
   assert.deepEqual(order, ["Öppna i ny flik", "Ladda ner", "Stäng", "viewer"]);
 });
+
+test("narrower than a laptop, Dokument and Transkript are tabs that keep each other's state", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  // Word timings: none stored (404); corrections: none saved yet.
+  globalThis.fetch = (async (url: string | URL | Request) =>
+    String(url).includes("transcript-words")
+      ? Response.json({ code: "not_found" }, { status: 404 })
+      : Response.json([])) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: {
+      transcription: {
+        file_ids: ["file-a"],
+        segments: [
+          { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten gäller budgeten." },
+        ],
+      },
+    },
+  };
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      steps: [],
+      stepResults: [transcribe] as never,
+      files: [pdf],
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const tab = (name: string) => [...view.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
+  assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
+  const panels = view.container.querySelectorAll('[role="tabpanel"]');
+  assert.equal(panels.length, 2, "both views stay mounted");
+
+  const search = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
+  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const { type } = await import("./test-dom");
+  await view.act(async () => type(search, "punkten"));
+  await view.act(async () => tab("Dokument").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  assert.equal(view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!.value, "punkten", "the search is kept");
+  assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
+  // Nothing has played: no pause beside the document yet.
+  assert.ok(!view.container.querySelector("[data-docked-player] button[aria-label='Pausa uppspelningen']"));
+});

@@ -9,6 +9,7 @@ import { useTranscriptContext } from "@/components/useTranscriptContext";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
+import type { Playback } from "@/lib/playback";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
 import { CopyButton } from "./CopyButton";
@@ -72,10 +73,13 @@ export function RunTranscriptView({
   confirmedWords,
   editing,
   onReload,
+  playback,
 }: {
   flowId: string;
   runId: string;
   fileName: string;
+  /** The page's playback, when it shows the recording's controls elsewhere too. */
+  playback?: Playback;
   transcript: TranscriptContext;
   confirmedWords: ReadonlySet<string>;
   editing: ReturnType<typeof useTranscriptCorrections>;
@@ -187,6 +191,7 @@ export function RunTranscriptView({
         saveState={saveState}
         confirmedWords={confirmedWords}
         downloadable={false}
+        playback={playback}
       />
     </section>
   );

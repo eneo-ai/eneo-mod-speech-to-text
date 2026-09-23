@@ -220,6 +220,12 @@
 .t-modal[data-state="open"] { animation: t-modal-in var(--duration-fast) var(--ease-smooth-out); }
 .t-modal[data-state="closed"] { animation: t-modal-out var(--duration-quick) var(--ease-smooth-out); }
 
+/* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
+   focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
+@media (max-width: 1023px) {
+  html:has([data-docked-player]) { scroll-padding-bottom: 5rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }

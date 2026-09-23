@@ -56,6 +56,8 @@ export function installDom(): JSDOM {
   const matchMedia = (query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false });
   Object.defineProperty(dom.window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
   Object.defineProperty(globalThis, "matchMedia", { value: matchMedia, configurable: true, writable: true });
+  // Next's Link prefetches in an idle callback that it reaches through `self`.
+  Object.defineProperty(globalThis, "self", { value: dom.window, configurable: true, writable: true });
   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
   Object.defineProperty(dom.window, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
   Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
