@@ -174,6 +174,7 @@ function memoryBackend(): Backend {
 const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
+export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
 
 /** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
 export function continuable(recording: StoredRecording): boolean {
@@ -458,7 +459,7 @@ export class RecordingStore {
 
   private async require(id: string): Promise<StoredRecording> {
     const recording = await this.load(id);
-    if (!recording) throw new Error("Inspelningen finns inte längre på enheten.");
+    if (!recording) throw new Error(NOT_ON_DEVICE);
     return recording;
   }
 

@@ -18,7 +18,7 @@ import {
 } from "./api";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes } from "./format";
-import { IN_USE_ELSEWHERE, type RecordingStore } from "./recording-store";
+import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore } from "./recording-store";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
@@ -207,7 +207,7 @@ async function sendLeased(
   deps?: SubmitDeps,
 ): Promise<FlowRunPublic> {
   const recording = await store.get(id);
-  if (!recording) throw new Error("Inspelningen finns inte längre på enheten.");
+  if (!recording) throw new Error(NOT_ON_DEVICE);
   const files = await store.readParts(id);
   if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
 

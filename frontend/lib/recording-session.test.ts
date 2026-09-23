@@ -9,7 +9,9 @@ import {
   type RecordingStore,
 } from "./recording-store";
 import { fakeWebLocks } from "./fake-web-locks";
+import { createOnlineStatus } from "./online-status";
 import { RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
+import { submitRecording } from "./submit-run";
 
 const meeting: NewRecording = {
   ownerId: "user-1",
@@ -110,7 +112,9 @@ function fakePage() {
   };
 }
 
-async function setup(options: { store?: RecordingStore; page?: PageLike; now?: () => number } = {}) {
+async function setup(
+  options: { store?: RecordingStore; page?: PageLike; now?: () => number; microphone?: { denied: boolean } } = {},
+) {
   const store = options.store ?? (await openRecordingStore({}));
   const streams: FakeStream[] = [];
   const constraints: MediaStreamConstraints[] = [];
@@ -118,6 +122,7 @@ async function setup(options: { store?: RecordingStore; page?: PageLike; now?: (
   const wakeLocks = { requested: 0, released: 0 };
   const deps: CaptureDeps = {
     getStream: async (asked) => {
+      if (options.microphone?.denied) throw new DOMException("Permission denied", "NotAllowedError");
       constraints.push(asked);
       const stream = new FakeStream();
       streams.push(stream);
@@ -370,6 +375,120 @@ test("only an interrupted recording that no other tab holds, and that the flow t
     "all are still unsent, and no tab holds any",
   );
   assert.ok(leaving.streams.every((stream) => stream.track.readyState === "ended"));
+});
+
+/** The ready state after Stoppa: a recording made and stopped in this tab. */
+async function stoppedCapture(options: Parameters<typeof setup>[0] = {}) {
+  const made = await setup(options);
+  await made.capture.start(meeting, { maxBytes: LIMIT, maxFiles: 3 });
+  made.recorders[0].emit("a");
+  const stopped = (await made.capture.stop())!;
+  return { ...made, stopped };
+}
+
+const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
+const GONE = "Inspelningen finns inte längre på enheten.";
+
+test("after Stoppa, 'Fortsätt spela in' records on in a new part of the same recording", async () => {
+  let now = 0;
+  const { capture, store, recorders } = await setup({ now: () => now });
+  const limits = { maxBytes: LIMIT, maxFiles: 2 };
+  await capture.start(meeting, limits);
+  now = 2_000;
+  recorders[0].emit("a");
+  const stopped = (await capture.stop())!;
+
+  await capture.continueStopped(stopped.id, limits);
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
+  assert.equal(capture.getSnapshot().remainingMs, 8_350, "in the last file the flow takes");
+  now = 3_000;
+  recorders[1].emit("b");
+  const again = (await capture.stop())!;
+  assert.equal(again.id, stopped.id, "one recording, so one run");
+  assert.equal(again.durationMs, 3_000);
+  assert.deepEqual(await texts(await store.readParts(again.id)), ["a.", "b."], "the earlier part as it was");
+});
+
+test("a stopped recording is not continued once a send of it has begun, and stays ready to send", async () => {
+  const limits = { maxBytes: LIMIT, maxFiles: 3 };
+  const { capture, store, streams, stopped } = await stoppedCapture();
+  let finishUpload = () => {};
+  const sending = submitRecording(
+    store,
+    stopped.id,
+    {
+      flowId: "flow-1",
+      contract: { flow_id: "flow-1", published_flow_version: 1 },
+      stepId: "step-audio",
+      inputPayload: {},
+      online: createOnlineStatus(),
+    },
+    {
+      upload: () => new Promise((resolve) => (finishUpload = () => resolve({ id: "file-a" }))),
+      startRun: async () => ({ id: "run-1", flow_id: "flow-1", status: "queued" }),
+    },
+  );
+  await until(async () => (await store.get(stopped.id))?.state === "uploading", "the send");
+  await capture.continueStopped(stopped.id, limits);
+  const refused = capture.getSnapshot();
+  assert.deepEqual([refused.status, refused.recording?.id, refused.error], ["stopped", stopped.id, SEND_BEGUN]);
+  assert.equal(streams.length, 1, "no microphone opened");
+
+  finishUpload();
+  await sending;
+  await capture.continueStopped(stopped.id, limits);
+  assert.equal(capture.getSnapshot().error, GONE, "sent, and its copy deleted");
+
+  // A send whose tab died while Eneo made the run, and a sent one whose copy could not be deleted.
+  for (const state of ["uploaded", "submitted"] as const) {
+    const left = await stoppedCapture();
+    await left.store.setState(left.stopped.id, state);
+    await left.capture.continueStopped(left.stopped.id, limits);
+    assert.equal(left.capture.getSnapshot().error, SEND_BEGUN, state);
+    assert.equal(left.streams.length, 1, state);
+  }
+});
+
+test("a stopped recording is not continued while another tab holds it, once it is deleted, past the flow's file count or without a microphone", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const limits = { maxBytes: LIMIT, maxFiles: 3 };
+  const { capture, store, streams, stopped } = await stoppedCapture({ store: await openRecordingStore(device) });
+  const otherTab = await openRecordingStore(device);
+  assert.equal(await otherTab.lease(stopped.id), true);
+  await capture.continueStopped(stopped.id, limits);
+  assert.deepEqual(
+    [capture.getSnapshot().status, capture.getSnapshot().error],
+    ["stopped", "Inspelningen används i en annan flik."],
+  );
+  otherTab.release(stopped.id);
+
+  // Deleted in the other tab between this tab's look and its lease: nothing is recorded into it.
+  const lease = store.lease.bind(store);
+  store.lease = async (id) => {
+    await otherTab.remove(id);
+    return lease(id);
+  };
+  await capture.continueStopped(stopped.id, limits);
+  assert.equal(capture.getSnapshot().error, GONE);
+  assert.equal(streams.length, 1, "no microphone opened");
+
+  const full = await stoppedCapture();
+  await full.capture.continueStopped(full.stopped.id, { maxBytes: LIMIT, maxFiles: 1 });
+  assert.equal(
+    full.capture.getSnapshot().error,
+    "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar.",
+  );
+
+  const microphone = { denied: false };
+  const denied = await stoppedCapture({ microphone });
+  microphone.denied = true;
+  await denied.capture.continueStopped(denied.stopped.id, limits);
+  assert.deepEqual(
+    [denied.capture.getSnapshot().status, denied.capture.getSnapshot().error],
+    ["stopped", "Tillåt mikrofonen i webbläsaren för att spela in."],
+  );
+  assert.equal(await denied.store.lease(denied.stopped.id), true, "its lease let go");
 });
 
 test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
