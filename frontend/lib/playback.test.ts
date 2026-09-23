@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+
+import { AudioPlayer } from "../components/flow/AudioPlayer";
 
 import { Playback, probeLength, type MediaLike, type PlayerSource } from "./playback";
 
@@ -199,9 +203,15 @@ test("Pausa while a part is still loading keeps it from starting once it has loa
   playback.onLoadedMetadata();
   assert.equal(media.paused, true, "the play button pauses a start that waits for the audio");
 
+  // The play button, as AudioPlayer renders it.
+  const button = () => renderToStaticMarkup(createElement(AudioPlayer, { playback, label: "Inspelning" })).match(/<button[^>]*>/)?.[0];
   playback.seek(1, 0, false);
   playback.toggle();
+  assert.match(button() ?? "", /aria-label="Pausa uppspelningen"/, "while the audio loads, the button pauses");
+  assert.match(button() ?? "", /data-loading="true"/, "and shows that the audio loads");
   playback.toggle();
+  assert.match(button() ?? "", /aria-label="Spela upp"/);
+  assert.doesNotMatch(button() ?? "", /data-loading/);
   media.duration = 2;
   playback.onLoadedMetadata();
   assert.equal(media.paused, true, "play then pause before the audio has loaded stays paused");

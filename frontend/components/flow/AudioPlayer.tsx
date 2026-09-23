@@ -35,6 +35,8 @@ export function AudioPlayer({
 }) {
   const state = usePlaybackState(playback);
   const attach = useCallback((element: HTMLAudioElement | null) => playback.attach(element), [playback]);
+  // A start that waits for the audio is paused by the same button, as toggle() does.
+  const pauses = state.playing || state.starting;
 
   return (
     <div role="group" aria-label={`Uppspelning: ${label}`} className="flex items-center gap-3">
@@ -54,14 +56,22 @@ export function AudioPlayer({
         type="button"
         variant="outline"
         size="icon"
-        className="size-11 shrink-0 rounded-full"
-        aria-label={state.playing ? "Pausa uppspelningen" : "Spela upp"}
+        className="relative size-11 shrink-0 rounded-full"
+        aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        data-loading={state.starting || undefined}
         onClick={() => playback.toggle()}
       >
-        {state.playing ? (
+        {pauses ? (
           <Pause aria-hidden />
         ) : (
           <Play aria-hidden className="translate-x-px" />
+        )}
+        {state.starting && (
+          // The audio loads: a ring turns around the pause sign.
+          <span
+            aria-hidden
+            className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-current motion-reduce:animate-none"
+          />
         )}
       </Button>
       <Slider

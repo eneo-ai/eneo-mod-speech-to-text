@@ -30,7 +30,10 @@ export interface PlaybackSnapshot {
   /** The position on the whole recording, and its length. */
   atMs: number;
   totalMs: number;
+  /** The audio plays, as its own events tell. */
   playing: boolean;
+  /** A start waits for the part's audio to load; toggle() and pause() cancel it. */
+  starting: boolean;
   /** Playback has started or been moved; until then the position is only where it begins. */
   started: boolean;
   rate: number;
@@ -420,6 +423,7 @@ export class Playback {
       atMs: this.atMs(),
       totalMs: lengthsMs.reduce((sum, ms) => sum + ms, 0),
       playing: this.playing,
+      starting: this.pending?.play === true,
       started: this.started,
       rate: this.rate,
       unavailable: this.unavailable,
