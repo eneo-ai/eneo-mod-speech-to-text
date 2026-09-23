@@ -75,6 +75,8 @@ export class RecordingCapture {
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
   private starting = false;
+  // Bumped when the page goes away; a start begun before that must not record.
+  private generation = 0;
   private ending: EndReason | null = null;
   private partEnded: Promise<void> = Promise.resolve();
   private maxBytes: number | undefined;
@@ -105,9 +107,11 @@ export class RecordingCapture {
     if (this.starting || (status !== "idle" && status !== "stopped")) return;
     this.starting = true;
     this.set({ error: null });
+    const generation = this.generation;
     let created: StoredRecording | null = null;
     try {
       const stream = await this.deps.getStream();
+      if (this.left(generation, stream)) return;
       const store = (this.store ??= await this.openStore());
       const recording = (created = await store.create(init));
       this.release = store.hold(recording.id);
@@ -117,6 +121,7 @@ export class RecordingCapture {
       this.set({ recording, lowSpace: await store.lowOnSpace(), persistent: store.persistent });
       this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
       await this.beginPart(stream);
+      if (generation !== this.generation) this.dispose();
     } catch (error) {
       this.finish();
       // Nothing was recorded: do not leave an empty recording to recover.
@@ -132,8 +137,11 @@ export class RecordingCapture {
     if (this.starting || this.snapshot.status !== "interrupted") return;
     this.starting = true;
     this.set({ error: null });
+    const generation = this.generation;
     try {
-      await this.beginPart(await this.deps.getStream());
+      const stream = await this.deps.getStream();
+      if (this.left(generation, stream)) return;
+      await this.beginPart(stream);
     } catch (error) {
       this.set({ error: microphoneError(error) });
     } finally {
@@ -176,6 +184,7 @@ export class RecordingCapture {
 
   /** The page goes away: what was recorded stays, paused, for recovery. */
   dispose(): void {
+    this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
     if (!recording || !store || status === "idle" || status === "stopped") return;
@@ -262,6 +271,13 @@ export class RecordingCapture {
     this.runningSince = Date.now();
     this.set({ status: "recording", stream, partBytes: 0 });
     await this.takeWakeLock();
+  }
+
+  /** True, with the microphone let go, when the page went away during a start. */
+  private left(generation: number, stream: MediaStream): boolean {
+    if (generation === this.generation) return false;
+    stream.getTracks().forEach((track) => track.stop());
+    return true;
   }
 
   private endPart(reason: EndReason): Promise<void> {

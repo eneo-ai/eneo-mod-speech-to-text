@@ -223,6 +223,29 @@ test("starting asks to keep the recording and the screen on; leaving the page le
   assert.equal(wakeLocks.released, 1);
 });
 
+test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
+  const store = await openRecordingStore({});
+  const stream = new FakeStream();
+  let grant = (_stream: MediaStream) => {};
+  let recorders = 0;
+  const capture = new RecordingCapture(() => store, {
+    getStream: () => new Promise((resolve) => (grant = resolve)),
+    createRecorder: () => {
+      recorders += 1;
+      return new FakeRecorder(stream, "audio/webm") as unknown as MediaRecorder;
+    },
+  });
+  const starting = capture.start(meeting);
+  capture.dispose(); // the user navigates away with the permission prompt open
+  grant(stream as unknown as MediaStream);
+  await starting;
+
+  assert.equal(recorders, 0);
+  assert.equal(stream.track.readyState, "ended");
+  assert.equal(capture.getSnapshot().status, "idle");
+  assert.deepEqual(await store.listUnsent("user-1"), []);
+});
+
 test("the recording stops before a part grows too large to send, and keeps what it has", async () => {
   const { capture, store, recorders } = await setup();
   await capture.start(meeting, { maxBytes: 10 });
