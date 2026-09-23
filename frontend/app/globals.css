@@ -111,6 +111,13 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
 
+  /* A phone's docked primary action never covers the control that has focus. */
+  @media (max-width: 767px) {
+    html:has([data-docked-action]) {
+      scroll-padding-bottom: 8rem;
+    }
+  }
+
   /* Mobile-first app shell. Bredder upp på större skärmar så att desktop
      inte fastnar i telefonbredd. Per sida ansvarar sidans innehåll för
      att centrera sig (mx-auto + max-w) inom denna container. */

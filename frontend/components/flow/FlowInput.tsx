@@ -400,7 +400,14 @@ function SetupWorkspace({
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} />}
 
       {(mode || modes.length === 0) && (
-        <div className="flex flex-col gap-3">
+        <div
+          data-docked-action
+          className={cn(
+            // On a phone the primary action stays in reach at the bottom, above the safe area; from a tablet up it sits in the flow.
+            "sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-background px-4 pt-3",
+            "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:mx-0 md:gap-3 md:border-0 md:bg-transparent md:p-0",
+          )}
+        >
           <Button
             type="button"
             size="lg"
