@@ -63,54 +63,86 @@ export interface SessionHandlers {
   refreshEarlierRuns?: () => void;
 }
 
-const FORMAT_NAMES: Record<string, string> = {
-  mpeg: "MP3",
-  mp3: "MP3",
-  wav: "WAV",
-  "x-wav": "WAV",
-  wave: "WAV",
-  "vnd.wave": "WAV",
-  mp4: "M4A",
-  m4a: "M4A",
-  "x-m4a": "M4A",
-  aac: "AAC",
-  webm: "WebM",
-  ogg: "Ogg",
-  flac: "FLAC",
-  "x-flac": "FLAC",
-};
+// Every type Eneo takes as a flow's file input: the name people know it by and the
+// extensions it comes as. The rows' order is the order the names are said in.
+const FILE_TYPES: [name: string, mime: string, ...extensions: string[]][] = [
+  ["Word", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx"],
+  ["PDF", "application/pdf", "pdf"],
+  ["PowerPoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "pptx"],
+  ["Excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx"],
+  ["Excel", "application/vnd.ms-excel", "xls"],
+  ["CSV", "text/csv", "csv"],
+  ["CSV", "application/csv", "csv"],
+  ["text", "text/plain", "txt"],
+  ["Markdown", "text/markdown", "md", "markdown"],
+  ["Markdown", "text/x-markdown", "md", "markdown"],
+  ["JSON", "application/json", "json"],
+  ["XML", "text/xml", "xml"],
+  ["XML", "application/xml", "xml"],
+  ["MP3", "audio/mpeg", "mp3"],
+  ["MP3", "audio/mp3", "mp3"],
+  ["WAV", "audio/wav", "wav"],
+  ["WAV", "audio/x-wav", "wav"],
+  ["WAV", "audio/wave", "wav"],
+  ["WAV", "audio/vnd.wave", "wav"],
+  ["M4A", "audio/mp4", "m4a", "mp4"],
+  ["M4A", "audio/x-m4a", "m4a"],
+  ["M4A", "audio/m4a", "m4a"],
+  ["M4A", "video/mp4", "mp4"],
+  ["AAC", "audio/aac", "aac"],
+  ["WebM", "audio/webm", "webm", "weba"],
+  ["WebM", "video/webm", "webm"],
+  ["Ogg", "audio/ogg", "ogg", "oga"],
+  ["FLAC", "audio/flac", "flac"],
+  ["FLAC", "audio/x-flac", "flac"],
+  ["PNG", "image/png", "png"],
+  ["JPEG", "image/jpeg", "jpg", "jpeg"],
+  ["WebP", "image/webp", "webp"],
+  ["AVIF", "image/avif", "avif"],
+  ["HEIC", "image/heic", "heic"],
+  ["HEIC", "image/heif", "heif"],
+];
 
-/** "MP3, WAV, M4A och WebM": the flow's accepted types in plain words. */
+/** The row for a type the table knows, else a guess at its extension from the subtype ("audio/x-amr" is ".amr"). */
+function fileType(mime: string): { name: string; order: number; extensions: string[] } | null {
+  const base = baseMimetype(mime);
+  const order = FILE_TYPES.findIndex((row) => row[1] === base);
+  if (order >= 0) {
+    const [name, , ...extensions] = FILE_TYPES[order];
+    return { name, order, extensions: extensions.map((extension) => `.${extension}`) };
+  }
+  // ponytail: a subtype that is no plain word (a "vnd." name, a wildcard) is left unnamed; add a row when Eneo takes one.
+  const extension = base.split("/")[1]?.replace(/^x-/, "") ?? "";
+  if (!/^[a-z0-9]+$/.test(extension)) return null;
+  return { name: `.${extension}`, order: FILE_TYPES.length, extensions: [`.${extension}`] };
+}
+
+/** "Word, PDF och Markdown": the flow's accepted types in plain words, each named once. */
 export function acceptedFormats(mimetypes: string[] | undefined): string | null {
-  const names = [
-    ...new Set(
-      (mimetypes ?? [])
-        .map((mime) => baseMimetype(mime).split("/")[1] ?? "")
-        .filter((subtype) => subtype && subtype !== "*")
-        .map((subtype) => FORMAT_NAMES[subtype] ?? subtype.replace(/^x-/, "").toUpperCase()),
-    ),
-  ];
+  const known = (mimetypes ?? []).flatMap((mime) => fileType(mime) ?? []);
+  const names = [...new Set(known.sort((a, b) => a.order - b.order).map((type) => type.name))];
   if (names.length === 0) return null;
   return names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} och ${names[names.length - 1]}`;
 }
 
-// The browser gives no type for some files; their name says enough.
-const EXTENSION_TYPES: Record<string, string> = {
-  mp3: "audio/mpeg",
-  m4a: "audio/mp4",
-  mp4: "audio/mp4",
-  wav: "audio/wav",
-  webm: "audio/webm",
-  ogg: "audio/ogg",
-  oga: "audio/ogg",
-  flac: "audio/flac",
-  aac: "audio/aac",
-};
+/** The file chooser's `accept`: each type and its extensions, since a dialog may not know a type's extension. */
+export function fileAccept(mimetypes: string[] | undefined): string | undefined {
+  const accept = [...new Set((mimetypes ?? []).flatMap((mime) => [mime, ...(fileType(mime)?.extensions ?? [])]))];
+  return accept.length > 0 ? accept.join(",") : undefined;
+}
 
-function oversized(maxBytes: number): Problem {
+/** The type a file is sent as: the browser's when the flow takes it, else the flow's type for the file's extension. */
+function uploadType(file: { name: string; type: string }, accepted: string[] | undefined): string {
+  if (file.type && isMimeAllowed(file.type, accepted)) return file.type;
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  const matches = FILE_TYPES.filter(([, , ...extensions]) => extensions.includes(extension)).map((row) => row[1]);
+  return matches.find((mime) => isMimeAllowed(mime, accepted)) ?? (file.type || matches[0] || "");
+}
+
+function oversized(maxBytes: number, inputFormat: string | undefined): Problem {
   return {
     title: `Filen är större än flödet tar emot (högst ${formatBytes(maxBytes)}).`,
-    detail: "Välj en kortare inspelning eller dela upp den.",
+    detail: inputFormat === "audio" ? "Välj en kortare inspelning eller dela upp den." : "Välj en mindre fil eller dela upp den.",
   };
 }
 
@@ -125,10 +157,9 @@ export function fileProblem(
   step: RunContractStepInput | null,
 ): Problem | null {
   const accepted = step?.accepted_mimetypes;
-  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  const type = file.type || EXTENSION_TYPES[extension] || "";
+  const type = uploadType(file, accepted);
   if (type && !isMimeAllowed(type, accepted)) return unsupported(accepted);
-  if (step?.max_file_size_bytes && file.size > step.max_file_size_bytes) return oversized(step.max_file_size_bytes);
+  if (step?.max_file_size_bytes && file.size > step.max_file_size_bytes) return oversized(step.max_file_size_bytes, step.input_format);
   return null;
 }
 
@@ -151,7 +182,7 @@ export function submitProblem(
     const advice = errorAdvice(error);
     if (advice.ownerMustFix) return { title: advice.message, detail: kept, back: true };
     if ((error.status === 413 || error.code === "file_too_large") && step?.max_file_size_bytes) {
-      return oversized(step.max_file_size_bytes);
+      return oversized(step.max_file_size_bytes, step.input_format);
     }
     if (error.status === 415 || error.code === "unsupported_media_type") return unsupported(step?.accepted_mimetypes);
   }
@@ -523,7 +554,9 @@ export class FlowSession {
   chooseFile(file: File): void {
     this.problem = fileProblem(file, this.inputStep());
     if (!this.problem) {
-      const chosen: ChosenFile = { blob: file, filename: file.name, durationMs: null };
+      const type = uploadType(file, this.inputStep()?.accepted_mimetypes);
+      const blob = type === file.type ? file : file.slice(0, file.size, type);
+      const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
       void this.probeDuration?.(file)
         .then((durationMs) => {

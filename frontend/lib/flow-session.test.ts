@@ -11,6 +11,7 @@ import {
   FlowSession,
   availableModes,
   acceptedFormats,
+  fileAccept,
   lastUsedFlow,
   primaryActionLabel,
   speakerLabelsFor,
@@ -786,7 +787,7 @@ test("a chosen file is checked against the flow's types and size before anything
   session.chooseFile(new File(["text"], "protokoll.pdf", { type: "application/pdf" }));
   assert.deepEqual(session.getSnapshot().problem, {
     title: "Filtypen stöds inte.",
-    detail: "Flödet tar emot WebM och MP3.",
+    detail: "Flödet tar emot MP3 och WebM.",
   });
   assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
 
@@ -807,9 +808,80 @@ test("a chosen file is checked against the flow's types and size before anything
   assert.equal(session.getSnapshot().problem, null);
 });
 
+test("a document is sent under the type the flow takes, whatever name the browser gave it", async () => {
+  const { session } = await setup();
+  session.setContract(
+    audioContract({
+      steps_requiring_input: [
+        {
+          step_id: "step-doc",
+          input_format: "document",
+          max_files: 1,
+          max_file_size_bytes: 1024,
+          accepted_mimetypes: ["text/markdown", "text/plain", "application/pdf"],
+        },
+      ],
+    }),
+  );
+  session.selectMode("ladda-upp");
+
+  session.chooseFile(new File(["# Plan"], "underlag.md"));
+  assert.equal(session.getSnapshot().problem, null, "no type from the browser: the name says Markdown");
+  assert.equal(session.getSnapshot().file?.blob.type, "text/markdown", "Eneo refuses a part without the type");
+
+  session.chooseFile(new File(["# Plan"], "Underlag.MD", { type: "text/x-markdown" }));
+  assert.equal(session.getSnapshot().file?.blob.type, "text/markdown", "another spelling of a type the flow takes");
+  assert.equal(session.getSnapshot().file?.filename, "Underlag.MD");
+
+  session.chooseFile(new File(["%PDF"], "plan.pdf", { type: "application/pdf" }));
+  assert.equal(session.getSnapshot().file?.blob.type, "application/pdf");
+
+  session.chooseFile(new File(["img"], "bild.png", { type: "image/png" }));
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filtypen stöds inte.",
+    detail: "Flödet tar emot PDF, text och Markdown.",
+  });
+
+  const big = new File(["x"], "stor.pdf", { type: "application/pdf" });
+  Object.defineProperty(big, "size", { value: 4096 });
+  session.chooseFile(big);
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filen är större än flödet tar emot (högst 1\u00a0kB).",
+    detail: "Välj en mindre fil eller dela upp den.",
+  });
+});
+
+test("the file chooser offers the flow's types by extension too, so the dialog does not grey out a known file", () => {
+  assert.equal(
+    fileAccept(["text/markdown", "application/pdf", "application/vnd.ms-excel", "audio/amr"]),
+    "text/markdown,.md,.markdown,application/pdf,.pdf,application/vnd.ms-excel,.xls,audio/amr,.amr",
+  );
+  assert.equal(fileAccept([]), undefined);
+  assert.equal(fileAccept(undefined), undefined);
+});
+
 test("accepted types are said in plain words", () => {
   assert.equal(acceptedFormats(["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-m4a", "audio/mp4", "audio/webm"]), "MP3, WAV, M4A och WebM");
-  assert.equal(acceptedFormats(["audio/amr"]), "AMR");
+  assert.equal(
+    acceptedFormats([
+      "text/markdown",
+      "text/plain",
+      "application/pdf",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "text/csv",
+      "application/csv",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "application/json",
+      "text/xml",
+      "application/xml",
+    ]),
+    "Word, PDF, PowerPoint, Excel, CSV, text, Markdown, JSON och XML",
+    "documents by the names people know, once each, in one order",
+  );
+  assert.equal(acceptedFormats(["audio/amr"]), ".amr", "an unknown type by its file extension, never an uppercased subtype");
+  assert.equal(acceptedFormats(["application/x-yaml", "application/pdf"]), "PDF och .yaml");
   assert.equal(acceptedFormats([]), null);
 });
 
