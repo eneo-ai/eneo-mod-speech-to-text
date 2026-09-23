@@ -3,7 +3,8 @@
 import { ArrowLeft, ChevronDown, FileText } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +63,15 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
+// Phone width, where the setup's primary action docks at the bottom of the page.
+const PHONE = "(max-width: 767px)";
+const subscribePhone = (onChange: () => void) => {
+  const query = window.matchMedia(PHONE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const isPhone = () => window.matchMedia(PHONE).matches;
+
 /** The tab title follows the state; its own component, so the timer re-renders only this. */
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
   const { phase } = input.snapshot;
@@ -99,6 +109,8 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
@@ -239,6 +251,7 @@ export function FlowInput({
             <SetupWorkspace
               contract={contract}
               input={input}
+              dock={phone ? dockSlot : null}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               unsentRecordings={unsentRecordings}
@@ -257,6 +270,8 @@ export function FlowInput({
           )}
         </section>
       </main>
+      {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its form. */}
+      <div ref={setDockSlot} className="sticky bottom-0 md:hidden" />
     </div>
   );
 }
@@ -302,15 +317,23 @@ function CaptureWorkspace({ input }: { input: Session }) {
   );
 }
 
+/** The action in the page's dock when there is one, else where it stands. */
+function docked(dock: HTMLElement | null, action: ReactElement) {
+  return dock ? createPortal(action, dock) : action;
+}
+
 function SetupWorkspace({
   contract,
   input,
+  dock,
   earlierRuns,
   onOpenRun,
   unsentRecordings,
 }: {
   contract: RunContract;
   input: Session;
+  /** On a phone: the page's bottom edge, where the primary action docks. */
+  dock: HTMLElement | null;
   earlierRuns: readonly FlowRunSummary[];
   onOpenRun: (runId: string) => void;
   unsentRecordings: StoredRecording[];
@@ -399,33 +422,37 @@ function SetupWorkspace({
 
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} />}
 
-      {(mode || modes.length === 0) && (
-        <div
-          data-docked-action
-          className={cn(
-            // On a phone the primary action stays in reach at the bottom, above the safe area; from a tablet up it sits in the flow.
-            "sticky bottom-0 -mx-4 flex flex-col gap-2 border-t border-border bg-background px-4 pt-3",
-            "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:static md:mx-0 md:gap-3 md:border-0 md:bg-transparent md:p-0",
-          )}
-        >
-          <Button
-            type="button"
-            size="lg"
-            className="h-12 w-full rounded-xl px-6 text-[16px]"
-            // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
-            aria-disabled={phase === "starting" || undefined}
-            onClick={primary}
+      {(mode || modes.length === 0) &&
+        docked(
+          dock,
+          <div
+            data-docked-action={dock ? true : undefined}
+            className={cn(
+              "flex flex-col",
+              // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
+              dock
+                ? "gap-2 border-t border-border bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
+                : "gap-3",
+            )}
           >
-            {phase === "starting" ? (
-              <Spinner data-icon="inline-start" aria-hidden />
-            ) : Icon ? (
-              <Icon data-icon="inline-start" aria-hidden />
-            ) : null}
-            {phase === "starting" ? "Startar…" : label}
-          </Button>
-          {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
-        </div>
-      )}
+            <Button
+              type="button"
+              size="lg"
+              className="h-12 w-full rounded-xl px-6 text-[16px]"
+              // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
+              aria-disabled={phase === "starting" || undefined}
+              onClick={primary}
+            >
+              {phase === "starting" ? (
+                <Spinner data-icon="inline-start" aria-hidden />
+              ) : Icon ? (
+                <Icon data-icon="inline-start" aria-hidden />
+              ) : null}
+              {phase === "starting" ? "Startar…" : label}
+            </Button>
+            {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
+          </div>,
+        )}
 
       <EarlierRuns runs={earlierRuns} onOpen={onOpenRun} className="pt-4" />
     </div>
