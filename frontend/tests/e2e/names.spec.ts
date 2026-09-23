@@ -98,16 +98,20 @@ for (const [state, title] of [
 
 test("the login's end is warned of five minutes ahead, and renewed in a new window without leaving the page", async ({ page, context }) => {
   let endsIn = 200;
-  await page.route("**/api/auth/status", (route) =>
-    route.fulfill({
+  let refreshIn: number | undefined;
+  let statusCalls = 0;
+  await page.route("**/api/auth/status", (route) => {
+    statusCalls++;
+    return route.fulfill({
       json: {
         authenticated: true,
         auth_mode: "eneo_sso",
         user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
         session_ends_in: endsIn,
+        ...(refreshIn === undefined ? {} : { refresh_in: refreshIn }),
       },
-    }),
-  );
+    });
+  });
   // Eneo's handoff, as a signed-in browser gets it: straight back to the page the login asked for.
   await context.route("**/api/auth/login?*", (route) => {
     const next = new URL(route.request().url()).searchParams.get("next") ?? "/flows";
@@ -118,13 +122,17 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   await expect(warning).toBeVisible();
   await expect(warning).toContainText(/Inloggningen upphör kl\. \d\d:\d\d/);
 
+  // The renewed login ends later and has a token to keep alive (the old one's keepalive had stopped).
   endsIn = 8 * 60 * 60;
+  refreshIn = 1;
   const popup = context.waitForEvent("page");
   await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
   const window = await popup;
   await window.waitForEvent("close");
   await expect(warning).toBeHidden();
   await expect(page).toHaveURL(/\/flows$/);
+  const renewed = statusCalls;
+  await expect.poll(() => statusCalls - renewed, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
 });
 
 test("a review says when it must be done by", async ({ page }, info) => {

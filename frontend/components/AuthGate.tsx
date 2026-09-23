@@ -39,7 +39,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       }
       return s;
     };
-    const recheck = () => void authStatus().then(observe, () => undefined);
+    // The token keepalive follows the latest status: a renewed login brings a token of its own to refresh,
+    // after the old one's keepalive stopped at the old end.
+    const keepAlive = (s: AuthStatus) => {
+      stopKeepalive?.();
+      stopKeepalive = keepSessionAlive(s, () => authStatus().then(observe));
+    };
+    const recheck = () =>
+      void authStatus().then(
+        (s) => !cancelled && keepAlive(observe(s)),
+        () => undefined,
+      );
     // A login renewed in its own window (or another tab) moves the end for this page too.
     const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
     channel?.addEventListener("message", recheck);
@@ -57,7 +67,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           router.replace("/");
         } else {
           setUser(sessionIdentity);
-          stopKeepalive = keepSessionAlive(s, () => authStatus().then(observe));
+          keepAlive(s);
         }
       })
       .catch(() => {
