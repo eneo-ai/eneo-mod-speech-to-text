@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -33,7 +33,6 @@ import {
   getRunSteps,
   inputFileAudioUrl,
   isReviewCheckpointApproved,
-  listOwnRuns,
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
@@ -47,6 +46,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
+import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
@@ -97,7 +97,8 @@ export default function FlowDetailPage({ params }: PageProps) {
   const { id } = use(params);
   return (
     <AuthGate>
-      <FlowDetail flowId={id} />
+      {/* One page per flow: its session and its earlier runs belong to that flow. */}
+      <FlowDetail key={id} flowId={id} />
     </AuthGate>
   );
 }
@@ -158,7 +159,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
-  const [earlierRuns, setEarlierRuns] = useState<FlowRunSummary[]>([]);
+  // This user's earlier runs of the flow, a page at a time.
+  const [earlier] = useState(() => new EarlierRunsList(flowId));
+  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
   // Why Eneo would not continue the failed run on screen, and whether a new run is the way on.
   const [retryRefusal, setRetryRefusal] = useState<{ message: string; startAgain: boolean } | null>(null);
 
@@ -301,11 +304,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
-  /** Användarens tio senaste körningar av flödet; listan är en genväg och får saknas. */
+  /** Användarens senaste körningar av flödet, från första sidan; listan är en genväg och får saknas. */
   function loadEarlierRuns() {
-    listOwnRuns(flowId)
-      .then((res) => setEarlierRuns(res.items ?? []))
-      .catch(() => undefined);
+    void earlier.reload();
   }
 
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
@@ -604,6 +605,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         notice={runError}
         earlierRuns={earlierRuns}
         onOpenRun={resumeRun}
+        onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
       />
     );

@@ -4,6 +4,9 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { EarlierRuns } from "../components/flow/EarlierRuns";
+import type { EarlierRunsSnapshot } from "./earlier-runs";
+
+const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: false });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
@@ -144,12 +147,12 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   const opened: string[] = [];
   const html = renderToStaticMarkup(
     createElement(EarlierRuns, {
-      runs: [
+      list: listed([
         { id: "run-3", flow_id: "flow-1", status: "running", created_at: today.toISOString() },
         { id: "run-2", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString() },
         { id: "run-t", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), purpose: "test" },
         { id: "run-1", flow_id: "flow-1", status: "failed", created_at: yesterday.toISOString() },
-      ],
+      ]),
       onOpen: (id: string) => opened.push(id),
     }),
   );
@@ -161,7 +164,24 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   assert.match(words, /I går 15:40 Misslyckades Öppna/);
   // Test runs from Eneo's editor are not this user's documents.
   assert.equal(words.match(/I går 15:40/g)?.length, 2);
-  assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { runs: [], onOpen: () => undefined })), "");
+  assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { list: listed([]), onOpen: () => undefined })), "");
+  const allShown = renderToStaticMarkup(
+    createElement(EarlierRuns, { list: listed([{ id: "run-1", flow_id: "flow-1", status: "completed" }]), onOpen: () => undefined, onMore: () => undefined }),
+  );
+  assert.doesNotMatch(allShown, /Visa fler körningar/, "no more to show");
+});
+
+test("more earlier runs than a page: 'Visa fler körningar' below the list, with its own waiting and failure", () => {
+  const run = { id: "run-1", flow_id: "flow-1", status: "completed", created_at: new Date().toISOString() };
+  const render = (state: Partial<EarlierRunsSnapshot>) =>
+    renderToStaticMarkup(
+      createElement(EarlierRuns, { list: { ...listed([run]), hasMore: true, ...state }, onOpen: () => undefined, onMore: () => undefined }),
+    );
+  assert.match(render({}), />Visa fler körningar<\/button>/);
+  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>Hämtar körningar…<\/button>/);
+  const failed = render({ failed: true });
+  assert.match(failed, /Fler körningar kunde inte hämtas\./);
+  assert.match(failed, />Visa fler körningar<\/button>/, "another try");
 });
 
 test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {
@@ -178,9 +198,13 @@ test("earlier runs ask Eneo for the user's own runs only, never a colleague's", 
     globalThis.fetch = original;
   });
 
-  await listOwnRuns("flow-1");
+  await listOwnRuns("flow-1", { limit: 10, offset: 0 });
+  await listOwnRuns("flow-1", { limit: 10, offset: 10 });
 
-  assert.deepEqual(urls, ["/api/eneo/flows/flow-1/runs/?mine=true&limit=10&offset=0"]);
+  assert.deepEqual(urls, [
+    "/api/eneo/flows/flow-1/runs/?mine=true&limit=10&offset=0",
+    "/api/eneo/flows/flow-1/runs/?mine=true&limit=10&offset=10",
+  ]);
 });
 
 test("folded panels stay hidden: no display utility may override the closed content's hidden attribute", () => {

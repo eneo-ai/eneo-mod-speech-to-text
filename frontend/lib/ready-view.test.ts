@@ -64,7 +64,7 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
       problem: { title: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.", sent: true },
       onCreate: noop,
       onDiscard: noop,
-      earlierRuns: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }],
+      earlierRuns: { runs: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }], hasMore: false, loading: false, failed: false },
       onOpenRun: noop,
     }),
   );
@@ -79,7 +79,7 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
       problem: null,
       onCreate: noop,
       onDiscard: noop,
-      earlierRuns: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }],
+      earlierRuns: { runs: [{ id: "run-1", flow_id: "flow-1", status: "completed", created_at: "2026-09-23T10:12:00Z" }], hasMore: false, loading: false, failed: false },
       onOpenRun: noop,
     }),
   );

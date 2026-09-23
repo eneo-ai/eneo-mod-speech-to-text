@@ -1,9 +1,10 @@
 "use client";
 
 import { CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import type { FlowRunSummary } from "@/lib/api";
+import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
 import { cn } from "@/lib/utils";
@@ -14,21 +15,33 @@ const OUTCOME: Record<string, [LucideIcon, string, string]> = {
   cancelled: [MinusCircle, "text-muted-foreground", "Öppna"],
 };
 
-/** This flow's latest runs, so yesterday's document is one tap away. */
+/** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */
 export function EarlierRuns({
-  runs,
+  list,
   onOpen,
+  onMore,
   className,
 }: {
-  runs: readonly FlowRunSummary[];
+  list: EarlierRunsSnapshot;
   onOpen: (runId: string) => void;
+  /** "Visa fler körningar": the next page. */
+  onMore?: () => void;
   className?: string;
 }) {
   // Test runs started from Eneo's editor are not this user's documents.
-  const shown = runs.filter((run) => run.purpose !== "test");
-  if (shown.length === 0) return null;
+  const shown = list.runs.filter((run) => run.purpose !== "test");
+  const section = useRef<HTMLElement>(null);
+  // After "Visa fler körningar", focus goes to the first run it added.
+  const firstNew = useRef<number | null>(null);
+  useEffect(() => {
+    const index = firstNew.current;
+    if (index === null || shown.length <= index) return;
+    firstNew.current = null;
+    section.current?.querySelectorAll<HTMLButtonElement>("[data-open-run]")[index]?.focus();
+  }, [shown.length]);
+  if (shown.length === 0 && !list.hasMore) return null;
   return (
-    <section aria-labelledby="earlier-runs" className={cn("flex flex-col gap-3", className)}>
+    <section ref={section} aria-labelledby="earlier-runs" className={cn("flex flex-col gap-3", className)}>
       <h2 id="earlier-runs" className="text-lg font-semibold tracking-tight">
         Tidigare körningar
       </h2>
@@ -49,7 +62,7 @@ export function EarlierRuns({
                 <ItemDescription>{runStatusLabel(run.status)}</ItemDescription>
               </ItemContent>
               <ItemActions>
-                <Button type="button" variant="outline" onClick={() => onOpen(run.id)}>
+                <Button type="button" variant="outline" data-open-run onClick={() => onOpen(run.id)}>
                   {action}
                   <span className="sr-only">, körningen {when}</span>
                 </Button>
@@ -58,6 +71,23 @@ export function EarlierRuns({
           );
         })}
       </ItemGroup>
+      {list.hasMore && onMore && (
+        <div className="flex flex-col items-start gap-2">
+          {list.failed && <p className="text-[13px] text-ink-soft">Fler körningar kunde inte hämtas. Försök igen.</p>}
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11"
+            disabled={list.loading}
+            onClick={() => {
+              firstNew.current = shown.length;
+              onMore();
+            }}
+          >
+            {list.loading ? "Hämtar körningar…" : "Visa fler körningar"}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

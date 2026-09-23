@@ -920,8 +920,8 @@ export async function redispatchRun(flowId: string, runId: string) {
  * out, which Eneo would otherwise list for a space admin or the flow's owner;
  * a module session counts as its signed-in user.
  */
-export async function listOwnRuns(flowId: string, limit = 10) {
-  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: "0" });
+export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { limit?: number; offset?: number } = {}) {
+  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: String(offset) });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );

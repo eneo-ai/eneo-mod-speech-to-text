@@ -18,7 +18,7 @@ import { AudioPlayer, type PlayerSource } from "@/components/flow/AudioPlayer";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
-import type { FlowRunSummary } from "@/lib/api";
+import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
@@ -58,8 +58,9 @@ export function ReadyPanel({
   onCreate,
   onContinue,
   onDiscard,
-  earlierRuns = [],
+  earlierRuns,
   onOpenRun,
+  onMoreRuns,
 }: {
   recording: StoredRecording;
   persistent: boolean | null;
@@ -69,8 +70,9 @@ export function ReadyPanel({
   onContinue?: () => void;
   onDiscard: () => void;
   /** Shown once Eneo turns out to have a run for the recording already. */
-  earlierRuns?: readonly FlowRunSummary[];
+  earlierRuns?: EarlierRunsSnapshot;
   onOpenRun?: (runId: string) => void;
+  onMoreRuns?: () => void;
 }) {
   // Eneo already has it: the run is among the earlier runs, and the copy here can go.
   const sent = problem?.sent === true;
@@ -115,7 +117,7 @@ export function ReadyPanel({
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {problem && <ProblemAlert problem={problem} />}
-      {sent && onOpenRun && <EarlierRuns runs={earlierRuns} onOpen={onOpenRun} />}
+      {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button type="button" size="lg" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onCreate}>
