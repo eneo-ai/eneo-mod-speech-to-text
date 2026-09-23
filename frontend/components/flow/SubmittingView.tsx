@@ -72,8 +72,7 @@ function UploadProgressCard({
     <div className="paper-card p-4 md:p-5">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="min-w-0">
-          <div className="eyebrow-sm text-primary">Uppladdning</div>
-          <div className="text-[14px] md:text-[15px] font-medium text-ink truncate mt-1">
+          <div className="text-[14px] md:text-[15px] font-medium text-ink truncate">
             {submission.filename}
           </div>
         </div>

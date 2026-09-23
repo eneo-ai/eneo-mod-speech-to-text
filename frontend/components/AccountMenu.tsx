@@ -71,7 +71,7 @@ export function AccountMenu() {
         </DropdownMenuLabel>
 
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="eyebrow-sm px-2.5 py-2 font-normal">
+        <DropdownMenuLabel className="px-2.5 py-2 text-xs font-normal text-ink-mute">
           Tema
         </DropdownMenuLabel>
         <DropdownMenuRadioGroup

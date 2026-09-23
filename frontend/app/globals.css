@@ -134,29 +134,6 @@
     font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
   }
 
-  .eyebrow {
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-    font-size: 10px;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: hsl(var(--ink-mute));
-  }
-
-  .eyebrow-sm {
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-    font-size: 9px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: hsl(var(--ink-mute));
-  }
-
-  /* In the new design, <em> is regular weight + primary color, not italic */
-  .primary-em {
-    font-style: normal;
-    color: hsl(var(--primary));
-    font-weight: inherit;
-  }
-
   .quiet-em {
     font-style: normal;
     font-weight: 400;

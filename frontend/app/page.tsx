@@ -83,9 +83,8 @@ export default function LoginPage() {
       >
         <div className={READING}>
           <div className="space-y-2 mb-8">
-            <div className="eyebrow">v0.4 · Demo</div>
             <h1 className="text-[30px] md:text-[36px] font-semibold tracking-[-0.025em] leading-[1.05]">
-              Spela in samtal — <span className="primary-em">i fickformat</span>
+              Gör samtal och filer till text och dokument.
             </h1>
             <p className="text-[14px] text-ink-soft leading-relaxed pt-1">
               {authMode === "access_code"
