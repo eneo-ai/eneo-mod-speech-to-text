@@ -3,7 +3,7 @@
  * these would pass the app's faults too. They run once, at one width.
  */
 import { expect, test } from "@playwright/test";
-import { axe, blocking, tabWalk } from "./checks";
+import { axe, blocking, focusStop, tabWalk } from "./checks";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the checks' own tests run once"));
 
@@ -25,4 +25,20 @@ test("a WCAG violation blocks the gate whatever axe calls its impact", async ({ 
   await page.setContent(`<html lang="sv" xml:lang="en"><head><title>Prov</title></head><body><main><h1>Prov</h1></main></body></html>`);
   const scan = await axe(page);
   expect(blocking(scan.violations).map((v) => v.id)).toContain("html-xml-lang-mismatch");
+});
+
+test("a focus outline that cannot be seen is not taken for a focus indicator", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      body { background: #fff; }
+      button { background: #fff; color: #111; border: 1px solid #767676; outline: none; }
+      #white:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+      #black:focus-visible { outline: 3px solid #111; outline-offset: 2px; }
+    </style>
+    <p><button id="white">Vit ring</button></p>
+    <p><button id="black">Svart ring</button></p>`);
+  await page.keyboard.press("Tab");
+  expect((await focusStop(page))?.indicator, "white on white").toBe(false);
+  await page.keyboard.press("Tab");
+  expect((await focusStop(page))?.indicator, "black on white").toBe(true);
 });

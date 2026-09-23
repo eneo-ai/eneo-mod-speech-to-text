@@ -203,8 +203,11 @@ export function endlessAnimations(page: Page) {
 export interface FocusStop {
   key: string;
   label: string;
-  /** False when nothing about the element or its near ancestors changes with focus. */
+  /** False unless focus changes, by 3:1 or more, at least a one-pixel line's worth around the element. */
   indicator: boolean;
+  /** CSS px² that focus changes by 3:1 or more, and the element's perimeter it is held against. */
+  indicatorArea: number;
+  perimeter: number;
   focusVisible: boolean;
   /** "full": other content hides it all (WCAG 2.4.11); "partial": a pinned bar covers part of it (house bar). */
   obscured: "none" | "partial" | "full";
@@ -222,13 +225,77 @@ export interface FocusStop {
   right: number;
 }
 
-/** Where focus is now, or null when it left the page (the end of the tab order). */
-export function focusStop(page: Page): Promise<FocusStop | null> {
+/**
+ * Where focus is now, or null when it left the page (the end of the tab order).
+ * The focus indicator is measured as rendered: screenshots of the indicator's
+ * owner (the outermost near box whose look changes) with and without focus, and
+ * the pixels that change by 3:1 or more must add up to at least a one-pixel
+ * line around the element. An outline the eye cannot see is no indicator.
+ */
+export async function focusStop(page: Page): Promise<FocusStop | null> {
+  const stop = await probeFocus(page);
+  if (!stop) return null;
+  const { owner, perimeter, ...rest } = stop;
+  const area = owner === null ? 0 : await seenChange(page, owner);
+  return { ...rest, indicator: area >= perimeter, indicatorArea: Math.round(area), perimeter: Math.round(perimeter) };
+}
+
+type Rect = { x: number; y: number; width: number; height: number };
+
+/** How much of the owner's rendering focus changes by 3:1 or more, in CSS px². */
+async function seenChange(page: Page, owner: Rect): Promise<number> {
+  // Outlines and rings sit up to a few pixels outside the box.
+  const viewport = page.viewportSize()!;
+  const x = Math.max(0, Math.floor(owner.x - 6)), y = Math.max(0, Math.floor(owner.y - 6));
+  const clip = {
+    x,
+    y,
+    width: Math.min(viewport.width, Math.ceil(owner.x + owner.width + 6)) - x,
+    height: Math.min(viewport.height, Math.ceil(owner.y + owner.height + 6)) - y,
+  };
+  if (clip.width <= 0 || clip.height <= 0) return 0;
+  const shot = () => page.screenshot({ clip, animations: "disabled", caret: "hide" }).then((png) => png.toString("base64"));
+  const withFocus = await shot();
+  await page.evaluate(() => (window as unknown as { a11yRest: () => Promise<void> }).a11yRest());
+  const without = await shot();
+  await page.evaluate(() => (document.querySelector("[data-a11y-current]") as HTMLElement | null)?.focus({ preventScroll: true }));
+  return page.evaluate(
+    async ([a, b, clipWidth]) => {
+      const pixels = async (base64: string) => {
+        const image = new Image();
+        image.src = `data:image/png;base64,${base64}`;
+        await image.decode();
+        const canvas = document.createElement("canvas");
+        canvas.width = image.width;
+        canvas.height = image.height;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(image, 0, 0);
+        return { data: context.getImageData(0, 0, image.width, image.height).data, width: image.width };
+      };
+      const [focused, resting] = await Promise.all([pixels(a), pixels(b)]);
+      const channel = (v: number) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4);
+      const luminance = (d: Uint8ClampedArray, i: number) => 0.2126 * channel(d[i]) + 0.7152 * channel(d[i + 1]) + 0.0722 * channel(d[i + 2]);
+      let strong = 0;
+      for (let i = 0; i < focused.data.length; i += 4) {
+        const [hi, lo] = [luminance(focused.data, i), luminance(resting.data, i)].sort((p, q) => q - p);
+        if ((hi + 0.05) / (lo + 0.05) >= 3) strong++;
+      }
+      // Screenshot pixels per CSS pixel: the device pixel ratio.
+      const scale = focused.width / clipWidth;
+      return strong / (scale * scale);
+    },
+    [withFocus, without, clip.width] as const,
+  );
+}
+
+function probeFocus(page: Page) {
   return page.evaluate(async () => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body || el === document.documentElement) return null;
     if (el.closest("nextjs-portal")) return null;
     el.dataset.a11yStop ??= String(Math.random()).slice(2);
+    document.querySelectorAll("[data-a11y-current]").forEach((e) => e.removeAttribute("data-a11y-current"));
+    el.setAttribute("data-a11y-current", "");
     type Rgba = [number, number, number, number];
     const rgba = (color: string): Rgba => {
       const n = (color.match(/[\d.]+/g) ?? []).map(Number);
@@ -248,6 +315,18 @@ export function focusStop(page: Page): Promise<FocusStop | null> {
       return own[3] >= 0.99 ? own : over(own, background(e.parentElement));
     };
     interface Look { outline: string; outlineColor: Rgba; shadow: string; background: Rgba; border: Rgba; text: Rgba; decoration: string }
+    // How to take focus off the element without closing what it is in: a menu or picker closes when its
+    // item loses focus, so its item gives focus to the list itself, or to an item two or more rows away.
+    const restOf = async (target: HTMLElement) => {
+      const list = target.closest<HTMLElement>('[role="menu"], [role="listbox"]');
+      if (!list) return async () => target.blur();
+      const items = Array.from(list.querySelectorAll<HTMLElement>(`[role="${target.getAttribute("role")}"]`));
+      const far = items.find((item) => Math.abs(items.indexOf(item) - items.indexOf(target)) >= 2) ?? items.find((item) => item !== target);
+      return async () => {
+        list.focus({ preventScroll: true });
+        if (document.activeElement === target) far?.focus({ preventScroll: true });
+      };
+    };
     // How the element and its near ancestors look once their colour transitions end.
     const look = async (from: HTMLElement): Promise<Look[]> => {
       const chain: HTMLElement[] = [];
@@ -270,28 +349,17 @@ export function focusStop(page: Page): Promise<FocusStop | null> {
       });
     };
     const focusVisible = el.matches(":focus-visible");
+    const chain: HTMLElement[] = [];
+    for (let e: HTMLElement | null = el, i = 0; e && e !== document.body && i < 5; e = e.parentElement, i++) chain.push(e);
     const focused = await look(el);
-    // A menu or picker closes when its item loses focus, so an item compares with an unfocused sibling.
-    const sibling = el
-      .closest('[role="menu"], [role="listbox"]')
-      ?.querySelector<HTMLElement>(`[role="${el.getAttribute("role")}"]:not(:focus)`);
-    let resting: Look[];
-    if (sibling) resting = await look(sibling);
-    else {
-      el.blur();
-      resting = await look(el);
-      el.focus({ preventScroll: true });
-    }
-    // Focus is seen when an outline or shadow appears or changes shape, or a colour changes by 3:1 or more
-    // (a 1.1:1 tint or a black outline turning navy is not seen).
-    const indicator = focused.some((now, i) => {
-      const was = resting[i];
-      if (!was) return false;
-      if (now.outline !== "none" && (now.outline !== was.outline || contrast(now.outlineColor, was.outlineColor) >= 3)) return true;
-      if (now.shadow !== "none" && now.shadow !== was.shadow) return true;
-      if (now.decoration !== was.decoration) return true;
-      return [contrast(now.background, was.background), contrast(now.border, was.border), contrast(now.text, was.text)].some((c) => c >= 3);
-    });
+    (window as unknown as { a11yRest: () => Promise<void> }).a11yRest = await restOf(el);
+    await (window as unknown as { a11yRest: () => Promise<void> }).a11yRest();
+    const resting = await look(el);
+    el.focus({ preventScroll: true });
+    // The indicator's owner: the outermost of the element and its near ancestors whose look changes with
+    // focus (a card's ring for its radio, a field group's edge for its input). The screenshots measure it.
+    const owner = chain.findLast((_, i) => resting[i] && JSON.stringify(focused[i]) !== JSON.stringify(resting[i]));
+    const box = owner?.getBoundingClientRect();
 
     const r = el.getBoundingClientRect();
     const x0 = Math.max(r.left, 0), x1 = Math.min(r.right, innerWidth);
@@ -326,9 +394,12 @@ export function focusStop(page: Page): Promise<FocusStop | null> {
     return {
       key: el.dataset.a11yStop!,
       label: `${el.getAttribute("role") ?? el.tagName.toLowerCase()} "${name.trim().replace(/\s+/g, " ").slice(0, 60)}"`,
-      indicator,
+      indicator: false,
+      owner: box ? { x: box.left, y: box.top, width: box.width, height: box.height } : null,
+      // A one-pixel line around the element, in CSS px².
+      perimeter: 2 * (Math.min(r.width, innerWidth) + Math.min(r.height, innerHeight)),
       focusVisible,
-      obscured: points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none",
+      obscured: (points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none") as FocusStop["obscured"],
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,
