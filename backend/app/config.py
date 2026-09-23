@@ -98,7 +98,9 @@ def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
     """The logo file at ``raw_path`` if it is an SVG or a PNG, as its name says; otherwise logs why and gives None."""
     path = Path(raw_path)
     try:
-        content = path.read_bytes()
+        # Read at most one byte past the limit, so a large file mounted by mistake is never loaded whole.
+        with path.open("rb") as file:
+            content = file.read(_LOGO_MAX_BYTES + 1)
     except OSError as error:
         logger.error("%s=%s cannot be read (%s); the organisation's name is shown instead.", variable, raw_path, error.strerror)
         return None

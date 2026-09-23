@@ -123,7 +123,8 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
         media_type=logo.media_type,
         headers={
             "X-Content-Type-Options": "nosniff",
-            "Cache-Control": "public, max-age=3600",
+            # Revalidate every time: a replaced logo shows after the restart that loads it.
+            "Cache-Control": "no-cache",
             # An SVG opened on its own, not through <img>, must run nothing in the module's origin.
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
         },

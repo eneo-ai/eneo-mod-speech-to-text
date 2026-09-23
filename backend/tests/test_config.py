@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 from app.config import FlowListScope, Organization, load_settings
 
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
 SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
 
 
@@ -239,6 +239,30 @@ class OrganizationTests(unittest.TestCase):
             with self.subTest(name=name), self.assertLogs("eneo_config", level="ERROR"):
                 settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=self.file(name, content))
             self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
+
+    def test_a_large_file_is_refused_without_reading_it_whole(self) -> None:
+        big = self.file("logo.svg", b'<svg xmlns="http://www.w3.org/2000/svg">' + b" " * (3 * 2**20) + b"</svg>")
+        reads: list[int] = []
+        real_open = Path.open
+
+        def spying_open(path: Path, *args, **kwargs):
+            handle = real_open(path, *args, **kwargs)
+            if str(path) != big:
+                return handle
+            real_read = handle.read
+
+            def read(size: int = -1) -> bytes:
+                reads.append(size)
+                return real_read(size)
+
+            handle.read = read  # type: ignore[method-assign]
+            return handle
+
+        with patch.object(Path, "open", spying_open), self.assertLogs("eneo_config", level="ERROR") as logs:
+            settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=big)
+        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
+        self.assertIn("larger than 1 MiB", logs.output[0])
+        self.assertEqual(reads, [2**20 + 1], "the read stops one byte past the limit")
 
     def test_a_missing_dark_logo_keeps_the_light_one(self) -> None:
         with self.assertLogs("eneo_config", level="ERROR"):

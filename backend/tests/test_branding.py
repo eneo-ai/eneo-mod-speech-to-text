@@ -16,7 +16,7 @@ from app import main  # noqa: E402
 from app.config import DEFAULT_ORGANIZATION, LogoFile, Organization  # noqa: E402
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
-PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
 
 
 class BrandingRouteTests(unittest.TestCase):
@@ -60,7 +60,7 @@ class BrandingRouteTests(unittest.TestCase):
         self.assertEqual(dark.headers["content-type"], "image/png")
         for response in (light, dark):
             self.assertEqual(response.headers["x-content-type-options"], "nosniff")
-            self.assertEqual(response.headers["cache-control"], "public, max-age=3600")
+            self.assertEqual(response.headers["cache-control"], "no-cache")
             # An SVG opened on its own runs nothing in the module's origin.
             self.assertIn("sandbox", response.headers["content-security-policy"])
 
