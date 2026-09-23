@@ -9,6 +9,7 @@
  */
 
 import { baseMimetype, extensionForAudioMime } from "./upload";
+import { withWebmDuration } from "./webm-duration";
 
 export type RecordingState =
   | "recording"
@@ -311,21 +312,28 @@ export class RecordingStore {
     });
   }
 
-  /** Each part with audio as one file, in part order. */
+  /** Each part with audio as one file, in part order; WebM carries its recorded duration. */
   readParts(id: string): Promise<RecordingFile[]> {
     return this.serial(async () => {
       const recording = await this.load(id);
       if (!recording) return [];
+      const type = baseMimetype(recording.mimeType);
       const files = await Promise.all(
         recording.parts.map(async (part) => {
           // Overflow is sticky, so its chunks always follow the database's.
-          const chunks = [
+          const data: Array<Blob | ArrayBuffer | Uint8Array> = [
             ...(await this.backend.chunks(id, part.index)),
             ...(await this.overflow.chunks(id, part.index)),
-          ];
+          ].map((chunk) => chunk.data);
+          // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
+          if (data.length > 0) {
+            const first = data[0];
+            const header = new Uint8Array(first instanceof Blob ? await first.arrayBuffer() : first);
+            data[0] = withWebmDuration(header, part.durationMs) ?? first;
+          }
           return {
             index: part.index,
-            blob: new Blob(chunks.map((c) => c.data), { type: baseMimetype(recording.mimeType) }),
+            blob: new Blob(data, { type }),
             filename: recordingFilename(recording, part.index),
           };
         }),
