@@ -278,3 +278,39 @@ test("recording: the account menu steps aside for the mode on every width, so si
   assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay, asked through onLeave");
   await view.unmount();
 });
+
+test("the way back: a link to the flow list named Alla flöden, and a leave guard still decides first", async () => {
+  const { createElement } = await import("react");
+  const { BackToFlows } = await import("../components/flow/BackToFlows");
+  const asked: boolean[] = [];
+  const view = await mount(
+    await signedIn(
+      createElement(BackToFlows, {
+        onLeave: (event: import("react").MouseEvent) => {
+          event.preventDefault();
+          asked.push(true);
+        },
+      }),
+      [],
+    ),
+  );
+  const links = [...view.container.querySelectorAll("a")];
+  assert.equal(links.length, 1);
+  assert.equal(links[0].getAttribute("href"), "/flows");
+  assert.equal(links[0].textContent?.trim(), "Alla flöden");
+
+  const click = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+  await view.act(async () => void links[0].dispatchEvent(click));
+  assert.deepEqual(asked, [true], "the guard is asked");
+  assert.equal(click.defaultPrevented, true, "and can keep the page");
+  await view.unmount();
+});
+
+test("the phone top bar's back chevron is named like every other way back", async () => {
+  const { createElement } = await import("react");
+  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte" }), []));
+  const chevron = view.container.querySelector('header a[aria-label]');
+  assert.equal(chevron?.getAttribute("aria-label"), "Alla flöden");
+  await view.unmount();
+});

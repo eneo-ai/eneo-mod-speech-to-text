@@ -137,7 +137,7 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   assert.match(words, /3f1c2a9e-0000-4000-8000-000000000001/);
   assert.match(words, /Kopiera körnings-ID/);
   assert.match(words, /Försök igen/);
-  assert.match(words, /Till flödena/);
+  assert.match(words, /Alla flöden/);
   assert.doesNotMatch(text(render(undefined)), /Försök igen/);
 });
 

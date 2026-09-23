@@ -1,11 +1,10 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FRAME, ReadingMain } from "@/components/frame";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -71,12 +70,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
         </h1>
         <p className="text-[17px] leading-relaxed text-ink-soft">{detail}</p>
         <div className="flex flex-wrap gap-3">
-          <Button asChild className="h-11">
-            <Link href="/flows">
-              <ArrowLeft data-icon="inline-start" aria-hidden />
-              Till flödena
-            </Link>
-          </Button>
+          <BackToFlows variant="default" size="default" className="h-11" />
           {retry && (
             <Button type="button" variant="outline" className="h-11" onClick={() => window.location.reload()}>
               Försök igen

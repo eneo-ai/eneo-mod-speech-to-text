@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Loader2, RotateCcw } from "lucide-react";
+import { Loader2, RotateCcw } from "lucide-react";
 import { ReadingMain } from "@/components/frame";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -131,12 +131,7 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
           <RotateCcw data-icon="inline-start" aria-hidden />
           Försök igen
         </Button>
-        <Button asChild variant="outline">
-          <Link href="/flows">
-            <ArrowLeft data-icon="inline-start" aria-hidden />
-            Till flödena
-          </Link>
-        </Button>
+        <BackToFlows variant="outline" size="default" />
       </div>
     </ReadingMain>
   );

@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowLeft, ChevronDown, FileText } from "lucide-react";
-import Link from "next/link";
+import { ChevronDown, FileText } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
@@ -21,6 +20,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { ClassificationNote } from "@/components/flow/ClassificationNote";
 import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
@@ -204,14 +204,7 @@ export function FlowInput({
         )}
       >
         <div className={cn("flex flex-col gap-5", group === "capture" && "lg:min-h-0 lg:overflow-y-auto lg:pb-2")}>
-          <Link
-            href="/flows"
-            onClick={onLeave}
-            className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:inline-flex"
-          >
-            <ArrowLeft aria-hidden className="size-4" />
-            Flöden
-          </Link>
+          <BackToFlows onLeave={onLeave} flush className="hidden lg:inline-flex" />
           <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
             {published.name}
           </h1>

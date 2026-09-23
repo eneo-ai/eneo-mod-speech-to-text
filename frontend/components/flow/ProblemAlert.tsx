@@ -1,7 +1,7 @@
-import { ArrowLeft, CircleAlert } from "lucide-react";
-import Link from "next/link";
+import { CircleAlert } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { Problem } from "@/lib/flow-session";
 
 /** What happened and what to do next, with "Försök igen" when trying again can help. */
@@ -20,12 +20,7 @@ export function ProblemAlert({ problem, onRetry }: { problem: Problem; onRetry?:
             </Button>
           )}
           {problem.back && (
-            <Button asChild variant="outline" className="h-11">
-              <Link href="/flows">
-                <ArrowLeft data-icon="inline-start" aria-hidden />
-                Till flödena
-              </Link>
-            </Button>
+            <BackToFlows variant="outline" size="default" className="h-11" />
           )}
         </div>
       )}

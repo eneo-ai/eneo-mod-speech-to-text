@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
+import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -140,15 +140,10 @@ export function RunFailure({
               Starta en ny körning
             </Button>
           )}
-          <Button
-            asChild
+          <BackToFlows
             variant={offerStartAgain || (offerRetry && run.error?.retryable) ? "outline" : "default"}
-          >
-            <Link href="/flows">
-              <ArrowLeft data-icon="inline-start" aria-hidden />
-              Till flödena
-            </Link>
-          </Button>
+            size="default"
+          />
         </div>
         {offerRetry && (
           <p className="text-sm text-muted-foreground">

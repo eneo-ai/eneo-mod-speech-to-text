@@ -38,7 +38,7 @@ export function FlowTopBar({
         {!locked && (
           <Link
             href="/flows"
-            aria-label="Till flödena"
+            aria-label="Alla flöden"
             onClick={onLeave}
             className="grid size-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
