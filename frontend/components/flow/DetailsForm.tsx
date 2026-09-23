@@ -123,7 +123,7 @@ export function DetailsForm({
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
-                  className="h-11 rounded-xl text-[16px]"
+                  className="rounded-xl text-[16px]"
                 />
               )}
               {help && (

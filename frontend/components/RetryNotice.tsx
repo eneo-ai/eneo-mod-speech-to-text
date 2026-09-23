@@ -28,7 +28,7 @@ export function RetryNotice({ wait }: { wait: RetryWait | null }) {
           <p className="text-[13px] text-ink-soft">
             Det gick inte att skicka just nu. Försöker igen om {seconds} s.
           </p>
-          <Button type="button" variant="outline" className="h-11" onClick={wait.retryNow}>
+          <Button type="button" variant="outline" onClick={wait.retryNow}>
             Försök nu
           </Button>
         </div>

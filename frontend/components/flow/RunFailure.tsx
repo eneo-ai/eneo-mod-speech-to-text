@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { ReadingMain } from "@/components/frame";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
@@ -71,7 +72,7 @@ export function RunFailure({
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pb-12 pt-2 md:px-8">
+    <ReadingMain id="innehall" className="gap-8">
       <header className="flex flex-col gap-1">
         <h1
           ref={heading}
@@ -158,7 +159,7 @@ export function RunFailure({
       </div>
 
       <SupportDetails runId={run.id} failure={failure} code={run.error?.code} />
-    </main>
+    </ReadingMain>
   );
 }
 

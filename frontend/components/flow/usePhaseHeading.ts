@@ -2,9 +2,13 @@
 
 import { useEffect, useRef } from "react";
 
-/** The heading a phase's view focuses; the ring shows when focus came from the keyboard. */
+/**
+ * The heading a phase's view focuses so a screen reader starts there. It is not
+ * a control (tabIndex -1), so it draws no ring: a browser counts the focus call
+ * as keyboard focus and would frame the headline on every visit.
+ */
 export const PHASE_HEADING =
-  "rounded-sm text-balance text-[26px] font-semibold leading-tight tracking-[-0.02em] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background md:text-[30px]";
+  "text-balance text-[26px] font-semibold leading-tight tracking-[-0.02em] outline-none md:text-[30px]";
 
 /**
  * A phase's view announces itself: the tab title names the state, and focus

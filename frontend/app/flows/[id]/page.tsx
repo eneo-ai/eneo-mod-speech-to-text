@@ -3,7 +3,7 @@
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
 import Link from "next/link";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FRAME, FRAME_WIDTH, ReadingMain } from "@/components/frame";
+import { FRAME, ReadingMain } from "@/components/frame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -70,14 +70,18 @@ import {
   getSpeakerMappingParticipants,
   getSpeakerMappingSourceStep,
   isSpeakerMappingCheckpoint,
+  namingRefusal,
   proposalNameToLabel,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
+  withSplitLabels,
   type SpeakerMappingRow,
 } from "@/lib/speaker-mapping";
-import { firstSegmentForSpeaker, speakerDisplayLabel } from "@/lib/transcript";
-import { SpeakerMappingEditor } from "@/components/SpeakerMappingEditor";
+import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
+import { applyCorrections } from "@/lib/transcript-corrections";
+import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
 import {
+  SpeakerMark,
   TranscriptPlayer,
   type TranscriptPlayerHandle,
 } from "@/components/TranscriptPlayer";
@@ -437,7 +441,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function onSaveEdit(
     checkpoint: FlowRunReviewCheckpointPublic,
     editedValue: ReviewEditedValue,
-  ): Promise<FlowRunReviewCheckpointPublic | null> {
+    describe: (err: unknown) => string = friendlyError,
+  ): Promise<FlowRunReviewCheckpointPublic | { error: string }> {
     setRunError(null);
     try {
       const updated = await editReviewCheckpoint(
@@ -457,7 +462,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
       );
       return updated;
     } catch (err) {
-      setRunError(friendlyError(err));
+      const message = describe(err);
+      setRunError(message);
       // Vid t.ex. stale revision: hämta aktuell checkpoint så UI:t synkar om
       // formuläret mot serverns version innan användaren försöker igen.
       const latest = await getActiveReviewCheckpoint(
@@ -471,7 +477,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
             : prev,
         );
       }
-      return null;
+      return { error: message };
     }
   }
 
@@ -668,20 +674,24 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return (
       <>
         {topBar}
-        {/* The result's views bring their own gutters; the frame gives them its width. */}
-        <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
-          <RunResult
-            flowId={flowId}
-            flowName={published.name}
-            run={run.run}
-            steps={steps}
-            stepResults={run.steps}
-            files={files}
-            showTranscript={transcribed}
-            audio={inputStep?.input_format?.toLowerCase() === "audio"}
-            onNewRecording={onRunAgain}
-          />
-        </div>
+      <RunResult
+          flowId={flowId}
+          flowName={published.name}
+          run={run.run}
+          steps={steps}
+          stepResults={run.steps}
+          files={files}
+          showTranscript={transcribed}
+          audio={inputStep?.input_format?.toLowerCase() === "audio"}
+          onNewRecording={onRunAgain}
+          onRegenerated={(regenerated) => {
+            // The new run is followed like any other, from its progress to its own result.
+            setRunError(null);
+            writeRunIdToUrl(regenerated.id);
+            setRun({ kind: "running", run: regenerated, graph: null });
+            void follow(regenerated.id);
+          }}
+        />
       </>
     );
   }
@@ -693,22 +703,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
   return (
     <>
       {topBar}
-      <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
-        <RunFailure
-          flowId={flowId}
-          flowName={published.name}
-          run={run.run}
-          failure={failure}
-          steps={steps}
-          stepResults={run.steps}
-          files={files}
-          showTranscript={transcribed}
-          error={runError}
-          refusal={retryRefusal}
-          onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-          onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-        />
-      </div>
+      <RunFailure
+        flowId={flowId}
+        flowName={published.name}
+        run={run.run}
+        failure={failure}
+        steps={steps}
+        stepResults={run.steps}
+        files={files}
+        showTranscript={transcribed}
+        error={runError}
+        refusal={retryRefusal}
+        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+      />
     </>
   );
 }
@@ -734,7 +742,8 @@ function ReviewView({
   onSaveEdit: (
     cp: FlowRunReviewCheckpointPublic,
     editedValue: ReviewEditedValue,
-  ) => Promise<FlowRunReviewCheckpointPublic | null>;
+    describe?: (err: unknown) => string,
+  ) => Promise<FlowRunReviewCheckpointPublic | { error: string }>;
   onReject: (cp: FlowRunReviewCheckpointPublic, reason: string) => Promise<void>;
 }) {
   const payload = (checkpoint.current_payload_json as Json | null) ?? null;
@@ -742,6 +751,11 @@ function ReviewView({
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
+  // The mapping step's own proposal (name, confidence, evidence), before anyone edited it.
+  const modelProposals = useMemo(
+    () => buildSpeakerRows((checkpoint.original_payload_json as Json | null) ?? payload),
+    [checkpoint.original_payload_json, payload],
+  );
 
   const initialText = extractCheckpointText(payload);
   const [text, setText] = useState<string>(initialText);
@@ -801,10 +815,29 @@ function ReviewView({
     return isSpeakerMapping ? buildEditedMapping(speakerRows) : text;
   }
 
+  // A sample: the speaker's first passage, at most eight seconds, through the page's one player.
   function listenTo(label: string) {
-    const target = firstSegmentForSpeaker(transcript.segments, label);
+    const target = firstSegmentForSpeaker(shownSegments, label);
     if (!target) return;
-    playerRef.current?.seekTo(target.fileIndex, target.time, true);
+    const end = Math.min(shownSegments[target.segmentIndex].end, target.time + 8);
+    playerRef.current?.playRange(target.fileIndex, target.time, end);
+  }
+
+  // The speakers to name: the inventory, and any speaker split off in this review's corrections.
+  const shownSegments = useMemo(() => applyCorrections(transcript.segments, corrections).segments, [transcript.segments, corrections]);
+  const namingRows = useMemo(
+    () => withSplitLabels(speakerRows, corrections.speaker_edits.map((edit) => edit.speaker)),
+    [speakerRows, corrections.speaker_edits],
+  );
+  const passageCounts = useMemo(
+    () => new Map(speakerSummaries(computeTurns(shownSegments)).map((s) => [s.label, s.passages])),
+    [shownSegments],
+  );
+
+  async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
+    setSpeakerRows(rows.filter((row) => !row.split || row.name));
+    const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
+    return "error" in saved ? saved.error : null;
   }
 
   async function saveAndApprove() {
@@ -821,7 +854,7 @@ function ReviewView({
       setSaving(true);
       const updated = await onSaveEdit(checkpoint, pendingEditedValue());
       setSaving(false);
-      if (!updated) {
+      if ("error" in updated) {
         setWorking(null);
         return;
       }
@@ -870,40 +903,30 @@ function ReviewView({
         className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
       />
       <div className="flex items-center justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => {
             setShowReject(false);
             setRejectReason("");
           }}
           disabled={working === "reject"}
-          className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
         >
           Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={submitReject}
-          disabled={!rejectReason.trim() || working === "reject"}
-          className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
-        >
-          {working === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        </Button>
+        <Button type="button" onClick={submitReject} disabled={!rejectReason.trim() || working === "reject"}>
+          {working === "reject" ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin" /> : null}
           Bekräfta avvisning
-        </button>
+        </Button>
       </div>
     </section>
   ) : null;
 
   const actions = (
     <div className="mt-auto flex items-center justify-between gap-3 pt-4">
-      <button
-        type="button"
-        onClick={() => setShowReject(true)}
-        disabled={working !== null || showReject}
-        className="text-[13px] text-ink-soft hover:text-primary transition-colors disabled:opacity-50"
-      >
+      <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
         Avvisa
-      </button>
+      </Button>
       <Button type="button" onClick={saveAndApprove} disabled={busy || (isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem)))}>
         {working === "approve" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
@@ -943,17 +966,40 @@ function ReviewView({
                   utan att namnge någon.
                 </p>
               ) : (
-                <SpeakerMappingEditor
-                  rows={speakerRows}
-                  proposals={proposals}
-                  participants={participants}
-                  inferred={inferNames}
-                  disabled={busy}
-                  showSamples={!transcript.pending && !hasAudio}
-                  onChange={setSpeakerRows}
-                  onListen={hasAudio ? listenTo : undefined}
-                  listenUnavailableReason={(label) => !firstSegmentForSpeaker(transcript.segments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
-                />
+                // Who is who at a glance; naming happens in "Namnge talarna".
+                <div className="flex flex-col gap-3">
+                  <ul className="flex flex-col">
+                    {namingRows.map((row) => (
+                        <li key={row.label} className="flex items-center gap-3 border-b border-rule-soft py-2.5 first:pt-0 last:border-0">
+                          <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
+                          <span className="w-[4.5rem] shrink-0 text-[14px] font-medium text-ink">{speakerDisplayLabel(row.label)}</span>
+                          <span className={row.name ? "min-w-0 truncate text-[15px] text-ink" : "text-[14px] text-ink-mute"}>
+                            {row.name ?? "Inget namn"}
+                          </span>
+                        </li>
+                    ))}
+                  </ul>
+                  <SpeakerNamingDialog
+                    rows={namingRows}
+                    proposals={modelProposals}
+                    participants={participants}
+                    passages={(label) => passageCounts.get(label) ?? namingRows.find((row) => row.label === label)?.lineCount ?? 0}
+                    quote={(label) =>
+                      shownSegments.find((segment) => segment.speaker === label)?.text ??
+                      namingRows.find((row) => row.label === label)?.samples[0] ??
+                      null
+                    }
+                    disabled={busy}
+                    onListen={hasAudio ? listenTo : undefined}
+                    listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
+                    onSave={saveNames}
+                  >
+                    <Button type="button" variant="outline" className="self-start" disabled={busy}>
+                      <UsersRound data-icon="inline-start" aria-hidden />
+                      Namnge talarna
+                    </Button>
+                  </SpeakerNamingDialog>
+                </div>
               )}
               {unmapped.length > 0 && speakerRows.length > 0 && (
                 <p className="mt-3 text-[12px] text-ink-mute leading-snug">
@@ -964,7 +1010,7 @@ function ReviewView({
 
             <TranscriptPlayer
               ref={playerRef}
-              className="paper-card overflow-hidden lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)]"
+              className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
               segments={transcript.segments}
               speakerReviews={transcript.speakerReviews}
               correctionProblem={transcript.correctionProblem}

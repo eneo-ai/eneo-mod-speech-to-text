@@ -1,26 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { ArrowLeft, Mic, Plus } from "lucide-react";
+import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ArrowLeft, Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
-import { formatRelativeDate } from "@/lib/format";
+import { FRAME, READING } from "@/components/frame";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
+import { formatClock, formatRelativeDate } from "@/lib/format";
+import type { Playback } from "@/lib/playback";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
-import { CopyButton } from "./CopyButton";
+import { ResultDocument } from "./ResultDocument";
+import { regenerationOffer } from "@/lib/regenerate";
+import { RegenerateNotice } from "./RegenerateNotice";
 import { ResultFiles } from "./ResultFiles";
-import { RunTranscript } from "./RunTranscript";
+import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
+import { usePlayback, usePlaybackState } from "./AudioPlayer";
 import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
 
-export const RESULT_PROSE =
-  "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h1:text-[22px] prose-h2:text-[19px] prose-h3:text-[16px] prose-p:text-[15px] prose-p:leading-relaxed prose-li:text-[15px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
+// From a laptop's width the document and the transcript sit side by side; narrower, they are two tabs.
+const WIDE = "(min-width: 1024px)";
+const subscribeWide = (onChange: () => void) => {
+  const query = window.matchMedia(WIDE);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+};
+const isWide = () => window.matchMedia(WIDE).matches;
 
-/** A finished run: the result, its files, the transcript, and what to do next. */
+type View = "document" | "transcript";
+/** A panel shown as a plain column: no tab panel role, name or stop of its own. */
+const COLUMN = { role: undefined, "aria-labelledby": undefined, tabIndex: undefined } as const;
+
+/**
+ * A finished run: what the flow produced comes first, as a readable page with
+ * its file and one filled action; the transcript sits beside it from a laptop's
+ * width, and starting over is a quiet action in the header.
+ */
 export function RunResult({
   flowId,
   flowName,
@@ -31,6 +50,7 @@ export function RunResult({
   showTranscript = true,
   audio = true,
   onNewRecording,
+  onRegenerated,
 }: {
   flowId: string;
   flowName: string;
@@ -43,75 +63,184 @@ export function RunResult({
   /** The flow takes audio, so a new run starts with a new recording. */
   audio?: boolean;
   onNewRecording: () => void;
+  /** A new run was started from the reviewed transcript; the page follows it. */
+  onRegenerated: (run: FlowRunPublic) => void;
 }) {
   const delivered = run.result?.kind === "outbound_http";
   const heading = usePhaseHeading("Klart");
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
+  // The document's file is the first one that can be fetched; any others are listed under it.
+  const primary = files.find((file) => file.available) ?? null;
+  const others = files.filter((file) => file !== primary);
+  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
+  const offer =
+    // Whether the document is older than the saved corrections does not depend on the latest save.
+    showTranscript && !delivered
+      ? regenerationOffer({
+          flowId,
+          run,
+          stepId: transcript.stepId,
+          fromMetadata: transcript.fromMetadata,
+          corrections: editing.corrections,
+          hasDocument: Boolean(text || files.length),
+        })
+      : null;
+  // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
+  const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
+  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
+  // One playback for the page: the transcript's player, and the pause beside the document on a phone.
+  const sources = useMemo(
+    () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
+    [flowId, run.id, transcript.fileIds],
+  );
+  const playback = usePlayback(sources);
+  const tabs = !wide && showTranscript;
+  const [view, setView] = useState<View>("document");
+  const tabList = useRef<HTMLDivElement | null>(null);
+  // Each tab keeps its own reading position; the first visit starts at the top of the tab.
+  const positions = useRef<Partial<Record<View, number>>>({});
+  const switchView = (next: View) => {
+    positions.current[view] = window.scrollY;
+    setView(next);
+  };
+  useLayoutEffect(() => {
+    if (!tabs) return;
+    const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
+    const saved = positions.current[view];
+    window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+  }, [view, tabs]);
+
+  const documentColumn = (
+    <>
+      {note && <p className="text-[15px] leading-relaxed">{note}</p>}
+      {offer && (
+        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} />
+      )}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />}
+      {others.length > 0 && (
+        <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
+      )}
+      <StepDetails steps={steps} version={run.flow_version} />
+    </>
+  );
+  const transcriptColumn = showTranscript && (
+    <RunTranscriptView
+      flowId={flowId}
+      runId={run.id}
+      fileName={transcriptFileName(flowName, run.created_at)}
+      transcript={transcript}
+      confirmedWords={confirmedWords}
+      editing={editing}
+      onReload={reload}
+      playback={playback}
+    />
+  );
 
   return (
-    <main
-      className={cn(
-        "mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 pb-12 pt-2 md:px-8",
-        // From a laptop's width the document and the transcript sit side by side, as the setup page's two columns do;
-        // the second row takes the transcript's extra height, so the steps follow the document without a gap.
-        showTranscript && "lg:grid lg:max-w-none lg:grid-cols-2 lg:grid-rows-[auto_1fr] lg:items-start lg:gap-x-10",
-      )}
-    >
-      <div className="flex min-w-0 flex-col gap-8">
-        <header className="flex flex-col gap-1">
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className={PHASE_HEADING}
-          >
+    // The frame owns the width: the workspace for the document and its transcript, a reading column for a document alone.
+    <main id="innehall" className={cn(FRAME, "flex flex-1 flex-col pb-12 pt-2 lg:pt-8")}>
+      <div className={cn("flex flex-col gap-6", !showTranscript && READING)}>
+      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
             {delivered ? "Resultatet är skickat" : "Dokumentet är klart"}
           </h1>
-          {finished && <p className="text-sm text-muted-foreground">Skapad {formatRelativeDate(finished)}</p>}
-        </header>
-
-        {note && <p className="text-[15px] leading-relaxed">{note}</p>}
-
-        {text && (
-          <section aria-label="Resultat" className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:p-6">
-            <CopyButton text={text} label="Kopiera texten" className="self-end" />
-            <article className={RESULT_PROSE}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-            </article>
-          </section>
-        )}
-
-        {files.length > 0 && <ResultFiles flowId={flowId} runId={run.id} files={files} />}
-      </div>
-
-      {showTranscript && (
-        <div className="min-w-0 lg:sticky lg:top-6 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <RunTranscript
-            flowId={flowId}
-            runId={run.id}
-            steps={stepResults}
-            fileName={transcriptFileName(flowName, run.created_at)}
-            finishedAt={run.finished_at}
-          />
+          {finished && (
+            <p className="text-[14px] text-muted-foreground">
+              {/* On a phone the top bar already names the flow. */}
+              <span className="hidden lg:inline">{flowName} · </span>
+              Skapad {formatRelativeDate(finished)}
+              {fromReviewed && " från det rättade transkriptet"}
+            </p>
+          )}
         </div>
-      )}
-
-      <div className="flex min-w-0 flex-col gap-8">
-        <StepDetails steps={steps} version={run.flow_version} />
-
-        <div className="flex flex-wrap gap-3">
-          <Button type="button" onClick={onNewRecording}>
+        <div className="flex items-center gap-1">
+          <Button type="button" variant="outline" onClick={onNewRecording}>
             {audio ? <Mic data-icon="inline-start" aria-hidden /> : <Plus data-icon="inline-start" aria-hidden />}
             {audio ? "Ny inspelning" : "Ny körning"}
           </Button>
-          <Button asChild variant="outline">
+          <Button asChild variant="ghost" className="hidden lg:inline-flex">
             <Link href="/flows">
               <ArrowLeft data-icon="inline-start" aria-hidden />
               Till flödena
             </Link>
           </Button>
         </div>
+      </header>
+
+      {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
+          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
+      <Tabs
+        value={view}
+        onValueChange={(next) => switchView(next as View)}
+        className={cn(
+          "flex flex-col gap-4",
+          showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
+        )}
+      >
+        {tabs && (
+          <TabsList ref={tabList} aria-label="Visa" className="self-start">
+            <TabsTrigger value="document">Dokument</TabsTrigger>
+            <TabsTrigger value="transcript">Transkript</TabsTrigger>
+          </TabsList>
+        )}
+        {/* Both stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by
+            side they are plain columns, not tab panels. */}
+        <TabsContent
+          value="document"
+          forceMount
+          {...(tabs ? {} : COLUMN)}
+          className={cn("mt-0 flex min-w-0 flex-col gap-6", tabs && "data-[state=inactive]:hidden")}
+        >
+          {documentColumn}
+          {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
+        </TabsContent>
+        {transcriptColumn && (
+          <TabsContent
+            value="transcript"
+            forceMount
+            {...(tabs ? {} : COLUMN)}
+            className={cn("mt-0 min-w-0", tabs ? "data-[state=inactive]:hidden" : "lg:sticky lg:top-6")}
+          >
+            {transcriptColumn}
+          </TabsContent>
+        )}
+      </Tabs>
       </div>
     </main>
+  );
+}
+
+/**
+ * On a phone's Dokument tab, once the recording has played: its pause (or play)
+ * and time, docked at the bottom, driven by the transcript's player itself.
+ */
+function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () => void }): ReactNode {
+  const state = usePlaybackState(playback);
+  if (!state.started) return null;
+  const pauses = state.playing || state.starting;
+  return (
+    <div
+      data-docked-player
+      className="sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8"
+    >
+      <Button
+        type="button"
+        variant="outline"
+        size="icon"
+        className="shrink-0 rounded-full"
+        aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        onClick={() => playback.toggle()}
+      >
+        {pauses ? <Pause aria-hidden /> : <Play aria-hidden className="translate-x-px" />}
+      </Button>
+      <span className="text-[14px] tabular-nums text-ink-soft">
+        {formatClock(state.atMs)} / {formatClock(state.totalMs)}
+      </span>
+      <Button type="button" variant="link" className="ml-auto px-0" onClick={onShow}>
+        Visa i transkriptet
+      </Button>
+    </div>
   );
 }

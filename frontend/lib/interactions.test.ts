@@ -1,26 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { installDom, type } from "./test-dom";
+import { button, installDom, mount, type } from "./test-dom";
 
 installDom();
-
-async function mount(element: import("react").ReactElement) {
-  const { act } = await import("react");
-  const { createRoot } = await import("react-dom/client");
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  await act(async () => root.render(element));
-  return {
-    container,
-    act,
-    unmount: () => act(async () => root.unmount()).then(() => container.remove()),
-  };
-}
-
-const button = (container: HTMLElement, name: string) =>
-  [...container.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
 
 test("participants: moving from the field to Lägg till and on keeps the typed name", async () => {
   const { createElement } = await import("react");
@@ -83,8 +66,8 @@ async function mountEditableTranscript(onChange: (next: unknown) => void) {
       onCorrectionsChange: onChange,
     }),
   );
-  await view.act(async () => button(view.container, "Rätta repliken")!.click());
-  const editor = view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Rätta repliken"]')!;
+  await view.act(async () => button(view.container, "Rätta repliken från 0:00")!.click());
+  const editor = view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Rätta repliken från 0:00"]')!;
   assert.ok(editor, "the line editor is open");
   await view.act(async () => type(editor, "Välkomna allihop."));
   return { view, editor };

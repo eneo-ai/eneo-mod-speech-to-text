@@ -22,13 +22,14 @@
     --record-foreground: 0 0% 100%;
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
-    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. */
-    --speaker-0: 212 72% 40%;
+    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
+       aldrig varumärkets blå, så att ett namn inte läses som en länk. */
+    --speaker-0: 262 46% 48%;
     --speaker-1: 152 48% 30%;
     --speaker-2: 28 78% 34%;
     --speaker-3: 330 52% 42%;
     --speaker-4: 190 58% 33%;
-    --speaker-5: 262 46% 48%;
+    --speaker-5: 70 45% 28%;
     /* shadcn's semantic layer over the module tokens. Declared once: .dark sits
        on the same element, so each reference resolves to the active theme. */
     --background: var(--bg);
@@ -73,12 +74,12 @@
     --record-foreground: 0 0% 100%;
     --ochre: 47 92% 58%;
     --ok: 152 50% 58%;
-    --speaker-0: 212 92% 72%;
+    --speaker-0: 262 62% 74%;
     --speaker-1: 152 52% 62%;
     --speaker-2: 32 88% 66%;
     --speaker-3: 330 62% 72%;
     --speaker-4: 190 62% 62%;
-    --speaker-5: 262 62% 74%;
+    --speaker-5: 70 45% 60%;
     color-scheme: dark;
   }
 
@@ -184,7 +185,6 @@
 
 /* Keyboard focus stays local to the control, including native selects. */
 .transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible,
-.speaker-mapping-editor :is(button, input, summary):focus-visible,
 .transcript-player:focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 3px;
@@ -218,6 +218,12 @@
 .t-overlay[data-state="closed"] { animation: t-fade-out var(--duration-quick) var(--ease-smooth-out); }
 .t-modal[data-state="open"] { animation: t-modal-in var(--duration-fast) var(--ease-smooth-out); }
 .t-modal[data-state="closed"] { animation: t-modal-out var(--duration-quick) var(--ease-smooth-out); }
+
+/* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
+   focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
+@media (max-width: 1023px) {
+  html:has([data-docked-player]) { scroll-padding-bottom: 5rem; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }

@@ -206,6 +206,14 @@ _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         ),
     ),
     (
+        # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
+        frozenset({"POST"}),
+        re.compile(
+            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
+            rf"{_RESOURCE_ID}/transcript-regenerations/$"
+        ),
+    ),
+    (
         frozenset({"POST"}),
         re.compile(
             rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"

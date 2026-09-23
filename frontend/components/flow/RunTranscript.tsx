@@ -9,6 +9,7 @@ import { useTranscriptContext } from "@/components/useTranscriptContext";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
+import type { Playback } from "@/lib/playback";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
 import { CopyButton } from "./CopyButton";
@@ -22,16 +23,25 @@ function downloadText(text: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
+/** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
+export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
+  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
+  const [confirmedWords] = useConfirmedWords(
+    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+  );
+  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  return { transcript, confirmedWords, editing, reload };
+}
+
 /**
- * The run's transcript on the result page: readable, with speakers when
- * labelled, the recording to listen to, and copy and download (.txt).
+ * The run's transcript on its own: readable, with speakers when labelled, the
+ * recording to listen to, and copy and download (.txt).
  */
 export function RunTranscript({
   flowId,
   runId,
   steps,
   fileName,
-  finishedAt,
 }: {
   flowId: string;
   runId: string;
@@ -39,19 +49,13 @@ export function RunTranscript({
   steps: readonly FlowRunStep[];
   /** The .txt the download saves, see transcriptFileName. */
   fileName: string;
-  finishedAt?: string;
 }) {
-  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled: true, steps });
-  const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
-  );
-  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, runId, steps);
   return (
     <RunTranscriptView
       flowId={flowId}
       runId={runId}
       fileName={fileName}
-      finishedAt={finishedAt}
       transcript={transcript}
       confirmedWords={confirmedWords}
       editing={editing}
@@ -65,16 +69,17 @@ export function RunTranscriptView({
   flowId,
   runId,
   fileName,
-  finishedAt,
   transcript,
   confirmedWords,
   editing,
   onReload,
+  playback,
 }: {
   flowId: string;
   runId: string;
   fileName: string;
-  finishedAt?: string;
+  /** The page's playback, when it shows the recording's controls elsewhere too. */
+  playback?: Playback;
   transcript: TranscriptContext;
   confirmedWords: ReadonlySet<string>;
   editing: ReturnType<typeof useTranscriptCorrections>;
@@ -114,60 +119,65 @@ export function RunTranscriptView({
   // Unread or unreadable saved corrections, or only the start of a longer transcript: an export now
   // would silently drop the corrections or pass the start off as the whole.
   const unread = Boolean(transcript.correctionProblem) || transcript.textPreview;
-  const edited =
-    saveState !== "idle" ||
-    Boolean(corrections.updatedAt && finishedAt && Date.parse(corrections.updatedAt) > Date.parse(finishedAt));
 
   return (
-    <section aria-labelledby="run-transcript" className="flex flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 id="run-transcript" className="text-lg font-semibold tracking-tight">
+    // From a laptop's width the card keeps to the window and its text scrolls inside it, the player docked below.
+    <section
+      aria-labelledby="run-transcript"
+      className="flex min-h-0 flex-col rounded-xl border bg-card lg:max-h-[calc(100dvh-3rem)] lg:overflow-hidden"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-4 pb-2 pt-3">
+        <h2 id="run-transcript" className="text-[17px] font-semibold tracking-tight">
           Transkript
         </h2>
-        <div className="flex flex-wrap gap-2">
-          <CopyButton text={plain} label="Kopiera transkriptet" disabled={unread} />
-          <Button type="button" variant="outline" disabled={unread} onClick={() => downloadText(plain, fileName)}>
+        <div className="-mr-2 flex flex-wrap gap-1">
+          <CopyButton
+            text={plain}
+            variant="ghost"
+            size="sm"
+            label={<>Kopiera<span className="sr-only"> transkriptet</span></>}
+            disabled={unread}
+          />
+          <Button type="button" variant="ghost" size="sm" disabled={unread} onClick={() => downloadText(plain, fileName)}>
             <Download data-icon="inline-start" aria-hidden />
-            Ladda ner<span className="sr-only"> transkriptet</span>
+            Ladda ner .txt<span className="sr-only">, transkriptet</span>
           </Button>
         </div>
       </div>
-      {unread && (
-        <div className="flex flex-wrap items-center gap-3">
-          <p className="text-sm text-muted-foreground">
-            {transcript.textPreview
-              ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
-              : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
-          </p>
-          <Button type="button" variant="outline" onClick={onReload}>
-            <RotateCcw data-icon="inline-start" aria-hidden />
-            Läs in igen
-          </Button>
-        </div>
-      )}
-      {edited && (
-        <p className="text-sm text-muted-foreground">
-          Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade
-          transkriptet som underlag för en ny sammanfattning.
-        </p>
-      )}
-      {localError && (
-        <p role="alert" className="text-sm text-destructive">
-          {localError}
-        </p>
-      )}
-      {saveState === "error" && (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={retryCorrections}>
-            Försök spara igen
-          </Button>
-          <Button type="button" variant="ghost" onClick={downloadUnsavedCorrections}>
-            Hämta osparade rättningar
-          </Button>
+      {(unread || localError || saveState === "error") && (
+        <div className="flex flex-col gap-2 px-4 pb-3">
+          {unread && (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <p className="text-sm text-muted-foreground">
+                {transcript.textPreview
+                  ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
+                  : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
+              </p>
+              <Button type="button" variant="outline" size="sm" onClick={onReload}>
+                <RotateCcw data-icon="inline-start" aria-hidden />
+                Läs in igen
+              </Button>
+            </div>
+          )}
+          {localError && (
+            <p role="alert" className="text-sm text-destructive">
+              {localError}
+            </p>
+          )}
+          {saveState === "error" && (
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>
+                Försök spara igen
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={downloadUnsavedCorrections}>
+                Hämta osparade rättningar
+              </Button>
+            </div>
+          )}
         </div>
       )}
       <TranscriptPlayer
-        className="max-h-[36rem] overflow-hidden rounded-xl border bg-card"
+        className="min-h-0 flex-1"
         segments={transcript.segments}
         speakerReviews={transcript.speakerReviews}
         correctionProblem={transcript.correctionProblem}
@@ -181,6 +191,7 @@ export function RunTranscriptView({
         saveState={saveState}
         confirmedWords={confirmedWords}
         downloadable={false}
+        playback={playback}
       />
     </section>
   );

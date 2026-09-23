@@ -106,7 +106,7 @@ export function ReadyPanel({
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button type="button" variant="outline" className="h-11" onClick={() => void save()}>
+        <Button type="button" variant="outline" onClick={() => void save()}>
           <Download data-icon="inline-start" aria-hidden />
           Spara som fil
         </Button>
@@ -122,12 +122,12 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button type="button" size="lg" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onCreate}>
+        <Button type="button" size="xl" className="sm:flex-1" onClick={onCreate}>
           <FileText data-icon="inline-start" aria-hidden />
           Skapa dokument
         </Button>
         {onContinue && (
-          <Button type="button" variant="outline" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onContinue}>
+          <Button type="button" variant="outline" size="xl" className="sm:flex-1" onClick={onContinue}>
             <Mic data-icon="inline-start" aria-hidden />
             Fortsätt spela in
           </Button>
@@ -139,7 +139,7 @@ export function ReadyPanel({
           <Button
             type="button"
             variant={sent ? "outline" : "ghost"}
-            className={sent ? "h-11 w-fit" : "h-11 w-fit self-center text-ink-soft sm:self-start"}
+            className={sent ? "w-fit" : "w-fit self-center text-ink-soft sm:self-start"}
           >
             <Trash2 data-icon="inline-start" aria-hidden />
             {sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
@@ -151,8 +151,8 @@ export function ReadyPanel({
             <AlertDialogDescription>Den går inte att få tillbaka.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Avbryt</AlertDialogCancel>
-            <AlertDialogAction className={buttonVariants({ variant: "destructive", className: "h-11" })} onClick={onDiscard}>
+            <AlertDialogCancel>Avbryt</AlertDialogCancel>
+            <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={onDiscard}>
               Ta bort
             </AlertDialogAction>
           </AlertDialogFooter>

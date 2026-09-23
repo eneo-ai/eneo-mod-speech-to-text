@@ -98,7 +98,7 @@ test("the player is our own: a named play button, a named slider over the known 
   const html = renderToStaticMarkup(createElement(Ready));
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelning 23 sep 16:13"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
-  assert.match(html, /role="slider"[^>]*aria-label="Position"|aria-label="Position"[^>]*role="slider"/);
+  assert.match(html, /role="slider"[^>]*aria-label="Position i inspelningen"|aria-label="Position i inspelningen"[^>]*role="slider"/);
   assert.match(html, /aria-valuemax="6"/, "the known length of both parts");
   assert.match(html, /aria-valuetext="0:00 av 0:06"/);
   assert.match(html, />0:00 \/ 0:06</);

@@ -160,7 +160,7 @@ function UnsentRecordingRow({
           // Without Web Locks another tab may still hold it: here it is only read.
           <div className="mt-3 flex flex-col items-start gap-2">
             <p className="text-[15px] text-ink-soft">I den här webbläsaren kan den bara sparas som fil.</p>
-            <Button type="button" variant="outline" className="h-11" aria-describedby={summaryId} onClick={() => void save()}>
+            <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => void save()}>
               Spara som fil
             </Button>
           </div>
@@ -173,12 +173,11 @@ function UnsentRecordingRow({
               ref={cancelRef}
               type="button"
               variant="outline"
-              className="h-11"
               onClick={() => setConfirming(false)}
             >
               Avbryt
             </Button>
-            <Button type="button" variant="destructive" className="h-11" onClick={() => void remove()}>
+            <Button type="button" variant="destructive" onClick={() => void remove()}>
               Ta bort
             </Button>
           </div>
@@ -187,7 +186,6 @@ function UnsentRecordingRow({
             {onContinue && (
               <Button
                 type="button"
-                className="h-11"
                 aria-describedby={summaryId}
                 onClick={() => onContinue(recording)}
               >
@@ -197,7 +195,6 @@ function UnsentRecordingRow({
             <Button
               type="button"
               variant={onContinue ? "outline" : "default"}
-              className="h-11"
               aria-describedby={summaryId}
               onClick={() => onSend(recording)}
             >
@@ -206,7 +203,6 @@ function UnsentRecordingRow({
             <Button
               type="button"
               variant="outline"
-              className="h-11"
               aria-describedby={summaryId}
               onClick={() => void save()}
             >
@@ -216,7 +212,6 @@ function UnsentRecordingRow({
               ref={deleteRef}
               type="button"
               variant="ghost"
-              className="h-11"
               aria-describedby={summaryId}
               onClick={() => setConfirming(true)}
             >

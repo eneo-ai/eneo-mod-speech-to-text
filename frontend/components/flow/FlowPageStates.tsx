@@ -70,9 +70,9 @@ export function FlowUnavailable({ error }: { error: unknown }) {
         </h1>
         <p className="text-[17px] leading-relaxed text-ink-soft">{detail}</p>
         <div className="flex flex-wrap gap-3">
-          <BackToFlows variant="default" size="default" className="h-11" />
+          <BackToFlows variant="default" size="default" />
           {retry && (
-            <Button type="button" variant="outline" className="h-11" onClick={() => window.location.reload()}>
+            <Button type="button" variant="outline" onClick={() => window.location.reload()}>
               Försök igen
             </Button>
           )}

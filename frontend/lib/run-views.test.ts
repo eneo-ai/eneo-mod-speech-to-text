@@ -56,6 +56,9 @@ const report: ResultFileView = {
   fileId: "file-1",
   name: "Nämndmöte till rapport 2026-09-23.pdf",
   kind: "pdf",
+  typeLabel: "PDF",
+  mimeType: "application/pdf",
+  sizeBytes: 13_619,
   meta: "PDF, 13,3\u00a0kB",
   available: true,
   previewable: true,
@@ -84,7 +87,7 @@ test("a Word file downloads; only a PDF offers Öppna", () => {
   assert.match(words, /Ladda ner/);
 });
 
-test("the result names its time like a person, keeps the steps behind Visa stegen and offers a new recording", () => {
+test("the result names its time like a person, keeps the steps behind plain words and offers a new recording", () => {
   const html = renderToStaticMarkup(
     createElement(RunResult, {
       flowId: "flow-1",
@@ -94,13 +97,14 @@ test("the result names its time like a person, keeps the steps behind Visa stege
       stepResults: [],
       files: [report],
       onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
     }),
   );
   const words = text(html);
 
   assert.match(html, /<h1[^>]*>Dokumentet är klart<\/h1>/);
   assert.match(words, /Skapad (i dag|i går|\d+ \w+) 16:02/);
-  assert.match(words, /Visa stegen \(4\)/);
+  assert.match(words, /Hur resultatet togs fram 4 steg/);
   assert.match(words, /Ny inspelning/);
   assert.match(words, /Till flödena/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
@@ -321,19 +325,19 @@ test("the transcript is not copied or downloaded while its saved corrections cou
         onReload: () => undefined,
       }),
     );
+  // Each export button by what a screen reader hears (visible words and hidden ones), and whether it is off.
   const exportButtons = (html: string) =>
-    [...html.matchAll(/<button([^>]*)>(?:(?!<\/button>).)*?(Kopiera transkriptet|Ladda ner)/g)].map(([, attrs, label]) => [
-      label,
-      /\sdisabled=""/.test(attrs),
-    ]);
+    [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)]
+      .map(([, attrs, inner]) => [inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const)
+      .filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
 
   const readable = render(null);
-  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner", false]]);
+  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner .txt, transkriptet", false]]);
   assert.doesNotMatch(readable, />Läs in igen</);
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
-  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner", true]]);
+  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner .txt, transkriptet", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
 });
@@ -386,7 +390,7 @@ function transcriptView(overrides: Record<string, unknown>) {
 test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
   const html = transcriptView({ textPreview: true });
   assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Kopiera transkriptet/);
+  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Kopiera<span class="sr-only"> transkriptet/);
   assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Ladda ner/);
   assert.match(html, />Läs in igen</);
 });

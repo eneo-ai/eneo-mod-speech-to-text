@@ -148,7 +148,7 @@ export function ParticipantsInput({
               remove(names[names.length - 1]);
             }
           }}
-          className="h-11 px-3 text-[16px] text-ink placeholder:text-ink-mute"
+          className="px-3 text-[16px] text-ink placeholder:text-ink-mute"
         />
         {text.trim() && (
           <InputGroupAddon align="inline-end">
@@ -161,8 +161,8 @@ export function ParticipantsInput({
                 addTyped();
                 input.current?.focus();
               }}
-              // The pseudo-element makes the target 44 px.
-              className="relative h-9 px-3 text-[15px] after:absolute after:-inset-1"
+              // On a touch screen the pseudo-element makes the target 44 px.
+              className="relative px-3 text-[15px] coarse:after:absolute coarse:after:-inset-1.5"
             >
               <Plus data-icon="inline-start" aria-hidden />
               Lägg till

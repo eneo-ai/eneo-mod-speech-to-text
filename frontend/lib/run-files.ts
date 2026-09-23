@@ -14,6 +14,11 @@ export interface ResultFileView {
   /** Eneo's name for the file, as it downloads. */
   name: string;
   kind: FileKind;
+  /** "PDF", "Word": the type in words, as in "Ladda ner PDF". */
+  typeLabel: string;
+  /** The media type the file is shared with. */
+  mimeType: string;
+  sizeBytes: number | null;
   /** "PDF, 13,3 kB", or why the file cannot be fetched. */
   meta: string;
   available: boolean;
@@ -32,14 +37,14 @@ const KNOWN: [ext: string, mime: string, kind: FileKind, label: string][] = [
   ["json", "application/json", "text", "JSON"],
 ];
 
-function fileType(file: ResultFile): { kind: FileKind; label: string } {
+function fileType(file: ResultFile): { kind: FileKind; label: string; mime: string } {
   const mime = (file.mimetype ?? "").split(";")[0].trim().toLowerCase();
   const ext = /\.([a-z0-9]{1,8})$/i.exec(file.name ?? "")?.[1].toLowerCase() ?? "";
   const known = KNOWN.find(([, m]) => m === mime) ?? KNOWN.find(([e]) => e === ext);
-  if (known) return { kind: known[2], label: known[3] };
-  if (mime.startsWith("audio/")) return { kind: "audio", label: "Ljud" };
-  if (mime.startsWith("image/")) return { kind: "image", label: "Bild" };
-  return { kind: "other", label: ext ? ext.toUpperCase() : "Fil" };
+  if (known) return { kind: known[2], label: known[3], mime: mime || known[1] };
+  if (mime.startsWith("audio/")) return { kind: "audio", label: "Ljud", mime };
+  if (mime.startsWith("image/")) return { kind: "image", label: "Bild", mime };
+  return { kind: "other", label: ext ? ext.toUpperCase() : "Fil", mime: mime || "application/octet-stream" };
 }
 
 export function resultFileViews(files: readonly ResultFile[]): ResultFileView[] {
@@ -50,6 +55,9 @@ export function resultFileViews(files: readonly ResultFile[]): ResultFileView[] 
       fileId: file.file_id,
       name: file.name?.trim() || "Fil",
       kind: type.kind,
+      typeLabel: type.label,
+      mimeType: type.mime,
+      sizeBytes: file.size ?? null,
       meta: available
         ? [type.label, file.size != null ? formatBytes(file.size) : null].filter(Boolean).join(", ")
         : file.availability === "content_purged"

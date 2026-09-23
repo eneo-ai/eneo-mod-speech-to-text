@@ -402,3 +402,64 @@ export function speakerDisplayLabel(label: string): string {
   const m = /^SPEAKER_(\d+)$/.exec(label);
   return m ? `Talare ${Number(m[1]) + 1}` : label;
 }
+
+/** A transcript without speaker labels reads as paragraphs: one block per timed segment, never one merged block. */
+export function paragraphTurns(segments: readonly TranscriptSegment[]): TranscriptTurn[] {
+  return segments.map((segment, segmentIndex) => ({
+    index: segmentIndex,
+    speaker: null,
+    fileIndex: segment.fileIndex,
+    start: segment.start,
+    end: segment.end,
+    parts: [{ segmentIndex, segment }],
+  }));
+}
+
+/** A passage Eneo marked for a speaker check that nobody has decided yet. */
+export function pendingSpeakerReview(turn: TranscriptTurn): boolean {
+  const first = turn.parts[0]?.segment;
+  return Boolean(first) && needsSpeakerReview(first) && !first.decision;
+}
+
+export interface SpeakerSummary {
+  label: string;
+  /** Passages (turns) the speaker has; passages still to check count for no one. */
+  passages: number;
+}
+
+/** The speakers in the order they first speak. */
+export function speakerSummaries(turns: readonly TranscriptTurn[]): SpeakerSummary[] {
+  const passages = new Map<string, number>();
+  for (const turn of turns) {
+    if (!turn.speaker || pendingSpeakerReview(turn) || turn.parts[0].segment.decision === "unresolved") continue;
+    passages.set(turn.speaker, (passages.get(turn.speaker) ?? 0) + 1);
+  }
+  return [...passages].map(([label, count]) => ({ label, passages: count }));
+}
+
+/** "Anna Berg" → "A", "Talare 3" → "3": the letter in a speaker's round mark. */
+export function speakerInitial(name: string): string {
+  const numbered = /^Talare (\d+)$/.exec(name.trim());
+  if (numbered) return numbered[1];
+  return (Array.from(name.trim())[0] ?? "?").toLocaleUpperCase("sv-SE");
+}
+
+export interface SearchHit {
+  segmentIndex: number;
+  start: number;
+  end: number;
+}
+
+/** Every place the words occur, in reading order; case and å, ä, ö fold as a reader expects. */
+export function findHits(segments: readonly TranscriptSegment[], query: string): SearchHit[] {
+  const needle = query.trim();
+  if (!needle) return [];
+  const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+  return segments.flatMap((segment, segmentIndex) =>
+    [...segment.text.matchAll(pattern)].map((match) => ({
+      segmentIndex,
+      start: match.index,
+      end: match.index + match[0].length,
+    })),
+  );
+}

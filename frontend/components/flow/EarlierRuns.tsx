@@ -74,7 +74,7 @@ export function EarlierRuns({
       {list.failed === "first" && onMore && (
         <div className="flex flex-col items-start gap-2">
           <p className="text-[13px] text-ink-soft">Tidigare körningar kunde inte hämtas.</p>
-          <Button type="button" variant="outline" className="h-11" disabled={list.loading} onClick={onMore}>
+          <Button type="button" variant="outline" disabled={list.loading} onClick={onMore}>
             Försök igen
           </Button>
         </div>
@@ -85,7 +85,6 @@ export function EarlierRuns({
           <Button
             type="button"
             variant="outline"
-            className="h-11"
             disabled={list.loading}
             onClick={() => {
               firstNew.current = shown.length;

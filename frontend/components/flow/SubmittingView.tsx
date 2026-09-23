@@ -6,6 +6,7 @@ import { formatBytes } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { PHASE_HEADING, usePhaseHeading } from "@/components/flow/usePhaseHeading";
+import { Button } from "@/components/ui/button";
 import { ReadingMain } from "@/components/frame";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
@@ -76,13 +77,9 @@ function UploadProgressCard({
             {submission.filename}
           </div>
         </div>
-        <button
-          type="button"
-          onClick={onCancel}
-          className="shrink-0 rounded-full border border-rule-soft px-3 py-1.5 text-[12px] text-ink-soft transition-colors hover:border-ink/40 hover:text-ink"
-        >
+        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onCancel}>
           Avbryt
-        </button>
+        </Button>
       </div>
       <div className="h-2 rounded-full bg-bg-2 overflow-hidden mb-2">
         <div
