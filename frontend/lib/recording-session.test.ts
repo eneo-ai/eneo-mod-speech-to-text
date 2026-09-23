@@ -521,7 +521,8 @@ test("Stoppa while 'Fortsätt spela in' waits for the microphone starts no recor
 });
 
 test("a page left while the store opens starts no recorder and leaves no recording", async () => {
-  const store = await openRecordingStore({});
+  // A shared device store without Web Locks, where only the lease holder may delete a live-looking recording.
+  const store = await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange });
   const stream = new FakeStream();
   let open = () => {};
   const opened = new Promise<void>((resolve) => (open = resolve));
@@ -837,18 +838,21 @@ test("a denied microphone, or a recorder that cannot start, says so in Swedish a
   assert.equal(denied.getSnapshot().status, "idle");
   assert.equal(denied.getSnapshot().error, "Tillåt mikrofonen i webbläsaren för att spela in.");
 
-  const stream = new FakeStream();
-  const unsupported = new RecordingCapture(() => store, {
-    getStream: async () => stream as unknown as MediaStream,
-    createRecorder: () => {
-      throw new DOMException("Unsupported MIME type", "NotSupportedError");
-    },
-  });
-  await unsupported.start(meeting);
-  assert.equal(unsupported.getSnapshot().status, "idle");
-  assert.match(unsupported.getSnapshot().error ?? "", /kunde inte startas/);
-  assert.equal(stream.track.readyState, "ended", "the microphone is let go");
-  assert.deepEqual(await store.listUnsent("user-1"), []);
+  // Also on a shared device store without Web Locks, where only the lease holder may delete a live-looking recording.
+  for (const shared of [store, await openRecordingStore({ indexedDB: new IDBFactory(), keyRange: IDBKeyRange })]) {
+    const stream = new FakeStream();
+    const unsupported = new RecordingCapture(() => shared, {
+      getStream: async () => stream as unknown as MediaStream,
+      createRecorder: () => {
+        throw new DOMException("Unsupported MIME type", "NotSupportedError");
+      },
+    });
+    await unsupported.start(meeting);
+    assert.equal(unsupported.getSnapshot().status, "idle");
+    assert.match(unsupported.getSnapshot().error ?? "", /kunde inte startas/);
+    assert.equal(stream.track.readyState, "ended", "the microphone is let go");
+    assert.deepEqual(await shared.listUnsent("user-1"), []);
+  }
 });
 
 test("the recorder says when space runs low or the device stops keeping the recording", async () => {

@@ -383,6 +383,11 @@ export class RecordingStore {
     });
   }
 
+  /** Deletes a recording whose lease the caller holds: a start that recorded nothing. */
+  discard(id: string): Promise<void> {
+    return this.change(() => this.delete(id));
+  }
+
   /** The user deleted the recording; refused while another tab uses it. */
   async remove(id: string): Promise<void> {
     if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
@@ -400,11 +405,19 @@ export class RecordingStore {
     // Kept for audio only this tab has: this tab's next send or delete takes it over.
     if (this.leases.has(id)) return Promise.resolve(true);
     const locks = this.env.locks;
-    const inThisTab = () => {
+    // Without Web Locks nothing says whether another tab still captures a
+    // recording in the shared database left "recording" or "paused", so it is
+    // only read (saved as a file) here.
+    const inThisTab = async () => {
+      const stored = this.durable ? await this.get(id).catch(() => null) : null;
+      if (stored && continuable(stored)) {
+        this.inUse.delete(id);
+        return false;
+      }
       this.leases.set(id, () => {});
       return true;
     };
-    if (!locks) return Promise.resolve(inThisTab());
+    if (!locks) return inThisTab();
     return new Promise((resolve) => {
       locks
         .request(lockName(id), { ifAvailable: true }, (lock) => {
@@ -419,7 +432,7 @@ export class RecordingStore {
           });
         })
         // A browser that refuses Web Locks here still leases within this tab.
-        .catch(() => resolve(inThisTab()));
+        .catch(() => void inThisTab().then(resolve));
     });
   }
 

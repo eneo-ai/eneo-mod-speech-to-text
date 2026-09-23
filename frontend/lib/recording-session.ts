@@ -204,8 +204,8 @@ export class RecordingCapture {
       const lowSpace = await store.lowOnSpace();
       if (this.left(generation)) {
         // Nothing was recorded: do not leave an empty recording to recover.
+        await store.discard(recording.id).catch(() => undefined);
         this.finish();
-        await store.remove(recording.id).catch(() => undefined);
         return;
       }
       this.prepare(limits, 0, 0);
@@ -214,9 +214,9 @@ export class RecordingCapture {
       await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
     } catch (error) {
-      this.finish();
       // Nothing was recorded: do not leave an empty recording to recover.
-      if (created) await this.store?.remove(created.id).catch(() => undefined);
+      if (created) await this.store?.discard(created.id).catch(() => undefined);
+      this.finish();
       this.set({ status: "idle", recording: null, error: microphoneError(error) });
     } finally {
       this.starting = false;
