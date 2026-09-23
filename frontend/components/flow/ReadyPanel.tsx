@@ -85,7 +85,8 @@ export function ReadyPanel({
           Inspelningen är klar
         </h2>
         <p className="text-[15px] text-ink-soft">
-          {name} · {formatDuration(recording.durationMs)}
+          {/* Whole seconds, as the timer and the player count them: 7.6 s reads "7 s", never "8 s" beside "0:07". */}
+          {name} · {formatDuration(Math.floor(recording.durationMs / 1_000) * 1_000)}
         </p>
       </div>
 

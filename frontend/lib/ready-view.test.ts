@@ -43,6 +43,17 @@ test("the ready state names the recording for people, never as a file or a type,
   );
   assert.match(withContinue, />Fortsätt spela in<\/button>/);
   assert.match(withContinue, /Inspelningen finns bara i den här fliken\./, "the storage line stays honest");
+
+  const short = renderToStaticMarkup(
+    createElement(ReadyPanel, {
+      recording: { ...recording, durationMs: 7_600 },
+      persistent: true,
+      problem: null,
+      onCreate: noop,
+      onDiscard: noop,
+    }),
+  );
+  assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
 });
 
 test("the player is our own: a named play button, a named slider over the known length, and m:ss / m:ss", () => {
