@@ -101,7 +101,7 @@ export function LiveSheet({ live, recorder }: { live: LiveSession; recorder: Cap
         <Button
           type="button"
           variant="outline"
-          className="absolute bottom-16 left-1/2 h-11 -translate-x-1/2 rounded-full bg-card shadow-md"
+          className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-card shadow-md"
           onClick={showLatest}
         >
           <ArrowDown data-icon="inline-start" aria-hidden />

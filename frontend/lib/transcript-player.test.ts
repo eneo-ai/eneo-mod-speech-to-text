@@ -30,7 +30,7 @@ test("the transcript's controls are the app's one player, with speed, skips and 
   const html = render(2);
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelningen"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
-  assert.match(html, /aria-label="Position"/);
+  assert.match(html, /aria-label="Position i inspelningen"/);
   assert.match(html, /aria-label="Bakåt 10 sekunder"/);
   assert.match(html, /aria-label="Framåt 10 sekunder"/);
   assert.match(html, /aria-label="Hastighet 1×"/);

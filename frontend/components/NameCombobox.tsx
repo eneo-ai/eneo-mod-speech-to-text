@@ -150,7 +150,7 @@ export function NameCombobox({
         onFocus={openList}
         onClick={openList}
         onKeyDown={onKeyDown}
-        className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
+        className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] coarse:h-11 coarse:pr-11 coarse:text-base text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
       />
       <button
         type="button"
@@ -165,7 +165,7 @@ export function NameCombobox({
           setTyping(false);
           setOpen(nextOpen);
         }}
-        className="absolute inset-y-0 right-0 grid w-8 place-items-center text-ink-mute hover:text-ink disabled:opacity-50"
+        className="absolute inset-y-0 right-0 grid w-8 place-items-center coarse:w-11 text-ink-mute hover:text-ink disabled:opacity-50"
       >
         <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
       </button>

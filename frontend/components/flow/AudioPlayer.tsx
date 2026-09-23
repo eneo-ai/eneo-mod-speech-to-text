@@ -56,7 +56,7 @@ export function AudioPlayer({
         type="button"
         variant="outline"
         size="icon"
-        className="relative size-11 shrink-0 rounded-full"
+        className="relative shrink-0 rounded-full"
         aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
         data-loading={state.starting || undefined}
         onClick={() => playback.toggle()}
@@ -75,7 +75,7 @@ export function AudioPlayer({
         )}
       </Button>
       <Slider
-        className="h-11 min-w-0 flex-1"
+        className="h-9 min-w-0 flex-1 coarse:h-11"
         min={0}
         max={Math.max(1, Math.round(state.totalMs / 1_000))}
         step={1}
@@ -84,7 +84,7 @@ export function AudioPlayer({
         // change reports its commit before its change.
         onValueChange={([seconds]) => playback.seekAt(seconds * 1_000)}
         thumbProps={{
-          "aria-label": "Position",
+          "aria-label": "Position i inspelningen",
           "aria-valuetext": `${formatClock(state.atMs)} av ${formatClock(state.totalMs)}`,
         }}
       />

@@ -9,6 +9,10 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      // `coarse:` is a touch screen: controls grow to 44 px targets there and keep a mouse's density elsewhere.
+      screens: {
+        coarse: { raw: "(pointer: coarse)" },
+      },
       fontFamily: {
         mono: ["ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },

@@ -181,8 +181,8 @@ export function FlowInput({
             <AlertDialogDescription>{leaveWarning(input.persistent, phase)}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="h-11">Stanna kvar</AlertDialogCancel>
-            <AlertDialogAction className="h-11" onClick={() => leave?.()}>
+            <AlertDialogCancel>Stanna kvar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => leave?.()}>
               Lämna sidan
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -433,8 +433,8 @@ function SetupWorkspace({
           >
             <Button
               type="button"
-              size="lg"
-              className="h-12 w-full rounded-xl px-6 text-[16px]"
+              size="xl"
+              className="w-full"
               // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
               aria-disabled={phase === "starting" || undefined}
               onClick={primary}

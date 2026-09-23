@@ -128,8 +128,8 @@ export function RecordingBar({
           <Button
             type="button"
             variant="outline"
+            size="xl"
             className={cn(
-              "h-12 rounded-xl text-[16px]",
               // Wide enough for "Fortsätt", so pausing moves nothing.
               showStatus ? "min-w-24 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
             )}
@@ -144,8 +144,8 @@ export function RecordingBar({
           </Button>
           <Button
             type="button"
+            size="xl"
             className={cn(
-              "h-12 rounded-xl text-[16px]",
               showStatus ? "sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
             )}
             onClick={onStop}

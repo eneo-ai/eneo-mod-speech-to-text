@@ -15,12 +15,12 @@ export function ProblemAlert({ problem, onRetry }: { problem: Problem; onRetry?:
         // In a row of their own, so the alert's text indent lines them up instead of padding them.
         <div className="mt-3 flex flex-wrap gap-3">
           {problem.retry && onRetry && (
-            <Button type="button" variant="outline" className="h-11" onClick={onRetry}>
+            <Button type="button" variant="outline" onClick={onRetry}>
               Försök igen
             </Button>
           )}
           {problem.back && (
-            <Button asChild variant="outline" className="h-11">
+            <Button asChild variant="outline">
               <Link href="/flows">
                 <ArrowLeft data-icon="inline-start" aria-hidden />
                 Till flödena

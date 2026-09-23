@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NameCombobox } from "../components/NameCombobox";
+import { buttonVariants } from "../components/ui/button";
 
 // WCAG relative luminance using the actual CSS tokens, including alpha backgrounds.
 type RGB = [number, number, number];
@@ -90,4 +91,19 @@ test("speaker names with spaces and punctuation produce valid unique option IDs"
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(ids.every((id) => !/\s/.test(id)));
   assert.match(html, /role="listbox" aria-label="Förslag: Namn för Talare 1"/);
+});
+
+test("buttons keep a mouse's density and grow to 44 px targets on a touch screen", () => {
+  const px = (classes: string, prefix: string) => {
+    const m = new RegExp(`(?:^| )${prefix}(?:h|size)-(\\d+)(?= |$)`).exec(classes);
+    return m ? Number(m[1]) * 4 : null;
+  };
+  for (const size of ["default", "sm", "lg", "icon"] as const) {
+    const classes = buttonVariants({ size });
+    const mouse = px(classes, ""), touch = px(classes, "coarse:");
+    assert.ok(mouse !== null && mouse >= 24 && mouse <= 40, `${size} on a mouse: ${mouse}`);
+    assert.equal(touch, 44, `${size} on a touch screen`);
+  }
+  // The one action a screen exists for is large at every pointer.
+  assert.equal(px(buttonVariants({ size: "xl" }), ""), 48);
 });
