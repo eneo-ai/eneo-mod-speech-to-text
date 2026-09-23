@@ -981,6 +981,37 @@ export async function getTranscriptWords(
 }
 
 /**
+ * One page (200 segments) of the transcript an attempt stored. Present: the
+ * segments with their absolute index, the source hash corrections must carry,
+ * and on the first page the speaker review. Omitted: Eneo kept no segments
+ * (the step's text is then the transcript). Unavailable: written before Eneo
+ * kept sources.
+ */
+export type TranscriptSourcePage =
+  | {
+      status: "present";
+      source_hash: string;
+      next_segment_index: number | null;
+      segments: Record<string, unknown>[];
+      speaker_review?: unknown;
+    }
+  | { status: "omitted"; reason: number }
+  | { status: "unavailable_pre_row" };
+
+export async function getTranscriptSource(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  attemptNo: number,
+  startSegmentIndex: number,
+) {
+  const query = new URLSearchParams({ start_segment_index: String(startSegmentIndex) });
+  return request<TranscriptSourcePage>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/attempts/${attemptNo}/transcript-source/?${query}`,
+  );
+}
+
+/**
  * Same-origin ljudkälla för en av körningens inmatade filer. Modulens backend
  * hämtar den signerade Eneo-URL:en med sina egna credentials och strömmar
  * ljudet vidare med Range-stöd, så browsern aldrig ser Eneos token.

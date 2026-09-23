@@ -135,6 +135,8 @@ const LINE_RE =
   /^\[(\d{2,}):(\d{2}):(\d{2}) - (\d{2,}):(\d{2}):(\d{2})\](?: ([^:\n]+?):)? ?(.*)$/;
 // Fler ljudfiler sammanfogas med rubriken "## Del N".
 const PART_HEADER_RE = /^## Del (\d+)\b/;
+// Utan segment skriver Eneo texten i block om högst fem minuter: "### 0:00 - 5:00".
+const BLOCK_HEADER_RE = /^### (\d+):(\d{2}) - (\d+):(\d{2})\s*$/;
 
 function hms(h: string, m: string, s: string): number {
   return Number(h) * 3600 + Number(m) * 60 + Number(s);
@@ -151,14 +153,30 @@ export function parseTranscriptText(
 ): TranscriptSegment[] {
   const segments: TranscriptSegment[] = [];
   let fileIndex = 0;
+  // The time block the following paragraphs belong to.
+  let block: TranscriptSegment | null = null;
   for (const line of text.split("\n")) {
     const header = PART_HEADER_RE.exec(line);
     if (header) {
       fileIndex = Math.max(0, Number(header[1]) - 1);
+      block = null;
+      continue;
+    }
+    const heading = BLOCK_HEADER_RE.exec(line);
+    if (heading) {
+      const start = Number(heading[1]) * 60 + Number(heading[2]);
+      // Without "## Del" headers a new file shows only as its clock going back: the next
+      // block of the same file starts where the last one ended.
+      if (block && start < block.end) fileIndex += 1;
+      block = { fileIndex, start, end: Number(heading[3]) * 60 + Number(heading[4]), speaker: null, text: "" };
+      segments.push(block);
       continue;
     }
     const m = LINE_RE.exec(line);
-    if (!m) continue;
+    if (!m) {
+      if (block && line.trim()) block.text = block.text ? `${block.text} ${line.trim()}` : line.trim();
+      continue;
+    }
     const [, h1, m1, s1, h2, m2, s2, speaker, body] = m;
     segments.push({
       fileIndex,

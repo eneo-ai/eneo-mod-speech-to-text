@@ -1,5 +1,5 @@
 import type { FlowRunStep } from "./api";
-import { needsSpeakerReview, segmentsFromTranscription, type TranscriptSegment } from "./transcript";
+import { needsSpeakerReview, type TranscriptSegment } from "./transcript";
 
 /** Review controls are opt-in; evidence is always preserved. */
 export const SPEAKER_REVIEW_ENABLED = process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED === "true";
@@ -49,10 +49,19 @@ export function stepTranscription(step: FlowRunStep | undefined): unknown {
   return (step?.input_payload_json as { transcription?: unknown } | null | undefined)?.transcription;
 }
 
-/** A step result that holds a transcript: its segments, or at least its speaker review. */
+/**
+ * A step result that transcribed audio, and so holds a transcript: its
+ * segments (in Eneo's transcript source, or inline from an older Eneo), or
+ * at least its text.
+ */
 export function carriesTranscript(step: FlowRunStep | undefined): boolean {
-  const transcription = stepTranscription(step);
-  return segmentsFromTranscription(transcription) !== null || speakerReviewsFromTranscription(transcription).length > 0;
+  return stepTranscription(step) != null;
+}
+
+/** The transcript as text, as the step wrote it: "### 0:00 - 0:24" blocks, or "[00:00:00 - 00:00:04] Talare: …" lines. */
+export function stepTranscriptText(step: FlowRunStep | undefined): string | null {
+  const text = (step?.output_payload_json as { text?: unknown } | null | undefined)?.text;
+  return typeof text === "string" ? text : null;
 }
 
 export interface ReviewPassage {
