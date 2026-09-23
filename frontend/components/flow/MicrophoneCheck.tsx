@@ -87,7 +87,8 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         {devices.length > 1 ? (
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          // Wide enough to name the device; the test button wraps below it on a phone.
+          <div className="flex min-w-[min(100%,16rem)] flex-1 items-center gap-2">
             <label htmlFor={selectId} className="shrink-0 text-[15px] text-ink-soft">
               Mikrofon:
             </label>
