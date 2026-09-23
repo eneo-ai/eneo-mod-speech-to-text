@@ -304,6 +304,8 @@ export const TranscriptPlayer = forwardRef<
   // Unlabelled text reads as paragraphs, one per timed block.
   const turns = useMemo(() => (labelled ? computeTurns(shown) : paragraphTurns(shown)), [shown, labelled]);
   const speakers = useMemo(() => speakerSummaries(turns), [turns]);
+  // Each speaker's settled passages, counted once per transcript and its corrections, never per passage or playback tick.
+  const settledPassages = useMemo(() => new Map(speakers.map((s) => [s.label, s.passages])), [speakers]);
   const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
   const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
@@ -761,7 +763,7 @@ export const TranscriptPlayer = forwardRef<
                     labelled={labelled}
                     displayName={displayName}
                     labelOptions={labelOptions}
-                    samePassages={turn.speaker ? sameSpeaker(turn).length : 1}
+                    samePassages={turn.speaker ? (settledPassages.get(turn.speaker) ?? 0) + (pendingSpeakerReview(turn) ? 1 : 0) : 1}
                     canEdit={canEdit}
                     canPickSpeaker={editableTurn && labelled}
                     textForEdit={(index) => {

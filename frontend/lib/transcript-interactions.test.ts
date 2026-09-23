@@ -251,3 +251,20 @@ test("Bara det här inlägget on half of a split sentence moves that half only",
   const after = applyCorrections([{ fileIndex: 0, start: 0, end: 4, speaker: "SPEAKER_00", text }], saved[0]).segments;
   assert.deepEqual(after.map((s) => [s.text, s.speaker]), [["Vi börjar nu. ", "SPEAKER_00"], ["Jag tar över här.", "SPEAKER_02"]]);
 });
+
+test("each passage's count of its speaker's passages is not a scan of the whole transcript", async (t) => {
+  // 400 passages: counting per passage by scanning all of them would ask about 160 000 times.
+  const long: TranscriptSegment[] = Array.from({ length: 400 }, (_, i) => ({
+    fileIndex: 0, start: i, end: i + 1, speaker: i % 2 ? "SPEAKER_01" : "SPEAKER_00", text: `Mening ${i}.`,
+  }));
+  const transcript = require("./transcript") as { pendingSpeakerReview: (turn: unknown) => boolean };
+  const real = transcript.pendingSpeakerReview;
+  let asked = 0;
+  transcript.pendingSpeakerReview = (turn) => {
+    asked++;
+    return real(turn);
+  };
+  t.after(() => void (transcript.pendingSpeakerReview = real));
+  await player(long, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
+  assert.ok(asked < 20 * long.length, `asked ${asked} times for ${long.length} passages`);
+});
