@@ -593,12 +593,17 @@ def _eneo_filename(header: str | None) -> str | None:
     return None if chosen is None else collapse_rfc2231_value(chosen)
 
 
+def _safe_filename(name: str) -> str:
+    return " ".join(_UNSAFE_FILENAME.sub(" ", name).split())
+
+
 def _content_disposition(kind: str, filename: str | None) -> str:
     """``kind`` with Eneo's name, if any: an ASCII fallback and the UTF-8 original."""
-    name = " ".join(_UNSAFE_FILENAME.sub(" ", filename or "").split())[:200]
+    name = _safe_filename(filename or "")[:200]
     if not name:
         return kind
-    fallback = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode() or "fil"
+    # Sanitised again after NFKD, which folds a fullwidth quote or slash into its ASCII form.
+    fallback = _safe_filename(unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()) or "fil"
     return f"{kind}; filename=\"{fallback}\"; filename*=UTF-8''{quote(name, safe='')}"
 
 

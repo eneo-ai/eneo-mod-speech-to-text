@@ -171,6 +171,16 @@ class ArtifactProxyTests(unittest.TestCase):
         self.assertNotIn("\n", disposition)
         self.assertNotIn("set-cookie", response.headers)
 
+    def test_a_fullwidth_quote_cannot_close_the_ascii_fallback(self) -> None:
+        # NFKD turns U+FF02 into '"'; the fallback is quoted, so it must not end early.
+        self.fake.disposition = "attachment; filename*=UTF-8''m%C3%B6te%EF%BC%82%3B%20filename%3D%EF%BC%82annat.pdf"
+
+        response = self.client.get(CONTENT)
+
+        disposition = response.headers["content-disposition"]
+        self.assertTrue(disposition.startswith('attachment; filename="mote ; filename= annat.pdf"; filename*='), disposition)
+        self.assertEqual(disposition.count("filename="), 2, "the fallback's own text, and the one parameter")
+
     def test_eneo_refusing_the_file_passes_through(self) -> None:
         self.fake.mint_status = 410
 
