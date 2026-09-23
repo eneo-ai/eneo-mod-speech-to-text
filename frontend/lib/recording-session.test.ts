@@ -882,4 +882,6 @@ test("the recorder says when space runs low or the device stops keeping the reco
   } finally {
     IDBObjectStore.prototype.put = put;
   }
+  await capture.stop();
+  assert.equal(capture.getSnapshot().persistent, false, "the ready state after Stoppa still says so");
 });
