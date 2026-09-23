@@ -520,9 +520,7 @@ export class RecordingCapture {
     });
   }
 
-  private onMicrophoneLost = () => {
-    if (this.part) void this.endPart(this.part, "interrupt");
-  };
+  private onMicrophoneLost = () => void this.endParts("interrupt");
 
   /** True, with the microphone let go, when the page went away during a start. */
   private left(generation: number): boolean {

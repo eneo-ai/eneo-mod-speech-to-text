@@ -519,21 +519,23 @@ test("when the flow's last file is full the recording stops with that reason and
   );
 });
 
-test("a stop or a lost microphone during the overlap ends both recorders and keeps both parts", async (t) => {
+test("a stop, a page leave or a lost microphone during the overlap stops the full part first and keeps both parts once", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   for (const [what, end] of [
     ["stop", (capture: RecordingCapture) => void capture.stop()],
+    ["page leave", (capture: RecordingCapture) => capture.dispose()],
     ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("mute")],
   ] as const) {
     const { capture, store, streams, recorders } = await setup();
     await capture.start(meeting, { maxBytes: LIMIT });
     for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
     recorders[1].emit("new");
+    const stopped: number[] = [];
+    recorders.forEach((recorder, index) => recorder.addEventListener("stop", () => stopped.push(index)));
     end(capture, streams[0]);
-    await until(() => ["stopped", "interrupted"].includes(capture.getSnapshot().status), what);
+    await until(() => streams[0].track.readyState === "ended", `${what}: the microphone let go`);
     await settle();
-    assert.deepEqual(recorders.map((recorder) => recorder.state), ["inactive", "inactive"], what);
-    assert.equal(streams[0].track.readyState, "ended", `${what}: the microphone is let go`);
+    assert.deepEqual(stopped, [0, 1], what);
     const files = await store.readParts(capture.getSnapshot().recording!.id);
     assert.deepEqual(files.map((file) => file.blob.size), [5 * 8_000 + 1, 3 + 1], what);
     t.mock.timers.tick(150); // the overlap's own stop finds nothing left to stop
