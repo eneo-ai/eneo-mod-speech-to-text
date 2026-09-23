@@ -870,40 +870,30 @@ function ReviewView({
         className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
       />
       <div className="flex items-center justify-end gap-2">
-        <button
+        <Button
           type="button"
+          variant="ghost"
           onClick={() => {
             setShowReject(false);
             setRejectReason("");
           }}
           disabled={working === "reject"}
-          className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
         >
           Avbryt
-        </button>
-        <button
-          type="button"
-          onClick={submitReject}
-          disabled={!rejectReason.trim() || working === "reject"}
-          className="inline-flex items-center gap-1.5 rounded-full bg-primary text-primary-foreground px-4 py-2 text-[13px] font-medium disabled:opacity-50"
-        >
-          {working === "reject" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        </Button>
+        <Button type="button" onClick={submitReject} disabled={!rejectReason.trim() || working === "reject"}>
+          {working === "reject" ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin" /> : null}
           Bekräfta avvisning
-        </button>
+        </Button>
       </div>
     </section>
   ) : null;
 
   const actions = (
     <div className="mt-auto flex items-center justify-between gap-3 pt-4">
-      <button
-        type="button"
-        onClick={() => setShowReject(true)}
-        disabled={working !== null || showReject}
-        className="text-[13px] text-ink-soft hover:text-primary transition-colors disabled:opacity-50"
-      >
+      <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
         Avvisa
-      </button>
+      </Button>
       <Button type="button" onClick={saveAndApprove} disabled={busy || (isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem)))}>
         {working === "approve" ? (
           <Loader2 className="h-4 w-4 animate-spin" />

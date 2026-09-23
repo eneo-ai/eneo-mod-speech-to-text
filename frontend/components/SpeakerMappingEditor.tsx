@@ -78,14 +78,15 @@ export function SpeakerMappingEditor({
             key={row.label}
             className="border-b border-rule-soft py-3 first:pt-0 last:border-0 last:pb-0"
           >
-            <div className="flex items-center gap-2.5">
+            {/* Below sm the name field takes its own line, so a name is never cut. */}
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2">
               <span
                 aria-hidden
                 className="h-2.5 w-2.5 shrink-0 rounded-full"
                 style={{ background: color }}
               />
               <span
-                className="w-[4.5rem] shrink-0 text-[13px] font-semibold leading-tight"
+                className="flex-1 text-[13px] font-semibold leading-tight sm:w-[4.5rem] sm:flex-none sm:shrink-0"
                 style={{ color }}
               >
                 {title}
@@ -96,7 +97,7 @@ export function SpeakerMappingEditor({
                 options={names.filter((n) => n !== row.name?.trim() || participants.includes(n))}
                 disabled={disabled}
                 onChange={(name) => update(row.label, { name })}
-                className="flex-1"
+                className="order-last basis-full sm:order-none sm:basis-0 sm:flex-1"
               />
               {onListen && (
                 <button
@@ -105,14 +106,14 @@ export function SpeakerMappingEditor({
                   disabled={disabled || Boolean(unavailable)}
                   aria-label={`Lyssna på ${title}${unavailable ? `: ${unavailable}` : ""}`}
                   title={unavailable ?? "Lyssna"}
-                  className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-rule-soft bg-paper text-ink-soft transition-colors hover:border-ink/40 hover:text-ink disabled:opacity-50"
+                  className="grid size-9 shrink-0 place-items-center rounded-full border coarse:size-11 border-rule-soft bg-paper text-ink-soft transition-colors hover:border-ink/40 hover:text-ink disabled:opacity-50"
                 >
                   <Headphones className="h-4 w-4" strokeWidth={2} />
                 </button>
               )}
             </div>
 
-            <div className="pl-[calc(0.625rem+0.625rem+4.5rem+0.625rem)]">
+            <div className="sm:pl-[calc(0.625rem+0.625rem+4.5rem+0.625rem)]">
               <p className="mt-1.5 text-[12px] leading-snug text-ink-mute">
                 {describe(row)}
                 {unavailable && <span className="block">{unavailable}</span>}
@@ -128,7 +129,7 @@ export function SpeakerMappingEditor({
               )}
               {proposal?.evidence && (
                 <details className="mt-1 text-[12px] leading-snug">
-                  <summary className="min-h-6 cursor-pointer select-none text-ink-mute hover:text-ink">
+                  <summary className="inline-flex min-h-6 cursor-pointer select-none items-center coarse:min-h-11 text-ink-mute hover:text-ink">
                     Varför?
                   </summary>
                   <p className="mt-1 text-ink-soft">{proposal.evidence}</p>
