@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Pause, Pencil, Play, RotateCcw, RotateCw } from "lucide-react";
+import { Check, ChevronDown, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -11,6 +11,9 @@ import {
   useState,
 } from "react";
 import { TranscriptEditor } from "@/components/TranscriptEditor";
+import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { Button } from "@/components/ui/button";
+import type { PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
 import { cn } from "@/lib/utils";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
@@ -59,8 +62,31 @@ export interface TranscriptPlayerHandle {
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
 const RATES = [0.75, 1, 1.25, 1.5, 2];
+const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const SKIP_SECONDS = 10;
+
+/**
+ * The transcript's keys, outside its controls and text: Space or K plays and
+ * pauses, the arrow keys move five seconds, J and L ten. `skipMs` 0 toggles.
+ */
+export function shortcut(key: string): { skipMs: number; preventDefault: boolean } | null {
+  switch (key.length === 1 ? key.toLowerCase() : key) {
+    case " ":
+    case "k":
+      return { skipMs: 0, preventDefault: true };
+    case "ArrowLeft":
+      return { skipMs: -5_000, preventDefault: true };
+    case "ArrowRight":
+      return { skipMs: 5_000, preventDefault: true };
+    case "j":
+      return { skipMs: -SKIP_SECONDS * 1_000, preventDefault: false };
+    case "l":
+      return { skipMs: SKIP_SECONDS * 1_000, preventDefault: false };
+    default:
+      return null;
+  }
+}
 
 function rateLabel(rate: number): string {
   return `${String(rate).replace(".", ",")}×`;
@@ -179,48 +205,45 @@ export const TranscriptPlayer = forwardRef<
   },
   ref,
 ) {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
-  const replayEnd = useRef<{ fileIndex: number; time: number } | null>(null);
-  const pendingSeek = useRef<{ time: number; autoplay: boolean } | null>(null);
   const programmaticScrollUntil = useRef(0);
 
-  const [currentFile, setCurrentFile] = useState(0);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const [paused, setPaused] = useState(true);
-  const [rate, setRate] = useState(1);
   const [follow, setFollow] = useState(true);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const [audioUnavailable, setAudioUnavailable] = useState(false);
-  const [reloadKey, setReloadKey] = useState(0);
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const hasAudio = fileCount > 0 && !audioPending;
+  // The app's one set of playback controls; the transcript follows its position and seeks through it.
+  const playback = usePlayback(
+    hasAudio ? Array.from({ length: fileCount }, (_, i) => ({ url: audioSrcFor(i), durationMs: null })) : NO_SOURCES,
+  );
+  const position = usePlaybackState(playback);
+  const currentFile = position.part;
+  const currentTime = position.withinMs / 1_000;
+  const paused = !position.playing;
+  const audioUnavailable = position.unavailable;
+  const rate = position.rate;
 
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
   const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, currentTime));
+  // Scrolling follows only once playback has started or been moved.
+  const activeIndex = position.started ? findActiveSegmentIndex(shown, currentFile, currentTime) : -1;
   const correctedIndices = applied.corrected;
   const correctedRanges = applied.ranges;
   const turns = useMemo(() => computeTurns(shown), [shown]);
   const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
+  const partLengthMs = position.lengthsMs[currentFile] ?? 0;
   const withHours = useMemo(
-    () => duration >= 3600 || shown.some((s) => s.end >= 3600),
-    [duration, shown],
+    () => partLengthMs >= 3_600_000 || shown.some((s) => s.end >= 3600),
+    [partLengthMs, shown],
   );
   const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
   const hasSegments = shown.length > 0;
-  const hasAudio = fileCount > 0 && !audioPending;
   const canEdit = editable && !correctionProblem && typeof onCorrectionsChange === "function";
   const canReview = canEdit && reviewEnabled && corrections?.schemaVersion === 3 && !correctionWriteProblem(corrections);
   const canConfirm = typeof onToggleConfirmed === "function";
-
-  const src = hasAudio ? audioSrcFor(currentFile) : undefined;
-
-  useEffect(() => {
-    setActiveIndex(-1);
-  }, [segments]);
 
   const displayName = useCallback(
     (label: string | null) => {
@@ -238,108 +261,30 @@ export const TranscriptPlayer = forwardRef<
     return [...set].sort();
   }, [speakerOptions, segments, corrections]);
 
-  function syncActive(time: number) {
-    const index = findActiveSegmentIndex(shown, currentFile, time);
-    setActiveIndex(index);
-  }
-
-  function onTimeUpdate() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setCurrentTime(audio.currentTime);
-    syncActive(audio.currentTime);
-    if (replayEnd.current?.fileIndex === currentFile && audio.currentTime >= replayEnd.current.time) {
-      audio.pause(); replayEnd.current = null;
-    }
-  }
-
-  function onLoadedMetadata() {
-    const audio = audioRef.current;
-    if (!audio) return;
-    setDuration(audio.duration);
-    audio.playbackRate = rate;
-    const pending = pendingSeek.current;
-    if (pending) {
-      pendingSeek.current = null;
-      audio.currentTime = pending.time;
-      setCurrentTime(pending.time);
-      syncActive(pending.time);
-      if (pending.autoplay) void audio.play().catch(ignoreAbort);
-    }
-  }
-
   const seekTo = useCallback(
     (fileIndex: number, time: number, autoplay = false) => {
-      replayEnd.current = null;
-      if (!hasAudio) {
-        setCurrentTime(time);
-        setCurrentFile(fileIndex);
-        setActiveIndex(findActiveSegmentIndex(shown, fileIndex, time));
-        return;
-      }
-      setFollow(true);
-      const audio = audioRef.current;
-      if (fileIndex !== currentFile || !audio) {
-        pendingSeek.current = { time, autoplay };
-        setCurrentTime(time);
-        setDuration(0);
-        setAudioUnavailable(false);
-        setCurrentFile(fileIndex);
-        return;
-      }
-      audio.currentTime = time;
-      setCurrentTime(time);
-      syncActive(time);
-      if (autoplay) void audio.play().catch(ignoreAbort);
+      if (hasAudio) setFollow(true);
+      playback.seek(fileIndex, time * 1_000, autoplay);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [hasAudio, currentFile, shown],
+    [hasAudio, playback],
   );
 
   useImperativeHandle(ref, () => ({ seekTo }), [seekTo]);
 
-  function togglePlay() {
-    replayEnd.current = null;
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (audio.paused) void audio.play().catch(ignoreAbort);
-    else audio.pause();
-  }
-
-  function skip(delta: number) {
-    replayEnd.current = null;
-    const audio = audioRef.current;
-    if (!audio) return;
-    const target = Math.min(Math.max(0, audio.currentTime + delta), audio.duration || Infinity);
-    audio.currentTime = target;
-    setCurrentTime(target);
-    syncActive(target);
-  }
-
   function cycleRate() {
-    const next = RATES[(RATES.indexOf(rate) + 1) % RATES.length];
-    setRate(next);
-    if (audioRef.current) audioRef.current.playbackRate = next;
+    playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    const action = shortcut(e.key);
+    if (!action) return;
     const target = e.target as HTMLElement;
-    if (target.closest("button, a, input, select, textarea, [role=menuitemradio], [contenteditable]")) return;
+    // The position slider moves by its own keys; controls and text fields keep theirs.
+    if (target.closest("button, a, input, select, textarea, [role=slider], [role=menuitemradio], [contenteditable]")) return;
     if (!hasAudio || audioUnavailable) return;
-    if (e.key === " " || e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      togglePlay();
-    } else if (e.key === "ArrowLeft") {
-      e.preventDefault();
-      skip(-5);
-    } else if (e.key === "ArrowRight") {
-      e.preventDefault();
-      skip(5);
-    } else if (e.key.toLowerCase() === "j") {
-      skip(-SKIP_SECONDS);
-    } else if (e.key.toLowerCase() === "l") {
-      skip(SKIP_SECONDS);
-    }
+    if (action.preventDefault) e.preventDefault();
+    if (action.skipMs === 0) playback.toggle();
+    else playback.skip(action.skipMs);
   }
 
   // Följ uppspelningen: rulla den aktiva repliken till mitten.
@@ -428,98 +373,47 @@ export const TranscriptPlayer = forwardRef<
       onKeyDown={onKeyDown}
     >
       {hasAudio && (
-        <audio
-          key={`${currentFile}-${reloadKey}`}
-          ref={audioRef}
-          src={src}
-          preload="metadata"
-          onTimeUpdate={onTimeUpdate}
-          onLoadedMetadata={onLoadedMetadata}
-          onDurationChange={() => setDuration(audioRef.current?.duration ?? 0)}
-          onPlay={() => setPaused(false)}
-          onPause={() => setPaused(true)}
-          onError={() => setAudioUnavailable(true)}
-        />
+        <div className="border-b border-rule-soft px-3 py-2">
+          <AudioPlayer playback={playback} label="Inspelningen">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden size-11 shrink-0 rounded-full sm:inline-flex"
+              disabled={audioUnavailable}
+              aria-label={`Bakåt ${SKIP_SECONDS} sekunder`}
+              onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
+            >
+              <RotateCcw aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="hidden size-11 shrink-0 rounded-full sm:inline-flex"
+              disabled={audioUnavailable}
+              aria-label={`Framåt ${SKIP_SECONDS} sekunder`}
+              onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
+            >
+              <RotateCw aria-hidden />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 shrink-0 rounded-full px-3 tabular-nums"
+              aria-label={`Hastighet ${rateLabel(rate)}`}
+              onClick={cycleRate}
+            >
+              {rateLabel(rate)}
+            </Button>
+            {!follow && (
+              <Button type="button" variant="ghost" className="h-11 shrink-0 px-3 text-primary" onClick={() => setFollow(true)}>
+                Följ
+              </Button>
+            )}
+          </AudioPlayer>
+        </div>
       )}
-
-      {/* Transport */}
-      <div className="flex items-center gap-2 border-b border-rule-soft px-3 py-2.5">
-        <button
-          type="button"
-          onClick={togglePlay}
-          disabled={!hasAudio || audioUnavailable}
-          aria-label={paused ? "Spela" : "Pausa"}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95 disabled:opacity-40"
-        >
-          {paused ? (
-            <Play className="h-4 w-4 translate-x-[1px]" strokeWidth={2.25} fill="currentColor" />
-          ) : (
-            <Pause className="h-4 w-4" strokeWidth={2.25} fill="currentColor" />
-          )}
-        </button>
-
-        <button
-          type="button"
-          onClick={() => skip(-SKIP_SECONDS)}
-          disabled={!hasAudio || audioUnavailable}
-          aria-label={`Bakåt ${SKIP_SECONDS} sekunder`}
-          className="hidden sm:grid h-8 w-8 place-items-center rounded-full text-ink-soft hover:text-ink disabled:opacity-40"
-        >
-          <RotateCcw className="h-4 w-4" strokeWidth={2} />
-        </button>
-        <button
-          type="button"
-          onClick={() => skip(SKIP_SECONDS)}
-          disabled={!hasAudio || audioUnavailable}
-          aria-label={`Framåt ${SKIP_SECONDS} sekunder`}
-          className="hidden sm:grid h-8 w-8 place-items-center rounded-full text-ink-soft hover:text-ink disabled:opacity-40"
-        >
-          <RotateCw className="h-4 w-4" strokeWidth={2} />
-        </button>
-
-        <span className="font-mono text-[11px] tabular-nums text-ink-soft shrink-0">
-          {formatClock(currentTime, withHours)}
-        </span>
-        <input
-          type="range"
-          min={0}
-          max={Number.isFinite(duration) && duration > 0 ? duration : 0}
-          step={0.1}
-          value={Math.min(currentTime, duration || 0)}
-          disabled={!hasAudio || audioUnavailable || !duration}
-          onChange={(e) => {
-            const t = Number(e.target.value);
-            if (audioRef.current) audioRef.current.currentTime = t;
-            setCurrentTime(t);
-            syncActive(t);
-          }}
-          aria-label="Position i inspelningen"
-          aria-valuetext={`${formatClock(currentTime, withHours)} av ${formatClock(duration, withHours)}`}
-          className="min-h-6 min-w-0 flex-1 accent-[hsl(var(--primary))]"
-        />
-        <span className="font-mono text-[11px] tabular-nums text-ink-mute shrink-0">
-          {formatClock(duration, withHours)}
-        </span>
-
-        <button
-          type="button"
-          onClick={cycleRate}
-          disabled={!hasAudio}
-          aria-label={`Hastighet ${rateLabel(rate)}`}
-          className="font-mono text-[11px] tabular-nums text-ink-soft hover:text-ink rounded-full border border-rule-soft px-2 py-1 shrink-0 disabled:opacity-40"
-        >
-          {rateLabel(rate)}
-        </button>
-        {!follow && hasAudio && (
-          <button
-            type="button"
-            onClick={() => setFollow(true)}
-            className="min-h-8 min-w-8 text-[12px] text-primary hover:underline shrink-0"
-          >
-            Följ
-          </button>
-        )}
-      </div>
 
       {totalFiles > 1 && hasAudio && (
         <div className="flex flex-wrap items-center gap-1.5 border-b border-rule-soft px-3 py-1.5">
@@ -560,10 +454,7 @@ export const TranscriptPlayer = forwardRef<
                 <button
                   type="button"
                   className="underline"
-                  onClick={() => {
-                    setAudioUnavailable(false);
-                    setReloadKey((k) => k + 1);
-                  }}
+                  onClick={() => playback.reload()}
                 >
                   Försök igen
                 </button>
@@ -630,8 +521,10 @@ export const TranscriptPlayer = forwardRef<
         {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
           audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={currentTime} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
-            seekTo(fileIndex, time, autoplay);
-            if (end !== undefined) replayEnd.current = { fileIndex, time: end };
+            if (end === undefined) return seekTo(fileIndex, time, autoplay);
+            // "Lyssna" on a passage plays it and stops at its end.
+            if (hasAudio) setFollow(true);
+            playback.playRange(fileIndex, time * 1_000, end * 1_000);
           }}
           confirmedWords={confirmedWords} onToggleConfirmed={onToggleConfirmed}
           onInteract={() => setFollow(false)} /> : turns.map((turn, i) => (
@@ -658,7 +551,7 @@ export const TranscriptPlayer = forwardRef<
             onToggleConfirmed={onToggleConfirmed}
             editingIndex={editingIndex}
             onStartEdit={(idx) => {
-              audioRef.current?.pause();
+              playback.pause();
               setEditingIndex(idx);
             }}
             onCancelEdit={() => setEditingIndex(-1)}
@@ -996,8 +889,4 @@ function LineEditor({
       </div>
     </div>
   );
-}
-
-function ignoreAbort(err: unknown) {
-  if (err instanceof DOMException && err.name === "AbortError") return;
 }
