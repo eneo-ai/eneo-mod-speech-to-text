@@ -373,6 +373,9 @@ får browsern en enda `error`-händelse med Eneos `code` och sedan en normal
 stängning. Når backend inte Eneo blir koden `upstream_unreachable` med
 `retryable: true`.
 
+Går en av sidorna inte att skriva till på 15 sekunder avslutar backend
+sessionen.
+
 Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma
 `/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i
 produktionsimagen; Traefik släpper igenom den utan extra konfiguration

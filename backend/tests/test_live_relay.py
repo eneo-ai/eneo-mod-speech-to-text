@@ -1,9 +1,11 @@
 import asyncio
+import contextlib
 import json
 import os
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
@@ -18,6 +20,7 @@ import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
 from websockets.asyncio.server import serve  # noqa: E402
+from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 from app import main  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
@@ -30,6 +33,13 @@ MODULE_ORIGIN = "https://module.example.test"
 TICKET = "ticket-1"
 STOP = '{"type":"stop"}'
 READY = {"type": "ready", "sample_rate": 16000, "max_seconds": 18000}
+ERROR = {
+    "type": "error",
+    "code": "duration_exceeded",
+    "message": "The recording is longer than live transcription allows.",
+    "retryable": False,
+}
+DELTA = {"type": "transcript.delta", "text": "hej "}
 
 
 def ticket_response(ticket: str = TICKET) -> httpx.Response:
@@ -65,10 +75,15 @@ class FakeEneoApi:
 
 
 class FakeEneoSocket:
-    """Eneo's live socket on a real port: `ready`, a delta per frame, `done` at stop."""
+    """Eneo's live socket on a real port: `ready`, a delta per frame, `done` at stop.
+
+    Other modes: "close_after_ready"; "error_on_first_frame", which sends ERROR
+    and closes, as Eneo does when a session ends early; "stop_reading", which
+    never reads again but keeps talking, so it notices when the relay drops it.
+    """
 
     def __init__(self) -> None:
-        self.close_after_ready = False
+        self.mode = "relay"
         self.handshakes = []
         self.frames: list[bytes | str] = []
         self.closed = threading.Event()
@@ -103,10 +118,19 @@ class FakeEneoSocket:
     async def _session(self, socket) -> None:
         try:
             await socket.send(json.dumps(READY))
-            if self.close_after_ready:
+            if self.mode == "close_after_ready":
+                return
+            if self.mode == "stop_reading":
+                with contextlib.suppress(ConnectionClosed):
+                    while True:
+                        await socket.send(json.dumps(DELTA))
+                        await asyncio.sleep(0.05)
                 return
             async for frame in socket:
                 self.frames.append(frame)
+                if self.mode == "error_on_first_frame":
+                    await socket.send(json.dumps(ERROR))
+                    return
                 if frame == STOP:
                     await socket.send(json.dumps({"type": "transcript.done", "text": "hej då"}))
                     return
@@ -115,6 +139,15 @@ class FakeEneoSocket:
                 )
         finally:
             self.closed.set()
+
+    def drop_connections(self) -> None:
+        """Abort every connection, so even a relay stuck writing to Eneo ends."""
+
+        def abort() -> None:
+            for connection in self._server.connections:
+                connection.transport.abort()
+
+        self._loop.call_soon_threadsafe(abort)
 
     def stop(self) -> None:
         async def shutdown() -> None:
@@ -125,7 +158,27 @@ class FakeEneoSocket:
         self._loop.call_soon_threadsafe(self._loop.stop)
 
 
-class LiveRelayTests(unittest.TestCase):
+class PausableDelivery:
+    """ASGI wrapper that holds the relay's messages to the browser while paused."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+        self.delivering = threading.Event()
+        self.delivering.set()
+
+    async def __call__(self, scope, receive, send) -> None:
+        async def held_send(message) -> None:
+            if message["type"] == "websocket.send":
+                while not self.delivering.is_set():
+                    await asyncio.sleep(0.01)
+            await send(message)
+
+        await self.app(scope, receive, held_send)
+
+
+class RelayFixture:
+    """A fake Eneo that the module backend's settings point at."""
+
     def setUp(self) -> None:
         self.eneo_socket = FakeEneoSocket()
         self.eneo_api = FakeEneoApi()
@@ -137,8 +190,6 @@ class LiveRelayTests(unittest.TestCase):
         main.http_client = self.eneo_api
         main.module_auth.http_client = self.eneo_api
         main.module_auth.sessions.clear()
-        self.client = TestClient(main.app)
-        self.sign_in(refresh_at=int(time.time()) + 30)
 
     def tearDown(self) -> None:
         main.settings.eneo_backend_url = self.original_backend_url
@@ -146,9 +197,9 @@ class LiveRelayTests(unittest.TestCase):
         main.module_auth.http_client = self.original_auth_client
         self.eneo_socket.stop()
 
-    def sign_in(self, *, refresh_at: int) -> None:
+    def create_session(self, *, refresh_at: int) -> str:
         now = int(time.time())
-        session_id = main.module_auth.sessions.create(
+        return main.module_auth.sessions.create(
             EneoSsoSession(
                 access_token="module-user-token",
                 expires_at=now + 60,
@@ -159,7 +210,17 @@ class LiveRelayTests(unittest.TestCase):
                 user=ModuleUser(id="user-id", email="user@example.test"),
             )
         )
-        self.client.cookies.set(SESSION_COOKIE, session_id)
+
+
+class LiveRelayTests(RelayFixture, unittest.TestCase):
+    def setUp(self) -> None:
+        super().setUp()
+        self.delivery = PausableDelivery(main.app)
+        self.client = TestClient(self.delivery)
+        self.sign_in(refresh_at=int(time.time()) + 30)
+
+    def sign_in(self, *, refresh_at: int) -> None:
+        self.client.cookies.set(SESSION_COOKIE, self.create_session(refresh_at=refresh_at))
 
     def connect(self, origin: str | None = MODULE_ORIGIN):
         headers = {} if origin is None else {"Origin": origin}
@@ -305,7 +366,7 @@ class LiveRelayTests(unittest.TestCase):
         self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
 
     def test_eneo_closing_closes_browser_socket(self) -> None:
-        self.eneo_socket.close_after_ready = True
+        self.eneo_socket.mode = "close_after_ready"
 
         with self.connect() as browser:
             self.assertEqual(browser.receive_json(), READY)
@@ -320,6 +381,65 @@ class LiveRelayTests(unittest.TestCase):
         refresh, ticket = self.eneo_api.calls
         self.assertTrue(refresh["url"].endswith("/module-auth/speech-to-text/token/refresh/"))
         self.assertEqual(ticket["headers"]["Authorization"], "Bearer refreshed-token")
+
+    def test_eneo_error_reaches_a_slow_browser_before_the_close(self) -> None:
+        self.eneo_socket.mode = "error_on_first_frame"
+
+        with self.connect() as browser:
+            self.assertEqual(browser.receive_json(), READY)
+            self.delivery.delivering.clear()
+            try:
+                browser.send_bytes(b"\x00\x00")
+                self.assertTrue(self.eneo_socket.closed.wait(5))
+                # Audio keeps coming, so the relay finds Eneo gone while the
+                # error is still on its way to the browser.
+                browser.send_bytes(b"\x00\x00")
+                browser.send_bytes(b"\x00\x00")
+                time.sleep(0.3)
+            finally:
+                self.delivery.delivering.set()
+            self.assertEqual(browser.receive_json(), ERROR)
+            self.assert_closed(browser)
+
+    def test_eneo_that_stops_reading_ends_the_session_in_bounded_time(self) -> None:
+        self.eneo_socket.mode = "stop_reading"
+        frame = os.urandom(64 * 1024)  # zeros would compress to nothing on the wire
+
+        with (
+            patch.object(main, "_LIVE_SEND_TIMEOUT_SECONDS", 0.5),
+            patch.object(main, "_LIVE_CLOSE_TIMEOUT_SECONDS", 0.5),
+            self.connect() as browser,
+        ):
+            try:
+                self.assertEqual(browser.receive_json(), READY)
+                for _ in range(512):  # 32 MiB, more than every buffer on the way
+                    browser.send_bytes(frame)
+                self.assertTrue(
+                    self.eneo_socket.closed.wait(10), "Eneo's socket stayed open"
+                )
+                with self.assertRaises(WebSocketDisconnect) as ended:
+                    while True:  # Eneo's deltas, then the close
+                        self.assertEqual(browser.receive_json(), DELTA)
+                self.assertEqual(ended.exception.code, 1011)
+            finally:
+                self.eneo_socket.drop_connections()
+
+    def test_browser_that_stops_reading_ends_the_session_in_bounded_time(self) -> None:
+        with (
+            patch.object(main, "_LIVE_SEND_TIMEOUT_SECONDS", 0.5),
+            self.connect() as browser,
+        ):
+            self.assertEqual(browser.receive_json(), READY)
+            self.delivery.delivering.clear()
+            try:
+                browser.send_bytes(b"\x00\x00")  # Eneo answers; the browser takes nothing
+                self.assertTrue(
+                    self.eneo_socket.closed.wait(5), "Eneo's socket stayed open"
+                )
+            finally:
+                self.delivery.delivering.set()
+            self.assert_closed(browser, 1011)
+        self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
 
 
 if __name__ == "__main__":

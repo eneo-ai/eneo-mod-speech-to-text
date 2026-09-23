@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import re
 import time
@@ -24,7 +25,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
 from websockets.asyncio.client import ClientConnection, connect
-from websockets.exceptions import InvalidHandshake
+from websockets.exceptions import (
+    ConnectionClosed,
+    ConnectionClosedError,
+    InvalidHandshake,
+)
 
 from app.config import load_settings
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
@@ -641,6 +646,10 @@ async def eneo_proxy(path: str, request: Request) -> Response:
 
 _LIVE_SUBPROTOCOL = "eneo-live.v1"
 _LIVE_CLOSE_TIMEOUT_SECONDS = 2
+# A socket that accepts no write for this long has stopped reading, and the
+# relay ends the session. Longer than Eneo's own 10 s deadline toward the model
+# server, so when that is what stalled, Eneo's typed error arrives first.
+_LIVE_SEND_TIMEOUT_SECONDS = 15
 # transcript.done repeats the session's whole text; Eneo bounds the messages
 # it reads from the model server the same way.
 _LIVE_MAX_MESSAGE_BYTES = 8 * 2**20
@@ -716,31 +725,61 @@ async def _open_live_session(
         raise _eneo_unreachable() from None
 
 
-async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> None:
-    """Relay frames both ways until either side ends."""
+async def _browser_to_eneo(browser: WebSocket, eneo: ClientConnection) -> bool:
+    """Send the browser's frames to Eneo; True when the browser left."""
+    while True:
+        message = await browser.receive()
+        if message["type"] == "websocket.disconnect":
+            return True
+        frame = message.get("bytes")
+        try:
+            await asyncio.wait_for(
+                eneo.send(frame if frame is not None else message["text"]),
+                _LIVE_SEND_TIMEOUT_SECONDS,
+            )
+        except (ConnectionClosed, TimeoutError):
+            return False  # Eneo closed, or stopped reading
 
-    async def upstream() -> None:
-        while True:
-            message = await browser.receive()
-            if message["type"] == "websocket.disconnect":
-                return
-            frame = message.get("bytes")
-            await eneo.send(frame if frame is not None else message["text"])
 
-    async def downstream() -> None:
+async def _eneo_to_browser(eneo: ClientConnection, browser: WebSocket) -> bool:
+    """Send Eneo's events to the browser; True when it left or stopped reading."""
+    try:
         async for message in eneo:
             if isinstance(message, bytes):
-                await browser.send_bytes(message)
+                sent = browser.send_bytes(message)
             else:
-                await browser.send_text(message)
+                sent = browser.send_text(message)
+            await asyncio.wait_for(sent, _LIVE_SEND_TIMEOUT_SECONDS)
+    except ConnectionClosedError:
+        pass  # Eneo's socket broke; its close code says so
+    except (TimeoutError, WebSocketDisconnect, RuntimeError):
+        return True
+    return False
 
-    pumps = [asyncio.create_task(upstream()), asyncio.create_task(downstream())]
+
+async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> int:
+    """Relay both ways until one side ends; returns the browser's close code."""
+    upstream = asyncio.create_task(_browser_to_eneo(browser, eneo))
+    downstream = asyncio.create_task(_eneo_to_browser(eneo, browser))
     try:
-        await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(
+            {upstream, downstream}, return_when=asyncio.FIRST_COMPLETED
+        )
+        if any(pump.result() for pump in done):
+            return 1011  # the browser is gone: stop at once
+        # Eneo ended. Stop reading the browser and close Eneo, so nothing new
+        # arrives, then deliver the events Eneo sent before it ended.
+        upstream.cancel()
+        await _close_eneo_socket(eneo)
+        if await downstream:
+            return 1011
+        # Eneo ends a session with 1000 after `transcript.done` or an `error`;
+        # anything else means its socket broke.
+        return 1000 if eneo.close_code == 1000 else 1011
     finally:
-        for pump in pumps:
+        for pump in (upstream, downstream):
             pump.cancel()
-        await asyncio.gather(*pumps, return_exceptions=True)
+        await asyncio.gather(upstream, downstream, return_exceptions=True)
 
 
 async def _close_eneo_socket(eneo: ClientConnection) -> None:
@@ -755,13 +794,16 @@ async def _close_eneo_socket(eneo: ClientConnection) -> None:
 async def _close_browser_socket(
     websocket: WebSocket, *, code: int = 1000, event: dict[str, object] | None = None
 ) -> None:
-    """Send the last event, if any, and close; the browser may be gone already."""
-    try:
-        if event is not None:
-            await websocket.send_json(event)
+    """Send the last event, if any, and close; the browser may be gone already.
+
+    uvicorn bounds the close itself: a close frame the browser does not take
+    within its close timeout drops the connection.
+    """
+    if event is not None:
+        with contextlib.suppress(TimeoutError, WebSocketDisconnect, RuntimeError):
+            await asyncio.wait_for(websocket.send_json(event), _LIVE_SEND_TIMEOUT_SECONDS)
+    with contextlib.suppress(WebSocketDisconnect, RuntimeError):
         await websocket.close(code)
-    except (WebSocketDisconnect, RuntimeError):
-        pass
 
 
 @app.websocket(
@@ -779,10 +821,7 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
         await _close_browser_socket(websocket, event=refused.event)
         return
     try:
-        await _relay_live_session(websocket, eneo)
+        code = await _relay_live_session(websocket, eneo)
     finally:
         await _close_eneo_socket(eneo)
-    # Eneo ends a session with 1000 after `transcript.done` or an `error`;
-    # anything else means its socket broke.
-    code = 1000 if eneo.close_code == 1000 else 1011
     await _close_browser_socket(websocket, code=code)
