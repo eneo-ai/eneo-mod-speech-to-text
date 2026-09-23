@@ -79,7 +79,8 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   assert.doesNotMatch(shown, /Enter|retur|tryck|klicka|hovra/i, "no key or pointer a phone does not have");
   assert.match(html, /id="detalj-motesnamn"[^>]*aria-describedby="detalj-motesnamn-fel"[^>]*aria-invalid="true"/);
   assert.match(html, /id="detalj-motesnamn-fel"[^>]*>Fyll i det här för att skapa dokumentet\.</);
-  assert.match(html, /<select[^>]*id="detalj-typ"/, "a select field offers its options");
+  assert.match(html, /<button[^>]*role="combobox"[^>]*id="detalj-typ"|<button[^>]*id="detalj-typ"[^>]*role="combobox"/, "a select field is our own picker");
+  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "never the browser's own list");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 

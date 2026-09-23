@@ -2,10 +2,14 @@
 
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import type { FormField } from "@/lib/api";
 import type { DetailValue, FlowSession } from "@/lib/flow-session";
+
+// Radix Select takes no empty value; an unchosen field is "" everywhere else.
+const NONE = "inget-val";
 
 /** The id a field's control carries, so a problem can move focus to it. */
 export const detailFieldId = (name: string) => `detalj-${name}`;
@@ -20,7 +24,7 @@ export async function createDocument(session: FlowSession): Promise<void> {
 
 function options(field: FormField): string[] {
   return Array.isArray(field.options)
-    ? field.options.filter((option): option is string => typeof option === "string")
+    ? field.options.filter((option): option is string => typeof option === "string" && option !== "" && option !== NONE)
     : [];
 }
 
@@ -75,23 +79,24 @@ export function DetailsForm({
                   invalid={isInvalid}
                 />
               ) : field.type === "select" && options(field).length > 0 ? (
-                <select
-                  id={id}
+                <Select
                   name={field.name}
-                  autoComplete="off"
-                  value={text}
-                  onChange={(event) => onChange(field.name, event.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={isInvalid || undefined}
-                  className="h-11 w-full rounded-xl border border-rule bg-paper px-3 text-[16px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  value={text || NONE}
+                  onValueChange={(value) => onChange(field.name, value === NONE ? "" : value)}
                 >
-                  <option value="">Välj</option>
-                  {options(field).map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={isInvalid || undefined} className="text-[16px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {/* An optional choice can be taken back; a required one starts unchosen. */}
+                    <SelectItem value={NONE}>{field.required ? "Välj" : "Inget val"}</SelectItem>
+                    {options(field).map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               ) : field.type === "textarea" || field.type === "long_text" ? (
                 <Textarea
                   id={id}
