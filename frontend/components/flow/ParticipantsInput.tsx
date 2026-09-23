@@ -37,7 +37,6 @@ export function ParticipantsInput({
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const addButton = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState("");
 
@@ -98,7 +97,14 @@ export function ParticipantsInput({
           </ul>
         </InputGroupAddon>
       )}
-      <div className="flex w-full items-center">
+      <div
+        className="flex w-full items-center"
+        // Leaving the field and its "Lägg till" together adds what was typed; moving between them does not.
+        onBlur={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null) || !text.trim()) return;
+          addTyped();
+        }}
+      >
         <InputGroupInput
           ref={input}
           id={id}
@@ -142,17 +148,11 @@ export function ParticipantsInput({
               remove(names[names.length - 1]);
             }
           }}
-          onBlur={(event) => {
-            // Moving to "Lägg till" is not leaving: the button adds the name.
-            if (event.relatedTarget === addButton.current || !text.trim()) return;
-            addTyped();
-          }}
           className="h-11 px-3 text-[16px] text-ink placeholder:text-ink-mute"
         />
         {text.trim() && (
           <InputGroupAddon align="inline-end">
             <InputGroupButton
-              ref={addButton}
               size="sm"
               variant="secondary"
               // Keeps the focus, and a phone's keyboard, in the field for the next name.
