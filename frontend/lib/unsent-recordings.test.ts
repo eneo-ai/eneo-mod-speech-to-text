@@ -24,21 +24,32 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
   runId: null,
 });
 
-test("an unsent recording is told apart by flow, length and when it was made", () => {
-  const now = at(23, 15, 0);
+test("an unsent recording keeps the name it was made with, then its flow and length", () => {
   assert.equal(
-    recordingSummary(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true, now }),
-    "Osänd inspelning, Nämndmöte till rapport, 42 min, i dag 10:12",
+    recordingSummary(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }),
+    "Inspelning 23 sep 10:12 · Nämndmöte till rapport · 42 min",
   );
+  assert.equal(recordingSummary(recording("b", 65 * 60_000, at(22, 16, 40))), "Inspelning 22 sep 16:40 · 1 h 5 min");
   assert.equal(
-    recordingSummary(recording("b", 65 * 60_000, at(22, 16, 40)), { now }),
-    "Osänd inspelning, 1 h 5 min, i går 16:40",
+    recordingSummary(recording("c", 30_000, at(20, 9, 5))),
+    "Inspelning 20 sep 09:05 · 30 s",
+    "the name the ready panel shows (lib/format recordingName)",
   );
-  assert.equal(
-    recordingSummary(recording("c", 30_000, at(20, 9, 5)), { now }),
-    "Osänd inspelning, 30 s, 20 sep 09:05",
-    "the same words as the rest of the app (lib/format)",
+});
+
+test("one unsent recording is spoken of in the singular", () => {
+  const one = renderToStaticMarkup(
+    createElement(UnsentRecordings, { recordings: [recording("a", 60_000, at(23, 10, 12))], onSend: () => {} }),
   );
+  assert.match(one, /En inspelning är inte skickad/);
+  assert.match(one, /Den finns kvar på den här enheten tills den har skickats\./);
+  const two = renderToStaticMarkup(
+    createElement(UnsentRecordings, {
+      recordings: [recording("a", 60_000, at(23, 10, 12)), recording("b", 60_000, at(23, 9, 0))],
+      onSend: () => {},
+    }),
+  );
+  assert.match(two, /De finns kvar på den här enheten tills de har skickats\./);
 });
 
 test("each unsent recording offers Skicka, Spara som fil and Ta bort, described by its summary", () => {

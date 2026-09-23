@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
-import { formatDuration, formatRelativeDate } from "@/lib/format";
+import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
   IN_USE_ELSEWHERE,
@@ -36,17 +36,16 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRec
   return recordings;
 }
 
-/** "Osänd inspelning, Nämndmöte till rapport, 42 min, i dag 10:12" */
+/** "Inspelning 23 sep 10:12 · Nämndmöte till rapport · 42 min": the name the recording had when it was made. */
 export function recordingSummary(
   recording: StoredRecording,
-  { withFlowName = false, now = Date.now() }: { withFlowName?: boolean; now?: number } = {},
+  { withFlowName = false }: { withFlowName?: boolean } = {},
 ): string {
   return [
-    "Osänd inspelning",
+    recordingName(recording.startedAt),
     ...(withFlowName ? [recording.flowName] : []),
     formatDuration(recording.durationMs),
-    formatRelativeDate(new Date(recording.startedAt), new Date(now)),
-  ].join(", ");
+  ].join(" · ");
 }
 
 /** Recordings kept on this device that Eneo has not received yet. */
@@ -71,7 +70,9 @@ export function UnsentRecordings({
           : `${recordings.length} inspelningar är inte skickade`}
       </h2>
       <p className="text-[12px] text-ink-soft mb-3">
-        De finns kvar på den här enheten tills de har skickats.
+        {recordings.length === 1
+          ? "Den finns kvar på den här enheten tills den har skickats."
+          : "De finns kvar på den här enheten tills de har skickats."}
       </p>
       <ul className="flex flex-col gap-2">
         {recordings.map((recording) => (
