@@ -60,6 +60,8 @@ class FakeRecorder extends EventTarget {
   state: "inactive" | "recording" | "paused" = "inactive";
   timeslice: number | undefined;
   flushes = 0;
+  // What it hands over at its stop: nothing when it stopped before recording anything.
+  lastData = ".";
   readonly mimeType: string;
   constructor(
     readonly stream: FakeStream,
@@ -89,7 +91,7 @@ class FakeRecorder extends EventTarget {
     if (this.state === "inactive") return;
     this.state = "inactive";
     setImmediate(() => {
-      this.emit(".");
+      this.emit(this.lastData);
       this.dispatchEvent(new Event("stop"));
     });
   }
@@ -270,12 +272,18 @@ test("the recorded time leaves out pauses and interruptions, whatever the timers
   assert.equal(capture.elapsedMs(), 8_000);
 });
 
+// Two seconds at 32 kbit/s. A part of LIMIT bytes holds four such chunks and
+// then needs a new part: the next chunk and the overlap, twice over, no longer fit.
+const CHUNK = "x".repeat(8_000);
+const LIMIT = 50_000;
+
 test("a recording cut off by a reload goes on as a new part of the same recording", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const beforeReload = await setup({ store: await openRecordingStore(device) });
   await beforeReload.capture.start(meeting);
   beforeReload.recorders[0].emit("a");
   const { id } = beforeReload.capture.getSnapshot().recording!;
+  await until(async () => (await beforeReload.store.get(id))?.parts[0]?.bytes === 1, "the chunk stored");
   // The phone kills the tab mid-meeting: no stop; the browser ends its lease.
   beforeReload.store.release(id);
 
@@ -370,30 +378,194 @@ test("a page left while the browser asks for the microphone records nothing and 
   assert.deepEqual(await store.listUnsent("user-1"), []);
 });
 
-test("at the per-file size limit the recording goes on in a new part, until the flow's file count runs out", async () => {
-  const { capture, store, streams, recorders } = await setup();
-  await capture.start(meeting, { maxBytes: 10, maxFiles: 2 });
-  recorders[0].emit("abc");
-  assert.equal(recorders.length, 1, "room for two more chunks like it");
-  recorders[0].emit("def");
-  await until(() => recorders.length === 2, "the second part");
-  assert.equal(capture.getSnapshot().status, "recording");
-  assert.equal(streams.length, 1, "the same microphone: no new permission, no silence to ask for it");
+test("before a part is too large to send, a new part starts, and the two overlap by 150 ms", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let now = 0;
+  const { capture, store, streams, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 3 });
+  for (let i = 0; i < 4; i += 1) recorders[0].emit(CHUNK);
+  assert.equal(recorders.length, 1, "room for the next chunk and the overlap");
+  now = 10_000;
+  recorders[0].emit(CHUNK);
+  assert.equal(recorders.length, 2, "the next part starts at once");
+  assert.equal(recorders[1].state, "recording");
+  assert.equal(recorders[0].state, "recording", "while the full part still records");
+  assert.equal(capture.elapsedMs(), 10_000, "the recorded time goes on across parts");
+  t.mock.timers.tick(149);
+  assert.equal(recorders[0].state, "recording");
+  now = 10_150;
+  t.mock.timers.tick(1);
+  assert.equal(recorders[0].state, "inactive", "until 150 ms later");
+  await settle(); // its last chunk
+  assert.equal(capture.elapsedMs(), 10_150, "the overlap counts once");
+  assert.equal(capture.getSnapshot().partBytes, 0, "the full part's last chunk is its own");
+  assert.equal(capture.getSnapshot().remainingMs, 16_700, "the new part and one more");
+  assert.equal(streams.length, 1, "the same microphone: no new permission");
   assert.equal(streams[0].track.readyState, "live");
+  assert.equal(capture.getSnapshot().status, "recording");
   assert.equal(capture.getSnapshot().error, null);
 
-  recorders[1].emit("ghi");
-  assert.equal(capture.getSnapshot().recordedBytes, 10, "the size shown counts every part");
-  recorders[1].emit("jkl"); // the second part is full too, and the flow takes no third file
+  recorders[1].emit("new");
+  assert.equal(capture.getSnapshot().recordedBytes, 5 * 8_000 + 1 + 3, "the size shown counts every part");
+  const stopped = await capture.stop();
+  const files = await store.readParts(stopped!.id);
+  assert.deepEqual(
+    files.map((file) => [file.index, file.blob.size]),
+    [
+      [0, 5 * 8_000 + 1],
+      [1, 3 + 1],
+    ],
+    "in capture order, each small enough to send",
+  );
+  assert.ok(files[0].blob.size <= LIMIT);
+});
+
+test("a full part that fails during its overlap leaves the new part recording", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT });
+  for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
+  recorders[0].dispatchEvent(new Event("error"));
+  await settle();
+  assert.deepEqual(recorders.map((recorder) => recorder.state), ["inactive", "recording"]);
+  assert.equal(capture.getSnapshot().status, "recording");
+  t.mock.timers.tick(150);
+
+  recorders[1].emit("new");
+  const stopped = await capture.stop();
+  assert.deepEqual((await store.readParts(stopped!.id)).map((file) => file.blob.size), [5 * 8_000 + 1, 3 + 1]);
+});
+
+test("a part that fills while the one before still overlaps ends that overlap first", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT });
+  for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
+  for (let i = 0; i < 5; i += 1) recorders[1].emit(CHUNK);
+  assert.deepEqual(recorders.map((recorder) => recorder.state), ["inactive", "recording", "recording"]);
+});
+
+test("the room left in a part follows the recording's rate: a faster encoder starts the next part sooner", async () => {
+  // 10 000 B per 2 s chunk is 5 B/ms: after three chunks, the next one and the
+  // overlap, twice over, no longer fit in LIMIT (at 4 B/ms they still would).
+  const { capture, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT });
+  recorders[0].emit("x".repeat(10_000));
+  recorders[0].emit("x".repeat(10_000));
+  assert.equal(recorders.length, 1);
+  recorders[0].emit("x".repeat(10_000));
+  assert.equal(recorders.length, 2);
+});
+
+test("the recorder tells how much recording time the flow still takes", async () => {
+  const unbounded = await setup();
+  await unbounded.capture.start(meeting, { maxBytes: LIMIT });
+  assert.equal(unbounded.capture.getSnapshot().remainingMs, null, "no file count, no end");
+
+  const { capture, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 2 });
+  // Each part holds 50 000 − 16 600 B before the next starts: 8 350 ms at 32 kbit/s.
+  assert.equal(capture.getSnapshot().remainingMs, 16_700);
+  recorders[0].emit(CHUNK);
+  assert.equal(capture.getSnapshot().remainingMs, 14_700);
+});
+
+test("when the flow's last file is full the recording stops with that reason and keeps everything", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 2 });
+  for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
+  t.mock.timers.tick(150);
+  for (let i = 0; i < 5; i += 1) recorders[1].emit(CHUNK); // the second file, the last the flow takes
   await until(() => capture.getSnapshot().status === "stopped", "the stop");
-  const files = await store.readParts(capture.getSnapshot().recording!.id);
-  assert.deepEqual(await texts(files), ["abcdef.", "ghijkl."]);
-  assert.ok(files.every((file) => file.blob.size <= 10));
+
+  const snapshot = capture.getSnapshot();
+  assert.equal(snapshot.limitReached, true);
+  assert.equal(snapshot.remainingMs, 0);
+  assert.equal(
+    snapshot.error,
+    "Inspelningen stoppades vid flödets gräns på 2 filer om 48,8\u00a0kB. Det som spelats in är sparat.",
+  );
+  assert.equal(recorders.length, 2, "no third part");
+  const files = await store.readParts(snapshot.recording!.id);
+  assert.equal(files.length, 2);
+  assert.ok(files.every((file) => file.blob.size <= LIMIT));
+  assert.equal(streams[0].track.readyState, "ended");
+
+  const single = await setup();
+  await single.capture.start(meeting, { maxBytes: LIMIT, maxFiles: 1 });
+  for (let i = 0; i < 5; i += 1) single.recorders[0].emit(CHUNK);
+  await until(() => single.capture.getSnapshot().status === "stopped", "the stop at one file");
+  assert.equal(
+    single.capture.getSnapshot().error,
+    "Inspelningen stoppades vid flödets gräns på 48,8\u00a0kB. Det som spelats in är sparat.",
+  );
+});
+
+test("a stop or a lost microphone during the overlap ends both recorders and keeps both parts", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const [what, end] of [
+    ["stop", (capture: RecordingCapture) => void capture.stop()],
+    ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("mute")],
+  ] as const) {
+    const { capture, store, streams, recorders } = await setup();
+    await capture.start(meeting, { maxBytes: LIMIT });
+    for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
+    recorders[1].emit("new");
+    end(capture, streams[0]);
+    await until(() => ["stopped", "interrupted"].includes(capture.getSnapshot().status), what);
+    await settle();
+    assert.deepEqual(recorders.map((recorder) => recorder.state), ["inactive", "inactive"], what);
+    assert.equal(streams[0].track.readyState, "ended", `${what}: the microphone is let go`);
+    const files = await store.readParts(capture.getSnapshot().recording!.id);
+    assert.deepEqual(files.map((file) => file.blob.size), [5 * 8_000 + 1, 3 + 1], what);
+    t.mock.timers.tick(150); // the overlap's own stop finds nothing left to stop
+  }
+});
+
+test("after an interruption, 'Fortsätt spela in' is refused once the flow takes no more files", async () => {
+  const { capture, streams, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 1 });
+  recorders[0].emit(CHUNK);
+  streams[0].track.lose("mute");
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  assert.equal(capture.getSnapshot().remainingMs, 0, "nothing more fits");
+
+  await capture.continueRecording();
+  assert.equal(capture.getSnapshot().status, "interrupted");
   assert.equal(
     capture.getSnapshot().error,
-    "Inspelningen stoppades vid flödets gräns på 2 filer om 10\u00a0B. Det som spelats in är sparat.",
+    "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar.",
   );
-  assert.equal(streams[0].track.readyState, "ended");
+  assert.equal(streams.length, 1, "no new microphone");
+});
+
+test("a part that got no audio is no file, so the recording still continues, or reopens, within the flow's file count", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const limits = { maxBytes: LIMIT, maxFiles: 2 };
+  const { capture, store, streams, recorders } = await setup({ store: await openRecordingStore(device) });
+  await capture.start(meeting, limits);
+  recorders[0].emit("a");
+  streams[0].track.lose("mute");
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  await capture.continueRecording();
+  recorders[1].lastData = ""; // the microphone goes again before anything is recorded
+  streams[1].track.lose("ended");
+  await until(() => capture.getSnapshot().error === null && capture.getSnapshot().status === "interrupted", "the second pause");
+  await capture.continueRecording();
+  assert.equal(capture.getSnapshot().status, "recording", "one file so far");
+  // The tab dies before this part records anything either.
+  const { id } = capture.getSnapshot().recording!;
+  assert.equal((await store.get(id))?.parts.length, 3);
+  store.release(id);
+
+  const reloaded = await setup({ store: await openRecordingStore(device) });
+  await reloaded.capture.adopt(id, limits);
+  await reloaded.capture.continueRecording();
+  assert.equal(reloaded.capture.getSnapshot().status, "recording", "still one file");
+  reloaded.recorders[0].emit("b");
+  await reloaded.capture.stop();
+  assert.deepEqual(await texts(await reloaded.store.readParts(id)), ["a.", "b."]);
 });
 
 test("a new part the browser will not start pauses the recording instead of recording nothing", async () => {
@@ -409,45 +581,12 @@ test("a new part the browser will not start pauses the recording instead of reco
       return recorder as unknown as MediaRecorder;
     },
   });
-  await capture.start(meeting, { maxBytes: 10 });
-  recorders[0].emit("abc");
-  recorders[0].emit("def");
+  await capture.start(meeting, { maxBytes: LIMIT });
+  for (let i = 0; i < 5; i += 1) recorders[0].emit(CHUNK);
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
   const paused = capture.getSnapshot().recording!;
   assert.equal(paused.state, "paused");
-  assert.deepEqual(await texts(await store.readParts(paused.id)), ["abcdef."]);
-});
-
-test("a flow that takes one file stops the recording before the file grows too large to send", async () => {
-  const { capture, store, recorders } = await setup();
-  await capture.start(meeting, { maxBytes: 10, maxFiles: 1 });
-  recorders[0].emit("abc");
-  recorders[0].emit("def");
-  await until(() => capture.getSnapshot().status === "stopped", "the stop");
-
-  const [file] = await store.readParts(capture.getSnapshot().recording!.id);
-  assert.equal(await file.blob.text(), "abcdef.");
-  assert.equal(
-    capture.getSnapshot().error,
-    "Inspelningen stoppades vid flödets gräns på 10\u00a0B. Det som spelats in är sparat.",
-  );
-});
-
-test("stopping or losing the microphone while a new part is being started wins over the new part", async () => {
-  for (const [what, act] of [
-    ["stop", (capture: RecordingCapture) => void capture.stop()],
-    ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("mute")],
-  ] as const) {
-    const { capture, streams, recorders } = await setup();
-    await capture.start(meeting, { maxBytes: 10 });
-    recorders[0].emit("abc");
-    recorders[0].emit("def"); // asks for a new part; the old one is still stopping
-    act(capture, streams[0]);
-    await until(() => ["stopped", "interrupted"].includes(capture.getSnapshot().status), what);
-    await settle();
-    assert.equal(recorders.length, 1, `${what}: no new part`);
-    assert.equal(streams[0].track.readyState, "ended", `${what}: the microphone is let go`);
-  }
+  assert.deepEqual((await store.readParts(paused.id)).map((file) => file.blob.size), [5 * 8_000 + 1]);
 });
 
 test("a denied microphone, or a recorder that cannot start, says so in Swedish and leaves nothing behind", async () => {
