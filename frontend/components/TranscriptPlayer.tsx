@@ -14,7 +14,6 @@ import {
 import { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import { formatClock } from "@/lib/format";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -73,8 +72,6 @@ const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 const NONE_LIT: ReadonlySet<number> = new Set();
 const SKIP_SECONDS = 10;
-/** The filter value for the passages Eneo asks someone to check. */
-const TO_CHECK = "__check";
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
@@ -286,7 +283,6 @@ export const TranscriptPlayer = forwardRef<
   // Unlabelled text reads as paragraphs, one per timed block.
   const turns = useMemo(() => (labelled ? computeTurns(shown) : paragraphTurns(shown)), [shown, labelled]);
   const speakers = useMemo(() => speakerSummaries(turns), [turns]);
-  const toCheck = turns.filter(pendingSpeakerReview).length;
   const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
   const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
@@ -314,14 +310,9 @@ export const TranscriptPlayer = forwardRef<
   }, [speakerOptions, segments, corrections]);
 
   // A filter whose speaker is gone (all their passages moved) shows everyone again.
-  const shownFilter =
-    filter === TO_CHECK ? (toCheck > 0 ? TO_CHECK : "all") : speakers.some((s) => s.label === filter) ? filter : "all";
+  const shownFilter = speakers.some((s) => s.label === filter) ? filter : "all";
   const visibleTurns =
-    shownFilter === "all"
-      ? turns
-      : shownFilter === TO_CHECK
-        ? turns.filter(pendingSpeakerReview)
-        : turns.filter((turn) => turn.speaker === shownFilter && !pendingSpeakerReview(turn));
+    shownFilter === "all" ? turns : turns.filter((turn) => turn.speaker === shownFilter && !pendingSpeakerReview(turn));
   const visibleSegments = useMemo(
     () => new Set(visibleTurns.flatMap((turn) => turn.parts.map((part) => part.segmentIndex))),
     [visibleTurns],
@@ -538,11 +529,6 @@ export const TranscriptPlayer = forwardRef<
                 {displayName(speaker.label)}
               </ToggleGroupItem>
             ))}
-            {toCheck > 0 && (
-              <ToggleGroupItem value={TO_CHECK} className="shrink-0 px-3">
-                Osäker talare
-              </ToggleGroupItem>
-            )}
           </ToggleGroup>
           {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. */}
           {speakers.length > CHIP_LIMIT && (
@@ -558,7 +544,6 @@ export const TranscriptPlayer = forwardRef<
                       {displayName(speaker.label)}
                     </SelectItem>
                   ))}
-                  {toCheck > 0 && <SelectItem value={TO_CHECK}>Osäker talare</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
@@ -879,6 +864,10 @@ function TurnBlock({
   const isActive = turn.parts.some((p) => activeIndices.has(p.segmentIndex));
   const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const clock = formatClock(turn.start * 1_000);
+  // One "Rätta" per passage. A passage of several sentences first shows a pencil at each of them.
+  const [choosing, setChoosing] = useState(false);
+  const several = turn.parts.length > 1;
+  const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
 
   const picker = (trigger: React.ReactNode) => (
     <SpeakerPicker
@@ -911,7 +900,7 @@ function TurnBlock({
       <div className="min-w-0 flex-1">
         {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {labelled && toCheck && <Badge variant="review">Osäker talare</Badge>}
+          {labelled && toCheck && <span className="text-[15px] font-semibold leading-tight text-ink-soft">{name}</span>}
           {labelled && !toCheck &&
             (canPickSpeaker ? (
               picker(
@@ -1049,14 +1038,12 @@ function TurnBlock({
                     );
                   })}
                 </span>
-                {canEdit && (
+                {canEdit && several && choosing && (
                   <button
                     type="button"
                     onClick={() => onStartEdit(part.segmentIndex)}
-                    aria-label={`Rätta repliken från ${partClock}`}
-                    // A mouse finds the pencil at the passage it points at or has in focus, taking no room otherwise;
-                    // a touch screen shows it on every passage.
-                    className="-my-1 inline-grid h-6 w-0 place-items-center overflow-hidden rounded align-middle text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-6 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/part:mx-1 group-hover/part:w-6 group-hover/part:opacity-100 coarse:-my-2.5 coarse:mx-0 coarse:size-11 coarse:text-ink-soft coarse:opacity-100"
+                    aria-label={`Rätta meningen från ${partClock}`}
+                    className="mx-1 -my-1 inline-grid size-6 place-items-center rounded align-middle text-primary hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:size-11"
                   >
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
                   </button>
@@ -1065,6 +1052,23 @@ function TurnBlock({
               </span>
             );
           })}
+          {canEdit && !editingHere && (
+            // After the passage, never mid-sentence: a mouse sees it on the passage it points at or has in
+            // focus, a touch screen on every passage.
+            <button
+              type="button"
+              aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
+              aria-expanded={several ? choosing : undefined}
+              onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
+              className={cn(
+                "-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/turn:opacity-100 coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft coarse:opacity-100",
+                choosing ? "opacity-100" : "opacity-0",
+              )}
+            >
+              <Pencil aria-hidden className="size-3.5" strokeWidth={2} />
+              {choosing ? "Klar" : "Rätta"}
+            </button>
+          )}
         </div>
       </div>
     </li>

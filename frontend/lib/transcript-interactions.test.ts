@@ -110,12 +110,13 @@ const toCheck: TranscriptSegment[] = meeting.map((segment, i) =>
 );
 const v3: CorrectionSet = { schemaVersion: 3, segmentsHash: "a".repeat(64), occurrences: [], speaker_edits: [], revision: 1 };
 
-test("an uncertain passage shows a status, not a button, and one action: Ändra talare", async () => {
+test("an uncertain passage keeps Eneo's words in the name slot, and one action: Ändra talare", async () => {
   const saved: CorrectionSet[] = [];
   const view = await player(toCheck, { editable: true, corrections: v3, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
   const item = view.container.querySelector('li[data-turn-index="1"]')!;
-  const badge = [...item.querySelectorAll("*")].find((el) => el.textContent === "Osäker talare");
-  assert.ok(badge && badge.tagName !== "BUTTON" && !badge.closest("button"), "Osäker talare is a status");
+  const status = [...item.querySelectorAll("span")].find((el) => el.textContent === "Överlappande tal – osäker talare");
+  assert.ok(status && !status.closest("button"), "the name slot says it, and is not a button");
+  assert.doesNotMatch(item.textContent ?? "", /Kontrollera/);
   assert.deepEqual(
     [...item.querySelectorAll("button")].map((b) => b.textContent?.trim()).filter((t) => /talare/i.test(t ?? "")),
     ["Ändra talare"],
@@ -125,8 +126,8 @@ test("an uncertain passage shows a status, not a button, and one action: Ändra 
   // An unnamed speaker is not uncertain: only the passage Eneo marked says so.
   assert.equal(view.container.querySelectorAll("li[data-turn-index]")[3].textContent?.includes("Osäker"), false);
 
-  await view.act(async () => chip(view.container, "Osäker talare").click());
-  assert.deepEqual(passages(view.container), ["Överlappande tal – osäker talare, 0:02"]);
+  // The speaker row holds speakers only; a status is not one.
+  assert.ok(!chip(view.container, "Osäker"), "no status among the speakers");
 
   await view.act(async () => button(view.container, "Ändra talare")!.click());
   const options = [...document.querySelectorAll('[role="dialog"] label')].map((l) => l.textContent?.trim());
@@ -161,7 +162,7 @@ test("Det stämmer confirms the speaker, and Går inte att avgöra is a decision
 
 test("without Eneo's newer correction format an uncertain passage offers no choice it could not save", async () => {
   const view = await player(toCheck, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
-  assert.ok(view.container.querySelector('li[data-turn-index="1"]')!.textContent?.includes("Osäker talare"));
+  assert.ok(view.container.querySelector('li[data-turn-index="1"]')!.textContent?.includes("Överlappande tal – osäker talare"));
   assert.ok(!button(view.container, "Ändra talare"), "no Ändra talare");
 });
 
@@ -198,4 +199,29 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
   assert.equal(saved.length, 0, "nothing sent");
   assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /fler än 2 000 talarändringar/);
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
+});
+
+test("one Rätta per passage, after its text; a passage of several sentences then shows a pencil at each", async () => {
+  const opened: string[] = [];
+  const two: TranscriptSegment[] = [
+    { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." },
+    { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_00", text: "Vi har två punkter." },
+    { fileIndex: 0, start: 4, end: 6, speaker: "SPEAKER_01", text: "Tack." },
+  ];
+  const view = await player(two, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
+  const rätta = [...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Rätta");
+  assert.equal(rätta.length, 2, "one per passage, not one per sentence");
+  assert.equal(view.container.querySelectorAll('button[aria-label^="Rätta meningen"]').length, 0, "no pencils mid-passage at rest");
+  const first = rätta[0];
+  assert.equal(first.getAttribute("aria-label"), "Rätta repliken från 0:00: välj mening");
+  assert.ok(first.previousElementSibling?.textContent?.includes("Vi har två punkter."), "after the passage's last sentence");
+  await view.act(async () => first.click());
+  assert.deepEqual(
+    [...view.container.querySelectorAll('button[aria-label^="Rätta meningen"]')].map((b) => b.getAttribute("aria-label")),
+    ["Rätta meningen från 0:00", "Rätta meningen från 0:02"],
+  );
+  assert.equal(first.textContent?.trim(), "Klar");
+  await view.act(async () => view.container.querySelector<HTMLButtonElement>('button[aria-label="Rätta meningen från 0:02"]')!.click());
+  opened.push(view.container.querySelector("textarea")?.getAttribute("aria-label") ?? "");
+  assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
 });
