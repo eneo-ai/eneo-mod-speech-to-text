@@ -81,3 +81,16 @@ test("the access code can be filled in by a password manager", async ({ page }, 
   await STATES.find((s) => s.name === "signin-access-code")!.go(page, info);
   await expect(page.getByLabel("Åtkomstkod")).toHaveAttribute("autocomplete", "current-password");
 });
+
+for (const [state, title] of [
+  ["signin-sso", "Logga in · Tal till text"],
+  ["flow-list", "Välj ett flöde · Tal till text"],
+  ["flow-gone", "Flödet är inte längre tillgängligt · Tal till text"],
+  ["review", "Vem är vem? · Tal till text"],
+  ["review-text-edit", "Sammanfattning · Tal till text"],
+]) {
+  test(`the ${state} page's title says what it is`, async ({ page }, info) => {
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    await expect(page).toHaveTitle(title);
+  });
+}

@@ -17,6 +17,7 @@ import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, FRAME_WIDTH, ReadingMain } from "@/components/frame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
@@ -739,6 +740,12 @@ function ReviewView({
 }) {
   const payload = (checkpoint.current_payload_json as Json | null) ?? null;
   const isSpeakerMapping = isSpeakerMappingCheckpoint(payload);
+  const title = isSpeakerMapping
+    ? SPEAKER_REVIEW_ENABLED
+      ? "Granska transkriptet"
+      : "Vem är vem?"
+    : (checkpoint.step_label ?? "Granska resultatet");
+  useDocumentTitle(`${title} · Tal till text`);
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -928,7 +935,7 @@ function ReviewView({
         <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
           {paused}
           <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
-            {SPEAKER_REVIEW_ENABLED ? "Granska transkriptet" : "Vem är vem?"}
+            {title}
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
@@ -1010,7 +1017,7 @@ function ReviewView({
       <ReadingMain>
         {paused}
         <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
-          {checkpoint.step_label ?? "Granska resultatet"}
+          {title}
         </h1>
         <p className="text-[13px] text-ink-soft leading-relaxed mb-5">
           {editable

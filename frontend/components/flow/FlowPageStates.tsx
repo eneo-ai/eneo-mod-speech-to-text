@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FRAME, ReadingMain } from "@/components/frame";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -62,6 +63,7 @@ export function unavailableCopy(error: unknown): { title: string; detail: string
 /** The flow could not be loaded: unpublished (404) or another failure, with a way on. */
 export function FlowUnavailable({ error }: { error: unknown }) {
   const { title, detail, retry } = unavailableCopy(error);
+  useDocumentTitle(`${title.replace(/\.$/, "")} · Tal till text`);
   return (
     <div className="flex min-h-dvh flex-col">
       <FlowTopBar title={title} />
