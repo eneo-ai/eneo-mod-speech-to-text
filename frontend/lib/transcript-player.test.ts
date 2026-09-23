@@ -122,3 +122,27 @@ test("turn times read like the player's clock, m:ss, each in its own part's time
     }
   }
 });
+
+test("a transcript without speaker labels names no speaker, and nothing is lit before playback", () => {
+  const html = (segments: TranscriptSegment[]) =>
+    renderToStaticMarkup(
+      createElement(TranscriptPlayer, {
+        segments,
+        fileCount: 1,
+        audioSrcFor: () => "/audio/0",
+        speakerNames: {},
+        textFallback: "",
+        reviewEnabled: false,
+      }),
+    );
+  const unlabelled = html([
+    { fileIndex: 0, start: 0, end: 24, speaker: null, text: "Välkomna till nämndens möte den 23 september." },
+    { fileIndex: 0, start: 24, end: 30, speaker: null, text: "Första punkten." },
+  ]);
+  assert.doesNotMatch(unlabelled, /Okänd talare/, "the flow did not label speakers; saying 'unknown' misleads");
+  assert.doesNotMatch(unlabelled, /data-active="true"/, "the first block is not lit before anything plays");
+
+  const labelled = html(segments);
+  assert.match(labelled, /Talare 1/);
+  assert.match(labelled, /Talare 2/);
+});

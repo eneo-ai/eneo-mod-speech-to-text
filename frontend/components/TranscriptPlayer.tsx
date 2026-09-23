@@ -226,7 +226,11 @@ export const TranscriptPlayer = forwardRef<
 
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
-  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, currentTime));
+  // Nothing is lit until playback has started or been moved.
+  const playhead = position.started ? currentTime : Number.NEGATIVE_INFINITY;
+  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, playhead));
+  // A flow without speaker labels names no speaker: "Okänd talare" on every block would mislead.
+  const labelled = shown.some((segment) => segment.speaker !== null) || speakerReviews.length > 0;
   // Scrolling follows only once playback has started or been moved.
   const activeIndex = position.started ? findActiveSegmentIndex(shown, currentFile, currentTime) : -1;
   const correctedIndices = applied.corrected;
@@ -515,7 +519,7 @@ export const TranscriptPlayer = forwardRef<
       >
         {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
-          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={currentTime} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
+          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
             // "Lyssna" on a passage plays it and stops at its end.
             if (hasAudio) setFollow(true);
@@ -531,7 +535,8 @@ export const TranscriptPlayer = forwardRef<
             correctedRanges={correctedRanges}
             showFileHeading={totalFiles > 1 && (i === 0 || turns[i - 1].fileIndex !== turn.fileIndex)}
             activeIndices={activeIndices}
-            currentTime={currentTime}
+            currentTime={playhead}
+            labelled={labelled}
             name={effectiveSpeakerLabel(turn.parts[0].segment, displayName)}
             displayName={displayName}
             labelOptions={labelOptions}
@@ -572,6 +577,7 @@ function TurnBlock({
   name,
   displayName,
   labelOptions,
+  labelled,
   canEdit,
   confirmedWords,
   onToggleConfirmed,
@@ -596,6 +602,7 @@ function TurnBlock({
   name: string;
   displayName: (label: string | null) => string;
   labelOptions: readonly string[];
+  labelled: boolean;
   canEdit: boolean;
   confirmedWords: ReadonlySet<string>;
   onToggleConfirmed?: (key: string) => void;
@@ -642,7 +649,7 @@ function TurnBlock({
           >
             {formatClock(turn.start * 1_000)}
           </button>
-          {(() => {
+          {labelled && (() => {
             const nameButton = (
               <button
                 type="button"
