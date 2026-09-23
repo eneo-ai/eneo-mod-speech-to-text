@@ -175,6 +175,11 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 
+/** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
+export function continuable(recording: StoredRecording): boolean {
+  return recording.state === "recording" || recording.state === "paused";
+}
+
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
 export function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);

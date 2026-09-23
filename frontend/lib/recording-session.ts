@@ -9,7 +9,13 @@
  * background tab.
  */
 
-import type { NewRecording, RecordingStore, StoredRecording } from "./recording-store";
+import {
+  continuable,
+  IN_USE_ELSEWHERE,
+  type NewRecording,
+  type RecordingStore,
+  type StoredRecording,
+} from "./recording-store";
 import { formatBytes } from "./upload";
 
 export const CHUNK_MS = 2_000;
@@ -65,6 +71,8 @@ export interface CaptureLimits {
 }
 
 type EndReason = "stop" | "interrupt" | "leave" | "rotate";
+
+const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 
 function microphoneError(error: unknown): string {
   const name = error instanceof DOMException ? error.name : "";
@@ -156,6 +164,52 @@ export class RecordingCapture {
       // Nothing was recorded: do not leave an empty recording to recover.
       if (created) await this.store?.remove(created.id).catch(() => undefined);
       this.set({ status: "idle", recording: null, error: microphoneError(error) });
+    } finally {
+      this.starting = false;
+    }
+  }
+
+  /**
+   * Takes over a recording whose capture ended without a stop (the tab was
+   * reloaded or killed), paused: "Fortsätt spela in" then adds a part to the
+   * same recording, so the meeting still becomes one run.
+   */
+  async adopt(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
+    const { status } = this.snapshot;
+    if (this.starting || (status !== "idle" && status !== "stopped")) return;
+    this.starting = true;
+    this.set({ error: null });
+    const generation = this.generation;
+    try {
+      const store = (this.store ??= await this.openStore());
+      const found = await store.get(recordingId);
+      if (!found || !continuable(found)) throw new Error(NOT_CONTINUABLE);
+      if (!(await store.lease(recordingId))) throw new Error(IN_USE_ELSEWHERE);
+      if (generation !== this.generation) {
+        store.release(recordingId);
+        return;
+      }
+      this.release = () => store.release(recordingId);
+      await store.setState(recordingId, "paused");
+      this.limits = limits;
+      this.earlierPartsBytes = found.parts.reduce((sum, part) => sum + part.bytes, 0);
+      this.earlierPartsMs = found.durationMs;
+      this.partMs = 0;
+      this.runningSince = null;
+      this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
+      this.set({
+        status: "interrupted",
+        recording: await store.get(recordingId),
+        stream: null,
+        partBytes: 0,
+        recordedBytes: this.earlierPartsBytes,
+        lowSpace: await store.lowOnSpace(),
+        persistent: store.persistent,
+      });
+    } catch (error) {
+      this.finish();
+      const known = error instanceof Error && [NOT_CONTINUABLE, IN_USE_ELSEWHERE].includes(error.message);
+      this.set({ error: known ? error.message : "Inspelningen kunde inte öppnas." });
     } finally {
       this.starting = false;
     }

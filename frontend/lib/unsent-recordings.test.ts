@@ -70,3 +70,20 @@ test("each unsent recording offers Skicka, Spara som fil and Ta bort, described 
     "",
   );
 });
+
+test("an interrupted recording can be continued from the flow page's list", () => {
+  const interrupted = { ...recording("a", 60_000, at(23, 10, 12)), state: "paused" as const };
+  const finished = recording("b", 60_000, at(23, 9, 0));
+  const labels = (html: string) => [...html.matchAll(/<button[^>]*>([^<]+)</g)].map(([, label]) => label);
+  const html = renderToStaticMarkup(
+    createElement(UnsentRecordings, { recordings: [interrupted, finished], onSend: () => {}, onContinue: () => {} }),
+  );
+  const [first, second] = html.split("<li").slice(1);
+  assert.deepEqual(labels(first), ["Fortsätt spela in", "Skicka", "Spara som fil", "Ta bort"]);
+  assert.deepEqual(labels(second), ["Skicka", "Spara som fil", "Ta bort"]);
+  assert.doesNotMatch(
+    renderToStaticMarkup(createElement(UnsentRecordings, { recordings: [interrupted], onSend: () => {} })),
+    /Fortsätt spela in/,
+    "the flow list has no recorder to continue in",
+  );
+});

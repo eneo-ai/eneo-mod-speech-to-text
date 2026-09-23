@@ -8,7 +8,14 @@ import {
   Play,
   RotateCcw,
 } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type Ref,
+} from "react";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import {
   RecordingInterrupted,
@@ -33,7 +40,13 @@ type NavigatorWithWakeLock = Navigator & {
   };
 };
 
+export interface AudioRecorderHandle {
+  /** Takes over a recording cut off by a reload and records on in a new part. */
+  continueRecording: (recording: StoredRecording) => Promise<void>;
+}
+
 interface Props {
+  ref?: Ref<AudioRecorderHandle>;
   flowId: string;
   flowName: string;
   stepId: string;
@@ -71,6 +84,7 @@ function browserCaptureDeps(): CaptureDeps {
 const NUM_BARS = 36;
 
 export function AudioRecorder({
+  ref,
   flowId,
   flowName,
   stepId,
@@ -101,6 +115,17 @@ export function AudioRecorder({
   const [formatError, setFormatError] = useState<string | null>(null);
   const [storePersistent, setStorePersistent] = useState(true);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      async continueRecording(recording) {
+        await capture.adopt(recording.id, { maxBytes, maxFiles });
+        await capture.continueRecording();
+      },
+    }),
+    [capture, maxBytes, maxFiles],
+  );
 
   const barsRef = useRef<Array<HTMLDivElement | null>>([]);
   const liveValuesRef = useRef<number[]>(new Array(NUM_BARS).fill(0));

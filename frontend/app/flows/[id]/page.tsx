@@ -28,7 +28,10 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { AccountMenu } from "@/components/AccountMenu";
-import { AudioRecorder } from "@/components/AudioRecorder";
+import {
+  AudioRecorder,
+  type AudioRecorderHandle,
+} from "@/components/AudioRecorder";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
 import {
@@ -196,6 +199,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const submitAbortRef = useRef<AbortController | null>(null);
+  const recorderRef = useRef<AudioRecorderHandle | null>(null);
 
   const user = useAuthenticatedUser();
   const currentRecordingId = input?.kind === "recording" ? input.recording.id : null;
@@ -712,6 +716,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onResume={resumeRun}
         unsentRecordings={unsentRecordings}
         onSendRecording={sendRecording}
+        recorderRef={recorderRef}
       />
     );
   }
@@ -824,6 +829,7 @@ function SetupView({
   onResume,
   unsentRecordings,
   onSendRecording,
+  recorderRef,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -849,6 +855,7 @@ function SetupView({
   onResume: (runId: string) => void;
   unsentRecordings: StoredRecording[];
   onSendRecording: (recording: StoredRecording) => void;
+  recorderRef: React.RefObject<AudioRecorderHandle | null>;
 }) {
   const formFields = contract.form_fields ?? [];
   const speakerMappingSteps = speakerMappingReviewSteps(contract);
@@ -927,7 +934,15 @@ function SetupView({
         )}
 
         {!recordingActive && (
-          <UnsentRecordings recordings={unsentRecordings} onSend={onSendRecording} />
+          <UnsentRecordings
+            recordings={unsentRecordings}
+            onSend={onSendRecording}
+            onContinue={
+              inputType === "audio"
+                ? (recording) => void recorderRef.current?.continueRecording(recording)
+                : undefined
+            }
+          />
         )}
 
         {speakerMappingSteps.length > 0 && (
@@ -999,6 +1014,7 @@ function SetupView({
           <>
             <section className="mt-4 mb-8 md:mt-6 md:mb-12">
               <AudioRecorder
+                ref={recorderRef}
                 flowId={published.id}
                 flowName={published.name}
                 stepId={inputStepId}

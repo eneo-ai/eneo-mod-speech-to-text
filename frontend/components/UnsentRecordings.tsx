@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import { formatDuration } from "@/lib/upload";
 import {
+  continuable,
   IN_USE_ELSEWHERE,
   recordingStore,
   type StoredRecording,
@@ -63,10 +64,12 @@ export function recordingSummary(
 export function UnsentRecordings({
   recordings,
   onSend,
+  onContinue,
   withFlowName = false,
 }: {
   recordings: StoredRecording[];
   onSend: (recording: StoredRecording) => void;
+  onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
 }) {
   const headingId = useId();
@@ -88,6 +91,7 @@ export function UnsentRecordings({
             recording={recording}
             withFlowName={withFlowName}
             onSend={onSend}
+            onContinue={continuable(recording) ? onContinue : undefined}
           />
         ))}
       </ul>
@@ -99,10 +103,13 @@ function UnsentRecordingRow({
   recording,
   withFlowName,
   onSend,
+  onContinue,
 }: {
   recording: StoredRecording;
   withFlowName: boolean;
   onSend: (recording: StoredRecording) => void;
+  /** Given for a recording whose capture was cut off, where a recorder can take it over. */
+  onContinue?: (recording: StoredRecording) => void;
 }) {
   const summaryId = useId();
   const questionId = useId();
@@ -166,8 +173,19 @@ function UnsentRecordingRow({
         </div>
       ) : (
         <div className="mt-2 flex flex-wrap gap-2">
+          {onContinue && (
+            <Button
+              type="button"
+              className="h-11"
+              aria-describedby={summaryId}
+              onClick={() => onContinue(recording)}
+            >
+              Fortsätt spela in
+            </Button>
+          )}
           <Button
             type="button"
+            variant={onContinue ? "outline" : "default"}
             className="h-11"
             aria-describedby={summaryId}
             onClick={() => onSend(recording)}

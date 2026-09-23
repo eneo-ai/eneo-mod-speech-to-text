@@ -8,6 +8,7 @@ import {
   type RecordingFile,
   type RecordingStore,
 } from "./recording-store";
+import { fakeWebLocks } from "./fake-web-locks";
 import { RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 
 const meeting: NewRecording = {
@@ -267,6 +268,83 @@ test("the recorded time leaves out pauses and interruptions, whatever the timers
   assert.deepEqual(stopped?.parts.map((part) => part.durationMs), [6_000, 2_000]);
   assert.equal(stopped?.durationMs, 8_000);
   assert.equal(capture.elapsedMs(), 8_000);
+});
+
+test("a recording cut off by a reload goes on as a new part of the same recording", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const beforeReload = await setup({ store: await openRecordingStore(device) });
+  await beforeReload.capture.start(meeting);
+  beforeReload.recorders[0].emit("a");
+  const { id } = beforeReload.capture.getSnapshot().recording!;
+  // The phone kills the tab mid-meeting: no stop; the browser ends its lease.
+  beforeReload.store.release(id);
+
+  const store = await openRecordingStore(device);
+  const { capture, recorders } = await setup({ store });
+  await capture.adopt(id);
+  assert.equal(capture.getSnapshot().status, "interrupted");
+  assert.equal(capture.getSnapshot().recording?.state, "paused");
+  assert.equal(capture.elapsedMs(), (await store.get(id))?.durationMs, "the timer goes on from what was recorded");
+  assert.equal(capture.getSnapshot().recordedBytes, 1, "and so does the size");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "this tab holds it now");
+
+  await capture.continueRecording();
+  recorders[0].emit("b");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.id, id, "one recording, so one run");
+  assert.deepEqual(await texts(await store.readParts(id)), ["a", "b."]);
+});
+
+test("only an interrupted recording that no other tab holds can be continued", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const otherTab = await openRecordingStore(device);
+  const held = await otherTab.create(meeting);
+  const finished = await otherTab.create(meeting);
+  await otherTab.setState(finished.id, "stopped");
+  otherTab.release(finished.id);
+
+  const { capture } = await setup({ store: await openRecordingStore(device) });
+  await capture.adopt(held.id);
+  assert.equal(capture.getSnapshot().status, "idle");
+  assert.equal(capture.getSnapshot().error, "Inspelningen används i en annan flik.");
+  await capture.adopt(finished.id);
+  assert.equal(capture.getSnapshot().status, "idle");
+  assert.equal(capture.getSnapshot().error, "Inspelningen är avslutad och kan inte fortsätta.");
+
+  // Reading it fails after the lease was taken: the lease is let go again.
+  const reopened = await openRecordingStore(device);
+  const get = IDBObjectStore.prototype.get;
+  let reads = 0;
+  IDBObjectStore.prototype.get = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["get"]>) {
+    reads += 1;
+    if (reads > 1) throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+    return get.apply(this, args);
+  };
+  const unreadable = await setup({ store: reopened });
+  try {
+    otherTab.release(held.id);
+    await settle();
+    await unreadable.capture.adopt(held.id);
+  } finally {
+    IDBObjectStore.prototype.get = get;
+  }
+  assert.equal(unreadable.capture.getSnapshot().error, "Inspelningen kunde inte öppnas.");
+  assert.equal(await reopened.lease(held.id), true, "nobody holds it");
+  reopened.release(held.id);
+
+  // A page that goes away while it opens one leaves it for recovery.
+  await settle();
+  const leaving = await setup({ store: await openRecordingStore(device) });
+  const adopting = leaving.capture.adopt(held.id);
+  leaving.capture.dispose();
+  await adopting;
+  await settle();
+  assert.equal(leaving.capture.getSnapshot().status, "idle");
+  assert.deepEqual(
+    (await leaving.store.listUnsent("user-1")).map((r) => r.id).sort(),
+    [held.id, finished.id].sort(),
+    "both are still unsent, and no tab holds either",
+  );
 });
 
 test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
