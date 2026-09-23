@@ -201,10 +201,11 @@ export function recordingFilename(recording: StoredRecording, index: number): st
 export class RecordingStore {
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
-  // Leases this tab holds: how to end each, and whether a Web Lock makes it
-  // exclusive. Only under an exclusive lease is this tab's copy of the
-  // metadata the truth; without one, another tab may have changed or deleted it.
-  private leases = new Map<string, { end: () => void; exclusive: boolean }>();
+  // Leases this tab holds (with how to end each), and this tab's latest copy
+  // of those recordings. The database stays the truth, since without Web
+  // Locks another tab may have changed or deleted a recording: the copy
+  // serves only when the device cannot read.
+  private leases = new Map<string, () => void>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -374,7 +375,7 @@ export class RecordingStore {
     if (this.leases.has(id)) return Promise.resolve(false);
     const locks = this.env.locks;
     const inThisTab = () => {
-      this.leases.set(id, { end: () => {}, exclusive: false });
+      this.leases.set(id, () => {});
       return true;
     };
     if (!locks) return Promise.resolve(inThisTab());
@@ -384,7 +385,7 @@ export class RecordingStore {
           if (!lock) return resolve(false);
           // Held until `release` settles this promise.
           return new Promise<void>((end) => {
-            this.leases.set(id, { end, exclusive: true });
+            this.leases.set(id, end);
             resolve(true);
           });
         })
@@ -394,11 +395,11 @@ export class RecordingStore {
   }
 
   release(id: string): void {
-    const lease = this.leases.get(id);
-    if (!lease) return;
+    const end = this.leases.get(id);
+    if (!end) return;
     this.leases.delete(id);
     this.live.delete(id);
-    lease.end();
+    end();
     this.notify();
   }
 
@@ -462,22 +463,25 @@ export class RecordingStore {
   }
 
   private async load(id: string): Promise<StoredRecording | undefined> {
-    return (
-      this.live.get(id) ??
-      (this.overflowed.has(id) ? this.overflow.get(id) : this.backend.get(id))
-    );
+    if (this.overflowed.has(id)) return this.overflow.get(id);
+    const copy = this.live.get(id);
+    if (!copy) return this.backend.get(id);
+    try {
+      return await this.backend.get(id);
+    } catch {
+      return copy;
+    }
   }
 
   private async all(): Promise<StoredRecording[]> {
     const byId = new Map<string, StoredRecording>();
     for (const r of await this.backend.list()) byId.set(r.id, r);
     for (const r of await this.overflow.list()) byId.set(r.id, r);
-    for (const r of this.live.values()) byId.set(r.id, r);
     return [...byId.values()];
   }
 
   private async write(recording: StoredRecording, chunk?: Chunk): Promise<void> {
-    if (this.leases.get(recording.id)?.exclusive) this.live.set(recording.id, recording);
+    if (this.leases.has(recording.id)) this.live.set(recording.id, recording);
     if (!this.overflowed.has(recording.id)) {
       try {
         await this.backend.put(recording, chunk);

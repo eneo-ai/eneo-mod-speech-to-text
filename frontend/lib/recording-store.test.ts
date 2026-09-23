@@ -240,7 +240,11 @@ test("a sent recording whose local copy cannot be deleted is never offered again
 });
 
 test("chunks of a recording being captured are stored even when reading the database fails", async () => {
-  const store = await openRecordingStore(device());
+  for (const env of [device(), device({ locks: undefined })]) await keepsChunksWhenReadsFail(env);
+});
+
+async function keepsChunksWhenReadsFail(env: StoreEnv) {
+  const store = await openRecordingStore(env);
   const recording = await store.create(meeting); // leased: this tab records it
   await store.startPart(recording.id);
 
@@ -254,8 +258,8 @@ test("chunks of a recording being captured are stored even when reading the data
   } finally {
     IDBObjectStore.prototype.get = get;
   }
-  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"]);
-});
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"], env.locks ? "Web Locks" : "no Web Locks");
+}
 
 test("without IndexedDB the recording lives only in this tab, and the store says so", async () => {
   const throwsOnOpen = {
