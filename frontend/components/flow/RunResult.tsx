@@ -73,7 +73,8 @@ export function RunResult({
   const others = files.filter((file) => file !== primary);
   const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
   const offer =
-    showTranscript && !delivered && editing.saveState !== "error"
+    // Whether the document is older than the saved corrections does not depend on the latest save.
+    showTranscript && !delivered
       ? regenerationOffer({
           flowId,
           run,
@@ -112,7 +113,7 @@ export function RunResult({
     <>
       {note && <p className="text-[15px] leading-relaxed">{note}</p>}
       {offer && (
-        <RegenerateNotice offer={offer} saving={editing.saveState === "saving"} onStarted={onRegenerated} onReload={reload} />
+        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} />
       )}
       {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />}
       {others.length > 0 && (

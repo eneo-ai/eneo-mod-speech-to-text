@@ -94,7 +94,7 @@ test("the notice starts the new run only when asked, and shows a refusal with th
   const view = await mount(
     createElement(RegenerateNotice, {
       offer: regenerationOffer(base)!,
-      saving: false,
+      saveState: "idle",
       onStarted: (next: FlowRunPublic) => started.push(next.id),
       onReload: () => void reloads++,
     }),
@@ -121,7 +121,7 @@ test("while corrections are being saved, the new document waits for them", async
   const { createElement } = await import("react");
   const { RegenerateNotice } = await import("../components/flow/RegenerateNotice");
   const view = await mount(
-    createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saving: true, onStarted: () => undefined, onReload: () => undefined }),
+    createElement(RegenerateNotice, { offer: regenerationOffer(base)!, saveState: "saving", onStarted: () => undefined, onReload: () => undefined }),
   );
   assert.equal(button(view.container, "Sparar rättningarna…")!.disabled, true);
 });

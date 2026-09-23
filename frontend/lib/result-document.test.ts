@@ -152,3 +152,59 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
   // Nothing has played: no pause beside the document yet.
   assert.ok(!view.container.querySelector("[data-docked-player] button[aria-label='Pausa uppspelningen']"));
 });
+
+test("a failed later save keeps the note that the document is older, and says why a new one waits", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const hash = "a".repeat(64);
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-corrections") && init?.method === "PATCH") return Response.json({ code: "internal_error" }, { status: 500 });
+    if (path.includes("transcript-corrections")) {
+      return Response.json([{ flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: hash, occurrences: [], speaker_edits: [], revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z" }]);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: {
+      transcription: {
+        file_ids: [],
+        segments_hash: hash,
+        segments: [
+          { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten gäller budgeten." },
+        ],
+      },
+    },
+  };
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      steps: [],
+      stepResults: [transcribe] as never,
+      files: [pdf],
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const note = () => view.container.querySelector('[role="note"]');
+  assert.ok(note(), "saved corrections are newer than the document");
+  assert.equal(button(note()!, "Skapa dokumentet igen med rättningarna")!.disabled, false);
+
+  // A later correction fails to save.
+  await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
+  await view.act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] button[role="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => button(document.body, "Spara")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.ok(note(), "still said: the document is older than the saved corrections");
+  const make = [...note()!.querySelectorAll("button")].find((b) => b.textContent?.includes("Skapa dokumentet igen"))!;
+  assert.equal(make.disabled, true, "a new document waits for the failed save");
+  assert.match(note()!.textContent ?? "", /inte sparad/);
+});

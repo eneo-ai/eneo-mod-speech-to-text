@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Info, Loader2, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import type { CorrectionsSaveState } from "@/components/TranscriptPlayer";
 import type { FlowRunPublic } from "@/lib/api";
 import { regenerate, type RegenerationRequest } from "@/lib/regenerate";
 
@@ -14,19 +15,21 @@ import { regenerate, type RegenerationRequest } from "@/lib/regenerate";
  */
 export function RegenerateNotice({
   offer,
-  saving,
+  saveState,
   onStarted,
   onReload,
 }: {
   offer: RegenerationRequest;
-  /** Corrections are being saved; a new document waits for them. */
-  saving: boolean;
+  /** The transcript's latest save: a new document waits while one runs, and after one failed. */
+  saveState: CorrectionsSaveState;
   onStarted: (run: FlowRunPublic) => void;
   /** Reads the transcript and its corrections again, after they changed elsewhere. */
   onReload: () => void;
 }) {
   const [working, setWorking] = useState(false);
   const [refusal, setRefusal] = useState<{ message: string; reload: boolean } | null>(null);
+  const saving = saveState === "saving";
+  const unsaved = saveState === "error";
 
   async function start() {
     setWorking(true);
@@ -44,10 +47,15 @@ export function RegenerateNotice({
       <AlertTitle>Dokumentet skapades före dina rättningar</AlertTitle>
       <AlertDescription className="flex flex-col items-start gap-3">
         <p>Den nya versionen görs från det rättade transkriptet.</p>
-        <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving} onClick={() => void start()}>
+        <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving || unsaved} onClick={() => void start()}>
           {working ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin motion-reduce:animate-none" /> : <RotateCcw data-icon="inline-start" aria-hidden />}
           {working ? "Skapar dokumentet igen…" : saving ? "Sparar rättningarna…" : "Skapa dokumentet igen med rättningarna"}
         </Button>
+        {unsaved && (
+          <p className="text-muted-foreground">
+            Den senaste rättningen är inte sparad. Spara den igen i transkriptet innan dokumentet skapas på nytt.
+          </p>
+        )}
         {refusal && (
           <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <p className="text-destructive">{refusal.message}</p>
