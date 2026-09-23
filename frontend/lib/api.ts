@@ -818,11 +818,13 @@ export async function startRun(
   flowId: string,
   body: Json,
   idempotencyKey: string,
+  signal?: AbortSignal,
 ) {
   return request<FlowRunPublic>(`/api/eneo/flows/${flowId}/runs/`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
+    signal,
   });
 }
 

@@ -46,8 +46,12 @@ export function isRetryable(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
+const cancelled = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
+
 export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
+    // A cancel between attempts, or before the first, sends nothing more.
+    if (opts.signal?.aborted) throw cancelled();
     try {
       return await op();
     } catch (error) {
@@ -71,7 +75,7 @@ function waitToRetry(delayMs: number, { online, signal, onWait }: RetryOptions):
       else resolve();
     };
     const retryNow = () => finish();
-    const cancel = () => finish(new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted"));
+    const cancel = () => finish(cancelled());
     const timer = setTimeout(retryNow, delayMs);
     const stopListening = online.subscribe((isOnline) => isOnline && retryNow());
     signal?.addEventListener("abort", cancel, { once: true });
@@ -179,7 +183,7 @@ export async function submitRun(
       expectedFlowVersion: contract.published_flow_version,
       body,
     }));
-  return withRetry(() => deps.startRun(flowId, body, key), params);
+  return withRetry(() => deps.startRun(flowId, body, key, params.signal), params);
 }
 
 const ALREADY_SENT = "Inspelningen har redan skickats, till exempel från en annan flik.";

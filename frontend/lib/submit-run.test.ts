@@ -5,6 +5,7 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import {
   ApiError,
   deriveRunIdempotencyKey,
+  startRun,
   uploadStepRuntimeFile,
   type FlowRunPublic,
   type FlowRunStep,
@@ -199,7 +200,7 @@ test("'Försök nu' retries at once, and cancelling ends the wait", async (t) =>
       { ...params(), signal: alreadyCancelled.signal },
     ),
   );
-  assert.equal(calls, 1, "a cancelled send is not retried");
+  assert.equal(calls, 0, "a cancelled send sends nothing");
 });
 
 test("run creation retries network failures with the same idempotency key", async (t) => {
@@ -290,6 +291,53 @@ test("an upload the server never answers times out, and the timeout is retried",
     assert.equal((await run).id, "run-1");
   } finally {
     globalThis.XMLHttpRequest = browserXhr;
+  }
+});
+
+test("a send cancelled as its upload finishes starts no run, and cancelling stops a run request in flight", async () => {
+  const cancel = new AbortController();
+  let runs = 0;
+  await assert.rejects(
+    submitRun(params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }], signal: cancel.signal }), {
+      upload: async () => {
+        cancel.abort(); // "Avbryt" as the last byte goes up
+        return { id: "file-1" };
+      },
+      startRun: async () => {
+        runs += 1;
+        return queuedRun;
+      },
+    }),
+  );
+  assert.equal(runs, 0);
+
+  const later = new AbortController();
+  let asked: AbortSignal | undefined;
+  const sending = submitRun(params({ signal: later.signal }), {
+    upload: async () => ({ id: "file-1" }),
+    startRun: (_flowId, _body, _key, signal) =>
+      new Promise((_resolve, reject) => {
+        asked = signal;
+        signal?.addEventListener("abort", () => reject(new DOMException("The request was aborted.", "AbortError")));
+      }),
+  });
+  await until(() => asked !== undefined);
+  later.abort();
+  await assert.rejects(sending, { name: "AbortError" });
+
+  // The real request hands the signal to fetch.
+  const browserFetch = globalThis.fetch;
+  let fetched: AbortSignal | null | undefined;
+  globalThis.fetch = async (_input, init) => {
+    fetched = init?.signal;
+    return new Response(JSON.stringify(queuedRun), { status: 201, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const signal = new AbortController().signal;
+    await startRun("flow-1", { expected_flow_version: 3 }, "flow-run:recording:r1", signal);
+    assert.equal(fetched, signal);
+  } finally {
+    globalThis.fetch = browserFetch;
   }
 });
 

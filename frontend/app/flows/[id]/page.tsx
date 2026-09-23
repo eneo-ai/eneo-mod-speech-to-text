@@ -543,11 +543,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRunError(null);
     setRun({ kind: "submitting" });
     setSubmission({ kind: "starting", wait: null });
+    // "Avbryt" and leaving the page stop the attempts.
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
+    const { signal } = abortController;
     try {
       const next = await withRetry(
-        () => startRun(flowId, request.body, request.idempotencyKey),
-        { online: onlineStatus, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
+        () => startRun(flowId, request.body, request.idempotencyKey, signal),
+        { online: onlineStatus, signal, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
       );
+      submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
       // A refusal that led here stays on the failure view until a new run exists.
       setRetryRefusal(null);
@@ -555,8 +560,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun({ kind: "running", run: next, graph: null });
       void follow(next.id);
     } catch (err) {
+      submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
-      setRunError(friendlyError(err));
+      // A cancel goes back to the failed run without an error of its own.
+      if (!signal.aborted) setRunError(friendlyError(err));
       setRun(failed);
     }
   }
