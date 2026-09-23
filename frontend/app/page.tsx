@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
 import { ApiError, authStatus, loginWithAccessCode } from "@/lib/api";
 import type { AuthMode } from "@/lib/api";
 import { AppHeader } from "@/components/AppHeader";
@@ -67,7 +68,7 @@ export default function LoginPage() {
   if (checking) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <Loader2 className="h-5 w-5 animate-spin text-ink-mute" />
+        <Spinner className="size-5 text-ink-mute" />
       </main>
     );
   }

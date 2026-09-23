@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Spinner } from "@/components/ui/spinner";
 import { authStatus, type AuthenticatedUser } from "@/lib/api";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
@@ -52,7 +52,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (!user) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <Loader2 className="h-5 w-5 animate-spin text-ink-mute" />
+        <Spinner className="size-5 text-ink-mute" />
       </main>
     );
   }

@@ -21,6 +21,12 @@ export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query
   await expect(page.getByRole("button", { name: mode === "eneo_sso" ? "Logga in med Eneo" : "Fortsätt" })).toBeVisible();
 }
 
+async function loading(page: Page, path: string) {
+  await page.route("**/api/auth/status", () => {});
+  await open(page, path);
+  await expect(page.locator("main svg")).toBeVisible();
+}
+
 export async function flows(page: Page) {
   await open(page, "/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
@@ -135,6 +141,9 @@ export const STATES: State[] = [
       await expect(page.getByRole("alert").filter({ hasText: "Inloggningen kunde inte" })).toBeVisible();
     },
   },
+  // The sign-in page and a signed-in page while the session is still being asked for.
+  { name: "signin-loading", go: (page) => loading(page, "/") },
+  { name: "page-loading", go: (page) => loading(page, "/flows") },
   { name: "flow-list", go: flows },
   {
     name: "flow-list-error",

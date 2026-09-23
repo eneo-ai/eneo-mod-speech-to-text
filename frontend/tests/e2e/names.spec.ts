@@ -54,3 +54,11 @@ test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
   expect(await axNode(page.locator("main textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
 });
+
+test("a page that is still loading says so", async ({ page }) => {
+  await page.route("**/api/auth/status", () => {});
+  for (const path of ["/", "/flows"]) {
+    await page.goto(path);
+    await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  }
+});

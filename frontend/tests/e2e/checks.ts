@@ -191,7 +191,7 @@ export function endlessAnimations(page: Page) {
       .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations === Infinity)
       .map((a) => {
         const target = (a.effect as KeyframeEffect | null)?.target as Element | null;
-        return `${(a as CSSAnimation).animationName ?? "animation"} on ${target?.tagName.toLowerCase()}.${String(target?.className).split(" ").slice(0, 3).join(".")}`;
+        return `${(a as CSSAnimation).animationName ?? "animation"} on ${target?.tagName.toLowerCase()}.${(target?.getAttribute("class") ?? "").split(" ").slice(0, 3).join(".")}`;
       }),
   );
 }
