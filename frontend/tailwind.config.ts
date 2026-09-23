@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 const config: Config = {
   darkMode: "class",
@@ -9,10 +10,6 @@ const config: Config = {
   ],
   theme: {
     extend: {
-      // `coarse:` is a touch screen: controls grow to 44 px targets there and keep a mouse's density elsewhere.
-      screens: {
-        coarse: { raw: "(pointer: coarse)" },
-      },
       fontFamily: {
         mono: ["ui-monospace", "SFMono-Regular", "Consolas", "monospace"],
       },
@@ -105,7 +102,12 @@ const config: Config = {
       },
     },
   },
-  plugins: [require("@tailwindcss/typography")],
+  plugins: [
+    require("@tailwindcss/typography"),
+    // `coarse:` is a touch screen: controls grow to 44 px targets there and keep a mouse's density elsewhere.
+    // A variant, not a screen: a raw screen would switch off Tailwind's max-* variants.
+    plugin(({ addVariant }) => addVariant("coarse", "@media (pointer: coarse)")),
+  ],
 };
 
 export default config;
