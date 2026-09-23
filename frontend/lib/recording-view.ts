@@ -90,6 +90,15 @@ export function recordingAnnouncement(phase: SessionPhase): string {
   }
 }
 
+/**
+ * The details folded into one line on a phone: a required detail the send
+ * found missing unfolds them, and they stay unfolded while it is filled in,
+ * until the user folds them again.
+ */
+export function keepDetailsOpen(open: boolean, invalid: readonly string[]): boolean {
+  return open || invalid.length > 0;
+}
+
 /** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
 export function detailsSummary(fields: FormField[], details: Record<string, DetailValue>): string {
   const parts = fields.flatMap((field) => {

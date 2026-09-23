@@ -6,6 +6,7 @@ import {
   SilenceWatch,
   atBottom,
   detailsSummary,
+  keepDetailsOpen,
   liveStatusLine,
   pageTitle,
   recordingAnnouncement,
@@ -325,4 +326,15 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const refused = sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
   assert.ok(!refused.includes("Texten visas här"), "no promise of text that will not come");
   assert.match(refused, /Livetexten kunde inte starta\./);
+});
+
+test("details a send found missing stay unfolded while they are filled in, until the user folds them", () => {
+  let open = keepDetailsOpen(false, []);
+  assert.equal(open, false, "folded to one line while recording");
+  open = keepDetailsOpen(open, ["motesnamn"]); // Skapa dokument finds the meeting's name missing
+  assert.equal(open, true);
+  open = keepDetailsOpen(open, []); // the first character fills it in
+  assert.equal(open, true, "the field being typed in stays in view");
+  open = false; // the user folds them
+  assert.equal(keepDetailsOpen(open, []), false);
 });

@@ -39,7 +39,7 @@ import { speakerMappingReviewSteps, type FlowPublished, type FlowRunSummary, typ
 import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
-import { detailsSummary, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
+import { detailsSummary, keepDetailsOpen, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
 import { selectRuntimeInputStep } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 
@@ -92,6 +92,9 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  // Unfolded by a required detail the send found missing, and kept so while it is filled in.
+  const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
+  if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
   const fields = contract.form_fields ?? [];
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
@@ -196,7 +199,7 @@ export function FlowInput({
           </div>
           {holdsAudio && fields.length > 0 ? (
             // While recording and after, the details fold into one line on a phone or tablet.
-            <Collapsible open={detailsOpen || snapshot.invalid.length > 0} onOpenChange={setDetailsOpen}>
+            <Collapsible open={openDetails} onOpenChange={setDetailsOpen}>
               <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
                 <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
                 <ChevronDown
