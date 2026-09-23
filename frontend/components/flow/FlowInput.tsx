@@ -205,7 +205,8 @@ export function FlowInput({
             : "pb-12 lg:items-start",
         )}
       >
-        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:min-h-0 lg:overflow-y-auto lg:pb-2")}>
+        {/* While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box. */}
+        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}>
           <Link
             href="/flows"
             onClick={onLeave}

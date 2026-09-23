@@ -70,7 +70,8 @@ export function ParticipantsInput({
       role="none"
       className={cn(
         "h-auto flex-col items-stretch rounded-xl border-rule bg-paper",
-        "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
+        // A 2 px ring: the edge turning blue alone is too small a change to see.
+        "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
         invalid && "border-destructive",
       )}
     >

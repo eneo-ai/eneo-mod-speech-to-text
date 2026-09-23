@@ -120,7 +120,9 @@ function FieldLabel({
         "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-xl has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-border has-[>[data-slot=field]]:bg-card has-[>[data-slot=field]]:cursor-pointer [&>[data-slot=field]]:p-4",
         // Chained, so a checked or focused card wins over the base card by specificity.
         "has-[>[data-slot=field]]:has-[[data-state=checked]]:border-primary has-[>[data-slot=field]]:has-[[data-state=checked]]:bg-primary-soft/60 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-1 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-primary",
-        "has-[>[data-slot=field]]:has-[:focus-visible]:outline has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-ring",
+        // The outline's style as a property: tailwind-merge drops a bare `outline` beside `outline-2`, which
+        // left the card with no focus indicator at all.
+        "has-[>[data-slot=field]]:has-[:focus-visible]:[outline-style:solid] has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-ring",
         className
       )}
       {...props}
