@@ -170,8 +170,7 @@ export class Playback {
       media.pause();
       return;
     }
-    const { totalMs } = this.snapshot;
-    if (totalMs > 0 && this.atMs() >= totalMs) {
+    if (this.atEnd()) {
       // Played to the end: start over from the first part.
       this.seek(0, 0, true);
       return;
@@ -324,6 +323,12 @@ export class Playback {
   private playingNow(): boolean {
     if (this.pending) return this.pending.play;
     return this.media ? !this.media.paused : this.playing;
+  }
+
+  /** At the end of the last part; a length only seen so far is no end, the audio may go on. */
+  private atEnd(): boolean {
+    const last = this.sources.length - 1;
+    return this.part === last && this.known(last) && this.withinMs >= this.lengths()[last];
   }
 
   private known(part: number): boolean {

@@ -103,6 +103,23 @@ test("the recording plays on across its parts and starts over after the end", ()
   assert.equal(playback.getSnapshot().atMs, 0);
 });
 
+test("a recording whose length is still unknown resumes where it paused, and starts over only after its end", () => {
+  const { playback, media } = started([{ url: "/a", durationMs: null }]);
+  playback.toggle();
+  playback.onPlay();
+  playTo(playback, media, 12);
+  playback.toggle();
+  playback.onPause();
+  playback.toggle();
+  assert.deepEqual([media.currentTime, media.paused, media.loads.length], [12, false, 1], "Spela upp resumes at 12 s");
+
+  playTo(playback, media, 20);
+  media.paused = true;
+  playback.onEnded();
+  playback.toggle();
+  assert.deepEqual([media.currentTime, media.paused], [0, false], "after its end it plays from the start");
+});
+
 test("range playback stops at its end, and any other move ends the range", () => {
   const { playback, media } = started();
   playback.playRange(0, 1_000, 2_000);
