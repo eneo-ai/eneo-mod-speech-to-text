@@ -492,6 +492,76 @@ test("a recording a reload cut off continues from the unsent list as a new part 
   assert.equal(session.getSnapshot().recording?.parts.length, 2);
 });
 
+test("Fortsätt spela in after Stoppa records on in a new part of the same recording; the next stop shows the whole", async () => {
+  const { session, recorders } = await setup();
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("first");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const first = session.getSnapshot().recording!;
+
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.equal(session.getSnapshot().recording?.id, first.id, "the same recording");
+  assert.equal(recorders.length, 2, "a new part");
+  recorders[1].emit("second");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const whole = session.getSnapshot().recording!;
+  assert.equal(whole.id, first.id);
+  assert.equal(whole.parts.length, 2, "the ready state shows both parts, not the first stop's copy");
+});
+
+test("once a send of the recording has begun, Fortsätt spela in says why and the ready state stays", async () => {
+  const { session, store, recorders } = await setup();
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  await store.setState(session.getSnapshot().recording!.id, "uploading");
+
+  await session.continueStopped();
+  const snapshot = session.getSnapshot();
+  assert.equal(snapshot.phase, "ready");
+  assert.equal(snapshot.problem?.title, "Inspelningen skickas eller har redan skickats och kan inte fortsätta.");
+  assert.equal(recorders.length, 1, "no new part");
+});
+
+test("a Strömma recording continued after a reload or after Stoppa streams live text again", async () => {
+  const live = fakeLiveClient();
+  const { session, store, streams, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  const earlier = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "stream",
+    mimeType: "audio/webm;codecs=opus",
+  });
+  await store.startPart(earlier.id);
+  await store.append(earlier.id, 0, new Blob(["before the reload"]), 60_000);
+  store.release(earlier.id);
+
+  await session.continueCutOff((await store.get(earlier.id))!);
+  assert.equal(session.getSnapshot().mode, "stromma");
+  assert.ok(session.getSnapshot().live, "live text beside the recording");
+  assert.deepEqual(live.streams, [streams[0]]);
+
+  recorders[0].emit("after");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.deepEqual(live.opened, ["step-audio", "step-audio"], "a new live session for the new part");
+  assert.deepEqual(live.streams, [streams[0], streams[1]]);
+  assert.ok(session.getSnapshot().live);
+});
+
 test("Ta bort removes the recording from the device for good and starts over with the details kept", async () => {
   const { session, recorders, store } = await setup();
   session.setContract(audioContract());

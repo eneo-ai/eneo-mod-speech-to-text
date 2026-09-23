@@ -110,10 +110,7 @@ export function useFlowSession({
     snapshot,
     capture,
     persistent: capture.recording ? capture.persistent : persistent,
-    // SEAM(capture.adopt): "Fortsätt spela in" on a stopped recording needs the
-    // recorder to take the recording back and start a new part of it. When
-    // RecordingCapture can (capture.adopt(recording) then continueRecording()),
-    // return a function here; the ready state offers the action whenever it is set.
-    continueStopped: undefined as (() => void) | undefined,
+    // The ready state offers "Fortsätt spela in" whenever this browser can record for the flow.
+    continueStopped: snapshot.modes.includes("spela-in") ? () => void session.continueStopped() : undefined,
   };
 }

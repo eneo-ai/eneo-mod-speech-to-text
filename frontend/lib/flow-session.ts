@@ -595,20 +595,14 @@ export class FlowSession {
    */
   async continueCutOff(recording: StoredRecording): Promise<void> {
     if (this.snapshot.phase !== "setup") return;
-    const live = recording.inputMode === "stream" && this.modes.includes("stromma");
-    this.mode = live ? "stromma" : "spela-in";
-    this.problem = null;
-    this.microphoneError = null;
-    if (live) this.openLive(recording.stepId);
-    this.emit();
-    await this.capture.adopt(recording.id, this.limits());
-    const { status, error } = this.capture.getSnapshot();
-    if (status === "interrupted") await this.continueRecording();
-    else {
-      this.closeLive();
-      if (error) this.problem = { title: error };
-      this.emit();
-    }
+    await this.recordOn(recording, (id, limits) => this.capture.adopt(id, limits));
+  }
+
+  /** "Fortsätt spela in" after Stoppa: a new part of the same recording, until a send of it has begun. */
+  async continueStopped(): Promise<void> {
+    const recording = this.ready;
+    if (this.snapshot.phase !== "ready" || !recording) return;
+    await this.recordOn(recording, (id, limits) => this.capture.continueStopped(id, limits));
   }
 
   togglePause(): void {
@@ -644,6 +638,24 @@ export class FlowSession {
   private limits(): CaptureLimits {
     const step = this.inputStep();
     return { maxBytes: step?.max_file_size_bytes, maxFiles: step?.max_files };
+  }
+
+  /** Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. */
+  private async recordOn(
+    recording: StoredRecording,
+    takeOver: (recordingId: string, limits: CaptureLimits) => Promise<void>,
+  ) {
+    const live = recording.inputMode === "stream" && this.modes.includes("stromma");
+    this.mode = live ? "stromma" : "spela-in";
+    this.problem = null;
+    if (live) this.openLive(recording.stepId);
+    this.emit();
+    await takeOver(recording.id, this.limits());
+    const { status, error } = this.capture.getSnapshot();
+    if (status === "recording") return;
+    this.closeLive();
+    if (error) this.problem = { title: error };
+    this.emit();
   }
 
   private openLive(stepId: string) {
@@ -683,7 +695,8 @@ export class FlowSession {
   private onCapture = () => {
     this.followLive();
     const { status, recording, error } = this.capture.getSnapshot();
-    if (status === "stopped" && recording && this.ready?.id !== recording.id) {
+    // Each stop gives the whole recording again, also after "Fortsätt spela in".
+    if (status === "stopped" && recording && this.ready !== recording) {
       this.ready = recording;
       // A stop at the flow's size limit says so; what was recorded is kept.
       if (error) this.problem = { title: error };
