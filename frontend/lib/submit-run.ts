@@ -22,6 +22,7 @@ import { friendlyError } from "./errors";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes } from "./format";
 import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
+import { selectRuntimeInputStep } from "./upload";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
@@ -352,4 +353,31 @@ export function startAgainRequest(
     body.input_payload_json = failed.input_payload_json;
   }
   return { body, idempotencyKey: `flow-run-again:${failed.id}` };
+}
+
+/**
+ * "Starta en ny körning", for as long as the page that asked lives: a signal
+ * that ends before, during or just after the request gives null, so the page
+ * sends nothing more and neither shows nor follows a run.
+ */
+export async function startAgain(
+  flowId: string,
+  failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
+  steps: readonly FlowRunStep[],
+  contract: RunContract,
+  opts: RetryOptions,
+  deps: Pick<SubmitDeps, "startRun"> = { startRun },
+): Promise<FlowRunPublic | null> {
+  const request = startAgainRequest(failed, steps, contract, selectRuntimeInputStep(contract)?.step_id ?? null);
+  if (!request) return null;
+  try {
+    const run = await withRetry(
+      () => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal),
+      opts,
+    );
+    return opts.signal?.aborted ? null : run;
+  } catch (error) {
+    if (opts.signal?.aborted) return null;
+    throw error;
+  }
 }

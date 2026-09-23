@@ -37,7 +37,6 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  startRun,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
@@ -58,10 +57,10 @@ import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
+  startAgain,
   startAgainRequest,
   submitRecording,
   submitRun,
-  withRetry,
   type RetryWait,
   type SubmitProgress,
 } from "@/lib/submit-run";
@@ -525,7 +524,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function onRetry(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setRetryRefusal(null);
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
     const outcome = await retryFailedRun(flowId, failed.run.id);
+    // The page went away while Eneo answered: nothing is shown or followed from here.
+    if (abortController.signal.aborted) return;
+    submitAbortRef.current = null;
     if (outcome.kind === "refused") {
       setRetryRefusal({ message: outcome.message, startAgain: outcome.startAgain });
       return;
@@ -536,24 +540,27 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
-  async function onStartAgain(
-    failed: Extract<RunState, { kind: "done" }>,
-    request: { body: Json; idempotencyKey: string },
-  ) {
+  async function onStartAgain(failed: Extract<RunState, { kind: "done" }>) {
+    if (!contract) return;
     setRunError(null);
     setRun({ kind: "submitting" });
     setSubmission({ kind: "starting", wait: null });
-    // "Avbryt" and leaving the page stop the attempts.
+    // "Avbryt" and leaving the page end it: nothing more is sent, shown or followed.
     const abortController = new AbortController();
     submitAbortRef.current = abortController;
-    const { signal } = abortController;
     try {
-      const next = await withRetry(
-        () => startRun(flowId, request.body, request.idempotencyKey, signal),
-        { online: onlineStatus, signal, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
-      );
+      const next = await startAgain(flowId, failed.run, failed.steps, contract, {
+        online: onlineStatus,
+        signal: abortController.signal,
+        onWait: (wait) => setSubmission({ kind: "starting", wait }),
+      });
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
+      // Avbryt goes back to the failed run; after the page left, no URL change and no following.
+      if (!next) {
+        setRun(failed);
+        return;
+      }
       // A refusal that led here stays on the failure view until a new run exists.
       setRetryRefusal(null);
       writeRunIdToUrl(next.id);
@@ -562,8 +569,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     } catch (err) {
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
-      // A cancel goes back to the failed run without an error of its own.
-      if (!signal.aborted) setRunError(friendlyError(err));
+      setRunError(friendlyError(err));
       setRun(failed);
     }
   }
@@ -678,9 +684,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // The same audio cannot help when the input itself has to change.
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";
-  const startAgain = sameInputHelps
-    ? startAgainRequest(run.run, run.steps, contract, inputStep?.step_id ?? null)
-    : null;
+  const startAgainOffered =
+    sameInputHelps && startAgainRequest(run.run, run.steps, contract, inputStep?.step_id ?? null) !== null;
   return (
     <>
       {topBar}
@@ -696,7 +701,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         error={runError}
         refusal={retryRefusal}
         onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-        onStartAgain={startAgain ? () => onStartAgain(run, startAgain) : undefined}
+        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
       />
     </>
   );

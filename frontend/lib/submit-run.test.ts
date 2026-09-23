@@ -17,6 +17,7 @@ import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
 import {
   retryFailedRun,
+  startAgain,
   startAgainRequest,
   submitRecording,
   submitRun,
@@ -770,6 +771,49 @@ test("a new run with the failed run's audio and details has a key of its own, ap
   // Without the recording there is nothing to start again with.
   assert.equal(startAgainRequest(failed, [steps[0]], contract, "step-audio"), null);
   assert.equal(startAgainRequest(failed, steps, contract, null), null);
+});
+
+test("Starta en ny körning sends nothing more once the page is gone, and gives no run to follow", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "cancelled", input_payload_json: null };
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  // Left during the wait before asking again.
+  const leftWaiting = new AbortController();
+  let posts = 0;
+  let waiting = false;
+  const outcome = startAgain("flow-1", failed, steps, contract, {
+    online: createOnlineStatus(),
+    signal: leftWaiting.signal,
+    onWait: (wait) => (waiting = wait !== null),
+  }, {
+    startRun: async () => {
+      posts += 1;
+      throw fetchFailed();
+    },
+  });
+  await until(() => waiting);
+  leftWaiting.abort();
+  assert.equal(await outcome, null);
+  t.mock.timers.tick(120_000);
+  await settle();
+  assert.equal(posts, 1, "no request after the page is gone");
+
+  // Left just as Eneo answered: the run exists, but this page follows nothing.
+  const leftAnswering = new AbortController();
+  const answered = await startAgain("flow-1", failed, steps, contract, { online: createOnlineStatus(), signal: leftAnswering.signal }, {
+    startRun: async () => {
+      leftAnswering.abort();
+      return queuedRun;
+    },
+  });
+  assert.equal(answered, null);
+
+  const kept = await startAgain("flow-1", failed, steps, contract, { online: createOnlineStatus(), signal: new AbortController().signal }, {
+    startRun: async () => queuedRun,
+  });
+  assert.equal(kept?.id, "run-1");
 });
 
 test("Försök igen asks Eneo to continue the failed run under a key that names it, and returns the child run", async () => {
