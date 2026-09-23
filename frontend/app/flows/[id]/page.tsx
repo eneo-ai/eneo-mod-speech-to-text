@@ -751,6 +751,11 @@ function ReviewView({
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
+  // The mapping step's own proposal (name, confidence, evidence), before anyone edited it.
+  const modelProposals = useMemo(
+    () => buildSpeakerRows((checkpoint.original_payload_json as Json | null) ?? payload),
+    [checkpoint.original_payload_json, payload],
+  );
 
   const initialText = extractCheckpointText(payload);
   const [text, setText] = useState<string>(initialText);
@@ -976,6 +981,7 @@ function ReviewView({
                   </ul>
                   <SpeakerNamingDialog
                     rows={namingRows}
+                    proposals={modelProposals}
                     participants={participants}
                     passages={(label) => passageCounts.get(label) ?? namingRows.find((row) => row.label === label)?.lineCount ?? 0}
                     quote={(label) =>

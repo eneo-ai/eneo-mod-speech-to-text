@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { Headphones } from "lucide-react";
+import { ChevronDown, Headphones } from "lucide-react";
 import { NameCombobox } from "@/components/NameCombobox";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
   DialogClose,
@@ -53,6 +54,7 @@ function useVisibleHeight(active: boolean): number | null {
  */
 export function SpeakerNamingDialog({
   rows,
+  proposals = [],
   participants,
   passages,
   quote,
@@ -63,6 +65,8 @@ export function SpeakerNamingDialog({
   children,
 }: {
   rows: readonly SpeakerMappingRow[];
+  /** What the mapping step proposed for each speaker: its name, how sure it was and why. */
+  proposals?: readonly SpeakerMappingRow[];
   /** The names entered before the run: suggestions, never assumed. */
   participants: readonly string[];
   /** How many passages a speaker has in the transcript. */
@@ -137,6 +141,9 @@ export function SpeakerNamingDialog({
             const count = passages(row.label);
             const said = quote(row.label);
             const unavailable = listenUnavailableReason?.(row.label) ?? null;
+            const proposal = proposals.find((p) => p.label === row.label);
+            // The flow's own guess, still in the field, said to be one when it was not sure.
+            const unsure = Boolean(proposal?.name && row.name?.trim() === proposal.name.trim() && proposal.confidence !== "high");
             return (
               <li key={row.label} className="flex flex-col gap-3 border-b border-border py-4 last:border-0 sm:flex-row sm:items-start">
                 <div className="flex min-w-0 flex-1 gap-3">
@@ -176,10 +183,28 @@ export function SpeakerNamingDialog({
                     optionNote={(name) => usedBy(name, row.label)}
                     onChange={(name) => setDraft((all) => all.map((r) => (r.label === row.label ? { ...r, name } : r)))}
                   />
+                  {unsure && <p className="text-[13px] text-ink-mute">Osäkert förslag</p>}
                   {problems[row.label] && (
                     <p role="alert" className="text-[13px] text-destructive">
                       {problems[row.label]}
                     </p>
+                  )}
+                  {proposal?.evidence && (
+                    <Collapsible>
+                      <CollapsibleTrigger asChild>
+                        <Button type="button" variant="ghost" size="sm" className="group -ml-2 self-start text-ink-soft">
+                          Varför?
+                          <ChevronDown
+                            data-icon="inline-end"
+                            aria-hidden
+                            className="transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
+                          />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent>
+                        <p className="text-[13px] text-ink-soft">{proposal.evidence}</p>
+                      </CollapsibleContent>
+                    </Collapsible>
                   )}
                 </div>
               </li>

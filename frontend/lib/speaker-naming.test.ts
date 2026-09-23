@@ -124,3 +124,21 @@ test("speaker names with spaces and punctuation produce valid unique option IDs,
   assert.ok(ids.every((id) => !/\s/.test(id)));
   assert.equal(input.getAttribute("aria-controls"), list!.id);
 });
+
+test("the flow's unsure proposal says so, and its evidence is one Varför? away", async () => {
+  const proposals = [
+    { ...row("SPEAKER_00", "Anna Berg", 12), confidence: "medium" as const, evidence: "Anna, du är på plats" },
+    { ...row("SPEAKER_01", "Erik Lund", 9), confidence: "high" as const, evidence: "" },
+  ];
+  const { view, field } = await dialog({ rows: proposals, proposals });
+  const rowOf = (label: string) => field(label).closest("li")!;
+  assert.match(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/, "medium confidence is marked");
+  assert.doesNotMatch(rowOf("Talare 2").textContent ?? "", /Osäkert förslag/, "a sure proposal is not");
+  assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /du är på plats/, "the evidence waits behind Varför?");
+  await view.act(async () => button(rowOf("Talare 1"), "Varför?")!.click());
+  assert.match(rowOf("Talare 1").textContent ?? "", /Anna, du är på plats/);
+  assert.ok(!button(rowOf("Talare 2"), "Varför?"), "no Varför? without evidence");
+  // Once someone types another name, it is no longer the flow's guess.
+  await view.act(async () => type(field("Talare 1"), "Sara Holm"));
+  assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
+});
