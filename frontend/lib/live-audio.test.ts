@@ -74,13 +74,14 @@ class FakeSocket implements LiveSocket {
  * samples at a time. The context runs at 16 kHz, so a sample's value can be
  * read back from the frames the relay receives.
  */
-function setupLive(options: { failLoads?: number } = {}) {
+function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
   const Processor = loadWorklet();
   const sockets: FakeSocket[] = [];
   const contexts: Array<{ state: string }> = [];
   const worklets: Processor[] = [];
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
   let failLoads = options.failLoads ?? 0;
+  let failResumes = options.failResumes ?? 0;
   const client = liveClient({
     audioContext: () => {
       const context = {
@@ -90,7 +91,7 @@ function setupLive(options: { failLoads?: number } = {}) {
           addModule: () => (failLoads-- > 0 ? Promise.reject(new Error("offline")) : Promise.resolve()),
         },
         createMediaStreamSource: () => ({ connect() {}, disconnect() {} }),
-        resume: () => Promise.resolve(),
+        resume: () => (failResumes-- > 0 ? Promise.reject(new Error("not allowed")) : Promise.resolve()),
         close() {
           context.state = "closed";
           return Promise.resolve();
@@ -189,4 +190,25 @@ test("a pause and a resume quicker than the audio thread hears of them let nothi
   const heard = new Set(sockets[0].samples());
   assert.ok(!heard.has(pcm(0.75)), "blocks from the paused stretch are dropped on arrival");
   assert.ok(heard.has(pcm(0.5)), "the audio after the resume goes on");
+});
+
+test("audio that cannot feed live text ends the connection as a break, and the next try sets the audio up afresh", async () => {
+  for (const failure of [{ failLoads: 1 }, { failResumes: 1 }]) {
+    const { client, sockets, contexts, worklets, elapse } = setupLive(failure);
+    const session = client.open("step-audio");
+    sockets[0].ready();
+    session.listen(stream);
+    await settle();
+    assert.equal(session.getSnapshot().status, "reconnecting", `not "live" without audio (${Object.keys(failure)})`);
+    assert.equal(contexts[0].state, "closed", "the failed audio is let go");
+    assert.equal(sockets[0].closedWith, 1000);
+
+    elapse(1_000);
+    await settle();
+    assert.equal(contexts.length, 2, "the next try makes its audio afresh");
+    assert.equal(worklets.length, failure.failLoads ? 1 : 2, "and wires it");
+    sockets[1].ready();
+    assert.equal(session.getSnapshot().status, "live");
+    session.dispose();
+  }
 });
