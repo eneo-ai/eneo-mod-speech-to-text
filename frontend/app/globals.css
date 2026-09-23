@@ -118,35 +118,14 @@
     }
   }
 
-  /* Mobile-first app shell. Bredder upp på större skärmar så att desktop
-     inte fastnar i telefonbredd. Per sida ansvarar sidans innehåll för
-     att centrera sig (mx-auto + max-w) inom denna container. */
+  /* The page: full window width, so a header's band spans it. The content's width is the frame's
+     (components/frame.tsx), never the shell's. */
   .app-shell {
-    max-width: 430px;
-    margin: 0 auto;
     min-height: 100vh;
     background: hsl(var(--bg));
     position: relative;
     display: flex;
     flex-direction: column;
-  }
-
-  @media (min-width: 768px) {
-    .app-shell {
-      max-width: 760px;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .app-shell {
-      max-width: 1024px;
-    }
-  }
-
-  @media (min-width: 1280px) {
-    .app-shell {
-      max-width: 1180px;
-    }
   }
 }
 
@@ -214,22 +193,6 @@
     animation: lyssna-pulse-ring 2.4s ease-out infinite;
   }
 
-  @keyframes lyssna-live-pulse {
-    0%,
-    100% {
-      opacity: 1;
-      transform: scale(1);
-    }
-    50% {
-      opacity: 0.4;
-      transform: scale(0.8);
-    }
-  }
-
-  .lyssna-live-pulse {
-    animation: lyssna-live-pulse 1.4s ease-in-out infinite;
-  }
-
   @keyframes lyssna-blink {
     50% {
       opacity: 0;
@@ -238,17 +201,6 @@
 
   .lyssna-blink {
     animation: lyssna-blink 1s steps(2) infinite;
-  }
-
-  /* Recording screen background — radial primary glow at top */
-  .rec-bg {
-    background:
-      radial-gradient(
-        circle at 50% 30%,
-        hsl(var(--primary) / 0.06),
-        transparent 60%
-      ),
-      hsl(var(--bg));
   }
 }
 
@@ -293,7 +245,7 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
-  .lyssna-pulse-ring, .lyssna-live-pulse, .lyssna-blink { animation: none; }
+  .lyssna-pulse-ring, .lyssna-blink { animation: none; }
 }
 
 @media (forced-colors: active) {

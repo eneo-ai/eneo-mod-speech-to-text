@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, RotateCcw } from "lucide-react";
+import { ReadingMain } from "@/components/frame";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,8 +22,6 @@ import {
 import type { StepView } from "@/lib/run-progress";
 import { StepList } from "./StepList";
 import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
-
-const VIEW = "mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 pb-10 pt-2 md:px-8";
 
 /** The run goes on in Eneo: what happens now, every step, and a way to stop it. */
 export function RunProgress({
@@ -49,7 +48,7 @@ export function RunProgress({
   }
 
   return (
-    <main className={VIEW}>
+    <ReadingMain className="gap-6">
       <OfflineBanner waiting="run" />
       <div className="flex flex-col gap-2">
         <h1
@@ -97,21 +96,21 @@ export function RunProgress({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </ReadingMain>
   );
 }
 
 /** Opening an earlier run: the shape of the view until its state is known. */
 export function RunOpening() {
   return (
-    <main aria-busy="true" className={VIEW}>
+    <ReadingMain aria-busy="true" className="gap-6">
       <p role="status" className="sr-only">
         Hämtar körningen…
       </p>
       <Skeleton className="h-8 w-2/3" />
       <Skeleton className="h-5 w-1/2" />
       <Skeleton className="h-40 w-full rounded-xl" />
-    </main>
+    </ReadingMain>
   );
 }
 
@@ -119,7 +118,7 @@ export function RunOpening() {
 export function RunUnread({ message, onRetry }: { message: string; onRetry: () => void }) {
   const heading = usePhaseHeading("Resultatet kunde inte hämtas");
   return (
-    <main className={VIEW}>
+    <ReadingMain className="gap-6">
       <div className="flex flex-col gap-2">
         <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
           Resultatet kunde inte hämtas
@@ -139,6 +138,6 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
           </Link>
         </Button>
       </div>
-    </main>
+    </ReadingMain>
   );
 }

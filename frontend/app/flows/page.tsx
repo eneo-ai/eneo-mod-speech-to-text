@@ -5,10 +5,12 @@ import { useCallback, useEffect, useState } from "react";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { AppHeader } from "@/components/AppHeader";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
+import { FRAME } from "@/components/frame";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { UnsentRecordings, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { getConfig } from "@/lib/api";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
@@ -64,7 +66,7 @@ function FlowsListPage() {
   return (
     <>
       <AppHeader />
-      <main id="innehall" className="flex w-full flex-col gap-8 px-6 pb-16 pt-2 md:px-8 md:pt-6">
+      <main id="innehall" className={cn(FRAME, "flex flex-col gap-8 pb-16 pt-2 md:pt-6 lg:pt-8")}>
         <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink md:text-[34px]">
           Välj ett flöde
         </h1>

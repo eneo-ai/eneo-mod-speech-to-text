@@ -3,7 +3,7 @@
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
 import Link from "next/link";
-import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,8 @@ import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { PHASE_HEADING, usePhaseHeading } from "@/components/flow/usePhaseHeading";
+import { FRAME, FRAME_WIDTH, ReadingMain } from "@/components/frame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -46,6 +48,7 @@ import {
 } from "@/lib/api";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
+import { cn } from "@/lib/utils";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
@@ -680,17 +683,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return (
       <>
         {topBar}
-        <RunResult
-          flowId={flowId}
-          flowName={published.name}
-          run={run.run}
-          steps={steps}
-          stepResults={run.steps}
-          files={files}
-          showTranscript={transcribed}
-          audio={inputStep?.input_format?.toLowerCase() === "audio"}
-          onNewRecording={onRunAgain}
-        />
+        {/* The result's views bring their own gutters; the frame gives them its width. */}
+        <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
+          <RunResult
+            flowId={flowId}
+            flowName={published.name}
+            run={run.run}
+            steps={steps}
+            stepResults={run.steps}
+            files={files}
+            showTranscript={transcribed}
+            audio={inputStep?.input_format?.toLowerCase() === "audio"}
+            onNewRecording={onRunAgain}
+          />
+        </div>
       </>
     );
   }
@@ -702,20 +708,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
   return (
     <>
       {topBar}
-      <RunFailure
-        flowId={flowId}
-        flowName={published.name}
-        run={run.run}
-        failure={failure}
-        steps={steps}
-        stepResults={run.steps}
-        files={files}
-        showTranscript={transcribed}
-        error={runError}
-        refusal={retryRefusal}
-        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-      />
+      <div className={cn(FRAME_WIDTH, "flex flex-1 flex-col")}>
+        <RunFailure
+          flowId={flowId}
+          flowName={published.name}
+          run={run.run}
+          failure={failure}
+          steps={steps}
+          stepResults={run.steps}
+          files={files}
+          showTranscript={transcribed}
+          error={runError}
+          refusal={retryRefusal}
+          onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+          onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+        />
+      </div>
     </>
   );
 }
@@ -731,52 +739,29 @@ function RecordingView({
   submission: SubmissionState;
   onCancelSubmission: () => void;
 }) {
+  // The run's own view follows under the same heading, so nothing moves when it starts.
+  const heading = usePhaseHeading("Dokumentet skapas");
   const isUploading = submission.kind === "uploading";
   return (
     <>
-      <div className="px-5 md:px-8 pt-4 md:pt-6">
+      <FlowTopBar title={published.name} titleIsHeading={false} />
+      <ReadingMain className="gap-6">
         <OfflineBanner waiting={submission.kind === "idle" ? "run" : "upload"} />
-      </div>
-      <header className="flex items-center justify-between px-5 md:px-8 pb-2">
-        <div className="inline-flex items-center gap-1.5 font-mono text-[10px] tracking-[0.18em] uppercase text-primary">
-          <span
-            aria-hidden
-            className="lyssna-live-pulse h-1.5 w-1.5 rounded-full bg-primary"
-          />
-          Bearbetar
+        <div className="flex flex-col gap-2">
+          <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
+            Dokumentet skapas
+          </h1>
+          <p role="status" className="flex items-center gap-2 text-base">
+            <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+            {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
+          </p>
         </div>
-        <div className="font-mono text-[10px] tracking-wider text-ink-mute">
-          v{published.published_version}
-        </div>
-      </header>
-
-      <div className="flex-1 flex flex-col items-center justify-center px-6 md:px-8 py-8 rec-bg">
-        <div className="text-center mb-8 md:mb-10 w-full max-w-2xl">
-          <div className="text-[19px] md:text-[28px] font-semibold tracking-[-0.015em] leading-tight">
-            {published.name}
-          </div>
-          <div className="font-mono text-[10px] md:text-[11px] tracking-[0.14em] uppercase text-ink-mute mt-1.5 md:mt-2">
-            {isUploading
-              ? "Laddar upp ljudfil…"
-              : submission.kind === "starting"
-                ? "Startar flöde…"
-                : "Skickar…"}
-          </div>
-        </div>
-
         {isUploading ? (
-          <UploadProgressCard
-            submission={submission}
-            onCancel={onCancelSubmission}
-          />
+          <UploadProgressCard submission={submission} onCancel={onCancelSubmission} />
         ) : (
-          <div className="grid place-items-center mb-7 md:mb-10 w-full max-w-[340px] md:max-w-lg">
-            <Loader2 className="h-9 w-9 md:h-12 md:w-12 animate-spin text-primary" />
-            {submission.kind === "starting" && <RetryNotice wait={submission.wait} />}
-          </div>
+          submission.kind === "starting" && <RetryNotice wait={submission.wait} />
         )}
-
-      </div>
+      </ReadingMain>
     </>
   );
 }
@@ -790,7 +775,7 @@ function UploadProgressCard({
 }) {
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
   return (
-    <div className="w-full max-w-[340px] md:max-w-lg paper-card p-4 md:p-5 mb-7 md:mb-10">
+    <div className="paper-card p-4 md:p-5">
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="min-w-0">
           <div className="eyebrow-sm text-primary">Uppladdning</div>
@@ -1026,29 +1011,15 @@ function ReviewView({
     </div>
   );
 
-  const header = (
-    <header className="flex items-center justify-between px-5 md:px-8 pt-4 pb-2">
-      <Link
-        href="/flows"
-        aria-label="Tillbaka"
-        className="grid h-9 w-9 place-items-center rounded-full bg-paper border border-rule-soft text-ink transition-transform active:scale-95"
-      >
-        <ChevronLeft className="h-3.5 w-3.5" strokeWidth={2} />
-      </Link>
-      <div className="text-[12px] text-ink-mute">
-        Pausat i steg {checkpoint.step_order}
-      </div>
-      <div className="font-mono text-[10px] tracking-wider text-ink-mute">
-        v{published.published_version}
-      </div>
-    </header>
-  );
+  const header = <FlowTopBar title={published.name} titleIsHeading={false} />;
+  const paused = <p className="mb-2 text-[13px] text-ink-mute">Pausat i steg {checkpoint.step_order}</p>;
 
   if (isSpeakerMapping) {
     return (
       <>
         {header}
-        <main className={`px-5 md:px-8 pt-2 pb-6 flex-1 flex flex-col w-full mx-auto ${SPEAKER_REVIEW_ENABLED ? "max-w-5xl" : "max-w-7xl"}`}>
+        <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
+          {paused}
           <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
             {SPEAKER_REVIEW_ENABLED ? "Granska transkriptet" : "Vem är vem?"}
           </h1>
@@ -1129,7 +1100,8 @@ function ReviewView({
   return (
     <>
       {header}
-      <main className="px-6 md:px-8 pt-2 md:pt-4 pb-6 flex-1 flex flex-col w-full mx-auto max-w-3xl">
+      <ReadingMain>
+        {paused}
         <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
           {checkpoint.step_label ?? "Granska resultatet"}
         </h1>
@@ -1205,7 +1177,7 @@ function ReviewView({
         )}
         {rejectSection}
         {actions}
-      </main>
+      </ReadingMain>
     </>
   );
 }

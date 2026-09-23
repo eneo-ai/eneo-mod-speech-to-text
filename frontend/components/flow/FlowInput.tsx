@@ -25,6 +25,7 @@ import { ClassificationNote } from "@/components/flow/ClassificationNote";
 import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { FRAME } from "@/components/frame";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -194,7 +195,8 @@ export function FlowInput({
       <main
         id="innehall"
         className={cn(
-          "w-full flex-1 px-4 pt-3 md:px-8",
+          FRAME,
+          "flex-1 pt-3",
           "lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10 lg:pt-8",
           group === "capture"
             ? "flex min-h-0 flex-col overflow-y-auto lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:pb-6"
@@ -366,7 +368,7 @@ function SetupWorkspace({
   }
 
   return (
-    <div className="flex w-full max-w-2xl flex-col gap-6">
+    <div className="flex w-full flex-col gap-6">
       <UnsentRecordings
         recordings={unsentRecordings}
         onSend={(recording) => {

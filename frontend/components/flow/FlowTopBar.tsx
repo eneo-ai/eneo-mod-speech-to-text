@@ -4,7 +4,7 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import type { MouseEvent, ReactNode } from "react";
 import { AccountMenu } from "@/components/AccountMenu";
-import { Brand } from "@/components/Brand";
+import { AppHeader } from "@/components/AppHeader";
 
 /**
  * Phone and tablet: back, the flow's name as the page heading, and the
@@ -42,12 +42,7 @@ export function FlowTopBar({
         </Title>
         <div className="flex shrink-0 items-center pl-2">{trailing ?? <AccountMenu />}</div>
       </header>
-      <header className="hidden items-center justify-between border-b border-rule-soft bg-paper px-8 py-3 lg:flex">
-        <div onClickCapture={onLeave}>
-          <Brand href="/flows" />
-        </div>
-        <AccountMenu />
-      </header>
+      <AppHeader onLeave={onLeave} className="hidden lg:block" />
     </>
   );
 }
