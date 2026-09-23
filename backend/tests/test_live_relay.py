@@ -87,11 +87,15 @@ class FakeEneoSocket:
 
     Other modes: "close_after_ready"; "error_on_first_frame", which sends ERROR
     and closes, as Eneo does when a session ends early; "stop_reading", which
-    never reads again but keeps talking, so it notices when the relay drops it.
+    never reads again but keeps talking, so it notices when the relay drops it;
+    "stall_then_read", which reads nothing until `resume` is set, then sends
+    DELTA and reads to the end, so the relay's close completes normally.
     """
 
     def __init__(self) -> None:
         self.mode = "relay"
+        self.resume = threading.Event()
+        self.close_code: int | None = None
         self.handshakes = []
         self.frames: list[bytes | str] = []
         self.closed = threading.Event()
@@ -134,6 +138,13 @@ class FakeEneoSocket:
                         await socket.send(json.dumps(DELTA))
                         await asyncio.sleep(0.05)
                 return
+            if self.mode == "stall_then_read":
+                while not self.resume.is_set():
+                    await asyncio.sleep(0.01)
+                await socket.send(json.dumps(DELTA))
+                async for _ in socket:
+                    pass
+                return
             async for frame in socket:
                 self.frames.append(frame)
                 if self.mode == "error_on_first_frame":
@@ -146,6 +157,7 @@ class FakeEneoSocket:
                     json.dumps({"type": "transcript.delta", "text": f"{len(frame)} bytes "})
                 )
         finally:
+            self.close_code = socket.close_code
             self.closed.set()
 
     def drop_connections(self) -> None:
@@ -431,6 +443,35 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
                 self.assertEqual(ended.exception.code, 1011)
             finally:
                 self.eneo_socket.drop_connections()
+
+    def test_timed_out_write_to_eneo_ends_with_1011_after_a_clean_close(self) -> None:
+        self.eneo_socket.mode = "stall_then_read"
+        frame = os.urandom(64 * 1024)  # zeros would compress to nothing on the wire
+        gave_up = threading.Event()
+        close_eneo_socket = main._close_eneo_socket
+
+        async def closing(eneo) -> None:
+            gave_up.set()
+            await close_eneo_socket(eneo)
+
+        with (
+            patch.object(main, "_LIVE_SEND_TIMEOUT_SECONDS", 0.5),
+            patch.object(main, "_LIVE_CLOSE_TIMEOUT_SECONDS", 10),
+            patch.object(main, "_close_eneo_socket", closing),
+            self.connect() as browser,
+        ):
+            try:
+                self.assertEqual(browser.receive_json(), READY)
+                for _ in range(512):  # 32 MiB, more than every buffer on the way
+                    browser.send_bytes(frame)
+                self.assertTrue(gave_up.wait(10), "the relay never gave up on Eneo")
+            finally:
+                # Eneo reads again, so the relay's close completes with 1000.
+                self.eneo_socket.resume.set()
+            self.assertEqual(browser.receive_json(), DELTA)
+            self.assert_closed(browser, 1011)
+        self.assertTrue(self.eneo_socket.closed.wait(5))
+        self.assertEqual(self.eneo_socket.close_code, 1000)
 
     def test_browser_that_stops_reading_ends_the_session_in_bounded_time(self) -> None:
         with (

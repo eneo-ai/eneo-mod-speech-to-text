@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import enum
 import logging
 import re
 import time
@@ -725,24 +726,34 @@ async def _open_live_session(
         raise _eneo_unreachable() from None
 
 
-async def _browser_to_eneo(browser: WebSocket, eneo: ClientConnection) -> bool:
-    """Send the browser's frames to Eneo; True when the browser left."""
+class _PumpEnd(enum.Enum):
+    """Why a relay pump stopped."""
+
+    BROWSER_GONE = enum.auto()  # the browser left or stopped reading
+    ENEO_ENDED = enum.auto()  # Eneo closed its socket, normally or not
+    ENEO_STALLED = enum.auto()  # a write to Eneo timed out
+
+
+async def _browser_to_eneo(browser: WebSocket, eneo: ClientConnection) -> _PumpEnd:
+    """Send the browser's frames to Eneo until one side ends."""
     while True:
         message = await browser.receive()
         if message["type"] == "websocket.disconnect":
-            return True
+            return _PumpEnd.BROWSER_GONE
         frame = message.get("bytes")
         try:
             await asyncio.wait_for(
                 eneo.send(frame if frame is not None else message["text"]),
                 _LIVE_SEND_TIMEOUT_SECONDS,
             )
-        except (ConnectionClosed, TimeoutError):
-            return False  # Eneo closed, or stopped reading
+        except ConnectionClosed:
+            return _PumpEnd.ENEO_ENDED
+        except TimeoutError:
+            return _PumpEnd.ENEO_STALLED
 
 
-async def _eneo_to_browser(eneo: ClientConnection, browser: WebSocket) -> bool:
-    """Send Eneo's events to the browser; True when it left or stopped reading."""
+async def _eneo_to_browser(eneo: ClientConnection, browser: WebSocket) -> _PumpEnd:
+    """Send Eneo's events to the browser until one side ends."""
     try:
         async for message in eneo:
             if isinstance(message, bytes):
@@ -753,8 +764,8 @@ async def _eneo_to_browser(eneo: ClientConnection, browser: WebSocket) -> bool:
     except ConnectionClosedError:
         pass  # Eneo's socket broke; its close code says so
     except (TimeoutError, WebSocketDisconnect, RuntimeError):
-        return True
-    return False
+        return _PumpEnd.BROWSER_GONE
+    return _PumpEnd.ENEO_ENDED
 
 
 async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> int:
@@ -765,17 +776,20 @@ async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> int
         done, _ = await asyncio.wait(
             {upstream, downstream}, return_when=asyncio.FIRST_COMPLETED
         )
-        if any(pump.result() for pump in done):
-            return 1011  # the browser is gone: stop at once
-        # Eneo ended. Stop reading the browser and close Eneo, so nothing new
-        # arrives, then deliver the events Eneo sent before it ended.
+        ends = {pump.result() for pump in done}
+        if _PumpEnd.BROWSER_GONE in ends:
+            return 1011  # stop at once
+        # Eneo ended or stalled. Stop reading the browser and close Eneo, so
+        # nothing new arrives, then deliver the events Eneo sent before.
         upstream.cancel()
         await _close_eneo_socket(eneo)
-        if await downstream:
-            return 1011
-        # Eneo ends a session with 1000 after `transcript.done` or an `error`;
-        # anything else means its socket broke.
-        return 1000 if eneo.close_code == 1000 else 1011
+        ends.add(await downstream)
+        # 1000 only when Eneo ended the session itself, closing with 1000 after
+        # `transcript.done` or an `error`, and every event reached the browser;
+        # a close that completes after the relay gave up does not count.
+        if ends == {_PumpEnd.ENEO_ENDED} and eneo.close_code == 1000:
+            return 1000
+        return 1011
     finally:
         for pump in (upstream, downstream):
             pump.cancel()
