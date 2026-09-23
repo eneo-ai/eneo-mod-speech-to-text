@@ -338,7 +338,11 @@ export function focusStop(page: Page): Promise<FocusStop | null> {
   });
 }
 
-/** Tabs from the top of the page until focus leaves it; `max` stops without leaving means a trap. */
+/**
+ * Tabs from the top of the page until focus leaves the document, which is
+ * where a page's tab order ends. Coming back to a control already passed
+ * without leaving first is a trap (WCAG 2.1.2), as is `max` stops.
+ */
 export async function tabWalk(page: Page, max = 90) {
   await page.evaluate(() => {
     const start = document.createElement("span");
@@ -353,12 +357,12 @@ export async function tabWalk(page: Page, max = 90) {
     await page.keyboard.press("Tab");
     if (i === 0) await page.evaluate(() => document.getElementById("a11y-walk-start")?.remove());
     const stop = await focusStop(page);
-    if (!stop || stop.key === stops[0]?.key) {
+    if (!stop) {
       left = true;
       break;
     }
-    // Tab that does not move focus holds it.
-    if (stop.key === stops.at(-1)?.key) break;
+    // Focus that stays, or comes round again, without leaving the document is held.
+    if (stops.some((seen) => seen.key === stop.key)) break;
     stops.push(stop);
   }
   return { stops, left };
