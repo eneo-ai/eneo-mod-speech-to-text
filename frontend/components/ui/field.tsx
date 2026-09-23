@@ -116,10 +116,10 @@ function FieldLabel({
       data-slot="field-label"
       className={cn(
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50",
-        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-xl has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-rule-soft has-[>[data-slot=field]]:bg-paper has-[>[data-slot=field]]:cursor-pointer [&>[data-slot=field]]:p-4",
+        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-xl has-[>[data-slot=field]]:border has-[>[data-slot=field]]:border-border has-[>[data-slot=field]]:bg-card has-[>[data-slot=field]]:cursor-pointer [&>[data-slot=field]]:p-4",
         // Chained, so a checked or focused card wins over the base card by specificity.
         "has-[>[data-slot=field]]:has-[[data-state=checked]]:border-primary has-[>[data-slot=field]]:has-[[data-state=checked]]:bg-primary-soft/60 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-1 has-[>[data-slot=field]]:has-[[data-state=checked]]:ring-primary",
-        "has-[>[data-slot=field]]:has-[:focus-visible]:outline has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-primary",
+        "has-[>[data-slot=field]]:has-[:focus-visible]:outline has-[>[data-slot=field]]:has-[:focus-visible]:outline-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-offset-2 has-[>[data-slot=field]]:has-[:focus-visible]:outline-ring",
         className
       )}
       {...props}
@@ -140,6 +140,8 @@ function FieldTitle({ className, ...props }: React.ComponentProps<"div">) {
   )
 }
 
+// The description stays ink-soft, not muted-foreground: on a selected choice
+// card's primary-soft tint the muted colour falls to about 4.5:1.
 function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
@@ -175,7 +177,7 @@ function FieldSeparator({
       <Separator className="absolute inset-0 top-1/2" />
       {children && (
         <span
-          className="bg-bg text-ink-mute relative mx-auto block w-fit px-2"
+          className="bg-background text-muted-foreground relative mx-auto block w-fit px-2"
           data-slot="field-separator-content"
         >
           {children}
