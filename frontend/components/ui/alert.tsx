@@ -4,11 +4,11 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const alertVariants = cva(
-  "relative w-full rounded-xl border border-rule-soft px-4 py-3.5 text-sm [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-3.5 [&>svg]:size-5 [&>svg]:text-ink-soft [&>svg~*]:pl-8",
+  "relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-paper text-ink",
+        default: "bg-background text-foreground",
         destructive:
           "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
       },
@@ -32,14 +32,14 @@ const Alert = React.forwardRef<
 ))
 Alert.displayName = "Alert"
 
-// A div, not h5: an alert's title must not break the page's heading outline.
+// A callout's title is not a document heading, so it keeps the page outline intact.
 const AlertTitle = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("mb-1 font-medium leading-snug", className)}
+    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
     {...props}
   />
 ))
