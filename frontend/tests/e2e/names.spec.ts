@@ -156,3 +156,24 @@ test("a renewal that signed in someone else says so and keeps the page's login",
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Du loggade in som en annan användare");
   await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
 });
+
+test("with the access code, the warning renews the login by the code, on the page", async ({ page }) => {
+  let endsIn = 200;
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({ json: { authenticated: true, auth_mode: "access_code", user: null, session_ends_in: endsIn } }),
+  );
+  const codes: string[] = [];
+  await page.route("**/api/auth/login", (route) => {
+    codes.push((route.request().postDataJSON() as { access_code: string }).access_code);
+    endsIn = 90 * 60;
+    return route.fulfill({ json: { ok: true } });
+  });
+  await open(page, "/flows");
+  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
+  await expect(warning).toBeVisible();
+  await warning.getByLabel("Åtkomstkod").fill("test-access-code-1234");
+  await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
+  await expect(warning).toBeHidden();
+  expect(codes).toEqual(["test-access-code-1234"]);
+  await expect(page).toHaveURL(/\/flows$/);
+});

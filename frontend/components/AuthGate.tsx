@@ -1,10 +1,10 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import { Spinner } from "@/components/ui/spinner";
-import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
@@ -22,9 +22,10 @@ export function useAuthenticatedUser(): AuthenticatedUser {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
-  // When the login ends, and whether a new Eneo login in another window can move that.
+  // When the login ends, and how a new login moves that.
   const [endsAt, setEndsAt] = useState<number | null>(null);
-  const [canRenew, setCanRenew] = useState(false);
+  const [mode, setMode] = useState<AuthMode | null>(null);
+  const recheckRef = useRef(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +36,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
-        setCanRenew(s.auth_mode === "eneo_sso");
+        setMode(s.auth_mode);
       }
       return s;
     };
@@ -50,6 +51,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         (s) => !cancelled && keepAlive(observe(s)),
         () => undefined,
       );
+    recheckRef.current = recheck;
     // A login renewed in its own window (or another tab) moves the end for this page too.
     const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
     channel?.addEventListener("message", recheck);
@@ -94,7 +96,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <AuthenticatedUserContext.Provider value={user}>
       {children}
-      <SessionEndWarning endsAt={endsAt} canRenew={canRenew} />
+      <SessionEndWarning endsAt={endsAt} mode={mode} onRenewed={() => recheckRef.current()} />
     </AuthenticatedUserContext.Provider>
   );
 }
