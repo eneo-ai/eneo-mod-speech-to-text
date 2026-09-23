@@ -239,7 +239,7 @@ function FlowsListPage() {
 
           <section className="px-4 md:px-6 pb-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-3">
             {error && (
-              <p className="px-2 text-sm text-primary" role="alert">
+              <p className="px-2 text-sm text-destructive" role="alert">
                 {error}
               </p>
             )}
@@ -296,7 +296,7 @@ function SpaceFlowsSection({
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 md:gap-4">
         {section.error && (
-          <p className="px-2 text-sm text-primary" role="alert">
+          <p className="px-2 text-sm text-destructive" role="alert">
             {section.error}
           </p>
         )}

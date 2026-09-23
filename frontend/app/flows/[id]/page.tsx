@@ -592,7 +592,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <>
         <NavBar title="Fel" />
         <main className="px-6 py-4">
-          <p className="text-primary">{loadError}</p>
+          <p className="text-destructive">{loadError}</p>
           <Link
             href="/flows"
             className="text-sm text-ink-soft underline mt-3 inline-block"
@@ -1539,7 +1539,7 @@ function ReviewView({
           </div>
 
           {(runError || localError) && (
-            <p className="text-[13px] text-primary mt-4" role="alert">
+            <p className="text-[13px] text-destructive mt-4" role="alert">
               {runError ?? localError}
             </p>
           )}
@@ -1627,7 +1627,7 @@ function ReviewView({
         </section>
 
         {runError && (
-          <p className="text-[13px] text-primary mb-3" role="alert">
+          <p className="text-[13px] text-destructive mb-3" role="alert">
             {runError}
           </p>
         )}

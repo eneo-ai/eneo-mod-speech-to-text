@@ -96,7 +96,7 @@ export default function LoginPage() {
         {authError && (
           <p
             id="login-error"
-            className="text-sm text-primary"
+            className="text-sm text-destructive"
             role="alert"
           >
             {authError}
