@@ -55,7 +55,8 @@ export function RunResult({
     <main
       className={cn(
         "mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 pb-12 pt-2 md:px-8 lg:pt-8",
-        showTranscript && "lg:max-w-7xl",
+        // The frame owns the page's width; from a laptop's width the result takes what it gives.
+        showTranscript && "lg:max-w-none",
       )}
     >
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">

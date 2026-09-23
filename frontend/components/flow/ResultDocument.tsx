@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { ChevronDown, ChevronRight, Copy, Download, ExternalLink, Share2 } from "lucide-react";
+import { Copy, Download, ExternalLink, MoreHorizontal, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Item, ItemActions, ItemContent, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
 import { cn } from "@/lib/utils";
@@ -64,8 +64,7 @@ async function runShare(share: Share, title: string, text: string | null): Promi
 /**
  * What the flow produced, first on the page: the text as a readable page and
  * its file, with one filled action (the file's download, or copying the text
- * when there is no file). On a phone the text folds after its first part and
- * the actions are rows below it.
+ * when there is no file) and never a second download of the same file.
  */
 export function ResultDocument({
   flowId,
@@ -98,179 +97,89 @@ export function ResultDocument({
       </a>
     </Button>
   );
-  const copyButton = text && (
-    <Button type="button" variant={file ? "ghost" : "default"} onClick={copy}>
-      <Copy data-icon="inline-start" aria-hidden />
-      {copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : "Kopiera"}
-      <span className="sr-only"> texten</span>
-    </Button>
-  );
-  const shareButton = share && (
-    <Button type="button" variant="ghost" onClick={() => void runShare(share, title, text)}>
-      <Share2 data-icon="inline-start" aria-hidden />
-      Dela
-    </Button>
-  );
+  const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
 
   return (
     <section aria-label="Dokumentet" className="flex flex-col rounded-xl border bg-card">
-      {/* From a tablet's width the document's actions sit on its top edge, beside the file they act on. */}
-      <div
-        className={cn(
-          "hidden flex-wrap items-center gap-x-4 gap-y-2 px-5 py-3 sm:flex",
-          text && "border-b border-border",
-          file ? "justify-between" : "justify-end",
+      {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
+      <div className="hidden items-center justify-end gap-1 border-b border-border px-4 py-2.5 lg:flex">
+        {text && (
+          <Button type="button" variant={file ? "ghost" : "default"} onClick={copy}>
+            <Copy data-icon="inline-start" aria-hidden />
+            {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
+            {!copyLabel && file && <span className="sr-only"> texten</span>}
+          </Button>
         )}
-      >
-        {file && Icon && (
-          <div className="flex min-w-0 items-center gap-3">
-            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-              <Icon className="size-[18px]" strokeWidth={2} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[14px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
-              <p className="text-[13px] text-ink-mute">{file.meta}</p>
-            </div>
-          </div>
-        )}
-        <div className="-mr-1 ml-auto flex flex-wrap items-center gap-1">
-          {copyButton}
-          {shareButton}
-          {file?.previewable && download && inline && (
-            <OpenFile file={file} url={inline} download={download} variant="ghost" />
-          )}
-          {primaryDownload}
-        </div>
+        {primaryDownload}
       </div>
 
-      {text && <DocumentText text={text} />}
-
-      {/* A phone lists the actions as rows, each a whole-width target. */}
-      <ItemGroup className={cn("p-1 sm:hidden", text && "border-t border-border")}>
-        {file && Icon && (
-          <div className="flex items-center gap-3 px-3 py-3">
-            <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-              <Icon className="size-[18px]" strokeWidth={2} />
-            </span>
-            <div className="min-w-0">
-              <p className="text-[15px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
-              <p className="text-[13px] text-ink-mute">{file.meta}</p>
-            </div>
-          </div>
-        )}
+      {/* Narrower: the download first, opening the file beside it, the rest under Fler alternativ. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3 lg:hidden">
+        {primaryDownload}
         {file?.previewable && inline && (
-          <ActionRow icon={<ExternalLink aria-hidden />} href={inline} newTab>
-            Öppna {file.typeLabel}
-            <span className="sr-only"> i en ny flik</span>
-          </ActionRow>
+          <Button asChild variant="outline">
+            <a href={inline} target="_blank" rel="noopener noreferrer">
+              <ExternalLink data-icon="inline-start" aria-hidden />
+              Öppna {file.typeLabel}
+              <span className="sr-only"> i en ny flik</span>
+            </a>
+          </Button>
         )}
-        {file && download && (
-          <ActionRow icon={<Download aria-hidden />} href={download} download>
-            Ladda ner {file.typeLabel}
-          </ActionRow>
+        {text && !file && (
+          <Button type="button" onClick={copy}>
+            <Copy data-icon="inline-start" aria-hidden />
+            {copyLabel ?? "Kopiera texten"}
+          </Button>
         )}
-        {text && (
-          <ActionRow icon={<Copy aria-hidden />} onClick={copy}>
-            {copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : "Kopiera texten"}
-          </ActionRow>
+        {((text && file) || share) && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="Fler alternativ">
+                <MoreHorizontal aria-hidden />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {text && file && (
+                <DropdownMenuItem onSelect={() => void copy()}>
+                  <Copy aria-hidden />
+                  Kopiera texten
+                </DropdownMenuItem>
+              )}
+              {share && (
+                <DropdownMenuItem onSelect={() => void runShare(share, title, text)}>
+                  <Share2 aria-hidden />
+                  Dela
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         )}
-        {share && (
-          <ActionRow icon={<Share2 aria-hidden />} onClick={() => void runShare(share, title, text)}>
-            Dela
-          </ActionRow>
-        )}
-      </ItemGroup>
+      </div>
+
+      {text && (
+        <article className={cn(RESULT_PROSE, "px-5 py-6 md:px-10 md:py-9")}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+        </article>
+      )}
+
+      {/* The file, under Eneo's name: its type and size, and Öppna where the browser can show it. No second download. */}
+      {file && Icon && (
+        <div className={cn("flex items-center gap-3 px-5 py-3", text && "border-t border-border")}>
+          <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
+            <Icon className="size-[18px]" strokeWidth={2} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[14px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
+            <p className="text-[13px] text-ink-mute">{file.meta}</p>
+          </div>
+          {file.previewable && download && inline && (
+            <div className="hidden lg:block">
+              <OpenFile file={file} url={inline} download={download} variant="ghost" />
+            </div>
+          )}
+        </div>
+      )}
       <CopyStatus state={copyState} />
     </section>
   );
 }
-
-/** The text as a page; on a phone a long one folds after its start, with "Visa hela dokumentet". */
-function DocumentText({ text }: { text: string }) {
-  const article = useRef<HTMLElement | null>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [folds, setFolds] = useState(false);
-  const id = "result-document-text";
-
-  useLayoutEffect(() => {
-    const el = article.current;
-    if (!el || expanded) return;
-    const measure = () => setFolds(el.scrollHeight > el.clientHeight + 8);
-    measure();
-    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
-    observer?.observe(el);
-    return () => observer?.disconnect();
-  }, [text, expanded]);
-
-  return (
-    <>
-      <article
-        ref={article}
-        id={id}
-        className={cn(
-          RESULT_PROSE,
-          "px-5 py-6 md:px-10 md:py-9",
-          !expanded && "max-sm:max-h-[26rem] max-sm:overflow-hidden",
-          !expanded && folds && "max-sm:[mask-image:linear-gradient(to_bottom,black_65%,transparent)]",
-        )}
-      >
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
-      </article>
-      {folds && !expanded && (
-        <Button
-          type="button"
-          variant="link"
-          className="-mt-2 mb-2 self-start px-5 sm:hidden"
-          aria-expanded={false}
-          aria-controls={id}
-          onClick={() => setExpanded(true)}
-        >
-          Visa hela dokumentet
-          <ChevronDown data-icon="inline-end" aria-hidden />
-        </Button>
-      )}
-    </>
-  );
-}
-
-function ActionRow({
-  icon,
-  href,
-  download,
-  newTab,
-  onClick,
-  children,
-}: {
-  icon: ReactNode;
-  href?: string;
-  download?: boolean;
-  newTab?: boolean;
-  onClick?: () => void;
-  children: ReactNode;
-}) {
-  const body = (
-    <>
-      <ItemMedia className="text-ink-soft [&_svg]:size-5">{icon}</ItemMedia>
-      <ItemContent>
-        <ItemTitle className="text-[16px] font-normal">{children}</ItemTitle>
-      </ItemContent>
-      <ItemActions>
-        <ChevronRight aria-hidden className="size-4 text-ink-mute" />
-      </ItemActions>
-    </>
-  );
-  return (
-    <Item asChild size="sm" className="min-h-11 flex-nowrap rounded-lg px-3 py-2 text-left hover:bg-accent">
-      {href ? (
-        <a href={href} download={download || undefined} target={newTab ? "_blank" : undefined} rel={newTab ? "noopener noreferrer" : undefined}>
-          {body}
-        </a>
-      ) : (
-        <button type="button" onClick={onClick} className="w-full">
-          {body}
-        </button>
-      )}
-    </Item>
-  );
-}
-
