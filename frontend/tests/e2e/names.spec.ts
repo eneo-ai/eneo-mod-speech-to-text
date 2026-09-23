@@ -71,3 +71,8 @@ test("while recording, the top bar names the mode and the folded details say wha
     name: "Uppgifter, Deltagare: Anna Berg",
   });
 });
+
+test("Eneo's own words on the failure view are marked as English", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "failure")!.go(page, info);
+  await expect(page.getByText(/^Step 2 failed/)).toHaveAttribute("lang", "en");
+});
