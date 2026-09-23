@@ -800,22 +800,6 @@ export async function getRunGraph(flowId: string, runId: string) {
   return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/?${query}`);
 }
 
-/** Returnerar `output_type` för det steg som matar flow_output-edgen (t.ex. "docx", "text"). */
-export function getFlowOutputType(graph: FlowGraph): string | null {
-  const flowOutputEdge = graph.edges.find((e) => e.kind === "flow_output");
-  if (!flowOutputEdge) return null;
-  const lastStep = graph.nodes.find((n) => n.id === flowOutputEdge.source);
-  return lastStep?.output_type ?? null;
-}
-
-const TEXTUAL_OUTPUT_TYPES = new Set(["text", "markdown", "json"]);
-
-/** True om output kan renderas som text/markdown i UI; false för binära artefakter (DOCX/PDF/...). */
-export function isTextualOutput(outputType: string | null | undefined): boolean {
-  if (!outputType) return true; // default: visa som text om vi inte vet
-  return TEXTUAL_OUTPUT_TYPES.has(outputType.toLowerCase());
-}
-
 export async function startRun(
   flowId: string,
   body: Json,

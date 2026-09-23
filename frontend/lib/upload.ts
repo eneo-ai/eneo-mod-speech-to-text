@@ -126,6 +126,3 @@ export function selectRuntimeInputStep(
   );
   return fileLikeStep ?? steps[0] ?? null;
 }
-
-// ponytail: the recording branch still imports formatBytes from here; drop this line once it is merged.
-export { formatBytes } from "./format";
