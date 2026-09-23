@@ -74,7 +74,9 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   );
   assert.match(html, /for="detalj-deltagare"[^>]*>Deltagare <span[^>]*>\(valfritt\)<\/span>/);
   assert.match(html, /for="detalj-motesnamn"[^>]*>Mötets namn <\/label>/, "a required field has no mark");
-  assert.match(html, /Skriv ett namn och tryck Enter\./);
+  assert.match(html, /Skriv ett namn och välj Lägg till\. Skilj flera namn med komma\./);
+  const shown = html.replace(/<[^>]+>/g, " ");
+  assert.doesNotMatch(shown, /Enter|retur|tryck|klicka|hovra/i, "no key or pointer a phone does not have");
   assert.match(html, /id="detalj-motesnamn"[^>]*aria-describedby="detalj-motesnamn-fel"[^>]*aria-invalid="true"/);
   assert.match(html, /id="detalj-motesnamn-fel"[^>]*>Fyll i det här för att skapa dokumentet\.</);
   assert.match(html, /<select[^>]*id="detalj-typ"/, "a select field offers its options");

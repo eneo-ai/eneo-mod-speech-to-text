@@ -55,7 +55,7 @@ export function DetailsForm({
           const text = typeof value === "string" ? value : "";
           const help =
             field.type === "list"
-              ? [field.description, "Skriv ett namn och tryck Enter."].filter(Boolean).join(" ")
+              ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
           const describedBy = [help ? helpId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
           return (
