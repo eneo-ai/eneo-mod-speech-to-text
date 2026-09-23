@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlsplit
 
@@ -18,6 +19,28 @@ class FlowListScope(BaseModel):
     """What the flow list asks Eneo for: one named space, or every space the user belongs to (None)."""
 
     space_id: str | None
+
+
+class Organization(BaseModel):
+    """The organisation beside "Tal till text": its name, and its logo.
+
+    ``logo`` is ``default`` for Sundsvall's bundled logo, ``custom`` for the
+    deployment's own (served by /api/branding/logo/{light,dark}), or None for
+    the name as text.
+    """
+
+    name: str
+    logo: Literal["default", "custom"] | None
+    dark_logo: bool = False
+
+
+class LogoFile(BaseModel):
+    media_type: Literal["image/svg+xml", "image/png"]
+    content: bytes
+
+
+DEFAULT_ORGANIZATION = Organization(name="Sundsvalls kommun", logo="default")
+_LOGO_MAX_BYTES = 1024 * 1024
 
 
 class Settings(BaseModel):
@@ -37,6 +60,10 @@ class Settings(BaseModel):
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
     session_max_age_seconds: int = 8 * 60 * 60
+    # None shows "Tal till text" alone (SHOW_ORGANIZATION=false).
+    organization: Organization | None = DEFAULT_ORGANIZATION
+    organization_logo: LogoFile | None = None
+    organization_logo_dark: LogoFile | None = None
 
     @property
     def flow_list_scope(self) -> FlowListScope | None:
@@ -56,7 +83,7 @@ class Settings(BaseModel):
         return f"{parsed.scheme}://{parsed.netloc}"
 
 
-def _parse_bool(raw: str | None, *, default: bool) -> bool:
+def _parse_bool(raw: str | None, *, default: bool, name: str) -> bool:
     if raw is None:
         return default
     normalized = raw.strip().lower()
@@ -64,7 +91,54 @@ def _parse_bool(raw: str | None, *, default: bool) -> bool:
         return True
     if normalized in {"false", "0", "no", "off"}:
         return False
-    raise RuntimeError("COOKIE_SECURE must be a boolean")
+    raise RuntimeError(f"{name} must be a boolean")
+
+
+def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
+    """The logo file at ``raw_path`` if it is an SVG or a PNG, as its name says; otherwise logs why and gives None."""
+    path = Path(raw_path)
+    try:
+        content = path.read_bytes()
+    except OSError as error:
+        logger.error("%s=%s cannot be read (%s); the organisation's name is shown instead.", variable, raw_path, error.strerror)
+        return None
+    head = content[:1024].lstrip(b"\xef\xbb\xbf \t\r\n")
+    suffix = path.suffix.lower()
+    if len(content) > _LOGO_MAX_BYTES:
+        problem = "is larger than 1 MiB"
+    elif suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return LogoFile(media_type="image/png", content=content)
+    elif suffix == ".svg" and head.startswith((b"<?xml", b"<svg", b"<!--", b"<!DOCTYPE")) and re.search(rb"<svg[\s>]", head):
+        return LogoFile(media_type="image/svg+xml", content=content)
+    else:
+        problem = "is not an SVG or PNG file (by its name and its content)"
+    logger.error("%s=%s %s; the organisation's name is shown instead.", variable, raw_path, problem)
+    return None
+
+
+def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | None]:
+    """The organisation shown beside the product name, from ORGANIZATION_* and SHOW_ORGANIZATION.
+
+    With none of them set it is Sundsvall with its bundled logo. A name alone is
+    shown as text, never beside Sundsvall's logo. A logo that cannot be used is
+    logged once at start and the name stands in for it.
+    """
+    if not _parse_bool(os.environ.get("SHOW_ORGANIZATION"), default=True, name="SHOW_ORGANIZATION"):
+        return None, None, None
+    name = " ".join((os.environ.get("ORGANIZATION_NAME") or "").split())
+    logo_path = os.environ.get("ORGANIZATION_LOGO") or None
+    dark_path = os.environ.get("ORGANIZATION_LOGO_DARK") or None
+    if len(name) > 100:
+        raise RuntimeError("ORGANIZATION_NAME must be at most 100 characters")
+    if not name:
+        if logo_path or dark_path:
+            raise RuntimeError("ORGANIZATION_LOGO needs ORGANIZATION_NAME: the name is the logo's text alternative")
+        return DEFAULT_ORGANIZATION, None, None
+    logo = _read_logo("ORGANIZATION_LOGO", logo_path) if logo_path else None
+    if logo is None:
+        return Organization(name=name, logo=None), None, None
+    dark = _read_logo("ORGANIZATION_LOGO_DARK", dark_path) if dark_path else None
+    return Organization(name=name, logo="custom", dark_logo=dark is not None), logo, dark
 
 
 def _required_url(name: str) -> str:
@@ -124,6 +198,8 @@ def load_settings() -> Settings:
     if session_minutes <= 0:
         raise RuntimeError("SESSION_MAX_AGE_MINUTES must be greater than zero")
 
+    organization, organization_logo, organization_logo_dark = _organization()
+
     raw_access_code = os.environ.get("APP_ACCESS_CODE")
     if auth_mode == "eneo_sso" and raw_access_code:
         raise RuntimeError("APP_ACCESS_CODE may only be set with AUTH_MODE=access_code")
@@ -147,10 +223,13 @@ def load_settings() -> Settings:
             if auth_mode == "access_code" and raw_access_code is not None
             else None
         ),
-        cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True),
+        cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE"),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
         upload_proxy_timeout_seconds=upload_timeout,
         session_max_age_seconds=session_minutes * 60,
+        organization=organization,
+        organization_logo=organization_logo,
+        organization_logo_dark=organization_logo_dark,
     )
     if settings.flow_list_scope is None:
         logger.error(

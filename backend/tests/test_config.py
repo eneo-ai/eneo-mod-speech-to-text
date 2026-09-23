@@ -1,8 +1,13 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
-from app.config import FlowListScope, load_settings
+from app.config import FlowListScope, Organization, load_settings
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
+SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
 
 
 def valid_environment() -> dict[str, str]:
@@ -172,6 +177,85 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaisesRegex(RuntimeError, "must be a boolean"):
                 load_settings()
+
+
+class OrganizationTests(unittest.TestCase):
+    """The organisation beside "Tal till text", set per deployment."""
+
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.folder = Path(folder.name)
+
+    def file(self, name: str, content: bytes) -> str:
+        path = self.folder / name
+        path.write_bytes(content)
+        return str(path)
+
+    def load(self, **overrides: str):
+        environment = valid_environment() | overrides
+        with patch.dict(os.environ, environment, clear=True):
+            return load_settings()
+
+    def test_the_default_is_sundsvall_with_its_bundled_logo(self) -> None:
+        settings = self.load()
+        self.assertEqual(settings.organization, Organization(name="Sundsvalls kommun", logo="default"))
+        self.assertIsNone(settings.organization_logo)
+
+    def test_another_organisation_mounts_its_own_logo_and_names_itself(self) -> None:
+        settings = self.load(
+            ORGANIZATION_NAME="Umeå kommun",
+            ORGANIZATION_LOGO=self.file("umea.svg", SVG),
+            ORGANIZATION_LOGO_DARK=self.file("umea-dark.png", PNG),
+        )
+        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=True))
+        assert settings.organization_logo and settings.organization_logo_dark
+        self.assertEqual(settings.organization_logo.media_type, "image/svg+xml")
+        self.assertEqual(settings.organization_logo.content, SVG)
+        self.assertEqual(settings.organization_logo_dark.media_type, "image/png")
+
+    def test_a_name_without_a_logo_shows_the_name_never_sundsvalls_logo(self) -> None:
+        settings = self.load(ORGANIZATION_NAME="Region Västernorrland")
+        self.assertEqual(settings.organization, Organization(name="Region Västernorrland", logo=None))
+
+    def test_the_organisation_can_be_hidden_leaving_the_product_name(self) -> None:
+        settings = self.load(SHOW_ORGANIZATION="false", ORGANIZATION_LOGO=self.file("logo.svg", SVG))
+        self.assertIsNone(settings.organization)
+        self.assertIsNone(settings.organization_logo)
+
+    def test_a_missing_logo_says_so_once_and_the_name_stands_in(self) -> None:
+        with self.assertLogs("eneo_config", level="ERROR") as logs:
+            settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=str(self.folder / "saknas.svg"))
+        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("ORGANIZATION_LOGO", logs.output[0])
+
+    def test_only_svg_and_png_are_logos(self) -> None:
+        for name, content in (
+            ("logo.gif", b"GIF89a" + b"\x00" * 16),
+            ("logo.svg", PNG),  # the name says SVG, the content does not
+            ("logo.png", b"<html><script>alert(1)</script></html>"),
+        ):
+            with self.subTest(name=name), self.assertLogs("eneo_config", level="ERROR"):
+                settings = self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=self.file(name, content))
+            self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo=None))
+
+    def test_a_missing_dark_logo_keeps_the_light_one(self) -> None:
+        with self.assertLogs("eneo_config", level="ERROR"):
+            settings = self.load(
+                ORGANIZATION_NAME="Umeå kommun",
+                ORGANIZATION_LOGO=self.file("umea.svg", SVG),
+                ORGANIZATION_LOGO_DARK=str(self.folder / "saknas.svg"),
+            )
+        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=False))
+
+    def test_a_logo_needs_the_name_it_stands_for(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "ORGANIZATION_NAME"):
+            self.load(ORGANIZATION_LOGO=self.file("logo.svg", SVG))
+
+    def test_rejects_an_ambiguous_show_organization(self) -> None:
+        with self.assertRaisesRegex(RuntimeError, "SHOW_ORGANIZATION must be a boolean"):
+            self.load(SHOW_ORGANIZATION="kanske")
 
 
 if __name__ == "__main__":

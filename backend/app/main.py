@@ -103,6 +103,33 @@ async def get_config():
     return {"flow_list": settings.flow_list_scope}
 
 
+# ---------- Branding ----------
+# The organisation beside "Tal till text" is a deployment setting (Settings.organization). Neither
+# route asks for a session: the login page shows the organisation before there is one.
+
+
+@app.get("/api/branding")
+async def get_branding():
+    return {"organization": settings.organization}
+
+
+@app.get("/api/branding/logo/{variant}")
+async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
+    logo = settings.organization_logo if variant == "light" else settings.organization_logo_dark
+    if logo is None:
+        raise HTTPException(status_code=404, detail="No logo is configured")
+    return Response(
+        content=logo.content,
+        media_type=logo.media_type,
+        headers={
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "public, max-age=3600",
+            # An SVG opened on its own, not through <img>, must run nothing in the module's origin.
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        },
+    )
+
+
 # ---------- Eneo proxy ----------
 
 # Headers we should not forward from incoming request to upstream.
