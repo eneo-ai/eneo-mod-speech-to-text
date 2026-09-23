@@ -28,7 +28,7 @@ export function Brand({ href, className }: BrandProps) {
     <Link
       href={href}
       aria-label="Flöden – Sundsvalls kommun"
-      className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-accent"
+      className="inline-flex rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
     >
       {lockup}
     </Link>

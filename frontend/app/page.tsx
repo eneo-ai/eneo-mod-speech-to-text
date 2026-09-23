@@ -83,7 +83,7 @@ export default function LoginPage() {
       <div className="space-y-2 mb-8">
         <div className="eyebrow">v0.4 · Demo</div>
         <h1 className="text-[30px] md:text-[36px] font-semibold tracking-[-0.025em] leading-[1.05]">
-          Spela in samtal — <span className="accent-em">i fickformat</span>
+          Spela in samtal — <span className="primary-em">i fickformat</span>
         </h1>
         <p className="text-[14px] text-ink-soft leading-relaxed pt-1">
           {authMode === "access_code"
@@ -96,7 +96,7 @@ export default function LoginPage() {
         {authError && (
           <p
             id="login-error"
-            className="text-sm text-accent"
+            className="text-sm text-primary"
             role="alert"
           >
             {authError}

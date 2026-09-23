@@ -4,21 +4,30 @@ import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
 
+// Disabled controls keep readable words (muted foreground on the muted
+// surface) instead of fading below contrast; default targets are 44 px.
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:opacity-50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
   {
     variants: {
       variant: {
-        default: "bg-accent text-accent-foreground hover:bg-accent/90",
-        secondary: "bg-bg-2 text-ink hover:bg-rule-soft",
-        outline: "border border-rule bg-paper text-ink hover:bg-bg-2",
-        ghost: "text-ink hover:bg-bg-2",
+        default:
+          "bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground",
+        destructive:
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:bg-muted disabled:text-muted-foreground",
+        secondary:
+          "bg-secondary text-secondary-foreground hover:bg-rule-soft disabled:text-muted-foreground",
+        outline:
+          "border border-input bg-card text-foreground hover:bg-accent hover:text-accent-foreground disabled:text-muted-foreground",
+        ghost:
+          "text-foreground hover:bg-accent hover:text-accent-foreground disabled:text-muted-foreground",
+        link: "text-primary underline-offset-4 hover:underline disabled:text-muted-foreground",
       },
       size: {
-        default: "h-10 px-4 py-2",
+        default: "h-11 px-4 py-2",
         sm: "h-9 rounded-md px-3",
         lg: "h-11 rounded-md px-8",
-        icon: "h-10 w-10",
+        icon: "size-11",
       },
     },
     defaultVariants: {

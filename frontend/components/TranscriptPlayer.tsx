@@ -446,7 +446,7 @@ export const TranscriptPlayer = forwardRef<
           onClick={togglePlay}
           disabled={!hasAudio || audioUnavailable}
           aria-label={paused ? "Spela" : "Pausa"}
-          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-accent text-accent-foreground transition-transform active:scale-95 disabled:opacity-40"
+          className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground transition-transform active:scale-95 disabled:opacity-40"
         >
           {paused ? (
             <Play className="h-4 w-4 translate-x-[1px]" strokeWidth={2.25} fill="currentColor" />
@@ -492,7 +492,7 @@ export const TranscriptPlayer = forwardRef<
           }}
           aria-label="Position i inspelningen"
           aria-valuetext={`${formatClock(currentTime, withHours)} av ${formatClock(duration, withHours)}`}
-          className="min-h-6 min-w-0 flex-1 accent-[hsl(var(--accent))]"
+          className="min-h-6 min-w-0 flex-1 accent-[hsl(var(--primary))]"
         />
         <span className="font-mono text-[11px] tabular-nums text-ink-mute shrink-0">
           {formatClock(duration, withHours)}
@@ -511,7 +511,7 @@ export const TranscriptPlayer = forwardRef<
           <button
             type="button"
             onClick={() => setFollow(true)}
-            className="min-h-8 min-w-8 text-[12px] text-accent hover:underline shrink-0"
+            className="min-h-8 min-w-8 text-[12px] text-primary hover:underline shrink-0"
           >
             Följ
           </button>
@@ -529,7 +529,7 @@ export const TranscriptPlayer = forwardRef<
               className={cn(
                 "min-h-8 min-w-8 rounded-full px-2.5 py-0.5 text-[12px]",
                 i === currentFile
-                  ? "bg-accent text-accent-foreground"
+                  ? "bg-primary text-primary-foreground"
                   : "text-ink-soft hover:text-ink border border-rule-soft",
               )}
             >
@@ -552,7 +552,7 @@ export const TranscriptPlayer = forwardRef<
               <p className="text-ink-mute">Ljudet är inte tillgängligt för den här körningen.</p>
             )}
             {audioUnavailable && (
-              <p className="text-accent">
+              <p className="text-primary">
                 Ljudet kunde inte spelas.{" "}
                 <button
                   type="button"
@@ -596,7 +596,7 @@ export const TranscriptPlayer = forwardRef<
             <p
               className={cn(
                 "shrink-0 text-[11px]",
-                saveState === "error" ? "text-accent" : "text-ink-mute",
+                saveState === "error" ? "text-primary" : "text-ink-mute",
               )}
               aria-live="polite"
             >
@@ -610,8 +610,8 @@ export const TranscriptPlayer = forwardRef<
         </div>
       )}
 
-      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-accent">{correctionProblem}</p>}
-      {editError && <p role="alert" className="px-3 text-accent">{editError}</p>}
+      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-primary">{correctionProblem}</p>}
+      {editError && <p role="alert" className="px-3 text-primary">{editError}</p>}
       {corrections && !correctionProblem && <button type="button" className="self-start px-3 py-2 text-[12px] underline" onClick={() => {
         const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
         const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
@@ -844,7 +844,7 @@ function TurnBlock({
                   onClick={(e) => onPartClick(part, e)}
                   className={cn(
                     "cursor-pointer rounded-sm box-decoration-clone transition-colors",
-                    partActive && "bg-accent/10",
+                    partActive && "bg-primary/10",
                   )}
                 >
                   {pieces(part.segment, ranges).map((piece, k, all) => {
@@ -867,9 +867,9 @@ function TurnBlock({
                               "bg-ochre/25 px-[2px] -mx-[2px] underline decoration-wavy decoration-ochre underline-offset-[3px]",
                             confirmed &&
                               "bg-ok/15 px-[2px] -mx-[2px] text-ok underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
-                            isWordActive && "bg-accent text-accent-foreground",
+                            isWordActive && "bg-primary text-primary-foreground",
                             piece.correctedFrom !== null &&
-                              "underline decoration-dotted decoration-accent underline-offset-[3px]",
+                              "underline decoration-dotted decoration-primary underline-offset-[3px]",
                           )}
                           title={
                             piece.correctedFrom !== null
@@ -976,7 +976,7 @@ function LineEditor({
           }
         }}
         onBlur={() => (value !== initial ? onCommit(value) : onCancel())}
-        className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[14px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-accent"
+        className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[14px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
       <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-mute">
         <span>Enter sparar · Esc avbryter</span>
@@ -985,7 +985,7 @@ function LineEditor({
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onRevert}
-            className="text-accent hover:underline"
+            className="text-primary hover:underline"
           >
             Återställ originalet
           </button>

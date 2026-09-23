@@ -51,7 +51,7 @@ export function AccountMenu() {
           className="rounded-full p-0"
         >
           <Avatar>
-            <AvatarFallback className="bg-accent text-[15px] font-semibold text-accent-foreground">
+            <AvatarFallback className="bg-primary text-[15px] font-semibold text-primary-foreground">
               {userInitial(user)}
             </AvatarFallback>
           </Avatar>
