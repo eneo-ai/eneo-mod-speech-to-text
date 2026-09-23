@@ -59,15 +59,19 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
       };
       const parts = (el: HTMLElement): Box[] => {
         const own = box(el.getBoundingClientRect());
+        const out = [own];
         const after = getComputedStyle(el, "::after");
         if (after.content !== "none" && after.position === "absolute") {
-          const inset = (v: string) => (v.endsWith("px") ? parseFloat(v) : 0);
-          own.left += inset(after.left);
-          own.top += inset(after.top);
-          own.right -= inset(after.right);
-          own.bottom -= inset(after.bottom);
+          // An absolutely placed ::after is laid out from its element's padding box, inside the border.
+          const s = getComputedStyle(el);
+          const px = (v: string) => (v.endsWith("px") ? parseFloat(v) : 0);
+          out.push({
+            left: own.left + px(s.borderLeftWidth) + px(after.left),
+            top: own.top + px(s.borderTopWidth) + px(after.top),
+            right: own.right - px(s.borderRightWidth) - px(after.right),
+            bottom: own.bottom - px(s.borderBottomWidth) - px(after.bottom),
+          });
         }
-        const out = [own];
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {

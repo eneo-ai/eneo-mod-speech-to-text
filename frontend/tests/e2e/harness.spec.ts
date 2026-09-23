@@ -3,7 +3,7 @@
  * these would pass the app's faults too. They run once, at one width.
  */
 import { expect, test } from "@playwright/test";
-import { axe, blocking, focusStop, tabWalk } from "./checks";
+import { axe, blocking, focusStop, tabWalk, targetSizes } from "./checks";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the checks' own tests run once"));
 
@@ -41,4 +41,15 @@ test("a focus outline that cannot be seen is not taken for a focus indicator", a
   expect((await focusStop(page))?.indicator, "white on white").toBe(false);
   await page.keyboard.press("Tab");
   expect((await focusStop(page))?.indicator, "black on white").toBe(true);
+});
+
+test("a hit area grown by a pseudo-element is measured from the padding box, where its insets apply", async ({ page }) => {
+  // 24 px across the border box, 16 px inside its 4 px border: grown by 12 px, the hit area is 40 px, not 48.
+  await page.setContent(`
+    <style>
+      button { position: relative; box-sizing: border-box; width: 24px; height: 24px; border: 4px solid #333; padding: 0; }
+      button::after { content: ""; position: absolute; inset: -12px; }
+    </style>
+    <button aria-label="Liten"></button>`);
+  expect(await targetSizes(page, 44, false)).toEqual(['button "Liten" 24×24']);
 });
