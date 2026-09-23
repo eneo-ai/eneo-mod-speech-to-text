@@ -66,7 +66,8 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
 
   const { choices, value, missing } = microphoneChoices(inputs, preferred);
 
-  async function test(id = value) {
+  // The same choice recording makes: the remembered microphone, asked for as `ideal`.
+  async function test(id = preferred ?? "") {
     setProblem(null);
     setHeard(false);
     try {

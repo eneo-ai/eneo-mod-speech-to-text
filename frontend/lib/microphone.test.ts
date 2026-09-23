@@ -63,5 +63,16 @@ test("a remembered microphone that is gone falls back to Standard, with a note o
     { value: microphoneChoices(devices, "bluetooth").value, missing: microphoneChoices(devices, "bluetooth").missing },
     { value: "", missing: true },
   );
-  assert.equal(microphoneChoices([], "bluetooth").missing, false, "before permission nothing is known to be missing");
+  assert.deepEqual(
+    microphoneChoices([], "bluetooth"),
+    {
+      choices: [
+        { value: "", label: "Standard" },
+        { value: "bluetooth", label: "Senast vald mikrofon" },
+      ],
+      value: "bluetooth",
+      missing: false,
+    },
+    "before the names are known, the remembered choice is what is used, and shown",
+  );
 });

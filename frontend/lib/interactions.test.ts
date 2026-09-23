@@ -169,3 +169,44 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
     await view.unmount();
   }
 });
+
+test("the microphone test uses the device recording will use, and shows it, also before the names are known", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  let allowed = false;
+  const asked: MediaStreamConstraints[] = [];
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+      enumerateDevices: async () =>
+        [
+          ["default", "Standard – MacBook Pro-mikrofon", "g1"],
+          ["mac", "MacBook Pro-mikrofon", "g1"],
+          ["usb", "Jabra Speak 510", "g2"],
+        ].map(([deviceId, label, groupId]) => ({
+          kind: "audioinput",
+          deviceId: allowed ? deviceId : "",
+          label: allowed ? label : "",
+          groupId,
+        })),
+      getUserMedia: async (constraints: MediaStreamConstraints) => {
+        asked.push(constraints);
+        allowed = true;
+        return { getTracks: () => [{ stop() {} }], getAudioTracks: () => [] };
+      },
+    },
+  });
+  localStorage.setItem("tal-till-text:microphone", "usb");
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  const trigger = () => view.container.querySelector<HTMLButtonElement>('[role="combobox"]')!.textContent?.trim();
+  assert.equal(trigger(), "Senast vald mikrofon", "the remembered choice, before the browser names it");
+
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.deepEqual((asked[0].audio as MediaTrackConstraints).deviceId, { ideal: "usb" }, "as recording asks for it");
+  assert.equal(trigger(), "Jabra Speak 510", "the device under test, by name");
+  await view.unmount();
+  localStorage.clear();
+});

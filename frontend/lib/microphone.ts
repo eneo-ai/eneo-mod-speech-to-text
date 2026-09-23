@@ -55,7 +55,8 @@ export interface MicrophoneChoice {
  * The picker: "Standard" first, naming the microphone the system uses when
  * the browser says which (Chrome's "default" entry), then each microphone by
  * its name. A remembered microphone that is gone falls back to Standard, and
- * `missing` says so once the devices are known.
+ * `missing` says so once the devices are known; until then the remembered one
+ * is the choice, as recording asks for it.
  */
 export function microphoneChoices(
   inputs: readonly MediaDeviceInfo[],
@@ -68,11 +69,13 @@ export function microphoneChoices(
     (named.find((device) => device.groupId && device.groupId === system.groupId)?.label ??
       system.label.replace(/^\s*(default|standard)\s*[-–—:]\s*/i, ""));
   const found = preferred !== null && named.some((device) => device.deviceId === preferred);
+  const standard = { value: "", label: systemName ? `Standard (${systemName})` : "Standard" };
+  // Before the browser names its microphones, the remembered one is what a test and a recording ask for.
+  if (named.length === 0 && preferred !== null) {
+    return { choices: [standard, { value: preferred, label: "Senast vald mikrofon" }], value: preferred, missing: false };
+  }
   return {
-    choices: [
-      { value: "", label: systemName ? `Standard (${systemName})` : "Standard" },
-      ...named.map((device) => ({ value: device.deviceId, label: device.label })),
-    ],
+    choices: [standard, ...named.map((device) => ({ value: device.deviceId, label: device.label }))],
     value: found ? preferred : "",
     missing: preferred !== null && named.length > 0 && !found,
   };
