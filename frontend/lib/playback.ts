@@ -312,17 +312,16 @@ export class Playback {
       this.pending = null;
       return;
     }
-    if (this.loaded === url) {
-      if (this.pending) {
-        // Still loading: land there once it has.
-        this.pending = { withinMs, play };
-        return;
-      }
+    if (this.loaded === url && !this.pending) {
       this.media.currentTime = withinMs / 1_000;
       if (play) void this.media.play().catch(ignore);
       return;
     }
+    // The part loads, which pauses the element without a pause event; it plays once loaded if asked to.
     this.pending = { withinMs, play };
+    if (!play) this.playing = false;
+    // Still loading: land there once it has.
+    if (this.loaded === url) return;
     this.loaded = url;
     this.unavailable = false;
     this.media.src = url;

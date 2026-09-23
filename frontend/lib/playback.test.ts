@@ -223,6 +223,22 @@ test("Pausa while a part is still loading keeps it from starting once it has loa
   assert.equal(media.paused, false, "and play alone starts it once loaded");
 });
 
+test("a move to another part without playing on ends playing, though the load pauses without an event", () => {
+  const { playback, media } = started();
+  playback.toggle();
+  playback.onPlay();
+  playTo(playback, media, 1);
+  // "Del 2" while the first part plays.
+  playback.seek(1, 0, false);
+  assert.equal(playback.getSnapshot().playing, false, "the transcript and the button see it stopped");
+  const button = renderToStaticMarkup(createElement(AudioPlayer, { playback, label: "Inspelning" })).match(/<button[^>]*>/)?.[0];
+  assert.match(button ?? "", /aria-label="Spela upp"/, "so the button plays, as toggle() does");
+  media.duration = 2;
+  playback.onLoadedMetadata();
+  playback.toggle();
+  assert.equal(media.paused, false);
+});
+
 test("skip moves over the whole recording and stays inside it", () => {
   const { playback, media } = started();
   playTo(playback, media, 3.5);
