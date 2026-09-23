@@ -22,13 +22,14 @@
     --record-foreground: 0 0% 100%;
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
-    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. */
-    --speaker-0: 212 72% 40%;
+    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
+       aldrig varumärkets blå, så att ett namn inte läses som en länk. */
+    --speaker-0: 262 46% 48%;
     --speaker-1: 152 48% 30%;
     --speaker-2: 28 78% 34%;
     --speaker-3: 330 52% 42%;
     --speaker-4: 190 58% 33%;
-    --speaker-5: 262 46% 48%;
+    --speaker-5: 70 45% 28%;
     /* shadcn's semantic layer over the module tokens. Declared once: .dark sits
        on the same element, so each reference resolves to the active theme. */
     --background: var(--bg);
@@ -73,12 +74,12 @@
     --record-foreground: 0 0% 100%;
     --ochre: 47 92% 58%;
     --ok: 152 50% 58%;
-    --speaker-0: 212 92% 72%;
+    --speaker-0: 262 62% 74%;
     --speaker-1: 152 52% 62%;
     --speaker-2: 32 88% 66%;
     --speaker-3: 330 62% 72%;
     --speaker-4: 190 62% 62%;
-    --speaker-5: 262 62% 74%;
+    --speaker-5: 70 45% 60%;
     color-scheme: dark;
   }
 

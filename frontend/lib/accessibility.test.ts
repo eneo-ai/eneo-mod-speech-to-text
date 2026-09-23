@@ -54,6 +54,12 @@ for (const [theme, raw] of Object.entries(themes)) {
     }
   });
 
+  test(`${theme} the first speaker is not the brand's blue, so a name never reads as a link`, () => {
+    const hue = (name: string) => Number(/^(\d+) /.exec(raw[name])?.[1]);
+    const apart = Math.abs(hue("speaker-0") - hue("primary"));
+    assert.ok(Math.min(apart, 360 - apart) >= 40, `${theme} speaker-0 and primary hues: ${apart}`);
+  });
+
   test(`${theme} defines the shadcn semantic tokens with readable pairs`, () => {
     for (const [foreground, background] of [
       ["foreground", "background"], ["card-foreground", "card"], ["popover-foreground", "popover"],
