@@ -40,22 +40,32 @@ export interface PlaybackSnapshot {
   lengthsMs: readonly number[];
 }
 
-/** A part's length from its header, or null when the audio cannot tell. */
-export function probeLength(url: string): Promise<number | null> {
+/** A part's length from its header, or null when the audio cannot tell or the probe is cancelled. */
+export function probeLength(url: string, signal?: AbortSignal): Promise<number | null> {
   return new Promise((resolve) => {
+    if (signal?.aborted) return resolve(null);
     const audio = new Audio();
     const done = (ms: number | null) => {
       clearTimeout(timer);
+      signal?.removeEventListener("abort", cancel);
+      audio.onloadedmetadata = audio.onerror = null;
+      // Without a source, a load stops the element's request.
       audio.removeAttribute("src");
+      audio.load();
       resolve(ms);
     };
-    const timer = setTimeout(() => done(null), 10_000);
+    const cancel = () => done(null);
+    const timer = setTimeout(cancel, 10_000);
+    signal?.addEventListener("abort", cancel);
     audio.preload = "metadata";
     audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000) : null);
-    audio.onerror = () => done(null);
+    audio.onerror = cancel;
     audio.src = url;
   });
 }
+
+/** How many parts' lengths are probed at once. */
+const PROBES_AT_ONCE = 3;
 
 function ignore() {}
 
@@ -68,6 +78,10 @@ export class Playback {
   private learned: (number | null)[] = [];
   /** How far a part without a known length has played. */
   private seen: number[] = [];
+  /** Parts whose audio a probe has asked for its length, whatever it told. */
+  private probed = new Set<number>();
+  /** The probes under way; cancelled when the element goes or other parts come. */
+  private probing: AbortController | null = null;
   private part = 0;
   private withinMs = 0;
   private playing = false;
@@ -86,7 +100,7 @@ export class Playback {
 
   constructor(
     sources: readonly PlayerSource[] = [],
-    private readonly probe: (url: string) => Promise<number | null> = probeLength,
+    private readonly probe: (url: string, signal: AbortSignal) => Promise<number | null> = probeLength,
   ) {
     this.sources = sources;
     this.snapshot = this.read();
@@ -108,6 +122,8 @@ export class Playback {
     const sameUrls = sources.length === this.sources.length && sources.every((s, i) => s.url === this.sources[i].url);
     this.sources = sources;
     if (!sameUrls) {
+      this.stopProbing();
+      this.probed.clear();
       this.learned = [];
       this.seen = [];
       this.part = 0;
@@ -131,7 +147,7 @@ export class Playback {
     if (media) {
       this.load(this.part, this.withinMs, false);
       this.probeUnknown();
-    }
+    } else this.stopProbing();
   }
 
   // ---------- Controls ----------
@@ -310,16 +326,38 @@ export class Playback {
     this.media.load();
   }
 
+  /** Asks the audio of the parts of unknown length for it, a few at a time, while the element is there. */
   private probeUnknown(): void {
+    if (!this.media || this.probing) return;
+    const run = new AbortController();
+    this.probing = run;
     const sources = this.sources;
-    sources.forEach((source, i) => {
-      if (source.durationMs != null || this.learned[i] != null || i === this.part) return;
-      void this.probe(source.url).then((ms) => {
-        if (this.sources !== sources || ms == null || this.learned[i] != null) return;
-        this.learned[i] = ms;
-        this.emit();
-      }, ignore);
-    });
+    // The loading part tells its own length.
+    const queue = sources.flatMap((source, i) =>
+      source.durationMs == null && this.learned[i] == null && !this.probed.has(i) && i !== this.part ? [i] : [],
+    );
+    const next = (): void => {
+      const i = queue.shift();
+      if (i === undefined || run.signal.aborted) return;
+      if (this.learned[i] != null) return next();
+      void this.probe(sources[i].url, run.signal)
+        .catch(() => null)
+        .then((ms) => {
+          if (run.signal.aborted) return;
+          this.probed.add(i);
+          if (ms != null && this.learned[i] == null) {
+            this.learned[i] = ms;
+            this.emit();
+          }
+          next();
+        });
+    };
+    for (let n = 0; n < PROBES_AT_ONCE; n++) next();
+  }
+
+  private stopProbing(): void {
+    this.probing?.abort();
+    this.probing = null;
   }
 
   /** Keeps a length the audio's metadata gave; true when it is new. */

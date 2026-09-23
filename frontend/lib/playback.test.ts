@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { Playback, type MediaLike, type PlayerSource } from "./playback";
+import { Playback, probeLength, type MediaLike, type PlayerSource } from "./playback";
 
 /** An audio element that only does what it is told; the test plays the browser's part. */
 class FakeMedia implements MediaLike {
@@ -252,6 +252,74 @@ test("part lengths come from the audio when the recorder does not know them", as
   playback.onLoadedMetadata();
   assert.deepEqual(playback.getSnapshot().lengthsMs, [3_200, 2_500]);
   assert.equal(playback.getSnapshot().totalMs, 5_700);
+});
+
+test("lengths are probed a few parts at a time, never twice, and not once the element has gone", async () => {
+  const calls: { url: string; signal: AbortSignal; done: boolean; finish: (ms: number | null) => void }[] = [];
+  const probe = (url: string, signal: AbortSignal) =>
+    new Promise<number | null>((resolve) => {
+      const call = { url, signal, done: false, finish: (ms: number | null) => ((call.done = true), resolve(ms)) };
+      calls.push(call);
+    });
+  const open = () => calls.filter((call) => !call.done && !call.signal.aborted);
+  const settle = () => new Promise((resolve) => setImmediate(resolve));
+  const parts = Array.from({ length: 100 }, (_, i) => ({ url: `/p${i}`, durationMs: null }));
+  const playback = new Playback(parts, probe);
+  const media = new FakeMedia();
+
+  playback.attach(media);
+  assert.deepEqual(open().map((call) => call.url), ["/p1", "/p2", "/p3"], "the loading part tells its own");
+  calls[0].finish(2_000);
+  calls[1].finish(null);
+  await settle();
+  assert.deepEqual(open().map((call) => call.url), ["/p3", "/p4", "/p5"]);
+  assert.equal(playback.getSnapshot().lengthsMs[1], 2_000);
+
+  playback.attach(null);
+  assert.equal(open().length, 0, "the element went: its probes are cancelled");
+  calls[2].finish(9_000);
+  await settle();
+  assert.equal(calls.length, 5, "and none start after them");
+  assert.equal(playback.getSnapshot().lengthsMs[3], 0, "a cancelled probe's answer is not taken");
+
+  playback.attach(media);
+  assert.deepEqual(open().map((call) => call.url), ["/p3", "/p4", "/p5"], "back again: only parts not asked yet");
+
+  playback.setSources(parts.map((part) => ({ ...part, url: `${part.url}-b` })));
+  assert.deepEqual(open().map((call) => call.url), ["/p1-b", "/p2-b", "/p3-b"], "other parts: the old probes stop");
+});
+
+test("a cancelled probe lets go of its audio at once", async () => {
+  const made: { src: string; loads: number }[] = [];
+  class FakeAudio {
+    src = "";
+    loads = 0;
+    preload = "";
+    duration = Number.NaN;
+    onloadedmetadata: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      made.push(this);
+    }
+    removeAttribute(name: string) {
+      if (name === "src") this.src = "";
+    }
+    load() {
+      this.loads += 1;
+    }
+  }
+  const global = globalThis as { Audio?: unknown };
+  global.Audio = FakeAudio;
+  try {
+    const cancel = new AbortController();
+    const length = probeLength("/p1", cancel.signal);
+    assert.equal(made[0].src, "/p1");
+    cancel.abort();
+    assert.deepEqual([made[0].src, made[0].loads], ["", 1], "no source and a load: the request stops");
+    assert.equal(await length, null);
+  } finally {
+    delete global.Audio;
+  }
 });
 
 test("a part whose audio does not say its length grows as it plays and learns it at its end", () => {
