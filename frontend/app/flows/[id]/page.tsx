@@ -33,7 +33,7 @@ import {
   getRunSteps,
   inputFileAudioUrl,
   isReviewCheckpointApproved,
-  listRuns,
+  listOwnRuns,
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
@@ -302,9 +302,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
-  /** Flödets tio senaste körningar; listan är en genväg och får saknas. */
+  /** Användarens tio senaste körningar av flödet; listan är en genväg och får saknas. */
   function loadEarlierRuns() {
-    listRuns(flowId, 10)
+    listOwnRuns(flowId)
       .then((res) => setEarlierRuns(res.items ?? []))
       .catch(() => undefined);
   }

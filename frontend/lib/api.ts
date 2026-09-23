@@ -899,8 +899,13 @@ export async function redispatchRun(flowId: string, runId: string) {
   );
 }
 
-export async function listRuns(flowId: string, limit = 50, offset = 0) {
-  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+/**
+ * The caller's latest runs of a flow. `mine=true` keeps a colleague's runs
+ * out, which Eneo would otherwise list for a space admin or the flow's owner;
+ * a module session counts as its signed-in user.
+ */
+export async function listOwnRuns(flowId: string, limit = 10) {
+  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: "0" });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );

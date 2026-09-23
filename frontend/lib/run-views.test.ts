@@ -9,6 +9,7 @@ import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
+import { listOwnRuns } from "./api";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
 
@@ -161,6 +162,25 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   // Test runs from Eneo's editor are not this user's documents.
   assert.equal(words.match(/I går 15:40/g)?.length, 2);
   assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { runs: [], onOpen: () => undefined })), "");
+});
+
+test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {
+  const urls: string[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    urls.push(String(url));
+    return new Response(JSON.stringify({ items: [], count: 0, has_more: false }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  await listOwnRuns("flow-1");
+
+  assert.deepEqual(urls, ["/api/eneo/flows/flow-1/runs/?mine=true&limit=10&offset=0"]);
 });
 
 test("folded panels stay hidden: no display utility may override the closed content's hidden attribute", () => {
