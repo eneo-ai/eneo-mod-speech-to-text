@@ -552,7 +552,7 @@ export const TranscriptPlayer = forwardRef<
               <p className="text-ink-mute">Ljudet är inte tillgängligt för den här körningen.</p>
             )}
             {audioUnavailable && (
-              <p className="text-primary">
+              <p className="text-destructive">
                 Ljudet kunde inte spelas.{" "}
                 <button
                   type="button"
@@ -596,7 +596,7 @@ export const TranscriptPlayer = forwardRef<
             <p
               className={cn(
                 "shrink-0 text-[11px]",
-                saveState === "error" ? "text-primary" : "text-ink-mute",
+                saveState === "error" ? "text-destructive" : "text-ink-mute",
               )}
               aria-live="polite"
             >
@@ -610,8 +610,8 @@ export const TranscriptPlayer = forwardRef<
         </div>
       )}
 
-      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-primary">{correctionProblem}</p>}
-      {editError && <p role="alert" className="px-3 text-primary">{editError}</p>}
+      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-destructive">{correctionProblem}</p>}
+      {editError && <p role="alert" className="px-3 text-destructive">{editError}</p>}
       {corrections && !correctionProblem && <button type="button" className="self-start px-3 py-2 text-[12px] underline" onClick={() => {
         const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
         const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();

@@ -326,7 +326,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       <div className="flex flex-wrap items-center gap-2 text-[12px]"><span role="status" aria-atomic="true" className="text-ink-mute">{notice}</span>{undoAvailable && <button type="button" data-undo className={action} disabled={!textEditable} onClick={() => {
         onChange?.({ ...corrections, occurrences: undo!.before.occurrences, speaker_edits: undo!.before.speaker_edits }); setUndo(null); setNotice("Ändringen är ångrad."); body.current?.focus({ preventScroll: true });
       }}><Undo2 className="h-3.5 w-3.5" /> Ångra</button>}</div>
-      {error && <p role="alert" className="py-2 text-[12px] text-primary">{error}</p>}
+      {error && <p role="alert" className="py-2 text-[12px] text-destructive">{error}</p>}
     </div>
     <section id={detailsId} hidden={!details} aria-label="Talargranskning" className="border-b border-rule-soft bg-bg-2/40 px-5 py-3 text-[12px] leading-relaxed">
       <h2 className="font-semibold">Om markeringen</h2>

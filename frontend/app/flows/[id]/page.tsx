@@ -1148,7 +1148,7 @@ function ReviewView({
           </div>
 
           {(runError || localError) && (
-            <p className="text-[13px] text-primary mt-4" role="alert">
+            <p className="text-[13px] text-destructive mt-4" role="alert">
               {runError ?? localError}
             </p>
           )}
@@ -1236,7 +1236,7 @@ function ReviewView({
         </section>
 
         {runError && (
-          <p className="text-[13px] text-primary mb-3" role="alert">
+          <p className="text-[13px] text-destructive mb-3" role="alert">
             {runError}
           </p>
         )}
