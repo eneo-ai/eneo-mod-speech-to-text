@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { EarlierRuns } from "../components/flow/EarlierRuns";
 import type { EarlierRunsSnapshot } from "./earlier-runs";
 
-const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: false });
+const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
@@ -179,9 +179,16 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
     );
   assert.match(render({}), />Visa fler körningar<\/button>/);
   assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>Hämtar körningar…<\/button>/);
-  const failed = render({ failed: true });
+  const failed = render({ failed: "next" });
   assert.match(failed, /Fler körningar kunde inte hämtas\./);
   assert.match(failed, />Visa fler körningar<\/button>/, "another try");
+
+  // The first page failed: said even with no run shown, with a try again whatever Eneo said about more.
+  const firstFailed = renderToStaticMarkup(
+    createElement(EarlierRuns, { list: { ...listed([]), failed: "first" }, onOpen: () => undefined, onMore: () => undefined }),
+  );
+  assert.match(firstFailed, /Tidigare körningar kunde inte hämtas\./);
+  assert.match(firstFailed, />Försök igen<\/button>/);
 });
 
 test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {

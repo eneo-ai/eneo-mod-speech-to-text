@@ -39,7 +39,7 @@ export function EarlierRuns({
     firstNew.current = null;
     section.current?.querySelectorAll<HTMLButtonElement>("[data-open-run]")[index]?.focus();
   }, [shown.length]);
-  if (shown.length === 0 && !list.hasMore) return null;
+  if (shown.length === 0 && !list.hasMore && !list.failed) return null;
   return (
     <section ref={section} aria-labelledby="earlier-runs" className={cn("flex flex-col gap-3", className)}>
       <h2 id="earlier-runs" className="text-lg font-semibold tracking-tight">
@@ -71,9 +71,17 @@ export function EarlierRuns({
           );
         })}
       </ItemGroup>
-      {list.hasMore && onMore && (
+      {list.failed === "first" && onMore && (
         <div className="flex flex-col items-start gap-2">
-          {list.failed && <p className="text-[13px] text-ink-soft">Fler körningar kunde inte hämtas. Försök igen.</p>}
+          <p className="text-[13px] text-ink-soft">Tidigare körningar kunde inte hämtas.</p>
+          <Button type="button" variant="outline" className="h-11" disabled={list.loading} onClick={onMore}>
+            Försök igen
+          </Button>
+        </div>
+      )}
+      {list.hasMore && list.failed !== "first" && onMore && (
+        <div className="flex flex-col items-start gap-2">
+          {list.failed === "next" && <p className="text-[13px] text-ink-soft">Fler körningar kunde inte hämtas. Försök igen.</p>}
           <Button
             type="button"
             variant="outline"

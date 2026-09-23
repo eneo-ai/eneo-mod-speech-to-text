@@ -64,11 +64,43 @@ test("a next page that fails keeps the ten shown and offers another try, which t
   await earlier.more();
   assert.deepEqual(
     [earlier.getSnapshot().runs.length, earlier.getSnapshot().hasMore, earlier.getSnapshot().failed],
-    [10, true, true],
+    [10, true, "next"],
   );
 
   await earlier.more();
-  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [11, false]);
+  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [11, null]);
+});
+
+test("a first page that fails says so and is tried again; a refresh that fails keeps the rows shown and says so", async () => {
+  const eneo = eneoRuns(runs(11));
+  const earlier = new EarlierRunsList("flow-1", eneo.list);
+  eneo.failNextPage();
+  await earlier.reload();
+  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [0, "first"]);
+  await earlier.more(); // "Försök igen" reads the first page again
+  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [10, null]);
+  assert.deepEqual(eneo.asked.at(-1), { limit: 10, offset: 0 });
+
+  eneo.failNextPage();
+  await earlier.reload(); // after a conflict
+  assert.deepEqual([earlier.getSnapshot().runs.length, earlier.getSnapshot().failed], [10, "first"]);
+});
+
+test("a run started between two pages shifts the next page, and no run is shown twice", async () => {
+  const all = runs(22);
+  const eneo = eneoRuns(all);
+  const earlier = new EarlierRunsList("flow-1", eneo.list);
+  await earlier.reload();
+  all.unshift({ id: "run-new", flow_id: "flow-1", status: "queued" }); // run-10 moves to the second page
+  await earlier.more();
+  await earlier.more();
+  const ids = earlier.getSnapshot().runs.map((run) => run.id);
+  assert.deepEqual(ids, runs(22).map((run) => run.id), "each run once");
+  assert.deepEqual(
+    eneo.asked.map((page) => page.offset),
+    [0, 10, 20],
+    "the next page follows what Eneo gave, not what is shown",
+  );
 });
 
 test("reading the list again starts from the first page, and a page still coming for the old list is dropped", async () => {
