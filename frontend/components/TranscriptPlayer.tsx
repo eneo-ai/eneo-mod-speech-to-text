@@ -62,6 +62,8 @@ import {
 export interface TranscriptPlayerHandle {
   /** Flyttar spelhuvudet; med `autoplay` startar även uppspelningen. */
   seekTo(fileIndex: number, time: number, autoplay?: boolean): void;
+  /** Plays from `start` and stops at `end` (seconds in the part), as a sample. */
+  playRange(fileIndex: number, start: number, end: number): void;
 }
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
@@ -347,7 +349,11 @@ export const TranscriptPlayer = forwardRef<
     [hasAudio, playback],
   );
 
-  useImperativeHandle(ref, () => ({ seekTo }), [seekTo]);
+  useImperativeHandle(
+    ref,
+    () => ({ seekTo, playRange: (fileIndex, start, end) => playback.playRange(fileIndex, start * 1_000, end * 1_000) }),
+    [seekTo, playback],
+  );
 
   function cycleRate() {
     playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);

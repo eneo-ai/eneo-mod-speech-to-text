@@ -185,7 +185,6 @@
 
 /* Keyboard focus stays local to the control, including native selects. */
 .transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible,
-.speaker-mapping-editor :is(button, input, summary):focus-visible,
 .transcript-player:focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 3px;
