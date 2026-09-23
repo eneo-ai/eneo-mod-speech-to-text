@@ -555,9 +555,11 @@ export class FlowSession {
           : null;
     if (!input && this.modes.length > 0) return false;
     const fields = this.contract?.form_fields ?? [];
-    this.invalid = fields
-      .filter((field) => field.required && !filled(this.details[field.name]))
-      .map((field) => field.name);
+    // A run request Eneo may already have answered is sent again as it was, with its own details.
+    const repeated = input?.kind === "recording" && !!input.recording.submission;
+    this.invalid = repeated
+      ? []
+      : fields.filter((field) => field.required && !filled(this.details[field.name])).map((field) => field.name);
     this.problem = null;
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;

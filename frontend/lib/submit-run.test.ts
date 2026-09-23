@@ -503,6 +503,56 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
   const kept = await store.get(recording.id);
   assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["stopped", null]);
   assert.equal((await store.listUnsent("user-1")).length, 1);
+
+  // Refused means no run: the next send asks anew, with the details as they are then.
+  let asked: Json | null = null;
+  await submitRecording(store, recording.id, params({ inputPayload: { motesnamn: "KS" } }), {
+    upload: async () => ({ id: "file-b" }),
+    startRun: async (_flowId, body) => {
+      asked = body;
+      return queuedRun;
+    },
+  });
+  assert.deepEqual(asked, {
+    expected_flow_version: 3,
+    step_inputs: { "step-audio": { file_ids: ["file-b"] } },
+    input_payload_json: { motesnamn: "KS" },
+  });
+});
+
+test("a run request whose answer never came is kept through a cancel and repeated exactly on the next send", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const eneo = fakeEneo();
+  let uploads = 0;
+  const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ inputPayload: { motesnamn: "KS" }, signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload,
+      startRun: async (flowId, body, key) => {
+        await eneo.startRun(flowId, body, key); // Eneo makes the run,
+        throw fetchFailed(); // and its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort(); // "Avbryt" while the send waits to ask again
+  await assert.rejects(sending);
+  const kept = await store.get(recording.id);
+  assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["uploaded", "file-1"], "the run may exist: not back to stopped");
+
+  // After a reload the details start over; the send repeats the stored request and gets that run.
+  const run = await submitRecording(store, recording.id, params({ inputPayload: {} }), { upload, startRun: eneo.startRun });
+  assert.equal(run.id, "run-1");
+  assert.equal(uploads, 1, "nothing uploaded again");
+  assert.equal(eneo.runs.size, 1);
+  assert.equal(await store.get(recording.id), null);
 });
 
 test("a recording being sent from one tab cannot be sent or deleted from another", async () => {

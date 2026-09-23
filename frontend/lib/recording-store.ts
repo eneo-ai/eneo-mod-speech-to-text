@@ -8,6 +8,7 @@
  * in this tab.
  */
 
+import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withWebmDuration } from "./webm-duration";
 
@@ -45,6 +46,16 @@ export interface StoredRecording {
   state: RecordingState;
   parts: RecordingPart[];
   runId: string | null;
+  /**
+   * The run request as Eneo was asked for it, kept until Eneo answers: a send
+   * that never heard back repeats exactly this, and Eneo returns the run it made.
+   */
+  submission?: RunRequest | null;
+}
+
+export interface RunRequest {
+  body: Json;
+  idempotencyKey: string;
 }
 
 export type NewRecording = Pick<
@@ -293,10 +304,17 @@ export class RecordingStore {
     }));
   }
 
+  /** Eneo is about to be asked for the run: the request is kept first, and the send is "uploaded". */
+  startSubmission(id: string, request: RunRequest): Promise<void> {
+    return this.update(id, (recording) => ({ ...recording, state: "uploaded", submission: request }));
+  }
+
+  /** Forgets the uploads, and the run request made of them. */
   clearFileIds(id: string): Promise<void> {
     return this.update(id, (recording) => ({
       ...recording,
       parts: recording.parts.map((p) => ({ ...p, fileId: null })),
+      submission: null,
     }));
   }
 

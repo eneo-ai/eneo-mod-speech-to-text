@@ -21,7 +21,7 @@ import {
 import { friendlyError } from "./errors";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes } from "./format";
-import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore } from "./recording-store";
+import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
 
 const MAX_RETRY_DELAY_MS = 60_000;
 
@@ -114,8 +114,8 @@ export interface SubmitParams extends RetryOptions {
   idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
-  /** Every file is uploaded; the run is being created. */
-  onStarting?: () => void | Promise<void>;
+  /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
+  onStarting?: (request: RunRequest) => void | Promise<void>;
 }
 
 export async function submitRun(
@@ -171,7 +171,6 @@ export async function submitRun(
     await params.onUploaded?.(index, uploaded.id);
   }
 
-  await params.onStarting?.();
   const body: Json = { expected_flow_version: contract.published_flow_version };
   if (fileIds.length > 0) body.step_inputs = { [stepId!]: { file_ids: fileIds } };
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
@@ -183,6 +182,7 @@ export async function submitRun(
       expectedFlowVersion: contract.published_flow_version,
       body,
     }));
+  await params.onStarting?.({ body, idempotencyKey: key });
   return withRetry(() => deps.startRun(flowId, body, key, params.signal), params);
 }
 
@@ -218,36 +218,52 @@ async function sendLeased(
 ): Promise<FlowRunPublic> {
   const recording = await store.get(id);
   if (!recording) throw new Error(NOT_ON_DEVICE);
-  const files = await store.readParts(id);
-  if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
-
-  await store.setState(id, "uploading");
-  let uploaded = false;
+  // Set once Eneo is asked for the run; until it answers, the run may exist.
+  let asked = recording.submission ?? null;
   let run: FlowRunPublic;
   try {
-    run = await submitRun(
-      {
-        ...params,
-        idempotencyKey: `flow-run:recording:${id}`,
-        files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
-        onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
-        onStarting: async () => {
-          uploaded = true;
-          await store.setState(id, "uploaded");
-          await params.onStarting?.();
+    if (asked) {
+      // An earlier send never heard Eneo's answer: the same request gets the run it made.
+      const request = asked;
+      await params.onStarting?.(request);
+      run = await withRetry(
+        () => (deps?.startRun ?? startRun)(params.flowId, request.body, request.idempotencyKey, params.signal),
+        params,
+      );
+    } else {
+      const files = await store.readParts(id);
+      if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
+      await store.setState(id, "uploading");
+      run = await submitRun(
+        {
+          ...params,
+          idempotencyKey: `flow-run:recording:${id}`,
+          files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
+          onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
+          onStarting: async (request) => {
+            await store.startSubmission(id, request);
+            asked = request;
+            await params.onStarting?.(request);
+          },
         },
-      },
-      deps,
-    );
+        deps,
+      );
+    }
   } catch (error) {
     // The recording's key already made a run, from another request: it is
     // sent. The copy is left as it is (another tab may have deleted it).
     if (error instanceof ApiError && error.code === "flow_run_idempotency_conflict") {
       throw new Error(ALREADY_SENT);
     }
-    // Eneo refused the run: its uploads may be what it refused, so upload again next time.
-    if (uploaded) await store.clearFileIds(id);
-    await store.setState(id, "stopped");
+    if (!asked) {
+      // Eneo was not asked: what was uploaded stays for the next send.
+      await store.setState(id, "stopped");
+    } else if (error instanceof ApiError && error.status >= 400 && !isRetryable(error)) {
+      // Eneo refused the run, so none was made; its uploads may be what it refused.
+      await store.clearFileIds(id);
+      await store.setState(id, "stopped");
+    }
+    // Otherwise the run may exist: the recording stays "uploaded" with its request.
     throw error;
   }
   // Eneo has the run; tidying up the local copy must not turn it into a failure.

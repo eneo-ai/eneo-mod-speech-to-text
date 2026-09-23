@@ -422,6 +422,27 @@ test("a chosen file becomes the document's input in Ladda upp; an unsent recordi
   assert.equal(sent[1].input?.kind, "recording");
 });
 
+test("a recording whose run request Eneo may already have answered is sent again as it was, whatever the details say now", async () => {
+  const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
+  const { session, store } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  session.setDetail("motesnamn", ""); // a reload started the details over, and emptied a required one
+  const unsent = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startSubmission(unsent.id, { body: { expected_flow_version: 3 }, idempotencyKey: `flow-run:recording:${unsent.id}` });
+  session.adopt((await store.get(unsent.id))!);
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1, "the stored request carries its own details");
+  assert.deepEqual(session.getSnapshot().invalid, []);
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
