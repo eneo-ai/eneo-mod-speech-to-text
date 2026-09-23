@@ -374,6 +374,8 @@ export class FlowSession {
   private invalid: string[] = [];
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
+  // The page went away: a document still being prepared is not sent.
+  private disposed = false;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
   private live: LiveSession | null = null;
@@ -565,6 +567,8 @@ export class FlowSession {
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
     const repeated = input?.kind === "recording" && !!(await this.stored(input.recording.id))?.submission;
+    // The page went away meanwhile: its run code is gone, and nothing may be sent for it.
+    if (this.disposed) return false;
     this.invalid = repeated
       ? []
       : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
@@ -637,6 +641,7 @@ export class FlowSession {
 
   /** The page goes away: what was recorded stays on the device for recovery. */
   dispose(): void {
+    this.disposed = true;
     this.capture.dispose();
     this.closeLive();
   }

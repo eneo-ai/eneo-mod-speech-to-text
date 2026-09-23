@@ -470,6 +470,31 @@ test("after a send whose answer never came, the stored request goes again even w
   assert.deepEqual(session.getSnapshot().invalid, []);
 });
 
+test("a page left while Skapa dokument reads the store sends nothing, and the recording stays", async () => {
+  const { session, store, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({ submit: async () => void (sends += 1) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  const get = store.get.bind(store);
+  let read: (() => void) | null = null;
+  store.get = (recordingId) => new Promise((resolve) => (read = () => resolve(get(recordingId))));
+  const creating = session.createDocument();
+  await until(() => read !== null, "the store read");
+  session.dispose(); // the page goes, and its cleanup runs
+  read!();
+  assert.equal(await creating, false);
+  assert.equal(sends, 0, "no run is asked for");
+  store.get = get;
+  assert.notEqual(await store.get(id), null, "the recording stays on the device");
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
