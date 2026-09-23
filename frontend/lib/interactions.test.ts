@@ -122,3 +122,50 @@ test("transcript: Tab to Spara and activate it saves once; leaving the editor sa
   await again.view.unmount();
   outside.remove();
 });
+
+test("a choice field keeps every option Eneo sends, also one that reads like 'no choice'", async () => {
+  const { createElement } = await import("react");
+  const { DetailsForm } = await import("../components/flow/DetailsForm");
+  const changes: [string, unknown][] = [];
+  const mountWith = (value: string) =>
+    mount(
+      createElement(DetailsForm, {
+        fields: [{ name: "svar", label: "Svar", type: "select", options: ["inget-val", "Ja", "opt:0"], required: false }],
+        details: { svar: value },
+        invalid: [],
+        onChange: (name: string, next: unknown) => changes.push([name, next]),
+        suggestions: [],
+        onNamesAdded: () => {},
+      }),
+    );
+  const open = async (view: Awaited<ReturnType<typeof mountWith>>) => {
+    const trigger = view.container.querySelector<HTMLButtonElement>("#detalj-svar")!;
+    await view.act(async () => {
+      trigger.focus();
+      trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    return [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+  };
+
+  const chosen = await mountWith("inget-val");
+  assert.equal(chosen.container.querySelector("#detalj-svar")?.textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
+  assert.deepEqual((await open(chosen)).map((option) => option.textContent?.trim()), ["Inget val", "inget-val", "Ja", "opt:0"]);
+  await chosen.unmount();
+
+  // Choosing each one hands back its own value, and "Inget val" the empty one.
+  for (const [start, label, expected] of [
+    ["", "opt:0", "opt:0"],
+    ["", "Ja", "Ja"],
+    ["", "inget-val", "inget-val"],
+    ["Ja", "Inget val", ""],
+  ] as const) {
+    const view = await mountWith(start);
+    const option = (await open(view)).find((o) => o.textContent?.trim() === label)!;
+    await view.act(async () => {
+      option.focus();
+      option.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    });
+    assert.deepEqual(changes.at(-1), ["svar", expected], label);
+    await view.unmount();
+  }
+});

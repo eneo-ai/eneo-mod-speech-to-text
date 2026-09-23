@@ -8,8 +8,11 @@ import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import type { FormField } from "@/lib/api";
 import type { DetailValue, FlowSession } from "@/lib/flow-session";
 
-// Radix Select takes no empty value; an unchosen field is "" everywhere else.
-const NONE = "inget-val";
+// Radix Select takes no empty value, so its items carry keys of their own:
+// "none" for no choice and "opt:<n>" for the flow's n-th option, which no
+// option string can be mistaken for.
+const NONE = "none";
+const optionKey = (index: number) => `opt:${index}`;
 
 /** The id a field's control carries, so a problem can move focus to it. */
 export const detailFieldId = (name: string) => `detalj-${name}`;
@@ -24,7 +27,8 @@ export async function createDocument(session: FlowSession): Promise<void> {
 
 function options(field: FormField): string[] {
   return Array.isArray(field.options)
-    ? field.options.filter((option): option is string => typeof option === "string" && option !== "" && option !== NONE)
+    ? // An empty option is the same as no choice, which "Välj"/"Inget val" already offers.
+      field.options.filter((option): option is string => typeof option === "string" && option !== "")
     : [];
 }
 
@@ -81,8 +85,8 @@ export function DetailsForm({
               ) : field.type === "select" && options(field).length > 0 ? (
                 <Select
                   name={field.name}
-                  value={text || NONE}
-                  onValueChange={(value) => onChange(field.name, value === NONE ? "" : value)}
+                  value={text && options(field).includes(text) ? optionKey(options(field).indexOf(text)) : NONE}
+                  onValueChange={(key) => onChange(field.name, key === NONE ? "" : options(field)[Number(key.slice(4))])}
                 >
                   <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={isInvalid || undefined} className="text-[16px]">
                     <SelectValue />
@@ -90,8 +94,8 @@ export function DetailsForm({
                   <SelectContent>
                     {/* An optional choice can be taken back; a required one starts unchosen. */}
                     <SelectItem value={NONE}>{field.required ? "Välj" : "Inget val"}</SelectItem>
-                    {options(field).map((option) => (
-                      <SelectItem key={option} value={option}>
+                    {options(field).map((option, index) => (
+                      <SelectItem key={index} value={optionKey(index)}>
                         {option}
                       </SelectItem>
                     ))}
