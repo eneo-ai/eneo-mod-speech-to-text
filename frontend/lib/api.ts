@@ -781,6 +781,8 @@ export interface FlowGraphNode {
   input_type: string | null;
   output_type: string | null; // "text" | "json" | "docx" | "pdf" | ...
   output_mode: string | null;
+  /** Only on a run-pinned graph (`?run_id=`): the step's status in that run, null before it has one. */
+  run_status?: FlowStepResultStatus | string | null;
 }
 
 export interface FlowGraphEdge {
@@ -797,6 +799,16 @@ export interface FlowGraph {
 
 export async function getFlowGraph(flowId: string) {
   return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/`);
+}
+
+/**
+ * The graph of the version a run pinned, each step annotated with its status
+ * in that run. Unlike the step results it is not audited per read, so it is
+ * what a progress poll reads.
+ */
+export async function getRunGraph(flowId: string, runId: string) {
+  const query = new URLSearchParams({ run_id: runId });
+  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/?${query}`);
 }
 
 /** Returnerar `output_type` för det steg som matar flow_output-edgen (t.ex. "docx", "text"). */

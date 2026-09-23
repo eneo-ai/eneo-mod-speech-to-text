@@ -33,6 +33,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
 import {
   approveReviewCheckpoint,
+  cancelRun,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
   getArtifactSignedUrl,
@@ -41,7 +42,6 @@ import {
   getPublishedFlow,
   getRun,
   getRunContract,
-  getRunStatus,
   getRunSteps,
   inputFileAudioUrl,
   isResumableRunStatus,
@@ -65,7 +65,10 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { onlineStatus } from "@/lib/online-status";
-import { submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
+import { submitRun, type RetryWait } from "@/lib/submit-run";
+import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
+import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
+import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
 import { runErrorView, runResultView } from "@/lib/run-result";
 import {
   buildEditedMapping,
@@ -112,14 +115,16 @@ export default function FlowDetailPage({ params }: PageProps) {
 type RunState =
   | { kind: "idle" }
   | { kind: "submitting" }
-  | { kind: "running"; run: FlowRunPublic; steps: FlowRunStep[] }
+  // An earlier run is being read; its state is not known yet.
+  | { kind: "opening" }
+  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
       run: FlowRunPublic;
       steps: FlowRunStep[];
       checkpoint: FlowRunReviewCheckpointPublic;
     }
-  | { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[] };
+  | { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[]; graph: FlowGraph | null };
 
 type SubmissionState =
   | { kind: "idle" }
@@ -178,7 +183,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   >({});
   const [resumableRuns, setResumableRuns] = useState<FlowRunSummary[]>([]);
 
-  const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
+  const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -224,7 +229,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   useEffect(() => {
     return () => {
-      pollAbortRef.current.aborted = true;
+      followAbortRef.current?.abort();
       submitAbortRef.current?.abort();
     };
   }, []);
@@ -337,9 +342,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setSubmission({ kind: "idle" });
 
       writeRunIdToUrl(initialRun.id);
-      pollAbortRef.current = { aborted: false };
-      setRun({ kind: "running", run: initialRun, steps: [] });
-      pollUntilDone(initialRun.id, pollAbortRef.current);
+      setRun({ kind: "running", run: initialRun, graph: null });
+      void follow(initialRun.id);
     } catch (err) {
       setRunError(friendlyError(err));
       setRun({ kind: "idle" });
@@ -350,71 +354,71 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
   function resumeRun(runId: string) {
-    pollAbortRef.current.aborted = true;
-    pollAbortRef.current = { aborted: false };
     setRunError(null);
     setSignedUrls({});
     setResumableRuns([]);
     writeRunIdToUrl(runId);
-    setRun({
-      kind: "running",
-      run: { id: runId, flow_id: flowId, status: "running" },
-      steps: [],
-    });
-    pollUntilDone(runId, pollAbortRef.current);
+    setRun({ kind: "opening" });
+    void follow(runId);
   }
 
-  async function pollUntilDone(
-    runId: string,
-    abort: { aborted: boolean },
-  ) {
-    const intervalMs = 1500;
-    while (!abort.aborted) {
-      try {
-        // Status-endpointen är gjord för polling; detaljen (med resultat)
-        // audit-loggas per läsning och hämtas därför först när körningen är klar.
-        // Körningen fortsätter i Eneo när anslutningen bryts; följ den igen när den är tillbaka.
-        const [summary, steps] = await withRetry(
-          () =>
-            Promise.all([
-              getRunStatus(flowId, runId),
-              getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
-            ]),
-          { online: onlineStatus },
-        );
-        if (abort.aborted) return;
-        const r: FlowRunPublic = summary;
-        if (isTerminal(r.status)) {
-          const detail = await getRun(flowId, runId).catch(() => r);
-          if (abort.aborted) return;
-          setRun({ kind: "done", run: detail, steps });
-          if (isSuccess(detail.status)) {
-            await fetchSignedUrls(runId, detail.result_files ?? []);
-          }
-          return;
+  /**
+   * Följer körningen via dess status och den körningslåsta grafen tills den
+   * är klar eller väntar på granskning. Stegresultaten (en auditloggad läsning)
+   * och detaljen hämtas en gång, när körningen är klar.
+   */
+  async function follow(runId: string) {
+    followAbortRef.current?.abort();
+    const controller = new AbortController();
+    followAbortRef.current = controller;
+    const { signal } = controller;
+    try {
+      const last = await followRun(flowId, runId, {
+        signal,
+        onSnapshot: ({ run: current, graph: runGraph }) => {
+          if (runOutcome(current.status) || current.status === "awaiting_review") return;
+          setRun({ kind: "running", run: current, graph: runGraph });
+        },
+      });
+      if (!last || signal.aborted) return;
+      if (last.run.status === "awaiting_review") {
+        const checkpoint = await getActiveReviewCheckpoint(flowId, runId).catch(() => null);
+        if (signal.aborted) return;
+        if (checkpoint) {
+          // Pausad tills användaren agerat; granskningsvyn startar följningen igen.
+          setRun({ kind: "awaiting_review", run: last.run as FlowRunPublic, steps: [], checkpoint });
+        } else {
+          // Checkpointen syns strax efter statusen; läs igen om en stund.
+          setTimeout(() => !signal.aborted && void follow(runId), VISIBLE_POLL_MS);
         }
-        if (r.status === "awaiting_review") {
-          // Hämta active checkpoint; om vi inte hittar någon (race) fortsätter vi polla.
-          const cp = await getActiveReviewCheckpoint(flowId, runId).catch(
-            () => null,
-          );
-          if (abort.aborted) return;
-          if (cp) {
-            setRun({ kind: "awaiting_review", run: r, steps, checkpoint: cp });
-            // Vänta tills användaren agerat — review-UI:t avbryter pollingen
-            // via pollAbortRef när knapp trycks. Här stannar vi helt.
-            return;
-          }
-        }
-        setRun({ kind: "running", run: r, steps });
-      } catch (err) {
-        if (abort.aborted) return;
-        setRunError(friendlyError(err));
-        setRun({ kind: "idle" });
         return;
       }
-      await new Promise((res) => setTimeout(res, intervalMs));
+      const [detail, steps] = await Promise.all([
+        getRun(flowId, runId).catch(() => last.run as FlowRunPublic),
+        getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
+      ]);
+      if (signal.aborted) return;
+      setRun({ kind: "done", run: detail, steps, graph: last.graph });
+      if (isSuccess(detail.status)) {
+        await fetchSignedUrls(runId, detail.result_files ?? []);
+      }
+    } catch (err) {
+      if (signal.aborted) return;
+      setRunError(friendlyError(err));
+      setRun({ kind: "idle" });
     }
+  }
+
+  async function onCancelRun(runId: string) {
+    setRunError(null);
+    try {
+      await cancelRun(flowId, runId);
+    } catch (err) {
+      setRunError(friendlyError(err));
+      return;
+    }
+    // Läs den avbrutna körningen direkt i stället för vid nästa läsning.
+    void follow(runId);
   }
 
   async function onApproveAndResume(
@@ -431,10 +435,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
         approved,
         runState.run,
       );
-      // Återstarta polling — runen är nu i "running" igen.
-      pollAbortRef.current = { aborted: false };
-      setRun({ kind: "running", run: resumedRun, steps: runState.steps });
-      pollUntilDone(resumedRun.id, pollAbortRef.current);
+      // Följ körningen igen — den är nu i "running".
+      setRun({ kind: "running", run: resumedRun, graph: null });
+      void follow(resumedRun.id);
     } catch (err) {
       setRunError(friendlyError(err));
     }
@@ -547,7 +550,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       });
       // Run blir cancelled — hämta uppdaterat tillstånd och gå till "done".
       const r = await getRun(flowId, runState.run.id);
-      setRun({ kind: "done", run: r, steps: runState.steps });
+      setRun({ kind: "done", run: r, steps: runState.steps, graph: null });
     } catch (err) {
       setRunError(friendlyError(err));
     }
@@ -572,8 +575,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   function onRunAgain() {
-    pollAbortRef.current.aborted = true;
-    pollAbortRef.current = { aborted: false };
+    followAbortRef.current?.abort();
     setSignedUrls({});
     setRunError(null);
     writeRunIdToUrl(null);
@@ -618,14 +620,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const outputType = graph ? getFlowOutputType(graph) : null;
   const isTextual = isTextualOutput(outputType);
 
-  const phase: "setup" | "recording" | "review" | "notes" =
+  const phase: "setup" | "progress" | "review" | "notes" =
     run.kind === "done"
       ? "notes"
       : run.kind === "awaiting_review"
         ? "review"
-        : run.kind === "running" || run.kind === "submitting"
-          ? "recording"
-          : "setup";
+        : run.kind === "idle"
+          ? "setup"
+          : "progress";
 
   if (phase === "setup") {
     return (
@@ -653,13 +655,34 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  if (phase === "recording" && run.kind !== "idle" && run.kind !== "done") {
+  if (run.kind === "opening") {
+    return (
+      <>
+        <NavBar title={published.name} />
+        <RunOpening />
+      </>
+    );
+  }
+
+  if (run.kind === "running") {
+    const steps = runSteps(run.graph, run.run);
+    return (
+      <>
+        <NavBar title={published.name} />
+        <RunProgress
+          steps={steps}
+          stage={runStage(steps, run.run.status)}
+          error={runError}
+          onCancel={() => onCancelRun(run.run.id)}
+        />
+      </>
+    );
+  }
+
+  if (run.kind === "submitting") {
     return (
       <RecordingView
         published={published}
-        run={run.kind === "running" ? run.run : undefined}
-        steps={run.kind === "running" ? run.steps : []}
-        stepLabels={stepLabels}
         submission={submission}
         onCancelSubmission={onCancelSubmission}
       />
@@ -1068,16 +1091,10 @@ function SetupView({
 
 function RecordingView({
   published,
-  run,
-  steps,
-  stepLabels,
   submission,
   onCancelSubmission,
 }: {
   published: FlowPublished;
-  run?: FlowRunPublic;
-  steps: FlowRunStep[];
-  stepLabels: Record<string, string>;
   submission: SubmissionState;
   onCancelSubmission: () => void;
 }) {
@@ -1110,9 +1127,7 @@ function RecordingView({
               ? "Laddar upp ljudfil…"
               : submission.kind === "starting"
                 ? "Startar flöde…"
-                : run
-                  ? labelForRunStatus(run.status)
-                  : "Skickar…"}
+                : "Skickar…"}
           </div>
         </div>
 
@@ -1128,16 +1143,6 @@ function RecordingView({
           </div>
         )}
 
-        <div className="w-full max-w-[300px] md:max-w-lg lg:max-w-xl paper-card p-4 md:p-6 lg:p-7">
-          <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-primary mb-2 md:mb-3 inline-flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="lyssna-live-pulse h-1 w-1 rounded-full bg-primary"
-            />
-            Pågår
-          </div>
-          <StepProgress steps={steps} stepLabels={stepLabels} />
-        </div>
       </div>
     </>
   );
