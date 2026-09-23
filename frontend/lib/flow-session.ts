@@ -563,7 +563,8 @@ export class FlowSession {
     if (!input && this.modes.length > 0) return false;
     const fields = this.contract?.form_fields ?? [];
     // A run request Eneo may already have answered is sent again as it was, with its own details.
-    const repeated = input?.kind === "recording" && !!input.recording.submission;
+    // The store says whether there is one: an earlier send here may have kept one since.
+    const repeated = input?.kind === "recording" && (await this.storedSubmission(input.recording.id));
     this.invalid = repeated
       ? []
       : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
@@ -637,6 +638,14 @@ export class FlowSession {
   dispose(): void {
     this.capture.dispose();
     this.closeLive();
+  }
+
+  private async storedSubmission(recordingId: string): Promise<boolean> {
+    try {
+      return !!(await (await this.options.openStore()).get(recordingId))?.submission;
+    } catch {
+      return false;
+    }
   }
 
   private inputStep() {

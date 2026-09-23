@@ -443,6 +443,32 @@ test("a recording whose run request Eneo may already have answered is sent again
   assert.deepEqual(session.getSnapshot().invalid, []);
 });
 
+test("after a send whose answer never came, the stored request goes again even when a required detail was cleared since", async () => {
+  const { session, store, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({
+    submit: async (request) => {
+      sends += 1;
+      if (sends > 1 || request.input?.kind !== "recording") return;
+      // The send asked Eneo for the run, and the answer was lost.
+      await store.startSubmission(request.input.recording.id, { body: { expected_flow_version: 3 }, idempotencyKey: "key" });
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), false);
+
+  session.setDetail("motesnamn", "");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sends, 2, "the stored request carries its own details");
+  assert.deepEqual(session.getSnapshot().invalid, []);
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
