@@ -589,6 +589,48 @@ test("a page left while the store opens starts no recorder and leaves no recordi
   assert.equal(await slow.lease(made.id), true, "nothing holds the recording");
 });
 
+test("without Web Locks, another tab cannot send a stopped recording while its own tab continues it", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange }; // no Web Locks
+  const microphone: { wait?: Promise<void> } = {};
+  const { capture, store, recorders } = await setup({ store: await openRecordingStore(device), microphone });
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  const stopped = (await capture.stop())!;
+
+  let grant = () => {};
+  microphone.wait = new Promise((resolve) => (grant = resolve));
+  const continuing = capture.continueStopped(stopped.id); // waits for the microphone
+  const otherTab = await openRecordingStore(device);
+  let asked = 0;
+  await assert.rejects(
+    submitRecording(
+      otherTab,
+      stopped.id,
+      {
+        flowId: "flow-1",
+        contract: { flow_id: "flow-1", published_flow_version: 1 },
+        stepId: "step-audio",
+        inputPayload: {},
+        online: createOnlineStatus(),
+      },
+      {
+        upload: async () => ({ id: "file-a" }),
+        startRun: async () => {
+          asked += 1;
+          return { id: "run-1", flow_id: "flow-1", status: "queued" };
+        },
+      },
+    ),
+    { message: "Inspelningen används i en annan flik." },
+  );
+  grant();
+  await continuing;
+  recorders[1].emit("b");
+  const again = (await capture.stop())!;
+  assert.equal(asked, 0, "Eneo was never asked");
+  assert.deepEqual(await texts(await store.readParts(again.id)), ["a.", "b."], "both parts stay");
+});
+
 test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
   const store = await openRecordingStore({});
   const stream = new FakeStream();

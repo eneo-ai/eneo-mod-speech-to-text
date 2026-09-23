@@ -208,7 +208,9 @@ export function recordingFilename(recording: StoredRecording, index: number): st
  * ends it the moment the tab closes, reloads or crashes, with no timeout to
  * tune, and it cannot look expired while a background tab records (hidden
  * tabs throttle timers to once a minute) or while the user has paused.
- * Without Web Locks (Safari before 15.4) a lease covers only this tab.
+ * Without Web Locks (Safari before 15.4) nothing keeps two tabs apart: only
+ * the tab that made a recording changes it, and any other tab, or the same one
+ * after a reload, can only save it as a file.
  */
 export class RecordingStore {
   private queue: Promise<unknown> = Promise.resolve();
@@ -221,6 +223,8 @@ export class RecordingStore {
   // The leases an operation here (a capture, a send, a delete) is using. A
   // lease no operation uses is kept for audio only this tab has.
   private inUse = new Set<string>();
+  // The recordings this tab made: without Web Locks, the only ones it may change.
+  private made = new Set<string>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -240,6 +244,7 @@ export class RecordingStore {
   /** A new recording, leased by this tab until `release`. */
   async create(init: NewRecording): Promise<StoredRecording> {
     const id = crypto.randomUUID();
+    this.made.add(id);
     await this.lease(id);
     return this.change(async () => {
       const recording: StoredRecording = {
@@ -410,19 +415,17 @@ export class RecordingStore {
     // Kept for audio only this tab has: this tab's next send or delete takes it over.
     if (this.leases.has(id)) return Promise.resolve(true);
     const locks = this.env.locks;
-    // Without Web Locks nothing says whether another tab still captures a
-    // recording in the shared database left "recording" or "paused", so it is
-    // only read (saved as a file) here.
-    const inThisTab = async () => {
-      const stored = this.durable ? await this.get(id).catch(() => null) : null;
-      if (stored && continuable(stored)) {
+    // Without Web Locks nothing keeps two tabs apart, so only a recording this
+    // tab made changes here; any other is only read (saved as a file).
+    const inThisTab = () => {
+      if (!this.made.has(id)) {
         this.inUse.delete(id);
         return false;
       }
       this.leases.set(id, () => {});
       return true;
     };
-    if (!locks) return inThisTab();
+    if (!locks) return Promise.resolve(inThisTab());
     return new Promise((resolve) => {
       locks
         .request(lockName(id), { ifAvailable: true }, (lock) => {
@@ -437,7 +440,7 @@ export class RecordingStore {
           });
         })
         // A browser that refuses Web Locks here still leases within this tab.
-        .catch(() => void inThisTab().then(resolve));
+        .catch(() => resolve(inThisTab()));
     });
   }
 
