@@ -24,15 +24,19 @@ export async function axe(page: Page) {
     violations: result.violations.map((v) => ({
       id: v.id,
       impact: v.impact ?? null,
+      tags: v.tags,
       help: v.help,
       nodes: v.nodes.map((n) => ({ target: n.target.join(" "), summary: n.failureSummary ?? "" })),
     })),
-    incomplete: result.incomplete.map((v) => ({ id: v.id, nodes: v.nodes.length })),
+    incomplete: result.incomplete.map((v) => ({ id: v.id, help: v.help, nodes: v.nodes.length })),
   };
 }
 
-export const serious = <T extends { impact: string | null }>(violations: T[]) =>
-  violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+/** What fails the gate: every WCAG violation whatever its impact, and best practice when serious or critical. */
+export const blocking = <T extends { impact: string | null; tags: string[] }>(violations: T[]) =>
+  violations.filter(
+    (v) => v.tags.some((tag) => /^wcag\d/.test(tag)) || v.impact === "serious" || v.impact === "critical",
+  );
 
 /**
  * Targets below `min` CSS px. A target's area is its box (grown by an

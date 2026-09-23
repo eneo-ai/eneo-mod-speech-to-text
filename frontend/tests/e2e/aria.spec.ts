@@ -1,8 +1,9 @@
 /**
  * What a screen reader is given: ARIA snapshots of the key regions (names,
  * roles, states, live regions), reviewed and kept in aria.spec.ts-snapshots,
- * and the live regions heard during a recording: each status change once,
- * never the ticking timer.
+ * and the text that reaches the live regions during a recording: each status
+ * change once, never the ticking timer. These are DOM text changes; what a
+ * screen reader actually says is on the manual list.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { STATES } from "./screens";
@@ -37,7 +38,7 @@ for (const { state, region, fixedTime } of SNAPSHOTS) {
   });
 }
 
-/** Records what each live region says as it changes (aria-hidden parts left out), in order. */
+/** Records each change of a live region's text (aria-hidden parts left out), in order. */
 function listen() {
   const said: { region: string; text: string }[] = [];
   const last = new WeakMap<Element, string>();
@@ -64,7 +65,7 @@ function listen() {
 const heard = (page: Page) => page.evaluate(() => (window as unknown as { said: { region: string; text: string }[] }).said);
 const CLOCK = /\b\d{1,2}:\d{2}\b/;
 
-test("recording states are announced once and the timer never", async ({ page }, info) => {
+test("recording states reach a live region's text once, and the timer never does", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "one width is enough");
   await page.addInitScript(listen);
   await STATES.find((s) => s.name === "setup")!.go(page, info);
@@ -82,7 +83,7 @@ test("recording states are announced once and the timer never", async ({ page },
   expect(times("Inspelningen är pausad."), "the pause is said once").toBe(1);
 });
 
-test("live text is heard in committed pieces, never the timer", async ({ page }, info) => {
+test("live text reaches the log in committed pieces, and the timer never does", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "one width is enough");
   await page.addInitScript(listen);
   await STATES.find((s) => s.name === "stromma")!.go(page, info);
@@ -95,7 +96,7 @@ test("live text is heard in committed pieces, never the timer", async ({ page },
   expect(log.every((s, i) => i === 0 || s.text.startsWith(log[i - 1].text)), "the log only grows").toBe(true);
 });
 
-test("a lost microphone is said once", async ({ page }, info) => {
+test("a lost microphone reaches a live region's text once", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "one width is enough");
   await page.addInitScript(listen);
   // Keep each microphone stream, so the test can end its track as a lost microphone would.

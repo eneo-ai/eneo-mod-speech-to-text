@@ -1,13 +1,14 @@
 /**
- * Every state at every width and theme: axe (no serious or critical
- * violation), every control named in Chromium's own tree, target sizes
+ * Every state at every width and theme: axe (no WCAG violation at any impact,
+ * no serious or critical best practice; what axe cannot decide is listed as a
+ * manual check), every control named in Chromium's own tree, target sizes
  * (24 px, WCAG 2.5.8; 44 px under pointer: coarse), reflow at 320 px and 200 % zoom (WCAG
  * 1.4.10, and 1.4.12 text spacing), and no endless motion with reduced
  * motion. The measurements go to findings.json in each test's output folder.
  */
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { axe, endlessAnimations, reflow, serious, targetSizes, unnamedControls } from "./checks";
+import { axe, blocking, endlessAnimations, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
 
 // WCAG 1.4.12: the spacing a user may set must not cut anything off.
@@ -40,9 +41,13 @@ for (const state of STATES) {
     writeFileSync(info.outputPath("findings.json"), JSON.stringify(findings, null, 2));
 
     const list = (items: string[]) => items.map((item) => `\n  - ${item}`).join("");
+    // What axe could not decide is a check for a person, listed in the report rather than dropped.
+    for (const item of scan.incomplete) {
+      info.annotations.push({ type: "manual check", description: `${item.id}: ${item.help} (${item.nodes} element(s))` });
+    }
     expect.soft(
-      serious(scan.violations).map((v) => `${v.id} (${v.impact}): ${v.help} → ${v.nodes.map((n) => n.target).join(", ")}`),
-      "axe: serious and critical violations",
+      blocking(scan.violations).map((v) => `${v.id} (${v.impact}): ${v.help} → ${v.nodes.map((n) => n.target).join(", ")}`),
+      "axe: WCAG violations, and serious or critical best practice",
     ).toEqual([]);
     expect.soft(unnamed, "controls without a name in Chromium's accessibility tree (WCAG 4.1.2)").toEqual([]);
     expect.soft(targets, `targets under 24 px (WCAG 2.5.8):${list(targets)}`).toEqual([]);
