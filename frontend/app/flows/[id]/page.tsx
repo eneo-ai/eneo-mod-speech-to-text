@@ -954,7 +954,7 @@ function ReviewView({
 
             <TranscriptPlayer
               ref={playerRef}
-              className="paper-card overflow-hidden lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)]"
+              className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
               segments={transcript.segments}
               speakerReviews={transcript.speakerReviews}
               correctionProblem={transcript.correctionProblem}

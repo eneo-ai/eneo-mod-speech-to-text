@@ -26,7 +26,7 @@ function render(fileCount: number) {
   );
 }
 
-test("the transcript's controls are the app's one player, with speed, skips and the parts", () => {
+test("the transcript's controls are the app's one player, with speed and skips, and each part is its own list", () => {
   const html = render(2);
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelningen"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
@@ -34,8 +34,11 @@ test("the transcript's controls are the app's one player, with speed, skips and 
   assert.match(html, /aria-label="Bakåt 10 sekunder"/);
   assert.match(html, /aria-label="Framåt 10 sekunder"/);
   assert.match(html, /aria-label="Hastighet 1×"/);
-  assert.match(html, /aria-pressed="true"[^>]*>Del 1</);
-  assert.match(html, /aria-pressed="false"[^>]*>Del 2</);
+  assert.match(html, /<h3[^>]*>Del 1<\/h3><ol[^>]*aria-label="Del 1"/);
+  assert.match(html, /<h3[^>]*>Del 2<\/h3><ol[^>]*aria-label="Del 2"/);
+  assert.doesNotMatch(html, /aria-pressed="true"[^>]*>Del/, "no part buttons that repeat the headings");
+  // The player comes after the text it plays, so it can stay docked under it.
+  assert.ok(html.indexOf("Välkomna till mötet.") < html.indexOf("Uppspelning: Inspelningen"));
   assert.equal(html.match(/<audio/g)?.length, 1, "one audio element for every part");
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
@@ -116,9 +119,11 @@ test("turn times read like the player's clock, m:ss, each in its own part's time
     if (reviewEnabled) {
       assert.match(html, /aria-label="Flytta uppspelningen till 0:00"/);
     } else {
-      assert.match(html, /aria-label="Spela från 0:02"[^>]*>0:02</);
-      assert.match(html, /aria-label="Spela från 1:02:05"[^>]*>1:02:05</, "hours only where the time has them");
-      assert.equal(html.match(/aria-label="Spela från 0:00"/g)?.length, 2, "the second part starts over at 0:00");
+      assert.match(html, /aria-label="Spela från 0:02 i del 1"[^>]*>0:02</);
+      assert.match(html, /aria-label="Spela från 1:02:05 i del 2"[^>]*>1:02:05</, "hours only where the time has them");
+      // Each part starts over at 0:00, so the name says which part.
+      assert.match(html, /aria-label="Spela från 0:00 i del 1"/);
+      assert.match(html, /aria-label="Spela från 0:00 i del 2"/);
     }
   }
 });
@@ -162,7 +167,7 @@ test("the review view names no speaker for an unlabelled transcript either", () 
   assert.doesNotMatch(html, /Okänd talare/);
 });
 
-test("the editing hint names no hover or click: a mouse and a touch screen each get their own true line", () => {
+test("no instruction lines: the pencil names its passage and is fully there on a touch screen", () => {
   const html = renderToStaticMarkup(
     createElement(TranscriptPlayer, {
       segments,
@@ -177,11 +182,10 @@ test("the editing hint names no hover or click: a mouse and a touch screen each 
     }),
   );
   const shown = html.replace(/<[^>]+>/g, " ");
-  assert.doesNotMatch(shown, /hovra|klicka/i);
-  assert.match(html, /\[@media\(pointer:coarse\)\]:hidden">Peka på en replik och välj pennan/);
-  assert.match(html, /\[@media\(pointer:coarse\)\]:inline">Tryck på pennan vid en replik/);
-  // The pencil is fully there on a touch screen, not faint.
-  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken"[^>]*class="([^"]*)"/g)].map(([, c]) => c);
-  assert.ok(pencils.length > 0);
-  for (const classes of pencils) assert.match(classes, /\[@media\(pointer:coarse\)\]:opacity-100/);
+  assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
+  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
+  assert.deepEqual(pencils.map(([, time]) => time), ["0:00", "0:02", "0:00"]);
+  for (const [, , classes] of pencils) assert.match(classes, /coarse:opacity-100/);
+  // Each passage is a list item named by who speaks and when.
+  assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
 });

@@ -16,6 +16,8 @@ const badgeVariants = cva(
         destructive:
           "border-transparent bg-destructive text-destructive-foreground shadow",
         outline: "text-foreground",
+        // A passage to check: calm ochre, never the error red.
+        review: "border-ochre bg-transparent font-medium text-ochre",
       },
     },
     defaultVariants: {
