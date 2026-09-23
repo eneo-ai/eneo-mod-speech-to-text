@@ -864,7 +864,15 @@ function LineEditor({
     el.style.height = `${el.scrollHeight}px`;
   }, []);
   return (
-    <div className="my-1">
+    <div
+      className="my-1"
+      // Focus moving between the text and its buttons stays in the editor; leaving it all saves or closes.
+      onBlur={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        if (value !== initial) onCommit(value);
+        else onCancel();
+      }}
+    >
       <textarea
         ref={ref}
         value={value}
@@ -884,7 +892,6 @@ function LineEditor({
             onCancel();
           }
         }}
-        onBlur={() => (value !== initial ? onCommit(value) : onCancel())}
         className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[14px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-mute">

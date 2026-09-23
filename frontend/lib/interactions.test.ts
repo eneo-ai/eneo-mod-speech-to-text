@@ -63,3 +63,62 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   assert.equal(document.activeElement, field);
   await view.unmount();
 });
+
+async function mountEditableTranscript(onChange: (next: unknown) => void) {
+  const { createElement } = await import("react");
+  const { TranscriptPlayer } = await import("../components/TranscriptPlayer");
+  const view = await mount(
+    createElement(TranscriptPlayer, {
+      segments: [
+        { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+        { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Tack, vi börjar." },
+      ],
+      fileCount: 0,
+      audioSrcFor: () => "",
+      speakerNames: {},
+      textFallback: "",
+      reviewEnabled: false,
+      editable: true,
+      corrections: { occurrences: [], speaker_edits: [], revision: null },
+      onCorrectionsChange: onChange,
+    }),
+  );
+  await view.act(async () => button(view.container, "Rätta repliken")!.click());
+  const editor = view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Rätta repliken"]')!;
+  assert.ok(editor, "the line editor is open");
+  await view.act(async () => type(editor, "Välkomna allihop."));
+  return { view, editor };
+}
+
+test("transcript: Tab to Avbryt and activate it leaves the text as it was", async () => {
+  const changes: unknown[] = [];
+  const { view } = await mountEditableTranscript((next) => changes.push(next));
+  const cancel = button(view.container, "Avbryt")!;
+  await view.act(async () => cancel.focus());
+  assert.deepEqual(changes, [], "moving to the editor's own buttons saves nothing");
+  assert.ok(button(view.container, "Avbryt"), "the editor stays open");
+  await view.act(async () => cancel.click());
+  assert.deepEqual(changes, []);
+  assert.equal(view.container.querySelector("textarea"), null, "closed, unchanged");
+  await view.unmount();
+});
+
+test("transcript: Tab to Spara and activate it saves once; leaving the editor saves too", async () => {
+  const saved: unknown[] = [];
+  const { view } = await mountEditableTranscript((next) => saved.push(next));
+  const save = button(view.container, "Spara")!;
+  await view.act(async () => save.focus());
+  assert.deepEqual(saved, []);
+  await view.act(async () => save.click());
+  assert.equal(saved.length, 1);
+  await view.unmount();
+
+  const left: unknown[] = [];
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  const again = await mountEditableTranscript((next) => left.push(next));
+  await again.view.act(async () => outside.focus());
+  assert.equal(left.length, 1, "focus leaving the whole editor saves the edit");
+  await again.view.unmount();
+  outside.remove();
+});
