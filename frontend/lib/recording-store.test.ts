@@ -1,0 +1,287 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
+
+import {
+  openRecordingStore,
+  type NewRecording,
+  type RecordingFile,
+  type StoreEnv,
+} from "./recording-store";
+
+const MB = 1024 * 1024;
+
+const meeting: NewRecording = {
+  flowId: "flow-1",
+  flowName: "Nämndmöte till rapport",
+  stepId: "step-audio",
+  inputMode: "record",
+  mimeType: "audio/webm;codecs=opus",
+};
+
+function clock(start = 1_000) {
+  let now = start;
+  return () => (now += 1_000);
+}
+
+/** A fresh device: its own database, clock and web locks shared by its tabs. */
+function device(extra: Partial<StoreEnv> = {}): StoreEnv {
+  return {
+    indexedDB: new IDBFactory(),
+    keyRange: IDBKeyRange,
+    locks: fakeLocks(),
+    now: clock(),
+    ...extra,
+  };
+}
+
+/** Web Locks as the browser keeps them: held until the callback settles. */
+function fakeLocks(): NonNullable<StoreEnv["locks"]> {
+  const held = new Set<string>();
+  return {
+    async request(name: string, callback: unknown) {
+      held.add(name);
+      try {
+        return await (callback as () => Promise<unknown>)();
+      } finally {
+        held.delete(name);
+      }
+    },
+    async query() {
+      return { held: [...held].map((name) => ({ name, mode: "exclusive" })), pending: [] };
+    },
+  } as unknown as NonNullable<StoreEnv["locks"]>;
+}
+
+const texts = (files: RecordingFile[]) => Promise.all(files.map((file) => file.blob.text()));
+
+test("chunks come back in arrival order, one audio file per part", async () => {
+  const store = await openRecordingStore(device());
+  assert.equal(store.persistent, true);
+  const recording = await store.create(meeting);
+
+  assert.equal(await store.startPart(recording.id), 0);
+  // MediaRecorder events do not wait for the previous write.
+  void store.append(recording.id, 0, new Blob(["hea"]), 2_000);
+  void store.append(recording.id, 0, new Blob(["der+"]), 4_000);
+  await store.append(recording.id, 0, new Blob(["one"]), 5_000);
+  assert.equal(await store.startPart(recording.id), 1);
+  await store.append(recording.id, 1, new Blob(["two"]), 1_500);
+  // A part the tab died in before its first chunk is not a file.
+  assert.equal(await store.startPart(recording.id), 2);
+
+  const parts = await store.readParts(recording.id);
+  assert.deepEqual(await texts(parts), ["header+one", "two"]);
+  assert.deepEqual(
+    parts.map((part) => [part.index, part.blob.type]),
+    [
+      [0, "audio/webm"],
+      [1, "audio/webm"],
+    ],
+  );
+  assert.match(parts[0].filename, /^inspelning-\d{4}-\d{2}-\d{2}-\d{4}-del-1\.webm$/);
+  assert.match(parts[1].filename, /-del-2\.webm$/);
+  const saved = await store.get(recording.id);
+  assert.deepEqual(
+    saved?.parts.map((part) => [part.index, part.chunks, part.bytes, part.durationMs]),
+    [
+      [0, 3, 10, 5_000],
+      [1, 1, 3, 1_500],
+      [2, 0, 0, 0],
+    ],
+  );
+  assert.equal(saved?.durationMs, 6_500);
+  assert.equal(saved?.state, "recording");
+});
+
+test("a recording cut off mid-meeting is listed as unsent when the app is opened again", async () => {
+  const env = device();
+  const tab = await openRecordingStore(env);
+  const recording = await tab.create(meeting);
+  const release = tab.hold(recording.id);
+  await tab.startPart(recording.id);
+  await tab.append(recording.id, 0, new Blob(["audio"]), 2_000);
+  // The tab dies here (reload, crash, expired session): no stop, no state change.
+  release();
+
+  const reopened = await openRecordingStore(env);
+  const unsent = await reopened.listUnsent();
+  assert.deepEqual(
+    unsent.map((r) => [r.id, r.flowName, r.durationMs, r.state]),
+    [[recording.id, "Nämndmöte till rapport", 2_000, "recording"]],
+  );
+  assert.deepEqual(await texts(await reopened.readParts(recording.id)), ["audio"]);
+});
+
+test("unsent recordings are listed newest first, without those being captured or already sent", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  let changes = 0;
+  store.subscribe(() => (changes += 1));
+
+  const older = await store.create(meeting);
+  await store.setState(older.id, "stopped");
+  const capturedHere = await store.create(meeting);
+  const releaseHere = store.hold(capturedHere.id);
+  const capturedInOtherTab = await otherTab.create(meeting);
+  const releaseOtherTab = otherTab.hold(capturedInOtherTab.id);
+  const sent = await store.create(meeting);
+  await store.accept(sent.id, "run-1");
+  const newest = await store.create({ ...meeting, flowName: "Intervju" });
+
+  assert.deepEqual(
+    (await store.listUnsent()).map((r) => r.id),
+    [newest.id, older.id],
+  );
+  assert.ok(changes > 0, "lists showing recordings hear about changes");
+
+  // Without Web Locks (Safari before 15.4) this tab still knows what it captures.
+  const withoutLocks = await openRecordingStore(device({ locks: undefined }));
+  const capturing = await withoutLocks.create(meeting);
+  withoutLocks.hold(capturing.id);
+  assert.deepEqual(await withoutLocks.listUnsent(), []);
+
+  releaseHere();
+  releaseOtherTab();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    (await store.listUnsent()).map((r) => r.id),
+    [newest.id, capturedInOtherTab.id, capturedHere.id, older.id],
+  );
+});
+
+test("the local copy stays through every upload state and is deleted once Eneo accepted the run", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["audio"]), 2_000);
+
+  await store.setState(recording.id, "stopped");
+  await store.setState(recording.id, "uploading");
+  await store.setPartFileId(recording.id, 0, "file-1");
+  await store.setState(recording.id, "uploaded");
+  assert.deepEqual(
+    (await store.listUnsent()).map((r) => [r.state, r.parts[0].fileId]),
+    [["uploaded", "file-1"]],
+  );
+  await store.clearFileIds(recording.id);
+  assert.equal((await store.get(recording.id))?.parts[0].fileId, null);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["audio"]);
+
+  await store.accept(recording.id, "run-1");
+  assert.deepEqual(await store.listUnsent(), []);
+  assert.equal(await store.get(recording.id), null);
+  assert.deepEqual(await store.readParts(recording.id), []);
+  const reopened = await openRecordingStore(env);
+  assert.deepEqual(await reopened.listUnsent(), []);
+  assert.deepEqual(await reopened.readParts(recording.id), []);
+});
+
+test("a sent recording whose local copy cannot be deleted is never offered again", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["audio"]), 2_000);
+
+  const remove = IDBObjectStore.prototype.delete;
+  IDBObjectStore.prototype.delete = function () {
+    throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+  };
+  try {
+    await store.accept(recording.id, "run-1");
+  } finally {
+    IDBObjectStore.prototype.delete = remove;
+  }
+  assert.deepEqual(await store.listUnsent(), []);
+});
+
+test("chunks of a recording being captured are stored even when reading the database fails", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  store.hold(recording.id);
+  await store.startPart(recording.id);
+
+  const get = IDBObjectStore.prototype.get;
+  IDBObjectStore.prototype.get = function () {
+    throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  } finally {
+    IDBObjectStore.prototype.get = get;
+  }
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"]);
+});
+
+test("without IndexedDB the recording lives only in this tab, and the store says so", async () => {
+  const throwsOnOpen = {
+    open() {
+      throw new DOMException("The operation is insecure.", "SecurityError");
+    },
+  } as unknown as IDBFactory;
+  const failsToOpen = {
+    open() {
+      const request = {} as IDBOpenDBRequest;
+      setImmediate(() => request.onerror?.(new Event("error")));
+      return request;
+    },
+  } as unknown as IDBFactory;
+
+  for (const env of [{}, { indexedDB: throwsOnOpen, keyRange: IDBKeyRange }, { indexedDB: failsToOpen, keyRange: IDBKeyRange }]) {
+    const store = await openRecordingStore(env);
+    assert.equal(store.persistent, false);
+    const recording = await store.create(meeting);
+    await store.startPart(recording.id);
+    void store.append(recording.id, 0, new Blob(["a"]), 1_000);
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+    assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"]);
+    assert.equal((await store.listUnsent()).length, 1);
+    assert.equal((await (await openRecordingStore(env)).listUnsent()).length, 0);
+  }
+});
+
+test("a chunk the device refuses stays in this tab, in order, and the store stops claiming persistence", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+
+  assert.equal(store.persistent, false);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+  assert.equal((await store.get(recording.id))?.parts[0].bytes, 3);
+});
+
+test("recording asks for persistent storage and warns when little space is left", async () => {
+  let persistCalls = 0;
+  const storage = (usage: number): NonNullable<StoreEnv["storage"]> => ({
+    persist: async () => {
+      persistCalls += 1;
+      return true;
+    },
+    estimate: async () => ({ usage, quota: 1_000 * MB }),
+  });
+
+  const tight = await openRecordingStore(device({ storage: storage(950 * MB) }));
+  assert.equal(await tight.lowOnSpace(), true);
+  const roomy = await openRecordingStore(device({ storage: storage(100 * MB) }));
+  assert.equal(await roomy.lowOnSpace(), false);
+  assert.equal(await (await openRecordingStore(device())).lowOnSpace(), false);
+
+  await tight.requestPersistence();
+  assert.equal(persistCalls, 1);
+});
