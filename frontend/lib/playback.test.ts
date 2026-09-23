@@ -138,6 +138,36 @@ test("range playback stops at its end, and any other move ends the range", () =>
   assert.equal(media.paused, false, "a seek ended the range");
 });
 
+test("a passage that reaches its part's end stops there, also when it asks for more than the part has", () => {
+  // The speaker review plays a second past a passage, which can pass the part's end.
+  const { playback, media } = started();
+  playback.playRange(0, 3_000, 4_500);
+  playback.onPlay();
+  playTo(playback, media, 4);
+  // The browser at the file's end: paused, then the pause and ended events.
+  media.paused = true;
+  playback.onPause();
+  playback.onEnded();
+  assert.deepEqual([media.src, media.loads.length, media.paused], ["/a", 1, true], "the next part neither loads nor plays");
+  const end = playback.getSnapshot();
+  assert.deepEqual([end.part, end.withinMs, end.playing], [0, 4_000, false]);
+
+  // Ending exactly at the part's end: the range pauses it, and the end event still comes.
+  playback.playRange(0, 3_000, 4_000);
+  playback.onPlay();
+  playTo(playback, media, 4);
+  assert.equal(media.paused, true);
+  playback.onPause();
+  playback.onEnded();
+  assert.deepEqual([media.src, media.paused], ["/a", true], "exactly at its end too");
+
+  playback.toggle();
+  assert.equal(media.src, "/b", "Spela upp goes on with the next part, not this one again");
+  media.duration = 2;
+  playback.onLoadedMetadata();
+  assert.deepEqual([media.currentTime, media.paused], [0, false]);
+});
+
 test("a move right after Pausa stays paused, before the element's pause event has arrived", () => {
   const { playback, media } = started();
   playback.toggle();

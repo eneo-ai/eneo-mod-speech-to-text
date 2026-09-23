@@ -76,7 +76,10 @@ export class Playback {
   private unavailable = false;
   /** Where to go once a part's audio has loaded, and whether to play on. */
   private pending: { withinMs: number; play: boolean } | null = null;
-  /** Range playback: pause when the part reaches this position. */
+  /**
+   * Range playback: pause when the part reaches this position, or its end first. Kept until the next move, as the
+   * part's end can come right after the range's.
+   */
   private stopAt: { part: number; ms: number } | null = null;
   private listeners = new Set<() => void>();
   private snapshot: PlaybackSnapshot;
@@ -170,9 +173,10 @@ export class Playback {
       this.pause();
       return;
     }
-    if (this.atEnd()) {
-      // Played to the end: start over from the first part.
-      this.seek(0, 0, true);
+    if (this.atPartEnd()) {
+      // At a part's end, where a passage can stop: the next part plays; after the last, the recording starts over.
+      const next = this.part + 1;
+      this.seek(next < this.sources.length ? next : 0, 0, true);
       return;
     }
     this.started = true;
@@ -254,18 +258,17 @@ export class Playback {
     const ms = media.currentTime * 1_000;
     if (!this.known(this.part)) this.seen[this.part] = Math.max(this.seen[this.part] ?? 0, ms);
     this.withinMs = this.clampWithin(this.part, ms);
-    if (this.stopAt && this.stopAt.part === this.part && ms >= this.stopAt.ms) {
-      this.stopAt = null;
-      media.pause();
-    }
+    if (this.stopAt && this.stopAt.part === this.part && ms >= this.stopAt.ms) media.pause();
     this.emit();
   };
 
   onEnded = (): void => {
     // A part nothing knew the length of has one now: where it ended.
     if (!this.known(this.part)) this.learned[this.part] = this.withinMs;
+    // A passage stops at its part's end, also when it asked for more.
+    const rangeEnds = this.stopAt?.part === this.part;
     this.stopAt = null;
-    if (this.part < this.sources.length - 1) {
+    if (!rangeEnds && this.part < this.sources.length - 1) {
       this.part += 1;
       this.withinMs = 0;
       this.load(this.part, 0, true);
@@ -334,10 +337,9 @@ export class Playback {
     return this.media ? !this.media.paused : this.playing;
   }
 
-  /** At the end of the last part; a length only seen so far is no end, the audio may go on. */
-  private atEnd(): boolean {
-    const last = this.sources.length - 1;
-    return this.part === last && this.known(last) && this.withinMs >= this.lengths()[last];
+  /** At the end of the current part; a length only seen so far is no end, the audio may go on. */
+  private atPartEnd(): boolean {
+    return this.known(this.part) && this.withinMs >= this.lengths()[this.part];
   }
 
   private known(part: number): boolean {
