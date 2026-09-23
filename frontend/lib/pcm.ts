@@ -41,11 +41,13 @@ export class Pcm16Encoder {
     this.bufferStart = keepFrom;
   }
 
-  /** Hands on a partial last frame. */
+  /** Hands on a partial last frame and forgets input not yet used: the next push starts a new stretch. */
   flush(): void {
-    if (this.filled === 0) return;
-    this.onFrame(this.frame.buffer.slice(0, this.filled * 2));
+    if (this.filled > 0) this.onFrame(this.frame.buffer.slice(0, this.filled * 2));
     this.filled = 0;
+    this.buffer = new Float32Array(0);
+    this.bufferStart = 0;
+    this.produced = 0;
   }
 
   private inputIndex(outputIndex: number): number {
