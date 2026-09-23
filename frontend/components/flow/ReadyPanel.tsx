@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
+import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
+import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import type { Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
@@ -57,6 +59,9 @@ export function ReadyPanel({
   onCreate,
   onContinue,
   onDiscard,
+  earlierRuns,
+  onOpenRun,
+  onMoreRuns,
 }: {
   recording: StoredRecording;
   persistent: boolean | null;
@@ -65,7 +70,13 @@ export function ReadyPanel({
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
   onContinue?: () => void;
   onDiscard: () => void;
+  /** Shown once Eneo turns out to have a run for the recording already. */
+  earlierRuns?: EarlierRunsSnapshot;
+  onOpenRun?: (runId: string) => void;
+  onMoreRuns?: () => void;
 }) {
+  // Eneo already has it: the run is among the earlier runs, and the copy here can go.
+  const sent = problem?.sent === true;
   const sources = usePartSources(recording);
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
@@ -108,6 +119,7 @@ export function ReadyPanel({
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {problem && <ProblemAlert problem={problem} />}
+      {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       <div className="flex flex-col gap-3 sm:flex-row">
         <Button type="button" size="lg" className="h-12 rounded-xl px-6 text-[16px] sm:flex-1" onClick={onCreate}>
@@ -124,9 +136,13 @@ export function ReadyPanel({
 
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button type="button" variant="ghost" className="h-11 w-fit self-center text-ink-soft sm:self-start">
+          <Button
+            type="button"
+            variant={sent ? "outline" : "ghost"}
+            className={sent ? "h-11 w-fit" : "h-11 w-fit self-center text-ink-soft sm:self-start"}
+          >
             <Trash2 data-icon="inline-start" aria-hidden />
-            Ta bort
+            {sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>

@@ -4,7 +4,8 @@
  * as it re-estimates. This writes the recorded duration into Segment > Info
  * of a file's first bytes, which hold the whole header, and leaves the audio
  * after it alone. It keeps the file's TimecodeScale. Anything it does not
- * recognise gives null, and the caller keeps the bytes as they were.
+ * recognise gives null, and the caller keeps the bytes as they were: so does
+ * a header cut off before its Info ends, since one chunk need not hold it all.
  *
  * Not the fix-webm-duration package: that reads and rewrites the whole file
  * (a 5-hour part is about 72 MB), runs only in a browser (FileReader), and
@@ -34,7 +35,8 @@ function fieldLength(first: number | undefined): number {
   return first ? Math.clz32(first) - 23 : 0;
 }
 
-function readElement(bytes: Uint8Array, start: number): Element | null {
+/** The element at `start`, whole before `end` unless its size is unknown; null when cut off or malformed. */
+function readElement(bytes: Uint8Array, start: number, end = bytes.length): Element | null {
   const idLength = fieldLength(bytes[start]);
   const sizeStart = start + idLength;
   const sizeLength = fieldLength(bytes[sizeStart]);
@@ -48,6 +50,7 @@ function readElement(bytes: Uint8Array, start: number): Element | null {
     size = size * 256 + bytes[i];
     unknown &&= bytes[i] === 0xff;
   }
+  if (!unknown && dataStart + size > end) return null;
   return { id, sizeStart, sizeLength, dataStart, size: unknown ? null : size };
 }
 
@@ -66,7 +69,8 @@ function sizeField(value: number, minLength: number): Uint8Array {
 export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Array | null {
   const header = readElement(bytes, 0);
   if (header?.id !== EBML_HEADER || header.size === null) return null;
-  const segment = readElement(bytes, header.dataStart + header.size);
+  // The Segment runs on past these first bytes; only its own id and size need to be here.
+  const segment = readElement(bytes, header.dataStart + header.size, Infinity);
   if (segment?.id !== SEGMENT) return null;
 
   // Info comes before the first Cluster, whose size a recorder leaves unknown.
@@ -84,11 +88,13 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
   let scale = DEFAULT_TIMECODE_SCALE_NS;
   let duration: Element | null = null;
   for (let at = info.dataStart; at < infoEnd; ) {
-    const child = readElement(bytes, at);
+    const child = readElement(bytes, at, infoEnd);
     if (!child || child.size === null) return null;
     if (child.id === TIMECODE_SCALE) {
       scale = 0;
       for (let i = child.dataStart; i < child.dataStart + child.size; i++) scale = scale * 256 + bytes[i];
+      // A player reads an unsigned integer of at most 8 bytes, and a scale of 0 means nothing.
+      if (child.size > 8 || scale === 0) return null;
     }
     if (child.id === DURATION) duration = child;
     at = child.dataStart + child.size;

@@ -656,8 +656,9 @@ function requestMultipartWithProgress<T>(
     ) => {
       clearScheduledTimeout();
       timeoutId = setTimeout(() => {
-        xhr.abort();
+        // Settled first: abort() fires "abort" before it returns, which would read as a cancel.
         rejectOnce(new ApiError(408, formatTimeoutReason(reason), null, reason));
+        xhr.abort();
       }, timeoutMs);
     };
 
@@ -829,11 +830,13 @@ export async function startRun(
   flowId: string,
   body: Json,
   idempotencyKey: string,
+  signal?: AbortSignal,
 ) {
   return request<FlowRunPublic>(`/api/eneo/flows/${flowId}/runs/`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
+    signal,
   });
 }
 
@@ -929,8 +932,8 @@ export async function redispatchRun(flowId: string, runId: string) {
  * out, which Eneo would otherwise list for a space admin or the flow's owner;
  * a module session counts as its signed-in user.
  */
-export async function listOwnRuns(flowId: string, limit = 10) {
-  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: "0" });
+export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { limit?: number; offset?: number } = {}) {
+  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: String(offset) });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );

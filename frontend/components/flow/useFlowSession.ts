@@ -5,7 +5,7 @@ import type { RunContract } from "@/lib/api";
 import { browserStorage, FlowSession } from "@/lib/flow-session";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import type { CaptureDeps } from "@/lib/recording-session";
-import { recordingStore } from "@/lib/recording-store";
+import { recordingStore, sealed } from "@/lib/recording-store";
 import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
 import { pickSupportedAudioMimetype } from "@/lib/upload";
 
@@ -110,7 +110,11 @@ export function useFlowSession({
     snapshot,
     capture,
     persistent: capture.recording ? capture.persistent : persistent,
-    // The ready state offers "Fortsätt spela in" whenever this browser can record for the flow.
-    continueStopped: snapshot.modes.includes("spela-in") ? () => void session.continueStopped() : undefined,
+    // The ready state offers "Fortsätt spela in" when this browser can record for the flow and no
+    // send of the recording has begun (it is sealed from then on).
+    continueStopped:
+      snapshot.modes.includes("spela-in") && !(snapshot.recording && sealed(snapshot.recording))
+        ? () => void session.continueStopped()
+        : undefined,
   };
 }

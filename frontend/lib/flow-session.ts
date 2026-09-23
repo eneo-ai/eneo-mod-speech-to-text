@@ -17,7 +17,7 @@ import {
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
-import { IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
+import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes } from "./format";
 import type { LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
@@ -35,6 +35,8 @@ export interface Problem {
   retry?: boolean;
   /** Offer the way back to the flows. */
   back?: boolean;
+  /** Eneo already has a run for the recording: show the earlier runs, and offer deleting the copy. */
+  sent?: boolean;
 }
 
 export interface ChosenFile {
@@ -57,6 +59,8 @@ export interface SessionHandlers {
   submit: (request: SubmitRequest) => Promise<void>;
   /** Loads the published flow and its run contract again. */
   reloadFlow?: () => Promise<void>;
+  /** Reads this user's earlier runs of the flow again. */
+  refreshEarlierRuns?: () => void;
 }
 
 const FORMAT_NAMES: Record<string, string> = {
@@ -134,9 +138,10 @@ export function submitProblem(
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
 ): Problem {
+  if (error instanceof Error && error.message === ALREADY_SENT) return { title: ALREADY_SENT, sent: true };
   if (error instanceof ApiError) {
     if (error.code === "flow_run_stale_version") {
-      return { title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen." };
+      return { title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen." };
     }
     const kept =
       inputKind === "recording" ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den." : "Välj ett annat flöde.";
@@ -274,8 +279,15 @@ function fittingDetails(
   return next;
 }
 
-function filled(value: DetailValue | undefined): boolean {
-  return Array.isArray(value) ? value.length > 0 : !!value?.trim();
+/**
+ * Whether a detail has a value Eneo takes for a required field: blank text and
+ * an empty list do not, and a number (0 too) or a choice does. Eneo keeps an
+ * optional detail left empty as "" or [].
+ */
+export function filledValue(value: unknown): boolean {
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.some(filledValue);
+  return value != null;
 }
 
 /** The details as the run's input_payload_json; empty ones are left out. */
@@ -286,7 +298,7 @@ export function detailsPayload(
   const payload: Record<string, unknown> = {};
   for (const field of fields) {
     const value = details[field.name];
-    if (filled(value)) payload[field.name] = value;
+    if (filledValue(value)) payload[field.name] = value;
   }
   return payload;
 }
@@ -376,6 +388,9 @@ export class FlowSession {
   private invalid: string[] = [];
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
+  // Bumped when the page goes away: a document prepared before that is not sent. A page set up
+  // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
+  private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
   private live: LiveSession | null = null;
@@ -442,7 +457,7 @@ export class FlowSession {
 
   setDetail(name: string, value: DetailValue): void {
     this.details = { ...this.details, [name]: value };
-    if (filled(value)) this.invalid = this.invalid.filter((field) => field !== name);
+    if (filledValue(value)) this.invalid = this.invalid.filter((field) => field !== name);
     this.emit();
   }
 
@@ -564,9 +579,15 @@ export class FlowSession {
           : null;
     if (!input && this.modes.length > 0) return false;
     const fields = this.contract?.form_fields ?? [];
-    this.invalid = fields
-      .filter((field) => field.required && !filled(this.details[field.name]))
-      .map((field) => field.name);
+    // A run request Eneo may already have answered is sent again as it was, with its own details.
+    // The store says whether there is one: an earlier send here may have kept one since.
+    const generation = this.generation;
+    const repeated = input?.kind === "recording" && !!(await this.stored(input.recording.id))?.submission;
+    // The page went away meanwhile: its run code is gone, and nothing may be sent for it.
+    if (generation !== this.generation) return false;
+    this.invalid = repeated
+      ? []
+      : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
     this.problem = null;
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;
@@ -578,12 +599,15 @@ export class FlowSession {
         speakerLabels: this.snapshot.speakerLabels ?? undefined,
       });
     } catch (error) {
-      // The input and the details stay for the next try.
+      // The input and the details stay for the next try; a recording as the send left it, sealed.
+      if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
       this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null);
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.
         await this.handlers.reloadFlow?.().catch(() => undefined);
       }
+      // The run Eneo has is among the earlier runs, which may have been read before it existed.
+      if (this.problem.sent) this.handlers.refreshEarlierRuns?.();
       this.emit();
       return false;
     }
@@ -635,8 +659,17 @@ export class FlowSession {
 
   /** The page goes away: what was recorded stays on the device for recovery. */
   dispose(): void {
+    this.generation += 1;
     this.capture.dispose();
     this.closeLive();
+  }
+
+  private async stored(recordingId: string): Promise<StoredRecording | null> {
+    try {
+      return await (await this.options.openStore()).get(recordingId);
+    } catch {
+      return null;
+    }
   }
 
   private inputStep() {

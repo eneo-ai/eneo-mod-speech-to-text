@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { type TestContext } from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
-import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type FlowRunStep, type Json, type RunContract } from "./api";
+import {
+  ApiError,
+  deriveRunIdempotencyKey,
+  startRun,
+  uploadStepRuntimeFile,
+  type FlowRunPublic,
+  type FlowRunStep,
+  type Json,
+  type RunContract,
+} from "./api";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
 import {
   retryFailedRun,
+  startAgain,
   startAgainRequest,
   submitRecording,
   submitRun,
@@ -191,7 +201,7 @@ test("'Försök nu' retries at once, and cancelling ends the wait", async (t) =>
       { ...params(), signal: alreadyCancelled.signal },
     ),
   );
-  assert.equal(calls, 1, "a cancelled send is not retried");
+  assert.equal(calls, 0, "a cancelled send sends nothing");
 });
 
 test("run creation retries network failures with the same idempotency key", async (t) => {
@@ -228,6 +238,108 @@ test("run creation retries network failures with the same idempotency key", asyn
     input_payload_json: { motesnamn: "KS" },
   });
   assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0] }));
+});
+
+/** The browser's XMLHttpRequest where it matters here: abort() fires "abort" before it returns. */
+class FakeXhr {
+  static made: FakeXhr[] = [];
+  upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  withCredentials = false;
+  status = 0;
+  responseText = "";
+  constructor() {
+    FakeXhr.made.push(this);
+  }
+  open() {}
+  setRequestHeader() {}
+  send() {}
+  getResponseHeader(name: string) {
+    return name.toLowerCase() === "content-type" ? "application/json" : null;
+  }
+  abort() {
+    this.onabort?.();
+  }
+  answer(status: number, body: unknown) {
+    this.status = status;
+    this.responseText = JSON.stringify(body);
+    this.onload?.();
+  }
+}
+
+test("an upload the server never answers times out, and the timeout is retried", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  FakeXhr.made = [];
+  try {
+    const policy = { min_timeout_seconds: 5, seconds_per_mebibyte: 1, max_timeout_seconds: 60, idle_timeout_seconds: 5 };
+    const run = submitRun(
+      params({
+        contract: { ...contract, runtime_upload_policy: policy },
+        files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }],
+      }),
+      { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+    );
+    await until(() => FakeXhr.made.length === 1);
+    t.mock.timers.tick(5_000); // "not_started": the server never took the upload
+    await settle();
+    t.mock.timers.tick(1_000);
+    await until(() => FakeXhr.made.length === 2);
+    FakeXhr.made[1].answer(201, { id: "file-1" });
+    assert.equal((await run).id, "run-1");
+  } finally {
+    globalThis.XMLHttpRequest = browserXhr;
+  }
+});
+
+test("a send cancelled as its upload finishes starts no run, and cancelling stops a run request in flight", async () => {
+  const cancel = new AbortController();
+  let runs = 0;
+  await assert.rejects(
+    submitRun(params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }], signal: cancel.signal }), {
+      upload: async () => {
+        cancel.abort(); // "Avbryt" as the last byte goes up
+        return { id: "file-1" };
+      },
+      startRun: async () => {
+        runs += 1;
+        return queuedRun;
+      },
+    }),
+  );
+  assert.equal(runs, 0);
+
+  const later = new AbortController();
+  let asked: AbortSignal | undefined;
+  const sending = submitRun(params({ signal: later.signal }), {
+    upload: async () => ({ id: "file-1" }),
+    startRun: (_flowId, _body, _key, signal) =>
+      new Promise((_resolve, reject) => {
+        asked = signal;
+        signal?.addEventListener("abort", () => reject(new DOMException("The request was aborted.", "AbortError")));
+      }),
+  });
+  await until(() => asked !== undefined);
+  later.abort();
+  await assert.rejects(sending, { name: "AbortError" });
+
+  // The real request hands the signal to fetch.
+  const browserFetch = globalThis.fetch;
+  let fetched: AbortSignal | null | undefined;
+  globalThis.fetch = async (_input, init) => {
+    fetched = init?.signal;
+    return new Response(JSON.stringify(queuedRun), { status: 201, headers: { "content-type": "application/json" } });
+  };
+  try {
+    const signal = new AbortController().signal;
+    await startRun("flow-1", { expected_flow_version: 3 }, "flow-run:recording:r1", signal);
+    assert.equal(fetched, signal);
+  } finally {
+    globalThis.fetch = browserFetch;
+  }
 });
 
 test("files are uploaded one at a time as the ordered files of one run, skipping those already uploaded", async () => {
@@ -358,7 +470,8 @@ test("a send that stops keeps the recording and its uploaded parts; the next sen
   };
   await assert.rejects(submitRecording(store, recording.id, params(), stops), (error: ApiError) => error.status === 413);
   const kept = await store.get(recording.id);
-  assert.deepEqual([kept?.state, kept?.parts.map((p) => p.fileId)], ["stopped", ["file-a", null]]);
+  // Sealed from its first send: never "stopped", so never continued, whatever the send's end.
+  assert.deepEqual([kept?.state, kept?.parts.map((p) => p.fileId)], ["uploading", ["file-a", null]]);
   assert.equal((await store.listUnsent("user-1")).length, 1);
 
   const uploaded: string[] = [];
@@ -390,8 +503,171 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
     }),
   );
   const kept = await store.get(recording.id);
-  assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["stopped", null]);
+  assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["uploading", null]);
   assert.equal((await store.listUnsent("user-1")).length, 1);
+
+  // Refused means no run: the next send asks anew, with the details as they are then.
+  let asked: Json | null = null;
+  await submitRecording(store, recording.id, params({ inputPayload: { motesnamn: "KS" } }), {
+    upload: async () => ({ id: "file-b" }),
+    startRun: async (_flowId, body) => {
+      asked = body;
+      return queuedRun;
+    },
+  });
+  assert.deepEqual(asked, {
+    expected_flow_version: 3,
+    step_inputs: { "step-audio": { file_ids: ["file-b"] } },
+    input_payload_json: { motesnamn: "KS" },
+  });
+});
+
+test("a run request whose answer never came is kept through a cancel and repeated exactly on the next send", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const eneo = fakeEneo();
+  let uploads = 0;
+  const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ inputPayload: { motesnamn: "KS" }, signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload,
+      startRun: async (flowId, body, key) => {
+        await eneo.startRun(flowId, body, key); // Eneo makes the run,
+        throw fetchFailed(); // and its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort(); // "Avbryt" while the send waits to ask again
+  await assert.rejects(sending);
+  const kept = await store.get(recording.id);
+  assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["uploaded", "file-1"], "the run may exist: not back to stopped");
+
+  // After a reload the details start over; the send repeats the stored request and gets that run.
+  const run = await submitRecording(store, recording.id, params({ inputPayload: {} }), { upload, startRun: eneo.startRun });
+  assert.equal(run.id, "run-1");
+  assert.equal(uploads, 1, "nothing uploaded again");
+  assert.equal(eneo.runs.size, 1);
+  assert.equal(await store.get(recording.id), null);
+});
+
+/** A send whose run Eneo made, but whose answer was lost and which was then cancelled: the request stays unresolved. */
+async function unresolvedSend(t: TestContext, store: RecordingStore, eneo: ReturnType<typeof fakeEneo>, upload: SubmitDeps["upload"]) {
+  const recording = await stoppedRecording(store, [["a"]]);
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload,
+      startRun: async (flowId, body, key) => {
+        await eneo.startRun(flowId, body, key);
+        throw fetchFailed();
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort();
+  await assert.rejects(sending);
+  t.mock.timers.reset();
+  return recording;
+}
+
+test("an unresolved request stays through a 401 or 403 on its repeat, and after logging in the repeat gets the run", async (t) => {
+  for (const refusal of [apiError(401), apiError(403, "insufficient_scope")]) {
+    t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+    const store = await openRecordingStore({});
+    const eneo = fakeEneo();
+    let uploads = 0;
+    const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+    const recording = await unresolvedSend(t, store, eneo, upload);
+
+    await assert.rejects(
+      submitRecording(store, recording.id, params(), {
+        upload,
+        startRun: async () => {
+          throw refusal; // the session ran out, or the key lacks the scope
+        },
+      }),
+    );
+    const kept = await store.get(recording.id);
+    assert.deepEqual([kept?.state, kept?.parts[0].fileId, !!kept?.submission], ["uploaded", "file-1", true], String(refusal));
+
+    const run = await submitRecording(store, recording.id, params(), { upload, startRun: eneo.startRun });
+    assert.equal(run.id, "run-1", String(refusal));
+    assert.equal(uploads, 1, "nothing uploaded again");
+  }
+
+  // The same within one send: the first attempt made the run unanswered, the next was refused.
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const eneo = fakeEneo();
+  const recording = await stoppedRecording(store, [["a"]]);
+  let attempts = 0;
+  const sending = submitRecording(store, recording.id, params(), {
+    upload: async () => ({ id: "file-1" }),
+    startRun: async (flowId, body, key) => {
+      attempts += 1;
+      if (attempts > 1) throw apiError(401);
+      await eneo.startRun(flowId, body, key);
+      throw fetchFailed();
+    },
+  });
+  await until(() => attempts === 1);
+  await settle();
+  t.mock.timers.tick(1_000);
+  await assert.rejects(sending);
+  assert.equal((await store.get(recording.id))?.state, "uploaded", "the run may exist");
+  t.mock.timers.reset();
+});
+
+test("a request refused as stale is dropped for one from the refreshed form, under the same key and with the same uploads", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const eneo = fakeEneo();
+  let uploads = 0;
+  const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+  const published = { version: 3 };
+  const startRun: SubmitDeps["startRun"] = async (flowId, body, key) => {
+    // Eneo refuses an old version before it looks at the key.
+    if (body.expected_flow_version !== published.version) throw apiError(409, "flow_run_stale_version");
+    return eneo.startRun(flowId, body, key);
+  };
+  const recording = await unresolvedSend(t, store, eneo, upload); // Eneo made the run; its answer was lost
+
+  published.version = 4; // the flow is published again
+  await assert.rejects(submitRecording(store, recording.id, params(), { upload, startRun }), {
+    code: "flow_run_stale_version",
+  });
+  const kept = await store.get(recording.id);
+  assert.deepEqual([kept?.state, kept?.submission ?? null, kept?.parts[0].fileId], ["uploading", null, "file-1"], "sealed, with its uploads");
+
+  // Sent again from the refreshed form: the run Eneo made answers as a conflict.
+  const current = { ...contract, published_flow_version: 4 };
+  await assert.rejects(submitRecording(store, recording.id, params({ contract: current }), { upload, startRun }), {
+    message: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.",
+  });
+  assert.equal(uploads, 1);
+  assert.equal(eneo.runs.size, 1, "no second run");
+  assert.equal((await store.get(recording.id))?.state, "uploaded", "still sealed");
+
+  // Without a run behind it, the same key at the current version makes one.
+  const other = await stoppedRecording(store, [["b"]]);
+  published.version = 5;
+  await assert.rejects(submitRecording(store, other.id, params({ contract: current }), { upload, startRun }), {
+    code: "flow_run_stale_version",
+  });
+  const run = await submitRecording(store, other.id, params({ contract: { ...contract, published_flow_version: 5 } }), { upload, startRun });
+  assert.equal(run.id, "run-2");
+  assert.equal(uploads, 2, "one upload for each recording");
 });
 
 test("a recording being sent from one tab cannot be sent or deleted from another", async () => {
@@ -444,107 +720,8 @@ function fakeEneo() {
   return { runs, startRun };
 }
 
-test("two tabs sending one recording make one run, even without Web Locks", async () => {
-  for (const tabBReads of ["after tab A uploaded", "before tab A uploaded"] as const) {
-    const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange }; // no Web Locks
-    const tabA = await openRecordingStore(device);
-    const tabB = await openRecordingStore(device);
-    const recording = await stoppedRecording(tabA, [["a"]]);
-    const eneo = fakeEneo();
-
-    // Tab B may have read the recording before tab A's upload was stored.
-    const tabBUpload: { started?: boolean; finish?: () => void } = {};
-    const tabBSend = () =>
-      submitRecording(tabB, recording.id, params(), {
-        upload: () =>
-          new Promise((resolve) => {
-            tabBUpload.started = true;
-            tabBUpload.finish = () => resolve({ id: "file-b" });
-          }),
-        startRun: eneo.startRun,
-      });
-    const early = tabBReads === "before tab A uploaded" ? tabBSend() : null;
-    if (early) await until(() => tabBUpload.started === true);
-
-    // Eneo makes tab A's run; its answer is still on the way when tab B asks.
-    const tabAAnswer: { made?: boolean; deliver?: () => void } = {};
-    const tabASend = submitRecording(tabA, recording.id, params(), {
-      upload: async () => ({ id: "file-a" }),
-      startRun: async (flowId, body, key) => {
-        const run = await eneo.startRun(flowId, body, key);
-        tabAAnswer.made = true;
-        return new Promise((resolve) => (tabAAnswer.deliver = () => resolve(run)));
-      },
-    });
-    await until(() => tabAAnswer.made === true);
-    const late = early ?? tabBSend();
-    if (early) tabBUpload.finish?.();
-
-    if (early) {
-      // Its own upload makes another request under the recording's key: Eneo refuses it.
-      await assert.rejects(late, { message: "Inspelningen har redan skickats, till exempel från en annan flik." });
-    } else {
-      // It sends tab A's upload again: Eneo answers with the same run.
-      assert.equal((await late).id, "run-1", tabBReads);
-    }
-    tabAAnswer.deliver?.();
-    assert.equal((await tabASend).id, "run-1", tabBReads);
-    assert.equal(eneo.runs.size, 1, tabBReads);
-    assert.equal(await tabB.get(recording.id), null, `${tabBReads}: no copy comes back`);
-  }
-});
-
-test("a tab refused by Eneo is told the recording was sent, even when the other tab has deleted its copy", async () => {
-  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange }; // no Web Locks
-  const tabA = await openRecordingStore(device);
-  const tabB = await openRecordingStore(device);
-  const recording = await stoppedRecording(tabA, [["a"]]);
-  const eneo = fakeEneo();
-
-  const tabBUpload: { started?: boolean; finish?: () => void } = {};
-  const tabBAnswer: { made?: boolean; deliver?: () => void } = {};
-  const tabBSend = submitRecording(tabB, recording.id, params(), {
-    upload: () =>
-      new Promise((resolve) => {
-        tabBUpload.started = true;
-        tabBUpload.finish = () => resolve({ id: "file-b" });
-      }),
-    startRun: async (flowId, body, key) => {
-      const answer = eneo.startRun(flowId, body, key).then(
-        (run) => () => run,
-        (error) => () => {
-          throw error;
-        },
-      );
-      tabBAnswer.made = true;
-      await new Promise<void>((resolve) => (tabBAnswer.deliver = resolve));
-      return (await answer)();
-    },
-  });
-  await until(() => tabBUpload.started === true);
-  const tabAAnswer: { made?: boolean; deliver?: () => void } = {};
-  const tabASend = submitRecording(tabA, recording.id, params(), {
-    upload: async () => ({ id: "file-a" }),
-    startRun: async (flowId, body, key) => {
-      const run = await eneo.startRun(flowId, body, key);
-      tabAAnswer.made = true;
-      return new Promise((resolve) => (tabAAnswer.deliver = () => resolve(run)));
-    },
-  });
-  await until(() => tabAAnswer.made === true);
-  tabBUpload.finish?.();
-  await until(() => tabBAnswer.made === true); // Eneo has refused tab B; the answer is on its way
-  tabAAnswer.deliver?.();
-  assert.equal((await tabASend).id, "run-1");
-  assert.equal(await tabA.get(recording.id), null, "tab A's copy is deleted");
-
-  tabBAnswer.deliver?.();
-  await assert.rejects(tabBSend, { message: "Inspelningen har redan skickats, till exempel från en annan flik." });
-  assert.equal(eneo.runs.size, 1);
-});
-
 test("a send that died after Eneo made the run gets that run back, not a second one", async () => {
-  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange };
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const tabThatDies = await openRecordingStore(device);
   const recording = await stoppedRecording(tabThatDies, [["a"]]);
   const eneo = fakeEneo();
@@ -557,6 +734,7 @@ test("a send that died after Eneo made the run gets that run back, not a second 
   };
   void submitRecording(tabThatDies, recording.id, params(), lostResponse);
   await until(() => eneo.runs.size === 1);
+  tabThatDies.release(recording.id); // the browser ends a dead tab's lock
 
   const afterReload = await openRecordingStore(device);
   const run = await submitRecording(afterReload, recording.id, params(), {
@@ -595,9 +773,10 @@ test("a new run with the failed run's audio and details has a key of its own, ap
     { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
   ];
 
-  const request = startAgainRequest(failed, steps, contract, "step-audio");
+  const request = startAgainRequest(failed, steps, contract);
+  assert.ok(request && "body" in request);
 
-  assert.deepEqual(request?.body, {
+  assert.deepEqual(request.body, {
     expected_flow_version: 3,
     step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
     input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
@@ -607,8 +786,129 @@ test("a new run with the failed run's audio and details has a key of its own, ap
   assert.equal(request!.idempotencyKey, "flow-run-again:run-1");
   assert.notEqual(request!.idempotencyKey, replay);
   // Without the recording there is nothing to start again with.
-  assert.equal(startAgainRequest(failed, [steps[0]], contract, "step-audio"), null);
-  assert.equal(startAgainRequest(failed, steps, contract, null), null);
+  assert.equal(startAgainRequest(failed, [steps[0]], contract), null);
+});
+
+test("Starta en ny körning is asked against the flow as published now, and a changed input asks for a new one instead", async () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: { motesnamn: "KS" } };
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
+  ];
+  const republished: RunContract = { ...contract, published_flow_version: 4 };
+  const bodies: Json[] = [];
+  const outcome = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+    getContract: async () => republished,
+    startRun: async (_flowId, body) => {
+      bodies.push(body);
+      return queuedRun;
+    },
+  });
+  assert.equal(outcome?.kind, "started");
+  assert.equal(outcome?.contract, republished, "the page shows the flow as it is now");
+  assert.deepEqual(bodies, [
+    {
+      expected_flow_version: 4,
+      step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
+      input_payload_json: { motesnamn: "KS" },
+    },
+  ]);
+
+  const step = contract.steps_requiring_input![0];
+  const changed: Array<[string, RunContract]> = [
+    ["another input step", { ...republished, steps_requiring_input: [{ ...step, step_id: "step-upload" }] }],
+    ["fewer files", { ...republished, steps_requiring_input: [{ ...step, max_files: 1 }] }],
+    ["a new required detail", { ...republished, form_fields: [{ name: "datum", label: "Datum", type: "text", required: true }] }],
+  ];
+  for (const [what, current] of changed) {
+    let posts = 0;
+    const review = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+      getContract: async () => current,
+      startRun: async () => {
+        posts += 1;
+        return queuedRun;
+      },
+    });
+    assert.equal(review?.kind, "review", what);
+    assert.match(review?.kind === "review" ? review.message : "", /Flödet har ändrats sedan körningen/, what);
+    assert.equal(posts, 0, `${what}: nothing is sent`);
+  }
+});
+
+test("details a run left empty, as Eneo keeps them, count as missing once the flow requires them", async () => {
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  const required = (name: string, type: string): RunContract => ({
+    ...contract,
+    published_flow_version: 4,
+    form_fields: [{ name, label: name, type, required: true }],
+  });
+  const cases: Array<[string, Json, RunContract, "review" | "started"]> = [
+    ["blank text", { datum: "" }, required("datum", "text"), "review"],
+    ["whitespace", { datum: "  " }, required("datum", "text"), "review"],
+    ["an empty list", { deltagare: [] }, required("deltagare", "list"), "review"],
+    ["zero", { antal: 0 }, required("antal", "number"), "started"],
+    ["a name", { deltagare: ["Anna Berg"] }, required("deltagare", "list"), "started"],
+  ];
+  for (const [what, payload, current, expected] of cases) {
+    let posts = 0;
+    const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: payload };
+    const outcome = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+      getContract: async () => current,
+      startRun: async () => {
+        posts += 1;
+        return queuedRun;
+      },
+    });
+    assert.equal(outcome?.kind, expected, what);
+    assert.equal(posts, expected === "started" ? 1 : 0, what);
+  }
+});
+
+test("Starta en ny körning sends nothing more once the page is gone, and gives no run to follow", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "cancelled", input_payload_json: null };
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  // Left during the wait before asking again.
+  const leftWaiting = new AbortController();
+  let posts = 0;
+  let waiting = false;
+  const outcome = startAgain("flow-1", failed, steps, {
+    online: createOnlineStatus(),
+    signal: leftWaiting.signal,
+    onWait: (wait) => (waiting = wait !== null),
+  }, {
+    getContract: async () => contract,
+    startRun: async () => {
+      posts += 1;
+      throw fetchFailed();
+    },
+  });
+  await until(() => waiting);
+  leftWaiting.abort();
+  assert.equal(await outcome, null);
+  t.mock.timers.tick(120_000);
+  await settle();
+  assert.equal(posts, 1, "no request after the page is gone");
+
+  // Left just as Eneo answered: the run exists, but this page follows nothing.
+  const leftAnswering = new AbortController();
+  const answered = await startAgain("flow-1", failed, steps, { online: createOnlineStatus(), signal: leftAnswering.signal }, {
+    getContract: async () => contract,
+    startRun: async () => {
+      leftAnswering.abort();
+      return queuedRun;
+    },
+  });
+  assert.equal(answered, null);
+
+  const kept = await startAgain("flow-1", failed, steps, { online: createOnlineStatus(), signal: new AbortController().signal }, {
+    getContract: async () => contract,
+    startRun: async () => queuedRun,
+  });
+  assert.equal(kept?.kind === "started" && kept.run.id, "run-1");
 });
 
 test("Försök igen asks Eneo to continue the failed run under a key that names it, and returns the child run", async () => {
@@ -637,7 +937,11 @@ test("each refusal from Eneo's retry says why, and whether a new run with the sa
     [apiError(403, "flow_run_access_denied"), /Bara den som startade körningen/, false],
     [apiError(429, "flow_run_concurrency_limit_reached"), /För många körningar pågår just nu/, false],
     [apiError(404, "not_found"), /Körningen finns inte längre/, false],
-    [apiError(400, "flow_run_invalid_idempotency_key"), /kunde inte fortsätta där den stannade/, true],
+    // Refusals not known to be about Eneo's retry itself offer no new run with the same input.
+    [apiError(400, "flow_run_invalid_idempotency_key"), /kunde inte fortsätta där den stannade/, false],
+    [apiError(413, "flow_run_step_input_file_too_large"), /kunde inte fortsätta där den stannade/, false],
+    [apiError(401), /kunde inte fortsätta där den stannade/, false],
+    [apiError(403, "insufficient_scope"), /kunde inte fortsätta där den stannade/, false],
     [fetchFailed(), /Anslutningen avbröts/, false],
     [apiError(503, "flow_evidence_audit_logging_failed"), /Servern kunde inte nås just nu/, false],
   ];

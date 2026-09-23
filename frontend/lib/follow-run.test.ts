@@ -186,3 +186,28 @@ test("a finished run whose step results cannot be read fails, never hides the tr
   await assert.rejects(readFinishedRun("flow-1", run("completed")));
   assert.deepEqual(new Map(answered), new Map([[DETAIL, 200], [STEPS, 500]]), "only the steps failed");
 });
+
+test("reads that keep failing stop being retried once the page tears the follow down", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const teardown = new AbortController();
+  let reads = 0;
+  const following = followRun("flow-1", "run-1", {
+    signal: teardown.signal,
+    onSnapshot: () => undefined,
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      getStatus: async () => {
+        reads += 1;
+        throw new TypeError("Failed to fetch");
+      },
+      getGraph: async () => graph(null),
+    },
+  });
+  await until(() => reads === 1);
+  teardown.abort();
+  await following.catch(() => undefined);
+  t.mock.timers.tick(120_000);
+  await settle();
+  assert.equal(reads, 1, "no read after the teardown");
+});

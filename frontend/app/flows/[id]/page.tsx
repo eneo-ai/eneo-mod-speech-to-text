@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, ChevronLeft, Loader2 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -31,11 +31,9 @@ import {
   getRunContract,
   inputFileAudioUrl,
   isReviewCheckpointApproved,
-  listOwnRuns,
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  startRun,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
@@ -46,6 +44,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
+import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
@@ -56,10 +55,10 @@ import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress"
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
+  startAgain,
   startAgainRequest,
   submitRecording,
   submitRun,
-  withRetry,
   type RetryWait,
   type SubmitProgress,
 } from "@/lib/submit-run";
@@ -96,7 +95,8 @@ export default function FlowDetailPage({ params }: PageProps) {
   const { id } = use(params);
   return (
     <AuthGate>
-      <FlowDetail flowId={id} />
+      {/* One page per flow: its session and its earlier runs belong to that flow. */}
+      <FlowDetail key={id} flowId={id} />
     </AuthGate>
   );
 }
@@ -158,7 +158,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
-  const [earlierRuns, setEarlierRuns] = useState<FlowRunSummary[]>([]);
+  // This user's earlier runs of the flow, a page at a time.
+  const [earlier] = useState(() => new EarlierRunsList(flowId));
+  const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
   // Why Eneo would not continue the failed run on screen, and whether a new run is the way on.
   const [retryRefusal, setRetryRefusal] = useState<{ message: string; startAgain: boolean } | null>(null);
 
@@ -242,7 +244,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }, [contract]);
 
   // The session hands the document to the run code below.
-  useEffect(() => session.setHandlers({ submit: sendInput, reloadFlow }));
+  useEffect(() => session.setHandlers({ submit: sendInput, reloadFlow, refreshEarlierRuns: loadEarlierRuns }));
 
   /** A newer published version: the flow and its contract, loaded again in place. */
   async function reloadFlow() {
@@ -296,11 +298,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
-  /** Användarens tio senaste körningar av flödet; listan är en genväg och får saknas. */
+  /** Användarens senaste körningar av flödet, från första sidan; listan är en genväg och får saknas. */
   function loadEarlierRuns() {
-    listOwnRuns(flowId)
-      .then((res) => setEarlierRuns(res.items ?? []))
-      .catch(() => undefined);
+    void earlier.reload();
   }
 
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
@@ -522,7 +522,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function onRetry(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setRetryRefusal(null);
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
     const outcome = await retryFailedRun(flowId, failed.run.id);
+    // The page went away while Eneo answered: nothing is shown or followed from here.
+    if (abortController.signal.aborted) return;
+    submitAbortRef.current = null;
     if (outcome.kind === "refused") {
       setRetryRefusal({ message: outcome.message, startAgain: outcome.startAgain });
       return;
@@ -533,25 +538,44 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
-  async function onStartAgain(
-    failed: Extract<RunState, { kind: "done" }>,
-    request: { body: Json; idempotencyKey: string },
-  ) {
+  async function onStartAgain(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setRun({ kind: "submitting" });
     setSubmission({ kind: "starting", wait: null });
+    // "Avbryt" and leaving the page end it: nothing more is sent, shown or followed.
+    const abortController = new AbortController();
+    submitAbortRef.current = abortController;
     try {
-      const next = await withRetry(
-        () => startRun(flowId, request.body, request.idempotencyKey),
-        { online: onlineStatus, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
-      );
+      const outcome = await startAgain(flowId, failed.run, failed.steps, {
+        online: onlineStatus,
+        signal: abortController.signal,
+        onWait: (wait) => setSubmission({ kind: "starting", wait }),
+      });
+      submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
+      // Avbryt goes back to the failed run; after the page left, no URL change and no following.
+      if (!outcome) {
+        setRun(failed);
+        return;
+      }
+      // The flow as it is published now.
+      setContract(outcome.contract);
+      if (outcome.kind === "review") {
+        // Back to the details and a new recording or file, against the flow as it is now.
+        setRetryRefusal(null);
+        writeRunIdToUrl(null);
+        setRunError(outcome.message);
+        setRun({ kind: "idle" });
+        loadEarlierRuns();
+        return;
+      }
       // A refusal that led here stays on the failure view until a new run exists.
       setRetryRefusal(null);
-      writeRunIdToUrl(next.id);
-      setRun({ kind: "running", run: next, graph: null });
-      void follow(next.id);
+      writeRunIdToUrl(outcome.run.id);
+      setRun({ kind: "running", run: outcome.run, graph: null });
+      void follow(outcome.run.id);
     } catch (err) {
+      submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
       setRunError(friendlyError(err));
       setRun(failed);
@@ -578,6 +602,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         notice={runError}
         earlierRuns={earlierRuns}
         onOpenRun={resumeRun}
+        onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
       />
     );
@@ -673,9 +698,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // The same audio cannot help when the input itself has to change.
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";
-  const startAgain = sameInputHelps
-    ? startAgainRequest(run.run, run.steps, contract, inputStep?.step_id ?? null)
-    : null;
+  const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
   return (
     <>
       {topBar}
@@ -691,7 +714,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         error={runError}
         refusal={retryRefusal}
         onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-        onStartAgain={startAgain ? () => onStartAgain(run, startAgain) : undefined}
+        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
       />
     </>
   );

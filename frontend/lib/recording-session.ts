@@ -18,6 +18,7 @@ import {
   continuable,
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
+  sealed,
   type NewRecording,
   type RecordingStore,
   type StoredRecording,
@@ -96,10 +97,6 @@ type EndReason = "stop" | "interrupt" | "leave";
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 
-// A send marks a recording uploading, then uploaded while Eneo makes the run, then submitted.
-const sendBegun = (recording: StoredRecording) =>
-  recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
-
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
 
@@ -157,7 +154,7 @@ export class RecordingCapture {
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
   private starting = false;
-  // Bumped when the page goes away; a start begun before that must not record.
+  // Bumped by Stoppa and when the page goes away: a start begun before must not record.
   private generation = 0;
   private limits: CaptureLimits = {};
   // Files the recording has, the running part included.
@@ -201,20 +198,22 @@ export class RecordingCapture {
       const recording = (created = await store.create(init));
       this.release = () => store.release(recording.id);
       void store.requestPersistence();
+      const lowSpace = await store.lowOnSpace();
+      if (this.left(generation)) {
+        // Nothing was recorded: do not leave an empty recording to recover.
+        await store.discard(recording.id).catch(() => undefined);
+        this.finish();
+        return;
+      }
       this.prepare(limits, 0, 0);
-      this.set({
-        recording,
-        recordedBytes: 0,
-        lowSpace: await store.lowOnSpace(),
-        persistent: store.persistent,
-      });
+      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent });
       this.record(stream);
       await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
     } catch (error) {
-      this.finish();
       // Nothing was recorded: do not leave an empty recording to recover.
-      if (created) await this.store?.remove(created.id).catch(() => undefined);
+      if (created) await this.store?.discard(created.id).catch(() => undefined);
+      this.finish();
       this.set({ status: "idle", recording: null, error: microphoneError(error) });
     } finally {
       this.starting = false;
@@ -235,7 +234,7 @@ export class RecordingCapture {
    * in a new part of it, as `adopt()` does, until a send of it has begun.
    */
   continueStopped(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
-    return this.takeOver(recordingId, limits, (found) => (sendBegun(found) ? SEND_BEGUN : null));
+    return this.takeOver(recordingId, limits, (found) => (sealed(found) ? SEND_BEGUN : null));
   }
 
   /** "Fortsätt spela in" after an interruption: a new part of the same recording. */
@@ -277,6 +276,7 @@ export class RecordingCapture {
   }
 
   async stop(): Promise<StoredRecording | null> {
+    this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
     if (!recording || !store || status === "idle" || status === "stopped") return null;
@@ -341,6 +341,7 @@ export class RecordingCapture {
       const stream = await this.openMicrophone().catch((error) => {
         throw new Refusal(microphoneError(error));
       });
+      const lowSpace = await store.lowOnSpace();
       if (this.left(generation)) {
         this.finish();
         return;
@@ -349,7 +350,7 @@ export class RecordingCapture {
       this.set({
         recording: found,
         recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
-        lowSpace: await store.lowOnSpace(),
+        lowSpace,
         persistent: store.persistent,
       });
       this.record(stream);

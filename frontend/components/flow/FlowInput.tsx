@@ -36,7 +36,8 @@ import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UnsentRecordings } from "@/components/UnsentRecordings";
-import { speakerMappingReviewSteps, type FlowPublished, type FlowRunSummary, type RunContract } from "@/lib/api";
+import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
+import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
@@ -89,6 +90,7 @@ export function FlowInput({
   notice,
   earlierRuns,
   onOpenRun,
+  onMoreRuns,
   unsentRecordings,
 }: {
   published: FlowPublished;
@@ -97,8 +99,9 @@ export function FlowInput({
   ownerId: string;
   /** A problem from following an earlier run. */
   notice: string | null;
-  earlierRuns: readonly FlowRunSummary[];
+  earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
+  onMoreRuns: () => void;
   unsentRecordings: StoredRecording[];
 }) {
   const { session, snapshot } = input;
@@ -254,6 +257,7 @@ export function FlowInput({
               dock={phone ? dockSlot : null}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
+              onMoreRuns={onMoreRuns}
               unsentRecordings={unsentRecordings}
             />
           ) : group === "ready" && snapshot.recording ? (
@@ -264,6 +268,9 @@ export function FlowInput({
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}
+              earlierRuns={earlierRuns}
+              onOpenRun={onOpenRun}
+              onMoreRuns={onMoreRuns}
             />
           ) : (
             <CaptureWorkspace input={input} />
@@ -328,14 +335,16 @@ function SetupWorkspace({
   dock,
   earlierRuns,
   onOpenRun,
+  onMoreRuns,
   unsentRecordings,
 }: {
   contract: RunContract;
   input: Session;
   /** On a phone: the page's bottom edge, where the primary action docks. */
   dock: HTMLElement | null;
-  earlierRuns: readonly FlowRunSummary[];
+  earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
+  onMoreRuns: () => void;
   unsentRecordings: StoredRecording[];
 }) {
   const { session, snapshot, persistent } = input;
@@ -454,7 +463,7 @@ function SetupWorkspace({
           </div>,
         )}
 
-      <EarlierRuns runs={earlierRuns} onOpen={onOpenRun} className="pt-4" />
+      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className="pt-4" />
     </div>
   );
 }

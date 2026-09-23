@@ -158,21 +158,37 @@ test("an active lease hides a recording from recovery and keeps other tabs from 
   assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
-test("without Web Locks, a tab never writes back a recording another tab has deleted", async () => {
-  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, now: clock() };
-  const tabA = await openRecordingStore(device);
-  const tabB = await openRecordingStore(device);
-  const recording = await tabA.create(meeting);
-  tabA.release(recording.id);
-
-  assert.equal(await tabB.lease(recording.id), true, "only this tab knows its lease");
-  await tabB.setState(recording.id, "uploading");
-  await tabA.remove(recording.id); // sent from tab A meanwhile
-  await assert.rejects(tabB.setPartFileId(recording.id, 0, "file-b"), {
-    message: "Inspelningen finns inte längre på enheten.",
-  });
-  assert.equal(await tabA.get(recording.id), null);
+test("without Web Locks, only the tab that made a recording sends, continues or deletes it; other tabs save it as a file", async () => {
+  // No Web Locks at all, or a browser that refuses them here.
+  const refusing = {
+    request: async () => {
+      throw new DOMException("Web Locks are not allowed here", "SecurityError");
+    },
+    query: async () => ({ held: [], pending: [] }),
+  } as unknown as StoreEnv["locks"];
+  for (const locks of [undefined, refusing]) await onlyTheMakerChangesIt(device({ locks }));
 });
+
+async function onlyTheMakerChangesIt(env: StoreEnv) {
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await recordingTab.setState(recording.id, "stopped");
+  recordingTab.release(recording.id); // Stoppa: the ready state in the tab that made it
+
+  assert.equal(await otherTab.lease(recording.id), false, "nothing keeps the two tabs apart");
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+  assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["a"], "Spara som fil still reads it");
+  assert.equal(await recordingTab.lease(recording.id), true, "the tab that made it sends or continues it");
+  recordingTab.release(recording.id);
+
+  // After a reload it is recovered, as a file only.
+  const reloaded = await openRecordingStore(env);
+  assert.deepEqual((await reloaded.listUnsent("user-1")).map((r) => r.id), [recording.id]);
+  assert.equal(await reloaded.lease(recording.id), false);
+}
 
 test("a shared device offers each person only their own recordings, and 'Ta bort' removes one for good", async () => {
   const env = device();
@@ -310,6 +326,46 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal(store.persistent, false);
   assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
   assert.equal((await store.get(recording.id))?.parts[0].bytes, 3);
+});
+
+test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["prefix"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await recordingTab.append(recording.id, 0, new Blob(["suffix"]), 2_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  await recordingTab.setState(recording.id, "stopped");
+  recordingTab.release(recording.id); // Stoppa
+  await settle();
+
+  assert.equal(await otherTab.lease(recording.id), false, "no other tab sends or deletes it without the suffix");
+  assert.deepEqual(await otherTab.listUnsent("user-1"), []);
+  assert.deepEqual((await recordingTab.listUnsent("user-1")).map((r) => r.id), [recording.id], "this tab still offers it");
+
+  // This tab's send takes it over, and sends all of it.
+  assert.equal(await recordingTab.lease(recording.id), true);
+  assert.equal(await recordingTab.lease(recording.id), false, "one operation at a time");
+  assert.deepEqual(await texts(await recordingTab.readParts(recording.id)), ["prefixsuffix"]);
+  recordingTab.release(recording.id); // that send failed: the suffix is still only here
+  await settle();
+  assert.equal(await otherTab.lease(recording.id), false);
+
+  assert.equal(await recordingTab.lease(recording.id), true);
+  await recordingTab.accept(recording.id, "run-1");
+  recordingTab.release(recording.id);
+  await settle();
+  assert.equal(await otherTab.lease(recording.id), true, "sent: nothing is held any more");
 });
 
 test("recording asks for persistent storage and warns when little space is left", async () => {

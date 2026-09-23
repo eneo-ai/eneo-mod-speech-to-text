@@ -3,6 +3,8 @@ import test from "node:test";
 
 import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
+import { createOnlineStatus } from "./online-status";
+import { submitRecording } from "./submit-run";
 import type { LiveSnapshot } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
 import {
@@ -422,6 +424,173 @@ test("a chosen file becomes the document's input in Ladda upp; an unsent recordi
   assert.equal(sent[1].input?.kind, "recording");
 });
 
+test("a recording whose run request Eneo may already have answered is sent again as it was, whatever the details say now", async () => {
+  const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
+  const { session, store } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  session.setDetail("motesnamn", ""); // a reload started the details over, and emptied a required one
+  const unsent = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startSubmission(unsent.id, { body: { expected_flow_version: 3 }, idempotencyKey: `flow-run:recording:${unsent.id}` });
+  session.adopt((await store.get(unsent.id))!);
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1, "the stored request carries its own details");
+  assert.deepEqual(session.getSnapshot().invalid, []);
+});
+
+test("after a send whose answer never came, the stored request goes again even when a required detail was cleared since", async () => {
+  const { session, store, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({
+    submit: async (request) => {
+      sends += 1;
+      if (sends > 1 || request.input?.kind !== "recording") return;
+      // The send asked Eneo for the run, and the answer was lost.
+      await store.startSubmission(request.input.recording.id, { body: { expected_flow_version: 3 }, idempotencyKey: "key" });
+      throw new TypeError("Failed to fetch");
+    },
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), false);
+  assert.equal(session.getSnapshot().recording?.state, "uploaded", "shown as sealed, so no Fortsätt spela in");
+
+  session.setDetail("motesnamn", "");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sends, 2, "the stored request carries its own details");
+  assert.deepEqual(session.getSnapshot().invalid, []);
+});
+
+test("a page left while Skapa dokument reads the store sends nothing, and the recording stays", async () => {
+  const { session, store, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({ submit: async () => void (sends += 1) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  const get = store.get.bind(store);
+  let read: (() => void) | null = null;
+  store.get = (recordingId) => new Promise((resolve) => (read = () => resolve(get(recordingId))));
+  const creating = session.createDocument();
+  await until(() => read !== null, "the store read");
+  session.dispose(); // the page goes, and its cleanup runs
+  read!();
+  assert.equal(await creating, false);
+  assert.equal(sends, 0, "no run is asked for");
+  store.get = get;
+  assert.notEqual(await store.get(id), null, "the recording stays on the device");
+});
+
+test("republished with a new required detail: the form asks for it before Eneo is asked again, then one request goes under the key", async () => {
+  const { session, store, recorders } = await setup();
+  let contract = audioContract();
+  const requests: Array<{ body: Record<string, unknown>; key: string }> = [];
+  let uploads = 0;
+  session.setHandlers({
+    submit: async ({ input, payload }) => {
+      if (input?.kind !== "recording") return;
+      await submitRecording(
+        store,
+        input.recording.id,
+        { flowId: "flow-1", contract, stepId: "step-audio", inputPayload: payload, online: createOnlineStatus() },
+        {
+          upload: async () => ({ id: `file-${++uploads}` }),
+          startRun: async (_flowId, body, key) => {
+            requests.push({ body, key });
+            // Published again with a required "datum": the old version is refused.
+            if (body.expected_flow_version !== 4) throw new ApiError(409, "stale", null, "flow_run_stale_version");
+            return { id: "run-1", flow_id: "flow-1", status: "queued" };
+          },
+        },
+      );
+    },
+    reloadFlow: async () => {
+      contract = audioContract({
+        published_flow_version: 4,
+        form_fields: [...(audioContract().form_fields ?? []), { name: "datum", label: "Datum", type: "text", required: true }],
+      });
+      session.setContract(contract);
+    },
+  });
+  session.setContract(contract);
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const { id } = session.getSnapshot().recording!;
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(
+    session.getSnapshot().problem?.title,
+    "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
+  );
+  assert.equal(await session.createDocument(), false, "the refreshed form asks for the new detail");
+  assert.deepEqual(session.getSnapshot().invalid, ["datum"]);
+  assert.equal(requests.length, 1, "Eneo is not asked meanwhile");
+
+  session.setDetail("datum", "2026-09-23");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].key, `flow-run:recording:${id}`, "the same key");
+  assert.equal(requests[1].body.expected_flow_version, 4);
+  assert.equal(uploads, 1, "the audio went up once");
+});
+
+test("after a cleanup the page set up again (React Strict Mode) still makes documents", async () => {
+  const { session, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({ submit: async () => void (sends += 1) });
+  session.setContract(audioContract());
+  session.dispose(); // Strict Mode runs the effect's cleanup once, then sets it up again with the same session
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sends, 1);
+});
+
+test("a recording Eneo already has says so, has the earlier runs read again, and stays to be deleted", async () => {
+  const { session, recorders } = await setup();
+  let refreshed = 0;
+  session.setHandlers({
+    submit: async () => {
+      throw new Error("Inspelningen har redan skickats. Körningen finns under Tidigare körningar.");
+    },
+    refreshEarlierRuns: () => void (refreshed += 1),
+  });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  assert.equal(await session.createDocument(), false);
+  const { phase, problem } = session.getSnapshot();
+  assert.equal(phase, "ready", "the recording stays, to be deleted from the device");
+  assert.deepEqual(problem, { title: "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.", sent: true });
+  assert.equal(refreshed, 1, "the earlier runs are read again, with the run Eneo has");
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
@@ -674,7 +843,7 @@ test("a stale version refreshes the flow in place and keeps the audio and the de
   assert.equal(reloads, 1);
   const after = session.getSnapshot();
   assert.deepEqual(after.problem, {
-    title: "Flödet har uppdaterats. Kontrollera uppgifterna och skapa dokumentet igen.",
+    title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
   });
   assert.equal(after.phase, "ready");
   assert.equal(after.recording?.id, id);

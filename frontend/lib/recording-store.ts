@@ -8,6 +8,7 @@
  * in this tab.
  */
 
+import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withWebmDuration } from "./webm-duration";
 
@@ -45,6 +46,16 @@ export interface StoredRecording {
   state: RecordingState;
   parts: RecordingPart[];
   runId: string | null;
+  /**
+   * The run request as Eneo was asked for it, kept until Eneo answers: a send
+   * that never heard back repeats exactly this, and Eneo returns the run it made.
+   */
+  submission?: RunRequest | null;
+}
+
+export interface RunRequest {
+  body: Json;
+  idempotencyKey: string;
 }
 
 export type NewRecording = Pick<
@@ -175,6 +186,17 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
+/** Eneo has a run under the recording's key: sent, from this send or an earlier one. */
+export const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
+
+/**
+ * Sealed from its first send on: the audio sent is the audio kept, so no part
+ * is added and no send's end makes it "stopped" again. A send marks it
+ * uploading, then uploaded while Eneo is asked for the run, then submitted.
+ */
+export function sealed(recording: StoredRecording): boolean {
+  return recording.state === "uploading" || recording.state === "uploaded" || recording.state === "submitted";
+}
 
 /** Its capture ended without a stop (a reload, a killed tab): "Fortsätt spela in" adds a part. */
 export function continuable(recording: StoredRecording): boolean {
@@ -197,7 +219,9 @@ export function recordingFilename(recording: StoredRecording, index: number): st
  * ends it the moment the tab closes, reloads or crashes, with no timeout to
  * tune, and it cannot look expired while a background tab records (hidden
  * tabs throttle timers to once a minute) or while the user has paused.
- * Without Web Locks (Safari before 15.4) a lease covers only this tab.
+ * Without Web Locks (Safari before 15.4) nothing keeps two tabs apart: only
+ * the tab that made a recording changes it, and any other tab, or the same one
+ * after a reload, can only save it as a file.
  */
 export class RecordingStore {
   private queue: Promise<unknown> = Promise.resolve();
@@ -207,6 +231,11 @@ export class RecordingStore {
   // Locks another tab may have changed or deleted a recording: the copy
   // serves only when the device cannot read.
   private leases = new Map<string, () => void>();
+  // The leases an operation here (a capture, a send, a delete) is using. A
+  // lease no operation uses is kept for audio only this tab has.
+  private inUse = new Set<string>();
+  // The recordings this tab made: without Web Locks, the only ones it may change.
+  private made = new Set<string>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -226,6 +255,7 @@ export class RecordingStore {
   /** A new recording, leased by this tab until `release`. */
   async create(init: NewRecording): Promise<StoredRecording> {
     const id = crypto.randomUUID();
+    this.made.add(id);
     await this.lease(id);
     return this.change(async () => {
       const recording: StoredRecording = {
@@ -293,10 +323,22 @@ export class RecordingStore {
     }));
   }
 
+  /** Eneo is about to be asked for the run: the request is kept first, and the send is "uploaded". */
+  startSubmission(id: string, request: RunRequest): Promise<void> {
+    return this.update(id, (recording) => ({ ...recording, state: "uploaded", submission: request }));
+  }
+
+  /** Drops a run request that can never be answered; the uploads stay, and the recording sealed. */
+  forgetSubmission(id: string): Promise<void> {
+    return this.update(id, (recording) => ({ ...recording, state: "uploading", submission: null }));
+  }
+
+  /** Forgets the uploads, and the run request made of them. */
   clearFileIds(id: string): Promise<void> {
     return this.update(id, (recording) => ({
       ...recording,
       parts: recording.parts.map((p) => ({ ...p, fileId: null })),
+      submission: null,
     }));
   }
 
@@ -308,14 +350,15 @@ export class RecordingStore {
   listUnsent(ownerId: string): Promise<StoredRecording[]> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
-      const heldElsewhere = new Set(locks?.held?.map((lock) => lock.name) ?? []);
+      const held = new Set(locks?.held?.map((lock) => lock.name) ?? []);
       return (await this.all())
         .filter(
           (r) =>
             r.ownerId === ownerId &&
             r.state !== "submitted" &&
-            !this.leases.has(r.id) &&
-            !heldElsewhere.has(lockName(r.id)),
+            !this.inUse.has(r.id) &&
+            // A lock this tab keeps is its own; any other held lock is another tab's.
+            (this.leases.has(r.id) || !held.has(lockName(r.id))),
         )
         .sort((a, b) => b.startedAt - a.startedAt);
     });
@@ -361,6 +404,11 @@ export class RecordingStore {
     });
   }
 
+  /** Deletes a recording whose lease the caller holds: a start that recorded nothing. */
+  discard(id: string): Promise<void> {
+    return this.change(() => this.delete(id));
+  }
+
   /** The user deleted the recording; refused while another tab uses it. */
   async remove(id: string): Promise<void> {
     if (!(await this.lease(id))) throw new Error(IN_USE_ELSEWHERE);
@@ -371,11 +419,20 @@ export class RecordingStore {
     }
   }
 
-  /** Takes the recording's lease for this tab; false while any tab holds it. */
+  /** Takes the recording's lease for an operation in this tab; false while another operation or tab holds it. */
   lease(id: string): Promise<boolean> {
-    if (this.leases.has(id)) return Promise.resolve(false);
+    if (this.inUse.has(id)) return Promise.resolve(false);
+    this.inUse.add(id);
+    // Kept for audio only this tab has: this tab's next send or delete takes it over.
+    if (this.leases.has(id)) return Promise.resolve(true);
     const locks = this.env.locks;
+    // Without Web Locks nothing keeps two tabs apart, so only a recording this
+    // tab made changes here; any other is only read (saved as a file).
     const inThisTab = () => {
+      if (!this.made.has(id)) {
+        this.inUse.delete(id);
+        return false;
+      }
       this.leases.set(id, () => {});
       return true;
     };
@@ -383,7 +440,10 @@ export class RecordingStore {
     return new Promise((resolve) => {
       locks
         .request(lockName(id), { ifAvailable: true }, (lock) => {
-          if (!lock) return resolve(false);
+          if (!lock) {
+            this.inUse.delete(id);
+            return resolve(false);
+          }
           // Held until `release` settles this promise.
           return new Promise<void>((end) => {
             this.leases.set(id, end);
@@ -396,11 +456,13 @@ export class RecordingStore {
   }
 
   release(id: string): void {
-    const end = this.leases.get(id);
-    if (!end) return;
-    this.leases.delete(id);
-    this.live.delete(id);
-    end();
+    if (!this.inUse.delete(id)) return;
+    // Part of its audio is only in this tab: no other tab may send or delete it without that part.
+    if (!this.overflowed.has(id)) {
+      this.leases.get(id)?.();
+      this.leases.delete(id);
+      this.live.delete(id);
+    }
     this.notify();
   }
 
