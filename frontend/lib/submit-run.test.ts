@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
-import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type FlowRunStep, type Json, type RunContract } from "./api";
+import {
+  ApiError,
+  deriveRunIdempotencyKey,
+  uploadStepRuntimeFile,
+  type FlowRunPublic,
+  type FlowRunStep,
+  type Json,
+  type RunContract,
+} from "./api";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
@@ -228,6 +236,61 @@ test("run creation retries network failures with the same idempotency key", asyn
     input_payload_json: { motesnamn: "KS" },
   });
   assert.equal(keys[0], await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: bodies[0] }));
+});
+
+/** The browser's XMLHttpRequest where it matters here: abort() fires "abort" before it returns. */
+class FakeXhr {
+  static made: FakeXhr[] = [];
+  upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
+  onload: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  onabort: (() => void) | null = null;
+  withCredentials = false;
+  status = 0;
+  responseText = "";
+  constructor() {
+    FakeXhr.made.push(this);
+  }
+  open() {}
+  setRequestHeader() {}
+  send() {}
+  getResponseHeader(name: string) {
+    return name.toLowerCase() === "content-type" ? "application/json" : null;
+  }
+  abort() {
+    this.onabort?.();
+  }
+  answer(status: number, body: unknown) {
+    this.status = status;
+    this.responseText = JSON.stringify(body);
+    this.onload?.();
+  }
+}
+
+test("an upload the server never answers times out, and the timeout is retried", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  FakeXhr.made = [];
+  try {
+    const policy = { min_timeout_seconds: 5, seconds_per_mebibyte: 1, max_timeout_seconds: 60, idle_timeout_seconds: 5 };
+    const run = submitRun(
+      params({
+        contract: { ...contract, runtime_upload_policy: policy },
+        files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }],
+      }),
+      { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+    );
+    await until(() => FakeXhr.made.length === 1);
+    t.mock.timers.tick(5_000); // "not_started": the server never took the upload
+    await settle();
+    t.mock.timers.tick(1_000);
+    await until(() => FakeXhr.made.length === 2);
+    FakeXhr.made[1].answer(201, { id: "file-1" });
+    assert.equal((await run).id, "run-1");
+  } finally {
+    globalThis.XMLHttpRequest = browserXhr;
+  }
 });
 
 test("files are uploaded one at a time as the ordered files of one run, skipping those already uploaded", async () => {

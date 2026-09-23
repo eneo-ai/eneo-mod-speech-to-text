@@ -640,8 +640,9 @@ function requestMultipartWithProgress<T>(
     ) => {
       clearScheduledTimeout();
       timeoutId = setTimeout(() => {
-        xhr.abort();
+        // Settled first: abort() fires "abort" before it returns, which would read as a cancel.
         rejectOnce(new ApiError(408, formatTimeoutReason(reason), null, reason));
+        xhr.abort();
       }, timeoutMs);
     };
 
