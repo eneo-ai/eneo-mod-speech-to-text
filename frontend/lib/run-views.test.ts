@@ -3,6 +3,7 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { EarlierRuns } from "../components/flow/EarlierRuns";
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
@@ -130,4 +131,33 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   assert.match(words, /Försök igen/);
   assert.match(words, /Till flödena/);
   assert.doesNotMatch(text(render(undefined)), /Försök igen/);
+});
+
+test("earlier runs list this flow's runs by when and status, each one tap from its result", () => {
+  const today = new Date();
+  today.setHours(10, 12, 0, 0);
+  const yesterday = new Date(today);
+  yesterday.setDate(today.getDate() - 1);
+  yesterday.setHours(15, 40);
+  const opened: string[] = [];
+  const html = renderToStaticMarkup(
+    createElement(EarlierRuns, {
+      runs: [
+        { id: "run-3", flow_id: "flow-1", status: "running", created_at: today.toISOString() },
+        { id: "run-2", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString() },
+        { id: "run-t", flow_id: "flow-1", status: "completed", created_at: yesterday.toISOString(), purpose: "test" },
+        { id: "run-1", flow_id: "flow-1", status: "failed", created_at: yesterday.toISOString() },
+      ],
+      onOpen: (id: string) => opened.push(id),
+    }),
+  );
+  const words = text(html);
+
+  assert.match(html, /<h2[^>]*>Tidigare körningar<\/h2>/);
+  assert.match(words, /I dag 10:12 Pågår Följ/);
+  assert.match(words, /I går 15:40 Klar Öppna/);
+  assert.match(words, /I går 15:40 Misslyckades Öppna/);
+  // Test runs from Eneo's editor are not this user's documents.
+  assert.equal(words.match(/I går 15:40/g)?.length, 2);
+  assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { runs: [], onOpen: () => undefined })), "");
 });

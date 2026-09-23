@@ -435,12 +435,6 @@ export function reviewResumeIdempotencyKey(
  * har en `label` med mönstret `^SPEAKER_\d{2,}$`. Det räcker för att känna
  * igen steget innan körningen startar.
  */
-/** Körningar som fortfarande går att följa eller agera på. */
-export function isResumableRunStatus(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === "queued" || s === "running" || s === "awaiting_review";
-}
-
 export function isSpeakerMappingReviewStep(
   step: FlowReviewStepContract | null | undefined,
 ): boolean {

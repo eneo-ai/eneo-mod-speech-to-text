@@ -38,7 +38,6 @@ import {
   getRunContract,
   getRunSteps,
   inputFileAudioUrl,
-  isResumableRunStatus,
   isReviewCheckpointApproved,
   listRuns,
   rejectReviewCheckpoint,
@@ -65,6 +64,7 @@ import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
 import { runErrorView } from "@/lib/run-result";
 import { resultFileViews } from "@/lib/run-files";
+import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunResult } from "@/components/flow/RunResult";
 import {
@@ -168,7 +168,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     kind: "idle",
   });
   const [recordingActive, setRecordingActive] = useState(false);
-  const [resumableRuns, setResumableRuns] = useState<FlowRunSummary[]>([]);
+  const [earlierRuns, setEarlierRuns] = useState<FlowRunSummary[]>([]);
 
   const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
@@ -192,20 +192,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
         setFormValues(defaults);
 
         // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
-        // granskning). Annars: leta upp pågående körningar att erbjuda.
+        // granskning). Annars: visa flödets senaste körningar.
         const urlRunId = readRunIdFromUrl();
-        if (urlRunId) {
-          resumeRun(urlRunId);
-        } else {
-          listRuns(flowId, 10)
-            .then((res) => {
-              if (cancelled) return;
-              setResumableRuns(
-                (res.items ?? []).filter((r) => isResumableRunStatus(r.status)),
-              );
-            })
-            .catch(() => undefined);
-        }
+        if (urlRunId) resumeRun(urlRunId);
+        else loadEarlierRuns();
       })
       .catch((err) => !cancelled && setLoadError(friendlyError(err)));
     return () => {
@@ -329,10 +319,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
+  /** Flödets tio senaste körningar; listan är en genväg och får saknas. */
+  function loadEarlierRuns() {
+    listRuns(flowId, 10)
+      .then((res) => setEarlierRuns(res.items ?? []))
+      .catch(() => undefined);
+  }
+
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
   function resumeRun(runId: string) {
     setRunError(null);
-    setResumableRuns([]);
     writeRunIdToUrl(runId);
     setRun({ kind: "opening" });
     void follow(runId);
@@ -535,6 +531,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setFile(null);
     writeRunIdToUrl(null);
     setRun({ kind: "idle" });
+    loadEarlierRuns();
   }
 
   /** "Försök igen": en ny körning med den misslyckade körningens ljud och uppgifter. */
@@ -627,8 +624,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         submitting={run.kind === "submitting"}
         onRun={onRun}
         runError={runError}
-        resumableRuns={resumableRuns}
-        onResume={resumeRun}
+        earlierRuns={earlierRuns}
+        onOpenRun={resumeRun}
       />
     );
   }
@@ -788,8 +785,8 @@ function SetupView({
   submitting,
   onRun,
   runError,
-  resumableRuns,
-  onResume,
+  earlierRuns,
+  onOpenRun,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -808,8 +805,8 @@ function SetupView({
   submitting: boolean;
   onRun: () => void;
   runError: string | null;
-  resumableRuns: FlowRunSummary[];
-  onResume: (runId: string) => void;
+  earlierRuns: FlowRunSummary[];
+  onOpenRun: (runId: string) => void;
 }) {
   const formFields = contract.form_fields ?? [];
   const speakerMappingSteps = speakerMappingReviewSteps(contract);
@@ -857,45 +854,6 @@ function SetupView({
             eller på annat sätt känsliga uppgifter.
           </p>
         </div>
-
-        {resumableRuns.length > 0 && (
-          <section className="paper-card p-4 mb-5">
-            <div className="text-[13px] font-semibold text-ink mb-1">
-              {resumableRuns.length === 1
-                ? "En körning pågår för det här flödet"
-                : `${resumableRuns.length} körningar pågår för det här flödet`}
-            </div>
-            <p className="text-[12px] text-ink-soft mb-3">
-              Följ en pågående körning, eller starta en ny inspelning nedan.
-            </p>
-            <ul className="flex flex-col gap-2">
-              {resumableRuns.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-rule-soft bg-bg-2/40 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-[13px] text-ink truncate">
-                      {labelForResumableRun(r.status)}
-                    </div>
-                    {r.created_at && (
-                      <div className="text-[11px] text-ink-mute">
-                        Startad {formatDateTime(r.created_at)}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onResume(r.id)}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium hover:border-ink/40 transition-colors"
-                  >
-                    Fortsätt
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
 
         {speakerMappingSteps.length > 0 && (
           <div className="paper-card px-4 py-3 mb-5 flex items-start gap-3">
@@ -1093,6 +1051,8 @@ function SetupView({
             {submitting ? "Startar…" : "Kör flöde"}
           </Button>
         </div>
+
+        <EarlierRuns runs={earlierRuns} onOpen={onOpenRun} className="pt-10" />
       </div>
     </>
   );
@@ -1601,22 +1561,6 @@ function extractCheckpointText(payload: Json | null | undefined): string {
 }
 
 // ---------- Helpers ----------
-
-function labelForResumableRun(status: string): string {
-  const s = status.toLowerCase();
-  if (s === "awaiting_review") return "Väntar på din granskning";
-  if (s === "queued") return "Står i kö";
-  return "Bearbetas";
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("sv-SE", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
 
 /** Formulärvärdena som körningens input_payload_json; tomma fält skickas inte. */
 function formPayload(
