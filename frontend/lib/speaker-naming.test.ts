@@ -105,3 +105,22 @@ test("a speaker split off in the review can be named; it is sent only with a nam
   assert.match(namingRefusal(new ApiError(422, "x", null, "typed_io_validation_failed"), named), /delats upp i granskningen \(Talare 6\)/);
   assert.doesNotMatch(namingRefusal(new ApiError(422, "x", null, "typed_io_validation_failed"), rows), /delats upp/);
 });
+
+test("speaker names with spaces and punctuation produce valid unique option IDs, in a list that floats over the page", async () => {
+  const { createElement } = await import("react");
+  const { NameCombobox } = await import("../components/NameCombobox");
+  const view = await mount(
+    createElement(NameCombobox, {
+      value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => undefined, "aria-label": "Namn för Talare 1",
+    }),
+  );
+  const input = view.container.querySelector("input")!;
+  await view.act(async () => input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
+  const list = document.querySelector('[role="listbox"][aria-label="Förslag: Namn för Talare 1"]');
+  assert.ok(list, "the list opens");
+  assert.ok(!view.container.contains(list), "outside the field's box, so no scrolling body cuts it off");
+  const ids = [...list!.querySelectorAll('[role="option"]')].map((option) => option.id);
+  assert.equal(new Set(ids).size, ids.length);
+  assert.ok(ids.every((id) => !/\s/.test(id)));
+  assert.equal(input.getAttribute("aria-controls"), list!.id);
+});

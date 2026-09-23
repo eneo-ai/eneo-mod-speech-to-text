@@ -2,6 +2,7 @@
 
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 const NONE_ID = "none";
@@ -80,16 +81,6 @@ export function NameCombobox({
     if (active >= items.length) setActive(Math.max(0, items.length - 1));
   }, [items.length, active]);
 
-  // Stäng när fokus lämnar hela fältet (klick utanför, tabb).
-  useEffect(() => {
-    if (!open) return;
-    function onPointerDown(e: PointerEvent) {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [open]);
-
   function choose(option: Option) {
     if (option.kind === "write") {
       // What is typed next replaces the name.
@@ -141,7 +132,11 @@ export function NameCombobox({
 
   const activeId = open && items[active] ? `${listId}-${active}` : undefined;
 
+  // The list floats over the page in its own layer, so a dialog's scrolling body never cuts it off;
+  // the focus stays in the field, and a press outside the field and the list closes it.
   return (
+    <Popover open={open} onOpenChange={(next) => !next && setOpen(false)}>
+    <PopoverAnchor asChild>
     <div ref={rootRef} className={cn("relative min-w-0", className)}>
       <input
         ref={inputRef}
@@ -149,7 +144,7 @@ export function NameCombobox({
         role="combobox"
         aria-label={ariaLabel}
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={activeId}
         autoComplete="off"
@@ -186,13 +181,23 @@ export function NameCombobox({
       >
         <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
       </button>
-
+    </div>
+    </PopoverAnchor>
+    <PopoverContent
+      align="start"
+      sideOffset={4}
+      role="presentation"
+      onOpenAutoFocus={(e) => e.preventDefault()}
+      onCloseAutoFocus={(e) => e.preventDefault()}
+      onInteractOutside={(e) => {
+        if (rootRef.current?.contains(e.target as Node)) e.preventDefault();
+      }}
+      className="max-h-60 w-[var(--radix-popper-anchor-width)] min-w-[12rem] overflow-y-auto rounded-md p-1"
+    >
       <ul
         id={listId}
         role="listbox"
         aria-label={ariaLabel ? `Förslag: ${ariaLabel}` : "Namnförslag"}
-        hidden={!open}
-        className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-md border border-rule-soft bg-paper p-1 shadow-md"
       >
         {items.map((option, i) => {
           const selected =
@@ -236,6 +241,7 @@ export function NameCombobox({
           );
         })}
       </ul>
-    </div>
+    </PopoverContent>
+    </Popover>
   );
 }

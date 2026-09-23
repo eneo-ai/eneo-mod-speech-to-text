@@ -1,9 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { NameCombobox } from "../components/NameCombobox";
 import { buttonVariants } from "../components/ui/button";
 
 // WCAG relative luminance using the actual CSS tokens, including alpha backgrounds.
@@ -89,15 +86,6 @@ for (const [theme, raw] of Object.entries(themes)) {
   });
 }
 
-test("speaker names with spaces and punctuation produce valid unique option IDs", () => {
-  const html = renderToStaticMarkup(createElement(NameCombobox, {
-    value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => {}, "aria-label": "Namn för Talare 1",
-  }));
-  const ids = [...html.matchAll(/ id="([^"]+)"/g)].map((m) => m[1]);
-  assert.equal(new Set(ids).size, ids.length);
-  assert.ok(ids.every((id) => !/\s/.test(id)));
-  assert.match(html, /role="listbox" aria-label="Förslag: Namn för Talare 1"/);
-});
 
 test("buttons keep a mouse's density and grow to 44 px targets on a touch screen", () => {
   const px = (classes: string, prefix: string) => {
