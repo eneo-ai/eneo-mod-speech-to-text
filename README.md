@@ -375,7 +375,10 @@ att Eneo gör en körning per inspelning även om två flikar skickar den.
 En inspelning används av en flik i taget: den flik som spelar in den, skickar
 den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när
 fliken stängs eller kraschar. Andra flikar visar den inte som osänd så länge,
-och **Skicka** eller **Ta bort** där nekas med ett meddelande.
+och **Skicka** eller **Ta bort** där nekas med ett meddelande. Utan Web Locks
+(Safari före 15.4) kan bara fliken som spelade in en inspelning skicka,
+fortsätta eller ta bort den; andra flikar, och samma flik efter en omladdning,
+kan spara den som fil.
 
 Inspelaren spelar in tal i mono med 32 kbit/s, med Opus när webbläsaren kan och
 annars webbläsarens eget format (Safari: `audio/mp4`). Ett möte på fem timmar
