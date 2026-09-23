@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
 import {
   forwardRef,
   useCallback,
@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -52,6 +53,7 @@ import {
   withSpeakerEdit,
   correctedSegmentText,
   correctionWriteProblem,
+  MAX_SPEAKER_EDITS,
   renderReviewedTranscript,
   type CorrectedRange,
   type CorrectionSet,
@@ -73,6 +75,8 @@ const SKIP_SECONDS = 10;
 const TO_CHECK = "__check";
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
+/** Above this many speakers a phone picks one from a list instead of scrolling chips. */
+const CHIP_LIMIT = 5;
 
 /**
  * The transcript's keys, outside its controls and text: Space or K plays and
@@ -431,10 +435,11 @@ export const TranscriptPlayer = forwardRef<
   /**
    * Eneo stores who speaks per passage, so a speaker chosen for all of someone's
    * passages is one whole-passage edit for each of them. A passage Eneo asked to
-   * check gets a decision instead; "cannot be told" is a decision too.
+   * check gets a decision instead; "cannot be told" is a decision too. Returns
+   * why nothing was saved, or null.
    */
-  function reassign(turn: TranscriptTurn, target: string, all: boolean) {
-    if (!canEdit || !corrections) return;
+  function reassign(turn: TranscriptTurn, target: string, all: boolean): string | null {
+    if (!canEdit || !corrections) return "Talaren kan inte ändras här.";
     let next = corrections;
     try {
       for (const t of all ? sameSpeaker(turn) : [turn]) {
@@ -450,12 +455,16 @@ export const TranscriptPlayer = forwardRef<
           }
         }
       }
-      setEditError(null);
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : "Talaren kunde inte ändras.");
-      return;
+      return e instanceof Error ? e.message : "Talaren kunde inte ändras.";
     }
+    // Eneo refuses a set with more speaker edits than it holds; say so before sending.
+    if (next.speaker_edits.length > MAX_SPEAKER_EDITS) {
+      return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriptet, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
+    }
+    setEditError(null);
     onCorrectionsChange?.(next);
+    return null;
   }
 
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
@@ -480,13 +489,8 @@ export const TranscriptPlayer = forwardRef<
   }
   // Search works on any transcript; the speaker row only where the flow labelled speakers.
   const tools = !reviewEnabled && hasSegments;
-  const hitStatus = !query.trim()
-    ? ""
-    : hits.length === 0
-      ? "Inga träffar"
-      : hits.length === 1
-        ? "1 träff"
-        : `${currentHit + 1} av ${hits.length} träffar`;
+  // No count until there is something to look for; then "1 av 3".
+  const hitStatus = !query.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
 
   return (
     <section
@@ -499,21 +503,7 @@ export const TranscriptPlayer = forwardRef<
       {tools && (
         <div className="flex flex-col gap-3 border-b border-rule-soft px-3 pb-3 pt-1">
           {labelled && (<>
-          {/* On a phone the section opens with who speaks; from a laptop the row below says it. */}
-          <p className="flex items-center gap-2 text-[14px] text-ink-soft lg:hidden">
-            <span className="flex">
-              {speakers.slice(0, 4).map((speaker, i) => (
-                <SpeakerMark
-                  key={speaker.label}
-                  label={speaker.label}
-                  name={displayName(speaker.label)}
-                  className={cn("size-6 text-[11px] ring-2 ring-card", i > 0 && "-ml-1.5")}
-                />
-              ))}
-            </span>
-            {speakers.length === 1 ? "1 talare" : `${speakers.length} talare`}
-          </p>
-          {/* One row is the legend and the filter: each speaker's mark, name and passages. */}
+          {/* The speaker filter, nothing else: chips that wrap from a laptop's width and scroll on a phone. */}
           <ToggleGroup
             type="single"
             variant="chip"
@@ -521,7 +511,10 @@ export const TranscriptPlayer = forwardRef<
             value={shownFilter}
             onValueChange={(value) => setFilter(value || "all")}
             aria-label="Visa talare"
-            className="-mx-3 flex-nowrap justify-start overflow-x-auto px-3 py-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0"
+            className={cn(
+              "-mx-3 flex-nowrap justify-start overflow-x-auto px-3 py-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0",
+              speakers.length > CHIP_LIMIT && "max-lg:hidden",
+            )}
           >
             <ToggleGroupItem value="all" className="shrink-0 px-3">
               Alla
@@ -530,17 +523,33 @@ export const TranscriptPlayer = forwardRef<
               <ToggleGroupItem key={speaker.label} value={speaker.label} className="shrink-0 gap-1.5 pl-1 pr-3">
                 <SpeakerMark label={speaker.label} name={displayName(speaker.label)} className="size-6 text-[11px]" />
                 {displayName(speaker.label)}
-                <span className="tabular-nums text-ink-mute">{speaker.passages}</span>
               </ToggleGroupItem>
             ))}
             {toCheck > 0 && (
-              <ToggleGroupItem value={TO_CHECK} className="shrink-0 gap-1.5 px-3">
-                <AlertTriangle aria-hidden className="text-ochre" />
-                Kontrollera talaren
-                <span className="tabular-nums text-ink-mute">{toCheck}</span>
+              <ToggleGroupItem value={TO_CHECK} className="shrink-0 px-3">
+                Osäker talare
               </ToggleGroupItem>
             )}
           </ToggleGroup>
+          {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. */}
+          {speakers.length > CHIP_LIMIT && (
+            <div className="lg:hidden">
+              <Select value={shownFilter} onValueChange={setFilter}>
+                <SelectTrigger aria-label="Filtrera talare">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Alla talare</SelectItem>
+                  {speakers.map((speaker) => (
+                    <SelectItem key={speaker.label} value={speaker.label}>
+                      {displayName(speaker.label)}
+                    </SelectItem>
+                  ))}
+                  {toCheck > 0 && <SelectItem value={TO_CHECK}>Osäker talare</SelectItem>}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           </>)}
 
           <div className="flex items-center gap-2">
@@ -582,7 +591,7 @@ export const TranscriptPlayer = forwardRef<
             )}
           </div>
           {/* The count is said once per change, not per keystroke's markup. */}
-          <p role="status" className="sr-only">{hitStatus}</p>
+          <p role="status" className="sr-only">{hitStatus && hits.length > 0 ? `Träff ${hitStatus}` : hitStatus}</p>
         </div>
       )}
 
@@ -844,7 +853,7 @@ function TurnBlock({
   onCancelEdit: () => void;
   onCommitLine: (segmentIndex: number, text: string) => void;
   onRevertLine: (segmentIndex: number) => void;
-  onReassign: (speaker: string, all: boolean) => void;
+  onReassign: (speaker: string, all: boolean) => string | null;
   textForEdit: (index: number) => string;
   onSeekTurn: () => void;
   onPartClick: (part: TranscriptTurnPart, e: React.MouseEvent) => void;
@@ -861,11 +870,13 @@ function TurnBlock({
   const picker = (trigger: React.ReactNode) => (
     <SpeakerPicker
       current={toCheck || decision === "unresolved" ? null : turn.speaker}
+      suggested={toCheck ? turn.speaker : null}
       stored={storedSpeaker}
       options={labelOptions}
       displayName={displayName}
       quote={turn.parts.map((p) => p.segment.text).join(" ")}
       passages={samePassages}
+      fromName={displayName(turn.speaker)}
       toCheck={toCheck || Boolean(decision)}
       onPick={onReassign}
     >
@@ -885,15 +896,17 @@ function TurnBlock({
     >
       {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} className="mt-px" />}
       <div className="min-w-0 flex-1">
+        {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {labelled &&
-            (canPickSpeaker && !toCheck ? (
+          {labelled && toCheck && <Badge variant="review">Osäker talare</Badge>}
+          {labelled && !toCheck &&
+            (canPickSpeaker ? (
               picker(
                 <button
                   type="button"
                   // The name starts with the words on the button (WCAG 2.5.3) and says what it does.
-                  aria-label={`${name}, byt talare`}
-                  className="relative inline-flex min-h-6 items-center gap-1 rounded text-left text-[15px] font-semibold leading-tight text-ink decoration-dotted underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:after:absolute coarse:after:-inset-y-2.5 coarse:after:inset-x-0"
+                  aria-label={`${name}, ändra talare`}
+                  className="inline-flex min-h-6 items-center gap-1 rounded text-left text-[15px] font-semibold leading-tight text-ink decoration-dotted underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11"
                 >
                   {name}
                   <ChevronDown aria-hidden className="size-3.5 text-ink-mute" />
@@ -907,17 +920,16 @@ function TurnBlock({
             onClick={onSeekTurn}
             aria-label={`Spela från ${clock}${partLabel}`}
             className={cn(
-              "relative -mx-1 inline-flex min-h-6 min-w-6 items-center rounded px-1 text-[13px] tabular-nums hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:after:absolute coarse:after:-inset-y-2.5 coarse:after:inset-x-0",
+              "-mx-1 inline-flex min-h-6 min-w-6 items-center rounded px-1 text-[13px] tabular-nums hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11",
               isActive ? "text-ink" : "text-ink-mute",
             )}
           >
             {clock}
           </button>
-          {toCheck && <Badge variant="review">Kontrollera talaren</Badge>}
-          {toCheck && canPickSpeaker &&
+          {labelled && toCheck && canPickSpeaker &&
             picker(
-              <Button type="button" variant="link" size="sm" className="h-6 px-1 coarse:h-11">
-                Välj talare
+              <Button type="button" variant="link" size="sm" className="-my-1 px-1 coarse:-my-2.5">
+                Ändra talare
               </Button>,
             )}
         </div>
@@ -994,6 +1006,7 @@ function TurnBlock({
                         {lastOfWord && onToggleConfirmed && key !== null && (
                           <button
                             type="button"
+                            className="group/confirm -my-1 -ml-[1.5px] -mr-[4.5px] inline-grid size-6 translate-y-[-1px] place-items-center rounded-full align-middle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-[14.5px] coarse:-ml-[11.5px] coarse:-mr-[14.5px] coarse:size-11"
                             onClick={(e) => {
                               e.stopPropagation();
                               onToggleConfirmed(key);
@@ -1005,15 +1018,18 @@ function TurnBlock({
                                 : `Bekräfta att "${piece.word?.word}" stämmer`
                             }
                             title={confirmed ? "Bekräftat – välj igen för att ångra" : "Ordet stämmer"}
-                            // The pseudo-element makes a 27 px target (44 px on a touch screen) around the 15 px circle.
-                            className={cn(
-                              "relative ml-[3px] inline-grid h-[15px] w-[15px] translate-y-[-1px] place-items-center rounded-full border align-middle transition-colors after:absolute after:-inset-1.5 coarse:after:-inset-3.5",
-                              confirmed
-                                ? "border-transparent bg-ok text-paper hover:bg-ok/80"
-                                : "border-ochre text-ochre hover:bg-ochre hover:text-ink",
-                            )}
                           >
-                            <Check className="h-[9px] w-[9px]" strokeWidth={3} />
+                            <span
+                              aria-hidden
+                              className={cn(
+                                "grid size-[15px] place-items-center rounded-full border transition-colors",
+                                confirmed
+                                  ? "border-transparent bg-ok text-paper group-hover/confirm:bg-ok/80"
+                                  : "border-ochre text-ochre group-hover/confirm:bg-ochre group-hover/confirm:text-ink",
+                              )}
+                            >
+                              <Check className="h-[9px] w-[9px]" strokeWidth={3} />
+                            </span>
                           </button>
                         )}
                       </span>
@@ -1027,7 +1043,7 @@ function TurnBlock({
                     aria-label={`Rätta repliken från ${partClock}`}
                     // A mouse finds the pencil at the passage it points at or has in focus, taking no room otherwise;
                     // a touch screen shows it on every passage.
-                    className="relative inline-grid h-6 w-0 translate-y-[3px] place-items-center overflow-hidden rounded text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-6 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/part:mx-1 group-hover/part:w-6 group-hover/part:opacity-100 coarse:mx-1 coarse:w-6 coarse:overflow-visible coarse:text-ink-soft coarse:opacity-100 coarse:after:absolute coarse:after:-inset-2.5"
+                    className="-my-1 inline-grid h-6 w-0 place-items-center overflow-hidden rounded align-middle text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-6 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover/part:mx-1 group-hover/part:w-6 group-hover/part:opacity-100 coarse:-my-2.5 coarse:mx-0 coarse:size-11 coarse:text-ink-soft coarse:opacity-100"
                   >
                     <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
                   </button>
@@ -1043,37 +1059,46 @@ function TurnBlock({
 }
 
 /**
- * "Vem talar här?": the run's speakers to choose from, for this passage or for
- * all of the speaker's passages. A passage Eneo asks to check changes alone by
- * default and can be marked as not possible to tell.
+ * "Ändra talare": which of the run's speakers says this passage. It changes
+ * this passage unless the user widens it to all of the speaker's passages (the
+ * merge, when diarization split one person in two). A passage Eneo asks to
+ * check starts with "Det stämmer" and ends with "Går inte att avgöra".
  */
 function SpeakerPicker({
   current,
+  suggested,
   stored,
   options,
   displayName,
   quote,
   passages,
+  fromName,
   toCheck,
   onPick,
   children,
 }: {
+  /** The passage's settled speaker; null while it is to be checked or cannot be told. */
   current: string | null;
+  /** The speaker Eneo put on a passage to check. */
+  suggested: string | null;
   stored: string | null;
   options: readonly string[];
   displayName: (label: string | null) => string;
   quote: string;
   passages: number;
+  /** Whose passages "Alla" moves, as people read it. */
+  fromName: string;
   toCheck: boolean;
-  onPick: (speaker: string, all: boolean) => void;
+  /** Saves the choice; returns why it was not saved, or null. */
+  onPick: (speaker: string, all: boolean) => string | null;
   children: React.ReactNode;
 }) {
-  // A passage to check changes alone unless the user widens it; a settled one moves with its speaker's others.
-  const defaultScope = toCheck ? "one" : "all";
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>(current ?? "");
-  const [scope, setScope] = useState<"one" | "all">(defaultScope);
+  const [scope, setScope] = useState<"one" | "all">("one");
+  const [problem, setProblem] = useState<string | null>(null);
   const titleId = useId();
+  const others = suggested ? options.filter((label) => label !== suggested) : options;
 
   return (
     <Popover
@@ -1081,8 +1106,10 @@ function SpeakerPicker({
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
+          // Every opening starts from this passage alone; all of a speaker's passages is a deliberate choice.
           setChoice(current ?? "");
-          setScope(defaultScope);
+          setScope("one");
+          setProblem(null);
         }
       }}
     >
@@ -1092,33 +1119,29 @@ function SpeakerPicker({
           onSubmit={(e) => {
             e.preventDefault();
             if (!choice) return;
-            onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
-            setOpen(false);
+            const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
+            setProblem(refused);
+            if (!refused) setOpen(false);
           }}
         >
           <div className="border-b border-border px-4 py-3">
-            <p id={titleId} className="text-[14px] font-semibold text-ink">Vem talar här?</p>
+            <p id={titleId} className="text-[14px] font-semibold text-ink">Ändra talare</p>
             <p className="mt-0.5 line-clamp-2 text-[13px] text-ink-mute">{quote}</p>
           </div>
           <RadioGroup value={choice} onValueChange={setChoice} aria-labelledby={titleId} className="max-h-64 gap-0 overflow-y-auto p-1.5">
-            {options.map((label) => (
-              <label
-                key={label}
-                className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[14px] text-ink hover:bg-accent coarse:min-h-11"
-              >
-                <RadioGroupItem value={label} />
-                <SpeakerMark label={label} name={displayName(label)} className="size-6 text-[11px]" />
-                <span className="min-w-0 flex-1 truncate">{displayName(label)}</span>
-                {label === stored && <span className="shrink-0 text-[12px] text-ink-mute">ursprunglig</span>}
-              </label>
-            ))}
-            {toCheck && (
-              <label className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[14px] text-ink hover:bg-accent coarse:min-h-11">
-                <RadioGroupItem value={UNRESOLVED} />
-                <span className="grid size-6 place-items-center rounded-full bg-ink-mute text-[11px] font-semibold text-paper" aria-hidden>?</span>
-                Går inte att avgöra
-              </label>
+            {suggested && (
+              <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
             )}
+            {others.map((label) => (
+              <PickerOption
+                key={label}
+                value={label}
+                label={label}
+                name={displayName(label)}
+                note={label === stored && !toCheck ? "ursprunglig" : undefined}
+              />
+            ))}
+            {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
           </RadioGroup>
           {passages > 1 && choice !== UNRESOLVED && (
             <div className="border-t border-border px-4 py-3">
@@ -1135,10 +1158,15 @@ function SpeakerPicker({
                   Bara det här inlägget
                 </ToggleGroupItem>
                 <ToggleGroupItem value="all" className="h-auto min-h-8 whitespace-normal py-1.5 text-[13px] leading-snug data-[state=on]:border-primary data-[state=on]:bg-primary-soft">
-                  Alla {passages} inlägg
+                  Alla {passages} inlägg från {fromName}
                 </ToggleGroupItem>
               </ToggleGroup>
             </div>
+          )}
+          {problem && (
+            <p role="alert" className="border-t border-border px-4 py-3 text-[13px] text-destructive">
+              {problem}
+            </p>
           )}
           <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
             <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
@@ -1151,6 +1179,17 @@ function SpeakerPicker({
         </form>
       </PopoverContent>
     </Popover>
+  );
+}
+
+function PickerOption({ value, label, name, markName = name, note }: { value: string; label: string | null; name: string; markName?: string; note?: string }) {
+  return (
+    <label className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[14px] text-ink hover:bg-accent coarse:min-h-11">
+      <RadioGroupItem value={value} />
+      <SpeakerMark label={label} name={markName} className="size-6 text-[11px]" />
+      <span className="min-w-0 flex-1 truncate">{name}</span>
+      {note && <span className="shrink-0 text-[12px] text-ink-mute">{note}</span>}
+    </label>
   );
 }
 
