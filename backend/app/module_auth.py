@@ -11,7 +11,17 @@ from typing import Annotated, Literal
 from urllib.parse import quote, urlencode
 
 import httpx
-from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
+from fastapi import (
+    APIRouter,
+    Cookie,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    WebSocketException,
+    status,
+)
+from fastapi.requests import HTTPConnection
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, Field, ValidationError
@@ -156,6 +166,20 @@ class ModuleSessionStore:
         ]
         for session_id in expired:
             del self._sessions[session_id]
+
+
+def eneo_is_unavailable(status_code: int) -> bool:
+    """Eneo could not answer right now, as opposed to refusing."""
+    return status_code in {408, 429} or status_code >= 500
+
+
+def _refusal(connection: HTTPConnection, error: HTTPException) -> Exception:
+    """``error`` for an HTTP request; a WebSocket handshake is closed unaccepted."""
+    if connection.scope["type"] == "websocket":
+        return WebSocketException(
+            code=status.WS_1008_POLICY_VIOLATION, reason=str(error.detail)
+        )
+    return error
 
 
 class ModuleAuth:
@@ -413,7 +437,7 @@ class ModuleAuth:
 
     async def require_session(
         self,
-        request: Request,
+        connection: HTTPConnection,
         session_id: Annotated[
             str | None,
             Cookie(alias=SESSION_COOKIE),
@@ -421,12 +445,15 @@ class ModuleAuth:
     ) -> ModuleSession:
         session = await self._live_session(session_id)
         if session is None:
-            raise HTTPException(
-                status_code=401,
-                detail="Not authenticated",
-                headers={"X-Auth-Required": "session"},
+            raise _refusal(
+                connection,
+                HTTPException(
+                    status_code=401,
+                    detail="Not authenticated",
+                    headers={"X-Auth-Required": "session"},
+                ),
             )
-        request.state.module_session = session
+        connection.state.module_session = session
         return session
 
     async def _live_session(self, session_id: str | None) -> ModuleSession | None:
@@ -480,7 +507,7 @@ class ModuleAuth:
         except httpx.RequestError:
             logger.warning("Module token refresh could not reach Eneo", exc_info=True)
             return self._retry_later(session)
-        if upstream.status_code in {408, 429} or upstream.status_code >= 500:
+        if eneo_is_unavailable(upstream.status_code):
             logger.warning(
                 "Module token refresh failed with status %s", upstream.status_code
             )
@@ -519,21 +546,26 @@ class ModuleAuth:
             update={"refresh_at": int(time.time()) + REFRESH_RETRY_SECONDS}
         )
 
-    def require_same_origin(self, request: Request) -> None:
-        if request.method in {"GET", "HEAD", "OPTIONS"}:
+    def require_same_origin(self, connection: HTTPConnection) -> None:
+        # A WebSocket handshake is a GET too, but the socket it opens acts for
+        # the user, so it is checked like a mutation.
+        safe_methods = {"GET", "HEAD", "OPTIONS"}
+        if isinstance(connection, Request) and connection.method in safe_methods:
             return
-        if request.headers.get("origin") != self.settings.module_origin:
-            raise HTTPException(status_code=403, detail="Invalid request origin")
+        if connection.headers.get("origin") != self.settings.module_origin:
+            raise _refusal(
+                connection, HTTPException(status_code=403, detail="Invalid request origin")
+            )
 
     @staticmethod
-    def session_from_request(request: Request) -> ModuleSession:
-        session = getattr(request.state, "module_session", None)
+    def session_from_request(connection: HTTPConnection) -> ModuleSession:
+        session = getattr(connection.state, "module_session", None)
         if not isinstance(session, (EneoSsoSession, AccessCodeSession)):
             raise RuntimeError("Module session dependency did not run")
         return session
 
-    def upstream_auth_headers(self, request: Request) -> dict[str, str]:
-        session = self.session_from_request(request)
+    def upstream_auth_headers(self, connection: HTTPConnection) -> dict[str, str]:
+        session = self.session_from_request(connection)
         headers = {
             self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
         }
