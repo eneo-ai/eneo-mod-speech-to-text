@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import threading
 import time
+from datetime import datetime
 from typing import Annotated, Literal
 from urllib.parse import quote, urlencode
 
@@ -20,9 +22,9 @@ logger = logging.getLogger("eneo_module_auth")
 SESSION_COOKIE = "eneo_module_session"
 STATE_COOKIE = "eneo_module_login_state"
 # The browser session cookie's upper bound is Settings.session_max_age_seconds
-# (SESSION_MAX_AGE_MINUTES). In SSO mode the effective lifetime is
-# min(that, Eneo's token expiry); keep Eneo's module_auth_token_expiry_minutes
-# aligned so neither side silently shortens the other.
+# (SESSION_MAX_AGE_MINUTES). In SSO mode the session also ends at Eneo's
+# session ceiling (module_auth_max_session_hours); the shorter-lived module
+# token is refreshed through Eneo until then.
 STATE_MAX_AGE = 5 * 60
 CALLBACK_PATH = "/api/auth/callback"
 
@@ -37,6 +39,8 @@ class ModuleTokenResponse(BaseModel):
     access_token: str
     token_type: Literal["bearer"]
     expires_in: int
+    # Eneo's fixed session ceiling; refresh renews the token only until then.
+    session_expires_at: datetime
     module_key: str
     tenant_id: str
     user: ModuleUser
@@ -51,10 +55,23 @@ class ModuleResourceSessionResponse(BaseModel):
 class EneoSsoSession(BaseModel):
     auth_mode: Literal["eneo_sso"] = "eneo_sso"
     access_token: str
+    # When the current token expires; the store drops the session then,
+    # because Eneo refuses to refresh an expired token.
     expires_at: int
+    # Halfway through the token's lifetime: refresh from here on.
+    refresh_at: int
+    # Fixed end of the login: min(SESSION_MAX_AGE_MINUTES, Eneo's ceiling).
+    session_expires_at: int
     module_key: str
     tenant_id: str
     user: ModuleUser
+
+    def refresh_due(self) -> bool:
+        # A token that already reaches the session end cannot be outlived.
+        return (
+            time.time() >= self.refresh_at
+            and self.expires_at < self.session_expires_at
+        )
 
 
 class AccessCodeSession(BaseModel):
@@ -104,6 +121,12 @@ class ModuleSessionStore:
                 return None
             return session
 
+    def replace(self, session_id: str, session: ModuleSession) -> None:
+        # Only a live session: a logout during a token refresh stays a logout.
+        with self._lock:
+            if session_id in self._sessions:
+                self._sessions[session_id] = session
+
     def delete(self, session_id: str | None) -> None:
         if session_id is None:
             return
@@ -138,6 +161,9 @@ class ModuleAuth:
             salt="eneo-module-login-state",
         )
         self.sessions = ModuleSessionStore()
+        # ponytail: one lock for every session's token refresh; a refresh is
+        # due twice per token lifetime. Per-session locks if refreshes queue.
+        self._refresh_lock = asyncio.Lock()
         self.router = APIRouter()
         self.router.add_api_route("/login", self.login, methods=["GET"])
         self.router.add_api_route(
@@ -258,7 +284,16 @@ class ModuleAuth:
             logger.exception("Module ticket exchange returned an invalid response")
             return self._auth_error("exchange_invalid")
 
-        if token.module_key != self.settings.module_key or token.expires_in <= 0:
+        now = int(time.time())
+        session_expires_at = min(
+            now + self.settings.session_max_age_seconds,
+            int(token.session_expires_at.timestamp()),
+        )
+        if (
+            token.module_key != self.settings.module_key
+            or token.expires_in <= 0
+            or session_expires_at <= now
+        ):
             logger.error("Module ticket exchange returned the wrong module or expiry")
             return self._auth_error("exchange_invalid")
 
@@ -297,16 +332,19 @@ class ModuleAuth:
             logger.error("Module session validation returned a different identity")
             return self._auth_error("validation_invalid")
 
-        max_age = min(token.expires_in, self.settings.session_max_age_seconds)
         session = EneoSsoSession(
             access_token=token.access_token,
-            expires_at=int(time.time()) + max_age,
+            expires_at=min(now + token.expires_in, session_expires_at),
+            refresh_at=now + token.expires_in // 2,
+            session_expires_at=session_expires_at,
             module_key=token.module_key,
             tenant_id=token.tenant_id,
             user=token.user,
         )
         response = RedirectResponse(url="/flows", status_code=303)
-        self._set_session_cookie(response, session=session, max_age=max_age)
+        self._set_session_cookie(
+            response, session=session, max_age=session_expires_at - now
+        )
         self._delete_state_cookie(response)
         self._secure_callback_response(response)
         return response
@@ -341,8 +379,8 @@ class ModuleAuth:
         ] = None,
     ) -> dict[str, object]:
         response.headers["Cache-Control"] = "no-store"
-        session = self.sessions.get(session_id)
-        if session is None or session.auth_mode != self.settings.auth_mode:
+        session = await self._live_session(session_id)
+        if session is None:
             return {
                 "authenticated": False,
                 "auth_mode": self.settings.auth_mode,
@@ -367,8 +405,8 @@ class ModuleAuth:
             Cookie(alias=SESSION_COOKIE),
         ] = None,
     ) -> ModuleSession:
-        session = self.sessions.get(session_id)
-        if session is None or session.auth_mode != self.settings.auth_mode:
+        session = await self._live_session(session_id)
+        if session is None:
             raise HTTPException(
                 status_code=401,
                 detail="Not authenticated",
@@ -376,6 +414,79 @@ class ModuleAuth:
             )
         request.state.module_session = session
         return session
+
+    async def _live_session(self, session_id: str | None) -> ModuleSession | None:
+        """The caller's session, with its module token refreshed once due."""
+        session = self.sessions.get(session_id)
+        if session is None or session.auth_mode != self.settings.auth_mode:
+            return None
+        if not isinstance(session, EneoSsoSession) or not session.refresh_due():
+            return session
+        async with self._refresh_lock:
+            # A concurrent request may have refreshed or ended it meanwhile.
+            session = self.sessions.get(session_id)
+            if not isinstance(session, EneoSsoSession) or not session.refresh_due():
+                return session
+            refreshed = await self._refresh_token(session)
+            if refreshed is None:
+                self.sessions.delete(session_id)
+            else:
+                self.sessions.replace(session_id, refreshed)
+            return refreshed
+
+    async def _refresh_token(self, session: EneoSsoSession) -> EneoSsoSession | None:
+        """Renew the token; None when Eneo refuses, so the user signs in again.
+
+        When Eneo cannot answer right now the session keeps its token, which
+        is still valid; the next request tries again.
+        """
+        try:
+            upstream = await self.http_client.post(
+                (
+                    f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
+                    f"{quote(self.settings.module_key, safe='')}/token/refresh/"
+                ),
+                headers={
+                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
+                    "Authorization": f"Bearer {session.access_token}",
+                },
+                timeout=httpx.Timeout(10.0),
+            )
+        except httpx.RequestError:
+            logger.warning("Module token refresh could not reach Eneo", exc_info=True)
+            return session
+        if upstream.status_code in {408, 429} or upstream.status_code >= 500:
+            logger.warning(
+                "Module token refresh failed with status %s", upstream.status_code
+            )
+            return session
+        if upstream.status_code != 200:
+            logger.warning(
+                "Eneo refused the module token refresh with status %s",
+                upstream.status_code,
+            )
+            return None
+        try:
+            token = ModuleTokenResponse.model_validate(upstream.json())
+        except (ValueError, ValidationError):
+            logger.exception("Module token refresh returned an invalid response")
+            return None
+        if (
+            token.module_key != session.module_key
+            or token.tenant_id != session.tenant_id
+            or token.user.id != session.user.id
+            or token.expires_in <= 0
+        ):
+            logger.error("Module token refresh returned a different identity or expiry")
+            return None
+        now = int(time.time())
+        return session.model_copy(
+            update={
+                "access_token": token.access_token,
+                "expires_at": min(now + token.expires_in, session.session_expires_at),
+                "refresh_at": now + token.expires_in // 2,
+            }
+        )
 
     def require_same_origin(self, request: Request) -> None:
         if request.method in {"GET", "HEAD", "OPTIONS"}:

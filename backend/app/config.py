@@ -25,8 +25,9 @@ class Settings(BaseModel):
     demo_space_id: str | None = None
     demo_space_name: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
-    # Övre gräns för modulsessionen. I eneo_sso-läge är den effektiva
-    # livslängden min(denna, Eneos module_auth_token_expiry_minutes).
+    # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
+    # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
+    # via Eneo fram till dess.
     session_max_age_seconds: int = 8 * 60 * 60
 
     @property

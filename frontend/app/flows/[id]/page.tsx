@@ -66,6 +66,7 @@ import {
   type UploadProgress,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import { runErrorView, runResultView } from "@/lib/run-result";
 import {
   buildEditedMapping,
   buildSpeakerRows,
@@ -364,55 +365,24 @@ function FlowDetail({ flowId }: { flowId: string }) {
       }
 
       setSubmission({ kind: "starting" });
-      const stepInputId = runtimeInput?.step_id ?? null;
-
-      const recommended =
-        (contract.recommended_run_payload as Json | undefined) ?? {};
 
       const body: Json = {
-        ...recommended,
         // Eneo Flows använder expected_flow_version som canonical versionsvakt i run-kontraktet.
         expected_flow_version: contract.published_flow_version,
       };
 
-      const stepInputs: Record<string, Json> = (recommended.step_inputs as
-        | Record<string, Json>
-        | undefined)
-        ? { ...(recommended.step_inputs as Record<string, Json>) }
-        : {};
-
-      if (fileId && stepInputId) {
-        const existing =
-          (stepInputs[stepInputId] as Json | undefined) ?? ({} as Json);
-        stepInputs[stepInputId] = {
-          ...existing,
-          file_ids: [fileId],
-        };
+      if (fileId && runtimeInput) {
+        body.step_inputs = { [runtimeInput.step_id]: { file_ids: [fileId] } };
       }
 
-      if (Object.keys(stepInputs).length > 0) {
-        body.step_inputs = stepInputs;
-      }
-
-      const recommendedPayload =
-        (recommended.input_payload_json as
-          | Record<string, unknown>
-          | undefined) ?? {};
-      const inputPayload: Record<string, unknown> = { ...recommendedPayload };
+      const inputPayload: Record<string, unknown> = {};
       for (const f of formFields) {
         const v = formValues[f.name];
         if (v == null || v === "") continue;
         inputPayload[f.name] = v;
       }
-      for (const k of Object.keys(recommendedPayload)) {
-        if (!(k in formValues) || formValues[k] === undefined) {
-          delete inputPayload[k];
-        }
-      }
       if (Object.keys(inputPayload).length > 0) {
         body.input_payload_json = inputPayload;
-      } else {
-        delete (body as Record<string, unknown>).input_payload_json;
       }
 
       const idempotencyKey = await deriveRunIdempotencyKey({
@@ -1749,7 +1719,8 @@ function NotesView({
   stepLabels: Record<string, string>;
 }) {
   const { run, steps } = runState;
-  const text = isTextual ? extractText(run.output_payload_json) : null;
+  const { text, note } = runResultView(run.result);
+  const failure = run.error ? runErrorView(run.error, stepLabels) : null;
   const success = isSuccess(run.status);
   // Inspelning och transkript för körningar med ett transkriberingssteg.
   const [transcript] = useTranscriptContext({
@@ -1798,12 +1769,23 @@ function NotesView({
       </div>
 
       <div className="px-6 md:px-8 pb-6 flex-1 w-full mx-auto max-w-3xl">
-        {run.error_message && (
+        {failure && (
           <div className="paper-card p-4 mb-4 border-accent/30">
-            <div className="eyebrow-sm text-accent mb-1">Fel</div>
-            <p className="text-[14px] text-ink">{run.error_message}</p>
+            <div className="eyebrow-sm text-accent mb-1">
+              {failure.step ? `Fel · ${failure.step}` : "Fel"}
+            </div>
+            <p className="text-[14px] text-ink">{failure.summary}</p>
+            <details className="mt-2 text-[12px] text-ink-soft">
+              <summary className="min-h-6 cursor-pointer">Teknisk detalj</summary>
+              <p className="mt-1 whitespace-pre-wrap break-words">{failure.detail}</p>
+              <p className="mt-1 font-mono text-ink-mute">
+                {run.error?.code} · körnings-ID {run.id}
+              </p>
+            </details>
           </div>
         )}
+
+        {note && <p className="text-[14px] text-ink-soft mb-2">{note}</p>}
 
         {success && text && (
           <article
@@ -1829,13 +1811,6 @@ function NotesView({
           </article>
         )}
 
-        {/* Visa raw JSON-output bara om vi förväntar oss text men ingen kunde extraheras */}
-        {success && isTextual && !text && run.output_payload_json && (
-          <pre className="paper-card p-4 whitespace-pre-wrap text-[12px] font-mono text-ink-soft overflow-x-auto">
-            {JSON.stringify(run.output_payload_json, null, 2)}
-          </pre>
-        )}
-
         {/* För binär output (DOCX/PDF/etc): liten beskrivning ovanför fil-listan */}
         {success && !isTextual && fileCount > 0 && outputLabel && (
           <p className="text-[14px] text-ink-soft mb-2">
@@ -1844,7 +1819,7 @@ function NotesView({
           </p>
         )}
 
-        {!success && !run.error_message && (
+        {!success && !run.error && (
           <p className="text-[14px] text-ink-soft">
             Körningen avslutades med status:{" "}
             <span className="text-ink">{labelForRunStatus(run.status)}</span>.
@@ -1916,6 +1891,10 @@ function NotesView({
                         <Download className="h-4 w-4" strokeWidth={2} />
                         Ladda ner
                       </a>
+                    ) : a.availability === "content_purged" ? (
+                      <span className="rounded-full border border-rule-soft bg-bg-2/50 text-ink-mute px-4 py-2 text-[13px] font-mono tracking-wider shrink-0">
+                        borttagen
+                      </span>
                     ) : (
                       <span className="inline-flex items-center gap-2 rounded-full border border-rule-soft bg-bg-2/50 text-ink-mute px-4 py-2 text-[13px] font-mono tracking-wider shrink-0">
                         <span
@@ -1968,32 +1947,6 @@ function NotesView({
 }
 
 // ---------- Helpers ----------
-
-function extractText(
-  payload: FlowRunPublic["output_payload_json"],
-): string | null {
-  if (!payload) return null;
-  const structuredOutput = payload.structured?.final_output;
-  if (typeof structuredOutput === "string" && structuredOutput.length > 0) {
-    return structuredOutput;
-  }
-  if (typeof payload.text === "string" && payload.text.length > 0) {
-    try {
-      const inner = JSON.parse(payload.text);
-      if (
-        inner &&
-        typeof inner === "object" &&
-        typeof inner.final_output === "string"
-      ) {
-        return inner.final_output;
-      }
-    } catch {
-      // not JSON — return raw text
-    }
-    return payload.text;
-  }
-  return null;
-}
 
 const SUCCESS_STATUSES = new Set(["succeeded", "completed", "success", "done"]);
 const FAILURE_STATUSES = new Set(["failed", "error", "errored"]);

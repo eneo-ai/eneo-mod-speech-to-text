@@ -88,6 +88,8 @@ class AudioProxyTests(unittest.TestCase):
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,
+            refresh_at=int(time.time()) + 30,
+            session_expires_at=int(time.time()) + 3600,
             module_key="speech-to-text",
             tenant_id="tenant-id",
             user=ModuleUser(id="user-id", email="user@example.test"),

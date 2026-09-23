@@ -206,7 +206,6 @@ export interface RunContract {
   steps_requiring_input?: RunContractStepInput[];
   steps_requiring_review?: FlowReviewStepContract[];
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
-  recommended_run_payload?: Json;
 }
 
 export interface FlowPublished {
@@ -239,17 +238,39 @@ export interface ResultFile {
   availability?: string;
 }
 
+/**
+ * Körningens typade slutresultat, diskriminerat på `kind`. Eneo sätter det
+ * bara när körningen blev klar; annars är det null.
+ */
+export type FlowRunResult =
+  | { kind: "inline_text"; text: string }
+  | { kind: "file_backed_text"; preview: string; file: ResultFile }
+  | { kind: "structured"; value: unknown; output_contract: Json | null }
+  | { kind: "artifact"; files: ResultFile[] }
+  | { kind: "outbound_http"; delivery_status: "delivered" };
+
+/**
+ * Körningens typade slutfel. Förgrena på `code`; `message` är teknisk detalj
+ * för support och ska inte tolkas. `retryable` säger om en ny körning är säker.
+ */
+export interface FlowRunError {
+  schema_version?: number;
+  code: string;
+  message: string;
+  source?: string | null;
+  step_id?: string | null;
+  step_order?: number | null;
+  details?: { step_description?: string | null; [k: string]: unknown } | null;
+  retryable: boolean;
+}
+
 export interface FlowRunPublic {
   id: string;
   flow_id: string;
   status: string; // se FlowRunStatus — behåll string för forward-compat
-  output_payload_json?: {
-    text?: string;
-    structured?: { final_output?: string; [k: string]: unknown };
-    [k: string]: unknown;
-  } | null;
+  result?: FlowRunResult | null;
   result_files?: ResultFile[];
-  error_message?: string | null;
+  error?: FlowRunError | null;
   created_at?: string;
   updated_at?: string;
   started_at?: string;
