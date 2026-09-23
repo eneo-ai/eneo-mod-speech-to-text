@@ -818,6 +818,37 @@ test("Starta en ny körning is asked against the flow as published now, and a ch
   }
 });
 
+test("details a run left empty, as Eneo keeps them, count as missing once the flow requires them", async () => {
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  const required = (name: string, type: string): RunContract => ({
+    ...contract,
+    published_flow_version: 4,
+    form_fields: [{ name, label: name, type, required: true }],
+  });
+  const cases: Array<[string, Json, RunContract, "review" | "started"]> = [
+    ["blank text", { datum: "" }, required("datum", "text"), "review"],
+    ["whitespace", { datum: "  " }, required("datum", "text"), "review"],
+    ["an empty list", { deltagare: [] }, required("deltagare", "list"), "review"],
+    ["zero", { antal: 0 }, required("antal", "number"), "started"],
+    ["a name", { deltagare: ["Anna Berg"] }, required("deltagare", "list"), "started"],
+  ];
+  for (const [what, payload, current, expected] of cases) {
+    let posts = 0;
+    const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: payload };
+    const outcome = await startAgain("flow-1", failed, steps, { online: createOnlineStatus() }, {
+      getContract: async () => current,
+      startRun: async () => {
+        posts += 1;
+        return queuedRun;
+      },
+    });
+    assert.equal(outcome?.kind, expected, what);
+    assert.equal(posts, expected === "started" ? 1 : 0, what);
+  }
+});
+
 test("Starta en ny körning sends nothing more once the page is gone, and gives no run to follow", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "cancelled", input_payload_json: null };

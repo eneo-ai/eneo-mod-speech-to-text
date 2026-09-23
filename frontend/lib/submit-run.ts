@@ -20,6 +20,7 @@ import {
   type RunContract,
 } from "./api";
 import { friendlyError } from "./errors";
+import { filledValue } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes } from "./format";
 import { IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
@@ -356,7 +357,7 @@ export function startAgainRequest(
   const fits =
     step?.step_id === inputStep.step_id &&
     fileIds.length <= (step.max_files ?? Infinity) &&
-    (contract.form_fields ?? []).every((field) => !field.required || payload[field.name] != null);
+    (contract.form_fields ?? []).every((field) => !field.required || filledValue(payload[field.name]));
   if (!step || !fits) return { review: INPUT_CHANGED };
   const body: Json = {
     expected_flow_version: contract.published_flow_version,

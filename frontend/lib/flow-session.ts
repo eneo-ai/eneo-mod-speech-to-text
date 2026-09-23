@@ -277,8 +277,15 @@ function fittingDetails(
   return next;
 }
 
-function filled(value: DetailValue | undefined): boolean {
-  return Array.isArray(value) ? value.length > 0 : !!value?.trim();
+/**
+ * Whether a detail has a value Eneo takes for a required field: blank text and
+ * an empty list do not, and a number (0 too) or a choice does. Eneo keeps an
+ * optional detail left empty as "" or [].
+ */
+export function filledValue(value: unknown): boolean {
+  if (typeof value === "string") return value.trim() !== "";
+  if (Array.isArray(value)) return value.some(filledValue);
+  return value != null;
 }
 
 /** The details as the run's input_payload_json; empty ones are left out. */
@@ -289,7 +296,7 @@ export function detailsPayload(
   const payload: Record<string, unknown> = {};
   for (const field of fields) {
     const value = details[field.name];
-    if (filled(value)) payload[field.name] = value;
+    if (filledValue(value)) payload[field.name] = value;
   }
   return payload;
 }
@@ -433,7 +440,7 @@ export class FlowSession {
 
   setDetail(name: string, value: DetailValue): void {
     this.details = { ...this.details, [name]: value };
-    if (filled(value)) this.invalid = this.invalid.filter((field) => field !== name);
+    if (filledValue(value)) this.invalid = this.invalid.filter((field) => field !== name);
     this.emit();
   }
 
@@ -559,7 +566,7 @@ export class FlowSession {
     const repeated = input?.kind === "recording" && !!input.recording.submission;
     this.invalid = repeated
       ? []
-      : fields.filter((field) => field.required && !filled(this.details[field.name])).map((field) => field.name);
+      : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
     this.problem = null;
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;
