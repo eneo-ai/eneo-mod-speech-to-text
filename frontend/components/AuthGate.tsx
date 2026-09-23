@@ -4,14 +4,10 @@ import { Loader2 } from "lucide-react";
 import { createContext, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { authStatus, type AuthenticatedUser } from "@/lib/api";
+import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
 const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(null);
-
-// Backend förnyar Eneo-token när den närmar sig utgång, men bara när ett anrop
-// kommer in. En lång inspelning gör inga andra anrop, så sidan frågar efter
-// sessionen med jämna mellanrum så länge den är öppen.
-const SESSION_KEEPALIVE_MS = 60_000;
 
 export function useAuthenticatedUser(): AuthenticatedUser {
   const user = useContext(AuthenticatedUserContext);
@@ -27,6 +23,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let cancelled = false;
+    let stopKeepalive: (() => void) | undefined;
 
     authStatus()
       .then((s) => {
@@ -38,6 +35,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           router.replace("/");
         } else {
           setUser(sessionIdentity);
+          stopKeepalive = keepSessionAlive(s, authStatus);
         }
       })
       .catch(() => {
@@ -46,16 +44,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      stopKeepalive?.();
     };
   }, [router]);
-
-  useEffect(() => {
-    // Svaret behövs inte; nästa riktiga anrop hanterar en avslutad session.
-    const id = setInterval(() => {
-      authStatus().catch(() => undefined);
-    }, SESSION_KEEPALIVE_MS);
-    return () => clearInterval(id);
-  }, []);
 
   if (!user) {
     return (

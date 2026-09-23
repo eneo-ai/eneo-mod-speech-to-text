@@ -115,6 +115,8 @@ export interface AuthStatus {
   authenticated: boolean;
   auth_mode: AuthMode;
   user: AuthenticatedUser | null;
+  /** Sekunder tills backend vill förnya Eneo-token; saknas när inget ska förnyas. */
+  refresh_in?: number;
 }
 
 export async function loginWithAccessCode(accessCode: string) {

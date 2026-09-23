@@ -1,8 +1,11 @@
+import asyncio
+import itertools
 import os
 import re
 import time
 import unittest
 from datetime import datetime, timezone
+from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
@@ -148,8 +151,11 @@ class ModuleAuthTests(unittest.TestCase):
 
         status = self.client.get("/api/auth/status")
         self.assertEqual(status.headers["cache-control"], "no-store")
+        body = status.json()
+        # The page checks again once the 900-second token is half used.
+        self.assertTrue(0 < body.pop("refresh_in") <= 450)
         self.assertEqual(
-            status.json(),
+            body,
             {
                 "authenticated": True,
                 "auth_mode": "eneo_sso",
@@ -300,7 +306,8 @@ class ModuleAuthTests(unittest.TestCase):
 class FakeEneo:
     """Eneo's token refresh route plus any proxied resource call."""
 
-    def __init__(self, refresh: httpx.Response | Exception) -> None:
+    def __init__(self, refresh) -> None:
+        # A response, an exception to raise, or an async function answering the call.
         self.refresh = refresh
         self.refresh_calls: list[dict[str, object]] = []
         self.proxied: list[dict[str, object]] = []
@@ -309,6 +316,8 @@ class FakeEneo:
         self.refresh_calls.append({"url": url, **kwargs})
         if isinstance(self.refresh, Exception):
             raise self.refresh
+        if callable(self.refresh):
+            return await self.refresh(**kwargs)
         return self.refresh
 
     async def request(self, **kwargs):
@@ -316,7 +325,19 @@ class FakeEneo:
         return httpx.Response(200, json={"items": []})
 
 
-class ModuleTokenRefreshTests(unittest.TestCase):
+class FakeClock:
+    """Stands in for the time module inside app.module_auth."""
+
+    def __init__(self) -> None:
+        self.now = time.time()
+
+    def time(self) -> float:
+        return self.now
+
+
+class TokenRefreshFixture:
+    """Sessions whose module token is due for renewal, and a fake Eneo."""
+
     def setUp(self) -> None:
         self.original_auth_client = main.module_auth.http_client
         self.original_proxy_client = main.http_client
@@ -327,13 +348,15 @@ class ModuleTokenRefreshTests(unittest.TestCase):
         main.module_auth.http_client = self.original_auth_client
         main.http_client = self.original_proxy_client
 
-    def sign_in_with_due_token(self) -> str:
+    def sign_in_with_due_token(
+        self, token: str = "module-user-token", *, expires_in: int = 100
+    ) -> str:
         """A session past its token's half-life, the token itself still valid."""
         now = int(time.time())
         session_id = main.module_auth.sessions.create(
             EneoSsoSession(
-                access_token="module-user-token",
-                expires_at=now + 100,
+                access_token=token,
+                expires_at=now + expires_in,
                 refresh_at=now - 1,
                 session_expires_at=now + 3600,
                 module_key="speech-to-text",
@@ -344,11 +367,14 @@ class ModuleTokenRefreshTests(unittest.TestCase):
         self.client.cookies.set(SESSION_COOKIE, session_id)
         return session_id
 
-    def use_eneo(self, refresh: httpx.Response | Exception) -> FakeEneo:
+    def use_eneo(self, refresh) -> FakeEneo:
         eneo = FakeEneo(refresh)
         main.module_auth.http_client = eneo
         main.http_client = eneo
         return eneo
+
+
+class ModuleTokenRefreshTests(TokenRefreshFixture, unittest.TestCase):
 
     def test_due_token_is_refreshed_before_the_request_is_proxied(self) -> None:
         session_id = self.sign_in_with_due_token()
@@ -439,6 +465,120 @@ class ModuleTokenRefreshTests(unittest.TestCase):
         self.assertEqual(
             main.module_auth.sessions.get(session_id).access_token, "refreshed-token"
         )
+
+    def test_renewal_that_outlasts_the_token_ends_the_session(self) -> None:
+        clock = FakeClock()
+
+        async def refresh(**_):
+            clock.now += 6  # Eneo answers only after the token has expired.
+            return httpx.Response(503)
+
+        with patch("app.module_auth.time", clock):
+            session_id = self.sign_in_with_due_token(expires_in=5)
+            eneo = self.use_eneo(refresh)
+
+            response = self.client.get("/api/eneo/flows/")
+
+            self.assertEqual(response.status_code, 401)
+            self.assertEqual(response.headers["x-auth-required"], "session")
+            self.assertEqual(eneo.proxied, [])
+            self.assertIsNone(main.module_auth.sessions.get(session_id))
+
+    def test_one_minute_token_is_kept_alive_on_the_status_schedule(self) -> None:
+        # Eneo accepts MODULE_AUTH_TOKEN_EXPIRY_MINUTES=1. The page asks for the
+        # status again `refresh_in` seconds after each answer.
+        clock = FakeClock()
+        renewals = itertools.count(1)
+
+        async def refresh(**_):
+            token = f"token-{next(renewals)}"
+            return httpx.Response(200, json=token_payload(token, expires_in=60))
+
+        with patch("app.module_auth.time", clock):
+            now = int(clock.now)
+            session_id = main.module_auth.sessions.create(
+                EneoSsoSession(
+                    access_token="token-0",
+                    expires_at=now + 60,
+                    refresh_at=now + 30,
+                    session_expires_at=now + 3600,
+                    module_key="speech-to-text",
+                    tenant_id="tenant-id",
+                    user=ModuleUser(id="user-id", email="user@example.test"),
+                )
+            )
+            self.client.cookies.set(SESSION_COOKIE, session_id)
+            eneo = self.use_eneo(refresh)
+
+            status = self.client.get("/api/auth/status").json()
+            for _ in range(4):  # four minutes on a one-minute token
+                clock.now += status["refresh_in"] + 1
+                status = self.client.get("/api/auth/status").json()
+                self.assertTrue(status["authenticated"])
+
+        self.assertEqual(len(eneo.refresh_calls), 4)
+
+
+class ConcurrentTokenRefreshTests(TokenRefreshFixture, unittest.IsolatedAsyncioTestCase):
+    async def get_flows(self, session_id: str) -> httpx.Response:
+        transport = httpx.ASGITransport(app=main.app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://module.test"
+        ) as client:
+            return await client.get(
+                "/api/eneo/flows/",
+                headers={"Cookie": f"{SESSION_COOKIE}={session_id}"},
+            )
+
+    async def test_a_stalled_renewal_does_not_hold_up_another_session(self) -> None:
+        stalled = self.sign_in_with_due_token("stalled-token")
+        other = self.sign_in_with_due_token("other-token")
+        started, release = asyncio.Event(), asyncio.Event()
+
+        async def refresh(headers, **_):
+            token = headers["Authorization"].removeprefix("Bearer ")
+            if token == "stalled-token":
+                started.set()
+                await release.wait()
+            return httpx.Response(200, json=token_payload(f"renewed-{token}"))
+
+        eneo = self.use_eneo(refresh)
+        waiting = asyncio.create_task(self.get_flows(stalled))
+        await started.wait()
+
+        response = await asyncio.wait_for(self.get_flows(other), timeout=2)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            eneo.proxied[-1]["headers"]["Authorization"], "Bearer renewed-other-token"
+        )
+        release.set()
+        self.assertEqual((await waiting).status_code, 200)
+
+    async def test_concurrent_requests_share_one_failed_renewal(self) -> None:
+        session_id = self.sign_in_with_due_token()
+
+        async def refresh(**_):
+            await asyncio.sleep(0.05)  # still in flight while the others arrive
+            return httpx.Response(503)
+
+        eneo = self.use_eneo(refresh)
+
+        responses = await asyncio.gather(
+            *(self.get_flows(session_id) for _ in range(8))
+        )
+
+        self.assertEqual([r.status_code for r in responses], [200] * 8)
+        self.assertEqual(len(eneo.refresh_calls), 1)
+        self.assertEqual(
+            {call["headers"]["Authorization"] for call in eneo.proxied},
+            {"Bearer module-user-token"},
+        )
+        # Eneo just failed to answer, so the next request does not ask again yet.
+        await self.get_flows(session_id)
+        self.assertEqual(len(eneo.refresh_calls), 1)
+        # Nothing outlives the refresh that it coordinated.
+        self.assertEqual(main.module_auth._refreshes, {})
 
 
 class AccessCodeAuthTests(unittest.TestCase):
