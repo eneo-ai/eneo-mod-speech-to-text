@@ -75,6 +75,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (!user) {
     return (
       <main className="min-h-screen grid place-items-center">
+        <h1 className="sr-only">Tal till text</h1>
         <Spinner className="size-5 text-ink-mute" />
       </main>
     );
