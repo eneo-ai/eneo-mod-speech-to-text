@@ -100,10 +100,12 @@ async function request<T>(
 // ---------- Config ----------
 
 export interface AppConfig {
-  demo_space_id: string | null;
-  demo_space_name: string | null;
-  /** Lista över alla konfigurerade spaces. Tom = inget hårdkodat space (frontend visar väljare). */
-  demo_space_ids?: string[];
+  /**
+   * Hur flödeslistan frågar Eneo, avgjort av modulens inloggningsläge: med
+   * Eneo SSO alla användarens spaces (space_id null), med åtkomstkod det
+   * konfigurerade spacet; null när åtkomstkodsläget saknar ett space.
+   */
+  flow_list: { space_id: string | null } | null;
 }
 
 export async function getConfig() {
@@ -145,13 +147,6 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface SpaceSparse {
-  id: string;
-  name: string;
-  description?: string | null;
-  personal?: boolean;
-}
-
 export interface PaginatedResponse<T> {
   items: T[];
   count?: number;
@@ -164,6 +159,11 @@ export interface FlowSparsePublic {
   description?: string | null;
   published_version?: number | null;
   is_published?: boolean;
+  /** The flow's space; discovery lists every space the user belongs to. */
+  space_id: string;
+  space_name: string;
+  /** How the flow takes its input: "audio", "document" or "file". */
+  input_type?: FlowRuntimeInputFormat | string | null;
 }
 
 export interface FormField {
@@ -454,12 +454,6 @@ export function reviewResumeIdempotencyKey(
  * har en `label` med mönstret `^SPEAKER_\d{2,}$`. Det räcker för att känna
  * igen steget innan körningen startar.
  */
-/** Körningar som fortfarande går att följa eller agera på. */
-export function isResumableRunStatus(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === "queued" || s === "running" || s === "awaiting_review";
-}
-
 export function isSpeakerMappingReviewStep(
   step: FlowReviewStepContract | null | undefined,
 ): boolean {
@@ -746,30 +740,15 @@ async function sha256Hex(value: string): Promise<string> {
 
 // ---------- API-anrop ----------
 
-export async function listSpaces() {
-  return request<PaginatedResponse<SpaceSparse>>(
-    "/api/eneo/spaces/?include_personal=true",
-  );
-}
-
-/** Hämtar en specifik space direkt. Funkar även när /spaces/-listning är tom (scope-begränsade keys). */
-export async function getSpace(spaceId: string) {
-  return request<SpaceSparse>(`/api/eneo/spaces/${spaceId}/`);
-}
-
-export async function listFlows(
-  spaceId: string,
-  limit = 50,
-  offset = 0,
-) {
-  const qs = new URLSearchParams({
-    space_id: spaceId,
-    limit: String(limit),
-    offset: String(offset),
-  });
-  return request<PaginatedResponse<FlowSparsePublic>>(
-    `/api/eneo/flows/?${qs.toString()}`,
-  );
+/**
+ * One page of the published flows the user can run. Without `spaceId` Eneo
+ * lists every space the user belongs to, narrowed by the module key's scope;
+ * items come oldest first and `has_more` says whether another page follows.
+ */
+export async function listPublishedFlows({ limit, offset, spaceId }: { limit: number; offset: number; spaceId?: string }) {
+  const query = new URLSearchParams({ published_only: "true", limit: String(limit), offset: String(offset) });
+  if (spaceId) query.set("space_id", spaceId);
+  return request<OffsetPaginatedResponse<FlowSparsePublic>>(`/api/eneo/flows/?${query}`);
 }
 
 export async function getPublishedFlow(flowId: string) {
@@ -778,15 +757,6 @@ export async function getPublishedFlow(flowId: string) {
 
 export async function getRunContract(flowId: string) {
   return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
-}
-
-// input_format för det första steget som kräver input (lägst step_order).
-// "audio" → mikrofon, "document"/"file"/"image" → dokument/fil.
-export function firstInputFormat(contract: RunContract): string | null {
-  const steps = [...(contract.steps_requiring_input ?? [])].sort(
-    (a, b) => (a.step_order ?? 0) - (b.step_order ?? 0),
-  );
-  return steps[0]?.input_format?.toLowerCase() ?? null;
 }
 
 // ---------- Flow graph ----------
@@ -800,6 +770,8 @@ export interface FlowGraphNode {
   input_type: string | null;
   output_type: string | null; // "text" | "json" | "docx" | "pdf" | ...
   output_mode: string | null;
+  /** Only on a run-pinned graph (`?run_id=`): the step's status in that run, null before it has one. */
+  run_status?: FlowStepResultStatus | string | null;
 }
 
 export interface FlowGraphEdge {
@@ -816,6 +788,16 @@ export interface FlowGraph {
 
 export async function getFlowGraph(flowId: string) {
   return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/`);
+}
+
+/**
+ * The graph of the version a run pinned, each step annotated with its status
+ * in that run. Unlike the step results it is not audited per read, so it is
+ * what a progress poll reads.
+ */
+export async function getRunGraph(flowId: string, runId: string) {
+  const query = new URLSearchParams({ run_id: runId });
+  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/?${query}`);
 }
 
 /** Returnerar `output_type` för det steg som matar flow_output-edgen (t.ex. "docx", "text"). */
@@ -895,26 +877,6 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export async function getArtifactSignedUrl(
-  flowId: string,
-  runId: string,
-  fileId: string,
-  expiresInSeconds = 3600,
-) {
-  // TODO(eneo-refactor): När Eneo-prod stabiliserats på nya specen, behåll bara `expires_in`
-  // och uppdatera responstypen till `expires_at?: number`.
-  return request<{ url: string; expires_at?: string | number }>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/signed-url/`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        expires_in_seconds: expiresInSeconds, // legacy fältnamn
-        expires_in: expiresInSeconds, // ny spec
-      }),
-    },
-  );
-}
-
 // --- Cancel / redispatch / list ---
 
 export async function cancelRun(flowId: string, runId: string) {
@@ -922,6 +884,28 @@ export async function cancelRun(flowId: string, runId: string) {
     `/api/eneo/flows/${flowId}/runs/${runId}/cancel/`,
     { method: "POST" },
   );
+}
+
+/** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
+export interface FlowRunRetryPublic {
+  run: FlowRunPublic;
+  /** False when the same key replays a retry Eneo already accepted. */
+  created: boolean;
+  source_run_id: string;
+  first_executed_step_order: number;
+  reused_step_orders: number[];
+}
+
+/**
+ * Continues a failed run from its first unfinished step: Eneo creates a child
+ * run that reuses the completed steps (a long recording is not transcribed
+ * again) and keeps the source's inputs, files and choices.
+ */
+export async function retryFlowRunFromFailedStep(flowId: string, runId: string, idempotencyKey: string) {
+  return request<FlowRunRetryPublic>(`/api/eneo/flows/${flowId}/runs/${runId}/retry/`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
 }
 
 export async function redispatchRun(flowId: string, runId: string) {
@@ -1009,6 +993,16 @@ export function inputFileAudioUrl(
   fileId: string,
 ): string {
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
+}
+
+/**
+ * Same-origin address of a file the run generated. The module backend streams
+ * it from Eneo the same way, under the name Eneo gave it; a PDF can open
+ * inline (a frame on this origin, or a new tab), anything else downloads.
+ */
+export function runArtifactUrl(flowId: string, runId: string, fileId: string, inline = false): string {
+  const query = new URLSearchParams({ disposition: inline ? "inline" : "attachment" });
+  return `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content?${query}`;
 }
 
 // --- Transkriptkorrigeringar ---

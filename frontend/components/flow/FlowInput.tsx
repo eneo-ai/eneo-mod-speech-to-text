@@ -22,6 +22,7 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
+import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
@@ -36,7 +37,6 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { UnsentRecordings } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type FlowRunSummary, type RunContract } from "@/lib/api";
 import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
-import { formatRelativeDate } from "@/lib/format";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import { detailsSummary, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
@@ -55,11 +55,6 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
-const RESUMABLE_LABEL: Record<string, string> = {
-  awaiting_review: "Väntar på din granskning",
-  queued: "Står i kö",
-};
-
 /** The tab title follows the state; its own component, so the timer re-renders only this. */
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
   const { phase } = input.snapshot;
@@ -75,8 +70,8 @@ export function FlowInput({
   input,
   ownerId,
   notice,
-  resumableRuns,
-  onResume,
+  earlierRuns,
+  onOpenRun,
   unsentRecordings,
 }: {
   published: FlowPublished;
@@ -85,8 +80,8 @@ export function FlowInput({
   ownerId: string;
   /** A problem from following an earlier run. */
   notice: string | null;
-  resumableRuns: FlowRunSummary[];
-  onResume: (runId: string) => void;
+  earlierRuns: readonly FlowRunSummary[];
+  onOpenRun: (runId: string) => void;
   unsentRecordings: StoredRecording[];
 }) {
   const { session, snapshot } = input;
@@ -239,8 +234,8 @@ export function FlowInput({
             <SetupWorkspace
               contract={contract}
               input={input}
-              resumableRuns={resumableRuns}
-              onResume={onResume}
+              earlierRuns={earlierRuns}
+              onOpenRun={onOpenRun}
               unsentRecordings={unsentRecordings}
             />
           ) : group === "ready" && snapshot.recording ? (
@@ -305,14 +300,14 @@ function CaptureWorkspace({ input }: { input: Session }) {
 function SetupWorkspace({
   contract,
   input,
-  resumableRuns,
-  onResume,
+  earlierRuns,
+  onOpenRun,
   unsentRecordings,
 }: {
   contract: RunContract;
   input: Session;
-  resumableRuns: FlowRunSummary[];
-  onResume: (runId: string) => void;
+  earlierRuns: readonly FlowRunSummary[];
+  onOpenRun: (runId: string) => void;
   unsentRecordings: StoredRecording[];
 }) {
   const { session, snapshot, persistent } = input;
@@ -335,7 +330,6 @@ function SetupWorkspace({
 
   return (
     <div className="flex w-full max-w-2xl flex-col gap-6">
-      {resumableRuns.length > 0 && <ResumableRuns runs={resumableRuns} onResume={onResume} />}
       <UnsentRecordings
         recordings={unsentRecordings}
         onSend={(recording) => {
@@ -420,29 +414,8 @@ function SetupWorkspace({
           {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
         </div>
       )}
-    </div>
-  );
-}
 
-function ResumableRuns({ runs, onResume }: { runs: FlowRunSummary[]; onResume: (runId: string) => void }) {
-  return (
-    <section aria-labelledby="pagaende" className="rounded-xl border border-rule-soft bg-paper p-4">
-      <h2 id="pagaende" className="text-[15px] font-semibold text-ink">
-        {runs.length === 1 ? "En körning pågår för det här flödet" : `${runs.length} körningar pågår för det här flödet`}
-      </h2>
-      <ul className="mt-3 flex flex-col gap-2">
-        {runs.map((run) => (
-          <li key={run.id} className="flex items-center justify-between gap-3">
-            <span className="text-[15px] text-ink-soft">
-              {RESUMABLE_LABEL[run.status] ?? "Bearbetas"}
-              {run.created_at && `, startad ${formatRelativeDate(run.created_at)}`}
-            </span>
-            <Button type="button" variant="outline" className="h-11" onClick={() => onResume(run.id)}>
-              Följ körningen
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </section>
+      <EarlierRuns runs={earlierRuns} onOpen={onOpenRun} className="pt-4" />
+    </div>
   );
 }

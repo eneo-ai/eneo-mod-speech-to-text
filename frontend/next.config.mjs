@@ -57,6 +57,15 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // The result page previews a generated PDF in a same-origin frame; the
+        // backend serves only PDFs inline here. Later rules win per header key.
+        source: "/api/eneo/flows/:flowId/runs/:runId/artifacts/:fileId/content",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
     ];
   },
   async rewrites() {

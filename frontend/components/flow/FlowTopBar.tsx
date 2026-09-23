@@ -15,13 +15,17 @@ export function FlowTopBar({
   title,
   trailing,
   onLeave,
+  titleIsHeading = true,
 }: {
   title: string;
   /** Replaces the account menu, e.g. with the mode while recording. */
   trailing?: ReactNode;
   /** Asked before a link leaves the page; call preventDefault to stay. */
   onLeave?: (event: MouseEvent) => void;
+  /** False where the view's own heading names its state, as a run's views do. */
+  titleIsHeading?: boolean;
 }) {
+  const Title = titleIsHeading ? "h1" : "p";
   return (
     <>
       <header className="flex items-center gap-1 px-2 pb-1 pt-2 md:px-6 lg:hidden">
@@ -33,9 +37,9 @@ export function FlowTopBar({
         >
           <ChevronLeft aria-hidden className="size-6" strokeWidth={2} />
         </Link>
-        <h1 className="line-clamp-2 min-w-0 flex-1 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink [text-wrap:balance]">
+        <Title className="line-clamp-2 min-w-0 flex-1 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink [text-wrap:balance]">
           {title}
-        </h1>
+        </Title>
         <div className="flex shrink-0 items-center pl-2">{trailing ?? <AccountMenu />}</div>
       </header>
       <header className="hidden items-center justify-between border-b border-rule-soft bg-paper px-8 py-3 lg:flex">

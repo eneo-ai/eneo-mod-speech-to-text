@@ -147,6 +147,56 @@ class EneoProxyAuthTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, f"{method} {path}")
         self.assertEqual(len(self.proxy_client.calls), 4)
 
+    def test_config_tells_the_flow_list_how_to_ask_eneo(self) -> None:
+        original_space = main.settings.demo_space_id
+        self.addCleanup(setattr, main.settings, "demo_space_id", original_space)
+
+        # SSO: every space the user belongs to, never a named space.
+        main.settings.demo_space_id = "space-demo"
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": {"space_id": None}})
+
+        main.module_auth.settings.auth_mode = "access_code"
+        main.module_auth.sessions.clear()
+        self.client.cookies.set(
+            SESSION_COOKIE,
+            main.module_auth.sessions.create(AccessCodeSession(expires_at=int(time.time()) + 60)),
+        )
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": {"space_id": "space-demo"}})
+
+        # Access code without a configured space: the list cannot be asked for at all.
+        main.settings.demo_space_id = None
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": None})
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_proxy_forwards_flow_discovery_across_the_users_spaces(self) -> None:
+        response = self.client.get("/api/eneo/flows/?published_only=true&limit=200&offset=0")
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/")
+        self.assertEqual(dict(call["params"]), {"published_only": "true", "limit": "200", "offset": "0"})
+
+    def test_proxy_no_longer_exposes_spaces(self) -> None:
+        # Discovery lists flows across spaces; the spaces routes refuse module credentials anyway.
+        for path in ("/api/eneo/spaces/", "/api/eneo/spaces/space-1/"):
+            self.assertEqual(self.client.get(path).status_code, 403, path)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_proxy_exposes_retry_from_the_failed_step_with_its_idempotency_key(self) -> None:
+        response = self.client.post(
+            "/api/eneo/flows/flow-1/runs/run-1/retry/",
+            headers={
+                "Origin": "https://module.example.test",
+                "Idempotency-Key": "flow-run-retry:run-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/flow-1/runs/run-1/retry/")
+        self.assertEqual(call["headers"]["idempotency-key"], "flow-run-retry:run-1")
+
     def test_proxy_slash_tolerance_does_not_widen_allowlist(self) -> None:
         response = self.client.get("/api/eneo/users")
 
@@ -173,6 +223,20 @@ class EneoProxyAuthTests(unittest.TestCase):
     def test_proxy_rejects_single_dot_segment(self) -> None:
         response = self.client.get("/api/eneo/flows/%2E/runs/")
 
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_proxy_rejects_an_encoded_query_or_fragment_in_a_segment(self) -> None:
+        # `flows/x%3F/runs/` matches the allowlist but would reach
+        # /api/v1/flows/x upstream, with the rest moved into the query.
+        for path in ("/api/eneo/flows/x%3F/runs/", "/api/eneo/flows/x%23/runs/"):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 403, path)
+        response = self.client.post(
+            "/api/eneo/flows/x%3F/files/",
+            headers={"Origin": "https://module.example.test"},
+            files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
+        )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.proxy_client.calls, [])
 

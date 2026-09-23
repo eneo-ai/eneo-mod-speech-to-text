@@ -2,7 +2,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from app.config import load_settings
+from app.config import FlowListScope, load_settings
 
 
 def valid_environment() -> dict[str, str]:
@@ -45,6 +45,35 @@ class SettingsTests(unittest.TestCase):
             settings.app_access_code.get_secret_value(),
             "test-access-code-1234",
         )
+
+    def test_the_auth_mode_decides_whether_the_flow_list_names_a_space(self) -> None:
+        environment = valid_environment()
+        environment["DEMO_SPACE_ID"] = "space-demo"
+        with patch.dict(os.environ, environment, clear=True):
+            sso = load_settings()
+        # An SSO user's list covers every space they belong to, even with a space configured.
+        self.assertEqual(sso.flow_list_scope, FlowListScope(space_id=None))
+
+        environment.pop("ENEO_PUBLIC_URL")
+        environment["AUTH_MODE"] = "access_code"
+        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
+        with patch.dict(os.environ, environment, clear=True):
+            access_code = load_settings()
+        # The module key alone must name its space, from the first request.
+        self.assertEqual(access_code.flow_list_scope, FlowListScope(space_id="space-demo"))
+
+    def test_access_code_without_a_space_says_so_at_configuration(self) -> None:
+        environment = valid_environment()
+        environment.pop("ENEO_PUBLIC_URL")
+        environment["AUTH_MODE"] = "access_code"
+        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
+
+        with patch.dict(os.environ, environment, clear=True), self.assertLogs("eneo_config", level="ERROR") as logs:
+            settings = load_settings()
+
+        self.assertIsNone(settings.flow_list_scope)
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("DEMO_SPACE_ID", logs.output[0])
 
     def test_session_max_age_defaults_to_eight_hours(self) -> None:
         with patch.dict(os.environ, valid_environment(), clear=True):
