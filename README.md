@@ -342,5 +342,40 @@ flow-kontraktet och håller uppladdningen vid liv så länge progress fortsätte
 Inspelaren använder komprimerat browserformat, i första hand WebM/Opus när
 flödet accepterar det, och ber `MediaRecorder` om korta chunks under inspelning.
 Det minskar risken att långa möten bygger upp en enda stor intern recorder-buffer.
-Det är fortfarande inte live-streaming till Eneo: Eneo-körningen startar när hela
-ljudfilen har laddats upp och ett `file_id` finns.
+Eneo-körningen startar fortfarande först när hela ljudfilen har laddats upp och
+ett `file_id` finns; Strömma (nedan) strömmar bara en förhandstext.
+
+### Strömma: live-text medan man spelar in
+
+Strömma visar texten medan användaren spelar in. Den är en förhandsvisning:
+inspelningen laddas upp och flödet körs som i Spela in, och körningens
+transkript är det som gäller. Run-kontraktets `transcription.live` säger i
+förväg om flödets ljudsteg kan visa live-text.
+
+Browsern öppnar en WebSocket till `/api/live/{flowId}/{stepId}` på modulens
+egen origin, skickar mono PCM16 LE i 16 kHz som binära ramar och till sist
+`{"type":"stop"}`. Modulens backend:
+
+1. släpper bara in en inloggad användare vars `Origin` är `MODULE_PUBLIC_URL`
+   (handshaken är en GET men kontrolleras som en mutation) och stänger annars
+   med 1008 innan anslutningen accepteras;
+2. begär en engångsticket med `POST /api/v1/flows/{flowId}/steps/{stepId}/live-transcription-sessions/`
+   och samma dubbla credentials som övriga Flow-anrop, efter att ha förnyat
+   modultoken om det är dags;
+3. öppnar Eneos WebSocket server-side med ticketen som subprotokoll och utan
+   browserns `Origin`; ticketen når aldrig browsern;
+4. skickar ramar och `stop` oförändrade till Eneo, och Eneos JSON-händelser
+   (`ready`, `transcript.delta`, `transcript.done`, `error`) oförändrade
+   tillbaka. Stänger ena sidan stänger backend den andra.
+
+Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`,
+får browsern en enda `error`-händelse med Eneos `code` och sedan en normal
+stängning. Når backend inte Eneo blir koden `upstream_unreachable` med
+`retryable: true`.
+
+Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma
+`/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i
+produktionsimagen; Traefik släpper igenom den utan extra konfiguration
+(verifierat med Next 16.3.4 och Traefik 3.7, även en anslutning utan ljud i 90
+sekunder). Går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom
+WebSocket-uppgraderingar till Eneo.

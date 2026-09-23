@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
 from typing import NamedTuple
 from urllib.parse import unquote, urlsplit, urlunsplit
+from uuid import UUID
 
 import httpx
 from fastapi import (
@@ -15,12 +17,17 @@ from fastapi import (
     Request,
     Response,
     UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
+from websockets.asyncio.client import ClientConnection, connect
+from websockets.exceptions import InvalidHandshake
 
 from app.config import load_settings
-from app.module_auth import SESSION_COOKIE, ModuleAuth
+from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -618,3 +625,164 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         headers=resp_headers,
         media_type=upstream.headers.get("content-type"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Live transcription preview (Strömma).
+#
+# The browser streams its recording to /api/live/{flow_id}/{step_id}. The
+# module backend asks Eneo for a single-use ticket with the user's module
+# credentials, opens Eneo's live socket itself (so the ticket never reaches
+# the browser and Eneo sees no browser Origin), and relays both ways
+# unchanged: PCM frames and the stop message up, Eneo's JSON events down.
+# Eneo owns the protocol and its limits; the relay only ends both sockets
+# together.
+# ---------------------------------------------------------------------------
+
+_LIVE_SUBPROTOCOL = "eneo-live.v1"
+_LIVE_CLOSE_TIMEOUT_SECONDS = 2
+# transcript.done repeats the session's whole text; Eneo bounds the messages
+# it reads from the model server the same way.
+_LIVE_MAX_MESSAGE_BYTES = 8 * 2**20
+
+
+class _LiveTicket(BaseModel):
+    ticket: str
+    # A path on Eneo's host; anything else would send the ticket elsewhere.
+    websocket_path: str = Field(pattern=r"^/")
+
+
+class _EneoError(BaseModel):
+    code: str = "upstream_error"
+    message: str = "Eneo refused the live transcription session."
+
+
+class _LiveRefused(Exception):
+    """The session cannot start; the browser gets this one error event."""
+
+    def __init__(self, code: str, message: str, *, retryable: bool) -> None:
+        super().__init__(message)
+        self.event = {
+            "type": "error",
+            "code": code,
+            "message": message,
+            "retryable": retryable,
+        }
+
+
+def _eneo_unreachable() -> _LiveRefused:
+    return _LiveRefused(
+        "upstream_unreachable", "Eneo could not be reached.", retryable=True
+    )
+
+
+async def _open_live_session(
+    websocket: WebSocket, flow_id: UUID, step_id: UUID
+) -> ClientConnection:
+    try:
+        response = await http_client.post(
+            f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/steps/{step_id}"
+            "/live-transcription-sessions/",
+            headers=module_auth.upstream_auth_headers(websocket),
+            timeout=httpx.Timeout(10.0),
+        )
+    except httpx.RequestError:
+        logger.warning("Live transcription ticket: Eneo unreachable", exc_info=True)
+        raise _eneo_unreachable() from None
+    if response.status_code >= 400:
+        try:
+            error = _EneoError.model_validate(response.json())
+        except ValueError:
+            error = _EneoError()
+        raise _LiveRefused(
+            error.code,
+            error.message,
+            retryable=eneo_is_unavailable(response.status_code),
+        )
+    try:
+        ticket = _LiveTicket.model_validate(response.json())
+    except ValueError:
+        logger.exception("Live transcription ticket: invalid response from Eneo")
+        raise _eneo_unreachable() from None
+    try:
+        return await connect(
+            re.sub(r"^http", "ws", settings.eneo_backend_url) + ticket.websocket_path,
+            subprotocols=[_LIVE_SUBPROTOCOL, f"ticket.{ticket.ticket}"],
+            close_timeout=_LIVE_CLOSE_TIMEOUT_SECONDS,
+            max_size=_LIVE_MAX_MESSAGE_BYTES,
+        )
+    except (OSError, TimeoutError, InvalidHandshake):
+        logger.warning("Live transcription socket: Eneo refused it", exc_info=True)
+        raise _eneo_unreachable() from None
+
+
+async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> None:
+    """Relay frames both ways until either side ends."""
+
+    async def upstream() -> None:
+        while True:
+            message = await browser.receive()
+            if message["type"] == "websocket.disconnect":
+                return
+            frame = message.get("bytes")
+            await eneo.send(frame if frame is not None else message["text"])
+
+    async def downstream() -> None:
+        async for message in eneo:
+            if isinstance(message, bytes):
+                await browser.send_bytes(message)
+            else:
+                await browser.send_text(message)
+
+    pumps = [asyncio.create_task(upstream()), asyncio.create_task(downstream())]
+    try:
+        await asyncio.wait(pumps, return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        for pump in pumps:
+            pump.cancel()
+        await asyncio.gather(*pumps, return_exceptions=True)
+
+
+async def _close_eneo_socket(eneo: ClientConnection) -> None:
+    # close() first flushes its close frame, which a peer that stopped reading
+    # never takes, and only then applies its own timeout.
+    try:
+        await asyncio.wait_for(eneo.close(), _LIVE_CLOSE_TIMEOUT_SECONDS)
+    except TimeoutError:
+        eneo.transport.abort()
+
+
+async def _close_browser_socket(
+    websocket: WebSocket, *, code: int = 1000, event: dict[str, object] | None = None
+) -> None:
+    """Send the last event, if any, and close; the browser may be gone already."""
+    try:
+        if event is not None:
+            await websocket.send_json(event)
+        await websocket.close(code)
+    except (WebSocketDisconnect, RuntimeError):
+        pass
+
+
+@app.websocket(
+    "/api/live/{flow_id}/{step_id}",
+    dependencies=[
+        Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_session),
+    ],
+)
+async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID) -> None:
+    await websocket.accept()
+    try:
+        eneo = await _open_live_session(websocket, flow_id, step_id)
+    except _LiveRefused as refused:
+        await _close_browser_socket(websocket, event=refused.event)
+        return
+    try:
+        await _relay_live_session(websocket, eneo)
+    finally:
+        await _close_eneo_socket(eneo)
+    # Eneo ends a session with 1000 after `transcript.done` or an `error`;
+    # anything else means its socket broke.
+    code = 1000 if eneo.close_code == 1000 else 1011
+    await _close_browser_socket(websocket, code=code)
