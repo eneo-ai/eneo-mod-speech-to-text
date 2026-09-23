@@ -359,6 +359,17 @@ Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefo
 lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny
 del. Delarna skickas i ordning som filer i samma körning (`file_ids`).
 
+En inspelning används av en flik i taget: den flik som spelar in den, skickar
+den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när
+fliken stängs eller kraschar. Andra flikar visar den inte som osänd så länge,
+och **Skicka** eller **Ta bort** där nekas med ett meddelande.
+
+Inspelaren spelar in tal i mono med 32 kbit/s, med Opus när webbläsaren kan och
+annars webbläsarens eget format (Safari: `audio/mp4`). Ett möte på fem timmar
+blir då ungefär 72 MB. Chromes WebM-filer saknar längd i sitt huvud; när en del
+sätts ihop till en fil skrivs den inspelade längden dit, så att uppspelningen
+visar rätt längd och går att spola i.
+
 Uppladdning och start av körning försöker igen vid nätverksfel, 408, 429 och
 5xx, med en väntetid som börjar på 1 s och fördubblas upp till 60 s, och direkt
 när anslutningen är tillbaka. Körningen startas med samma idempotensnyckel vid
