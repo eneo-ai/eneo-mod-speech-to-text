@@ -3,8 +3,8 @@
  * MediaRecorder run. Losing the microphone pauses the recording: its track
  * ends or is muted (a phone call, a phone putting the page in the background)
  * or the recorder stops or fails by itself. `continueRecording()` then starts
- * a new part of the same recording on a fresh microphone stream; `adopt()`
- * takes over a recording that a reload cut off, paused, for the same. A part nearing the
+ * a new part of the same recording on a fresh microphone stream, and `adopt()`
+ * does the same for a recording that a reload cut off. A part nearing the
  * flow's per-file limit hands over to a new part on the same stream, the two
  * overlapping briefly, until the flow's file count is used up. A hidden page
  * flushes the current chunk, so a page the system kills loses as little as
@@ -213,8 +213,8 @@ export class RecordingCapture {
 
   /**
    * Takes over a recording whose capture ended without a stop (the tab was
-   * reloaded or killed), paused: "Fortsätt spela in" then records on in a new
-   * part of it, so the meeting still becomes one run.
+   * reloaded or killed) and records on in a new part of it, like a new
+   * recording, so the meeting still becomes one run.
    */
   async adopt(recordingId: string, limits: CaptureLimits = {}): Promise<void> {
     const { status } = this.snapshot;
@@ -226,27 +226,33 @@ export class RecordingCapture {
       const store = (this.store ??= await this.openStore());
       const found = await store.get(recordingId);
       if (!found || !continuable(found)) throw new Refusal(NOT_CONTINUABLE);
+      const files = found.parts.filter((part) => part.bytes > 0).length;
+      if (limits.maxFiles !== undefined && files >= limits.maxFiles) {
+        throw new Refusal(noMoreFiles(limits.maxFiles));
+      }
       if (!(await store.lease(recordingId))) throw new Refusal(IN_USE_ELSEWHERE);
-      if (generation !== this.generation) {
-        store.release(recordingId);
+      this.release = () => store.release(recordingId);
+      const stream = await this.openMicrophone().catch((error) => {
+        throw new Refusal(microphoneError(error));
+      });
+      if (this.left(generation)) {
+        this.finish();
         return;
       }
-      this.release = () => store.release(recordingId);
-      await store.setState(recordingId, "paused");
-      this.prepare(limits, found.parts.filter((part) => part.bytes > 0).length, found.durationMs);
+      this.prepare(limits, files, found.durationMs);
       this.set({
-        status: "interrupted",
         recording: await store.get(recordingId),
-        stream: null,
-        partBytes: 0,
         recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
         lowSpace: await store.lowOnSpace(),
         persistent: store.persistent,
-        remainingMs: this.remaining(null),
       });
+      this.record(stream);
+      await this.takeWakeLock();
+      if (generation !== this.generation) this.dispose();
     } catch (error) {
       this.finish();
-      this.set({ error: error instanceof Refusal ? error.message : "Inspelningen kunde inte öppnas." });
+      const message = error instanceof Refusal ? error.message : "Inspelningen kunde inte öppnas.";
+      this.set({ status: "idle", recording: null, error: message });
     } finally {
       this.starting = false;
     }

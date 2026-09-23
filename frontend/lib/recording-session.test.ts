@@ -277,47 +277,63 @@ test("the recorded time leaves out pauses and interruptions, whatever the timers
 const CHUNK = "x".repeat(8_000);
 const LIMIT = 50_000;
 
-test("a recording cut off by a reload goes on as a new part of the same recording", async () => {
+test("a recording cut off by a reload records on at once in a new part of the same recording", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
-  const beforeReload = await setup({ store: await openRecordingStore(device) });
+  let before = 0;
+  const beforeReload = await setup({ store: await openRecordingStore(device), now: () => before });
   await beforeReload.capture.start(meeting);
+  before = 2_000;
   beforeReload.recorders[0].emit("a");
   const { id } = beforeReload.capture.getSnapshot().recording!;
   await until(async () => (await beforeReload.store.get(id))?.parts[0]?.bytes === 1, "the chunk stored");
   // The phone kills the tab mid-meeting: no stop; the browser ends its lease.
   beforeReload.store.release(id);
 
+  let now = 90_000; // the new page's own clock
   const store = await openRecordingStore(device);
-  const { capture, recorders } = await setup({ store });
+  const { capture, constraints, recorders } = await setup({ store, now: () => now });
   await capture.adopt(id);
-  assert.equal(capture.getSnapshot().status, "interrupted");
-  assert.equal(capture.getSnapshot().recording?.state, "paused");
-  assert.equal(capture.elapsedMs(), (await store.get(id))?.durationMs, "the timer goes on from what was recorded");
+  assert.equal(capture.getSnapshot().status, "recording", "the same surface as a new recording");
+  assert.deepEqual(constraints, [{ audio: { channelCount: 1 } }]);
+  assert.equal(capture.getSnapshot().recording?.id, id);
+  assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
   assert.equal(capture.getSnapshot().recordedBytes, 1, "and so does the size");
   assert.deepEqual(await store.listUnsent("user-1"), [], "this tab holds it now");
 
-  await capture.continueRecording();
+  now = 91_000;
   recorders[0].emit("b");
+  assert.equal(capture.elapsedMs(), 3_000);
   const stopped = await capture.stop();
   assert.equal(stopped?.id, id, "one recording, so one run");
-  assert.deepEqual(await texts(await store.readParts(id)), ["a", "b."]);
+  assert.equal(stopped?.durationMs, 3_000);
+  assert.deepEqual(await texts(await store.readParts(id)), ["a", "b."], "the earlier part is unchanged");
 });
 
-test("only an interrupted recording that no other tab holds can be continued", async () => {
+test("only an interrupted recording that no other tab holds, and that the flow takes another file for, can be continued", async () => {
   const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
   const otherTab = await openRecordingStore(device);
   const held = await otherTab.create(meeting);
   const finished = await otherTab.create(meeting);
   await otherTab.setState(finished.id, "stopped");
   otherTab.release(finished.id);
+  const full = await otherTab.create(meeting);
+  await otherTab.startPart(full.id);
+  await otherTab.append(full.id, 0, new Blob(["a"]), 1_000);
+  otherTab.release(full.id);
 
-  const { capture } = await setup({ store: await openRecordingStore(device) });
+  const { capture, streams } = await setup({ store: await openRecordingStore(device) });
   await capture.adopt(held.id);
   assert.equal(capture.getSnapshot().status, "idle");
   assert.equal(capture.getSnapshot().error, "Inspelningen används i en annan flik.");
   await capture.adopt(finished.id);
-  assert.equal(capture.getSnapshot().status, "idle");
   assert.equal(capture.getSnapshot().error, "Inspelningen är avslutad och kan inte fortsätta.");
+  await capture.adopt(full.id, { maxBytes: LIMIT, maxFiles: 1 });
+  assert.equal(capture.getSnapshot().status, "idle");
+  assert.equal(
+    capture.getSnapshot().error,
+    "Flödet tar emot högst 1 fil, och inspelningen har redan så många delar.",
+  );
+  assert.equal(streams.length, 0, "the microphone was never opened");
 
   // Reading it fails after the lease was taken: the lease is let go again.
   const reopened = await openRecordingStore(device);
@@ -350,9 +366,10 @@ test("only an interrupted recording that no other tab holds can be continued", a
   assert.equal(leaving.capture.getSnapshot().status, "idle");
   assert.deepEqual(
     (await leaving.store.listUnsent("user-1")).map((r) => r.id).sort(),
-    [held.id, finished.id].sort(),
-    "both are still unsent, and no tab holds either",
+    [held.id, finished.id, full.id].sort(),
+    "all are still unsent, and no tab holds any",
   );
+  assert.ok(leaving.streams.every((stream) => stream.track.readyState === "ended"));
 });
 
 test("a page left while the browser asks for the microphone records nothing and lets the microphone go", async () => {
@@ -561,7 +578,6 @@ test("a part that got no audio is no file, so the recording still continues, or 
 
   const reloaded = await setup({ store: await openRecordingStore(device) });
   await reloaded.capture.adopt(id, limits);
-  await reloaded.capture.continueRecording();
   assert.equal(reloaded.capture.getSnapshot().status, "recording", "still one file");
   reloaded.recorders[0].emit("b");
   await reloaded.capture.stop();

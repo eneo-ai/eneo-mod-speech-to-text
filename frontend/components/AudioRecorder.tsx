@@ -116,10 +116,7 @@ export function AudioRecorder({
   useImperativeHandle(
     ref,
     () => ({
-      async continueRecording(recording) {
-        await capture.adopt(recording.id, { maxBytes, maxFiles });
-        await capture.continueRecording();
-      },
+      continueRecording: (recording) => capture.adopt(recording.id, { maxBytes, maxFiles }),
     }),
     [capture, maxBytes, maxFiles],
   );
