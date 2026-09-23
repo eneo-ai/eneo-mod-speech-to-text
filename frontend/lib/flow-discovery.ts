@@ -4,7 +4,7 @@
  * on the space each flow belongs to.
  */
 
-import { ApiError, listPublishedFlows, type FlowSparsePublic } from "./api";
+import { listPublishedFlows, type AppConfig, type FlowSparsePublic } from "./api";
 
 export const DISCOVERY_PAGE_SIZE = 200;
 // ponytail: 1 000 flows is far more than a person runs; the page says when it cuts, raise the cap if that ever shows.
@@ -47,20 +47,23 @@ async function readAll(list: ListPage, spaceId?: string): Promise<FlowDiscovery>
   return { groups: groupBySpace(flows), truncated: true };
 }
 
-/**
- * Every published flow the user can run. In access-code mode the module sends
- * only its own key; a service key must name its space, so the configured
- * space is listed instead.
- */
+/** Every published flow the user can run, or those of one space when `spaceId` names it. */
 export async function discoverFlows({
+  spaceId,
   list = listPublishedFlows,
-  fallbackSpaceId,
-}: { list?: ListPage; fallbackSpaceId?: string | null } = {}): Promise<FlowDiscovery> {
-  try {
-    return await readAll(list);
-  } catch (error) {
-    const mustNameSpace = error instanceof ApiError && error.code === "flow_service_key_space_id_required";
-    if (mustNameSpace && fallbackSpaceId) return readAll(list, fallbackSpaceId);
-    throw error;
-  }
+}: { spaceId?: string; list?: ListPage } = {}): Promise<FlowDiscovery> {
+  return readAll(list, spaceId);
+}
+
+export const FLOW_LIST_NOT_CONFIGURED =
+  "Flödena kan inte visas eftersom tjänsten saknar en inställning. Kontakta den som ansvarar för Tal till text.";
+
+/**
+ * The list as the module is configured: /api/config says, from the auth mode,
+ * whether the list names a space (the module key alone must) or asks across
+ * the user's spaces (Eneo SSO). Without a scope nothing is asked of Eneo.
+ */
+export async function discoverConfiguredFlows(config: AppConfig, list: ListPage = listPublishedFlows) {
+  if (!config.flow_list) throw new Error(FLOW_LIST_NOT_CONFIGURED);
+  return discoverFlows({ spaceId: config.flow_list.space_id ?? undefined, list });
 }

@@ -147,6 +147,27 @@ class EneoProxyAuthTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, f"{method} {path}")
         self.assertEqual(len(self.proxy_client.calls), 4)
 
+    def test_config_tells_the_flow_list_how_to_ask_eneo(self) -> None:
+        original_space = main.settings.demo_space_id
+        self.addCleanup(setattr, main.settings, "demo_space_id", original_space)
+
+        # SSO: every space the user belongs to, never a named space.
+        main.settings.demo_space_id = "space-demo"
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": {"space_id": None}})
+
+        main.module_auth.settings.auth_mode = "access_code"
+        main.module_auth.sessions.clear()
+        self.client.cookies.set(
+            SESSION_COOKIE,
+            main.module_auth.sessions.create(AccessCodeSession(expires_at=int(time.time()) + 60)),
+        )
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": {"space_id": "space-demo"}})
+
+        # Access code without a configured space: the list cannot be asked for at all.
+        main.settings.demo_space_id = None
+        self.assertEqual(self.client.get("/api/config").json(), {"flow_list": None})
+        self.assertEqual(self.proxy_client.calls, [])
+
     def test_proxy_forwards_flow_discovery_across_the_users_spaces(self) -> None:
         response = self.client.get("/api/eneo/flows/?published_only=true&limit=200&offset=0")
 

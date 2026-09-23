@@ -20,7 +20,7 @@ import {
 import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
-  discoverFlows,
+  discoverConfiguredFlows,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { friendlyError } from "@/lib/errors";
@@ -57,7 +57,7 @@ function FlowsListPage() {
   useEffect(() => {
     let cancelled = false;
     getConfig()
-      .then((cfg) => discoverFlows({ fallbackSpaceId: cfg.demo_space_id }))
+      .then((cfg) => discoverConfiguredFlows(cfg))
       .then(({ groups, truncated: cut }) => {
         if (cancelled) return;
         setTruncated(cut);

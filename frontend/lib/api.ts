@@ -100,10 +100,12 @@ async function request<T>(
 // ---------- Config ----------
 
 export interface AppConfig {
-  demo_space_id: string | null;
-  demo_space_name: string | null;
-  /** Lista över alla konfigurerade spaces. Tom = inget hårdkodat space (frontend visar väljare). */
-  demo_space_ids?: string[];
+  /**
+   * Hur flödeslistan frågar Eneo, avgjort av modulens inloggningsläge: med
+   * Eneo SSO alla användarens spaces (space_id null), med åtkomstkod det
+   * konfigurerade spacet; null när åtkomstkodsläget saknar ett space.
+   */
+  flow_list: { space_id: string | null } | null;
 }
 
 export async function getConfig() {

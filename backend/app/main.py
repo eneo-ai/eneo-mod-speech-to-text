@@ -86,13 +86,8 @@ async def healthz():
     dependencies=[Depends(module_auth.require_session)],
 )
 async def get_config():
-    return {
-        "demo_space_id": settings.demo_space_id,
-        "demo_space_name": settings.demo_space_name,
-        "demo_space_ids": (
-            [settings.demo_space_id] if settings.demo_space_id is not None else []
-        ),
-    }
+    # The flow list's scope, decided by the auth mode in one place (Settings.flow_list_scope).
+    return {"flow_list": settings.flow_list_scope}
 
 
 # ---------- Eneo proxy ----------

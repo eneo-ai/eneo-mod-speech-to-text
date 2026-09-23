@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import re
 from typing import Literal, cast
@@ -9,6 +10,14 @@ from pydantic import BaseModel, SecretStr
 
 
 AuthMode = Literal["eneo_sso", "access_code"]
+
+logger = logging.getLogger("eneo_config")
+
+
+class FlowListScope(BaseModel):
+    """What the flow list asks Eneo for: one named space, or every space the user belongs to (None)."""
+
+    space_id: str | None
 
 
 class Settings(BaseModel):
@@ -23,12 +32,23 @@ class Settings(BaseModel):
     app_access_code: SecretStr | None = None
     cookie_secure: bool = True
     demo_space_id: str | None = None
-    demo_space_name: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
     # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
     session_max_age_seconds: int = 8 * 60 * 60
+
+    @property
+    def flow_list_scope(self) -> FlowListScope | None:
+        """The one place the auth mode decides how the flow list asks Eneo.
+
+        An SSO user's list covers every space they belong to, so it never names
+        one. The module key alone (access_code) must name its space; without
+        DEMO_SPACE_ID there is nothing it may list.
+        """
+        if self.auth_mode == "eneo_sso":
+            return FlowListScope(space_id=None)
+        return FlowListScope(space_id=self.demo_space_id) if self.demo_space_id else None
 
     @property
     def module_origin(self) -> str:
@@ -111,7 +131,7 @@ def load_settings() -> Settings:
         if not 16 <= len(raw_access_code) <= 256:
             raise RuntimeError("APP_ACCESS_CODE must be between 16 and 256 characters")
 
-    return Settings(
+    settings = Settings(
         eneo_backend_url=_required_url("ENEO_BACKEND_URL"),
         eneo_public_url=(
             _required_url("ENEO_PUBLIC_URL") if auth_mode == "eneo_sso" else None
@@ -129,7 +149,12 @@ def load_settings() -> Settings:
         ),
         cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
-        demo_space_name=os.environ.get("DEMO_SPACE_NAME") or None,
         upload_proxy_timeout_seconds=upload_timeout,
         session_max_age_seconds=session_minutes * 60,
     )
+    if settings.flow_list_scope is None:
+        logger.error(
+            "AUTH_MODE=access_code needs DEMO_SPACE_ID: the module key lists flows only in "
+            "the space it names. The flow list says it cannot be shown until it is set."
+        )
+    return settings

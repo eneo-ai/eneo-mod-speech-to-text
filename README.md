@@ -27,7 +27,7 @@ Produktionsimagen `ghcr.io/eneo-ai/eneo-mod-speech-to-text` paketerar båda proc
 ```bash
 cp .env.example .env
 # Fyll i auth-läge, Eneo/module-URL:er, ENEO_API_KEY och SESSION_SECRET
-# (samt valfri DEMO_SPACE_ID).
+# (samt DEMO_SPACE_ID i access_code-läget).
 # Sätt COOKIE_SECURE=false för lokal http://localhost.
 
 docker compose up --build
@@ -212,8 +212,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `AUTH_MODE` | `eneo_sso` (standard) eller tillfälligt `access_code` |
    | `APP_ACCESS_CODE` | endast i `access_code`; en separat, slumpmässig Dokploy-secret |
    | `COOKIE_SECURE` | `true` |
-   | `DEMO_SPACE_ID` | (valfritt) space vars flöden listas när modulens nyckel är en tjänstenyckel som måste ange sitt space (bara i `access_code`); med `eneo_sso` listas flödena i alla användarens spaces |
-   | `DEMO_SPACE_NAME` | (valfritt) används inte längre av flödeslistan; space-namnet kommer från Eneo |
+   | `DEMO_SPACE_ID` | krävs i `access_code` för flödeslistan: modulnyckeln listar bara flödena i detta space (utan det loggar backend ett fel vid start och sidan säger att flödena inte kan visas). Används inte med `eneo_sso`, där listan omfattar alla användarens spaces |
    | `UPLOAD_PROXY_TIMEOUT_SECONDS` | (valfritt) timeout för backendens upload-forwarding till Eneo, default `1800` |
    | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_MAX_SESSION_HOURS`); den kortlivade modultoken förnyas automatiskt via Eneo under tiden |
 
