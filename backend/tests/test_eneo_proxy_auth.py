@@ -184,6 +184,31 @@ class EneoProxyAuthTests(unittest.TestCase):
             self.assertEqual(self.client.get(path).status_code, 403, path)
         self.assertEqual(self.proxy_client.calls, [])
 
+    def test_proxy_exposes_transcript_regeneration_with_its_idempotency_key(self) -> None:
+        # "Skapa dokumentet igen med rättningarna" starts a new run from the reviewed transcript.
+        response = self.client.post(
+            "/api/eneo/flows/flow-1/runs/run-1/steps/step-1/transcript-regenerations/",
+            headers={
+                "Origin": "https://module.example.test",
+                "Idempotency-Key": "transcript-regeneration:run-1:3",
+            },
+            json={"expected_run_revision": 2, "expected_correction_revision": 3, "segments_hash": "a" * 64},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(
+            call["url"],
+            "https://eneo.example.test/api/v1/flows/flow-1/runs/run-1/steps/step-1/transcript-regenerations/",
+        )
+        self.assertEqual(call["headers"]["idempotency-key"], "transcript-regeneration:run-1:3")
+        # Only POST: listing or deleting regenerations is not the module's to expose.
+        self.assertEqual(
+            self.client.get("/api/eneo/flows/flow-1/runs/run-1/steps/step-1/transcript-regenerations/").status_code,
+            403,
+        )
+
     def test_proxy_exposes_retry_from_the_failed_step_with_its_idempotency_key(self) -> None:
         response = self.client.post(
             "/api/eneo/flows/flow-1/runs/run-1/retry/",
