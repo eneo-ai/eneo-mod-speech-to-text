@@ -189,7 +189,14 @@ export class LiveTranscriber {
     this.ready = false;
     this.failure = null;
     this.attempts += 1;
-    const socket = this.deps.openSocket();
+    let socket: LiveSocket;
+    try {
+      socket = this.deps.openSocket();
+    } catch {
+      // The browser will not even open one (a bad address, a blocked scheme): no later try does better.
+      this.giveUp(this.snapshot.started ? "stopped" : "unavailable");
+      return;
+    }
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => this.onMessage(socket, event.data);
     socket.onclose = () => this.onClose(socket);

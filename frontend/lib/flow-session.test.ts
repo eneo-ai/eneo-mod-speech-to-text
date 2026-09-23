@@ -747,3 +747,19 @@ test("a microphone that cannot start leaves no live session behind", async () =>
   assert.deepEqual(live.calls, ["dispose"]);
   assert.equal(session.getSnapshot().live, null);
 });
+
+test("live text that cannot even be set up never keeps the recording from starting; the sheet says so", async () => {
+  const { session, recorders } = await setup({
+    live: {
+      open() {
+        throw new DOMException("The browser has no audio for this page.", "NotSupportedError");
+      },
+    },
+  });
+  session.setContract(audioContract());
+  assert.equal(session.getSnapshot().mode, "stromma");
+  await session.start();
+  assert.equal(session.getSnapshot().phase, "recording", "the recording runs");
+  assert.equal(recorders.length, 1);
+  assert.equal(session.getSnapshot().live?.getSnapshot().status, "unavailable", "the preview says it could not start");
+});

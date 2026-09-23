@@ -265,3 +265,15 @@ test("a connection that stops draining is retired once 30 s of audio waits in it
   assert.equal(firstByte(sent[sent.length - 1]), 999 % 256);
   assert.equal(live.getSnapshot().status, "live");
 });
+
+test("a socket the browser will not even open makes live text unavailable instead of throwing", () => {
+  const live = new LiveTranscriber({
+    openSocket: () => {
+      throw new DOMException("The URL's scheme is not allowed.", "SyntaxError");
+    },
+    setTimer: () => 0,
+    clearTimer: () => undefined,
+  });
+  live.start();
+  assert.equal(live.getSnapshot().status, "unavailable");
+});

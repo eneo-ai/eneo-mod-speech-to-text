@@ -338,6 +338,18 @@ export interface LiveClient {
   open(stepId: string): LiveSession;
 }
 
+const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false };
+
+/** Live text that could not be set up at all, as the sheet shows it. */
+const unavailableLive = (): LiveSession => ({
+  getSnapshot: () => UNAVAILABLE_LIVE,
+  subscribe: () => () => undefined,
+  listen: () => undefined,
+  setRecording: () => undefined,
+  stop: () => undefined,
+  dispose: () => undefined,
+});
+
 export interface FlowSessionOptions {
   flowId: string;
   flowName: string;
@@ -460,10 +472,10 @@ export class FlowSession {
     this.microphoneError = null;
     this.starting = true;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
-    // Opened in the start gesture, so the browser lets its audio run; it connects while the microphone is asked for.
-    if (mode === "stromma") this.openLive(step.step_id);
-    this.emit();
     try {
+      // Opened in the start gesture, so the browser lets its audio run; it connects while the microphone is asked for.
+      if (mode === "stromma") this.openLive(step.step_id);
+      this.emit();
       await this.capture.start(
         {
           ownerId: this.options.ownerId,
@@ -660,7 +672,12 @@ export class FlowSession {
 
   private openLive(stepId: string) {
     this.closeLive();
-    this.live = this.options.live?.open(stepId) ?? null;
+    try {
+      this.live = this.options.live?.open(stepId) ?? null;
+    } catch {
+      // Live text could not even be set up: the recording goes on, and the sheet says so.
+      this.live = unavailableLive();
+    }
   }
 
   private closeLive() {
