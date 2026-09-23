@@ -166,8 +166,8 @@ export class Playback {
     const media = this.media;
     if (!media) return;
     this.stopAt = null;
-    if (!media.paused) {
-      media.pause();
+    if (this.playingNow()) {
+      this.pause();
       return;
     }
     if (this.atEnd()) {
@@ -176,11 +176,20 @@ export class Playback {
       return;
     }
     this.started = true;
-    void media.play().catch(ignore);
+    // A part still loading plays once it has loaded.
+    if (this.pending) this.pending.play = true;
+    else void media.play().catch(ignore);
     this.emit();
   }
 
+  /** Pauses, also a start that waits for a part to load. */
   pause(): void {
+    if (this.pending?.play) {
+      // The load paused the element without a pause event, so none comes now either.
+      this.pending.play = false;
+      this.playing = false;
+      this.emit();
+    }
     this.media?.pause();
   }
 

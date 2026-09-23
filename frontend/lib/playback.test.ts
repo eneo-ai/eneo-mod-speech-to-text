@@ -19,7 +19,9 @@ class FakeMedia implements MediaLike {
     this.paused = true;
   }
   load() {
+    // As the browser: a new source starts paused at 0.
     this.loads.push(this.src);
+    this.paused = true;
     this.currentTime = 0;
     this.duration = Number.NaN;
   }
@@ -147,6 +149,38 @@ test("a move right after Pausa stays paused, before the element's pause event ha
   media.duration = 2;
   playback.onLoadedMetadata();
   assert.equal(media.paused, true, "nor does a part it loads start playing");
+});
+
+test("Pausa while a part is still loading keeps it from starting once it has loaded", () => {
+  const { playback, media } = started();
+  playback.toggle();
+  playback.onPlay();
+  playback.seek(1, 500, true);
+  playback.pause();
+  // The load paused the element without a pause event, so none comes now either.
+  assert.equal(playback.getSnapshot().playing, false, "the button offers Spela upp again");
+  media.duration = 2;
+  playback.onLoadedMetadata();
+  assert.deepEqual([media.currentTime, media.paused], [0.5, true], "as when the line editor opens");
+
+  playback.seek(0, 1_000, true);
+  playback.toggle();
+  media.duration = 4;
+  playback.onLoadedMetadata();
+  assert.equal(media.paused, true, "the play button pauses a start that waits for the audio");
+
+  playback.seek(1, 0, false);
+  playback.toggle();
+  playback.toggle();
+  media.duration = 2;
+  playback.onLoadedMetadata();
+  assert.equal(media.paused, true, "play then pause before the audio has loaded stays paused");
+
+  playback.seek(0, 0, false);
+  playback.toggle();
+  media.duration = 4;
+  playback.onLoadedMetadata();
+  assert.equal(media.paused, false, "and play alone starts it once loaded");
 });
 
 test("skip moves over the whole recording and stays inside it", () => {
