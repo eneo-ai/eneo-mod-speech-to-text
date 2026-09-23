@@ -8,12 +8,16 @@ class FakeSocket implements LiveSocket {
   binaryType = "blob";
   sent: Array<string | ArrayBuffer> = [];
   closedWith: number | null = null;
+  // A relay that stops reading leaves every sent frame queued.
+  stalled = false;
+  bufferedAmount = 0;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
   onclose: ((event: { code: number }) => void) | null = null;
   onerror: (() => void) | null = null;
   send(data: string | ArrayBuffer) {
     this.sent.push(data);
+    if (this.stalled && data instanceof ArrayBuffer) this.bufferedAmount += data.byteLength;
   }
   close(code = 1000) {
     this.closedWith = code;
@@ -227,4 +231,66 @@ test("the socket is the page's own origin, with no subprotocol", () => {
   }
   openLiveSocket(Recorder as unknown as typeof WebSocket, "wss://x/api/live/f/s");
   assert.deepEqual(calls, [["wss://x/api/live/f/s"]], "a browser fails a handshake that offered a subprotocol");
+});
+
+test("a connection coming back while a reconnect is under way opens no second socket, and dispose closes the one there is", () => {
+  const { live, sockets, elapse, browser } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1011);
+  elapse(1_000);
+  assert.equal(sockets.length, 2, "the reconnect, not ready yet");
+  browser.go(false);
+  browser.go(true);
+  assert.equal(sockets.length, 2, "one connection at a time");
+  live.dispose();
+  assert.equal(sockets[1].closedWith, 1000, "no socket is left open");
+});
+
+test("a connection that stops draining is retired; no replacement opens before its close, and the wait stays bounded", () => {
+  const { live, sockets, elapse, browser } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].stalled = true;
+  for (let i = 0; i < 1_000; i += 1) live.pushFrame(frame(i % 256));
+  assert.equal(sockets[0].closedWith, 1000, "the stalled connection is asked to close");
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  assert.ok(sockets[0].bufferedAmount <= 960_000, `at most 30 s queued, was ${sockets[0].bufferedAmount} bytes`);
+  const sentBefore = sockets[0].frames().length;
+  // While it closes, its queue drains, but nothing new may join it.
+  sockets[0].stalled = false;
+  sockets[0].bufferedAmount = 0;
+
+  // The browser takes its time to close it: every chance to try again passes, and audio keeps coming.
+  for (let round = 0; round < 4; round += 1) {
+    elapse(60_000);
+    browser.go(false);
+    browser.go(true);
+    live.setRecording(false);
+    live.setRecording(true);
+    for (let i = 0; i < 1_000; i += 1) live.pushFrame(frame(i % 256));
+  }
+  assert.equal(sockets.length, 1, "no replacement while the retired connection is still closing");
+  assert.equal(sockets[0].frames().length, sentBefore, "nothing more is sent to it");
+
+  sockets[0].drop(1000); // now it has closed
+  elapse(1_000);
+  assert.equal(sockets.length, 2, "a new session after the close");
+  sockets[1].ready();
+  const sent = sockets[1].frames();
+  assert.equal(sent.length, 300, "the newest 30 s waited for it");
+  assert.equal(firstByte(sent[sent.length - 1]), 999 % 256);
+  assert.equal(live.getSnapshot().status, "live");
+});
+
+test("a socket the browser will not even open makes live text unavailable instead of throwing", () => {
+  const live = new LiveTranscriber({
+    openSocket: () => {
+      throw new DOMException("The URL's scheme is not allowed.", "SyntaxError");
+    },
+    setTimer: () => 0,
+    clearTimer: () => undefined,
+  });
+  live.start();
+  assert.equal(live.getSnapshot().status, "unavailable");
 });

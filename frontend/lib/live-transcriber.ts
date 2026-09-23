@@ -41,6 +41,8 @@ export interface LiveSnapshot {
 /** What the client needs of a WebSocket. */
 export interface LiveSocket {
   binaryType: string;
+  /** Bytes sent but not yet on the network. */
+  readonly bufferedAmount: number;
   send(data: string | ArrayBuffer): void;
   close(code?: number): void;
   onopen: (() => void) | null;
@@ -59,6 +61,8 @@ export interface LiveDeps {
 
 // 30 s of 100 ms frames (about 1 MB) waits for `ready`; older audio is dropped.
 const MAX_BUFFERED_FRAMES = 300;
+// A connection with as much queued is not keeping up; a new session takes over.
+const MAX_QUEUED_BYTES = MAX_BUFFERED_FRAMES * 3_200;
 // A pause in the words commits the draft so far; a longer one starts a paragraph.
 const COMMIT_AFTER_MS = 2_000;
 const PARAGRAPH_AFTER_MS = 4_000;
@@ -121,12 +125,16 @@ export class LiveTranscriber {
   /** The next 100 ms of audio; sent when live, kept (bounded) until then. */
   pushFrame(frame: ArrayBuffer): void {
     if (!this.recording || this.stopping) return;
+    if (this.ready && this.socket) {
+      if (this.socket.bufferedAmount + frame.byteLength <= MAX_QUEUED_BYTES) {
+        this.socket.send(frame);
+        return;
+      }
+      // Fallen behind: the connection is retired, and this audio waits for the next.
+      this.fail();
+    }
     const { status } = this.snapshot;
     if (status === "unavailable" || status === "stopped" || status === "ended") return;
-    if (this.ready && this.socket) {
-      this.socket.send(frame);
-      return;
-    }
     this.buffered.push(frame);
     if (this.buffered.length > MAX_BUFFERED_FRAMES) this.buffered.shift();
   }
@@ -151,6 +159,27 @@ export class LiveTranscriber {
     }
   }
 
+  /**
+   * This connection cannot carry live text any further (it fell behind, or the
+   * audio feeding it broke): it ends as a break, and live text tries again the
+   * way it does after a dropped connection. The connection stays this
+   * client's until the browser has closed it (a close still sends what was
+   * queued), so nothing more goes to it and no replacement opens before its
+   * own close event; the audio meanwhile waits in the bounded buffer.
+   */
+  fail(): void {
+    const socket = this.socket;
+    if (!socket || this.stopping) return;
+    this.failure = "retry";
+    this.ready = false;
+    if (this.snapshot.started) this.set({ status: "reconnecting" });
+    try {
+      socket.close(1000);
+    } catch {
+      // Already closing.
+    }
+  }
+
   /** The page goes away. */
   dispose(): void {
     this.stopping = true;
@@ -158,11 +187,20 @@ export class LiveTranscriber {
   }
 
   private connect() {
+    // One connection at a time: an attempt under way is never replaced.
+    if (this.socket) return;
     this.clear("retryTimer");
     this.ready = false;
     this.failure = null;
     this.attempts += 1;
-    const socket = this.deps.openSocket();
+    let socket: LiveSocket;
+    try {
+      socket = this.deps.openSocket();
+    } catch {
+      // The browser will not even open one (a bad address, a blocked scheme): no later try does better.
+      this.giveUp(this.snapshot.started ? "stopped" : "unavailable");
+      return;
+    }
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => this.onMessage(socket, event.data);
     socket.onclose = () => this.onClose(socket);

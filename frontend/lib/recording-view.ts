@@ -90,6 +90,28 @@ export function recordingAnnouncement(phase: SessionPhase): string {
   }
 }
 
+/**
+ * The details folded into one line on a phone: a required detail the send
+ * found missing unfolds them, and they stay unfolded while it is filled in,
+ * until the user folds them again.
+ */
+export function keepDetailsOpen(open: boolean, invalid: readonly string[]): boolean {
+  return open || invalid.length > 0;
+}
+
+/**
+ * What "Lämna sidan?" says. The recording is promised back among unsent
+ * recordings only when the device keeps it; otherwise leaving loses it, and
+ * the way to keep it is "Spara som fil" (after Stoppa, while recording).
+ */
+export function leaveWarning(persistent: boolean | null, phase: SessionPhase): string {
+  if (persistent) return "Det som spelats in finns kvar bland osända inspelningar.";
+  const lost = "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan.";
+  return phase === "ready"
+    ? `${lost} Välj Spara som fil först om du vill behålla den.`
+    : `${lost} Stoppa och välj Spara som fil först om du vill behålla den.`;
+}
+
 /** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
 export function detailsSummary(fields: FormField[], details: Record<string, DetailValue>): string {
   const parts = fields.flatMap((field) => {

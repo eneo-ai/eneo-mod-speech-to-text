@@ -44,3 +44,12 @@ test("a 44.1 kHz device is resampled to 16 kHz, clipped at full scale, and the l
   assert.equal(frames[1].byteLength, 320, "10 ms");
   assert.ok(samples(frames[1]).every((value) => value === -32_768));
 });
+
+test("a flush ends a stretch: what follows is encoded afresh, with nothing of the input before it", () => {
+  const { frames, encoder } = encode(48_000, [new Float32Array(4_801).fill(0.5)]);
+  encoder.flush();
+  const before = frames.length;
+  encoder.push(new Float32Array(4_800).fill(-0.5));
+  assert.equal(frames.length, before + 1);
+  assert.ok(samples(frames[before]).every((value) => value === -16_384), "no sample of the earlier input");
+});
