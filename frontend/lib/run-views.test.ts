@@ -9,6 +9,8 @@ import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
+import { RunTranscriptView } from "../components/flow/RunTranscript";
+import { EMPTY_CORRECTIONS } from "./transcript-corrections";
 import { listOwnRuns } from "./api";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
@@ -251,4 +253,54 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelled, /Starta en ny körning/);
   assert.match(cancelled, /En ny körning använder samma ljud och uppgifter och gör om alla steg\./);
   assert.doesNotMatch(cancelled, /Försök igen/);
+});
+
+test("the transcript is not copied or downloaded while its saved corrections could not be read", () => {
+  const transcript = {
+    pending: false,
+    speakerReviews: [],
+    correctionProblem: null as string | null,
+    segments: [{ fileIndex: 0, start: 0, end: 2, speaker: null, text: "Välkomna till mötet." }],
+    fromMetadata: true,
+    fileIds: [],
+    stepId: "step-1",
+    corrections: EMPTY_CORRECTIONS,
+    speakerNames: {},
+  };
+  const editing = {
+    corrections: EMPTY_CORRECTIONS,
+    saveState: "idle" as const,
+    localError: null,
+    saveQueue: { current: Promise.resolve(true) },
+    onCorrectionsChange: () => undefined,
+    retryCorrections: async () => undefined,
+    downloadUnsavedCorrections: () => undefined,
+  };
+  const render = (correctionProblem: string | null) =>
+    renderToStaticMarkup(
+      createElement(RunTranscriptView, {
+        flowId: "flow-1",
+        runId: "run-1",
+        fileName: "transkript.txt",
+        transcript: { ...transcript, correctionProblem },
+        confirmedWords: new Set<string>(),
+        editing,
+        onReload: () => undefined,
+      }),
+    );
+  const exportButtons = (html: string) =>
+    [...html.matchAll(/<button([^>]*)>(?:(?!<\/button>).)*?(Kopiera transkriptet|Ladda ner)/g)].map(([, attrs, label]) => [
+      label,
+      /\sdisabled=""/.test(attrs),
+    ]);
+
+  const readable = render(null);
+  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner", false]]);
+  assert.doesNotMatch(readable, />Läs in igen</);
+
+  // The hook's own words when reading the saved corrections failed; exporting now would drop them.
+  const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
+  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner", true]]);
+  assert.match(unread, /när rättningarna har lästs in/);
+  assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
 });
