@@ -15,7 +15,7 @@ import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { RunFailure } from "@/components/flow/RunFailure";
-import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
+import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -26,11 +26,9 @@ import {
   cancelRun,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
-  getFlowGraph,
   getPublishedFlow,
   getRun,
   getRunContract,
-  getRunSteps,
   inputFileAudioUrl,
   isReviewCheckpointApproved,
   listOwnRuns,
@@ -50,11 +48,11 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
-import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
+import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
 import { resultFileViews } from "@/lib/run-files";
-import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
+import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
@@ -108,6 +106,8 @@ type RunState =
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
   | { kind: "opening" }
+  // The run has ended, but its result or steps could not be read.
+  | { kind: "unread"; runId: string; message: string }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
@@ -151,7 +151,6 @@ function writeRunIdToUrl(runId: string | null) {
 function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
-  const [graph, setGraph] = useState<FlowGraph | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -182,16 +181,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      getPublishedFlow(flowId),
-      getRunContract(flowId),
-      getFlowGraph(flowId).catch(() => null),
-    ])
-      .then(([p, c, g]) => {
+    Promise.all([getPublishedFlow(flowId), getRunContract(flowId)])
+      .then(([p, c]) => {
         if (cancelled) return;
         setPublished(p);
         setContract(c);
-        setGraph(g);
 
         // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
         // granskning). Annars: visa flödets senaste körningar.
@@ -349,12 +343,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
         }
         return;
       }
-      const [detail, steps] = await Promise.all([
-        getRun(flowId, runId).catch(() => last.run as FlowRunPublic),
-        getRunSteps(flowId, runId).catch(() => [] as FlowRunStep[]),
-      ]);
+      let finished: Awaited<ReturnType<typeof readFinishedRun>>;
+      try {
+        finished = await readFinishedRun(flowId, last.run);
+      } catch (err) {
+        if (!signal.aborted) setRun({ kind: "unread", runId, message: friendlyError(err) });
+        return;
+      }
       if (signal.aborted) return;
-      setRun({ kind: "done", run: detail, steps, graph: last.graph });
+      setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph });
     } catch (err) {
       if (signal.aborted) return;
       setRunError(friendlyError(err));
@@ -627,6 +624,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
+  if (run.kind === "unread") {
+    return (
+      <>
+        {topBar}
+        <RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />
+      </>
+    );
+  }
+
   if (run.kind === "running") {
     const steps = runSteps(run.graph, run.run);
     return (
@@ -642,11 +648,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  // Den körningslåsta grafen namnger stegen; saknas den duger den publicerade.
-  const pinned = run.graph ?? graph;
-  const steps = runSteps(pinned, run.run, run.steps);
+  const { steps, transcribed, stepLabels } = finishedRun(run.graph, run.run, run.steps);
   const files = resultFileViews(run.run.result_files ?? []);
-  const transcribed = !pinned || steps.some((step) => step.transcribes && step.state === "done");
   const inputStep = selectRuntimeInputStep(contract);
   if (runOutcome(run.run.status) === "succeeded") {
     return (
@@ -666,8 +669,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       </>
     );
   }
-  const labels = Object.fromEntries((pinned?.nodes ?? []).map((node) => [node.id, node.label]));
-  const failure = run.run.error ? runErrorView(run.run.error, labels) : null;
+  const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
   // The same audio cannot help when the input itself has to change.
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";

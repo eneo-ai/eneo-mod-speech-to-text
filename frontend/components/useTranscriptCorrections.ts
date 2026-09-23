@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import type { TranscriptContext } from "./useTranscriptContext";
+import type { TranscriptContext } from "@/lib/transcript-context";
 import type { CorrectionsSaveState } from "./TranscriptPlayer";
 import { saveTranscriptCorrections } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";

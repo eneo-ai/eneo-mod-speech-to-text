@@ -95,3 +95,69 @@ test("the transcript's keys: Space and K play or pause, arrows move 5 s, J and L
   assert.equal(shortcut("a"), null);
   assert.equal(shortcut("Enter"), null);
 });
+
+test("turn times read like the player's clock, m:ss, each in its own part's time", () => {
+  const long: TranscriptSegment[] = [
+    ...segments,
+    { fileIndex: 1, start: 3_725, end: 3_730, speaker: "SPEAKER_01", text: "Efter en timme." },
+  ];
+  for (const reviewEnabled of [false, true]) {
+    const html = renderToStaticMarkup(
+      createElement(TranscriptPlayer, {
+        segments: long,
+        fileCount: 2,
+        audioSrcFor: (i: number) => `/audio/${i}`,
+        speakerNames: {},
+        textFallback: "",
+        reviewEnabled,
+      }),
+    );
+    assert.doesNotMatch(html, /\b00:0\d\b/, `no zero-padded minutes (${reviewEnabled ? "review" : "reading"} view)`);
+    if (reviewEnabled) {
+      assert.match(html, /aria-label="Flytta uppspelningen till 0:00"/);
+    } else {
+      assert.match(html, /aria-label="Spela från 0:02"[^>]*>0:02</);
+      assert.match(html, /aria-label="Spela från 1:02:05"[^>]*>1:02:05</, "hours only where the time has them");
+      assert.equal(html.match(/aria-label="Spela från 0:00"/g)?.length, 2, "the second part starts over at 0:00");
+    }
+  }
+});
+
+test("a transcript without speaker labels names no speaker, and nothing is lit before playback", () => {
+  const html = (segments: TranscriptSegment[]) =>
+    renderToStaticMarkup(
+      createElement(TranscriptPlayer, {
+        segments,
+        fileCount: 1,
+        audioSrcFor: () => "/audio/0",
+        speakerNames: {},
+        textFallback: "",
+        reviewEnabled: false,
+      }),
+    );
+  const unlabelled = html([
+    { fileIndex: 0, start: 0, end: 24, speaker: null, text: "Välkomna till nämndens möte den 23 september." },
+    { fileIndex: 0, start: 24, end: 30, speaker: null, text: "Första punkten." },
+  ]);
+  assert.doesNotMatch(unlabelled, /Okänd talare/, "the flow did not label speakers; saying 'unknown' misleads");
+  assert.doesNotMatch(unlabelled, /data-active="true"/, "the first block is not lit before anything plays");
+
+  const labelled = html(segments);
+  assert.match(labelled, /Talare 1/);
+  assert.match(labelled, /Talare 2/);
+});
+
+test("the review view names no speaker for an unlabelled transcript either", () => {
+  const html = renderToStaticMarkup(
+    createElement(TranscriptPlayer, {
+      segments: [{ fileIndex: 0, start: 0, end: 24, speaker: null, text: "Välkomna till nämndens möte." }],
+      fileCount: 1,
+      audioSrcFor: () => "/audio/0",
+      speakerNames: {},
+      textFallback: "",
+      reviewEnabled: true,
+    }),
+  );
+  assert.match(html, /Välkomna till nämndens möte\./);
+  assert.doesNotMatch(html, /Okänd talare/);
+});

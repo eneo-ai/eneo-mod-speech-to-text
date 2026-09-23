@@ -1,11 +1,12 @@
 "use client";
 
-import { Download } from "lucide-react";
+import { Download, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
+import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
@@ -40,12 +41,47 @@ export function RunTranscript({
   fileName: string;
   finishedAt?: string;
 }) {
-  const [transcript] = useTranscriptContext({ flowId, runId, enabled: true, steps });
+  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled: true, steps });
   const [confirmedWords] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
   );
-  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } =
-    useTranscriptCorrections(flowId, runId, transcript);
+  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  return (
+    <RunTranscriptView
+      flowId={flowId}
+      runId={runId}
+      fileName={fileName}
+      finishedAt={finishedAt}
+      transcript={transcript}
+      confirmedWords={confirmedWords}
+      editing={editing}
+      onReload={reload}
+    />
+  );
+}
+
+/** What RunTranscript shows once its data is read; its own component so a test can give it any state. */
+export function RunTranscriptView({
+  flowId,
+  runId,
+  fileName,
+  finishedAt,
+  transcript,
+  confirmedWords,
+  editing,
+  onReload,
+}: {
+  flowId: string;
+  runId: string;
+  fileName: string;
+  finishedAt?: string;
+  transcript: TranscriptContext;
+  confirmedWords: ReadonlySet<string>;
+  editing: ReturnType<typeof useTranscriptCorrections>;
+  /** Reads the transcript and its saved corrections again. */
+  onReload: () => void;
+}) {
+  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = editing;
 
   if (transcript.pending) {
     return (
@@ -55,9 +91,29 @@ export function RunTranscript({
       </div>
     );
   }
-  if (transcript.segments.length === 0 && transcript.speakerReviews.length === 0) return null;
+  if (transcript.segments.length === 0 && transcript.speakerReviews.length === 0) {
+    // Nothing to show is only nothing to say when nothing went wrong reading it.
+    if (!transcript.correctionProblem) return null;
+    return (
+      <section aria-labelledby="run-transcript" className="flex flex-col gap-3">
+        <h2 id="run-transcript" className="text-lg font-semibold tracking-tight">
+          Transkript
+        </h2>
+        <p role="alert" className="text-sm text-destructive">
+          {transcript.correctionProblem}
+        </p>
+        <Button type="button" variant="outline" className="self-start" onClick={onReload}>
+          <RotateCcw data-icon="inline-start" aria-hidden />
+          Läs in igen
+        </Button>
+      </section>
+    );
+  }
 
   const plain = renderReviewedTranscript(transcript.segments, corrections, transcript.speakerNames);
+  // Unread or unreadable saved corrections, or only the start of a longer transcript: an export now
+  // would silently drop the corrections or pass the start off as the whole.
+  const unread = Boolean(transcript.correctionProblem) || transcript.textPreview;
   const edited =
     saveState !== "idle" ||
     Boolean(corrections.updatedAt && finishedAt && Date.parse(corrections.updatedAt) > Date.parse(finishedAt));
@@ -69,13 +125,26 @@ export function RunTranscript({
           Transkript
         </h2>
         <div className="flex flex-wrap gap-2">
-          <CopyButton text={plain} label="Kopiera transkriptet" />
-          <Button type="button" variant="outline" onClick={() => downloadText(plain, fileName)}>
+          <CopyButton text={plain} label="Kopiera transkriptet" disabled={unread} />
+          <Button type="button" variant="outline" disabled={unread} onClick={() => downloadText(plain, fileName)}>
             <Download data-icon="inline-start" aria-hidden />
             Ladda ner<span className="sr-only"> transkriptet</span>
           </Button>
         </div>
       </div>
+      {unread && (
+        <div className="flex flex-wrap items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            {transcript.textPreview
+              ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
+              : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
+          </p>
+          <Button type="button" variant="outline" onClick={onReload}>
+            <RotateCcw data-icon="inline-start" aria-hidden />
+            Läs in igen
+          </Button>
+        </div>
+      )}
       {edited && (
         <p className="text-sm text-muted-foreground">
           Sammanfattningen och tidigare skapade filer uppdateras inte av rättningarna. Hämta det granskade

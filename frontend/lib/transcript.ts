@@ -135,6 +135,8 @@ const LINE_RE =
   /^\[(\d{2,}):(\d{2}):(\d{2}) - (\d{2,}):(\d{2}):(\d{2})\](?: ([^:\n]+?):)? ?(.*)$/;
 // Fler ljudfiler sammanfogas med rubriken "## Del N".
 const PART_HEADER_RE = /^## Del (\d+)\b/;
+// Utan segment skriver Eneo texten i block om högst fem minuter: "### 0:00 - 5:00".
+const BLOCK_HEADER_RE = /^### (\d+):(\d{2}) - (\d+):(\d{2})\s*$/;
 
 function hms(h: string, m: string, s: string): number {
   return Number(h) * 3600 + Number(m) * 60 + Number(s);
@@ -151,14 +153,29 @@ export function parseTranscriptText(
 ): TranscriptSegment[] {
   const segments: TranscriptSegment[] = [];
   let fileIndex = 0;
+  // The time block the following paragraphs belong to.
+  let block: TranscriptSegment | null = null;
   for (const line of text.split("\n")) {
     const header = PART_HEADER_RE.exec(line);
     if (header) {
       fileIndex = Math.max(0, Number(header[1]) - 1);
+      block = null;
+      continue;
+    }
+    const heading = BLOCK_HEADER_RE.exec(line);
+    if (heading) {
+      // Only "## Del N" names a block's file; a clock starting over does not (the loader
+      // decides what several unnamed files may seek).
+      const start = Number(heading[1]) * 60 + Number(heading[2]);
+      block = { fileIndex, start, end: Number(heading[3]) * 60 + Number(heading[4]), speaker: null, text: "" };
+      segments.push(block);
       continue;
     }
     const m = LINE_RE.exec(line);
-    if (!m) continue;
+    if (!m) {
+      if (block && line.trim()) block.text = block.text ? `${block.text} ${line.trim()}` : line.trim();
+      continue;
+    }
     const [, h1, m1, s1, h2, m2, s2, speaker, body] = m;
     segments.push({
       fileIndex,
@@ -367,16 +384,6 @@ export function countUncertainWords(segments: readonly TranscriptSegment[]): num
     for (const w of s.words ?? []) if (w.uncertain) n++;
   }
   return n;
-}
-
-export function formatClock(seconds: number, withHours = false): string {
-  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return withHours || h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
 export const SPEAKER_COLOR_COUNT = 6;

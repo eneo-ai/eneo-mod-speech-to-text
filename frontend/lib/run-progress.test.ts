@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowGraph, FlowGraphNode, FlowRunStep } from "./api";
-import { runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
+import { finishedRun, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
 
 const node = (order: number, label: string, extra: Partial<FlowGraphNode> = {}): FlowGraphNode => ({
   id: `step-${order}`,
@@ -123,4 +123,22 @@ test("run outcomes and statuses in words", () => {
     ["completed", "failed", "cancelled", "running", "queued", "awaiting_review"].map(runStatusLabel),
     ["Klar", "Misslyckades", "Avbröts", "Pågår", "Väntar på att starta", "Väntar på granskning"],
   );
+});
+
+test("an earlier run whose own graph could not be read keeps its own results, never today's steps", () => {
+  // Republished since, so the flow's current steps have other ids than this run's results.
+  const transcription = { segments: [{ start: 0, end: 2, text: "Välkomna.", speaker: null }] };
+  const results: FlowRunStep[] = [
+    { ...result(1, "completed", true), step_id: "old-1", input_payload_json: { transcription } },
+    { ...result(2, "completed", true), step_id: "old-2" },
+  ];
+
+  const { steps, transcribed, stepLabels } = finishedRun(null, { status: "completed" }, results);
+
+  assert.deepEqual(states(steps), ["done", "done"], "the run's own results, not today's steps as never run");
+  assert.equal(transcribed, true, "its transcription step's result holds the transcript");
+  assert.deepEqual(stepLabels, {}, "no names from another version");
+
+  const plain = finishedRun(null, { status: "completed" }, [result(1, "completed", true)]);
+  assert.equal(plain.transcribed, false, "a run whose results hold no transcript shows none");
 });

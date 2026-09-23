@@ -12,6 +12,7 @@ import {
 } from "react";
 import { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { formatClock } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type { PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -34,7 +35,6 @@ import {
   effectiveSpeakerLabel,
   needsSpeakerReview,
   findActiveWordIndex,
-  formatClock,
   speakerColorIndex,
   speakerDisplayLabel,
   type TranscriptSegment,
@@ -226,18 +226,17 @@ export const TranscriptPlayer = forwardRef<
 
   const applied = useMemo(() => applyCorrections(segments, corrections), [segments, corrections]);
   const shown = applied.segments;
-  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, currentTime));
+  // Nothing is lit until playback has started or been moved.
+  const playhead = position.started ? currentTime : Number.NEGATIVE_INFINITY;
+  const activeIndices = new Set(findActiveSegmentIndices(shown, currentFile, playhead));
+  // A flow without speaker labels names no speaker: "Okänd talare" on every block would mislead.
+  const labelled = shown.some((segment) => segment.speaker !== null) || speakerReviews.length > 0;
   // Scrolling follows only once playback has started or been moved.
   const activeIndex = position.started ? findActiveSegmentIndex(shown, currentFile, currentTime) : -1;
   const correctedIndices = applied.corrected;
   const correctedRanges = applied.ranges;
   const turns = useMemo(() => computeTurns(shown), [shown]);
   const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
-  const partLengthMs = position.lengthsMs[currentFile] ?? 0;
-  const withHours = useMemo(
-    () => partLengthMs >= 3_600_000 || shown.some((s) => s.end >= 3600),
-    [partLengthMs, shown],
-  );
   const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
   const hasSegments = shown.length > 0;
@@ -518,9 +517,9 @@ export const TranscriptPlayer = forwardRef<
         onTouchMove={onUserScroll}
         className={cn("transcript-scrollport min-h-0 flex-1 overflow-y-auto max-h-[60vh] lg:max-h-none", !reviewEnabled && "p-2")}
       >
-        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews}
+        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
-          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={currentTime} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
+          audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
             // "Lyssna" on a passage plays it and stops at its end.
             if (hasAudio) setFollow(true);
@@ -536,8 +535,8 @@ export const TranscriptPlayer = forwardRef<
             correctedRanges={correctedRanges}
             showFileHeading={totalFiles > 1 && (i === 0 || turns[i - 1].fileIndex !== turn.fileIndex)}
             activeIndices={activeIndices}
-            currentTime={currentTime}
-            withHours={withHours}
+            currentTime={playhead}
+            labelled={labelled}
             name={effectiveSpeakerLabel(turn.parts[0].segment, displayName)}
             displayName={displayName}
             labelOptions={labelOptions}
@@ -575,10 +574,10 @@ function TurnBlock({
   showFileHeading,
   activeIndices,
   currentTime,
-  withHours,
   name,
   displayName,
   labelOptions,
+  labelled,
   canEdit,
   confirmedWords,
   onToggleConfirmed,
@@ -600,10 +599,10 @@ function TurnBlock({
   showFileHeading: boolean;
   activeIndices: ReadonlySet<number>;
   currentTime: number;
-  withHours: boolean;
   name: string;
   displayName: (label: string | null) => string;
   labelOptions: readonly string[];
+  labelled: boolean;
   canEdit: boolean;
   confirmedWords: ReadonlySet<string>;
   onToggleConfirmed?: (key: string) => void;
@@ -642,15 +641,15 @@ function TurnBlock({
           <button
             type="button"
             onClick={onSeekTurn}
-            aria-label={`Spela från ${formatClock(turn.start, withHours)}`}
+            aria-label={`Spela från ${formatClock(turn.start * 1_000)}`}
             className={cn(
               "font-mono text-[11px] tabular-nums hover:underline",
               isActive ? "text-ink" : "text-ink-mute",
             )}
           >
-            {formatClock(turn.start, withHours)}
+            {formatClock(turn.start * 1_000)}
           </button>
-          {(() => {
+          {labelled && (() => {
             const nameButton = (
               <button
                 type="button"

@@ -8,7 +8,6 @@ import {
   findActiveSegmentIndex,
   findActiveWordIndex,
   firstSegmentForSpeaker,
-  formatClock,
   locateWords,
   parseTranscriptText,
   segmentsFromTranscription,
@@ -146,11 +145,35 @@ test("active segment and word follow the playhead, including silences", () => {
 });
 
 test("clock, colours and display labels", () => {
-  assert.equal(formatClock(65), "01:05");
-  assert.equal(formatClock(3725), "1:02:05");
-  assert.equal(formatClock(65, true), "0:01:05");
-  assert.equal(formatClock(Number.NaN), "00:00");
   assert.equal(speakerColorIndex("SPEAKER_07"), 1);
   assert.equal(speakerDisplayLabel("SPEAKER_00"), "Talare 1");
   assert.equal(speakerDisplayLabel("Anna"), "Anna");
+});
+
+test("Eneo's text without segments reads as its time blocks, in the parts it names", () => {
+  const blocks = (text: string) => parseTranscriptText(text).map((s) => [s.fileIndex, s.start, s.end, s.speaker, s.text]);
+  assert.deepEqual(
+    blocks("### 0:00 - 5:00\n\nFörsta stycket.\nFortsättning.\n\n### 5:00 - 7:12\n\nAndra blocket."),
+    [
+      [0, 0, 300, null, "Första stycket. Fortsättning."],
+      [0, 300, 432, null, "Andra blocket."],
+    ],
+  );
+  assert.deepEqual(
+    blocks("## Del 1 — kl 10:00:00\n\n### 0:00 - 0:24\n\nEtt.\n\n## Del 2 — kl 10:30:00\n\n### 0:00 - 0:10\n\nTvå."),
+    [
+      [0, 0, 24, null, "Ett."],
+      [1, 0, 10, null, "Två."],
+    ],
+    "the parts Eneo names",
+  );
+  assert.deepEqual(
+    blocks("### 0:00 - 0:24\n\nEtt.\n\n### 0:00 - 0:10\n\nTvå."),
+    [
+      [0, 0, 24, null, "Ett."],
+      [0, 0, 10, null, "Två."],
+    ],
+    "a clock starting over names no file: the loader decides what several unnamed files may seek",
+  );
+  assert.deepEqual(blocks("### 65:00 - 70:00\n\nSent."), [[0, 3_900, 4_200, null, "Sent."]], "minutes past the hour");
 });

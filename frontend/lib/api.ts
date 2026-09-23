@@ -810,10 +810,6 @@ export interface FlowGraph {
   edges: FlowGraphEdge[];
 }
 
-export async function getFlowGraph(flowId: string) {
-  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/`);
-}
-
 /**
  * The graph of the version a run pinned, each step annotated with its status
  * in that run. Unlike the step results it is not audited per read, so it is
@@ -992,6 +988,42 @@ export async function getTranscriptWords(
 ) {
   return request<TranscriptWordsResponse>(
     `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-words/`,
+  );
+}
+
+/** A text file the run produced (its content as text), through the module's artifact route. */
+export async function getRunArtifactText(flowId: string, runId: string, fileId: string) {
+  return request<string>(`/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content`);
+}
+
+/**
+ * One page (200 segments) of the transcript an attempt stored. Present: the
+ * segments with their absolute index, the source hash corrections must carry,
+ * and on the first page the speaker review. Omitted: Eneo kept no segments
+ * (the step's text is then the transcript). Unavailable: written before Eneo
+ * kept sources.
+ */
+export type TranscriptSourcePage =
+  | {
+      status: "present";
+      source_hash: string;
+      next_segment_index: number | null;
+      segments: Record<string, unknown>[];
+      speaker_review?: unknown;
+    }
+  | { status: "omitted"; reason: number }
+  | { status: "unavailable_pre_row" };
+
+export async function getTranscriptSource(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  attemptNo: number,
+  startSegmentIndex: number,
+) {
+  const query = new URLSearchParams({ start_segment_index: String(startSegmentIndex) });
+  return request<TranscriptSourcePage>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/attempts/${attemptNo}/transcript-source/?${query}`,
   );
 }
 
