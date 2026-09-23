@@ -230,3 +230,24 @@ test("one Rätta per passage, after its text; a passage of several sentences the
   opened.push(view.container.querySelector("textarea")?.getAttribute("aria-label") ?? "");
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
 });
+
+test("Bara det här inlägget on half of a split sentence moves that half only", async () => {
+  // One sentence, its first half by Talare 1 and its second by Talare 2 (a span edit Eneo stores).
+  const text = "Vi börjar nu. Jag tar över här.";
+  const cut = text.indexOf("Jag");
+  const split: CorrectionSet = {
+    ...v3,
+    speaker_edits: [{ segment_index: 0, char_start: cut, char_end: text.length, original: text.slice(cut), original_speaker: "SPEAKER_00", speaker: "SPEAKER_01", decision: "confirmed" }],
+  };
+  const saved: CorrectionSet[] = [];
+  const view = await player(
+    [{ fileIndex: 0, start: 0, end: 4, speaker: "SPEAKER_00", text }, { fileIndex: 0, start: 4, end: 6, speaker: "SPEAKER_02", text: "Tack." }],
+    { editable: true, corrections: split, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) },
+  );
+  await view.act(async () => button(view.container, "Talare 2, ändra talare")!.click());
+  await view.act(async () => pick("SPEAKER_02").click());
+  await view.act(async () => button(document.body, "Spara")!.click());
+  const { applyCorrections } = await import("./transcript-corrections");
+  const after = applyCorrections([{ fileIndex: 0, start: 0, end: 4, speaker: "SPEAKER_00", text }], saved[0]).segments;
+  assert.deepEqual(after.map((s) => [s.text, s.speaker]), [["Vi börjar nu. ", "SPEAKER_00"], ["Jag tar över här.", "SPEAKER_02"]]);
+});

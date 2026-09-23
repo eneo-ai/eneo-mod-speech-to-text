@@ -187,6 +187,24 @@ function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[], h
   return out;
 }
 
+/**
+ * The part of its source sentence a displayed passage is, in the sentence's own
+ * characters, or null when it is the whole sentence and no other speaker has a
+ * span of it.
+ */
+function sourceSpan(
+  part: TranscriptTurnPart,
+  segments: readonly TranscriptSegment[],
+  set: CorrectionSet,
+): { from: number; to: number } | null {
+  const source = part.segment.sourceSegmentIndex ?? part.segmentIndex;
+  const length = segments[source]?.text.length ?? 0;
+  const from = part.segment.sourceCharStart ?? 0;
+  const to = part.segment.sourceCharEnd ?? length;
+  const shared = set.speaker_edits.some((e) => e.segment_index === source && e.char_start !== null);
+  return from === 0 && to === length && !shared ? null : { from, to };
+}
+
 export const TranscriptPlayer = forwardRef<
   TranscriptPlayerHandle,
   {
@@ -459,10 +477,12 @@ export const TranscriptPlayer = forwardRef<
         for (const part of t.parts) {
           const source = part.segment.sourceSegmentIndex ?? part.segmentIndex;
           const stored = segments[source]?.speaker ?? null;
-          if (pendingSpeakerReview(t) || part.segment.decision) {
+          // A displayed passage can be part of a sentence another speaker shares: only its own span changes.
+          const span = sourceSpan(part, segments, next);
+          if (pendingSpeakerReview(t) || part.segment.decision || span) {
             next = target === UNRESOLVED
-              ? withSpeakerDecision(next, segments, source, null, null, "unresolved", null)
-              : withSpeakerDecision(next, segments, source, null, null, "confirmed", target);
+              ? withSpeakerDecision(next, segments, source, span?.from ?? null, span?.to ?? null, "unresolved", null)
+              : withSpeakerDecision(next, segments, source, span?.from ?? null, span?.to ?? null, "confirmed", target);
           } else if (stored && target !== UNRESOLVED) {
             next = withSpeakerEdit(next, source, stored, target);
           }
@@ -719,11 +739,13 @@ export const TranscriptPlayer = forwardRef<
             )}
             <ol className="flex flex-col" aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriptet"}>
               {part.turns.map((turn) => {
+                // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
                 const editableTurn =
                   canEdit &&
-                  (pendingSpeakerReview(turn) || turn.parts.some((p) => p.segment.decision)
+                  (pendingSpeakerReview(turn) ||
+                  turn.parts.some((p) => p.segment.decision || (corrections && sourceSpan(p, segments, corrections)))
                     ? canDecide
-                    : turn.parts.every((p) => !corrections?.speaker_edits.some((e) => e.segment_index === (p.segment.sourceSegmentIndex ?? p.segmentIndex) && e.char_start !== null)));
+                    : true);
                 return (
                   <TurnBlock
                     key={turn.index}
