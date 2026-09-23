@@ -14,7 +14,8 @@ export const detailFieldId = (name: string) => `detalj-${name}`;
 export async function createDocument(session: FlowSession): Promise<void> {
   if (await session.createDocument()) return;
   const [first] = session.getSnapshot().invalid;
-  if (first) document.getElementById(detailFieldId(first))?.focus();
+  // After the next paint, so details folded into one line have opened.
+  if (first) requestAnimationFrame(() => document.getElementById(detailFieldId(first))?.focus());
 }
 
 function options(field: FormField): string[] {

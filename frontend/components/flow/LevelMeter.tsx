@@ -48,6 +48,8 @@ export function useInputLevel(
       clearInterval(timer);
       source.disconnect();
       void context.close().catch(() => undefined);
+      // Paused or gone: the display settles instead of freezing mid-word.
+      listener.current(0, false);
     };
   }, [stream]);
 }

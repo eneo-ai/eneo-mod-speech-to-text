@@ -1,10 +1,12 @@
 "use client";
 
-import { ArrowLeft, FileAudio, ShieldCheck } from "lucide-react";
+import { ArrowLeft, ChevronDown, FileAudio, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +15,8 @@ import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { FocusedRecorder, RecordingBar } from "@/components/flow/Recorder";
+import { useDocumentTitle, useElapsed, useLeaveGuard, useSilence } from "@/components/flow/recording-hooks";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { UnsentRecordings } from "@/components/UnsentRecordings";
@@ -21,12 +25,14 @@ import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } fr
 import { formatRelativeDate } from "@/lib/format";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
+import { detailsSummary, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
 import { formatBytes, selectRuntimeInputStep } from "@/lib/upload";
+import { cn } from "@/lib/utils";
 
 type Session = ReturnType<typeof useFlowSession>;
 
 // Focus moves to the new state's heading when the page changes state, never within one.
-const PHASE_GROUP: Record<SessionPhase, string> = {
+const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   setup: "setup",
   starting: "setup",
   recording: "capture",
@@ -35,10 +41,21 @@ const PHASE_GROUP: Record<SessionPhase, string> = {
   ready: "ready",
 };
 
+// One message for recording and ready: true for both, so the guard never changes mid-way.
+const LEAVE_MESSAGE = "Vill du lämna sidan? Det som spelats in finns kvar bland osända inspelningar.";
+
 const RESUMABLE_LABEL: Record<string, string> = {
   awaiting_review: "Väntar på din granskning",
   queued: "Står i kö",
 };
+
+/** The tab title follows the state; its own component, so the timer re-renders only this. */
+function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
+  const { phase } = input.snapshot;
+  const elapsed = useElapsed(input.session.capture, phase === "recording");
+  useDocumentTitle(pageTitle(phase, elapsed, flowName));
+  return null;
+}
 
 /** The flow page before a run: the details, and the audio given one of three ways. */
 export function FlowInput({
@@ -62,29 +79,71 @@ export function FlowInput({
   unsentRecordings: StoredRecording[];
 }) {
   const { session, snapshot } = input;
-  const { phase } = snapshot;
+  const { phase, mode } = snapshot;
+  const group = PHASE_GROUP[phase];
+  const holdsAudio = group !== "setup";
   const workspace = useRef<HTMLElement>(null);
-  const group = useRef(PHASE_GROUP[phase]);
+  const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const fields = contract.form_fields ?? [];
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
   useEffect(() => {
-    if (group.current === PHASE_GROUP[phase]) return;
-    group.current = PHASE_GROUP[phase];
+    if (shownGroup.current === group) return;
+    shownGroup.current = group;
     workspace.current?.querySelector<HTMLElement>("[data-phase-heading]")?.focus();
-  }, [phase]);
+  }, [group]);
+
+  useLeaveGuard(holdsAudio ? LEAVE_MESSAGE : null);
+  const onLeave = (event: MouseEvent) => {
+    if (holdsAudio && !window.confirm(LEAVE_MESSAGE)) event.preventDefault();
+  };
+
+  const details = (
+    <DetailsForm
+      fields={fields}
+      details={snapshot.details}
+      invalid={snapshot.invalid}
+      onChange={(name, value) => session.setDetail(name, value)}
+      suggestions={suggestions}
+      onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
+    />
+  );
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <FlowTopBar title={published.name} />
+    <div className={cn("flex flex-col", group === "capture" ? "h-dvh" : "min-h-dvh")}>
+      <TabTitle input={input} flowName={published.name} />
+      <FlowTopBar
+        title={published.name}
+        onLeave={onLeave}
+        trailing={
+          holdsAudio && mode ? (
+            <Badge variant="soft" className="h-8 px-3 text-[14px] font-medium">
+              {MODE_TEXT[mode].name}
+            </Badge>
+          ) : undefined
+        }
+      />
+      {/* Recording state changes are said once here; the timer never is. */}
+      <p role="status" className="sr-only">
+        {recordingAnnouncement(phase)}
+      </p>
       <main
         id="innehall"
-        className="w-full flex-1 px-4 pb-12 pt-3 md:px-8 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:items-start lg:gap-10 lg:pt-8"
+        className={cn(
+          "w-full flex-1 px-4 pt-3 md:px-8",
+          "lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10 lg:pt-8",
+          group === "capture"
+            ? "flex min-h-0 flex-col overflow-y-auto lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:pb-6"
+            : "pb-12 lg:items-start",
+        )}
       >
-        <div className="flex flex-col gap-5">
+        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:min-h-0 lg:overflow-y-auto lg:pb-2")}>
           <Link
             href="/flows"
+            onClick={onLeave}
             className="hidden w-fit items-center gap-2 rounded-md text-[15px] font-medium text-accent underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:inline-flex"
           >
             <ArrowLeft aria-hidden className="size-4" />
@@ -93,29 +152,47 @@ export function FlowInput({
           <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
             {published.name}
           </h1>
-          {published.description && (
-            <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">{published.description}</p>
+          <div className={cn("flex flex-col gap-5", holdsAudio && "hidden lg:flex")}>
+            {published.description && (
+              <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">{published.description}</p>
+            )}
+            <Alert role="note">
+              <ShieldCheck aria-hidden />
+              <AlertDescription className="text-[15px] text-ink">
+                Öppen information. Ladda inte upp personuppgifter.
+              </AlertDescription>
+            </Alert>
+          </div>
+          {holdsAudio && fields.length > 0 ? (
+            // While recording and after, the details fold into one line on a phone or tablet.
+            <Collapsible open={detailsOpen || snapshot.invalid.length > 0} onOpenChange={setDetailsOpen}>
+              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent lg:hidden">
+                <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
+                <ChevronDown
+                  aria-hidden
+                  className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180"
+                />
+              </CollapsibleTrigger>
+              <CollapsibleContent forceMount className="pt-4 data-[state=closed]:max-lg:hidden lg:pt-0">
+                {details}
+              </CollapsibleContent>
+            </Collapsible>
+          ) : (
+            details
           )}
-          <Alert role="note">
-            <ShieldCheck aria-hidden />
-            <AlertDescription className="text-[15px] text-ink">
-              Öppen information. Ladda inte upp personuppgifter.
-            </AlertDescription>
-          </Alert>
-          <DetailsForm
-            fields={contract.form_fields ?? []}
-            details={snapshot.details}
-            invalid={snapshot.invalid}
-            onChange={(name, value) => session.setDetail(name, value)}
-            suggestions={suggestions}
-            onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
-          />
         </div>
 
-        <section ref={workspace} aria-label="Ljudet" className="mt-8 flex min-w-0 flex-col gap-6 lg:mt-0">
-          <OfflineBanner waiting={PHASE_GROUP[phase] === "capture" ? "recording" : null} />
+        <section
+          ref={workspace}
+          aria-label="Ljudet"
+          className={cn(
+            "flex min-w-0 flex-col gap-4",
+            group === "capture" ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0" : "mt-8 gap-6 lg:mt-0",
+          )}
+        >
+          <OfflineBanner waiting={group === "capture" ? "recording" : null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
-          {phase === "setup" || phase === "starting" ? (
+          {group === "setup" ? (
             <SetupWorkspace
               contract={contract}
               input={input}
@@ -123,14 +200,50 @@ export function FlowInput({
               onResume={onResume}
               unsentRecordings={unsentRecordings}
             />
-          ) : phase === "ready" ? (
+          ) : group === "ready" ? (
             <InterimReady input={input} />
           ) : (
-            <InterimRecorder input={input} />
+            <CaptureWorkspace input={input} />
           )}
         </section>
       </main>
     </div>
+  );
+}
+
+/** Recording (Spela in): the focused recorder above the bar, which never moves. */
+function CaptureWorkspace({ input }: { input: Session }) {
+  const { session, snapshot, capture, persistent } = input;
+  const { phase, problem } = snapshot;
+  const silent = useSilence(capture.stream, phase === "recording");
+  const [wakeLock, setWakeLock] = useState(true);
+  useEffect(() => setWakeLock("wakeLock" in navigator), []);
+  const notices = recordingNotices({
+    phase,
+    silent,
+    lowSpace: capture.lowSpace,
+    persistent: persistent !== false,
+    wakeLock,
+  });
+  return (
+    <>
+      {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
+      <FocusedRecorder
+        capture={session.capture}
+        phase={phase}
+        stream={capture.stream}
+        storageNote={persistent ? storageLine(true) : null}
+      />
+      <RecordingBar
+        capture={session.capture}
+        phase={phase}
+        stream={capture.stream}
+        showStatus={false}
+        notices={notices}
+        onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
+        onStop={() => void session.stop()}
+      />
+    </>
   );
 }
 
@@ -284,26 +397,7 @@ function ResumableRuns({ runs, onResume }: { runs: FlowRunSummary[]; onResume: (
   );
 }
 
-// Interim views; the recording and ready states replace them.
-function InterimRecorder({ input }: { input: Session }): ReactNode {
-  const { session, snapshot } = input;
-  return (
-    <div className="flex flex-col gap-4">
-      <h2 data-phase-heading tabIndex={-1} className="text-[20px] font-semibold outline-none">
-        {snapshot.phase === "recording" ? "Spelar in" : "Pausad"}
-      </h2>
-      <div className="flex gap-3">
-        <Button type="button" variant="outline" className="h-11" onClick={() => session.togglePause()}>
-          {snapshot.phase === "recording" ? "Pausa" : "Fortsätt"}
-        </Button>
-        <Button type="button" className="h-11" onClick={() => void session.stop()}>
-          Stoppa
-        </Button>
-      </div>
-    </div>
-  );
-}
-
+// Interim view; the ready state replaces it.
 function InterimReady({ input }: { input: Session }): ReactNode {
   const { session, snapshot } = input;
   return (

@@ -13,7 +13,8 @@ function useOnlineStatus(): boolean {
 export type OfflineWaiting = "recording" | "upload" | "run" | null;
 
 const MESSAGES: Record<NonNullable<OfflineWaiting>, string> = {
-  recording: "Ingen anslutning. Inspelningen fortsätter och sparas på enheten.",
+  // Where the recording is kept is said beside the recorder, only when it is true.
+  recording: "Ingen anslutning. Inspelningen fortsätter.",
   upload: "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.",
   run: "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.",
 };
