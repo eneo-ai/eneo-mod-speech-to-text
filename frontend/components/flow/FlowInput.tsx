@@ -55,7 +55,6 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
-
 const RESUMABLE_LABEL: Record<string, string> = {
   awaiting_review: "Väntar på din granskning",
   queued: "Står i kö",
@@ -208,11 +207,11 @@ export function FlowInput({
           {holdsAudio && fields.length > 0 ? (
             // While recording and after, the details fold into one line on a phone or tablet.
             <Collapsible open={detailsOpen || snapshot.invalid.length > 0} onOpenChange={setDetailsOpen}>
-              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
+              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
                 <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
                 <ChevronDown
                   aria-hidden
-                  className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180"
+                  className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
                 />
               </CollapsibleTrigger>
               <CollapsibleContent forceMount className="pt-4 data-[state=closed]:max-lg:hidden lg:pt-0">
@@ -447,4 +446,3 @@ function ResumableRuns({ runs, onResume }: { runs: FlowRunSummary[]; onResume: (
     </section>
   );
 }
-

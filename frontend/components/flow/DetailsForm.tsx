@@ -77,6 +77,8 @@ export function DetailsForm({
               ) : field.type === "select" && options(field).length > 0 ? (
                 <select
                   id={id}
+                  name={field.name}
+                  autoComplete="off"
                   value={text}
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
@@ -93,6 +95,8 @@ export function DetailsForm({
               ) : field.type === "textarea" || field.type === "long_text" ? (
                 <Textarea
                   id={id}
+                  name={field.name}
+                  autoComplete="off"
                   value={text}
                   rows={4}
                   onChange={(event) => onChange(field.name, event.target.value)}
@@ -103,6 +107,8 @@ export function DetailsForm({
               ) : (
                 <Input
                   id={id}
+                  name={field.name}
+                  autoComplete="off"
                   type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
                   value={text}
                   onChange={(event) => onChange(field.name, event.target.value)}

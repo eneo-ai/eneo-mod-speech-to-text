@@ -13,7 +13,7 @@ export function FlowSkeleton() {
   return (
     <div className="flex min-h-dvh flex-col" aria-busy="true">
       <p role="status" className="sr-only">
-        Laddar flödet
+        Laddar flödet…
       </p>
       <div className="flex items-center gap-3 px-4 pb-1 pt-3 lg:hidden">
         <Skeleton className="size-9 rounded-full" />

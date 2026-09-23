@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowDown } from "lucide-react";
-import { useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import { memo, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
@@ -16,6 +16,15 @@ function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   }
   return out;
 }
+
+// Committed text only grows at its end, so over a long meeting a paragraph
+// renders again only when it gains a piece, not with every word.
+const Pieces = memo(
+  function Pieces({ pieces }: { pieces: LivePiece[] }) {
+    return pieces.map((piece, i) => <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>);
+  },
+  (before, after) => before.pieces.length === after.pieces.length && before.pieces[0] === after.pieces[0],
+);
 
 function prefersReducedMotion(): boolean {
   return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -73,9 +82,7 @@ export function LiveSheet({ live, recorder }: { live: LiveSession; recorder: Cap
         <div className="flex max-w-[68ch] flex-col gap-4 text-[18px] leading-[1.6] text-foreground md:text-[19px]">
           {groups.map((group, index) => (
             <p key={index}>
-              {group.map((piece, i) => (
-                <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>
-              ))}
+              <Pieces pieces={group} />
               {index === groups.length - 1 && snapshot.pending && (
                 <span aria-hidden className="text-muted-foreground">
                   {" " + snapshot.pending.trim()}
