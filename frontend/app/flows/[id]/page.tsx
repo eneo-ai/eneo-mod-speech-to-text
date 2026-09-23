@@ -971,7 +971,7 @@ function ReviewView({
                   <ul className="flex flex-col">
                     {namingRows.map((row) => (
                         <li key={row.label} className="flex items-center gap-3 border-b border-rule-soft py-2.5 first:pt-0 last:border-0">
-                          <SpeakerMark label={row.label} name={speakerDisplayLabel(row.label)} />
+                          <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
                           <span className="w-[4.5rem] shrink-0 text-[14px] font-medium text-ink">{speakerDisplayLabel(row.label)}</span>
                           <span className={row.name ? "min-w-0 truncate text-[15px] text-ink" : "text-[14px] text-ink-mute"}>
                             {row.name ?? "Inget namn"}
