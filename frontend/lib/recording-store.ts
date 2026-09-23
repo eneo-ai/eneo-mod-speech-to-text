@@ -419,6 +419,11 @@ export class RecordingStore {
     }
   }
 
+  /** Whether this tab may send, continue or delete it: without Web Locks only the tab that made it may. */
+  mayChange(id: string): boolean {
+    return this.env.locks !== undefined || this.made.has(id);
+  }
+
   /** Takes the recording's lease for an operation in this tab; false while another operation or tab holds it. */
   lease(id: string): Promise<boolean> {
     if (this.inUse.has(id)) return Promise.resolve(false);

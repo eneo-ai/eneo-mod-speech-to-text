@@ -35,7 +35,7 @@ import { useDocumentTitle, useElapsed, useLeaveGuard, useSilence } from "@/compo
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { UnsentRecordings } from "@/components/UnsentRecordings";
+import { UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
@@ -102,7 +102,7 @@ export function FlowInput({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: StoredRecording[];
+  unsentRecordings: UnsentRecording[];
 }) {
   const { session, snapshot } = input;
   const { phase, mode } = snapshot;
@@ -345,7 +345,7 @@ function SetupWorkspace({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: StoredRecording[];
+  unsentRecordings: UnsentRecording[];
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file } = snapshot;

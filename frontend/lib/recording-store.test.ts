@@ -190,6 +190,16 @@ async function onlyTheMakerChangesIt(env: StoreEnv) {
   assert.equal(await reloaded.lease(recording.id), false);
 }
 
+test("the unsent list knows up front which recordings this tab may change", async () => {
+  const withoutLocks = device({ locks: undefined });
+  const made = await openRecordingStore(withoutLocks);
+  const recording = await made.create(meeting);
+  const other = await openRecordingStore(withoutLocks);
+  assert.deepEqual([made.mayChange(recording.id), other.mayChange(recording.id)], [true, false]);
+  const withLocks = await openRecordingStore(device());
+  assert.equal(withLocks.mayChange(recording.id), true, "Web Locks keep the tabs apart");
+});
+
 test("a shared device offers each person only their own recordings, and 'Ta bort' removes one for good", async () => {
   const env = device();
   const store = await openRecordingStore(env);

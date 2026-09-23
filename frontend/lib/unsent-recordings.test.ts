@@ -96,3 +96,15 @@ test("an interrupted recording can be continued from the flow page's list", () =
     "the flow list has no recorder to continue in",
   );
 });
+
+test("without Web Locks, another tab's recording is offered only as a file to save, and says why", () => {
+  const labels = (html: string) => [...html.matchAll(/<button[^>]*>([^<]+)</g)].map(([, label]) => label);
+  const elsewhere = { ...recording("a", 60_000, at(23, 10, 12)), state: "paused" as const, exportOnly: true };
+  const html = renderToStaticMarkup(
+    createElement(UnsentRecordings, { recordings: [elsewhere, recording("b", 60_000, at(23, 9, 0))], onSend: () => {}, onContinue: () => {} }),
+  );
+  const [first, second] = html.split("<li ").slice(1);
+  assert.deepEqual(labels(first), ["Spara som fil"]);
+  assert.match(first, /I den här webbläsaren kan den bara sparas som fil\./);
+  assert.deepEqual(labels(second), ["Skicka", "Spara som fil", "Ta bort"], "a recording this tab may change keeps every action");
+});

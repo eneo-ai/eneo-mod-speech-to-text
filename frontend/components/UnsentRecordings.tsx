@@ -12,9 +12,12 @@ import {
   type StoredRecording,
 } from "@/lib/recording-store";
 
+/** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
+export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
+
 /** The user's unsent recordings (of one flow, when given), kept current. */
-export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRecording[] {
-  const [recordings, setRecordings] = useState<StoredRecording[]>([]);
+export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRecording[] {
+  const [recordings, setRecordings] = useState<UnsentRecording[]>([]);
   useEffect(() => {
     let cancelled = false;
     let unsubscribe = () => {};
@@ -23,7 +26,13 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): StoredRec
       const load = () =>
         store.listUnsent(ownerId).then(
           (all) =>
-            !cancelled && setRecordings(flowId ? all.filter((r) => r.flowId === flowId) : all),
+            !cancelled &&
+            setRecordings(
+              (flowId ? all.filter((r) => r.flowId === flowId) : all).map((r) => ({
+                ...r,
+                exportOnly: !store.mayChange(r.id),
+              })),
+            ),
           () => undefined,
         );
       unsubscribe = store.subscribe(() => void load());
@@ -52,7 +61,7 @@ export function UnsentRecordings({
   onContinue,
   withFlowName = false,
 }: {
-  recordings: StoredRecording[];
+  recordings: UnsentRecording[];
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
@@ -94,7 +103,7 @@ function UnsentRecordingRow({
   onSend,
   onContinue,
 }: {
-  recording: StoredRecording;
+  recording: UnsentRecording;
   withFlowName: boolean;
   onSend: (recording: StoredRecording) => void;
   /** Given for a recording whose capture was cut off, where a recorder can take it over. */
@@ -147,7 +156,15 @@ function UnsentRecordingRow({
           <p className="text-[17px] font-semibold leading-snug text-ink">{recordingName(recording.startedAt)}</p>
           <p className="text-[15px] leading-snug text-ink-soft">{recordingDetails(recording, { withFlowName })}</p>
         </div>
-        {confirming ? (
+        {recording.exportOnly ? (
+          // Without Web Locks another tab may still hold it: here it is only read.
+          <div className="mt-3 flex flex-col items-start gap-2">
+            <p className="text-[15px] text-ink-soft">I den här webbläsaren kan den bara sparas som fil.</p>
+            <Button type="button" variant="outline" className="h-11" aria-describedby={summaryId} onClick={() => void save()}>
+              Spara som fil
+            </Button>
+          </div>
+        ) : confirming ? (
           <div role="group" aria-labelledby={questionId} className="mt-3 flex flex-wrap items-center gap-2">
             <p id={questionId} className="basis-full text-[15px] text-ink">
               Ta bort inspelningen från enheten? Det går inte att ångra.
