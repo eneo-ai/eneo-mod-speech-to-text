@@ -8,6 +8,7 @@ import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress } from "../components/flow/RunProgress";
 import { RunResult } from "../components/flow/RunResult";
+import { StepDetails } from "../components/flow/StepDetails";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
 
@@ -160,4 +161,24 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   // Test runs from Eneo's editor are not this user's documents.
   assert.equal(words.match(/I går 15:40/g)?.length, 2);
   assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { runs: [], onOpen: () => undefined })), "");
+});
+
+test("folded panels stay hidden: no display utility may override the closed content's hidden attribute", () => {
+  const html = [
+    renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 })),
+    renderToStaticMarkup(
+      createElement(RunFailure, {
+        flowId: "flow-1",
+        flowName: "Flöde",
+        run: { id: "run-1", status: "failed", error: { code: "x", message: "detail", retryable: false } },
+        failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "detail", inputMustChange: false },
+        steps,
+        stepResults: [],
+        files: [],
+      }),
+    ),
+  ].join("");
+  const closed = [...html.matchAll(/<div([^>]*\shidden=""[^>]*)>/g)].map((m) => m[1]);
+  assert.ok(closed.length >= 2, "both folded panels render closed");
+  for (const attributes of closed) assert.doesNotMatch(attributes, /class="[^"]*\b(flex|grid|block|inline-flex)\b/, attributes);
 });

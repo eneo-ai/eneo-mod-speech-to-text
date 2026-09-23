@@ -23,9 +23,12 @@ export function StepDetails({ steps, version }: { steps: readonly StepView[]; ve
           {open ? "Dölj stegen" : `Visa stegen (${steps.length})`}
         </Button>
       </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:p-6">
-        <StepList steps={steps} />
-        {version != null && <p className="text-sm text-muted-foreground">Flödets version {version}</p>}
+      {/* Closed content keeps its element with `hidden`; a display class on it would override that. */}
+      <CollapsibleContent>
+        <div className="flex flex-col gap-4 rounded-xl border bg-card p-4 md:p-6">
+          <StepList steps={steps} />
+          {version != null && <p className="text-sm text-muted-foreground">Flödets version {version}</p>}
+        </div>
       </CollapsibleContent>
     </Collapsible>
   );

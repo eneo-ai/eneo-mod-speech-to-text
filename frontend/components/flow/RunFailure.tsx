@@ -169,9 +169,11 @@ function SupportDetails({ runId, failure, code }: { runId: string; failure: RunE
               {open ? "Dölj teknisk information" : "Visa teknisk information"}
             </Button>
           </CollapsibleTrigger>
-          <CollapsibleContent className="flex flex-col gap-1 pt-2 text-sm text-muted-foreground">
-            <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{failure.detail}</p>
-            {code && <p className="font-mono">{code}</p>}
+          <CollapsibleContent>
+            <div className="flex flex-col gap-1 pt-2 text-sm text-muted-foreground">
+              <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{failure.detail}</p>
+              {code && <p className="font-mono">{code}</p>}
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
