@@ -158,6 +158,22 @@ test("an active lease hides a recording from recovery and keeps other tabs from 
   assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
+test("without Web Locks, a tab never writes back a recording another tab has deleted", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, now: clock() };
+  const tabA = await openRecordingStore(device);
+  const tabB = await openRecordingStore(device);
+  const recording = await tabA.create(meeting);
+  tabA.release(recording.id);
+
+  assert.equal(await tabB.lease(recording.id), true, "only this tab knows its lease");
+  await tabB.setState(recording.id, "uploading");
+  await tabA.remove(recording.id); // sent from tab A meanwhile
+  await assert.rejects(tabB.setPartFileId(recording.id, 0, "file-b"), {
+    message: "Inspelningen finns inte längre på enheten.",
+  });
+  assert.equal(await tabA.get(recording.id), null);
+});
+
 test("a shared device offers each person only their own recordings, and 'Ta bort' removes one for good", async () => {
   const env = device();
   const store = await openRecordingStore(env);

@@ -422,3 +422,146 @@ test("a recording being sent from one tab cannot be sent or deleted from another
   assert.equal((await sending).id, "run-1");
   assert.equal(await otherTab.get(recording.id), null);
 });
+
+/** Eneo's run creation as it treats idempotency keys: a replay returns the run, another request is refused. */
+function fakeEneo() {
+  const runs = new Map<string, { request: string; run: FlowRunPublic }>();
+  const startRun: SubmitDeps["startRun"] = async (_flowId, body, key) => {
+    const request = JSON.stringify(body);
+    const existing = runs.get(key);
+    if (existing) {
+      if (existing.request !== request) {
+        throw new ApiError(400, "Idempotency key was already used with a different run request payload.", null, "flow_run_idempotency_conflict");
+      }
+      return existing.run;
+    }
+    const run = { id: `run-${runs.size + 1}`, flow_id: "flow-1", status: "queued" };
+    runs.set(key, { request, run });
+    return run;
+  };
+  return { runs, startRun };
+}
+
+test("two tabs sending one recording make one run, even without Web Locks", async () => {
+  for (const tabBReads of ["after tab A uploaded", "before tab A uploaded"] as const) {
+    const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange }; // no Web Locks
+    const tabA = await openRecordingStore(device);
+    const tabB = await openRecordingStore(device);
+    const recording = await stoppedRecording(tabA, [["a"]]);
+    const eneo = fakeEneo();
+
+    // Tab B may have read the recording before tab A's upload was stored.
+    const tabBUpload: { started?: boolean; finish?: () => void } = {};
+    const tabBSend = () =>
+      submitRecording(tabB, recording.id, params(), {
+        upload: () =>
+          new Promise((resolve) => {
+            tabBUpload.started = true;
+            tabBUpload.finish = () => resolve({ id: "file-b" });
+          }),
+        startRun: eneo.startRun,
+      });
+    const early = tabBReads === "before tab A uploaded" ? tabBSend() : null;
+    if (early) await until(() => tabBUpload.started === true);
+
+    // Eneo makes tab A's run; its answer is still on the way when tab B asks.
+    const tabAAnswer: { made?: boolean; deliver?: () => void } = {};
+    const tabASend = submitRecording(tabA, recording.id, params(), {
+      upload: async () => ({ id: "file-a" }),
+      startRun: async (flowId, body, key) => {
+        const run = await eneo.startRun(flowId, body, key);
+        tabAAnswer.made = true;
+        return new Promise((resolve) => (tabAAnswer.deliver = () => resolve(run)));
+      },
+    });
+    await until(() => tabAAnswer.made === true);
+    const late = early ?? tabBSend();
+    if (early) tabBUpload.finish?.();
+
+    if (early) {
+      // Its own upload makes another request under the recording's key: Eneo refuses it.
+      await assert.rejects(late, { message: "Inspelningen har redan skickats, till exempel från en annan flik." });
+    } else {
+      // It sends tab A's upload again: Eneo answers with the same run.
+      assert.equal((await late).id, "run-1", tabBReads);
+    }
+    tabAAnswer.deliver?.();
+    assert.equal((await tabASend).id, "run-1", tabBReads);
+    assert.equal(eneo.runs.size, 1, tabBReads);
+    assert.equal(await tabB.get(recording.id), null, `${tabBReads}: no copy comes back`);
+  }
+});
+
+test("a tab refused by Eneo is told the recording was sent, even when the other tab has deleted its copy", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange }; // no Web Locks
+  const tabA = await openRecordingStore(device);
+  const tabB = await openRecordingStore(device);
+  const recording = await stoppedRecording(tabA, [["a"]]);
+  const eneo = fakeEneo();
+
+  const tabBUpload: { started?: boolean; finish?: () => void } = {};
+  const tabBAnswer: { made?: boolean; deliver?: () => void } = {};
+  const tabBSend = submitRecording(tabB, recording.id, params(), {
+    upload: () =>
+      new Promise((resolve) => {
+        tabBUpload.started = true;
+        tabBUpload.finish = () => resolve({ id: "file-b" });
+      }),
+    startRun: async (flowId, body, key) => {
+      const answer = eneo.startRun(flowId, body, key).then(
+        (run) => () => run,
+        (error) => () => {
+          throw error;
+        },
+      );
+      tabBAnswer.made = true;
+      await new Promise<void>((resolve) => (tabBAnswer.deliver = resolve));
+      return (await answer)();
+    },
+  });
+  await until(() => tabBUpload.started === true);
+  const tabAAnswer: { made?: boolean; deliver?: () => void } = {};
+  const tabASend = submitRecording(tabA, recording.id, params(), {
+    upload: async () => ({ id: "file-a" }),
+    startRun: async (flowId, body, key) => {
+      const run = await eneo.startRun(flowId, body, key);
+      tabAAnswer.made = true;
+      return new Promise((resolve) => (tabAAnswer.deliver = () => resolve(run)));
+    },
+  });
+  await until(() => tabAAnswer.made === true);
+  tabBUpload.finish?.();
+  await until(() => tabBAnswer.made === true); // Eneo has refused tab B; the answer is on its way
+  tabAAnswer.deliver?.();
+  assert.equal((await tabASend).id, "run-1");
+  assert.equal(await tabA.get(recording.id), null, "tab A's copy is deleted");
+
+  tabBAnswer.deliver?.();
+  await assert.rejects(tabBSend, { message: "Inspelningen har redan skickats, till exempel från en annan flik." });
+  assert.equal(eneo.runs.size, 1);
+});
+
+test("a send that died after Eneo made the run gets that run back, not a second one", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange };
+  const tabThatDies = await openRecordingStore(device);
+  const recording = await stoppedRecording(tabThatDies, [["a"]]);
+  const eneo = fakeEneo();
+  const lostResponse: SubmitDeps = {
+    upload: async () => ({ id: "file-a" }),
+    startRun: async (flowId, body, key) => {
+      await eneo.startRun(flowId, body, key);
+      return new Promise<FlowRunPublic>(() => {}); // the tab dies before the answer arrives
+    },
+  };
+  void submitRecording(tabThatDies, recording.id, params(), lostResponse);
+  await until(() => eneo.runs.size === 1);
+
+  const afterReload = await openRecordingStore(device);
+  const run = await submitRecording(afterReload, recording.id, params(), {
+    upload: async () => ({ id: "file-b" }),
+    startRun: eneo.startRun,
+  });
+  assert.equal(run.id, "run-1");
+  assert.equal(eneo.runs.size, 1);
+  assert.equal(await afterReload.get(recording.id), null);
+});

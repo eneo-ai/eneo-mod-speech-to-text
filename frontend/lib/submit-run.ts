@@ -103,6 +103,8 @@ export interface SubmitParams extends RetryOptions {
   inputPayload: Record<string, unknown>;
   onProgress?: (progress: SubmitProgress) => void;
   onUploaded?: (index: number, fileId: string) => void | Promise<void>;
+  /** Replaces the key derived from the request, as for a recording. */
+  idempotencyKey?: string;
   /** Every file is uploaded; the run is being created. */
   onStarting?: () => void | Promise<void>;
 }
@@ -164,19 +166,25 @@ export async function submitRun(
   const body: Json = { expected_flow_version: contract.published_flow_version };
   if (fileIds.length > 0) body.step_inputs = { [stepId!]: { file_ids: fileIds } };
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
-  const key = await deriveRunIdempotencyKey({
-    flowId,
-    expectedFlowVersion: contract.published_flow_version,
-    body,
-  });
+  const key =
+    params.idempotencyKey ??
+    (await deriveRunIdempotencyKey({
+      flowId,
+      expectedFlowVersion: contract.published_flow_version,
+      body,
+    }));
   return withRetry(() => deps.startRun(flowId, body, key), params);
 }
 
+const ALREADY_SENT = "Inspelningen har redan skickats, till exempel från en annan flik.";
+
 /**
  * Sends a stored recording through `submitRun`, holding its lease so no other
- * tab sends or deletes it meanwhile. Uploaded parts are remembered, so a send
- * that stops uploads only the rest next time; the local copy is deleted once
- * Eneo has accepted the run.
+ * tab sends or deletes it meanwhile. The run's idempotency key is the
+ * recording's, whatever was uploaded, so Eneo makes one run per recording
+ * even for a tab without Web Locks, or a send retried after a reload. Uploaded
+ * parts are remembered, so a send that stops uploads only the rest next time;
+ * the local copy is deleted once Eneo has accepted the run.
  */
 export async function submitRecording(
   store: RecordingStore,
@@ -210,6 +218,7 @@ async function sendLeased(
     run = await submitRun(
       {
         ...params,
+        idempotencyKey: `flow-run:recording:${id}`,
         files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
         onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
         onStarting: async () => {
@@ -221,6 +230,11 @@ async function sendLeased(
       deps,
     );
   } catch (error) {
+    // The recording's key already made a run, from another request: it is
+    // sent. The copy is left as it is (another tab may have deleted it).
+    if (error instanceof ApiError && error.code === "flow_run_idempotency_conflict") {
+      throw new Error(ALREADY_SENT);
+    }
     // Eneo refused the run: its uploads may be what it refused, so upload again next time.
     if (uploaded) await store.clearFileIds(id);
     await store.setState(id, "stopped");

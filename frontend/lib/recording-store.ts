@@ -201,8 +201,10 @@ export function recordingFilename(recording: StoredRecording, index: number): st
 export class RecordingStore {
   private queue: Promise<unknown> = Promise.resolve();
   private listeners = new Set<() => void>();
-  // Leases this tab holds (with how to end each), and the latest metadata of those recordings.
-  private leases = new Map<string, () => void>();
+  // Leases this tab holds: how to end each, and whether a Web Lock makes it
+  // exclusive. Only under an exclusive lease is this tab's copy of the
+  // metadata the truth; without one, another tab may have changed or deleted it.
+  private leases = new Map<string, { end: () => void; exclusive: boolean }>();
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
@@ -372,7 +374,7 @@ export class RecordingStore {
     if (this.leases.has(id)) return Promise.resolve(false);
     const locks = this.env.locks;
     const inThisTab = () => {
-      this.leases.set(id, () => {});
+      this.leases.set(id, { end: () => {}, exclusive: false });
       return true;
     };
     if (!locks) return Promise.resolve(inThisTab());
@@ -382,7 +384,7 @@ export class RecordingStore {
           if (!lock) return resolve(false);
           // Held until `release` settles this promise.
           return new Promise<void>((end) => {
-            this.leases.set(id, end);
+            this.leases.set(id, { end, exclusive: true });
             resolve(true);
           });
         })
@@ -392,11 +394,11 @@ export class RecordingStore {
   }
 
   release(id: string): void {
-    const end = this.leases.get(id);
-    if (!end) return;
+    const lease = this.leases.get(id);
+    if (!lease) return;
     this.leases.delete(id);
     this.live.delete(id);
-    end();
+    lease.end();
     this.notify();
   }
 
@@ -475,7 +477,7 @@ export class RecordingStore {
   }
 
   private async write(recording: StoredRecording, chunk?: Chunk): Promise<void> {
-    if (this.leases.has(recording.id)) this.live.set(recording.id, recording);
+    if (this.leases.get(recording.id)?.exclusive) this.live.set(recording.id, recording);
     if (!this.overflowed.has(recording.id)) {
       try {
         await this.backend.put(recording, chunk);
