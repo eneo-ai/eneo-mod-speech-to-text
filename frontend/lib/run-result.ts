@@ -42,18 +42,14 @@ export function runResultView(
   }
 }
 
-const CANCELLED =
-  "Körningen avbröts innan den blev klar. Starta en ny körning om du fortfarande behöver resultatet.";
-const TOO_LARGE =
-  "Inspelningen eller filen är för stor för flödet. Dela upp den i kortare delar och kör flödet för varje del.";
-const SERVICE_UNAVAILABLE =
-  "Tjänsten svarade inte eller var överbelastad. Vänta en stund innan du kör flödet igen.";
-const STOPPED =
-  "Körningen tog för lång tid eller slutade svara och avbröts. Försök igen och kontakta support med körnings-ID om det händer igen.";
+const CANCELLED = "Körningen avbröts innan den blev klar.";
+const TOO_LARGE = "Inspelningen eller filen är större än flödet klarar.";
+const SERVICE_UNAVAILABLE = "Tjänsten svarade inte eller var överbelastad.";
+const STOPPED = "Körningen tog för lång tid eller slutade svara och avbröts.";
 
-// Eneos slutfelskoder som användaren av modulen kan förstå eller agera på.
-// Övriga koder faller tillbaka på `retryable`.
-const RUN_ERROR_SUMMARIES: Record<string, string> = {
+// Vad som hände, för Eneos slutfelskoder som användaren av modulen kan förstå.
+// Råd om att köra igen står inte här: det följer bara `retryable`.
+const RUN_ERROR_EXPLANATIONS: Record<string, string> = {
   flow_run_cancelled: CANCELLED,
   flow_run_user_cancelled: CANCELLED,
   flow_review_rejected:
@@ -61,13 +57,11 @@ const RUN_ERROR_SUMMARIES: Record<string, string> = {
   flow_review_expired:
     "Tiden för granskningen har gått ut och körningen har avbrutits.",
   flow_run_abandoned:
-    "Körningen väntade för länge på att fortsätta och avslutades. Starta en ny körning om du behöver resultatet.",
-  typed_io_transcription_failed:
-    "Transkriberingen misslyckades. Kontrollera ljudet och försök igen.",
+    "Körningen väntade för länge på att fortsätta och avslutades.",
+  typed_io_transcription_failed: "Transkriberingen av ljudet misslyckades.",
   typed_io_transcription_empty:
-    "Transkriberingen gav ingen text. Kontrollera att inspelningen innehåller tal och försök igen.",
-  typed_io_empty_extraction:
-    "Ingen text kunde läsas ur filen. Välj en fil med läsbar text.",
+    "Transkriberingen gav ingen text. Inspelningen kan sakna tal.",
+  typed_io_empty_extraction: "Ingen text kunde läsas ur filen.",
   typed_io_audio_exceeds_limit: TOO_LARGE,
   typed_io_transcript_too_large: TOO_LARGE,
   typed_io_input_too_large: TOO_LARGE,
@@ -81,8 +75,14 @@ const RUN_ERROR_SUMMARIES: Record<string, string> = {
   flow_llm_request_timeout: STOPPED,
 };
 
+// Eneo sätter `retryable` bara när inget arbete hann tas emot och inget
+// hände utanför Eneo; annars kan en ny körning göra om arbete som redan gjorts.
+const RETRY_ADVICE = "Det går bra att köra flödet igen om en stund.";
+const CHECK_FIRST_ADVICE =
+  "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+
 export interface RunErrorView {
-  /** Vad som hände och vad användaren kan göra, valt utifrån `code`. */
+  /** Vad som hände, valt utifrån `code`, och råd valt utifrån `retryable`. */
   summary: string;
   /** "Steg 2 · Sammanfattning" när felet hör till ett steg. */
   step: string | null;
@@ -95,11 +95,9 @@ export function runErrorView(
   error: FlowRunError,
   stepLabels: Record<string, string> = {},
 ): RunErrorView {
-  const summary =
-    RUN_ERROR_SUMMARIES[error.code] ??
-    (error.retryable
-      ? "Körningen kunde inte slutföras. Försök igen om en stund."
-      : "Körningen kunde inte slutföras. Kontakta support med körnings-ID om felet återkommer.");
+  const explanation =
+    RUN_ERROR_EXPLANATIONS[error.code] ?? "Körningen kunde inte slutföras.";
+  const summary = `${explanation} ${error.retryable ? RETRY_ADVICE : CHECK_FIRST_ADVICE}`;
   const stepName =
     error.details?.step_description ??
     (error.step_id ? stepLabels[error.step_id] : undefined);

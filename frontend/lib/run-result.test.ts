@@ -92,17 +92,28 @@ test("a run error is described by its code, never by its message", () => {
   assert.equal(view.detail, "Step 1: the model returned no text for 'möte.webm'.");
 });
 
-test("an unknown code falls back on whether Eneo allows a new run", () => {
-  const retryable = runErrorView(
-    runError({ code: "flow_code_from_a_newer_eneo", retryable: true }),
-  );
-  const final = runErrorView(
-    runError({ code: "flow_code_from_a_newer_eneo", retryable: false }),
-  );
+test("retry advice follows Eneo's retryable flag, never the code", () => {
+  const checkFirst =
+    "Kontrollera vad som hann göras innan du kör flödet igen, eller kontakta support med körnings-ID.";
+  // Eneo allows a new run only for flow_dispatch_failed,
+  // flow_step_attempt_start_failed and flow_provider_rate_limited.
+  for (const code of [
+    "flow_worker_stalled",
+    "flow_task_timeout",
+    "flow_provider_unavailable",
+    "flow_run_user_cancelled",
+    "typed_io_transcription_failed",
+    "flow_code_from_a_newer_eneo",
+  ]) {
+    const { summary } = runErrorView(runError({ code, retryable: false }));
+    assert.ok(summary.endsWith(checkFirst), `${code}: ${summary}`);
+    assert.doesNotMatch(summary.slice(0, -checkFirst.length), /\bigen\b/, code);
+  }
 
-  assert.match(retryable.summary, /Försök igen/);
-  assert.match(final.summary, /körnings-ID/);
-  assert.notEqual(retryable.summary, final.summary);
+  const { summary } = runErrorView(
+    runError({ code: "flow_provider_rate_limited", retryable: true }),
+  );
+  assert.ok(summary.endsWith("Det går bra att köra flödet igen om en stund."), summary);
 });
 
 test("the failed step is named from Eneo's description, else the flow graph", () => {
