@@ -12,6 +12,7 @@ import {
 } from "react";
 import { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
+import { formatClock } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import type { PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -34,7 +35,6 @@ import {
   effectiveSpeakerLabel,
   needsSpeakerReview,
   findActiveWordIndex,
-  formatClock,
   speakerColorIndex,
   speakerDisplayLabel,
   type TranscriptSegment,
@@ -233,11 +233,6 @@ export const TranscriptPlayer = forwardRef<
   const correctedRanges = applied.ranges;
   const turns = useMemo(() => computeTurns(shown), [shown]);
   const totalFiles = Math.max(fileCount, countFiles(shown), ...speakerReviews.map((r) => r.fileIndex + 1));
-  const partLengthMs = position.lengthsMs[currentFile] ?? 0;
-  const withHours = useMemo(
-    () => partLengthMs >= 3_600_000 || shown.some((s) => s.end >= 3600),
-    [partLengthMs, shown],
-  );
   const uncertain = useMemo(() => countUncertain(shown, confirmedWords), [shown, confirmedWords]);
   const uncertainWords = uncertain.remaining + uncertain.confirmed;
   const hasSegments = shown.length > 0;
@@ -537,7 +532,6 @@ export const TranscriptPlayer = forwardRef<
             showFileHeading={totalFiles > 1 && (i === 0 || turns[i - 1].fileIndex !== turn.fileIndex)}
             activeIndices={activeIndices}
             currentTime={currentTime}
-            withHours={withHours}
             name={effectiveSpeakerLabel(turn.parts[0].segment, displayName)}
             displayName={displayName}
             labelOptions={labelOptions}
@@ -575,7 +569,6 @@ function TurnBlock({
   showFileHeading,
   activeIndices,
   currentTime,
-  withHours,
   name,
   displayName,
   labelOptions,
@@ -600,7 +593,6 @@ function TurnBlock({
   showFileHeading: boolean;
   activeIndices: ReadonlySet<number>;
   currentTime: number;
-  withHours: boolean;
   name: string;
   displayName: (label: string | null) => string;
   labelOptions: readonly string[];
@@ -642,13 +634,13 @@ function TurnBlock({
           <button
             type="button"
             onClick={onSeekTurn}
-            aria-label={`Spela från ${formatClock(turn.start, withHours)}`}
+            aria-label={`Spela från ${formatClock(turn.start * 1_000)}`}
             className={cn(
               "font-mono text-[11px] tabular-nums hover:underline",
               isActive ? "text-ink" : "text-ink-mute",
             )}
           >
-            {formatClock(turn.start, withHours)}
+            {formatClock(turn.start * 1_000)}
           </button>
           {(() => {
             const nameButton = (

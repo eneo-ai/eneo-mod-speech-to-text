@@ -8,7 +8,6 @@ import {
   findActiveSegmentIndex,
   findActiveWordIndex,
   firstSegmentForSpeaker,
-  formatClock,
   locateWords,
   parseTranscriptText,
   segmentsFromTranscription,
@@ -146,10 +145,6 @@ test("active segment and word follow the playhead, including silences", () => {
 });
 
 test("clock, colours and display labels", () => {
-  assert.equal(formatClock(65), "01:05");
-  assert.equal(formatClock(3725), "1:02:05");
-  assert.equal(formatClock(65, true), "0:01:05");
-  assert.equal(formatClock(Number.NaN), "00:00");
   assert.equal(speakerColorIndex("SPEAKER_07"), 1);
   assert.equal(speakerDisplayLabel("SPEAKER_00"), "Talare 1");
   assert.equal(speakerDisplayLabel("Anna"), "Anna");

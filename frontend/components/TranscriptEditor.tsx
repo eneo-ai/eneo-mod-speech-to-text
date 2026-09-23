@@ -4,7 +4,8 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import { Check, CheckCheck, ChevronDown, Play, Undo2, X } from "lucide-react";
 import { wordKey } from "@/lib/confirmed-words";
 import { cn } from "@/lib/utils";
-import { formatClock, playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
+import { formatClock } from "@/lib/format";
+import { playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
 import { confirmSpeakerSuggestions, pendingSpeakerSuggestions, displayedSourceOffset, replaceTranscriptText, anchorTextSelection, selectionSpeakerSuggestion, wholePassageSelection, assignTextSelection, displayedSelectionBounds, selectedTranscriptText, transcriptParagraphs, type DisplaySelectionSpan, type TextSelectionSpan } from "@/lib/transcript-selection";
@@ -330,7 +331,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     </div>
     <section id={detailsId} hidden={!details} aria-label="Talargranskning" className="border-b border-rule-soft bg-bg-2/40 px-5 py-3 text-[12px] leading-relaxed">
       <h2 className="font-semibold">Om markeringen</h2>
-      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start)}–{formatClock(wordless.end)} i del {wordless.fileIndex + 1}. <button type="button" className="underline" disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
+      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className="underline" disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
       {new Set(selectedSources.map((s) => s.fileIndex)).size > 1 && <p>Markeringen omfattar flera ljudfiler. Lyssna spelar den första delen.</p>}
       {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(s.modelSpeaker === undefined ? s.speaker : s.modelSpeaker)))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
       {selectedSpans.some(needsSpeakerReview) && <p>Överlappande tal har markerats här. {selectedSpans.some((s) => !s.decision) ? "Talaren behöver granskas." : "Talarbeslutet ändrar inte den ursprungliga överlappsmarkeringen."}</p>}
@@ -342,7 +343,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
           const key = wordKey(span.segmentIndex, w);
           return <p key={key}>Ordet “{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <button type="button" className="underline" onClick={() => onToggleConfirmed(key)}>{confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"}</button>}</p>;
         }))}
-      <details className="mt-2"><summary className="min-h-6 cursor-pointer">Överlapp i inspelningen</summary><ul className="mt-2 space-y-1">{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className="underline" disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start)}–{formatClock(o.end)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
+      <details className="mt-2"><summary className="min-h-6 cursor-pointer">Överlapp i inspelningen</summary><ul className="mt-2 space-y-1">{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className="underline" disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start * 1_000)}–{formatClock(o.end * 1_000)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
     </section>
     <p className="px-5 pt-4 text-[12px] text-ink-mute" id={helpId}><span className="transcript-focus-label font-medium">Transkript</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<span className="sr-only"> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</span></p>
     {!shown.length && <p className="px-5 py-4 text-[13px] text-ink-mute">Inga transkriptord finns. Använd Nästa för att lyssna på markerade överlapp.</p>}
@@ -372,7 +373,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const name = certain ? displayName(first.speaker) : same && suggested ? `Förslag: ${displayName(suggested)}` : [...new Set(textIndices.map((i) => shown[i].decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(shown[i]) && !shown[i].decision ? `Förslag: ${displayName(shown[i].speaker)}` : displayName(shown[i].speaker)))].join(", ");
         return <div key={paragraphIndex} data-turn-index={paragraphIndex} data-caret-paragraph={paragraphIndex === caretParagraph ? "true" : undefined} className="mb-6 pl-2 grid grid-cols-1 gap-1 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-4">
           <div contentEditable={false} className="flex min-w-0 items-start gap-2 text-[11px] sm:block sm:pt-1">
-            <button type="button" disabled={!audioAvailable} className="inline-flex min-h-6 min-w-6 shrink-0 items-center text-ink-mute hover:text-ink tabular-nums disabled:opacity-40" onClick={() => { onSeek(first.fileIndex, first.start, false); onInteract(); }} aria-label={`Flytta uppspelningen till ${formatClock(first.start)}`}>{raw.some((s) => s.fileIndex > 0) ? `Del ${first.fileIndex + 1} · ` : ""}{formatClock(first.start)}</button>
+            <button type="button" disabled={!audioAvailable} className="inline-flex min-h-6 min-w-6 shrink-0 items-center text-ink-mute hover:text-ink tabular-nums disabled:opacity-40" onClick={() => { onSeek(first.fileIndex, first.start, false); onInteract(); }} aria-label={`Flytta uppspelningen till ${formatClock(first.start * 1_000)}`}>{raw.some((s) => s.fileIndex > 0) ? `Del ${first.fileIndex + 1} · ` : ""}{formatClock(first.start * 1_000)}</button>
             <button type="button" className="block min-h-6 min-w-6 max-w-full whitespace-normal text-left font-medium [overflow-wrap:anywhere] sm:mt-1" style={{ color: tint(certain ? first.speaker : null) }} aria-label={`Markera stycket: ${name}`} onClick={() => choose(anchorTextSelection(indices.map((i) => ({ index: i, start: 0, end: shown[i].text.length })), shown, corrections))}>{name}</button>
           </div>
           <p className="min-w-0 max-w-[68ch] [overflow-wrap:anywhere] whitespace-pre-wrap text-[16px] leading-[1.95] text-ink selection:bg-primary/30">{indices.map((index, i) => {

@@ -369,16 +369,6 @@ export function countUncertainWords(segments: readonly TranscriptSegment[]): num
   return n;
 }
 
-export function formatClock(seconds: number, withHours = false): string {
-  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return withHours || h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
 export const SPEAKER_COLOR_COUNT = 6;
 
 /** Stabil färgplats per etikett: SPEAKER_03 → 3 mod 6, annars en enkel hash. */

@@ -95,3 +95,30 @@ test("the transcript's keys: Space and K play or pause, arrows move 5 s, J and L
   assert.equal(shortcut("a"), null);
   assert.equal(shortcut("Enter"), null);
 });
+
+test("turn times read like the player's clock, m:ss, each in its own part's time", () => {
+  const long: TranscriptSegment[] = [
+    ...segments,
+    { fileIndex: 1, start: 3_725, end: 3_730, speaker: "SPEAKER_01", text: "Efter en timme." },
+  ];
+  for (const reviewEnabled of [false, true]) {
+    const html = renderToStaticMarkup(
+      createElement(TranscriptPlayer, {
+        segments: long,
+        fileCount: 2,
+        audioSrcFor: (i: number) => `/audio/${i}`,
+        speakerNames: {},
+        textFallback: "",
+        reviewEnabled,
+      }),
+    );
+    assert.doesNotMatch(html, /\b00:0\d\b/, `no zero-padded minutes (${reviewEnabled ? "review" : "reading"} view)`);
+    if (reviewEnabled) {
+      assert.match(html, /aria-label="Flytta uppspelningen till 0:00"/);
+    } else {
+      assert.match(html, /aria-label="Spela från 0:02"[^>]*>0:02</);
+      assert.match(html, /aria-label="Spela från 1:02:05"[^>]*>1:02:05</, "hours only where the time has them");
+      assert.equal(html.match(/aria-label="Spela från 0:00"/g)?.length, 2, "the second part starts over at 0:00");
+    }
+  }
+});
