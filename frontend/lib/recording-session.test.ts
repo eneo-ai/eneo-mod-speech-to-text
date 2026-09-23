@@ -292,18 +292,84 @@ test("a page left while the browser asks for the microphone records nothing and 
   assert.deepEqual(await store.listUnsent("user-1"), []);
 });
 
-test("the recording stops before a part grows too large to send, and keeps what it has", async () => {
-  const { capture, store, recorders } = await setup();
+test("at the per-file size limit the recording goes on in a new part, until the flow's file count runs out", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: 10, maxFiles: 2 });
+  recorders[0].emit("abc");
+  assert.equal(recorders.length, 1, "room for two more chunks like it");
+  recorders[0].emit("def");
+  await until(() => recorders.length === 2, "the second part");
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(streams.length, 1, "the same microphone: no new permission, no silence to ask for it");
+  assert.equal(streams[0].track.readyState, "live");
+  assert.equal(capture.getSnapshot().error, null);
+
+  recorders[1].emit("ghi");
+  assert.equal(capture.getSnapshot().recordedBytes, 10, "the size shown counts every part");
+  recorders[1].emit("jkl"); // the second part is full too, and the flow takes no third file
+  await until(() => capture.getSnapshot().status === "stopped", "the stop");
+  const files = await store.readParts(capture.getSnapshot().recording!.id);
+  assert.deepEqual(await texts(files), ["abcdef.", "ghijkl."]);
+  assert.ok(files.every((file) => file.blob.size <= 10));
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen stoppades vid flödets gräns på 2 filer om 10 B. Det som spelats in är sparat.",
+  );
+  assert.equal(streams[0].track.readyState, "ended");
+});
+
+test("a new part the browser will not start pauses the recording instead of recording nothing", async () => {
+  const store = await openRecordingStore({});
+  const stream = new FakeStream();
+  const recorders: FakeRecorder[] = [];
+  const capture = new RecordingCapture(() => store, {
+    getStream: async () => stream as unknown as MediaStream,
+    createRecorder: (_stream, options) => {
+      if (recorders.length === 1) throw new DOMException("Recorder unavailable", "NotSupportedError");
+      const recorder = new FakeRecorder(stream, options);
+      recorders.push(recorder);
+      return recorder as unknown as MediaRecorder;
+    },
+  });
   await capture.start(meeting, { maxBytes: 10 });
   recorders[0].emit("abc");
-  assert.equal(capture.getSnapshot().status, "recording", "room for two more chunks like it");
+  recorders[0].emit("def");
+  await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+  const paused = capture.getSnapshot().recording!;
+  assert.equal(paused.state, "paused");
+  assert.deepEqual(await texts(await store.readParts(paused.id)), ["abcdef."]);
+});
+
+test("a flow that takes one file stops the recording before the file grows too large to send", async () => {
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting, { maxBytes: 10, maxFiles: 1 });
+  recorders[0].emit("abc");
   recorders[0].emit("def");
   await until(() => capture.getSnapshot().status === "stopped", "the stop");
 
   const [file] = await store.readParts(capture.getSnapshot().recording!.id);
   assert.equal(await file.blob.text(), "abcdef.");
-  assert.ok(file.blob.size <= 10);
-  assert.match(capture.getSnapshot().error ?? "", /gräns/);
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen stoppades vid flödets gräns på 10 B. Det som spelats in är sparat.",
+  );
+});
+
+test("stopping or losing the microphone while a new part is being started wins over the new part", async () => {
+  for (const [what, act] of [
+    ["stop", (capture: RecordingCapture) => void capture.stop()],
+    ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("mute")],
+  ] as const) {
+    const { capture, streams, recorders } = await setup();
+    await capture.start(meeting, { maxBytes: 10 });
+    recorders[0].emit("abc");
+    recorders[0].emit("def"); // asks for a new part; the old one is still stopping
+    act(capture, streams[0]);
+    await until(() => ["stopped", "interrupted"].includes(capture.getSnapshot().status), what);
+    await settle();
+    assert.equal(recorders.length, 1, `${what}: no new part`);
+    assert.equal(streams[0].track.readyState, "ended", `${what}: the microphone is let go`);
+  }
 });
 
 test("a denied microphone, or a recorder that cannot start, says so in Swedish and leaves nothing behind", async () => {

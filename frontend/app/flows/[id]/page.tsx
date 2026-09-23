@@ -697,6 +697,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         acceptsUpload={acceptsUpload}
         acceptedMimetypes={acceptedMimetypes}
         maxFileSizeBytes={maxFileSizeBytes}
+        maxFiles={runtimeInput?.max_files}
         input={input}
         inputStepId={runtimeInput?.step_id ?? ""}
         onFilePicked={onFilePicked}
@@ -808,6 +809,7 @@ function SetupView({
   acceptsUpload,
   acceptedMimetypes,
   maxFileSizeBytes,
+  maxFiles,
   input,
   inputStepId,
   onFilePicked,
@@ -832,6 +834,7 @@ function SetupView({
   acceptsUpload: boolean;
   acceptedMimetypes: string[];
   maxFileSizeBytes?: number;
+  maxFiles?: number;
   input: RunInput | null;
   inputStepId: string;
   onFilePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -1001,6 +1004,7 @@ function SetupView({
                 stepId={inputStepId}
                 acceptedMimetypes={acceptedMimetypes}
                 maxBytes={maxFileSizeBytes}
+                maxFiles={maxFiles}
                 recording={input?.kind === "recording" ? input.recording : null}
                 onChange={onRecorded}
                 onRecordingChange={onRecordingChange}

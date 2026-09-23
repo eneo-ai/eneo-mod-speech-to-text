@@ -33,6 +33,8 @@ export interface CaptureSnapshot {
   /** The microphone stream of the running part, for a level meter. */
   stream: MediaStream | null;
   partBytes: number;
+  /** Every part's bytes, the running one included. */
+  recordedBytes: number;
   error: string | null;
   lowSpace: boolean;
   persistent: boolean;
@@ -56,7 +58,13 @@ export interface CaptureDeps {
   now?(): number;
 }
 
-type EndReason = "stop" | "interrupt" | "leave";
+/** The flow's limits for the audio step: bytes per file and files per run. */
+export interface CaptureLimits {
+  maxBytes?: number;
+  maxFiles?: number;
+}
+
+type EndReason = "stop" | "interrupt" | "leave" | "rotate";
 
 function microphoneError(error: unknown): string {
   const name = error instanceof DOMException ? error.name : "";
@@ -75,6 +83,7 @@ export class RecordingCapture {
     recording: null,
     stream: null,
     partBytes: 0,
+    recordedBytes: 0,
     error: null,
     lowSpace: false,
     persistent: true,
@@ -89,7 +98,10 @@ export class RecordingCapture {
   private generation = 0;
   private ending: EndReason | null = null;
   private partEnded: Promise<void> = Promise.resolve();
-  private maxBytes: number | undefined;
+  private limits: CaptureLimits = {};
+  // Parts the recording has, the running one included, and the bytes of those before it.
+  private partCount = 0;
+  private earlierPartsBytes = 0;
   // Recorded time on a monotonic clock, never by counting timer ticks (hidden
   // tabs throttle timers): earlier parts, this part before its latest pause,
   // and the running stretch.
@@ -114,7 +126,7 @@ export class RecordingCapture {
     return this.earlierPartsMs + this.partElapsed();
   }
 
-  async start(init: NewRecording, { maxBytes }: { maxBytes?: number } = {}): Promise<void> {
+  async start(init: NewRecording, limits: CaptureLimits = {}): Promise<void> {
     const { status } = this.snapshot;
     if (this.starting || (status !== "idle" && status !== "stopped")) return;
     this.starting = true;
@@ -130,11 +142,14 @@ export class RecordingCapture {
       const recording = (created = await store.create(init));
       this.release = () => store.release(recording.id);
       void store.requestPersistence();
-      this.maxBytes = maxBytes;
+      this.limits = limits;
+      this.partCount = 0;
+      this.earlierPartsBytes = 0;
       this.earlierPartsMs = 0;
       this.set({ recording, lowSpace: await store.lowOnSpace(), persistent: store.persistent });
       this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
       await this.beginPart(stream);
+      await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
     } catch (error) {
       this.finish();
@@ -158,6 +173,7 @@ export class RecordingCapture {
       });
       if (this.left(generation, stream)) return;
       await this.beginPart(stream);
+      await this.takeWakeLock();
     } catch (error) {
       this.set({ error: microphoneError(error) });
     } finally {
@@ -209,21 +225,22 @@ export class RecordingCapture {
       .finally(() => this.finish());
   }
 
+  /** Records a new part on `stream`; resolves once the store has the part. */
   private async beginPart(stream: MediaStream): Promise<void> {
     const store = this.store!;
     const { id, mimeType } = this.snapshot.recording!;
     let recorder: MediaRecorder;
-    let part: number;
     try {
       recorder = this.deps.createRecorder(stream, {
         mimeType,
         audioBitsPerSecond: SPEECH_RECORDING.audioBitsPerSecond,
       });
-      part = await store.startPart(id);
     } catch (error) {
       stream.getTracks().forEach((track) => track.stop());
       throw error;
     }
+    // Recording starts at once; the store queues the part before any of its chunks.
+    const part = store.startPart(id);
 
     const tracks = stream.getAudioTracks();
     let partBytes = 0;
@@ -237,20 +254,19 @@ export class RecordingCapture {
       if (!data || data.size === 0) return;
       partBytes += data.size;
       chunks += 1;
-      void store.append(id, part, data, this.partElapsed()).then(() => {
-        if (store.persistent !== this.snapshot.persistent) this.set({ persistent: store.persistent });
-      });
+      const durationMs = this.partElapsed();
+      void part
+        .then((index) => store.append(id, index, data, durationMs))
+        .then(() => {
+          if (store.persistent !== this.snapshot.persistent) this.set({ persistent: store.persistent });
+        });
       if (chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
         void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
       }
-      this.set({ partBytes });
-      // Stop while the last chunk still fits: a larger part could not be sent.
-      if (this.maxBytes && partBytes + 2 * data.size > this.maxBytes) {
-        this.set({
-          error: `Inspelningen stoppades vid flödets gräns på ${formatBytes(this.maxBytes)}. Det som spelats in är sparat.`,
-        });
-        void this.stop();
-      }
+      this.set({ partBytes, recordedBytes: this.earlierPartsBytes + partBytes });
+      // Before the next chunk could make the file too large to send.
+      const { maxBytes } = this.limits;
+      if (maxBytes && partBytes + 2 * data.size > maxBytes) this.partFull(maxBytes);
     };
 
     const onStop = async () => {
@@ -259,20 +275,24 @@ export class RecordingCapture {
       tracks.forEach((track) => {
         track.removeEventListener("ended", lose);
         track.removeEventListener("mute", lose);
-        track.stop();
+        // A new part goes on with the same microphone.
+        if (reason !== "rotate") track.stop();
       });
       recorder.removeEventListener("dataavailable", onData);
       recorder.removeEventListener("error", lose);
       recorder.removeEventListener("stop", onStop);
       this.earlierPartsMs += this.partElapsed();
+      this.earlierPartsBytes += partBytes;
       this.partMs = 0;
       this.runningSince = null;
       this.recorder = null;
-      this.releaseWakeLock();
-      if (reason === "interrupt") {
-        await store.setState(id, "paused");
-        this.set({ status: "interrupted", stream: null, recording: await store.get(id) });
+      if (reason === "rotate") {
+        ended();
+        await this.beginPart(stream).catch(() => this.pause());
+        return;
       }
+      if (reason === "interrupt") await this.pause();
+      else this.releaseWakeLock();
       ended();
     };
 
@@ -289,7 +309,28 @@ export class RecordingCapture {
     this.partMs = 0;
     this.runningSince = this.now();
     this.set({ status: "recording", stream, partBytes: 0 });
-    await this.takeWakeLock();
+    this.partCount = (await part) + 1;
+  }
+
+  /** The part holds what the flow takes per file: go on in a new part while the flow takes more files. */
+  private partFull(maxBytes: number) {
+    const { maxFiles } = this.limits;
+    if (maxFiles === undefined || this.partCount < maxFiles) {
+      void this.endPart("rotate");
+      return;
+    }
+    const limit = maxFiles === 1 ? formatBytes(maxBytes) : `${maxFiles} filer om ${formatBytes(maxBytes)}`;
+    this.set({ error: `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.` });
+    void this.stop();
+  }
+
+  /** The microphone went away: keep what was recorded, paused, for "Fortsätt spela in". */
+  private async pause() {
+    const { id } = this.snapshot.recording!;
+    const store = this.store!;
+    this.releaseWakeLock();
+    await store.setState(id, "paused");
+    this.set({ status: "interrupted", stream: null, recording: await store.get(id) });
   }
 
   /** True, with the microphone let go, when the page went away during a start. */
@@ -300,7 +341,8 @@ export class RecordingCapture {
   }
 
   private endPart(reason: EndReason): Promise<void> {
-    this.ending ??= reason;
+    // A stop, a leave or a lost microphone wins over starting a new part.
+    if (!this.ending || this.ending === "rotate") this.ending = reason;
     try {
       if (this.recorder && this.recorder.state !== "inactive") this.recorder.stop();
     } catch {

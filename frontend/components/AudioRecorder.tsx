@@ -39,6 +39,8 @@ interface Props {
   stepId: string;
   acceptedMimetypes?: string[];
   maxBytes?: number;
+  /** Files the flow takes per run; a full file goes on in a new part until these run out. */
+  maxFiles?: number;
   /** The recording chosen as the run's input, shown as done. */
   recording: StoredRecording | null;
   onChange: (recording: StoredRecording | null) => void;
@@ -74,6 +76,7 @@ export function AudioRecorder({
   stepId,
   acceptedMimetypes,
   maxBytes,
+  maxFiles,
   recording,
   onChange,
   onRecordingChange,
@@ -238,7 +241,7 @@ export function AudioRecorder({
     }
     await capture.start(
       { ownerId: user.id, flowId, flowName, stepId, inputMode: "record", mimeType: mime },
-      { maxBytes },
+      { maxBytes, maxFiles },
     );
   }
 
@@ -385,8 +388,7 @@ export function AudioRecorder({
         </div>
 
         <div className="text-[12px] text-ink-mute mb-4">
-          {formatBytes(snapshot.partBytes)}
-          {maxBytes ? ` av ${formatBytes(maxBytes)}` : ""} ·{" "}
+          {formatBytes(snapshot.recordedBytes)} ·{" "}
           {snapshot.persistent ? "sparas på enheten" : "sparas i den här fliken"}
         </div>
 
