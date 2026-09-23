@@ -980,6 +980,11 @@ export async function getTranscriptWords(
   );
 }
 
+/** A text file the run produced (its content as text), through the module's artifact route. */
+export async function getRunArtifactText(flowId: string, runId: string, fileId: string) {
+  return request<string>(`/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content`);
+}
+
 /**
  * One page (200 segments) of the transcript an attempt stored. Present: the
  * segments with their absolute index, the source hash corrections must carry,

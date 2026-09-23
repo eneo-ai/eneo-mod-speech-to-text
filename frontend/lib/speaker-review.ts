@@ -58,11 +58,6 @@ export function carriesTranscript(step: FlowRunStep | undefined): boolean {
   return stepTranscription(step) != null;
 }
 
-/** The transcript as text, as the step wrote it: "### 0:00 - 0:24" blocks, or "[00:00:00 - 00:00:04] Talare: …" lines. */
-export function stepTranscriptText(step: FlowRunStep | undefined): string | null {
-  const text = (step?.output_payload_json as { text?: unknown } | null | undefined)?.text;
-  return typeof text === "string" ? text : null;
-}
 
 export interface ReviewPassage {
   key: string;

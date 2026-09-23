@@ -164,10 +164,9 @@ export function parseTranscriptText(
     }
     const heading = BLOCK_HEADER_RE.exec(line);
     if (heading) {
+      // Only "## Del N" names a block's file; a clock starting over does not (the loader
+      // decides what several unnamed files may seek).
       const start = Number(heading[1]) * 60 + Number(heading[2]);
-      // Without "## Del" headers a new file shows only as its clock going back: the next
-      // block of the same file starts where the last one ended.
-      if (block && start < block.end) fileIndex += 1;
       block = { fileIndex, start, end: Number(heading[3]) * 60 + Number(heading[4]), speaker: null, text: "" };
       segments.push(block);
       continue;

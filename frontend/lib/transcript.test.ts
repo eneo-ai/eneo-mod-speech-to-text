@@ -150,7 +150,7 @@ test("clock, colours and display labels", () => {
   assert.equal(speakerDisplayLabel("Anna"), "Anna");
 });
 
-test("Eneo's text without segments reads as its time blocks, and a clock starting over is the next part", () => {
+test("Eneo's text without segments reads as its time blocks, in the parts it names", () => {
   const blocks = (text: string) => parseTranscriptText(text).map((s) => [s.fileIndex, s.start, s.end, s.speaker, s.text]);
   assert.deepEqual(
     blocks("### 0:00 - 5:00\n\nFörsta stycket.\nFortsättning.\n\n### 5:00 - 7:12\n\nAndra blocket."),
@@ -171,9 +171,9 @@ test("Eneo's text without segments reads as its time blocks, and a clock startin
     blocks("### 0:00 - 0:24\n\nEtt.\n\n### 0:00 - 0:10\n\nTvå."),
     [
       [0, 0, 24, null, "Ett."],
-      [1, 0, 10, null, "Två."],
+      [0, 0, 10, null, "Två."],
     ],
-    "parts Eneo did not name",
+    "a clock starting over names no file: the loader decides what several unnamed files may seek",
   );
   assert.deepEqual(blocks("### 65:00 - 70:00\n\nSent."), [[0, 3_900, 4_200, null, "Sent."]], "minutes past the hour");
 });
