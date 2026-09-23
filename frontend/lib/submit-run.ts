@@ -213,6 +213,10 @@ export async function submitRecording(
   }
 }
 
+/** Eneo's own refusal of an attempt: it looked at the request and made no run for it. */
+const refusedByEneo = (error: unknown) =>
+  error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
+
 async function sendLeased(
   store: RecordingStore,
   id: string,
@@ -223,16 +227,23 @@ async function sendLeased(
   if (!recording) throw new Error(NOT_ON_DEVICE);
   // Set once Eneo is asked for the run; until it answers, the run may exist.
   let asked = recording.submission ?? null;
+  // Eneo may have made the run: an earlier send asked, or an attempt here went unanswered.
+  let mayExist = asked !== null;
+  const ask: SubmitDeps["startRun"] = async (...args) => {
+    try {
+      return await (deps?.startRun ?? startRun)(...args);
+    } catch (error) {
+      if (!refusedByEneo(error)) mayExist = true;
+      throw error;
+    }
+  };
   let run: FlowRunPublic;
   try {
     if (asked) {
       // An earlier send never heard Eneo's answer: the same request gets the run it made.
       const request = asked;
       await params.onStarting?.(request);
-      run = await withRetry(
-        () => (deps?.startRun ?? startRun)(params.flowId, request.body, request.idempotencyKey, params.signal),
-        params,
-      );
+      run = await withRetry(() => ask(params.flowId, request.body, request.idempotencyKey, params.signal), params);
     } else {
       const files = await store.readParts(id);
       if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
@@ -249,7 +260,7 @@ async function sendLeased(
             await params.onStarting?.(request);
           },
         },
-        deps,
+        { upload: deps?.upload ?? uploadStepRuntimeFile, startRun: ask },
       );
     }
   } catch (error) {
@@ -261,12 +272,18 @@ async function sendLeased(
     if (!asked) {
       // Eneo was not asked: what was uploaded stays for the next send.
       await store.setState(id, "stopped");
-    } else if (error instanceof ApiError && error.status >= 400 && !isRetryable(error)) {
-      // Eneo refused the run, so none was made; its uploads may be what it refused.
+    } else if (!mayExist && refusedByEneo(error)) {
+      // Eneo refused every attempt of this request, so it made no run; its uploads may be what it refused.
       await store.clearFileIds(id);
       await store.setState(id, "stopped");
+    } else if (error instanceof ApiError && error.code === "flow_run_stale_version") {
+      // The flow was published again, so this request can never be answered, and Eneo said so before
+      // looking at the key. The next request, at the current version and with the same uploads, asks
+      // under the same key: Eneo answers a run it made with a conflict, never with a second run.
+      await store.forgetSubmission(id);
     }
-    // Otherwise the run may exist: the recording stays "uploaded" with its request.
+    // Otherwise the run may exist (a 401 or 403 says nothing about it): the recording stays
+    // "uploaded" with its request, which the next send repeats.
     throw error;
   }
   // Eneo has the run; tidying up the local copy must not turn it into a failure.
