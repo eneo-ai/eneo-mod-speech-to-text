@@ -112,17 +112,17 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
     max_file_size_bytes: 200 * 1024 * 1024,
     accepted_mimetypes: ["audio/mpeg", "audio/wav", "audio/x-m4a", "audio/webm"],
   };
-  const empty = renderToStaticMarkup(createElement(UploadPanel, { step, file: null, audio: true, onPick: noop, onDrop: noop }));
+  const empty = renderToStaticMarkup(createElement(UploadPanel, { step, file: null, audio: true, inputRef: null, onChoose: noop }));
   assert.match(empty, /Flödet tar emot MP3, WAV, M4A och WebM, högst 200\u00a0MB\./);
-  assert.doesNotMatch(empty, /audio\//);
+  assert.doesNotMatch(empty.replace(/<input[^>]*>/, ""), /audio\//, "the chooser's accept list is the only place types show");
 
   const chosen = renderToStaticMarkup(
     createElement(UploadPanel, {
       step,
       file: { blob: new Blob(["x".repeat(1_300_000)]), filename: "mote.mp3", durationMs: 32 * 60_000 },
       audio: true,
-      onPick: noop,
-      onDrop: noop,
+      inputRef: null,
+      onChoose: noop,
     }),
   );
   assert.match(chosen, />mote\.mp3</);

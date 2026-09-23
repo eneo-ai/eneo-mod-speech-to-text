@@ -405,28 +405,13 @@ function SetupWorkspace({
       {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
 
       {mode === "ladda-upp" && (
-        <>
-          <input
-            ref={fileInput}
-            type="file"
-            accept={step?.accepted_mimetypes?.join(",") || (audio ? "audio/*" : undefined)}
-            className="sr-only"
-            tabIndex={-1}
-            aria-hidden
-            onChange={(event) => {
-              const chosen = event.target.files?.[0];
-              if (chosen) session.chooseFile(chosen);
-              event.target.value = "";
-            }}
-          />
-          <UploadPanel
-            step={step}
-            file={file}
-            audio={audio}
-            onPick={() => fileInput.current?.click()}
-            onDrop={(dropped) => session.chooseFile(dropped)}
-          />
-        </>
+        <UploadPanel
+          step={step}
+          file={file}
+          audio={audio}
+          inputRef={fileInput}
+          onChoose={(chosen) => session.chooseFile(chosen)}
+        />
       )}
 
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} />}

@@ -210,3 +210,29 @@ test("the microphone test uses the device recording will use, and shows it, also
   await view.unmount();
   localStorage.clear();
 });
+
+test("upload: the whole drop zone opens the file chooser, the chooser knows the flow's extensions, and the zone is no extra Tab stop", async () => {
+  const { createElement, createRef } = await import("react");
+  const { UploadPanel } = await import("../components/flow/UploadPanel");
+  const inputRef = createRef<HTMLInputElement>();
+  const chosen: string[] = [];
+  const step = { step_id: "step-doc", input_format: "document", accepted_mimetypes: ["text/markdown", "application/pdf"] };
+  const view = await mount(
+    createElement(UploadPanel, { step, file: null, audio: false, inputRef, onChoose: (file: File) => chosen.push(file.name) }),
+  );
+  const input = inputRef.current!;
+  let opened = 0;
+  input.addEventListener("click", () => (opened += 1));
+
+  const zone = view.container.querySelector<HTMLElement>("[data-drop-zone]")!;
+  await view.act(async () => zone.querySelector("span")!.click());
+  assert.equal(opened, 1, "a click anywhere on the zone opens the chooser");
+  assert.equal(input.accept, "text/markdown,.md,.markdown,application/pdf,.pdf");
+  assert.equal(zone.tabIndex, -1, "the zone takes no focus: the primary button is the one keyboard stop");
+  assert.equal(input.tabIndex, -1);
+
+  Object.defineProperty(input, "files", { value: [new File(["# Plan"], "underlag.md")], configurable: true });
+  await view.act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
+  assert.deepEqual(chosen, ["underlag.md"]);
+  await view.unmount();
+});

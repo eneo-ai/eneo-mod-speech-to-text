@@ -1,31 +1,32 @@
 "use client";
 
-import { FileAudio, Upload } from "lucide-react";
-import { useState, type DragEvent } from "react";
+import { FileAudio, FileText, Upload } from "lucide-react";
+import { useId, useState, type DragEvent, type Ref } from "react";
 import { Button } from "@/components/ui/button";
 import type { RunContractStepInput } from "@/lib/api";
-import { acceptedFormats, type ChosenFile } from "@/lib/flow-session";
+import { acceptedFormats, fileAccept, type ChosenFile } from "@/lib/flow-session";
 import { formatBytes, formatDuration } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
- * Ladda upp: what the flow takes, a place to drop a file on a tablet or
- * laptop, and the chosen file with its size and length. "Välj ljudfil"
- * (the primary action) opens the picker; "Byt fil" picks again.
+ * Ladda upp: the file chooser, what the flow takes, a zone to click or drop a
+ * file on, and the chosen file with its size and length. The page's primary
+ * action opens the same chooser through `inputRef`; "Byt fil" picks again.
  */
 export function UploadPanel({
   step,
   file,
   audio,
-  onPick,
-  onDrop,
+  inputRef,
+  onChoose,
 }: {
   step: RunContractStepInput | null;
   file: ChosenFile | null;
   audio: boolean;
-  onPick: () => void;
-  onDrop: (file: File) => void;
+  inputRef: Ref<HTMLInputElement>;
+  onChoose: (file: File) => void;
 }) {
+  const inputId = useId();
   const [dragging, setDragging] = useState(false);
   const formats = acceptedFormats(step?.accepted_mimetypes);
   const limit = step?.max_file_size_bytes ? `högst ${formatBytes(step.max_file_size_bytes)}` : null;
@@ -42,47 +43,79 @@ export function UploadPanel({
       event.preventDefault();
       setDragging(false);
       const dropped = event.dataTransfer.files[0];
-      if (dropped) onDrop(dropped);
+      if (dropped) onChoose(dropped);
     },
   };
 
+  // One keyboard stop: the primary action. The zone is a label for the chooser, a larger place to click.
+  const chooser = (
+    <input
+      ref={inputRef}
+      id={inputId}
+      type="file"
+      accept={fileAccept(step?.accepted_mimetypes) ?? (audio ? "audio/*" : undefined)}
+      className="sr-only"
+      tabIndex={-1}
+      aria-hidden
+      onChange={(event) => {
+        const chosen = event.target.files?.[0];
+        if (chosen) onChoose(chosen);
+        event.target.value = "";
+      }}
+    />
+  );
+  const FileIcon = audio ? FileAudio : FileText;
+
   if (file) {
     return (
-      <div
-        {...dropTarget}
-        className={cn(
-          "flex items-center gap-3 rounded-xl border bg-paper p-4 transition-colors duration-150",
-          dragging ? "border-primary bg-primary-soft/40" : "border-rule-soft",
-        )}
-      >
-        <FileAudio aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[15px] font-medium text-ink">{file.filename}</p>
-          <p className="text-[13px] text-ink-soft">
-            {formatBytes(file.blob.size)}
-            {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}
-          </p>
+      <>
+        {chooser}
+        <div
+          {...dropTarget}
+          className={cn(
+            "flex items-center gap-3 rounded-xl border bg-paper p-4 transition-colors duration-150",
+            dragging ? "border-primary bg-primary-soft/40" : "border-rule-soft",
+          )}
+        >
+          <FileIcon aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-medium text-ink">{file.filename}</p>
+            <p className="text-[13px] text-ink-soft">
+              {formatBytes(file.blob.size)}
+              {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 shrink-0"
+            onClick={() => document.getElementById(inputId)?.click()}
+          >
+            Byt fil
+          </Button>
         </div>
-        <Button type="button" variant="outline" className="h-11 shrink-0" onClick={onPick}>
-          Byt fil
-        </Button>
-      </div>
+      </>
     );
   }
 
   return (
-    <div
-      {...dropTarget}
-      className={cn(
-        "flex flex-col items-center gap-2 rounded-xl border border-dashed px-5 py-6 text-center transition-colors duration-150",
-        dragging ? "border-primary bg-primary-soft/40" : "border-rule bg-paper",
-      )}
-    >
-      <Upload aria-hidden className="size-6 text-primary" strokeWidth={1.75} />
-      <p className="hidden text-[15px] font-medium text-ink md:[@media(pointer:fine)]:block">
-        {audio ? "Dra en ljudfil hit, eller välj en." : "Dra en fil hit, eller välj en."}
-      </p>
-      {takes && <p className="text-[14px] text-ink-soft">Flödet tar emot {takes}.</p>}
-    </div>
+    <>
+      {chooser}
+      <label
+        htmlFor={inputId}
+        data-drop-zone
+        {...dropTarget}
+        className={cn(
+          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed px-5 py-6 text-center transition-colors duration-150",
+          dragging ? "border-primary bg-primary-soft/40" : "border-rule bg-paper hover:border-primary hover:bg-primary-soft/20",
+        )}
+      >
+        <Upload aria-hidden className="size-6 text-primary" strokeWidth={1.75} />
+        <span className="hidden text-[15px] font-medium text-ink md:[@media(pointer:fine)]:block">
+          {audio ? "Dra en ljudfil hit eller klicka för att välja en." : "Dra en fil hit eller klicka för att välja en."}
+        </span>
+        {takes && <span className="block text-[14px] text-ink-soft">Flödet tar emot {takes}.</span>}
+      </label>
+    </>
   );
 }
