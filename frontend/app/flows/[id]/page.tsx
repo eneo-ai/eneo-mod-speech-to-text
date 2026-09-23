@@ -26,11 +26,15 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AuthGate } from "@/components/AuthGate";
+import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AudioRecorder } from "@/components/AudioRecorder";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
+import {
+  UnsentRecordings,
+  useUnsentRecordings,
+} from "@/components/UnsentRecordings";
 import {
   approveReviewCheckpoint,
   editReviewCheckpoint,
@@ -155,6 +159,8 @@ interface ResultFileRef {
 // Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
 // delad länk, kan återuppta samma körning i stället för att tappa den.
 const RUN_QUERY_PARAM = "run";
+// "Skicka" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
+const RECORDING_QUERY_PARAM = "recording";
 
 function readRunIdFromUrl(): string | null {
   if (typeof window === "undefined") return null;
@@ -190,6 +196,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const submitAbortRef = useRef<AbortController | null>(null);
+
+  const user = useAuthenticatedUser();
+  const currentRecordingId = input?.kind === "recording" ? input.recording.id : null;
+  const unsentRecordings = useUnsentRecordings(user.id, flowId).filter(
+    (recording) => recording.id !== currentRecordingId,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -276,15 +288,30 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const canSubmit = useMemo(() => {
     if (run.kind !== "idle") return false;
     if (!contract) return false;
+    // Att skicka nu skulle avbryta inspelningen som pågår.
+    if (recordingActive) return false;
     if (requiresFile && !input) return false;
-    for (const f of formFields) {
-      if (f.required) {
-        const v = formValues[f.name];
-        if (!v || v.trim().length === 0) return false;
-      }
-    }
-    return true;
-  }, [run.kind, contract, requiresFile, input, formFields, formValues]);
+    return !missingRequiredField(formFields, formValues);
+  }, [run.kind, contract, recordingActive, requiresFile, input, formFields, formValues]);
+
+  // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
+  useEffect(() => {
+    if (!contract) return;
+    const url = new URL(window.location.href);
+    const recordingId = url.searchParams.get(RECORDING_QUERY_PARAM);
+    if (!recordingId) return;
+    url.searchParams.delete(RECORDING_QUERY_PARAM);
+    window.history.replaceState(window.history.state, "", url);
+    recordingStore()
+      .then((store) => store.get(recordingId))
+      .then((recording) => {
+        if (recording?.ownerId === user.id && recording.flowId === flowId) {
+          sendRecording(recording);
+        }
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contract]);
 
   function setField(key: string, value: string) {
     setFormValues((prev) => ({ ...prev, [key]: value }));
@@ -320,6 +347,19 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   function onRun() {
     void sendInput(input);
+  }
+
+  /** "Skicka" på en osänd inspelning: samma väg som Kör flöde. */
+  function sendRecording(recording: StoredRecording) {
+    const next: RunInput = { kind: "recording", recording };
+    setInput(next);
+    const missing = missingRequiredField(formFields, formValues);
+    if (missing) {
+      // Inspelningen är vald; Kör flöde skickar den när fälten är ifyllda.
+      document.getElementById(missing.name)?.focus();
+      return;
+    }
+    void sendInput(next);
   }
 
   async function sendInput(runInput: RunInput | null) {
@@ -669,6 +709,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         runError={runError}
         resumableRuns={resumableRuns}
         onResume={resumeRun}
+        unsentRecordings={unsentRecordings}
+        onSendRecording={sendRecording}
       />
     );
   }
@@ -778,6 +820,8 @@ function SetupView({
   runError,
   resumableRuns,
   onResume,
+  unsentRecordings,
+  onSendRecording,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -800,6 +844,8 @@ function SetupView({
   runError: string | null;
   resumableRuns: FlowRunSummary[];
   onResume: (runId: string) => void;
+  unsentRecordings: StoredRecording[];
+  onSendRecording: (recording: StoredRecording) => void;
 }) {
   const formFields = contract.form_fields ?? [];
   const speakerMappingSteps = speakerMappingReviewSteps(contract);
@@ -875,6 +921,10 @@ function SetupView({
               ))}
             </ul>
           </section>
+        )}
+
+        {!recordingActive && (
+          <UnsentRecordings recordings={unsentRecordings} onSend={onSendRecording} />
         )}
 
         {speakerMappingSteps.length > 0 && (
@@ -1948,6 +1998,14 @@ function formatDateTime(iso: string): string {
     dateStyle: "short",
     timeStyle: "short",
   });
+}
+
+/** Det första obligatoriska formulärfältet som saknar värde. */
+function missingRequiredField(
+  fields: FormField[],
+  values: Record<string, string>,
+): FormField | undefined {
+  return fields.find((f) => f.required && !values[f.name]?.trim());
 }
 
 /** Formulärvärdena som körningens input_payload_json; tomma fält skickas inte. */

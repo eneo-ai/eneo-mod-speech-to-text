@@ -288,6 +288,7 @@ test("files the step cannot take stop the send before anything is uploaded", asy
 });
 
 const meeting: NewRecording = {
+  ownerId: "user-1",
   flowId: "flow-1",
   flowName: "Nämndmöte till rapport",
   stepId: "step-audio",
@@ -328,7 +329,7 @@ test("sending a recording uploads its parts and deletes the local copy only once
   assert.deepEqual(contents, ["a1a2", "b1"]);
   assert.deepEqual(statesSeen, ["uploading", "uploading", "uploaded"]);
   assert.equal(await store.get(recording.id), null);
-  assert.deepEqual(await store.listUnsent(), []);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
 
   // Eneo has the run even if the device cannot tidy up afterwards.
   const another = await stoppedRecording(store, [["c"]]);
@@ -351,7 +352,7 @@ test("a send that stops keeps the recording and its uploaded parts; the next sen
   await assert.rejects(submitRecording(store, recording.id, params(), stops), (error: ApiError) => error.status === 413);
   const kept = await store.get(recording.id);
   assert.deepEqual([kept?.state, kept?.parts.map((p) => p.fileId)], ["stopped", ["file-a", null]]);
-  assert.equal((await store.listUnsent()).length, 1);
+  assert.equal((await store.listUnsent("user-1")).length, 1);
 
   const uploaded: string[] = [];
   let stepInputs: unknown = null;
@@ -383,5 +384,5 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
   );
   const kept = await store.get(recording.id);
   assert.deepEqual([kept?.state, kept?.parts[0].fileId], ["stopped", null]);
-  assert.equal((await store.listUnsent()).length, 1);
+  assert.equal((await store.listUnsent("user-1")).length, 1);
 });

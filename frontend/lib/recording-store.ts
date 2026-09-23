@@ -32,6 +32,8 @@ export interface RecordingPart {
 
 export interface StoredRecording {
   id: string;
+  /** The signed-in user who made it; a shared device offers it to no one else. */
+  ownerId: string;
   flowId: string;
   flowName: string;
   stepId: string;
@@ -46,7 +48,7 @@ export interface StoredRecording {
 
 export type NewRecording = Pick<
   StoredRecording,
-  "flowId" | "flowName" | "stepId" | "inputMode" | "mimeType"
+  "ownerId" | "flowId" | "flowName" | "stepId" | "inputMode" | "mimeType"
 >;
 
 /** One part as an audio file, ready to upload or save. */
@@ -279,13 +281,14 @@ export class RecordingStore {
   }
 
   /** Recordings Eneo has not accepted as a run, newest first, except those being captured. */
-  listUnsent(): Promise<StoredRecording[]> {
+  listUnsent(ownerId: string): Promise<StoredRecording[]> {
     return this.serial(async () => {
       const locks = await this.env.locks?.query().catch(() => null);
       const heldElsewhere = new Set(locks?.held?.map((lock) => lock.name) ?? []);
       return (await this.all())
         .filter(
           (r) =>
+            r.ownerId === ownerId &&
             r.state !== "submitted" &&
             !this.holds.has(r.id) &&
             !heldElsewhere.has(lockName(r.id)),

@@ -12,6 +12,7 @@ import {
 const MB = 1024 * 1024;
 
 const meeting: NewRecording = {
+  ownerId: "user-1",
   flowId: "flow-1",
   flowName: "Nämndmöte till rapport",
   stepId: "step-audio",
@@ -105,7 +106,7 @@ test("a recording cut off mid-meeting is listed as unsent when the app is opened
   release();
 
   const reopened = await openRecordingStore(env);
-  const unsent = await reopened.listUnsent();
+  const unsent = await reopened.listUnsent("user-1");
   assert.deepEqual(
     unsent.map((r) => [r.id, r.flowName, r.durationMs, r.state]),
     [[recording.id, "Nämndmöte till rapport", 2_000, "recording"]],
@@ -131,7 +132,7 @@ test("unsent recordings are listed newest first, without those being captured or
   const newest = await store.create({ ...meeting, flowName: "Intervju" });
 
   assert.deepEqual(
-    (await store.listUnsent()).map((r) => r.id),
+    (await store.listUnsent("user-1")).map((r) => r.id),
     [newest.id, older.id],
   );
   assert.ok(changes > 0, "lists showing recordings hear about changes");
@@ -140,15 +141,30 @@ test("unsent recordings are listed newest first, without those being captured or
   const withoutLocks = await openRecordingStore(device({ locks: undefined }));
   const capturing = await withoutLocks.create(meeting);
   withoutLocks.hold(capturing.id);
-  assert.deepEqual(await withoutLocks.listUnsent(), []);
+  assert.deepEqual(await withoutLocks.listUnsent("user-1"), []);
 
   releaseHere();
   releaseOtherTab();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(
-    (await store.listUnsent()).map((r) => r.id),
+    (await store.listUnsent("user-1")).map((r) => r.id),
     [newest.id, capturedInOtherTab.id, capturedHere.id, older.id],
   );
+});
+
+test("a shared device offers each person only their own recordings, and 'Ta bort' removes one for good", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const mine = await store.create(meeting);
+  const colleagues = await store.create({ ...meeting, ownerId: "user-2" });
+  assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [mine.id]);
+  assert.deepEqual((await store.listUnsent("user-2")).map((r) => r.id), [colleagues.id]);
+
+  await store.startPart(mine.id);
+  await store.append(mine.id, 0, new Blob(["audio"]), 1_000);
+  await store.remove(mine.id);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
+  assert.deepEqual(await (await openRecordingStore(env)).readParts(mine.id), []);
 });
 
 test("the local copy stays through every upload state and is deleted once Eneo accepted the run", async () => {
@@ -163,7 +179,7 @@ test("the local copy stays through every upload state and is deleted once Eneo a
   await store.setPartFileId(recording.id, 0, "file-1");
   await store.setState(recording.id, "uploaded");
   assert.deepEqual(
-    (await store.listUnsent()).map((r) => [r.state, r.parts[0].fileId]),
+    (await store.listUnsent("user-1")).map((r) => [r.state, r.parts[0].fileId]),
     [["uploaded", "file-1"]],
   );
   await store.clearFileIds(recording.id);
@@ -171,11 +187,11 @@ test("the local copy stays through every upload state and is deleted once Eneo a
   assert.deepEqual(await texts(await store.readParts(recording.id)), ["audio"]);
 
   await store.accept(recording.id, "run-1");
-  assert.deepEqual(await store.listUnsent(), []);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
   assert.equal(await store.get(recording.id), null);
   assert.deepEqual(await store.readParts(recording.id), []);
   const reopened = await openRecordingStore(env);
-  assert.deepEqual(await reopened.listUnsent(), []);
+  assert.deepEqual(await reopened.listUnsent("user-1"), []);
   assert.deepEqual(await reopened.readParts(recording.id), []);
 });
 
@@ -194,7 +210,7 @@ test("a sent recording whose local copy cannot be deleted is never offered again
   } finally {
     IDBObjectStore.prototype.delete = remove;
   }
-  assert.deepEqual(await store.listUnsent(), []);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
 });
 
 test("chunks of a recording being captured are stored even when reading the database fails", async () => {
@@ -238,8 +254,8 @@ test("without IndexedDB the recording lives only in this tab, and the store says
     void store.append(recording.id, 0, new Blob(["a"]), 1_000);
     await store.append(recording.id, 0, new Blob(["b"]), 2_000);
     assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"]);
-    assert.equal((await store.listUnsent()).length, 1);
-    assert.equal((await (await openRecordingStore(env)).listUnsent()).length, 0);
+    assert.equal((await store.listUnsent("user-1")).length, 1);
+    assert.equal((await (await openRecordingStore(env)).listUnsent("user-1")).length, 0);
   }
 });
 

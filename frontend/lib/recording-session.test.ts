@@ -11,6 +11,7 @@ import {
 import { RecordingCapture, type CaptureDeps, type PageLike } from "./recording-session";
 
 const meeting: NewRecording = {
+  ownerId: "user-1",
   flowId: "flow-1",
   flowName: "Nämndmöte till rapport",
   stepId: "step-audio",
@@ -148,7 +149,7 @@ test("losing the microphone pauses the recording, keeps what was recorded, and '
   assert.equal(paused?.state, "paused");
   assert.equal(streams[0].track.readyState, "ended", "the microphone is let go");
   assert.deepEqual(await texts(await store.readParts(paused!.id)), ["ab."]);
-  assert.deepEqual(await store.listUnsent(), [], "a paused recording still belongs to this page");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "a paused recording still belongs to this page");
 
   await capture.continueRecording();
   assert.equal(capture.getSnapshot().status, "recording");
@@ -211,12 +212,12 @@ test("starting asks to keep the recording and the screen on; leaving the page le
   await capture.start(meeting);
   assert.equal(persistRequests, 1);
   assert.equal(wakeLocks.requested, 1);
-  assert.deepEqual(await store.listUnsent(), [], "a recording being captured is not offered for recovery");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "a recording being captured is not offered for recovery");
   recorders[0].emit("a");
 
   capture.dispose();
-  await until(async () => (await store.listUnsent()).length === 1, "the recording left for recovery");
-  const [left] = await store.listUnsent();
+  await until(async () => (await store.listUnsent("user-1")).length === 1, "the recording left for recovery");
+  const [left] = await store.listUnsent("user-1");
   assert.equal(left.state, "paused");
   assert.deepEqual(await texts(await store.readParts(left.id)), ["a."]);
   assert.equal(wakeLocks.released, 1);
@@ -261,7 +262,7 @@ test("a denied microphone, or a recorder that cannot start, says so in Swedish a
   assert.equal(unsupported.getSnapshot().status, "idle");
   assert.match(unsupported.getSnapshot().error ?? "", /kunde inte startas/);
   assert.equal(stream.track.readyState, "ended", "the microphone is let go");
-  assert.deepEqual(await store.listUnsent(), []);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
 });
 
 test("the recorder says when space runs low or the device stops keeping the recording", async () => {

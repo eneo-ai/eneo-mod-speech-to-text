@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   ChevronRight,
@@ -11,8 +12,12 @@ import {
   MessageSquare,
   Mic,
 } from "lucide-react";
-import { AuthGate } from "@/components/AuthGate";
+import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { AppHeader } from "@/components/AppHeader";
+import {
+  UnsentRecordings,
+  useUnsentRecordings,
+} from "@/components/UnsentRecordings";
 import {
   firstInputFormat,
   getConfig,
@@ -86,6 +91,8 @@ function useFlowInputFormats(
 }
 
 function FlowsListPage() {
+  const router = useRouter();
+  const unsent = useUnsentRecordings(useAuthenticatedUser().id);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [allSpaces, setAllSpaces] = useState<SpaceSparse[] | null>(null);
   const [spaceId, setSpaceId] = useState<string>("");
@@ -196,6 +203,18 @@ function FlowsListPage() {
           Vad ska vi <span className="accent-em">spela in</span>?
         </h1>
       </section>
+
+      {unsent.length > 0 && (
+        <div className="px-4 md:px-6">
+          <UnsentRecordings
+            recordings={unsent}
+            withFlowName
+            onSend={(recording) =>
+              router.push(`/flows/${recording.flowId}?recording=${recording.id}`)
+            }
+          />
+        </div>
+      )}
 
       {sections ? (
         sections.map((sec, idx) => (

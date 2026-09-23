@@ -9,6 +9,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useAuthenticatedUser } from "@/components/AuthGate";
 import {
   RecordingInterrupted,
   RecordingStorageNotice,
@@ -78,6 +79,7 @@ export function AudioRecorder({
   title,
   subtitle,
 }: Props) {
+  const user = useAuthenticatedUser();
   const [capture] = useState(
     () => new RecordingCapture(recordingStore, browserCaptureDeps()),
   );
@@ -234,7 +236,7 @@ export function AudioRecorder({
       return;
     }
     await capture.start(
-      { flowId, flowName, stepId, inputMode: "record", mimeType: mime },
+      { ownerId: user.id, flowId, flowName, stepId, inputMode: "record", mimeType: mime },
       { maxBytes },
     );
   }
