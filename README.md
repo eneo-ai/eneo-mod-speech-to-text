@@ -76,7 +76,7 @@ set -a
 source .env
 set +a
 cd backend
-.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log --ws-max-size 131072 --ws-max-queue 16
 ```
 
 6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:
@@ -373,8 +373,11 @@ får browsern en enda `error`-händelse med Eneos `code` och sedan en normal
 stängning. Når backend inte Eneo blir koden `upstream_unreachable` med
 `retryable: true`.
 
-Går en av sidorna inte att skriva till på 15 sekunder avslutar backend
-sessionen.
+Varje startsätt för backend (imagen, backend-imagen och dev-kommandot ovan)
+tar emot högst 128 KiB per WebSocket-meddelande och 16 meddelanden i kö, så en
+anslutning buffrar högst 2 MiB innan Eneo ser ramarna. Ett test kräver att
+startsätten har samma gränser. Går en av sidorna inte att skriva till på 15
+sekunder avslutar backend sessionen.
 
 Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma
 `/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i
