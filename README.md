@@ -360,6 +360,9 @@ lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny
 del. Det går också efter en omladdning: en inspelning som avbröts utan stopp
 visas som osänd på flödets sida med **Fortsätt spela in**, som spelar in direkt
 i en ny del av samma inspelning, med tiden räknad från det som redan sparats.
+Efter **Stoppa** finns **Fortsätt spela in** också bredvid **Skapa dokument**:
+det spelar in en ny del av samma inspelning på samma sätt, tills inspelningen
+har börjat skickas. Med Strömma kommer livetexten tillbaka för den nya delen.
 Innan en del når flödets största filstorlek startar nästa del på samma
 mikrofon. Marginalen räknas från bithastigheten och chunkintervallet, och de två
 delarna spelar in samtidigt i 150 ms, eftersom Chrome tappar de sista
