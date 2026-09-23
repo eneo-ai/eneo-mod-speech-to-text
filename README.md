@@ -357,7 +357,12 @@ inspelningen bara i fliken, och det står i inspelaren.
 
 Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefon
 lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny
-del. Delarna skickas i ordning som filer i samma körning (`file_ids`).
+del. Det går också efter en omladdning: en inspelning som avbröts utan stopp
+visas som osänd på flödets sida med **Fortsätt spela in**. När en del når
+flödets största filstorlek fortsätter inspelningen i en ny del, tills flödets
+antal filer (`max_files`) är slut. Delarna skickas i ordning som filer i samma
+körning (`file_ids`), med inspelningens egen idempotensnyckel, så att Eneo gör
+en körning per inspelning även om två flikar skickar den.
 
 En inspelning används av en flik i taget: den flik som spelar in den, skickar
 den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när
