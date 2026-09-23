@@ -76,3 +76,8 @@ test("Eneo's own words on the failure view are marked as English", async ({ page
   await STATES.find((s) => s.name === "failure")!.go(page, info);
   await expect(page.getByText(/^Step 2 failed/)).toHaveAttribute("lang", "en");
 });
+
+test("the access code can be filled in by a password manager", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "signin-access-code")!.go(page, info);
+  await expect(page.getByLabel("Åtkomstkod")).toHaveAttribute("autocomplete", "current-password");
+});

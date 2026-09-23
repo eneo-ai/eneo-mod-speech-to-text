@@ -124,7 +124,8 @@ export default function LoginPage() {
                     type="password"
                     value={accessCode}
                     onChange={(event) => setAccessCode(event.target.value)}
-                    autoComplete="off"
+                    // A password manager may keep and fill the code (WCAG 3.3.8); pasting works either way.
+                    autoComplete="current-password"
                     required
                     maxLength={256}
                     disabled={submitting}
