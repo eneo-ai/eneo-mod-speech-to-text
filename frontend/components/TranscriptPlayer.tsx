@@ -482,7 +482,19 @@ export const TranscriptPlayer = forwardRef<
             )}
             {canEdit && !audioPending && (
               <p className="text-ink-mute">
-                {reviewEnabled ? "Markera orden du vill granska direkt i transkriptet." : "Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta."}
+                {reviewEnabled ? (
+                  "Markera orden du vill granska direkt i transkriptet."
+                ) : (
+                  <>
+                    {/* A mouse finds the pencil by pointing at a line; a touch screen shows it on every line. */}
+                    <span className="[@media(pointer:coarse)]:hidden">
+                      Peka på en replik och välj pennan för att rätta texten. Välj talarens namn för att byta talare.
+                    </span>
+                    <span className="hidden [@media(pointer:coarse)]:inline">
+                      Tryck på pennan vid en replik för att rätta texten, eller på talarens namn för att byta talare.
+                    </span>
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -682,7 +694,7 @@ function TurnBlock({
                 />
                 <span>{review && !decision ? "Osäker talare" : decision === "unresolved" ? "Oavgjord" : name}</span>
                 {canEdit && (
-                  <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-70 data-[state=open]:opacity-70" />
+                  <ChevronDown className="h-3 w-3 shrink-0 opacity-0 group-hover:opacity-70 data-[state=open]:opacity-70 [@media(pointer:coarse)]:opacity-70" />
                 )}
               </button>
             );
@@ -778,6 +790,7 @@ function TurnBlock({
                           }
                         >
                           {piece.text}
+                          {piece.correctedFrom !== null && <span className="sr-only"> (rättad från {piece.correctedFrom})</span>}
                         </span>
                         {lastOfWord && onToggleConfirmed && key !== null && (
                           <button
@@ -792,7 +805,7 @@ function TurnBlock({
                                 ? `Ångra bekräftelse av "${piece.word?.word}"`
                                 : `Bekräfta att "${piece.word?.word}" stämmer`
                             }
-                            title={confirmed ? "Bekräftat – klicka för att ångra" : "Ordet stämmer"}
+                            title={confirmed ? "Bekräftat – välj igen för att ångra" : "Ordet stämmer"}
                             className={cn(
                               "ml-[3px] inline-grid h-[15px] w-[15px] translate-y-[-1px] place-items-center rounded-full border align-middle transition-colors",
                               confirmed
@@ -812,7 +825,7 @@ function TurnBlock({
                     type="button"
                     onClick={() => onStartEdit(part.segmentIndex)}
                     aria-label="Rätta repliken"
-                    className="inline-grid h-5 w-0 translate-y-[3px] place-items-center overflow-hidden rounded text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-5 focus-visible:opacity-100 group-hover/part:mx-1 group-hover/part:w-5 group-hover/part:opacity-100 [@media(pointer:coarse)]:mx-1 [@media(pointer:coarse)]:w-5 [@media(pointer:coarse)]:opacity-60"
+                    className="relative inline-grid h-5 w-0 translate-y-[3px] place-items-center overflow-hidden rounded text-ink-mute opacity-0 hover:text-ink focus-visible:mx-1 focus-visible:w-5 focus-visible:opacity-100 group-hover/part:mx-1 group-hover/part:w-5 group-hover/part:opacity-100 [@media(pointer:coarse)]:mx-1 [@media(pointer:coarse)]:w-5 [@media(pointer:coarse)]:overflow-visible [@media(pointer:coarse)]:text-ink-soft [@media(pointer:coarse)]:opacity-100 [@media(pointer:coarse)]:after:absolute [@media(pointer:coarse)]:after:-inset-3"
                   >
                     <Pencil className="h-3 w-3" strokeWidth={2} />
                   </button>
@@ -874,14 +887,28 @@ function LineEditor({
         onBlur={() => (value !== initial ? onCommit(value) : onCancel())}
         className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[14px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-primary"
       />
-      <div className="mt-1 flex items-center gap-3 text-[11px] text-ink-mute">
-        <span>Enter sparar · Esc avbryter</span>
+      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-mute">
+        {/* Pressed without taking the focus, so leaving the field does not save first. */}
+        <Button type="button" size="sm" className="h-9 px-3 text-[13px] [@media(pointer:coarse)]:h-11" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)}>
+          Spara
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-9 px-3 text-[13px] [@media(pointer:coarse)]:h-11"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onCancel}
+        >
+          Avbryt
+        </Button>
+        <span className="[@media(pointer:coarse)]:hidden">Enter sparar · Esc avbryter</span>
         {corrected && (
           <button
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={onRevert}
-            className="text-primary hover:underline"
+            className="inline-flex min-h-9 items-center text-primary hover:underline [@media(pointer:coarse)]:min-h-11"
           >
             Återställ originalet
           </button>
