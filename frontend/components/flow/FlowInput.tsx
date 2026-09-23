@@ -39,7 +39,14 @@ import { speakerMappingReviewSteps, type FlowPublished, type FlowRunSummary, typ
 import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
-import { detailsSummary, keepDetailsOpen, pageTitle, recordingAnnouncement, recordingNotices } from "@/lib/recording-view";
+import {
+  detailsSummary,
+  keepDetailsOpen,
+  leaveWarning,
+  pageTitle,
+  recordingAnnouncement,
+  recordingNotices,
+} from "@/lib/recording-view";
 import { selectRuntimeInputStep } from "@/lib/upload";
 import { cn } from "@/lib/utils";
 
@@ -155,7 +162,7 @@ export function FlowInput({
         >
           <AlertDialogHeader>
             <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
-            <AlertDialogDescription>Det som spelats in finns kvar bland osända inspelningar.</AlertDialogDescription>
+            <AlertDialogDescription>{leaveWarning(input.persistent, phase)}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="h-11">Stanna kvar</AlertDialogCancel>

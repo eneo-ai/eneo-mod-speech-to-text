@@ -7,6 +7,7 @@ import {
   atBottom,
   detailsSummary,
   keepDetailsOpen,
+  leaveWarning,
   liveStatusLine,
   pageTitle,
   recordingAnnouncement,
@@ -337,4 +338,18 @@ test("details a send found missing stay unfolded while they are filled in, until
   assert.equal(open, true, "the field being typed in stays in view");
   open = false; // the user folds them
   assert.equal(keepDetailsOpen(open, []), false);
+});
+
+test("leaving promises the recording back only when the device keeps it, and otherwise says how to keep it", () => {
+  assert.equal(leaveWarning(true, "recording"), "Det som spelats in finns kvar bland osända inspelningar.");
+  for (const persistent of [false, null]) {
+    assert.equal(
+      leaveWarning(persistent, "recording"),
+      "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Stoppa och välj Spara som fil först om du vill behålla den.",
+    );
+    assert.equal(
+      leaveWarning(persistent, "ready"),
+      "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
+    );
+  }
 });
