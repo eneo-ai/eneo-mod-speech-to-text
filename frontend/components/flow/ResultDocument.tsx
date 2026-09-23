@@ -18,21 +18,22 @@ export const RESULT_PROSE =
 /** Files larger than this are not read ahead for Dela; they download instead. */
 const SHARE_LIMIT_BYTES = 25 * 1024 * 1024;
 
-type Share = { kind: "file"; file: File } | { kind: "text" } | { kind: "link"; url: string };
+type Share = { kind: "file"; file: File } | { kind: "text" };
 
 /**
  * Dela through the device's own share sheet, where there is one: the file when
  * the device takes its type and its size is known and under the cap (read
  * ahead, since a share must start from the press itself, and the read stops
- * when the document leaves the page); otherwise the text, or the file's link.
- * Nothing when the browser has no share.
+ * when the document leaves the page); otherwise the text. Never the file's
+ * link: it opens only with the owner's session. Nothing when the browser has
+ * no share, or when there is no file to send and no text.
  */
 function useShare(file: ResultFileView | null, url: string | null, text: string | null): Share | null {
   const [share, setShare] = useState<Share | null>(null);
   useEffect(() => {
     if (typeof navigator === "undefined" || typeof navigator.share !== "function") return;
     const controller = new AbortController();
-    const instead: Share | null = text ? { kind: "text" } : url ? { kind: "link", url: new URL(url, window.location.href).href } : null;
+    const instead: Share | null = text ? { kind: "text" } : null;
     const probe = file ? new File([""], file.name, { type: file.mimeType }) : null;
     const fileShareable =
       file && url && probe && file.sizeBytes !== null && file.sizeBytes <= SHARE_LIMIT_BYTES &&
@@ -56,9 +57,7 @@ function useShare(file: ResultFileView | null, url: string | null, text: string 
 
 async function runShare(share: Share, title: string, text: string | null): Promise<void> {
   try {
-    await navigator.share(
-      share.kind === "file" ? { files: [share.file], title } : share.kind === "link" ? { title, url: share.url } : { title, text: text ?? "" },
-    );
+    await navigator.share(share.kind === "file" ? { files: [share.file], title } : { title, text: text ?? "" });
   } catch {
     // Closing the share sheet is a choice, not an error; a refused share leaves the other actions.
   }

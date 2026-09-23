@@ -289,3 +289,22 @@ test("crossing the laptop breakpoint keeps an unfinished correction and its draf
   assert.ok(!view.container.querySelector('[role="tablist"]'), "side by side now");
   assert.equal(view.container.querySelector("textarea")?.value, "Välkomna allihop.", "the draft is still being written");
 });
+
+test("a file whose link only its owner's session opens is never shared as a link: no Dela without text", async (t) => {
+  const realFetch = globalThis.fetch;
+  Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  globalThis.fetch = (() => new Promise<Response>(() => undefined)) as typeof fetch;
+  t.after(() => {
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "canShare");
+    globalThis.fetch = realFetch;
+  });
+  const view = await document_({ text: null, file: { ...pdf, sizeBytes: null } });
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.ok(
+    ![...view.container.querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Fler alternativ"),
+    "nothing to share: no menu, no Dela",
+  );
+  assert.ok(view.container.querySelector("a[download]"), "Ladda ner stays");
+});
