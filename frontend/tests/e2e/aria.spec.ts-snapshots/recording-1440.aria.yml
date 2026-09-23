@@ -1,0 +1,32 @@
+- banner:
+  - link "Tal till text – Sundsvalls kommun":
+    - /url: /flows
+    - img "Sundsvalls kommun"
+    - text: ""
+  - button "Öppna konto för Erik Lund"
+- status: Spelar in.
+- main:
+  - link "Flöden":
+    - /url: /flows
+  - heading "Nämndmöte till rapport" [level=1]
+  - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
+  - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
+  - group:
+    - text: Deltagare (valfritt)
+    - list:
+      - listitem:
+        - text: Anna Berg
+        - button "Ta bort Anna Berg"
+    - textbox "Deltagare (valfritt)":
+      - /placeholder: Lägg till namn
+    - status
+    - paragraph: Skriv ett namn och tryck Enter.
+  - region "Ljudet":
+    - status
+    - heading "Inspelning" [level=2]
+    - text: /Spelar in 0:\d+/
+    - paragraph: Texten skapas när du stoppar inspelningen. Inspelningen sparas på enheten medan du spelar in.
+    - button "Pausa"
+    - button "Stoppa"
+    - status:
+      - paragraph: Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.

@@ -1,0 +1,12 @@
+- banner:
+  - link "Tal till text – Sundsvalls kommun":
+    - /url: /flows
+    - img "Sundsvalls kommun"
+    - text: ""
+  - button "Öppna konto för Erik Lund"
+- main:
+  - heading "Flödet kunde inte laddas." [level=1]
+  - paragraph: "Step 1 (Transkribera ljud): Assistant snapshot is missing or uses an unsupported schema_version. Republish the flow before running it. Försök igen om en stund."
+  - link "Till flödena":
+    - /url: /flows
+  - button "Försök igen"

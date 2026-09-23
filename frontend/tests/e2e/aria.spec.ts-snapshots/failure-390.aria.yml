@@ -1,0 +1,73 @@
+- main:
+  - heading "Dokumentet kunde inte skapas" [level=1]
+  - paragraph: /Startad i dag \d+:\d+/
+  - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att köra flödet igen om en stund.
+  - region "Stegen":
+    - heading "Stegen" [level=2]
+    - list:
+      - listitem: Transkribera Klar
+      - listitem: Skriv rapporten Misslyckades
+  - region "Transkript":
+    - heading "Transkript" [level=2]
+    - button "Kopiera transkriptet"
+    - status
+    - button "Ladda ner transkriptet"
+    - region "Inspelning och transkript":
+      - 'group "Uppspelning: Inspelningen"':
+        - button "Spela upp"
+        - slider "Position"
+        - text: /0:\d+ \/ 0:\d+/
+        - button "Hastighet 1×"
+      - button "Del 1" [pressed]
+      - button "Del 2"
+      - paragraph: Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta.
+      - text: Del 1
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Välkomna till kommunstyrelsens möte.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 2":
+        - text: ""
+        - img
+      - text: Första punkten gäller budgeten för nästa år.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
+      - button "Rätta repliken":
+        - img
+      - text: Del 2
+      - button /Spela från \d+:\d+/
+      - button "Talare 2":
+        - text: ""
+        - img
+      - text: Andra punkten är skolskjutsarna.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Nya turer börjar gälla efter höstlovet.
+      - button "Rätta repliken":
+        - img
+  - button "Försök igen"
+  - link "Till flödena":
+    - /url: /flows
+  - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+  - region "Kontakta support":
+    - heading "Kontakta support" [level=2]
+    - text: Körnings-ID
+    - code: run-failed
+    - button "Kopiera körnings-ID"
+    - status
+    - button "Dölj teknisk information" [expanded]
+    - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
+    - paragraph: flow_step_failed

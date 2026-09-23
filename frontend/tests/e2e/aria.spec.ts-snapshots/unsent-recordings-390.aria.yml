@@ -1,0 +1,9 @@
+- region "En inspelning är inte skickad":
+  - heading "En inspelning är inte skickad" [level=2]
+  - paragraph: Den finns kvar på den här enheten tills den har skickats.
+  - list:
+    - listitem:
+      - paragraph: /Inspelning \d+ sep \d+:\d+ · Nämndmöte till rapport · \d+ s/
+      - button "Skicka"
+      - button "Spara som fil"
+      - button "Ta bort"

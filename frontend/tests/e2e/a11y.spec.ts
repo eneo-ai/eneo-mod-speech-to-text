@@ -1,0 +1,56 @@
+/**
+ * Every state at every width and theme: axe (no serious or critical
+ * violation), every control named in Chromium's own tree, target sizes
+ * (WCAG 2.5.8, and 44 px on touch), reflow at 320 px and 200 % zoom (WCAG
+ * 1.4.10, and 1.4.12 text spacing), and no endless motion with reduced
+ * motion. The measurements go to findings.json in each test's output folder.
+ */
+import { writeFileSync } from "node:fs";
+import { expect, test } from "@playwright/test";
+import { axe, endlessAnimations, reflow, serious, targetSizes, unnamedControls } from "./checks";
+import { STATES } from "./screens";
+
+// WCAG 1.4.12: the spacing a user may set must not cut anything off.
+const TEXT_SPACING =
+  "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
+
+for (const state of STATES) {
+  test(state.name, async ({ page }, info) => {
+    test.skip(state.only ? !state.only(info) : false, "not on this width");
+    const project = info.project.name;
+    const touch = Boolean(info.project.use.hasTouch);
+    const narrow = project.startsWith("phone-320") || project === "zoom-200";
+    await state.go(page, info);
+
+    const scan = await axe(page);
+    const unnamed = await unnamedControls(page);
+    const targets = await targetSizes(page, 24, true);
+    const touchTargets = touch ? await targetSizes(page, 44, false) : [];
+    const layout = narrow ? await reflow(page) : null;
+    let spaced = null;
+    if (project === "phone-390-light") {
+      const style = await page.addStyleTag({ content: TEXT_SPACING });
+      spaced = await reflow(page);
+      await style.evaluate((element) => (element as Element).remove());
+    }
+    const motion = info.project.use.reducedMotion === "reduce" ? await endlessAnimations(page) : [];
+
+    const findings = { state: state.name, project, axe: scan, unnamed, targets, touchTargets, reflow: layout, textSpacing: spaced, motion };
+    writeFileSync(info.outputPath("findings.json"), JSON.stringify(findings, null, 2));
+
+    const list = (items: string[]) => items.map((item) => `\n  - ${item}`).join("");
+    expect.soft(
+      serious(scan.violations).map((v) => `${v.id} (${v.impact}): ${v.help} → ${v.nodes.map((n) => n.target).join(", ")}`),
+      "axe: serious and critical violations",
+    ).toEqual([]);
+    expect.soft(unnamed, "controls without a name in Chromium's accessibility tree (WCAG 4.1.2)").toEqual([]);
+    expect.soft(targets, `targets under 24 px (WCAG 2.5.8):${list(targets)}`).toEqual([]);
+    expect.soft(touchTargets, `touch targets under 44 px (house bar):${list(touchTargets)}`).toEqual([]);
+    if (layout) {
+      expect.soft(layout.horizontalScroll, "horizontal scroll (WCAG 1.4.10)").toBe(false);
+      expect.soft([...layout.beyond, ...layout.clipped], "content past the edge or cut off (WCAG 1.4.10)").toEqual([]);
+    }
+    if (spaced) expect.soft(spaced.clipped, "content cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);
+    expect.soft(motion, "endless animation despite reduced motion").toEqual([]);
+  });
+}

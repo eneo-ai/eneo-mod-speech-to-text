@@ -1,0 +1,61 @@
+- banner:
+  - link "Tal till text – Sundsvalls kommun":
+    - /url: /flows
+    - img "Sundsvalls kommun"
+    - text: ""
+  - button "Öppna konto för Erik Lund"
+- status
+- main:
+  - link "Flöden":
+    - /url: /flows
+  - heading "Nämndmöte till rapport" [level=1]
+  - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
+  - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
+  - group:
+    - text: Deltagare (valfritt)
+    - textbox "Deltagare (valfritt)":
+      - /placeholder: Lägg till namn
+    - status
+    - paragraph: Skriv ett namn och tryck Enter.
+  - region "Ljudet":
+    - status
+    - group "Hur vill du ge ljudet?":
+      - heading "Hur vill du ge ljudet?" [level=2]
+      - radiogroup:
+        - group:
+          - text: Strömma
+          - paragraph: Se texten medan du pratar.
+          - radio "Strömma Se texten medan du pratar." [checked]:
+            - img
+        - group:
+          - text: Spela in
+          - paragraph: Spela in nu och transkribera efteråt.
+          - radio "Spela in Spela in nu och transkribera efteråt."
+        - group:
+          - text: Ladda upp
+          - paragraph: Välj en ljudfil från din enhet.
+          - radio "Ladda upp Välj en ljudfil från din enhet."
+    - group:
+      - text: Märk upp talare
+      - paragraph: Tar längre tid efter inspelningen.
+      - switch "Märk upp talare"
+    - text: "Mikrofon:"
+    - combobox "Mikrofon:":
+      - option "Standard" [selected]
+      - option "Fake Audio Input 1"
+      - option "Fake Audio Input 2"
+    - button "Testa mikrofonen"
+    - status
+    - button "Starta strömning"
+    - paragraph: Inspelningen sparas på enheten medan du spelar in.
+    - region "Tidigare körningar":
+      - heading "Tidigare körningar" [level=2]
+      - list:
+        - listitem:
+          - text: /I går \d+:\d+/
+          - paragraph: Klar
+          - button /Öppna , körningen i går \d+:\d+/
+        - listitem:
+          - text: /\d+ sep \d+:\d+/
+          - paragraph: Misslyckades
+          - button /Öppna , körningen \d+ sep \d+:\d+/

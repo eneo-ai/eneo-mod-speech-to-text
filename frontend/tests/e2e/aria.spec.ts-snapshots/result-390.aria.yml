@@ -1,0 +1,85 @@
+- main:
+  - heading "Dokumentet är klart" [level=1]
+  - paragraph: /Skapad i dag \d+:\d+/
+  - region "Resultat":
+    - button "Kopiera texten"
+    - status
+    - article:
+      - heading "Protokoll" [level=2]
+      - paragraph:
+        - text: Kommunstyrelsen beslutade att
+        - strong: höja budgetramen
+        - text: med två procent.
+      - list:
+        - listitem: Förvaltningen återkommer i oktober.
+        - listitem: Nya skolskjutsturer gäller efter höstlovet.
+  - region "Filer":
+    - heading "Filer" [level=2]
+    - list:
+      - listitem:
+        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
+        - paragraph: /PDF, \d+ B/
+        - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:
+          - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=inline
+        - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+          - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=attachment
+      - listitem:
+        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/
+        - paragraph: /Word, \d+ kB/
+        - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
+          - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-docx/content?disposition=attachment
+  - region "Transkript":
+    - heading "Transkript" [level=2]
+    - button "Kopiera transkriptet"
+    - status
+    - button "Ladda ner transkriptet"
+    - region "Inspelning och transkript":
+      - 'group "Uppspelning: Inspelningen"':
+        - button "Spela upp"
+        - slider "Position"
+        - text: /0:\d+ \/ 0:\d+/
+        - button "Hastighet 1×"
+      - button "Del 1" [pressed]
+      - button "Del 2"
+      - paragraph: Hovra över en replik för att rätta texten. Klicka på talarens namn för att byta.
+      - text: Del 1
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Välkomna till kommunstyrelsens möte.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 2":
+        - text: ""
+        - img
+      - text: Första punkten gäller budgeten för nästa år.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
+      - button "Rätta repliken":
+        - img
+      - text: Del 2
+      - button /Spela från \d+:\d+/
+      - button "Talare 2":
+        - text: ""
+        - img
+      - text: Andra punkten är skolskjutsarna.
+      - button "Rätta repliken":
+        - img
+      - button /Spela från \d+:\d+/
+      - button "Talare 1":
+        - text: ""
+        - img
+      - text: Nya turer börjar gälla efter höstlovet.
+      - button "Rätta repliken":
+        - img
+  - button "Visa stegen (2)"
+  - button "Ny inspelning"
+  - link "Till flödena":
+    - /url: /flows
