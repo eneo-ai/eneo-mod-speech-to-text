@@ -5,7 +5,8 @@ import { ApiError, deriveRunIdempotencyKey, type FlowRunPublic, type FlowRunStep
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
 import {
-  retryRunRequest,
+  retryFailedRun,
+  startAgainRequest,
   submitRecording,
   submitRun,
   withRetry,
@@ -387,7 +388,7 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
   assert.equal((await store.listUnsent()).length, 1);
 });
 
-test("trying again starts a new run with the failed run's audio and details, under a key of its own", async () => {
+test("a new run with the failed run's audio and details has a key of its own, apart from Eneo's retry", async () => {
   const failed: FlowRunPublic = {
     id: "run-1",
     flow_id: "flow-1",
@@ -399,19 +400,80 @@ test("trying again starts a new run with the failed run's audio and details, und
     { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a", "file-b"] },
   ];
 
-  const request = retryRunRequest(failed, steps, contract, "step-audio");
+  const request = startAgainRequest(failed, steps, contract, "step-audio");
 
   assert.deepEqual(request?.body, {
     expected_flow_version: 3,
     step_inputs: { "step-audio": { file_ids: ["file-a", "file-b"] } },
     input_payload_json: { deltagare: "Anna Berg, Erik Lund" },
   });
-  // The failed run was keyed on this same body, so its key would replay it.
+  // The failed run was keyed on this same body, so its key would replay it; Eneo's retry has its own.
   const replay = await deriveRunIdempotencyKey({ flowId: "flow-1", expectedFlowVersion: 3, body: request!.body });
+  assert.equal(request!.idempotencyKey, "flow-run-again:run-1");
   assert.notEqual(request!.idempotencyKey, replay);
-  // A second press starts no second run.
-  assert.equal(retryRunRequest(failed, steps, contract, "step-audio")?.idempotencyKey, request!.idempotencyKey);
-  // Without the recording there is nothing to try again with.
-  assert.equal(retryRunRequest(failed, [steps[0]], contract, "step-audio"), null);
-  assert.equal(retryRunRequest(failed, steps, contract, null), null);
+  // Without the recording there is nothing to start again with.
+  assert.equal(startAgainRequest(failed, [steps[0]], contract, "step-audio"), null);
+  assert.equal(startAgainRequest(failed, steps, contract, null), null);
+});
+
+test("Försök igen asks Eneo to continue the failed run under a key that names it, and returns the child run", async () => {
+  const calls: [string, string, string][] = [];
+  const child: FlowRunPublic = { id: "run-2", flow_id: "flow-1", status: "queued" };
+  const outcome = await retryFailedRun("flow-1", "run-1", async (flowId, runId, key) => {
+    calls.push([flowId, runId, key]);
+    return { run: child, created: true, source_run_id: runId, first_executed_step_order: 2, reused_step_orders: [1] };
+  });
+
+  assert.deepEqual(calls, [["flow-1", "run-1", "flow-run-retry:run-1"]]);
+  // The page follows the child, not the failed source.
+  assert.deepEqual(outcome, { kind: "started", run: child });
+});
+
+test("each refusal from Eneo's retry says why, and whether a new run with the same audio is the way on", async () => {
+  const refused = async (error: unknown) =>
+    retryFailedRun("flow-1", "run-1", async () => {
+      throw error;
+    });
+  const cases: [ApiError | TypeError, RegExp, boolean][] = [
+    [apiError(409, "flow_run_retry_source_version_stale"), /Flödet har ändrats sedan körningen/, true],
+    [apiError(409, "flow_run_retry_nothing_to_reuse"), /Inget steg hann bli klart/, true],
+    [apiError(409, "flow_run_retry_prefix_unsupported"), /kan inte återanvändas/, true],
+    [apiError(409, "flow_run_retry_source_not_failed"), /Bara en misslyckad körning/, true],
+    [apiError(403, "flow_run_access_denied"), /Bara den som startade körningen/, false],
+    [apiError(429, "flow_run_concurrency_limit_reached"), /För många körningar pågår just nu/, false],
+    [apiError(404, "not_found"), /Körningen finns inte längre/, false],
+    [apiError(400, "flow_run_invalid_idempotency_key"), /kunde inte fortsätta där den stannade/, true],
+    [fetchFailed(), /Anslutningen avbröts/, false],
+    [apiError(503, "flow_evidence_audit_logging_failed"), /Servern kunde inte nås just nu/, false],
+  ];
+  for (const [error, sentence, startAgain] of cases) {
+    const outcome = await refused(error);
+    assert.equal(outcome.kind, "refused");
+    if (outcome.kind !== "refused") continue;
+    assert.match(outcome.message, sentence, String(error));
+    assert.equal(outcome.startAgain, startAgain, String(error));
+    // Never Eneo's English message or a raw code as the sentence.
+    assert.doesNotMatch(outcome.message, /HTTP|flow_run_|not_found/);
+  }
+});
+
+test("the retry goes to Eneo's retry path as a POST carrying the key", async (t) => {
+  const seen: { url: string; init: RequestInit }[] = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    seen.push({ url: String(url), init: init ?? {} });
+    const body = { run: { id: "run-2", flow_id: "flow-1", status: "queued" }, created: true, source_run_id: "run-1", first_executed_step_order: 2, reused_step_orders: [1] };
+    return new Response(JSON.stringify(body), { status: 201, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  const outcome = await retryFailedRun("flow-1", "run-1");
+
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].url, "/api/eneo/flows/flow-1/runs/run-1/retry/");
+  assert.equal(seen[0].init.method, "POST");
+  assert.equal((seen[0].init.headers as Record<string, string>)["Idempotency-Key"], "flow-run-retry:run-1");
+  assert.equal(outcome.kind === "started" && outcome.run.id, "run-2");
 });

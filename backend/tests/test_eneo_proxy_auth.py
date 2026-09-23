@@ -147,6 +147,21 @@ class EneoProxyAuthTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200, f"{method} {path}")
         self.assertEqual(len(self.proxy_client.calls), 4)
 
+    def test_proxy_exposes_retry_from_the_failed_step_with_its_idempotency_key(self) -> None:
+        response = self.client.post(
+            "/api/eneo/flows/flow-1/runs/run-1/retry/",
+            headers={
+                "Origin": "https://module.example.test",
+                "Idempotency-Key": "flow-run-retry:run-1",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        call = self.proxy_client.calls[0]
+        self.assertEqual(call["method"], "POST")
+        self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/flow-1/runs/run-1/retry/")
+        self.assertEqual(call["headers"]["idempotency-key"], "flow-run-retry:run-1")
+
     def test_proxy_slash_tolerance_does_not_widen_allowlist(self) -> None:
         response = self.client.get("/api/eneo/users")
 

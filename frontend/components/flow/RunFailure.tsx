@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, ChevronDown, CircleAlert, MinusCircle, RotateCcw } from "lucide-react";
+import { ArrowLeft, ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -32,7 +32,9 @@ export function RunFailure({
   files,
   showTranscript = false,
   error = null,
+  refusal = null,
   onRetry,
+  onStartAgain,
 }: {
   flowId: string;
   flowName: string;
@@ -42,12 +44,19 @@ export function RunFailure({
   stepResults: readonly FlowRunStep[];
   files: readonly ResultFileView[];
   showTranscript?: boolean;
-  /** Why the last "Försök igen" did not start. */
+  /** Why the last new run did not start. */
   error?: string | null;
-  /** A new run with the same audio and details; absent when that cannot help. */
+  /** Why Eneo would not continue the run, and whether a new run is the way on. */
+  refusal?: { message: string; startAgain: boolean } | null;
+  /** Eneo continues the failed run where it stopped; absent when the input itself has to change. */
   onRetry?: () => Promise<void> | void;
+  /** A new run with the same audio and details: after a cancellation, or when Eneo cannot continue. */
+  onStartAgain?: () => Promise<void> | void;
 }) {
   const cancelled = run.status.toLowerCase() === "cancelled";
+  // A refusal that a new run answers leaves no point in asking Eneo again.
+  const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
+  const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));
   const heading = usePhaseHeading(cancelled ? "Avbruten" : "Misslyckades");
   const [retrying, setRetrying] = useState(false);
   const Icon = cancelled ? MinusCircle : CircleAlert;
@@ -108,13 +117,13 @@ export function RunFailure({
       )}
 
       <div className="flex flex-col gap-3">
-        {error && (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
+        {[refusal?.message, error].filter(Boolean).map((message) => (
+          <p key={message} role="alert" className="text-sm text-destructive">
+            {message}
           </p>
-        )}
+        ))}
         <div className="flex flex-wrap gap-3">
-          {onRetry && (
+          {offerRetry && (
             <Button
               type="button"
               variant={run.error?.retryable ? "default" : "outline"}
@@ -125,15 +134,31 @@ export function RunFailure({
               Försök igen
             </Button>
           )}
-          <Button asChild variant={onRetry && run.error?.retryable ? "outline" : "default"}>
+          {offerStartAgain && (
+            <Button type="button" onClick={() => void onStartAgain?.()}>
+              <Plus data-icon="inline-start" aria-hidden />
+              Starta en ny körning
+            </Button>
+          )}
+          <Button
+            asChild
+            variant={offerStartAgain || (offerRetry && run.error?.retryable) ? "outline" : "default"}
+          >
             <Link href="/flows">
               <ArrowLeft data-icon="inline-start" aria-hidden />
               Till flödena
             </Link>
           </Button>
         </div>
-        {onRetry && (
-          <p className="text-sm text-muted-foreground">Försök igen startar en ny körning med samma ljud och uppgifter.</p>
+        {offerRetry && (
+          <p className="text-sm text-muted-foreground">
+            Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+          </p>
+        )}
+        {offerStartAgain && (
+          <p className="text-sm text-muted-foreground">
+            En ny körning använder samma ljud och uppgifter och gör om alla steg.
+          </p>
         )}
       </div>
 

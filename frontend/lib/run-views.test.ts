@@ -182,3 +182,53 @@ test("folded panels stay hidden: no display utility may override the closed cont
   assert.ok(closed.length >= 2, "both folded panels render closed");
   for (const attributes of closed) assert.doesNotMatch(attributes, /class="[^"]*\b(flex|grid|block|inline-flex)\b/, attributes);
 });
+
+test("Försök igen continues where the run stopped; a refusal says why and offers a new run only when that helps", () => {
+  const failedRun = { id: "run-1", status: "failed", error: { code: "flow_task_timeout", message: "x", retryable: false, step_order: 2 } };
+  const failure = { step: "Steg 2, Analysera mötesinnehållet", summary: "Körningen tog för lång tid.", detail: "x", inputMustChange: false };
+  const view = (extra: Record<string, unknown>) =>
+    text(
+      renderToStaticMarkup(
+        createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: failedRun, failure, steps, stepResults: [], files: [], ...extra }),
+      ),
+    );
+
+  const offered = view({ onRetry: async () => undefined, onStartAgain: () => undefined });
+  assert.match(offered, /Försök igen fortsätter där körningen stannade\. Det som redan blev klart görs inte om\./);
+  assert.doesNotMatch(offered, /Starta en ny körning/, "a new run is the fallback, not a second choice up front");
+
+  const stale = view({
+    onRetry: async () => undefined,
+    onStartAgain: () => undefined,
+    refusal: { message: "Flödet har ändrats sedan körningen och kan inte fortsätta där den stannade.", startAgain: true },
+  });
+  assert.match(stale, /Flödet har ändrats sedan körningen/);
+  assert.match(stale, /Starta en ny körning/);
+
+  const denied = view({
+    onRetry: async () => undefined,
+    onStartAgain: () => undefined,
+    refusal: { message: "Bara den som startade körningen kan fortsätta den.", startAgain: false },
+  });
+  assert.match(denied, /Bara den som startade körningen/);
+  assert.doesNotMatch(denied, /Starta en ny körning/);
+
+  // Eneo continues only failed runs; after a cancellation the way on is a new run.
+  const cancelled = text(
+    renderToStaticMarkup(
+      createElement(RunFailure, {
+        flowId: "flow-1",
+        flowName: "Flöde",
+        run: { id: "run-1", status: "cancelled", error: null },
+        failure: null,
+        steps,
+        stepResults: [],
+        files: [],
+        onStartAgain: () => undefined,
+      }),
+    ),
+  );
+  assert.match(cancelled, /Starta en ny körning/);
+  assert.match(cancelled, /En ny körning använder samma ljud och uppgifter och gör om alla steg\./);
+  assert.doesNotMatch(cancelled, /Försök igen/);
+});

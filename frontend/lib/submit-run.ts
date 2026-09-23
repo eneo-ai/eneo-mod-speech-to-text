@@ -10,6 +10,7 @@
 import {
   ApiError,
   deriveRunIdempotencyKey,
+  retryFlowRunFromFailedStep,
   startRun,
   uploadStepRuntimeFile,
   type FlowRunPublic,
@@ -17,6 +18,7 @@ import {
   type Json,
   type RunContract,
 } from "./api";
+import { friendlyError } from "./errors";
 import type { OnlineStatus } from "./online-status";
 import type { RecordingStore } from "./recording-store";
 import { formatBytes } from "./format";
@@ -217,12 +219,65 @@ export async function submitRecording(
   return run;
 }
 
+const START_AGAIN = "Starta en ny körning med samma ljud och uppgifter.";
+
+// Why Eneo would not continue a failed run, and whether a new run with the same audio is the way on.
+const RETRY_REFUSALS: Record<string, [message: string, startAgain: boolean]> = {
+  flow_run_retry_source_version_stale: [
+    `Flödet har ändrats sedan körningen och kan inte fortsätta där den stannade. ${START_AGAIN}`,
+    true,
+  ],
+  flow_run_retry_nothing_to_reuse: [
+    `Inget steg hann bli klart, så det finns inget att fortsätta från. ${START_AGAIN}`,
+    true,
+  ],
+  flow_run_retry_prefix_unsupported: [
+    `Det som blev klart kan inte återanvändas, så en ny körning gör om alla steg. ${START_AGAIN}`,
+    true,
+  ],
+  flow_run_retry_source_not_failed: [`Bara en misslyckad körning kan fortsätta där den stannade. ${START_AGAIN}`, true],
+  flow_run_access_denied: ["Bara den som startade körningen kan fortsätta den.", false],
+  flow_run_concurrency_limit_reached: ["För många körningar pågår just nu. Försök igen om en stund.", false],
+  not_found: ["Körningen finns inte längre och kan inte fortsätta.", false],
+};
+
+export type RetryOutcome =
+  | { kind: "started"; run: FlowRunPublic }
+  | { kind: "refused"; message: string; startAgain: boolean };
+
 /**
- * "Försök igen" after a failed run: a new run with the same audio, already in
- * Eneo, and the same details. The failed run was keyed on this same body, so
- * the key names the failure instead; a second press starts no second run.
+ * "Försök igen": Eneo continues the failed run from its first unfinished step
+ * in a child run. The key names the failure, so a second press or a lost
+ * response returns the same child. A refusal says why in Swedish; the
+ * network and the server's own trouble keep the answer "try again later".
  */
-export function retryRunRequest(
+export async function retryFailedRun(
+  flowId: string,
+  failedRunId: string,
+  retry: typeof retryFlowRunFromFailedStep = retryFlowRunFromFailedStep,
+): Promise<RetryOutcome> {
+  try {
+    const { run } = await retry(flowId, failedRunId, `flow-run-retry:${failedRunId}`);
+    return { kind: "started", run };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      const known = error.code ? RETRY_REFUSALS[error.code] : undefined;
+      if (known) return { kind: "refused", message: known[0], startAgain: known[1] };
+      if (error.status >= 400 && error.status < 500 && error.status !== 408) {
+        return { kind: "refused", message: `Körningen kunde inte fortsätta där den stannade. ${START_AGAIN}`, startAgain: true };
+      }
+    }
+    return { kind: "refused", message: friendlyError(error), startAgain: false };
+  }
+}
+
+/**
+ * A new run with the failed run's audio, already in Eneo, and its details:
+ * the way on when Eneo cannot continue the run (the flow changed since, or
+ * nothing finished) and after a cancelled run. Its key names the source, apart
+ * from the retry's, since the source was keyed on this same body.
+ */
+export function startAgainRequest(
   failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
   steps: readonly FlowRunStep[],
   contract: RunContract,
@@ -242,5 +297,5 @@ export function retryRunRequest(
   if (failed.input_payload_json && Object.keys(failed.input_payload_json).length > 0) {
     body.input_payload_json = failed.input_payload_json;
   }
-  return { body, idempotencyKey: `flow-run-retry:${failed.id}` };
+  return { body, idempotencyKey: `flow-run-again:${failed.id}` };
 }

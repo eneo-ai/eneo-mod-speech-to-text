@@ -891,6 +891,28 @@ export async function cancelRun(flowId: string, runId: string) {
   );
 }
 
+/** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
+export interface FlowRunRetryPublic {
+  run: FlowRunPublic;
+  /** False when the same key replays a retry Eneo already accepted. */
+  created: boolean;
+  source_run_id: string;
+  first_executed_step_order: number;
+  reused_step_orders: number[];
+}
+
+/**
+ * Continues a failed run from its first unfinished step: Eneo creates a child
+ * run that reuses the completed steps (a long recording is not transcribed
+ * again) and keeps the source's inputs, files and choices.
+ */
+export async function retryFlowRunFromFailedStep(flowId: string, runId: string, idempotencyKey: string) {
+  return request<FlowRunRetryPublic>(`/api/eneo/flows/${flowId}/runs/${runId}/retry/`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
 export async function redispatchRun(flowId: string, runId: string) {
   return request<FlowRunRedispatchResponse>(
     `/api/eneo/flows/${flowId}/runs/${runId}/redispatch/`,

@@ -58,7 +58,7 @@ import {
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
 import { onlineStatus } from "@/lib/online-status";
-import { retryRunRequest, submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
+import { retryFailedRun, startAgainRequest, submitRun, withRetry, type RetryWait } from "@/lib/submit-run";
 import { followRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { RunOpening, RunProgress } from "@/components/flow/RunProgress";
@@ -169,6 +169,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   });
   const [recordingActive, setRecordingActive] = useState(false);
   const [earlierRuns, setEarlierRuns] = useState<FlowRunSummary[]>([]);
+  // Why Eneo would not continue the failed run on screen, and whether a new run is the way on.
+  const [retryRefusal, setRetryRefusal] = useState<{ message: string; startAgain: boolean } | null>(null);
 
   const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
@@ -329,6 +331,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
   function resumeRun(runId: string) {
     setRunError(null);
+    setRetryRefusal(null);
     writeRunIdToUrl(runId);
     setRun({ kind: "opening" });
     void follow(runId);
@@ -528,14 +531,32 @@ function FlowDetail({ flowId }: { flowId: string }) {
   function onRunAgain() {
     followAbortRef.current?.abort();
     setRunError(null);
+    setRetryRefusal(null);
     setFile(null);
     writeRunIdToUrl(null);
     setRun({ kind: "idle" });
     loadEarlierRuns();
   }
 
-  /** "Försök igen": en ny körning med den misslyckade körningens ljud och uppgifter. */
-  async function onRetry(
+  /**
+   * "Försök igen": Eneo fortsätter den misslyckade körningen från första
+   * ofärdiga steget i en ny körning; det som blev klart görs inte om.
+   */
+  async function onRetry(failed: Extract<RunState, { kind: "done" }>) {
+    setRunError(null);
+    setRetryRefusal(null);
+    const outcome = await retryFailedRun(flowId, failed.run.id);
+    if (outcome.kind === "refused") {
+      setRetryRefusal({ message: outcome.message, startAgain: outcome.startAgain });
+      return;
+    }
+    writeRunIdToUrl(outcome.run.id);
+    setRun({ kind: "running", run: outcome.run, graph: null });
+    void follow(outcome.run.id);
+  }
+
+  /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
+  async function onStartAgain(
     failed: Extract<RunState, { kind: "done" }>,
     request: { body: Json; idempotencyKey: string },
   ) {
@@ -548,6 +569,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         { online: onlineStatus, onWait: (wait) => setSubmission({ kind: "starting", wait }) },
       );
       setSubmission({ kind: "idle" });
+      // A refusal that led here stays on the failure view until a new run exists.
+      setRetryRefusal(null);
       writeRunIdToUrl(next.id);
       setRun({ kind: "running", run: next, graph: null });
       void follow(next.id);
@@ -709,9 +732,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
     const labels = Object.fromEntries((pinned?.nodes ?? []).map((node) => [node.id, node.label]));
     const failure = run.run.error ? runErrorView(run.run.error, labels) : null;
-    const retry = failure?.inputMustChange
-      ? null
-      : retryRunRequest(run.run, run.steps, contract, runtimeInput?.step_id ?? null);
+    // The same audio cannot help when the input itself has to change.
+    const sameInputHelps = !failure?.inputMustChange;
+    const cancelled = runOutcome(run.run.status) === "cancelled";
+    const startAgain = sameInputHelps
+      ? startAgainRequest(run.run, run.steps, contract, runtimeInput?.step_id ?? null)
+      : null;
     return (
       <>
         <NavBar title={published.name} />
@@ -725,7 +751,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
           files={files}
           showTranscript={transcribed}
           error={runError}
-          onRetry={retry ? () => onRetry(run, retry) : undefined}
+          refusal={retryRefusal}
+          onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+          onStartAgain={startAgain ? () => onStartAgain(run, startAgain) : undefined}
         />
       </>
     );
