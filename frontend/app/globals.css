@@ -47,6 +47,11 @@
     --input: var(--rule);
     --ring: var(--primary);
     --radius: 0.5rem;
+    /* Motion on the transitions.dev scale: modals open in 250 ms, close in 150 ms. */
+    --duration-quick: 150ms;
+    --duration-fast: 250ms;
+    --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --scale-large: 0.96;
     color-scheme: light;
   }
 
@@ -268,8 +273,19 @@
   .transcript-scrollport { max-height: none; overflow: visible; }
 }
 
+/* Dialog open and close (Radix waits for the closing animation before unmounting). */
+@keyframes t-fade-in { from { opacity: 0; } }
+@keyframes t-fade-out { to { opacity: 0; } }
+@keyframes t-modal-in { from { opacity: 0; scale: var(--scale-large); } }
+@keyframes t-modal-out { to { opacity: 0; scale: var(--scale-large); } }
+.t-overlay[data-state="open"] { animation: t-fade-in var(--duration-fast) var(--ease-smooth-out); }
+.t-overlay[data-state="closed"] { animation: t-fade-out var(--duration-quick) var(--ease-smooth-out); }
+.t-modal[data-state="open"] { animation: t-modal-in var(--duration-fast) var(--ease-smooth-out); }
+.t-modal[data-state="closed"] { animation: t-modal-out var(--duration-quick) var(--ease-smooth-out); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
+  .t-overlay, .t-modal { animation: none !important; }
   .lyssna-pulse-ring, .lyssna-live-pulse, .lyssna-blink { animation: none; }
 }
 
