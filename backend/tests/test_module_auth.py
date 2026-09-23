@@ -154,6 +154,7 @@ class ModuleAuthTests(unittest.TestCase):
         body = status.json()
         # The page checks again once the 900-second token is half used.
         self.assertTrue(0 < body.pop("refresh_in") <= 450)
+        self.assertTrue(0 < body.pop("session_ends_in") <= ENEO_SESSION_SECONDS)
         self.assertEqual(
             body,
             {
@@ -220,6 +221,39 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertEqual(first.headers["location"], "/flows")
         self.assertEqual(second.headers["location"], "/?auth_error=invalid_state")
         self.assertEqual(len(self.exchange_client.calls), 2)
+
+    def test_status_says_when_the_session_ends(self) -> None:
+        state, _ = self.start_login()
+        self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+
+        body = self.client.get("/api/auth/status").json()
+
+        # Eneo's 4-hour ceiling, not the 15-minute token: the page warns before it.
+        self.assertTrue(ENEO_SESSION_SECONDS - 5 <= body["session_ends_in"] <= ENEO_SESSION_SECONDS)
+
+    def test_a_login_can_return_to_a_page_of_the_module(self) -> None:
+        response = self.client.get("/api/auth/login", params={"next": "/inloggad"})
+        state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+        callback = self.client.get(
+            "/api/auth/callback",
+            params={"ticket": "one-time-ticket", "state": state},
+        )
+
+        self.assertEqual(callback.headers["location"], "/inloggad")
+
+    def test_a_login_never_returns_outside_the_module(self) -> None:
+        for unsafe in ("https://evil.example", "//evil.example", "/\\evil.example", "inloggad"):
+            with self.subTest(next=unsafe):
+                response = self.client.get("/api/auth/login", params={"next": unsafe})
+                state = parse_qs(urlparse(response.headers["location"]).query)["state"][0]
+
+                callback = self.client.get(
+                    "/api/auth/callback",
+                    params={"ticket": "one-time-ticket", "state": state},
+                )
+
+                self.assertEqual(callback.headers["location"], "/flows")
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)
@@ -635,14 +669,23 @@ class AccessCodeAuthTests(unittest.TestCase):
         self.assertIn("SameSite=lax", response.headers["set-cookie"])
         self.assertIn("Max-Age=5400", response.headers["set-cookie"])
         self.assertEqual(self.client.get("/protected").status_code, 200)
+        status = self.client.get("/api/auth/status").json()
+        self.assertTrue(0 < status.pop("session_ends_in") <= 90 * 60)
         self.assertEqual(
-            self.client.get("/api/auth/status").json(),
+            status,
             {
                 "authenticated": True,
                 "auth_mode": "access_code",
                 "user": None,
             },
         )
+
+    def test_status_says_when_the_access_code_session_ends(self) -> None:
+        self.login()
+
+        body = self.client.get("/api/auth/status").json()
+
+        self.assertTrue(90 * 60 - 5 <= body["session_ends_in"] <= 90 * 60)
 
     def test_wrong_code_returns_generic_unauthorized_without_session(self) -> None:
         response = self.login("wrong-code")
