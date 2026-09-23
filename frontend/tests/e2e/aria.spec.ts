@@ -94,3 +94,29 @@ test("live text is heard in committed pieces, never the timer", async ({ page },
   // A committed piece is read once: each log reading only adds to the one before.
   expect(log.every((s, i) => i === 0 || s.text.startsWith(log[i - 1].text)), "the log only grows").toBe(true);
 });
+
+test("a lost microphone is said once", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "one width is enough");
+  await page.addInitScript(listen);
+  // Keep each microphone stream, so the test can end its track as a lost microphone would.
+  await page.addInitScript(() => {
+    const streams: MediaStream[] = [];
+    (window as unknown as { streams: MediaStream[] }).streams = streams;
+    const media = navigator.mediaDevices;
+    const original = media.getUserMedia.bind(media);
+    media.getUserMedia = async (constraints) => {
+      const stream = await original(constraints);
+      streams.push(stream);
+      return stream;
+    };
+  });
+  await STATES.find((s) => s.name === "recording")!.go(page, info);
+  await page.evaluate(() => {
+    const { streams } = window as unknown as { streams: MediaStream[] };
+    streams.at(-1)!.getAudioTracks()[0].dispatchEvent(new Event("ended"));
+  });
+  await expect(page.getByRole("button", { name: "Fortsätt" })).toBeVisible();
+  await page.waitForTimeout(500);
+  const said = (await heard(page)).filter((s) => s.text.includes("mikrofonen försvann"));
+  expect(said, "the sentence reaches a live region exactly once").toHaveLength(1);
+});

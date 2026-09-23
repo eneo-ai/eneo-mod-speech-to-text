@@ -62,3 +62,12 @@ test("a page that is still loading says so", async ({ page }) => {
     await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
   }
 });
+
+test("while recording, the top bar names the mode and the folded details say what they are", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "the phone's top bar and folded details");
+  await STATES.find((s) => s.name === "recording")!.go(page, info);
+  await expect(page.getByRole("banner")).toContainText("Läge: Spela in");
+  expect(await axNode(page.getByRole("button", { name: /Deltagare: Anna Berg/ }))).toMatchObject({
+    name: "Uppgifter, Deltagare: Anna Berg",
+  });
+});

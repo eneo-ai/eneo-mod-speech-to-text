@@ -2,10 +2,10 @@
   - link "Till flödena":
     - /url: /flows
   - heading "Nämndmöte till rapport" [level=1]
-  - text: Spela in
+  - text: "Läge: Spela in"
 - status: Spelar in.
 - main:
-  - 'button "Deltagare: Anna Berg"'
+  - 'button "Uppgifter, Deltagare: Anna Berg"'
   - region "Ljudet":
     - status
     - heading "Inspelning" [level=2]

@@ -164,6 +164,8 @@ export function FlowInput({
         trailing={
           holdsAudio && mode ? (
             <Badge variant="soft" className="h-8 px-3 text-[14px] font-medium">
+              {/* Alone, "Spela in" reads like a command. */}
+              <span className="sr-only">Läge: </span>
               {MODE_TEXT[mode].name}
             </Badge>
           ) : undefined
@@ -225,7 +227,10 @@ export function FlowInput({
             // While recording and after, the details fold into one line on a phone or tablet.
             <Collapsible open={openDetails} onOpenChange={setDetailsOpen}>
               <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
-                <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="sr-only">Uppgifter, </span>
+                  {detailsSummary(fields, snapshot.details)}
+                </span>
                 <ChevronDown
                   aria-hidden
                   className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
