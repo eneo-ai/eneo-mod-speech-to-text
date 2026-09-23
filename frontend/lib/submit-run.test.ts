@@ -565,3 +565,18 @@ test("a send that died after Eneo made the run gets that run back, not a second 
   assert.equal(eneo.runs.size, 1);
   assert.equal(await afterReload.get(recording.id), null);
 });
+
+test("the run body carries speaker_labels only when the page passes the choice", async () => {
+  const bodies: Json[] = [];
+  const deps: SubmitDeps = {
+    upload: async () => ({ id: "file-1" }),
+    startRun: async (_flowId, body) => {
+      bodies.push(body);
+      return queuedRun;
+    },
+  };
+  await submitRun(params({ speakerLabels: false }), deps);
+  await submitRun(params(), deps);
+  assert.equal(bodies[0].speaker_labels, false);
+  assert.equal("speaker_labels" in bodies[1], false);
+});

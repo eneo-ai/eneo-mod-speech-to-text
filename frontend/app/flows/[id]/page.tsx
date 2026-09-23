@@ -4,40 +4,29 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 
 import Link from "next/link";
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronLeft,
   Circle,
   Download,
-  FileAudio,
-  Info,
   Loader2,
   Send,
   Share2,
-  Upload,
-  Users,
   XCircle,
 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { AccountMenu } from "@/components/AccountMenu";
-import {
-  AudioRecorder,
-  type AudioRecorderHandle,
-} from "@/components/AudioRecorder";
+import { createDocument } from "@/components/flow/DetailsForm";
+import { FlowInput } from "@/components/flow/FlowInput";
+import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
+import { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
-import {
-  UnsentRecordings,
-  useUnsentRecordings,
-} from "@/components/UnsentRecordings";
+import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
   approveReviewCheckpoint,
   editReviewCheckpoint,
@@ -58,21 +47,20 @@ import {
   rejectReviewCheckpoint,
   resumeReviewCheckpoint,
   reviewResumeIdempotencyKey,
-  speakerMappingReviewSteps,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
   type FlowRunSummary,
-  type FormField,
   type Json,
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import type { SubmitRequest } from "@/lib/flow-session";
 import { onlineStatus } from "@/lib/online-status";
-import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import { recordingStore } from "@/lib/recording-store";
 import {
   submitRecording,
   submitRun,
@@ -103,11 +91,7 @@ import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { formatBytes } from "@/lib/format";
-import {
-  isMimeAllowed,
-  isRuntimeFileInput,
-  selectRuntimeInputStep,
-} from "@/lib/upload";
+import { selectRuntimeInputStep } from "@/lib/upload";
 
 interface PageProps {
   // App Router levererar params som en Promise och packar upp dem med React.use().
@@ -148,10 +132,6 @@ type SubmissionState =
   | { kind: "starting"; wait: RetryWait | null };
 
 /** Körningens indata: en vald fil eller en inspelning som finns på enheten. */
-type RunInput =
-  | { kind: "file"; blob: Blob; filename: string }
-  | { kind: "recording"; recording: StoredRecording };
-
 interface ResultFileRef {
   file_id: string;
   name?: string;
@@ -182,16 +162,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [graph, setGraph] = useState<FlowGraph | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
-  const [input, setInput] = useState<RunInput | null>(null);
   const [run, setRun] = useState<RunState>({ kind: "idle" });
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
-  const [recordingActive, setRecordingActive] = useState(false);
   const [signedUrls, setSignedUrls] = useState<
     Record<string, { url: string }>
   >({});
@@ -199,10 +176,17 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const pollAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
   const submitAbortRef = useRef<AbortController | null>(null);
-  const recorderRef = useRef<AudioRecorderHandle | null>(null);
 
   const user = useAuthenticatedUser();
-  const currentRecordingId = input?.kind === "recording" ? input.recording.id : null;
+  // The input side (mode, details, recording, file) has one owner: the session.
+  const input = useFlowSession({
+    flowId,
+    flowName: published?.name ?? "",
+    ownerId: user.id,
+    contract,
+  });
+  const { session, snapshot } = input;
+  const currentRecordingId = snapshot.recording?.id ?? null;
   const unsentRecordings = useUnsentRecordings(user.id, flowId).filter(
     (recording) => recording.id !== currentRecordingId,
   );
@@ -219,11 +203,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
         setPublished(p);
         setContract(c);
         setGraph(g);
-        const defaults: Record<string, string> = {};
-        for (const f of c.form_fields ?? []) {
-          if (f.default != null) defaults[f.name] = String(f.default);
-        }
-        setFormValues(defaults);
 
         // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
         // granskning). Annars: leta upp pågående körningar att erbjuda.
@@ -241,7 +220,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
             .catch(() => undefined);
         }
       })
-      .catch((err) => !cancelled && setLoadError(friendlyError(err)));
+      .catch((err) => !cancelled && setLoadError(err));
     return () => {
       cancelled = true;
     };
@@ -255,8 +234,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
   }, []);
 
+  // Leaving asks first while audio is being recorded or waits to become a document.
+  const holdsAudio = snapshot.phase !== "setup";
   useEffect(() => {
-    const shouldWarn = recordingActive || submission.kind !== "idle";
+    const shouldWarn = holdsAudio || submission.kind !== "idle";
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -265,16 +246,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [recordingActive, submission.kind]);
-
-  const runtimeInput = useMemo(
-    () => selectRuntimeInputStep(contract),
-    [contract],
-  );
-  const inputType = runtimeInput?.input_format;
-  const acceptsUpload = !!runtimeInput && isRuntimeFileInput(inputType);
-  const acceptedMimetypes = runtimeInput?.accepted_mimetypes ?? [];
-  const maxFileSizeBytes = runtimeInput?.max_file_size_bytes;
+  }, [holdsAudio, submission.kind]);
 
   // Etiketter per step_id hämtas från grafen — nya specen tappar step_label på FlowRunStep.
   const stepLabels = useMemo<Record<string, string>>(() => {
@@ -285,18 +257,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
     return m;
   }, [graph]);
-  const requiresFile = acceptsUpload && runtimeInput?.required !== false;
-
-  const formFields = contract?.form_fields ?? [];
-
-  const canSubmit = useMemo(() => {
-    if (run.kind !== "idle") return false;
-    if (!contract) return false;
-    // Att skicka nu skulle avbryta inspelningen som pågår.
-    if (recordingActive) return false;
-    if (requiresFile && !input) return false;
-    return !missingRequiredField(formFields, formValues);
-  }, [run.kind, contract, recordingActive, requiresFile, input, formFields, formValues]);
 
   // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
@@ -310,64 +270,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
       .then((store) => store.get(recordingId))
       .then((recording) => {
         if (recording?.ownerId === user.id && recording.flowId === flowId) {
-          sendRecording(recording);
+          session.adopt(recording);
+          void createDocument(session);
         }
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
-  function setField(key: string, value: string) {
-    setFormValues((prev) => ({ ...prev, [key]: value }));
-  }
+  // The session hands the document to the run code below.
+  useEffect(() => session.setHandlers({ submit: sendInput }));
 
-  function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const f = e.target.files?.[0];
-    if (!f) {
-      setInput((prev) => (prev?.kind === "file" ? null : prev));
-      return;
-    }
-    if (maxFileSizeBytes && f.size > maxFileSizeBytes) {
-      setRunError(
-        `Filen är för stor (${formatBytes(f.size)}). Max: ${formatBytes(maxFileSizeBytes)}.`,
-      );
-      e.target.value = "";
-      return;
-    }
-    if (f.type && !isMimeAllowed(f.type, acceptedMimetypes)) {
-      setRunError(
-        `Filtypen "${f.type}" stöds inte. Tillåtna: ${acceptedMimetypes.join(", ")}.`,
-      );
-      e.target.value = "";
-      return;
-    }
-    setRunError(null);
-    setInput({ kind: "file", blob: f, filename: f.name });
-  }
-
-  function onRecorded(recording: StoredRecording | null) {
-    setInput(recording ? { kind: "recording", recording } : null);
-  }
-
-  function onRun() {
-    void sendInput(input);
-  }
-
-  /** "Skicka" på en osänd inspelning: samma väg som Kör flöde. */
-  function sendRecording(recording: StoredRecording) {
-    const next: RunInput = { kind: "recording", recording };
-    setInput(next);
-    const missing = missingRequiredField(formFields, formValues);
-    if (missing) {
-      // Inspelningen är vald; Kör flöde skickar den när fälten är ifyllda.
-      document.getElementById(missing.name)?.focus();
-      return;
-    }
-    void sendInput(next);
-  }
-
-  async function sendInput(runInput: RunInput | null) {
-    if (!contract) return;
+  /** Uploads the input and starts the run; throws, with the page back in its input state, when it could not. */
+  async function sendInput({ input: runInput, payload, speakerLabels }: SubmitRequest) {
+    if (!contract) throw new Error("Flödet har inte laddats klart.");
     setRunError(null);
     setSignedUrls({});
     setRun({ kind: "submitting" });
@@ -379,8 +295,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
       const params = {
         flowId,
         contract,
-        stepId: runtimeInput?.step_id ?? null,
-        inputPayload: formPayload(formFields, formValues),
+        stepId: selectRuntimeInputStep(contract)?.step_id ?? null,
+        inputPayload: payload,
+        speakerLabels,
         online: onlineStatus,
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
@@ -392,21 +309,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
       const initialRun =
         runInput?.kind === "recording"
           ? await submitRecording(await recordingStore(), runInput.recording.id, params)
-          : await submitRun({ ...params, files: runInput ? [runInput] : [] });
+          : await submitRun({
+              ...params,
+              files: runInput ? [{ blob: runInput.blob, filename: runInput.filename }] : [],
+            });
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
-      // Eneo har körningen; en skickad inspelning finns inte längre på enheten.
-      if (runInput?.kind === "recording") setInput(null);
 
       writeRunIdToUrl(initialRun.id);
       pollAbortRef.current = { aborted: false };
       setRun({ kind: "running", run: initialRun, steps: [] });
       pollUntilDone(initialRun.id, pollAbortRef.current);
     } catch (err) {
-      setRunError(friendlyError(err));
       setRun({ kind: "idle" });
       setSubmission({ kind: "idle" });
       submitAbortRef.current = null;
+      throw err;
     }
   }
 
@@ -649,79 +567,28 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRun({ kind: "idle" });
   }
 
-  if (loadError) {
-    return (
-      <>
-        <NavBar title="Fel" />
-        <main className="px-6 py-4">
-          <p className="text-accent">{loadError}</p>
-          <Link
-            href="/flows"
-            className="text-sm text-ink-soft underline mt-3 inline-block"
-          >
-            Tillbaka
-          </Link>
-        </main>
-      </>
-    );
-  }
-
-  if (!published || !contract) {
-    return (
-      <>
-        <NavBar title="Laddar" />
-        <main className="grid place-items-center py-16">
-          <Loader2 className="h-5 w-5 animate-spin text-ink-mute" />
-        </main>
-      </>
-    );
-  }
+  if (loadError) return <FlowUnavailable error={loadError} />;
+  if (!published || !contract) return <FlowSkeleton />;
 
   const outputType = graph ? getFlowOutputType(graph) : null;
   const isTextual = isTextualOutput(outputType);
 
-  const phase: "setup" | "recording" | "review" | "notes" =
-    run.kind === "done"
-      ? "notes"
-      : run.kind === "awaiting_review"
-        ? "review"
-        : run.kind === "running" || run.kind === "submitting"
-          ? "recording"
-          : "setup";
-
-  if (phase === "setup") {
+  if (run.kind === "idle") {
     return (
-      <SetupView
+      <FlowInput
         published={published}
         contract={contract}
-        outputType={outputType}
-        formValues={formValues}
-        setField={setField}
-        inputType={inputType}
-        acceptsUpload={acceptsUpload}
-        acceptedMimetypes={acceptedMimetypes}
-        maxFileSizeBytes={maxFileSizeBytes}
-        maxFiles={runtimeInput?.max_files}
         input={input}
-        inputStepId={runtimeInput?.step_id ?? ""}
-        onFilePicked={onFilePicked}
-        onRecorded={onRecorded}
-        onRecordingChange={setRecordingActive}
-        recordingActive={recordingActive}
-        canSubmit={canSubmit}
-        submitting={run.kind === "submitting"}
-        onRun={onRun}
-        runError={runError}
+        ownerId={user.id}
+        notice={runError}
         resumableRuns={resumableRuns}
         onResume={resumeRun}
         unsentRecordings={unsentRecordings}
-        onSendRecording={sendRecording}
-        recorderRef={recorderRef}
       />
     );
   }
 
-  if (phase === "recording" && run.kind !== "idle" && run.kind !== "done") {
+  if (run.kind === "running" || run.kind === "submitting") {
     return (
       <RecordingView
         published={published}
@@ -734,7 +601,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  if (phase === "review" && run.kind === "awaiting_review") {
+  if (run.kind === "awaiting_review") {
     return (
       <ReviewView
         flowId={flowId}
@@ -753,23 +620,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  if (phase === "notes" && run.kind === "done") {
-    return (
-      <NotesView
-        flowId={flowId}
-        published={published}
-        runState={run}
-        signedUrls={signedUrls}
-        outputType={outputType}
-        isTextual={isTextual}
-        onRunAgain={onRunAgain}
-        stepLabels={stepLabels}
-      />
-    );
-  }
-
-  return null;
+  return (
+    <NotesView
+      flowId={flowId}
+      published={published}
+      runState={run}
+      signedUrls={signedUrls}
+      outputType={outputType}
+      isTextual={isTextual}
+      onRunAgain={onRunAgain}
+      stepLabels={stepLabels}
+    />
+  );
 }
+
 
 // ---------- NavBar ----------
 
@@ -799,341 +663,6 @@ function NavBar({
         <AccountMenu />
       </div>
     </nav>
-  );
-}
-
-// ---------- Setup ----------
-
-function SetupView({
-  published,
-  contract,
-  outputType,
-  formValues,
-  setField,
-  inputType,
-  acceptsUpload,
-  acceptedMimetypes,
-  maxFileSizeBytes,
-  maxFiles,
-  input,
-  inputStepId,
-  onFilePicked,
-  onRecorded,
-  onRecordingChange,
-  recordingActive,
-  canSubmit,
-  submitting,
-  onRun,
-  runError,
-  resumableRuns,
-  onResume,
-  unsentRecordings,
-  onSendRecording,
-  recorderRef,
-}: {
-  published: FlowPublished;
-  contract: RunContract;
-  outputType: string | null;
-  formValues: Record<string, string>;
-  setField: (k: string, v: string) => void;
-  inputType?: string;
-  acceptsUpload: boolean;
-  acceptedMimetypes: string[];
-  maxFileSizeBytes?: number;
-  maxFiles?: number;
-  input: RunInput | null;
-  inputStepId: string;
-  onFilePicked: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onRecorded: (recording: StoredRecording | null) => void;
-  onRecordingChange: (recording: boolean) => void;
-  recordingActive: boolean;
-  canSubmit: boolean;
-  submitting: boolean;
-  onRun: () => void;
-  runError: string | null;
-  resumableRuns: FlowRunSummary[];
-  onResume: (runId: string) => void;
-  unsentRecordings: StoredRecording[];
-  onSendRecording: (recording: StoredRecording) => void;
-  recorderRef: React.RefObject<AudioRecorderHandle | null>;
-}) {
-  const formFields = contract.form_fields ?? [];
-  const speakerMappingSteps = speakerMappingReviewSteps(contract);
-  const file = input?.kind === "file" ? input : null;
-
-  return (
-    <>
-      <NavBar title={published.name} />
-
-      <div className="px-6 md:px-8 pt-2 md:pt-4 pb-6 flex-1 flex flex-col w-full mx-auto max-w-2xl">
-        <OfflineBanner waiting={recordingActive ? "recording" : null} />
-        <h1 className="text-[28px] md:text-[34px] font-semibold tracking-[-0.025em] leading-[1.1] mb-1.5">
-          Förbered <span className="accent-em">ditt möte</span>
-        </h1>
-        <p className="text-[14px] text-ink-soft leading-relaxed mb-3">
-          {published.description ||
-            "Lite info hjälper Flöden att skräddarsy transkriptet."}
-        </p>
-        <div className="mb-6" />
-
-        <div className="flex items-center gap-4 rounded-2xl border border-ochre/40 bg-ochre/10 pl-5 pr-5 py-3.5 mb-6">
-          <Info
-            size={24}
-            strokeWidth={2}
-            aria-hidden
-            style={{ width: 24, height: 24, flexShrink: 0 }}
-            className="text-ochre"
-          />
-          <p className="text-[12.5px] text-ink-soft leading-relaxed">
-            Använd bara{" "}
-            <span className="text-ink font-medium">
-              öppen och publik information
-            </span>{" "}
-            i det här flödet. Ladda inte upp personuppgifter, sekretessbelagda
-            eller på annat sätt känsliga uppgifter.
-          </p>
-        </div>
-
-        {resumableRuns.length > 0 && (
-          <section className="paper-card p-4 mb-5">
-            <div className="text-[13px] font-semibold text-ink mb-1">
-              {resumableRuns.length === 1
-                ? "En körning pågår för det här flödet"
-                : `${resumableRuns.length} körningar pågår för det här flödet`}
-            </div>
-            <p className="text-[12px] text-ink-soft mb-3">
-              Följ en pågående körning, eller starta en ny inspelning nedan.
-            </p>
-            <ul className="flex flex-col gap-2">
-              {resumableRuns.map((r) => (
-                <li
-                  key={r.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-rule-soft bg-bg-2/40 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <div className="text-[13px] text-ink truncate">
-                      {labelForResumableRun(r.status)}
-                    </div>
-                    {r.created_at && (
-                      <div className="text-[11px] text-ink-mute">
-                        Startad {formatDateTime(r.created_at)}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => onResume(r.id)}
-                    className="shrink-0 inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium hover:border-ink/40 transition-colors"
-                  >
-                    Fortsätt
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-
-        {!recordingActive && (
-          <UnsentRecordings
-            recordings={unsentRecordings}
-            onSend={onSendRecording}
-            onContinue={
-              inputType === "audio"
-                ? (recording) => void recorderRef.current?.continueRecording(recording)
-                : undefined
-            }
-          />
-        )}
-
-        {speakerMappingSteps.length > 0 && (
-          <div className="paper-card px-4 py-3 mb-5 flex items-start gap-3">
-            <Users
-              className="h-4 w-4 mt-0.5 shrink-0 text-accent"
-              strokeWidth={2}
-            />
-            <p className="text-[12px] text-ink-soft leading-relaxed">
-              Flödet pausar efter transkriberingen så att du kan bekräfta vem
-              som är vem bland talarna. Namnen skrivs sedan in i transkriptet
-              innan resten av flödet körs.
-            </p>
-          </div>
-        )}
-
-        {formFields.length > 0 && (
-          <div className="flex flex-col gap-5 mb-6">
-            {formFields.map((f) => {
-              const k = f.name;
-              const value = formValues[k] ?? "";
-              const inputTypeAttr =
-                f.type === "date"
-                  ? "date"
-                  : f.type === "number"
-                    ? "number"
-                    : "text";
-              const isLong =
-                f.type === "textarea" ||
-                f.type === "long_text" ||
-                (inputTypeAttr === "text" && value.length > 80);
-              return (
-                <div key={k} className="w-full space-y-2">
-                  <Label htmlFor={k} className="eyebrow-sm">
-                    {f.label || f.name}
-                    {f.required ? " *" : ""}
-                  </Label>
-                  {f.description && (
-                    <p id={`${k}-description`} className="text-xs text-ink-mute">
-                      {f.description}
-                    </p>
-                  )}
-                  {isLong ? (
-                    <Textarea
-                      id={k}
-                      value={value}
-                      onChange={(e) => setField(k, e.target.value)}
-                      rows={4}
-                      required={f.required}
-                      aria-describedby={f.description ? `${k}-description` : undefined}
-                    />
-                  ) : (
-                    <Input
-                      id={k}
-                      type={inputTypeAttr}
-                      value={value}
-                      onChange={(e) => setField(k, e.target.value)}
-                      required={f.required}
-                      aria-describedby={f.description ? `${k}-description` : undefined}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {inputType === "audio" && (
-          <>
-            <section className="mt-4 mb-8 md:mt-6 md:mb-12">
-              <AudioRecorder
-                ref={recorderRef}
-                flowId={published.id}
-                flowName={published.name}
-                stepId={inputStepId}
-                acceptedMimetypes={acceptedMimetypes}
-                maxBytes={maxFileSizeBytes}
-                maxFiles={maxFiles}
-                recording={input?.kind === "recording" ? input.recording : null}
-                onChange={onRecorded}
-                onRecordingChange={onRecordingChange}
-                title={published.name}
-                subtitle={inputType.toUpperCase()}
-              />
-            </section>
-
-            <div
-              className="flex items-center gap-3 my-4 md:my-5"
-              aria-hidden
-            >
-              <div className="flex-1 h-px bg-rule-soft" />
-              <span className="eyebrow-sm">eller</span>
-              <div className="flex-1 h-px bg-rule-soft" />
-            </div>
-
-            <label className="paper-card flex items-center gap-3 md:gap-4 px-4 py-3.5 md:px-5 md:py-4 cursor-pointer transition-colors hover:border-ink/40 mb-2">
-              <div className="grid place-items-center h-10 w-10 md:h-12 md:w-12 rounded-xl bg-bg-2 text-ink-soft shrink-0">
-                <FileAudio className="h-4 w-4 md:h-5 md:w-5" strokeWidth={1.8} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-[14px] md:text-[15px] font-medium text-ink leading-tight">
-                  Ladda upp ljudfil
-                </div>
-                <div className="text-[12px] md:text-[13px] text-ink-mute mt-0.5 truncate">
-                  {file
-                    ? `${file.filename} · ${formatBytes(file.blob.size)}`
-                    : (acceptedMimetypes.length
-                        ? acceptedMimetypes
-                            .map((m) =>
-                              m
-                                .replace(/^audio\//, "")
-                                .replace(/^video\//, "")
-                                .replace(/^x-/, "")
-                                .toUpperCase(),
-                            )
-                            .filter((v, i, a) => a.indexOf(v) === i)
-                            .slice(0, 6)
-                            .join(" · ")
-                        : "MP3 · WAV · M4A · OGG")}
-                </div>
-              </div>
-              <Upload
-                className="h-4 w-4 md:h-5 md:w-5 text-ink-mute shrink-0"
-                strokeWidth={1.8}
-              />
-              <input
-                type="file"
-                accept={acceptedMimetypes.join(",") || "audio/*"}
-                onChange={onFilePicked}
-                className="sr-only"
-              />
-            </label>
-          </>
-        )}
-
-        {inputType !== "audio" && acceptsUpload && (
-          <section className="paper-card p-5 md:p-6 mb-3 space-y-3">
-            <div className="eyebrow-sm">Fil</div>
-            <input
-              type="file"
-              accept={acceptedMimetypes.join(",") || undefined}
-              onChange={onFilePicked}
-              className="text-sm text-ink-soft"
-            />
-            {file && (
-              <p className="text-[13px] text-ink-soft">
-                Vald: <span className="text-ink">{file.filename}</span> (
-                {formatBytes(file.blob.size)})
-              </p>
-            )}
-            {maxFileSizeBytes && (
-              <p className="text-xs text-ink-mute">
-                Max storlek: {formatBytes(maxFileSizeBytes)}
-              </p>
-            )}
-          </section>
-        )}
-
-        {runError && (
-          <div
-            className="bg-accent text-accent-foreground rounded-2xl px-4 py-3.5 md:px-5 md:py-4 mt-4 flex items-start gap-3"
-            role="alert"
-          >
-            <AlertCircle
-              className="h-5 w-5 md:h-6 md:w-6 shrink-0 mt-0.5"
-              strokeWidth={2}
-            />
-            <div className="flex-1 min-w-0">
-              <div className="font-mono text-[9px] md:text-[10px] tracking-[0.16em] uppercase text-accent-foreground/80 mb-1">
-                Fel
-              </div>
-              <p className="text-[14px] md:text-[15px] font-medium leading-snug break-words">
-                {runError}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="pt-5 md:pt-6 flex justify-center">
-          <Button
-            type="button"
-            onClick={onRun}
-            disabled={!canSubmit || submitting}
-            className="text-[14px]"
-          >
-            {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-            {submitting ? "Startar…" : "Kör flöde"}
-          </Button>
-        </div>
-      </div>
-    </>
   );
 }
 
@@ -2002,43 +1531,6 @@ function labelForRunStatus(status: string): string {
   if (s === "running" || s === "in_progress") return "Bearbetar…";
   if (s === "queued" || s === "pending") return "I kö";
   return status;
-}
-
-function labelForResumableRun(status: string): string {
-  const s = status.toLowerCase();
-  if (s === "awaiting_review") return "Väntar på din granskning";
-  if (s === "queued") return "Står i kö";
-  return "Bearbetas";
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("sv-SE", {
-    dateStyle: "short",
-    timeStyle: "short",
-  });
-}
-
-/** Det första obligatoriska formulärfältet som saknar värde. */
-function missingRequiredField(
-  fields: FormField[],
-  values: Record<string, string>,
-): FormField | undefined {
-  return fields.find((f) => f.required && !values[f.name]?.trim());
-}
-
-/** Formulärvärdena som körningens input_payload_json; tomma fält skickas inte. */
-function formPayload(
-  fields: FormField[],
-  values: Record<string, string>,
-): Record<string, unknown> {
-  const payload: Record<string, unknown> = {};
-  for (const f of fields) {
-    const v = values[f.name];
-    if (v != null && v !== "") payload[f.name] = v;
-  }
-  return payload;
 }
 
 function labelForOutputType(outputType: string | null | undefined): string | null {

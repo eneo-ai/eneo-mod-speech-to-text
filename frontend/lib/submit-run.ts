@@ -105,6 +105,8 @@ export interface SubmitParams extends RetryOptions {
   onUploaded?: (index: number, fileId: string) => void | Promise<void>;
   /** Replaces the key derived from the request, as for a recording. */
   idempotencyKey?: string;
+  /** The run's speaker-label choice; only when the contract makes it selectable. */
+  speakerLabels?: boolean;
   /** Every file is uploaded; the run is being created. */
   onStarting?: () => void | Promise<void>;
 }
@@ -166,6 +168,7 @@ export async function submitRun(
   const body: Json = { expected_flow_version: contract.published_flow_version };
   if (fileIds.length > 0) body.step_inputs = { [stepId!]: { file_ids: fileIds } };
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
+  if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
   const key =
     params.idempotencyKey ??
     (await deriveRunIdempotencyKey({

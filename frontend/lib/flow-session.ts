@@ -1,0 +1,531 @@
+/**
+ * The one owner of the flow page's input side: how the audio comes in
+ * (Strömma, Spela in, Ladda upp), the details the flow asks for, the speaker
+ * choice, and the phase from setup to a recording that is ready to become a
+ * document. Capturing belongs to the RecordingCapture this class owns; the
+ * phase is read from it and never copied. Upload, run and result belong to
+ * the page's run code.
+ */
+
+import type { FlowTranscriptionContract, FormField, RunContract } from "./api";
+import { friendlyError } from "./errors";
+import { splitNames } from "./participants";
+import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
+import type { RecordingStore, StoredRecording } from "./recording-store";
+import { isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
+
+export type InputMode = "stromma" | "spela-in" | "ladda-upp";
+export type SessionPhase = "setup" | "starting" | "recording" | "paused" | "interrupted" | "ready";
+export type DetailValue = string | string[];
+export type KeyValueStorage = Pick<Storage, "getItem" | "setItem">;
+
+/** What happened, and what to do next. */
+export interface Problem {
+  title: string;
+  detail?: string;
+  /** Offer "Försök igen". */
+  retry?: boolean;
+}
+
+export interface ChosenFile {
+  blob: Blob;
+  filename: string;
+}
+
+export interface SubmitRequest {
+  input: { kind: "recording"; recording: StoredRecording } | ({ kind: "file" } & ChosenFile) | null;
+  /** The details as the run's input_payload_json. */
+  payload: Record<string, unknown>;
+  /** Sent only when the contract lets the run choose. */
+  speakerLabels: boolean | undefined;
+}
+
+export interface SessionHandlers {
+  /** Uploads and starts the run; throws when it could not. */
+  submit: (request: SubmitRequest) => Promise<void>;
+}
+
+export interface SessionSnapshot {
+  modes: InputMode[];
+  mode: InputMode | null;
+  phase: SessionPhase;
+  details: Record<string, DetailValue>;
+  /** Required details still missing when the document was asked for. */
+  invalid: string[];
+  /** The effective choice; null when the flow does not let the run choose. */
+  speakerLabels: boolean | null;
+  /** The recording being captured, or the stopped one that is ready. */
+  recording: StoredRecording | null;
+  /** The file chosen in Ladda upp. */
+  file: ChosenFile | null;
+  problem: Problem | null;
+}
+
+/** The ways this flow can take its audio, in the order the cards show them. */
+export function availableModes(
+  contract: RunContract | null,
+  { canRecord, liveClient }: { canRecord: boolean; liveClient: boolean },
+): InputMode[] {
+  const step = selectRuntimeInputStep(contract);
+  if (!step || !isRuntimeFileInput(step.input_format)) return [];
+  if (step.input_format?.toLowerCase() !== "audio") return ["ladda-upp"];
+  const modes: InputMode[] = [];
+  if (canRecord && liveClient && contract?.transcription?.live.available) modes.push("stromma");
+  if (canRecord) modes.push("spela-in");
+  modes.push("ladda-upp");
+  return modes;
+}
+
+/** Live text is a draft, so speaker labels only add waiting there unless asked for. */
+export function speakerLabelsFor(
+  option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
+  mode: InputMode | null,
+  explicit: boolean | null,
+): boolean | null {
+  if (!option?.selectable) return null;
+  if (explicit !== null) return explicit;
+  return mode === "stromma" ? false : option.default;
+}
+
+/** Claims the recording is kept on the device only when the device store keeps it. */
+export function storageLine(persistent: boolean | null): string {
+  return persistent
+    ? "Inspelningen sparas på enheten medan du spelar in."
+    : "Låt sidan vara öppen under inspelningen.";
+}
+
+export function primaryActionLabel(mode: InputMode, hasFile: boolean): string {
+  if (mode === "stromma") return "Starta strömning";
+  if (mode === "spela-in") return "Starta inspelning";
+  return hasFile ? "Skapa dokument" : "Välj ljudfil";
+}
+
+export function microphoneProblem(errorName: string | null): Problem {
+  switch (errorName) {
+    case "NotAllowedError":
+    case "SecurityError":
+      return {
+        title: "Appen fick inte använda mikrofonen.",
+        detail: "Tillåt mikrofonen i webbläsarens inställningar och försök igen.",
+        retry: true,
+      };
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return {
+        title: "Ingen mikrofon hittades.",
+        detail: "Anslut en mikrofon eller välj Ladda upp.",
+      };
+    case "NotReadableError":
+      return {
+        title: "Mikrofonen kunde inte startas.",
+        detail: "Stäng andra appar som använder mikrofonen och försök igen.",
+        retry: true,
+      };
+    default:
+      return {
+        title: "Inspelningen kunde inte starta.",
+        detail: "Försök igen eller välj Ladda upp.",
+        retry: true,
+      };
+  }
+}
+
+function stringOptions(field: FormField): string[] {
+  return Array.isArray(field.options)
+    ? field.options.filter((option): option is string => typeof option === "string")
+    : [];
+}
+
+function fits(field: FormField, value: DetailValue): boolean {
+  if (field.type === "list") return Array.isArray(value);
+  if (Array.isArray(value)) return false;
+  const options = stringOptions(field);
+  return field.type !== "select" || options.length === 0 || options.includes(value);
+}
+
+function defaultValue(field: FormField): DetailValue | undefined {
+  if (field.default == null) return undefined;
+  if (field.type !== "list") return String(field.default);
+  return Array.isArray(field.default)
+    ? field.default.filter((name): name is string => typeof name === "string")
+    : splitNames(String(field.default));
+}
+
+/** The details that still fit the flow's fields; new fields start from their defaults. */
+function fittingDetails(
+  fields: FormField[],
+  current: Record<string, DetailValue>,
+): Record<string, DetailValue> {
+  const next: Record<string, DetailValue> = {};
+  for (const field of fields) {
+    const value = current[field.name] ?? defaultValue(field);
+    if (value !== undefined && fits(field, value)) next[field.name] = value;
+  }
+  return next;
+}
+
+function filled(value: DetailValue | undefined): boolean {
+  return Array.isArray(value) ? value.length > 0 : !!value?.trim();
+}
+
+/** The details as the run's input_payload_json; empty ones are left out. */
+export function detailsPayload(
+  fields: FormField[],
+  details: Record<string, DetailValue>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  for (const field of fields) {
+    const value = details[field.name];
+    if (filled(value)) payload[field.name] = value;
+  }
+  return payload;
+}
+
+/** The browser's localStorage, or null where the page may not use it. */
+export function browserStorage(): KeyValueStorage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const modeKey = (flowId: string) => `tal-till-text:mode:${flowId}`;
+
+const lastFlowKey = (ownerId: string) => `tal-till-text:${ownerId}:last-flow`;
+
+/** The flow this user last recorded, streamed or uploaded with in this browser. */
+export function lastUsedFlow(storage: KeyValueStorage | null | undefined, ownerId: string): string | null {
+  try {
+    return storage?.getItem(lastFlowKey(ownerId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The flow list with the last used flow first; the rest keep their order. */
+export function withLastUsedFirst<T extends { id: string }>(flows: T[], lastId: string | null): T[] {
+  const last = flows.find((flow) => flow.id === lastId);
+  return last ? [last, ...flows.filter((flow) => flow !== last)] : flows;
+}
+
+export interface FlowSessionOptions {
+  flowId: string;
+  flowName: string;
+  ownerId: string;
+  /** Called on the first start, never while rendering. */
+  openStore: () => RecordingStore | Promise<RecordingStore>;
+  captureDeps: CaptureDeps;
+  /** A recording format the browser has and the flow takes, or null. */
+  pickMimeType: (accepted: string[] | undefined) => string | null;
+  storage?: KeyValueStorage | null;
+  /** The browser can stream live text (Strömma). */
+  liveClient?: boolean;
+}
+
+export class FlowSession {
+  readonly capture: RecordingCapture;
+  private listeners = new Set<() => void>();
+  private flowName: string;
+  private contract: RunContract | null = null;
+  private modes: InputMode[] = [];
+  private mode: InputMode | null = null;
+  private details: Record<string, DetailValue> = {};
+  private explicitSpeakerLabels: boolean | null = null;
+  private starting = false;
+  private ready: StoredRecording | null = null;
+  private file: ChosenFile | null = null;
+  private invalid: string[] = [];
+  private problem: Problem | null = null;
+  private handlers: SessionHandlers | null = null;
+  // The browser's reason the microphone was refused, for the problem shown.
+  private microphoneError: string | null = null;
+  private snapshot: SessionSnapshot;
+
+  constructor(private readonly options: FlowSessionOptions) {
+    this.flowName = options.flowName;
+    this.capture = new RecordingCapture(options.openStore, {
+      ...options.captureDeps,
+      getStream: async (constraints) => {
+        try {
+          return await options.captureDeps.getStream(constraints);
+        } catch (error) {
+          this.microphoneError = error instanceof DOMException ? error.name : null;
+          throw error;
+        }
+      },
+    });
+    this.snapshot = this.derive();
+    this.capture.subscribe(this.onCapture);
+  }
+
+  getSnapshot = (): SessionSnapshot => this.snapshot;
+
+  subscribe = (listener: () => void): (() => void) => {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  };
+
+  /** The run contract, first or refreshed: the modes, and the details that still fit. */
+  setContract(contract: RunContract | null): void {
+    this.contract = contract;
+    this.modes = availableModes(contract, {
+      canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
+      liveClient: this.options.liveClient ?? false,
+    });
+    const remembered = this.read(modeKey(this.options.flowId));
+    this.mode =
+      this.modes.find((mode) => mode === this.mode) ??
+      this.modes.find((mode) => mode === remembered) ??
+      this.modes[0] ??
+      null;
+    this.details = fittingDetails(contract?.form_fields ?? [], this.details);
+    this.emit();
+  }
+
+  /** The published flow's name, which recordings carry for recovery. */
+  setFlowName(name: string): void {
+    this.flowName = name;
+  }
+
+  /** Choosing only selects: nothing starts, and the choice is fixed once recording begins. */
+  selectMode(mode: InputMode): void {
+    if (this.snapshot.phase !== "setup" || !this.modes.includes(mode)) return;
+    this.mode = mode;
+    this.problem = null;
+    this.write(modeKey(this.options.flowId), mode);
+    this.emit();
+  }
+
+  setDetail(name: string, value: DetailValue): void {
+    this.details = { ...this.details, [name]: value };
+    if (filled(value)) this.invalid = this.invalid.filter((field) => field !== name);
+    this.emit();
+  }
+
+  setSpeakerLabels(on: boolean): void {
+    this.explicitSpeakerLabels = on;
+    this.emit();
+  }
+
+  /** "Starta inspelning" / "Starta strömning": the microphone is asked for here. */
+  async start(): Promise<void> {
+    const { phase, mode } = this.snapshot;
+    if (phase !== "setup" || (mode !== "spela-in" && mode !== "stromma")) return;
+    const step = this.inputStep();
+    const mimeType = this.options.pickMimeType(step?.accepted_mimetypes);
+    if (!step || !mimeType) {
+      this.problem = {
+        title: "Webbläsaren kan inte spela in ljud som flödet tar emot.",
+        detail: "Välj Ladda upp i stället.",
+      };
+      this.emit();
+      return;
+    }
+    this.problem = null;
+    this.microphoneError = null;
+    this.starting = true;
+    this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    this.emit();
+    try {
+      await this.capture.start(
+        {
+          ownerId: this.options.ownerId,
+          flowId: this.options.flowId,
+          flowName: this.flowName,
+          stepId: step.step_id,
+          inputMode: mode === "stromma" ? "stream" : "record",
+          mimeType,
+        },
+        this.limits(),
+      );
+    } finally {
+      this.starting = false;
+    }
+    if (this.capture.getSnapshot().status !== "recording") {
+      this.problem = microphoneProblem(this.microphoneError);
+    }
+    this.emit();
+  }
+
+  /** The page's run code, which the document is handed to. */
+  setHandlers(handlers: SessionHandlers): void {
+    this.handlers = handlers;
+  }
+
+  /** Ladda upp: the file that becomes the document's input. */
+  chooseFile(file: File): void {
+    this.file = { blob: file, filename: file.name };
+    this.problem = null;
+    this.emit();
+  }
+
+  /** An unsent recording from the list, made ready to become a document. */
+  adopt(recording: StoredRecording): void {
+    if (this.snapshot.phase !== "setup" && this.snapshot.phase !== "ready") return;
+    this.ready = recording;
+    this.problem = null;
+    this.emit();
+  }
+
+  /**
+   * "Skapa dokument": the required details are checked here, where they matter.
+   * A send that fails keeps the recording, the file and the details.
+   */
+  async createDocument(): Promise<boolean> {
+    const { phase, mode } = this.snapshot;
+    const input: SubmitRequest["input"] =
+      phase === "ready" && this.ready
+        ? { kind: "recording", recording: this.ready }
+        : phase === "setup" && mode === "ladda-upp" && this.file
+          ? { kind: "file", ...this.file }
+          : null;
+    if (!input && this.modes.length > 0) return false;
+    const fields = this.contract?.form_fields ?? [];
+    this.invalid = fields
+      .filter((field) => field.required && !filled(this.details[field.name]))
+      .map((field) => field.name);
+    this.problem = null;
+    this.emit();
+    if (this.invalid.length > 0 || !this.handlers) return false;
+    this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    try {
+      await this.handlers.submit({
+        input,
+        payload: detailsPayload(fields, this.details),
+        speakerLabels: this.snapshot.speakerLabels ?? undefined,
+      });
+    } catch (error) {
+      // The input and the details stay for the next try.
+      this.problem = { title: friendlyError(error) };
+      this.emit();
+      return false;
+    }
+    // Eneo has the run: a sent recording is no longer on the device.
+    if (input?.kind === "recording") {
+      this.ready = null;
+      this.capture.reset();
+    }
+    if (input?.kind === "file") this.file = null;
+    this.emit();
+    return true;
+  }
+
+  /**
+   * "Fortsätt spela in" on a recording a reload cut off: the recorder takes it
+   * over and records on in a new part, so the meeting still becomes one run.
+   */
+  async continueCutOff(recording: StoredRecording): Promise<void> {
+    if (this.snapshot.phase !== "setup") return;
+    const live = recording.inputMode === "stream" && this.modes.includes("stromma");
+    this.mode = live ? "stromma" : "spela-in";
+    this.problem = null;
+    this.microphoneError = null;
+    this.emit();
+    await this.capture.adopt(recording.id, this.limits());
+    const { status, error } = this.capture.getSnapshot();
+    if (status === "interrupted") await this.continueRecording();
+    else if (error) {
+      this.problem = { title: error };
+      this.emit();
+    }
+  }
+
+  togglePause(): void {
+    this.capture.togglePause();
+  }
+
+  /** Stoppa ends capture and leads to the ready state; it never discards. */
+  async stop(): Promise<void> {
+    await this.capture.stop();
+  }
+
+  /** "Fortsätt spela in" after the microphone went away: a new part of the same recording. */
+  async continueRecording(): Promise<void> {
+    this.microphoneError = null;
+    await this.capture.continueRecording();
+    if (this.capture.getSnapshot().status === "interrupted") {
+      this.problem = microphoneProblem(this.microphoneError);
+      this.emit();
+    }
+  }
+
+  /** The page goes away: what was recorded stays on the device for recovery. */
+  dispose(): void {
+    this.capture.dispose();
+  }
+
+  private inputStep() {
+    return selectRuntimeInputStep(this.contract);
+  }
+
+  /** The flow's limits for the audio step: bytes per file and files per run. */
+  private limits(): CaptureLimits {
+    const step = this.inputStep();
+    return { maxBytes: step?.max_file_size_bytes, maxFiles: step?.max_files };
+  }
+
+  private onCapture = () => {
+    const { status, recording, error } = this.capture.getSnapshot();
+    if (status === "stopped" && recording && this.ready?.id !== recording.id) {
+      this.ready = recording;
+      // A stop at the flow's size limit says so; what was recorded is kept.
+      if (error) this.problem = { title: error };
+    }
+    if (status === "recording") this.problem = null;
+    this.emit();
+  };
+
+  private derive(): SessionSnapshot {
+    const capture = this.capture.getSnapshot();
+    const capturing =
+      capture.status === "recording" || capture.status === "paused" || capture.status === "interrupted";
+    return {
+      modes: this.modes,
+      mode: this.mode,
+      phase: capturing
+        ? (capture.status as "recording" | "paused" | "interrupted")
+        : this.starting
+          ? "starting"
+          : this.ready
+            ? "ready"
+            : "setup",
+      details: this.details,
+      invalid: this.invalid,
+      speakerLabels: speakerLabelsFor(
+        this.contract?.transcription?.speaker_labels,
+        this.mode,
+        this.explicitSpeakerLabels,
+      ),
+      recording: capturing ? capture.recording : this.ready,
+      file: this.file,
+      problem: this.problem,
+    };
+  }
+
+  private emit() {
+    const next = this.derive();
+    const changed = (Object.keys(next) as (keyof SessionSnapshot)[]).some(
+      (key) => next[key] !== this.snapshot[key],
+    );
+    if (!changed) return;
+    this.snapshot = next;
+    this.listeners.forEach((listener) => listener());
+  }
+
+  private read(key: string): string | null {
+    try {
+      return this.options.storage?.getItem(key) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private write(key: string, value: string) {
+    try {
+      this.options.storage?.setItem(key, value);
+    } catch {
+      // Blocked storage: the choice is only a convenience.
+    }
+  }
+}

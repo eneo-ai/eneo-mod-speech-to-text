@@ -30,6 +30,7 @@ import {
   type SpaceSparse,
 } from "@/lib/api";
 import { friendlyError } from "@/lib/errors";
+import { browserStorage, lastUsedFlow, withLastUsedFirst } from "@/lib/flow-session";
 
 export default function FlowsPage() {
   return (
@@ -92,7 +93,10 @@ function useFlowInputFormats(
 
 function FlowsListPage() {
   const router = useRouter();
-  const unsent = useUnsentRecordings(useAuthenticatedUser().id);
+  const user = useAuthenticatedUser();
+  const unsent = useUnsentRecordings(user.id);
+  const [lastFlowId, setLastFlowId] = useState<string | null>(null);
+  useEffect(() => setLastFlowId(lastUsedFlow(browserStorage(), user.id)), [user.id]);
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [allSpaces, setAllSpaces] = useState<SpaceSparse[] | null>(null);
   const [spaceId, setSpaceId] = useState<string>("");
@@ -222,6 +226,7 @@ function FlowsListPage() {
             key={sec.spaceId}
             section={sec}
             fallbackTitle={`Space ${idx + 1}`}
+            lastFlowId={lastFlowId}
           />
         ))
       ) : (
@@ -271,7 +276,7 @@ function FlowsListPage() {
               </p>
             )}
 
-            {flows?.map((flow, idx) => (
+            {flows && withLastUsedFirst(flows, lastFlowId).map((flow, idx) => (
               <FlowRow
                 key={flow.id}
                 flow={flow}
@@ -291,9 +296,11 @@ function FlowsListPage() {
 function SpaceFlowsSection({
   section,
   fallbackTitle,
+  lastFlowId,
 }: {
   section: SpaceFlowsData;
   fallbackTitle: string;
+  lastFlowId: string | null;
 }) {
   const title = section.space?.name ?? fallbackTitle;
   const description = section.space?.description?.trim();
@@ -328,7 +335,7 @@ function SpaceFlowsSection({
           </p>
         )}
 
-        {section.flows?.map((flow, idx) => (
+        {section.flows && withLastUsedFirst(section.flows, lastFlowId).map((flow, idx) => (
           <FlowRow
             key={flow.id}
             flow={flow}
