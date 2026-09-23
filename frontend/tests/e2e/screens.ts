@@ -92,10 +92,18 @@ export function wav(seconds = 1): Buffer {
   return Buffer.concat([head, data]);
 }
 
-export async function chooseFile(page: Page) {
+export async function chooseFile(page: Page, name = "kommunstyrelsen-mote.wav") {
   await chooseMode(page, "Ladda upp");
-  await page.locator('input[type="file"]').setInputFiles({ name: "kommunstyrelsen-mote.wav", mimeType: "audio/wav", buffer: wav() });
+  await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "audio/wav", buffer: wav() });
   await expect(page.getByRole("button", { name: "Byt fil" })).toBeVisible();
+}
+
+/** The view while the file goes to Eneo, held there by the stub's slow answer to a "langsam" file. */
+export async function sending(page: Page) {
+  await setup(page);
+  await chooseFile(page, "langsam-uppladdning.wav");
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await expect(page.getByText("Laddar upp filen")).toBeVisible();
 }
 
 export async function run(page: Page, id: string, flow = "flow-1") {
@@ -269,6 +277,7 @@ export const STATES: State[] = [
       await expect(page.getByRole("heading", { name: "En inspelning är inte skickad" })).toBeVisible();
     },
   },
+  { name: "sending", go: sending },
   {
     name: "run-progress",
     go: async (page) => {

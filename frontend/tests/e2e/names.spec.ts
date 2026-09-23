@@ -5,7 +5,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { axNode } from "./checks";
-import { addParticipants, chooseMode, setup } from "./screens";
+import { addParticipants, chooseMode, sending, setup } from "./screens";
 
 test("the input modes are named by their title and described by their line", async ({ page }) => {
   await setup(page);
@@ -31,4 +31,14 @@ test("the added names are a named list the field points to", async ({ page }) =>
   await expect(page.getByRole("list", { name: "Tillagda namn" })).toBeVisible();
   const field = await axNode(page.getByRole("textbox", { name: /^Deltagare/ }));
   expect(field.description).toContain("2 namn tillagda");
+});
+
+test("the sending view is a page with a heading that takes focus, a named progress bar and a spoken stage", async ({ page }) => {
+  await sending(page);
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeFocused();
+  const bar = page.getByRole("progressbar", { name: "Uppladdning" });
+  await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
+  await expect(page.getByRole("status").filter({ hasText: "Laddar upp filen" })).toBeAttached();
+  await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
 });

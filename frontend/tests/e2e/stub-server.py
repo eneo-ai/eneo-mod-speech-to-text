@@ -10,6 +10,7 @@ Runs the page can open with ?run=<id>:
   run-running   never ends, for the progress view
   run-review    paused for "who is who" (flow-2)
 A run the page starts itself runs for two polls, then finishes like run-done.
+An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
 republishing (409 on the contract); any unknown flow is gone (404). The live
 relay on /api/live/ answers a word per four audio frames.
@@ -23,6 +24,7 @@ import json
 import math
 import struct
 import sys
+import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -330,6 +332,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) >= 5 and parts[:3] == ["api", "eneo", "flows"]:
             fid, rest = parts[3], parts[4:]
             if len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files":
+                if b'filename="langsam' in body:
+                    time.sleep(6)  # holds the sending view on screen long enough to look at it
                 return self.send(201, {"id": "file-%d" % len(body), "filename": "upload"})
             if rest == ["runs"]:
                 if fid == "flow-3":

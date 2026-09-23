@@ -60,6 +60,10 @@ export function SubmittingView({
   );
 }
 
+// Every quarter of the upload is said once; the percentage beside the bar is not read as it counts.
+const uploadMilestone = (percent: number | null) =>
+  percent != null && percent >= 25 ? `${Math.floor(percent / 25) * 25} % uppladdat.` : "";
+
 function UploadProgressCard({
   submission,
   onCancel,
@@ -84,7 +88,14 @@ function UploadProgressCard({
           Avbryt
         </button>
       </div>
-      <div className="h-2 rounded-full bg-bg-2 overflow-hidden mb-2">
+      <div
+        role="progressbar"
+        aria-label="Uppladdning"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={submission.percent != null ? percent : undefined}
+        className="h-2 rounded-full bg-bg-2 overflow-hidden mb-2"
+      >
         <div
           className="h-full rounded-full bg-primary transition-[width]"
           style={{ width: `${percent}%` }}
@@ -97,6 +108,9 @@ function UploadProgressCard({
         </span>
         <span>{submission.percent != null ? `${percent}%` : "Pågår"}</span>
       </div>
+      <p role="status" className="sr-only">
+        {uploadMilestone(submission.percent)}
+      </p>
       <RetryNotice wait={submission.wait} />
     </div>
   );
