@@ -798,7 +798,11 @@ test("each refusal from Eneo's retry says why, and whether a new run with the sa
     [apiError(403, "flow_run_access_denied"), /Bara den som startade körningen/, false],
     [apiError(429, "flow_run_concurrency_limit_reached"), /För många körningar pågår just nu/, false],
     [apiError(404, "not_found"), /Körningen finns inte längre/, false],
-    [apiError(400, "flow_run_invalid_idempotency_key"), /kunde inte fortsätta där den stannade/, true],
+    // Refusals not known to be about Eneo's retry itself offer no new run with the same input.
+    [apiError(400, "flow_run_invalid_idempotency_key"), /kunde inte fortsätta där den stannade/, false],
+    [apiError(413, "flow_run_step_input_file_too_large"), /kunde inte fortsätta där den stannade/, false],
+    [apiError(401), /kunde inte fortsätta där den stannade/, false],
+    [apiError(403, "insufficient_scope"), /kunde inte fortsätta där den stannade/, false],
     [fetchFailed(), /Anslutningen avbröts/, false],
     [apiError(503, "flow_evidence_audit_logging_failed"), /Servern kunde inte nås just nu/, false],
   ];

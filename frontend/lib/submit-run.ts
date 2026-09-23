@@ -315,8 +315,10 @@ export async function retryFailedRun(
     if (error instanceof ApiError) {
       const known = error.code ? RETRY_REFUSALS[error.code] : undefined;
       if (known) return { kind: "refused", message: known[0], startAgain: known[1] };
+      // Only the refusals above say a new run with the same input is the way on; another may be about
+      // the input itself or who may run the flow, which the same input cannot answer.
       if (error.status >= 400 && error.status < 500 && error.status !== 408) {
-        return { kind: "refused", message: `Körningen kunde inte fortsätta där den stannade. ${START_AGAIN}`, startAgain: true };
+        return { kind: "refused", message: "Körningen kunde inte fortsätta där den stannade.", startAgain: false };
       }
     }
     return { kind: "refused", message: friendlyError(error), startAgain: false };
