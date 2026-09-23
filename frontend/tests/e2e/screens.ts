@@ -228,7 +228,8 @@ export const STATES: State[] = [
     go: async (page) => {
       await setup(page);
       await record(page, "Strömma");
-      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText(/\w+ \w+/, { timeout: 15_000 });
+      // The stub's first word, not the placeholder: live text has arrived.
+      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
     },
   },
   {
