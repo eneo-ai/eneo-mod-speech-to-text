@@ -73,7 +73,10 @@ test("Spara namnen saves trimmed names, closes and gives the focus back", async 
   await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.deepEqual(saved[0].map((r) => [r.label, r.name]), [["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]);
   assert.ok(!document.querySelector('[role="dialog"]'), "closed");
-  assert.equal(document.activeElement, trigger, "focus back on the button that opened it");
+  // Radix hands the focus back after closing; wait a turn. Compare as a boolean: a failed
+  // comparison of two DOM nodes makes node print them, which takes minutes under jsdom.
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.ok(document.activeElement === trigger, "focus back on the button that opened it");
 });
 
 test("a name with a line break or a tab is not saved, and says why", async () => {
