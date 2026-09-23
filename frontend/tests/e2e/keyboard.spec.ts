@@ -26,6 +26,8 @@ const WALKS = [
   "result",
   "failure",
   "review",
+  "review-reject",
+  "review-text-edit",
   "flow-republish-required",
 ];
 

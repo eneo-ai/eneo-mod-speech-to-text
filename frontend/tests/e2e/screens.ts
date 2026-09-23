@@ -345,6 +345,15 @@ export const STATES: State[] = [
     },
   },
   {
+    name: "review-text-edit",
+    go: async (page) => {
+      await run(page, "run-review-text");
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await expect(page.locator("main textarea")).toBeVisible();
+    },
+  },
+  {
     name: "flow-gone",
     go: async (page) => {
       await open(page, "/flows/flow-gone");

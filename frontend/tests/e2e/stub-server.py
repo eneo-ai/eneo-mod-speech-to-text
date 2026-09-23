@@ -9,6 +9,7 @@ Runs the page can open with ?run=<id>:
   run-failed    failed in step 2, retryable
   run-running   never ends, for the progress view
   run-review    paused for "who is who" (flow-2)
+  run-review-text  paused for a text step's output to be checked
 A run the page starts itself runs for two polls, then finishes like run-done.
 An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
@@ -143,6 +144,7 @@ RUNS = {
                              "message": "Step 2 failed: the model provider returned 503 Service Unavailable."}},
     "run-running": {"status": "running", "steps": [], "step_status": ["completed", "running"]},
     "run-review": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
 }
 CHECKPOINT = {
     "id": "cp-1", "flow_id": "flow-2", "flow_run_id": "run-review", "step_id": REVIEW_STEP_ID, "step_order": 2,
@@ -158,6 +160,12 @@ CHECKPOINT = {
             {"label": "SPEAKER_00", "name": "Anna Berg", "confidence": "high", "evidence": "Hälsar välkommen."},
             {"label": "SPEAKER_01", "name": "Erik Lund", "confidence": "medium", "evidence": "Föredrar ärendena."}]},
     },
+}
+# A text step paused for review (run-review-text): its output can be edited before the flow goes on.
+TEXT_CHECKPOINT = {
+    **{k: v for k, v in CHECKPOINT.items() if k != "current_payload_json"},
+    "id": "cp-2", "flow_id": "flow-1", "flow_run_id": "run-review-text", "step_id": "s2", "step_label": "Sammanfattning",
+    "output_type": "text", "current_payload_json": {"text": "Kommunstyrelsen beslutade att höja budgetramen med två procent."},
 }
 # Runs started through the page: id -> status reads so far.
 STARTED = {}
@@ -319,7 +327,7 @@ class Handler(BaseHTTPRequestHandler):
         if what == ["steps"]:
             return self.send(200, run["steps"])
         if what == ["review-checkpoints", "active"]:
-            return self.send(200, CHECKPOINT if run_id == "run-review" else None)
+            return self.send(200, {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}.get(run_id))
         if what == ["transcript-corrections"]:
             return self.send(200, [])
         return self.send(404, {"detail": "stub: " + path})

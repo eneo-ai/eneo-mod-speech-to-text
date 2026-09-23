@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -751,6 +751,7 @@ function ReviewView({
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
+  const fieldId = useId();
 
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
@@ -858,8 +859,8 @@ function ReviewView({
 
   const rejectSection = showReject ? (
     <section className="paper-card p-4 mb-5">
-      <div className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
-      <p className="text-[12px] text-ink-soft mb-3">
+      <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
+      <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">
         Ange en kort motivering. Körningen kommer att avbrytas.
       </p>
       <textarea
@@ -867,7 +868,9 @@ function ReviewView({
         onChange={(e) => setRejectReason(e.target.value)}
         rows={3}
         placeholder="Skäl …"
-        className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
+        aria-labelledby={`${fieldId}-avvisa`}
+        aria-describedby={`${fieldId}-avvisa-hjalp`}
+        className={cn(REVIEW_FIELD, "text-[13px] p-3 mb-3")}
       />
       <div className="flex items-center justify-end gap-2">
         <button
@@ -1017,7 +1020,7 @@ function ReviewView({
 
         <section className="paper-card p-4 mb-5">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
+            <div id={`${fieldId}-innehall`} className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
             <div className="text-[11px] text-ink-mute">
               {editable ? "Redigerbart" : "Skrivskyddat"}
             </div>
@@ -1028,7 +1031,8 @@ function ReviewView({
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
-              className="w-full text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 font-sans"
+              aria-labelledby={`${fieldId}-innehall`}
+              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
             />
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
@@ -1085,6 +1089,10 @@ function ReviewView({
     </>
   );
 }
+
+// A review's text field: an edge that identifies it (3:1) and a ring on keyboard focus.
+const REVIEW_FIELD =
+  "w-full rounded-lg border border-input bg-bg-2/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function extractCheckpointText(payload: Json | null | undefined): string {
   if (!payload) return "";

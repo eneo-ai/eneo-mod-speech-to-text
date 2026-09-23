@@ -5,7 +5,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { axNode } from "./checks";
-import { addParticipants, chooseMode, sending, setup } from "./screens";
+import { addParticipants, chooseMode, sending, setup, STATES } from "./screens";
 
 test("the input modes are named by their title and described by their line", async ({ page }) => {
   await setup(page);
@@ -41,4 +41,16 @@ test("the sending view is a page with a heading that takes focus, a named progre
   await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Laddar upp filen" })).toBeAttached();
   await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
+});
+
+test("the review's text fields are labelled", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review-reject")!.go(page, info);
+  expect(await axNode(page.locator("main textarea"))).toEqual({
+    role: "textbox",
+    name: "Avvisa körningen",
+    description: "Ange en kort motivering. Körningen kommer att avbrytas.",
+  });
+
+  await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
+  expect(await axNode(page.locator("main textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
 });
