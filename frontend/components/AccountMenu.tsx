@@ -41,7 +41,8 @@ export function AccountMenu() {
   }
 
   return (
-    <DropdownMenu>
+    // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
