@@ -157,7 +157,7 @@ export class RecordingCapture {
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
   private starting = false;
-  // Bumped when the page goes away; a start begun before that must not record.
+  // Bumped by Stoppa and when the page goes away: a start begun before must not record.
   private generation = 0;
   private limits: CaptureLimits = {};
   // Files the recording has, the running part included.
@@ -201,13 +201,15 @@ export class RecordingCapture {
       const recording = (created = await store.create(init));
       this.release = () => store.release(recording.id);
       void store.requestPersistence();
+      const lowSpace = await store.lowOnSpace();
+      if (this.left(generation)) {
+        // Nothing was recorded: do not leave an empty recording to recover.
+        this.finish();
+        await store.remove(recording.id).catch(() => undefined);
+        return;
+      }
       this.prepare(limits, 0, 0);
-      this.set({
-        recording,
-        recordedBytes: 0,
-        lowSpace: await store.lowOnSpace(),
-        persistent: store.persistent,
-      });
+      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent });
       this.record(stream);
       await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
@@ -277,6 +279,7 @@ export class RecordingCapture {
   }
 
   async stop(): Promise<StoredRecording | null> {
+    this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
     if (!recording || !store || status === "idle" || status === "stopped") return null;
@@ -341,6 +344,7 @@ export class RecordingCapture {
       const stream = await this.openMicrophone().catch((error) => {
         throw new Refusal(microphoneError(error));
       });
+      const lowSpace = await store.lowOnSpace();
       if (this.left(generation)) {
         this.finish();
         return;
@@ -349,7 +353,7 @@ export class RecordingCapture {
       this.set({
         recording: found,
         recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
-        lowSpace: await store.lowOnSpace(),
+        lowSpace,
         persistent: store.persistent,
       });
       this.record(stream);
