@@ -553,6 +553,21 @@ test("republished with a new required detail: the form asks for it before Eneo i
   assert.equal(uploads, 1, "the audio went up once");
 });
 
+test("after a cleanup the page set up again (React Strict Mode) still makes documents", async () => {
+  const { session, recorders } = await setup();
+  let sends = 0;
+  session.setHandlers({ submit: async () => void (sends += 1) });
+  session.setContract(audioContract());
+  session.dispose(); // Strict Mode runs the effect's cleanup once, then sets it up again with the same session
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sends, 1);
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
