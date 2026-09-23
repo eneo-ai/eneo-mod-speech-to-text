@@ -1,3 +1,5 @@
+import { backendBase } from "./lib/backend-base.mjs";
+
 const isDev = process.env.NODE_ENV === "development";
 
 /** @type {import('next').NextConfig} */
@@ -69,11 +71,7 @@ const nextConfig = {
     ];
   },
   async rewrites() {
-    // I `next dev` (devcontainer/lokalt) kör backend på samma host; Compose-
-    // tjänstenamnet gäller bara när frontend körs som container i Compose.
-    const target =
-      process.env.INTERNAL_API_BASE ||
-      (isDev ? "http://127.0.0.1:8000" : "http://speech-to-text-backend:8000");
+    const target = backendBase();
     return [
       {
         source: "/api/:path*",
