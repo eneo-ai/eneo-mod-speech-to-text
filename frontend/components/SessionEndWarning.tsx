@@ -116,7 +116,8 @@ export function SessionEndWarning({
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          returnFocus.current?.focus();
+          // After a new login the page gives the focus back itself (SignedOutCover).
+          if (!ended) returnFocus.current?.focus();
         }}
       >
         <AlertDialogHeader>

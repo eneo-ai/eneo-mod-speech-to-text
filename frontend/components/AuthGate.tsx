@@ -32,6 +32,24 @@ export function useAuthenticatedUser(): AuthenticatedUser {
 export function SignedOutCover({ signedOut, children }: { signedOut: boolean; children: React.ReactNode }) {
   // The page's overlays open in here too, so a dialog with names or quotes is covered with the page.
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  // Where on the page the focus was when the login ended, taken before the cover's inert moves it away.
+  const lost = useRef<{ from: HTMLElement | null } | null>(null);
+  useEffect(
+    () =>
+      loginState.subscribe(() => {
+        if (!loginState.signedOut || lost.current) return;
+        const active = document.activeElement;
+        lost.current = { from: active instanceof HTMLElement && container?.contains(active) ? active : null };
+      }),
+    [container],
+  );
+  // Back once the page's own user is: there, or on the page's heading when it is gone or was elsewhere.
+  useEffect(() => {
+    if (signedOut || !lost.current) return;
+    const { from } = lost.current;
+    lost.current = null;
+    (from?.isConnected ? from : container?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]"))?.focus();
+  }, [signedOut, container]);
   return (
     <div ref={setContainer} className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
       <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
