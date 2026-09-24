@@ -146,6 +146,8 @@ export function ReviewView({
   }, [checkpoint.revision, checkpoint.current_payload_json]);
 
   function editText(next: string) {
+    // Locked while a save, approval or resume is under way: its answer settles the draft of what was sent.
+    if (busy) return;
     setText(next);
     if (next === initialText) draft.drop();
     else draft.keep({ text: next });
@@ -153,8 +155,8 @@ export function ReviewView({
 
   // "Använd din version" after the review changed: into the editor, as its current edit, for the user to save.
   function takeYours() {
-    // Approved, the saved decision is final: no draft is put in its place.
-    if (decided) return;
+    // Approved, the saved decision is final: no draft is put in its place. Nor while something is being sent.
+    if (decided || busy) return;
     const yours = draft.takeYours();
     if (yours?.text !== undefined) {
       setText(yours.text);
@@ -229,18 +231,19 @@ export function ReviewView({
     [shownSegments],
   );
 
-  /** The names on the page, and kept as a draft until Eneo has them. */
-  function keepNames(rows: SpeakerMappingRow[]) {
+  /** The names on the page, and kept as a draft until Eneo has them; the draft's version, to drop once saved. */
+  function keepNames(rows: SpeakerMappingRow[]): ReviewEdit {
     const named = rows.filter((row) => !row.split || row.name);
     setSpeakerRows(named);
     draft.keep({ speakerRows: named });
+    return { speakerRows: named };
   }
 
   async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
-    keepNames(rows);
+    const sent = keepNames(rows);
     const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
     if ("error" in saved) return saved.error;
-    draft.drop();
+    draft.drop(sent);
     return null;
   }
 
@@ -259,12 +262,13 @@ export function ReviewView({
     }
     // Approved already: nothing is saved any more, the run is only resumed.
     const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
-    if (names && !decided) keepNames(names);
+    // The version sent, as its draft holds it: only that is dropped once Eneo has it.
+    const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
     try {
       return await onContinue(checkpoint, edit, {
         describe: names ? (err) => namingRefusal(err, names) : undefined,
         // Saved now or held already, whether or not this view is shown again before the run goes on.
-        onSaved: () => draft.drop(),
+        onSaved: () => draft.drop(sent),
       });
     } finally {
       setWorking(null);
@@ -273,13 +277,14 @@ export function ReviewView({
 
   async function saveOnly() {
     if (!dirty) return;
+    const sent: ReviewEdit = { text };
     setSaving(true);
     const saved = await onSaveEdit(checkpoint, pendingEditedValue());
     setSaving(false);
     // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
     if ("error" in saved) return;
     setEditing(false);
-    draft.drop();
+    draft.drop(sent);
   }
 
   async function submitReject() {
@@ -499,6 +504,7 @@ export function ReviewView({
           {editable && editing ? (
             <textarea
               value={text}
+              readOnly={busy}
               onChange={(e) => editText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
               aria-labelledby={`${fieldId}-innehall`}
@@ -522,7 +528,7 @@ export function ReviewView({
                       setEditing(false);
                       draft.drop();
                     }}
-                    disabled={saving}
+                    disabled={busy}
                     className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 coarse:min-h-11"
                   >
                     Avbryt
@@ -530,7 +536,7 @@ export function ReviewView({
                   <button
                     type="button"
                     onClick={saveOnly}
-                    disabled={!dirty || saving}
+                    disabled={!dirty || busy}
                     className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 coarse:min-h-11"
                   >
                     {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
@@ -541,6 +547,7 @@ export function ReviewView({
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
+                  disabled={busy}
                   className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors coarse:min-h-11"
                 >
                   Redigera
@@ -561,7 +568,7 @@ export function ReviewView({
               )}
               <div className="mt-2 flex flex-wrap gap-2">
                 {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
-                <Button type="button" size="sm" variant="ghost" onClick={() => draft.dropYours()}>
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => draft.dropYours()}>
                   Ta bort din version
                 </Button>
               </div>
@@ -574,10 +581,10 @@ export function ReviewView({
             <AlertDescription>
               <p>Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.</p>
               <div className="mt-2 flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={takeYours}>
+                <Button type="button" size="sm" disabled={busy} onClick={takeYours}>
                   Använd din version
                 </Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => draft.dropYours()}>
+                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => draft.dropYours()}>
                   Behåll den senaste
                 </Button>
               </div>

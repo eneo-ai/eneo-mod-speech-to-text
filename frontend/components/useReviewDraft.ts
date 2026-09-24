@@ -45,8 +45,15 @@ export function useReviewDraft<T>(ownerId: string, name: string, revision: numbe
     yours,
     /** The editor's current edit, on this revision; false when the browser could not keep it. */
     keep: (edit: T): boolean => change({ current: { revision, edit }, yours: settled().yours }),
-    /** The current edit is saved, or thrown away with Avbryt; din version stays. */
-    drop: () => void change({ current: null, yours: settled().yours }),
+    /**
+     * The current edit is saved, or thrown away with Avbryt; din version stays. Given the version that was saved,
+     * a newer edit than it is kept.
+     */
+    drop: (saved?: T) => {
+      const { current, yours } = settled();
+      if (saved !== undefined && current && JSON.stringify(current.edit) !== JSON.stringify(saved)) return;
+      change({ current: null, yours });
+    },
     /** "Använd din version": it becomes the editor's current edit, and is handed over to show. */
     takeYours(): T | null {
       const taken = settled().yours;
