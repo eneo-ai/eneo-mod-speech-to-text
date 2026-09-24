@@ -430,3 +430,30 @@ test("leaving promises the recording back only when the device keeps it, and oth
     );
   }
 });
+
+test("the live sheet says the speakers come when you are done, only when the flow labels speakers", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const { labelsSpeakers } = await import("./flow-session");
+  const live: LiveSession = {
+    getSnapshot: () => ({ status: "live", started: true, complete: false, pieces: [], pending: "" }),
+    subscribe: () => () => {},
+    listen: () => {},
+    setRecording: () => {},
+    stop: () => {},
+    dispose: () => {},
+  };
+  const heading = (speakers: boolean) =>
+    renderToStaticMarkup(createElement(LiveSheet, { live, recorder: "recording", speakers })).match(/<h2[^>]*>([^<]*)<\/h2>/)?.[1];
+  assert.equal(heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");
+  assert.equal(heading(false), "Preliminär text, den slutliga skapas när du är klar");
+
+  const selectable = { selectable: true, required: false, default: true };
+  assert.equal(labelsSpeakers(selectable, true), true, "switched on");
+  assert.equal(labelsSpeakers(selectable, false), false, "switched off");
+  assert.equal(labelsSpeakers({ selectable: false, required: true, default: true }, null), true, "required by the flow");
+  assert.equal(labelsSpeakers({ selectable: false, required: false, default: false }, null), false);
+  assert.equal(labelsSpeakers(undefined, null), false, "a flow that says nothing");
+});
+

@@ -26,7 +26,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
-import { browserStorage, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
+import { browserStorage, labelsSpeakers, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -207,7 +207,10 @@ export function FlowInput({
               onMoreRuns={onMoreRuns}
             />
           ) : (
-            <CaptureWorkspace input={input} />
+            <CaptureWorkspace
+              input={input}
+              speakers={labelsSpeakers(contract.transcription?.speaker_labels, snapshot.speakerLabels)}
+            />
           )}
         </section>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
@@ -219,7 +222,7 @@ export function FlowInput({
 }
 
 /** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
-function CaptureWorkspace({ input }: { input: Session }) {
+function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boolean }) {
   const { session, snapshot, capture, persistent } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
@@ -240,7 +243,7 @@ function CaptureWorkspace({ input }: { input: Session }) {
     <>
       {problem && <ProblemAlert problem={problem} onRetry={() => void session.continueRecording()} />}
       {streaming ? (
-        <LiveSheet live={live} recorder={capture.status} />
+        <LiveSheet live={live} recorder={capture.status} speakers={speakers} />
       ) : (
         <FocusedRecorder
           capture={session.capture}

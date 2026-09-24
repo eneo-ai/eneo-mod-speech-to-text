@@ -234,6 +234,14 @@ export function speakerLabelsFor(
   return mode === "stromma" ? false : option.default;
 }
 
+/** Whether the run labels speakers: the switch where the flow offers one, else whether the flow requires it. */
+export function labelsSpeakers(
+  option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
+  choice: boolean | null,
+): boolean {
+  return choice ?? Boolean(option?.required);
+}
+
 /** Claims the recording is kept on the device only when the device store keeps it. */
 export function storageLine(persistent: boolean | null): string {
   return persistent

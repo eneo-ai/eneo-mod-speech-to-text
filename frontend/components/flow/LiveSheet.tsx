@@ -36,7 +36,16 @@ function prefersReducedMotion(): boolean {
  * and not read. The sheet follows new text only while the reader is at its
  * end, keeps its size as text arrives, and never moves focus into the text.
  */
-export function LiveSheet({ live, recorder }: { live: LiveSession; recorder: CaptureStatus }) {
+export function LiveSheet({
+  live,
+  recorder,
+  speakers = false,
+}: {
+  live: LiveSession;
+  recorder: CaptureStatus;
+  /** The run labels speakers, which live text does not show: say they come with the final text. */
+  speakers?: boolean;
+}) {
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const scroller = useRef<HTMLDivElement>(null);
@@ -67,7 +76,9 @@ export function LiveSheet({ live, recorder }: { live: LiveSession; recorder: Cap
       className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card"
     >
       <h2 id={headingId} data-phase-heading tabIndex={-1} className="px-5 pt-4 text-[13px] text-muted-foreground outline-none md:px-7">
-        Preliminär text, den slutliga skapas när du är klar
+        {speakers
+          ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
+          : "Preliminär text, den slutliga skapas när du är klar"}
       </h2>
       {/* The log is the scroll area: named, focusable for keyboard scrolling, heard once per piece. */}
       <div
