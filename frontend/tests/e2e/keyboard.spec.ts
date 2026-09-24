@@ -87,9 +87,10 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
-// A page cannot hear Escape while focus is inside the browser's PDF viewer. Focus is not trapped there when Tab
-// leads out of the viewer back to the dialog's own controls (WCAG 2.1.2); from those, Escape closes the dialog.
-test("the PDF preview holds focus, Tab leads out of the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
+// A page cannot hear Escape while focus is inside the browser's PDF viewer. The viewer either is no Tab stop (its
+// content is a link away, in a tab of its own), or Tab leads out of it back to the dialog's own controls (WCAG
+// 2.1.2). From those controls, Escape closes the dialog.
+test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
   await run(page, "run-done");
   const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
@@ -105,8 +106,10 @@ test("the PDF preview holds focus, Tab leads out of the viewer, and Escape close
   // frame's box (its wrapper's, where the ring is) while the viewer has focus, and again once Tab has left it.
   let frame: { clip: Rect; focused: string; perimeter: number } | null = null;
   let leftFrame = false;
+  let cycled = false;
+  const seen = new Set<string>();
   // The viewer's own controls (a dozen or so) are stops inside the frame before Tab leads out of it.
-  for (let presses = 0; presses < 60 && !leftFrame; presses++) {
+  for (let presses = 0; presses < 60 && !leftFrame && !cycled; presses++) {
     if (await inFrame()) {
       if (!frame) {
         const box = await page.evaluate(() => {
@@ -122,18 +125,27 @@ test("the PDF preview holds focus, Tab leads out of the viewer, and Escape close
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
       else problems.push(...stopProblems([stop]));
       leftFrame = frame !== null;
+      // Back at a stop already met, without meeting the viewer: Tab goes round the dialog's own controls.
+      const key = stop ? `${stop.label}@${stop.left},${stop.top}` : "";
+      cycled = seen.has(key);
+      seen.add(key);
     }
-    if (!leftFrame) {
+    if (!leftFrame && !cycled) {
       await page.keyboard.press("Tab");
       // The viewer runs in a process of its own: focus reaches the page a moment after the key.
       await page.waitForTimeout(150);
     }
   }
   expect.soft(problems, "focus stays inside the dialog and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
-  expect(frame, "Tab reaches the viewer").not.toBeNull();
-  expect(leftFrame, "Tab leads out of the viewer back to the dialog's controls").toBe(true);
-  const ring = await changedArea(page, frame!.focused, await shot(page, frame!.clip), frame!.clip.width);
-  expect.soft(ring, "the viewer's frame shows focus (WCAG 2.4.7)").toBeGreaterThanOrEqual(frame!.perimeter);
+  if (frame) {
+    expect(leftFrame, "Tab leads out of the viewer back to the dialog's controls").toBe(true);
+    const ring = await changedArea(page, frame.focused, await shot(page, frame.clip), frame.clip.width);
+    expect.soft(ring, "the viewer's frame shows focus (WCAG 2.4.7)").toBeGreaterThanOrEqual(frame.perimeter);
+  } else {
+    expect(cycled, "Tab goes round the dialog's controls").toBe(true);
+    await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
+    await expect(dialog.getByRole("link", { name: /ny flik/ }), "the file is a link away, in a tab of its own").toHaveAttribute("target", "_blank");
+  }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger, "Escape gives focus back to what opened it").toBeFocused();
