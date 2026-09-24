@@ -266,14 +266,17 @@ export class LiveTranscriber {
       case "transcript.delta":
         this.addWords(typeof event.text === "string" ? event.text : "");
         break;
-      case "transcript.done":
+      case "transcript.done": {
         this.commit();
-        this.reconcile(typeof event.text === "string" ? event.text : "");
+        // Only the relay's text, empty or not, is final; without it the deltas' words stay, unfinished.
+        const final = typeof event.text === "string" ? event.text : null;
+        if (final !== null) this.reconcile(final);
         if (this.stopping) {
-          this.set({ complete: true });
+          if (final !== null) this.set({ complete: true });
           this.finish();
         }
         break;
+      }
       case "error":
         this.failure = event.code === "idle_timeout" ? "idle" : event.retryable === true ? "retry" : "refused";
         break;
@@ -345,11 +348,15 @@ export class LiveTranscriber {
     }, COMMIT_AFTER_MS);
   }
 
-  /** The session's whole text, which the relay sends last: it replaces what the session's deltas said. */
+  /** The session's whole text, which the relay sends last: it replaces what the session's deltas said, empty too. */
   private reconcile(text: string) {
     const final = text.replace(/\s+/g, " ").trim();
     const session = this.snapshot.pieces.slice(this.sessionStart);
-    if (!final || session.map((piece) => piece.text).join(" ").replace(/\s+/g, " ") === final) return;
+    if (session.map((piece) => piece.text).join(" ").replace(/\s+/g, " ") === final) return;
+    if (!final) {
+      this.set({ pieces: this.snapshot.pieces.slice(0, this.sessionStart) });
+      return;
+    }
     const opensParagraph = session[0]?.opensParagraph ?? (this.opensParagraph || this.sessionStart === 0);
     this.set({ pieces: [...this.snapshot.pieces.slice(0, this.sessionStart), { text: final, opensParagraph }] });
     this.opensParagraph = false;

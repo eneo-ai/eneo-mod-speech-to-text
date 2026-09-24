@@ -449,3 +449,30 @@ test("the final text replaces only its own session's words, not those of the ses
   sockets[1].event({ type: "transcript.done", text: "Andra delen." });
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Första delen.", "Andra delen."]);
 });
+
+test("an empty final text says the session heard nothing: its words go, the sessions before a break keep theirs", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Första delen." });
+  sockets[0].drop(1006);
+  elapse(1_000);
+  sockets[1].ready();
+  sockets[1].event({ type: "transcript.delta", text: "Provisional words." });
+  live.stop();
+  sockets[1].event({ type: "transcript.done", text: "" });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Första delen."]);
+  assert.equal(live.getSnapshot().complete, true);
+});
+
+test("a final message without its text leaves the words as they came and the draft unfinished", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Provisional words." });
+  live.stop();
+  sockets[0].event({ type: "transcript.done" });
+  assert.equal(live.getSnapshot().status, "ended");
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Provisional words."]);
+  assert.equal(live.getSnapshot().complete, false);
+});
