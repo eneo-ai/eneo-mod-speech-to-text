@@ -402,6 +402,8 @@ export const STATES: State[] = [
     name: "naming-dialog",
     go: async (page) => {
       await run(page, "run-review", "flow-2");
+      // With the transcript read, each speaker's sample can be played, so the dialog opens on the first one's button.
+      await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
       await page.getByRole("button", { name: "Namnge talarna" }).click();
       await expect(page.getByRole("dialog", { name: "Namnge talarna" })).toBeVisible();
     },
