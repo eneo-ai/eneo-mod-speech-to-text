@@ -473,7 +473,8 @@ export class FlowSession {
       this.modes.find((mode) => mode === remembered) ??
       this.modes[0] ??
       null;
-    this.details = fittingDetails(contract?.form_fields ?? [], this.details);
+    // No contract yet (still loading): nothing to fit, and a restored draft waits for it.
+    if (contract) this.details = fittingDetails(contract.form_fields ?? [], this.details);
     this.emit();
   }
 

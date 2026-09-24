@@ -621,6 +621,7 @@ test("details typed before a lost login come back after it for the same person, 
   before.dispose(); // the page reloaded after the login was lost
 
   const after = session("user-1");
+  after.setContract(null); // the page sets the flow's contract once it has loaded
   after.setContract(audioContract());
   assert.equal(after.getSnapshot().details.motesnamn, "Byggnadsnämnden");
   assert.deepEqual(after.getSnapshot().details.deltagare, ["Anna Berg"]);
