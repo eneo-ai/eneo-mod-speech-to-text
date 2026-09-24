@@ -829,12 +829,8 @@ function ReviewView({
     if (yours?.text !== undefined) {
       setText(yours.text);
       setEditing(true);
-      draft.keep({ text: yours.text });
     }
-    if (yours?.speakerRows) {
-      setSpeakerRows(yours.speakerRows);
-      draft.keep({ speakerRows: yours.speakerRows });
-    }
+    if (yours?.speakerRows) setSpeakerRows(yours.speakerRows);
   }
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade

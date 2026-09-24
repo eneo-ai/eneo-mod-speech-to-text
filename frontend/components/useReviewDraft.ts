@@ -1,68 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 
 type Kept<T> = { revision: number; edit: T };
+type Edits<T> = { current: Kept<T> | null; yours: T | null };
 
 /**
- * A review's unsaved edit, kept for this person through a reload and given back on the revision it was made on.
- * Once the review has changed since (a save refused as out of date, a save from another tab), the edit is neither
- * applied to the latest nor thrown away by itself: it waits as "din version" until the user takes it or lets it go.
+ * A review's unsaved edit, given back on the revision it was made on. Once the review has changed since (a save
+ * refused as out of date, a save from another tab), the edit is neither applied to the latest nor thrown away by
+ * itself: it waits as "din version" until the user takes it or lets it go. The edits live in the page; the browser
+ * keeps a copy for a reload where it can, and a kept copy goes only once what replaces it is written.
  */
 export function useReviewDraft<T>(ownerId: string, name: string, revision: number) {
-  // Bumped by whatever changes the kept edits, so the page reads them again.
   const [, setChanged] = useState(0);
   const storage = browserDrafts();
   const yoursName = `${name}:din`;
-  // Read when asked: a handler may take din version and keep an edit in one go.
-  const read = () => {
-    const current = readDraft<Kept<T>>(storage, ownerId, name);
-    const stale = current !== null && current.revision !== revision;
-    return {
-      initial: stale ? null : (current?.edit ?? null),
-      yours: stale ? current.edit : readDraft<T>(storage, ownerId, yoursName),
-      stale,
-    };
+  const edits = useRef<(Edits<T> & { name: string }) | null>(null);
+  if (edits.current?.name !== name) {
+    edits.current = { name, current: readDraft<Kept<T>>(storage, ownerId, name), yours: readDraft<T>(storage, ownerId, yoursName) };
+  }
+  // An edit of an older revision is din version.
+  const settled = (): Edits<T> => {
+    const { current, yours } = edits.current!;
+    return current && current.revision !== revision ? { current: null, yours: current.edit } : { current, yours };
   };
-  const done = <R,>(result: R): R => {
+  const change = (next: Edits<T>): boolean => {
+    edits.current = { name, ...next };
     setChanged((count) => count + 1);
-    return result;
+    const stored = readDraft<Kept<T>>(storage, ownerId, name);
+    // The kept edit of an older revision is din version's only kept copy until din version is written.
+    const storedIsYours = stored !== null && stored.revision !== revision;
+    if (next.yours !== null && !writeDraft(storage, ownerId, yoursName, next.yours) && storedIsYours) return false;
+    const kept = next.current ? writeDraft(storage, ownerId, name, next.current) : (clearDraft(storage, ownerId, name), true);
+    if (next.yours === null && kept) clearDraft(storage, ownerId, yoursName);
+    return kept;
   };
-  const { initial, yours } = read();
+  const { current, yours } = settled();
 
   return {
     /** The edit to start the editor from, on this revision. */
-    initial,
+    initial: current?.edit ?? null,
     /** The user's edit of an older revision, waiting beside the latest. */
     yours,
     /** The editor's current edit, on this revision; false when the browser could not keep it. */
-    keep(edit: T): boolean {
-      const now = read();
-      // An edit of an older revision moves aside first, never written over.
-      if (now.stale) {
-        writeDraft(storage, ownerId, yoursName, now.yours);
-        clearDraft(storage, ownerId, name);
-      }
-      return done(writeDraft(storage, ownerId, name, { revision, edit }));
-    },
+    keep: (edit: T): boolean => change({ current: { revision, edit }, yours: settled().yours }),
     /** The current edit is saved, or thrown away with Avbryt; din version stays. */
-    drop() {
-      if (!read().stale) clearDraft(storage, ownerId, name);
-      done(undefined);
-    },
-    /** "Använd din version": handed over for the editor, which keeps it as its current edit. */
+    drop: () => void change({ current: null, yours: settled().yours }),
+    /** "Använd din version": it becomes the editor's current edit, and is handed over to show. */
     takeYours(): T | null {
-      const now = read();
-      if (now.stale) clearDraft(storage, ownerId, name);
-      clearDraft(storage, ownerId, yoursName);
-      return done(now.yours);
+      const taken = settled().yours;
+      if (taken !== null) change({ current: { revision, edit: taken }, yours: null });
+      return taken;
     },
     /** "Behåll den senaste". */
-    dropYours() {
-      if (read().stale) clearDraft(storage, ownerId, name);
-      clearDraft(storage, ownerId, yoursName);
-      done(undefined);
-    },
+    dropYours: () => void change({ current: settled().current, yours: null }),
   };
 }

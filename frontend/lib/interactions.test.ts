@@ -448,3 +448,48 @@ test("a review edit comes back on its revision; once the review changed it is ne
   assert.equal(window.sessionStorage.length, 0, "nothing left behind");
 });
 
+test("a review edit the browser will not keep is still the page's, through a refused save; its only kept copy is never removed first", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement, useState } = await import("react");
+  const { useReviewDraft } = await import("../components/useReviewDraft");
+  type Edit = { text?: string };
+  let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
+  let setRevision: (revision: number) => void = () => {};
+  function Review({ start }: { start: number }) {
+    const [revision, set] = useState(start);
+    setRevision = set;
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-9", revision);
+    return null;
+  }
+  const storage = Object.getPrototypeOf(window.sessionStorage) as Storage;
+  const setItem = storage.setItem;
+  let refuse: (key: string) => boolean = () => true;
+  storage.setItem = function (this: Storage, key: string, value: string) {
+    if (refuse(key)) throw new DOMException("full", "QuotaExceededError");
+    return setItem.call(this, key, value);
+  };
+  t.after(() => {
+    storage.setItem = setItem;
+  });
+
+  // Nothing kept by the browser: the page still has the edit, also as din version after the review changed.
+  const refused = await mount(createElement(Review, { start: 3 }));
+  await refused.act(async () => void draft.keep({ text: "Min text" }));
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await refused.act(async () => setRevision(4));
+  assert.deepEqual(draft.yours, { text: "Min text" }, "din version, from the page itself");
+  await refused.unmount();
+  window.sessionStorage.clear();
+
+  // Only din version refused: its one kept copy (the older revision's edit) is not written over.
+  refuse = (key) => key.endsWith(":din");
+  const kept = await mount(createElement(Review, { start: 3 }));
+  await kept.act(async () => void draft.keep({ text: "Min text" }));
+  await kept.act(async () => setRevision(4));
+  await kept.act(async () => void draft.keep({ text: "Ny text" }));
+  await kept.unmount();
+  refuse = () => false;
+  const reloaded = await mount(createElement(Review, { start: 4 }));
+  assert.deepEqual(draft.yours, { text: "Min text" }, "din version survives the reload");
+  await reloaded.unmount();
+});
