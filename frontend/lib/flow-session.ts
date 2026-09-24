@@ -19,7 +19,7 @@ import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
-import { formatBytes, formatDuration } from "./format";
+import { formatBytes } from "./format";
 import type { LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
@@ -618,16 +618,6 @@ export class FlowSession {
           ? { kind: "file", ...this.file }
           : null;
     if (!input && this.modes.length > 0) return false;
-    // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be refused
-    // only after Eneo took the run, and the device's copy with it: it stays here, where Spara som fil keeps it.
-    const limit = this.inputStep()?.max_duration_seconds;
-    if (input?.kind === "recording" && limit && input.recording.parts.some((part) => part.durationMs > limit * 1000)) {
-      this.problem = {
-        title: `Inspelningen är för lång för en fil: en del är längre än flödet tar emot (${formatDuration(limit * 1000)}). Välj Spara som fil för att behålla den.`,
-      };
-      this.emit();
-      return false;
-    }
     const fields = this.contract?.form_fields ?? [];
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
