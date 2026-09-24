@@ -244,10 +244,21 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
   return { ...rest, indicator: area >= perimeter, indicatorArea: Math.round(area), perimeter: Math.round(perimeter) };
 }
 
-type Rect = { x: number; y: number; width: number; height: number };
+export type Rect = { x: number; y: number; width: number; height: number };
 
 /** How much of the owner's rendering focus changes by 3:1 or more, in CSS px². */
 async function seenChange(page: Page, box: Rect): Promise<number> {
+  const clip = await screenClip(page, box);
+  if (!clip) return 0;
+  const withFocus = await shot(page, clip);
+  await page.evaluate(() => (window as unknown as { a11yRest: () => Promise<void> }).a11yRest());
+  const without = await shot(page, clip);
+  await page.evaluate(() => (document.querySelector("[data-a11y-current]") as HTMLElement | null)?.focus({ preventScroll: true }));
+  return changedArea(page, withFocus, without, clip.width);
+}
+
+/** Where a box read by a script is on the screenshot, with room for a ring around it; null when off screen. */
+export async function screenClip(page: Page, box: Rect): Promise<Rect | null> {
   // A phone's page wider than its screen widens the layout viewport, and the screen (the visual viewport) then
   // scrolls inside it: the box a script reads is moved to where the screenshot sees it.
   const shift = await page.evaluate(() => ({ x: visualViewport?.offsetLeft ?? 0, y: visualViewport?.offsetTop ?? 0 }));
@@ -261,12 +272,14 @@ async function seenChange(page: Page, box: Rect): Promise<number> {
     width: Math.min(viewport.width, Math.ceil(owner.x + owner.width + 6)) - x,
     height: Math.min(viewport.height, Math.ceil(owner.y + owner.height + 6)) - y,
   };
-  if (clip.width <= 0 || clip.height <= 0) return 0;
-  const shot = () => page.screenshot({ clip, animations: "disabled", caret: "hide" }).then((png) => png.toString("base64"));
-  const withFocus = await shot();
-  await page.evaluate(() => (window as unknown as { a11yRest: () => Promise<void> }).a11yRest());
-  const without = await shot();
-  await page.evaluate(() => (document.querySelector("[data-a11y-current]") as HTMLElement | null)?.focus({ preventScroll: true }));
+  return clip.width > 0 && clip.height > 0 ? clip : null;
+}
+
+export const shot = (page: Page, clip: Rect) =>
+  page.screenshot({ clip, animations: "disabled", caret: "hide" }).then((png) => png.toString("base64"));
+
+/** The area, in CSS px², whose luminance differs by 3:1 or more between two screenshots of one clip. */
+export function changedArea(page: Page, a: string, b: string, clipWidth: number): Promise<number> {
   return page.evaluate(
     async ([a, b, clipWidth]) => {
       const pixels = async (base64: string) => {
@@ -292,7 +305,7 @@ async function seenChange(page: Page, box: Rect): Promise<number> {
       const scale = focused.width / clipWidth;
       return strong / (scale * scale);
     },
-    [withFocus, without, clip.width] as const,
+    [a, b, clipWidth] as const,
   );
 }
 

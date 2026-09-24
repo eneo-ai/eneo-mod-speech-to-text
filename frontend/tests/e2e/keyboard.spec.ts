@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { focusStop, orderProblems, settle, stopProblems, tabWalk } from "./checks";
+import { changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
 import { backLink, isLaptop, open, run, setup, STATES } from "./screens";
 
 const WALKS = [
@@ -87,10 +87,56 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
-test("the PDF preview holds focus and gives it back", async ({ page }, info) => {
+// A page cannot hear Escape while focus is inside the browser's PDF viewer. Focus is not trapped there when Tab
+// leads out of the viewer back to the dialog's own controls (WCAG 2.1.2); from those, Escape closes the dialog.
+test("the PDF preview holds focus, Tab leads out of the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
   await run(page, "run-done");
-  await holdsFocus(page, page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }), page.getByRole("dialog"));
+  const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
+  const dialog = page.getByRole("dialog");
+  await trigger.focus();
+  await page.keyboard.press("Enter");
+  await expect(dialog).toBeVisible();
+  await settle(page);
+  const inFrame = () => page.evaluate(() => document.activeElement?.tagName === "IFRAME");
+  expect.soft(await inFrame(), "focus starts on the dialog's own controls").toBe(false);
+  const problems: string[] = [];
+  // The frame's ring is measured without taking focus off it, which would move the viewer's own focus: on the
+  // frame's box (its wrapper's, where the ring is) while the viewer has focus, and again once Tab has left it.
+  let frame: { clip: Rect; focused: string; perimeter: number } | null = null;
+  let leftFrame = false;
+  // The viewer's own controls (a dozen or so) are stops inside the frame before Tab leads out of it.
+  for (let presses = 0; presses < 60 && !leftFrame; presses++) {
+    if (await inFrame()) {
+      if (!frame) {
+        const box = await page.evaluate(() => {
+          const r = document.activeElement!.parentElement!.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height };
+        });
+        const clip = await screenClip(page, box);
+        if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
+      }
+    } else {
+      const stop = await focusStop(page);
+      const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
+      else problems.push(...stopProblems([stop]));
+      leftFrame = frame !== null;
+    }
+    if (!leftFrame) {
+      await page.keyboard.press("Tab");
+      // The viewer runs in a process of its own: focus reaches the page a moment after the key.
+      await page.waitForTimeout(150);
+    }
+  }
+  expect.soft(problems, "focus stays inside the dialog and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
+  expect(frame, "Tab reaches the viewer").not.toBeNull();
+  expect(leftFrame, "Tab leads out of the viewer back to the dialog's controls").toBe(true);
+  const ring = await changedArea(page, frame!.focused, await shot(page, frame!.clip), frame!.clip.width);
+  expect.soft(ring, "the viewer's frame shows focus (WCAG 2.4.7)").toBeGreaterThanOrEqual(frame!.perimeter);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger, "Escape gives focus back to what opened it").toBeFocused();
 });
 
 test("the naming dialog holds focus and gives it back", async ({ page }, info) => {
