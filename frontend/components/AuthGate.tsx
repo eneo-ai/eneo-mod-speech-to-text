@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
+import { PortalContainer } from "@/components/ui/portal-container";
 import { Spinner } from "@/components/ui/spinner";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
@@ -29,9 +30,11 @@ export function useAuthenticatedUser(): AuthenticatedUser {
  * neither shown nor within reach until the new login.
  */
 export function SignedOutCover({ signedOut, children }: { signedOut: boolean; children: React.ReactNode }) {
+  // The page's overlays open in here too, so a dialog with names or quotes is covered with the page.
+  const [container, setContainer] = useState<HTMLElement | null>(null);
   return (
-    <div className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
-      {children}
+    <div ref={setContainer} className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
+      <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
     </div>
   );
 }

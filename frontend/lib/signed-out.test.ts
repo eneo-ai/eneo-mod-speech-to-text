@@ -152,3 +152,33 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
   await ready.unmount();
   await warning.unmount();
 });
+
+test("signed out, a dialog open on the page is hidden and out of reach with it, and keeps what was typed in it", async () => {
+  const { createElement, useState } = await import("react");
+  const { SignedOutCover } = await import("../components/AuthGate");
+  const { Dialog, DialogContent, DialogTitle } = await import("../components/ui/dialog");
+  const { type } = await import("./test-dom");
+  let setSignedOut: (on: boolean) => void = () => {};
+  function Page() {
+    const [signedOut, set] = useState(false);
+    setSignedOut = set;
+    return createElement(SignedOutCover, {
+      signedOut,
+      children: createElement(
+        Dialog,
+        { open: true },
+        createElement(DialogContent, { "aria-describedby": undefined }, createElement(DialogTitle, null, "Namnge talarna"), createElement("input", { "aria-label": "Vem är Talare 1?" })),
+      ),
+    });
+  }
+  const { act } = await mount(createElement(Page));
+  const field = document.body.querySelector<HTMLInputElement>('input[aria-label="Vem är Talare 1?"]')!;
+  await act(async () => type(field, "Anna Berg"));
+
+  await act(async () => setSignedOut(true));
+  const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+  assert.ok(dialog.closest("[inert]"), "out of reach, and out of the accessibility tree");
+  assert.match(dialog.closest("[inert]")!.className, /\binvisible\b/, "and not shown");
+  assert.equal(document.body.querySelector('input[aria-label="Vem är Talare 1?"]'), field, "the same field, still mounted");
+  assert.equal(field.value, "Anna Berg");
+});
