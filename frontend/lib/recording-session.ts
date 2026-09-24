@@ -47,10 +47,11 @@ export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } 
 export const ROTATION_OVERLAP_MS = 150;
 
 /**
- * Room a part keeps below Eneo's time per file: the chunk still to come, the overlap with the next part (a hidden
- * tab may stretch both) and the page's clock against the decoded audio. A minute, or 5 % of a limit under 20 minutes.
+ * Room a part keeps below Eneo's time per file: the overlap with the next part, a timer a hidden tab fires late
+ * (about a second) and the page's clock against the decoded audio. A minute, or 5 % of a limit under 20 minutes,
+ * and never under two seconds.
  */
-const durationHeadroom = (limitMs: number) => (limitMs < 20 * 60_000 ? limitMs * 0.05 : 60_000);
+const durationHeadroom = (limitMs: number) => Math.max(limitMs < 20 * 60_000 ? limitMs * 0.05 : 60_000, 2_000);
 
 // The recording's target rate, in bytes per millisecond.
 const TARGET_BYTES_PER_MS = SPEECH_RECORDING.audioBitsPerSecond / 8 / 1000;
@@ -165,6 +166,8 @@ export class RecordingCapture {
   // The part recording now, and a full part still recording its overlap.
   private part: Part | null = null;
   private overlapping: { part: Part; timer: ReturnType<typeof setTimeout> } | null = null;
+  // The running part's handover at Eneo's time per file.
+  private handover: ReturnType<typeof setTimeout> | null = null;
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
   private starting = false;
@@ -285,6 +288,7 @@ export class RecordingCapture {
     } else if (part?.recorder.state === "paused") {
       part.recorder.resume();
       part.since = this.now();
+      this.scheduleHandover(part);
       this.set({ status: "recording" });
     }
   }
@@ -458,6 +462,7 @@ export class RecordingCapture {
       // A full part ending its overlap has handed over; only the running part's end counts.
       if (this.part === part) {
         this.part = null;
+        this.clearHandover();
         // A stop nobody asked for means the microphone went away.
         if ((part.ending ?? "interrupt") === "interrupt") await this.pause();
       }
@@ -470,6 +475,7 @@ export class RecordingCapture {
     recorder.start(CHUNK_MS);
     part.since = this.now();
     this.part = part;
+    this.scheduleHandover(part);
     this.partCount += 1;
     this.set({ status: "recording", stream, partBytes: 0, remainingMs: this.remaining(part) });
     return part;
@@ -496,6 +502,29 @@ export class RecordingCapture {
     }
     this.set({ limitReached: true, remainingMs: 0, error });
     void this.stop();
+  }
+
+  /**
+   * The time handover runs on its own timer on the recorded clock (pauses stop it), not on chunk delivery, which a
+   * locked phone may hold back. Its bound: a page the browser suspends past the deadline, so that even this timer
+   * fires late, can still overrun a part. That recording stays on the device, and the send refuses it and says so
+   * (FlowSession), with Spara som fil as the way to keep it.
+   */
+  private scheduleHandover(part: Part) {
+    this.clearHandover();
+    const { maxDurationMs } = this.limits;
+    if (!maxDurationMs || part.since === null) return;
+    const due = maxDurationMs - durationHeadroom(maxDurationMs) - this.partElapsed(part);
+    // Checks the recorded time again when it fires: a pause since has moved the deadline, and going on sets it anew.
+    this.handover = setTimeout(() => {
+      this.handover = null;
+      this.checkLimit(part);
+    }, Math.max(0, due));
+  }
+
+  private clearHandover() {
+    if (this.handover !== null) clearTimeout(this.handover);
+    this.handover = null;
   }
 
   /** A new part takes over on the same microphone; the full one stops once the two overlap. */

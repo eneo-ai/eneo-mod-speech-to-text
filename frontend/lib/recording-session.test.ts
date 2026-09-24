@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import {
@@ -112,6 +112,14 @@ function fakePage() {
   };
 }
 
+// A recording a test leaves running is left as a page would leave it, and its recorders' stops land before the
+// next test (which may mock the timers), so no handover timer outlives the test.
+const captures: RecordingCapture[] = [];
+afterEach(async () => {
+  captures.splice(0).forEach((capture) => capture.dispose());
+  for (let i = 0; i < 5; i += 1) await settle();
+});
+
 async function setup(
   options: {
     store?: RecordingStore;
@@ -153,7 +161,9 @@ async function setup(
     page: options.page,
     window: options.window as CaptureDeps["window"],
   };
-  return { capture: new RecordingCapture(() => store, deps), store, streams, constraints, recorders, wakeLocks };
+  const capture = new RecordingCapture(() => store, deps);
+  captures.push(capture);
+  return { capture, store, streams, constraints, recorders, wakeLocks };
 }
 
 test("losing the microphone pauses the recording, keeps what was recorded, and 'Fortsätt spela in' records a new part", async () => {
@@ -833,6 +843,73 @@ test("a short limit keeps 5 % as room rather than a whole minute", async () => {
   recorders[0].emit("x");
   assert.equal(recorders.length, 1);
   now = 9 * 60_000 + 30_000; // 30 s, 5 % of ten minutes, before the limit
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2);
+});
+
+/** A recorder whose clock moves with the test's mocked timers. */
+async function clocked(t: import("node:test").TestContext) {
+  let now = 0;
+  const made = await setup({ now: () => now });
+  return {
+    ...made,
+    advance(ms: number) {
+      now += ms;
+      t.mock.timers.tick(ms);
+    },
+  };
+}
+
+test("the handover comes at Eneo's time by the recorded clock, even when the browser holds the chunks back", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(4 * HOUR); // a locked phone: no chunk arrives
+  assert.equal(recorders.length, 1);
+  advance(HOUR - 60_000);
+  assert.equal(recorders.length, 2, "at 4:59, with no chunk since the start");
+  advance(150);
+  await settle();
+  assert.equal(recorders[0].state, "inactive", "the full part ends after the overlap");
+});
+
+test("a pause stops the handover's clock, and going on starts it again", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(4 * HOUR);
+  capture.togglePause();
+  advance(2 * HOUR); // past the deadline on the wall clock, not on the recorded one
+  assert.equal(recorders.length, 1, "no handover while paused");
+  capture.togglePause();
+  advance(HOUR - 61_000);
+  assert.equal(recorders.length, 1);
+  advance(1_000);
+  assert.equal(recorders.length, 2, "at 4:59 recorded");
+});
+
+test("a stopped or left recording leaves no handover behind", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const end of ["stop", "leave"] as const) {
+    const { capture, recorders, advance } = await clocked(t);
+    await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+    if (end === "stop") await capture.stop();
+    else capture.dispose();
+    await settle();
+    advance(6 * HOUR);
+    await settle();
+    assert.equal(recorders.length, 1, `${end}: no new part afterwards`);
+  }
+});
+
+test("a short limit keeps room for the overlap and a late timer", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 7_999;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1);
+  now = 8_000; // two seconds before a ten-second limit, not 5 % (half a second)
   recorders[0].emit("x");
   assert.equal(recorders.length, 2);
 });

@@ -210,10 +210,11 @@ test("choosing a card only selects the mode; the microphone is asked for on the 
   assert.equal(session.getSnapshot().phase, "recording");
 });
 
-test("a recording keeps each file within the time the contract gives Eneo's audio, and without one only bytes count", async () => {
+test("a recording keeps each file within the time the contract gives Eneo's audio, and without one only bytes count", async (t) => {
   const [audio] = audioContract().steps_requiring_input!;
   const recordFor = async (max_duration_seconds: number | null) => {
     const { session } = await setup();
+    t.after(() => session.dispose());
     session.setContract(
       audioContract({ steps_requiring_input: [{ ...audio, max_files: 1, max_file_size_bytes: 10 ** 12, max_duration_seconds }] }),
     );
@@ -439,6 +440,34 @@ test("a chosen file becomes the document's input in Ladda upp; an unsent recordi
   assert.equal(session.getSnapshot().recording?.id, unsent.id);
   assert.equal(await session.createDocument(), true);
   assert.equal(sent[1].input?.kind, "recording");
+});
+
+test("a part longer than Eneo takes is not sent: the recording stays on the device, and the page says why and how to keep it", async () => {
+  const sent: unknown[] = [];
+  const { session, store } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const [audio] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...audio, max_duration_seconds: 90 * 60 }] }));
+  // A page the browser suspended past the handover: the part ran on past the limit.
+  const long = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startPart(long.id);
+  await store.append(long.id, 0, new Blob(["x"]), 91 * 60_000);
+  await store.setState(long.id, "stopped");
+  session.adopt((await store.get(long.id))!);
+  assert.equal(await session.createDocument(), false);
+  assert.equal(sent.length, 0, "nothing is sent for Eneo to refuse later");
+  assert.equal(
+    session.getSnapshot().problem?.title,
+    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1 h 30 min). Välj Spara som fil för att behålla den.",
+  );
+  assert.equal((await store.get(long.id))?.state, "stopped", "kept on the device");
 });
 
 test("a recording whose run request Eneo may already have answered is sent again as it was, whatever the details say now", async () => {
