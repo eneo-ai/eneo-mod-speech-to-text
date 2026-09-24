@@ -1,0 +1,8 @@
+- alertdialog "Du behöver logga in igen":
+  - heading "Du behöver logga in igen" [level=2]
+  - paragraph: Inloggningen har upphört. Logga in igen loggar in dig igen i ett nytt fönster. Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten.
+  - group "Inspelningen":
+    - text: Spelar in
+    - button "Pausa"
+    - button "Stoppa"
+  - button "Logga in igen"

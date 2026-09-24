@@ -1,0 +1,17 @@
+- main:
+  - paragraph: Pausat i steg 2
+  - heading "Sammanfattning" [level=1]
+  - paragraph: /Du kan ändra texten innan du godkänner och fortsätter\. Granska senast 3 jan \d+ \d+:\d+\. Därefter avbryts körningen\./
+  - text: Innehåll för granskning Redigerbart
+  - article:
+    - paragraph: Kommunstyrelsen beslutade att höja budgetramen med två procent.
+  - button "Redigera"
+  - alert:
+    - text: Din ändring sparades inte
+    - paragraph: Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.
+    - button "Använd din version"
+    - button "Behåll den senaste"
+  - button "Avvisa"
+  - button "Godkänn och fortsätt":
+    - img
+    - text: ""

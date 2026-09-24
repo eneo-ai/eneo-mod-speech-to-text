@@ -30,6 +30,7 @@ const WALKS = [
   "review",
   "review-reject",
   "review-text-edit",
+  "review-din-version",
   "flow-republish-required",
 ];
 
@@ -149,6 +150,29 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger, "Escape gives focus back to what opened it").toBeFocused();
+});
+
+test("signed out, the sign-in dialog holds focus, with the recording's Pausa and Stoppa inside it", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "signed-out-recording")!.go(page, info);
+  const dialog = page.getByRole("alertdialog", { name: "Du behöver logga in igen" });
+  await settle(page);
+  // The page's control that had focus is covered: focus moves into the dialog that appeared (WCAG 2.4.3).
+  expect.soft(await dialog.evaluate((element) => element.contains(document.activeElement)), "focus moves into the sign-in dialog").toBe(true);
+  await page.keyboard.press("Tab");
+  const problems: string[] = [];
+  const reached = new Set<string>();
+  for (let i = 0; i < 8; i++) {
+    const stop = await focusStop(page);
+    const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
+    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
+    else {
+      problems.push(...stopProblems([stop]));
+      reached.add(stop.label);
+    }
+    await page.keyboard.press("Tab");
+  }
+  expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
+  expect([...reached]).toEqual(expect.arrayContaining(['button "Pausa"', 'button "Stoppa"', 'button "Logga in igen"']));
 });
 
 test("the naming dialog holds focus and gives it back", async ({ page }, info) => {

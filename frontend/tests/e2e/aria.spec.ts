@@ -29,6 +29,8 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "failure", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "review", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "naming-dialog", region: (page) => page.getByRole("dialog") },
+  { state: "signed-out-recording", region: (page) => page.getByRole("alertdialog") },
+  { state: "review-din-version", region: (page) => page.getByRole("main") },
   { state: "flow-republish-required", region: (page) => page.locator(".app-shell") },
 ];
 

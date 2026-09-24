@@ -78,6 +78,13 @@ export async function stop(page: Page) {
   await heading(page, "Inspelningen är klar");
 }
 
+/** The login ends while the page is open: the page is covered and a dialog asks for a new login in place. */
+export async function endLogin(page: Page) {
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: "eneo_sso", user: null } }));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", { name: "Du behöver logga in igen" })).toBeVisible();
+}
+
 /** The way back to the flow list that the current width shows. */
 export function backLink(page: Page) {
   return page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first();
@@ -313,6 +320,33 @@ export const STATES: State[] = [
   },
   { name: "sending", go: sending },
   {
+    name: "signed-out",
+    go: async (page) => {
+      await setup(page);
+      await endLogin(page);
+    },
+  },
+  {
+    name: "signed-out-recording",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await endLogin(page);
+      // A recording's Pausa and Stoppa need no login: they stay in reach in the sign-in dialog.
+      await expect(page.getByRole("alertdialog").getByRole("button", { name: "Pausa" })).toBeVisible();
+    },
+  },
+  {
+    name: "signed-out-leave",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await endLogin(page);
+      await page.goBack();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
     name: "run-progress",
     go: async (page) => {
       await run(page, "run-running");
@@ -423,6 +457,22 @@ export const STATES: State[] = [
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
       await expect(page.locator("main textarea")).toBeVisible();
+    },
+  },
+  {
+    name: "review-din-version",
+    go: async (page) => {
+      await run(page, "run-review-text");
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.locator("main textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      // Someone else saves the review meanwhile: the page opens on the newer revision, and the edit waits beside it.
+      await page.route("**/review-checkpoints/active**", async (route) => {
+        const checkpoint = await (await route.fetch()).json();
+        return route.fulfill({ json: { ...checkpoint, revision: checkpoint.revision + 1 } });
+      });
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
     },
   },
   {
