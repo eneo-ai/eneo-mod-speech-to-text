@@ -31,7 +31,7 @@ for (const state of STATES) {
     const touchTargets = coarse ? await targetSizes(page, 44, false) : [];
     const layout = edges ? await reflow(page) : null;
     let spaced = null;
-    if (project === "phone-390-light") {
+    if (project === "phone-390-light" || project.startsWith("ultrawide")) {
       const style = await page.addStyleTag({ content: TEXT_SPACING });
       spaced = await reflow(page);
       await style.evaluate((element) => (element as Element).remove());
