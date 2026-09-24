@@ -64,6 +64,7 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     persistent: true,
     refused: null,
     remainingMs: null as number | null,
+    muted: false,
     wakeLock: true,
   };
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
@@ -100,6 +101,10 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     ["Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.", stop],
     "interrupted, the flow's end is not what the user needs to know",
   );
+  assert.deepEqual(recordingNotices({ ...base, muted: true }), [
+    "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.",
+    stop,
+  ]);
   assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [
     "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.",
     stop,

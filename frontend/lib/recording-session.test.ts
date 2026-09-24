@@ -46,6 +46,11 @@ class FakeTrack extends EventTarget {
     else this.muted = true;
     this.dispatchEvent(new Event(how));
   }
+  /** The same track gives sound again (a headset back on its route). */
+  regain() {
+    this.muted = false;
+    this.dispatchEvent(new Event("unmute"));
+  }
 }
 
 class FakeStream {
@@ -175,7 +180,7 @@ test("losing the microphone pauses the recording, keeps what was recorded, and '
   recorders[0].emit("a");
   recorders[0].emit("b");
 
-  streams[0].track.lose("mute"); // a phone call takes the microphone
+  streams[0].track.lose("ended"); // another app takes the microphone for good
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
   const paused = capture.getSnapshot().recording;
   assert.equal(paused?.state, "paused");
@@ -191,6 +196,34 @@ test("losing the microphone pauses the recording, keeps what was recorded, and '
   assert.equal(stopped?.state, "stopped");
   assert.deepEqual(await texts(await store.readParts(stopped!.id)), ["ab.", "c."]);
   assert.equal(capture.getSnapshot().status, "stopped");
+});
+
+test("a microphone that goes quiet for a moment (a headset changing route) keeps recording, says so, and is back by itself", async () => {
+  const { capture, recorders, streams } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  streams[0].track.lose("mute");
+  assert.equal(capture.getSnapshot().status, "recording", "not a stop: the meeting goes on");
+  assert.equal(capture.getSnapshot().muted, true, "and the page says the microphone is away");
+  assert.equal(recorders[0].state, "recording");
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().muted, false, "back by itself, without Fortsätt");
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(recorders.length, 1, "the same part goes on");
+});
+
+test("back on a page whose microphone went quiet while hidden, the recording goes on and says so until the sound is back", async () => {
+  const { page, show } = fakePage();
+  const { capture, streams } = await setup({ page });
+  await capture.start(meeting);
+  show("hidden");
+  streams[0].track.muted = true; // muted while hidden, without an event reaching the page
+  show("visible");
+  await settle();
+  assert.equal(capture.getSnapshot().status, "recording");
+  assert.equal(capture.getSnapshot().muted, true);
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().muted, false);
 });
 
 test("a microphone that ends, or a recorder that stops or fails by itself, pauses the recording too", async () => {
@@ -211,7 +244,7 @@ test("a microphone that ends, or a recorder that stops or fails by itself, pause
   }
 });
 
-test("a hidden page stores what is recorded so far; back with a working microphone it keeps recording, with a muted one it pauses", async () => {
+test("a hidden page stores what is recorded so far; back with a working microphone it keeps recording, with an ended one it pauses", async () => {
   const { page, show } = fakePage();
   const { capture, streams, recorders, wakeLocks } = await setup({ page });
   await capture.start(meeting);
@@ -224,7 +257,7 @@ test("a hidden page stores what is recorded so far; back with a working micropho
   assert.equal(wakeLocks.requested, 2, "the screen wake lock ends with a hidden page and is taken again");
 
   show("hidden");
-  streams[0].track.muted = true; // muted while hidden, without an event reaching the page
+  streams[0].track.readyState = "ended"; // ended while hidden, without an event reaching the page
   show("visible");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
 });
@@ -299,7 +332,7 @@ test("the recorded time leaves out pauses and interruptions, whatever the timers
   now = 12_000;
   recorders[0].emit("b");
   now = 13_000;
-  streams[0].track.lose("mute");
+  streams[0].track.lose("ended");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
   now = 60_000; // the interruption is not recorded either
   await capture.continueRecording();
@@ -531,7 +564,7 @@ test("Stoppa while 'Fortsätt spela in' waits for the microphone starts no recor
   const { capture, store, streams, recorders } = await setup({ microphone });
   await capture.start(meeting);
   recorders[0].emit("a");
-  streams[0].track.lose("mute");
+  streams[0].track.lose("ended");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
 
   let grant = () => {};
@@ -1025,7 +1058,7 @@ test("a stop, a page leave or a lost microphone during the overlap stops the ful
   for (const [what, end] of [
     ["stop", (capture: RecordingCapture) => void capture.stop()],
     ["page leave", (capture: RecordingCapture) => capture.dispose()],
-    ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("mute")],
+    ["lost microphone", (_capture: RecordingCapture, stream: FakeStream) => stream.track.lose("ended")],
   ] as const) {
     const { capture, store, streams, recorders } = await setup();
     await capture.start(meeting, { maxBytes: LIMIT });
@@ -1047,7 +1080,7 @@ test("after an interruption, 'Fortsätt spela in' is refused once the flow takes
   const { capture, streams, recorders } = await setup();
   await capture.start(meeting, { maxBytes: LIMIT, maxFiles: 1 });
   recorders[0].emit(CHUNK);
-  streams[0].track.lose("mute");
+  streams[0].track.lose("ended");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
   assert.equal(capture.getSnapshot().remainingMs, 0, "nothing more fits");
 
@@ -1066,7 +1099,7 @@ test("a part that got no audio is no file, so the recording still continues, or 
   const { capture, store, streams, recorders } = await setup({ store: await openRecordingStore(device) });
   await capture.start(meeting, limits);
   recorders[0].emit("a");
-  streams[0].track.lose("mute");
+  streams[0].track.lose("ended");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
   await capture.continueRecording();
   recorders[1].lastData = ""; // the microphone goes again before anything is recorded

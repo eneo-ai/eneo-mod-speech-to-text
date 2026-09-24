@@ -63,6 +63,7 @@ export function recordingNotices({
   persistent,
   refused,
   remainingMs,
+  muted,
   wakeLock,
 }: {
   phase: SessionPhase;
@@ -72,10 +73,15 @@ export function recordingNotices({
   refused: DeviceRefusal | null;
   /** Recording time the flow still takes; null when it sets no end. */
   remainingMs: number | null;
+  /** The microphone's track is muted for now (a headset changing its route). */
+  muted: boolean;
   wakeLock: boolean;
 }): string[] {
   const notices: string[] = [];
   if (phase === "interrupted") notices.push(INTERRUPTED);
+  if (phase === "recording" && muted) {
+    notices.push("Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.");
+  }
   if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
     // A step, not a count: the line changes twice, and never ticks.
     const left = remainingMs <= 5 * MINUTE ? 5 : 15;
