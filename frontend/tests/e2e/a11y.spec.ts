@@ -19,7 +19,8 @@ for (const state of STATES) {
   test(state.name, async ({ page }, info) => {
     test.skip(state.only ? !state.only(info) : false, "not on this width");
     const project = info.project.name;
-    const narrow = project.startsWith("phone-320") || project === "zoom-200";
+    // Content fits the narrowest widths and the widest screens alike.
+    const edges = project.startsWith("phone-320") || project === "zoom-200" || project.startsWith("ultrawide");
     await state.go(page, info);
 
     const scan = await axe(page);
@@ -28,7 +29,7 @@ for (const state of STATES) {
     // A mouse gets the WCAG minimum; a finger gets the house bar of 44 px.
     const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
     const touchTargets = coarse ? await targetSizes(page, 44, false) : [];
-    const layout = narrow ? await reflow(page) : null;
+    const layout = edges ? await reflow(page) : null;
     let spaced = null;
     if (project === "phone-390-light") {
       const style = await page.addStyleTag({ content: TEXT_SPACING });
