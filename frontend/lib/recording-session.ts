@@ -483,6 +483,8 @@ export class RecordingCapture {
 
   /** Before the part could grow too large or too long to send: a new part, or a stop once the flow takes no more files. */
   private checkLimit(part: Part) {
+    // Paused (Pausa), it waits: going on checks again (the next chunk, and a new deadline).
+    if (part.since === null) return;
     const { maxBytes, maxDurationMs, maxFiles } = this.limits;
     const full = !!maxBytes && part.bytes + this.headroom() > maxBytes;
     const long = !!maxDurationMs && this.partElapsed(part) + durationHeadroom(maxDurationMs) >= maxDurationMs;
@@ -521,7 +523,7 @@ export class RecordingCapture {
       // A part that is ending (Stoppa, a page leave) hands over to nothing.
       if (part !== this.part || part.ending) return;
       this.checkLimit(part);
-      // Short of the deadline still (a timer that fired early): again for the rest. A pause sets it anew on going on.
+      // Short of the deadline still (a timer that fired early): again for the rest. Paused, going on sets it anew.
       if (part === this.part && !part.ending && part.since !== null) this.scheduleHandover(part);
     }, Math.max(0, Math.ceil(due)));
   }

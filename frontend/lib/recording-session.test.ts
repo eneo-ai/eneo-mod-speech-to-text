@@ -948,6 +948,32 @@ test("Stoppa just before the deadline starts no other recorder", async (t) => {
   assert.ok(recorders.every((recorder) => recorder.state === "inactive"));
 });
 
+test("a handover timer that fires late, after Pausa, leaves the recording paused", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t, -5); // the 8 s deadline fires 5 ms late
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(8_001);
+  capture.togglePause(); // Pausa, before the late deadline
+  advance(10);
+  assert.equal(capture.getSnapshot().status, "paused", "Pausa holds");
+  assert.equal(recorders.length, 1, "no new part while paused");
+  capture.togglePause();
+  advance(10); // the new deadline is already due, and fires 5 ms late too
+  assert.equal(recorders.length, 2, "going on hands over");
+});
+
+test("a chunk that arrives after Pausa leaves the recording paused", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 8_001;
+  capture.togglePause();
+  recorders[0].emit("x"); // the browser hands over its last chunk after the pause
+  assert.equal(capture.getSnapshot().status, "paused");
+  assert.equal(recorders.length, 1, "no new part while paused");
+});
+
 test("a short limit keeps room for the overlap and a late timer", async () => {
   let now = 0;
   const { capture, recorders } = await setup({ now: () => now });
