@@ -1,10 +1,11 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import { Spinner } from "@/components/ui/spinner";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { loginState } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
@@ -19,6 +20,18 @@ export function useAuthenticatedUser(): AuthenticatedUser {
   return user;
 }
 
+/**
+ * While the login has ended the page stays mounted, so nothing on it is lost and a recording goes on, but it is
+ * neither shown nor within reach until the new login.
+ */
+export function SignedOutCover({ signedOut, children }: { signedOut: boolean; children: React.ReactNode }) {
+  return (
+    <div className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
+      {children}
+    </div>
+  );
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
@@ -26,13 +39,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
   const recheckRef = useRef(() => {});
+  const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
 
   useEffect(() => {
     let cancelled = false;
     let stopKeepalive: (() => void) | undefined;
     let channel: BroadcastChannel | null = null;
 
+    let endPage: (() => void) | undefined;
     const observe = (s: AuthStatus) => {
+      // Signed in, until when, or signed out: the page asks for a new login in place, never navigates.
+      loginState.observe(s);
       if (s.authenticated && s.session_ends_in !== undefined) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
@@ -77,6 +94,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
         setUser(sessionIdentity);
+        endPage = loginState.begin();
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.
         channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
@@ -89,6 +107,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
     return () => {
       cancelled = true;
+      endPage?.();
       stopKeepalive?.();
       channel?.close();
       document.removeEventListener("visibilitychange", onVisible);
@@ -106,8 +125,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthenticatedUserContext.Provider value={user}>
-      {children}
-      <SessionEndWarning endsAt={endsAt} mode={mode} onRenewed={() => recheckRef.current()} />
+      <SignedOutCover signedOut={signedOut}>{children}</SignedOutCover>
+      <SessionEndWarning endsAt={endsAt} mode={mode} signedOut={signedOut} onRenewed={() => recheckRef.current()} />
     </AuthenticatedUserContext.Provider>
   );
 }

@@ -4,6 +4,7 @@ import { correctionWriteProblem } from "./transcript-corrections";
 // key and, in Eneo SSO mode, the short-lived module-user token from its
 // HttpOnly session.
 
+import { loginState } from "./login-state";
 import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -47,9 +48,16 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, msg, body, code);
 }
 
+/** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
+function replayable(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD" || new Headers(init.headers).has("Idempotency-Key");
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
+  again = false,
 ): Promise<T> {
   let res: Response;
   try {
@@ -72,18 +80,14 @@ async function request<T>(
   onlineStatus.reportReachable();
 
   if (!res.ok) {
-    // Bounce to login bara om backend explicit signalerar att VÅR session
-    // har gått ut (X-Auth-Required: session). En vanlig 401 från Eneo
-    // (t.ex. ogiltig API-nyckel) får INTE trigga redirect — då hamnar vi
-    // i en login-loop. Felet får i stället bubbla upp och visas i UI:t.
-    if (
-      res.status === 401 &&
-      res.headers.get("X-Auth-Required") === "session" &&
-      typeof window !== "undefined" &&
-      !path.startsWith("/api/auth/") &&
-      window.location.pathname !== "/"
-    ) {
-      window.location.replace("/");
+    // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
+    // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
+    // is safe to send twice waits for it and goes again.
+    if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
+      loginState.ended();
+      if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
+        return request<T>(path, init, true);
+      }
     }
     throw await parseError(res);
   }
@@ -682,6 +686,8 @@ function requestMultipartWithProgress<T>(
 
     xhr.onload = () => {
       onlineStatus.reportReachable();
+      // The login ended: the dialog asks for a new one, and the send is the user's to start again.
+      if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended();
       if (settled) return;
       settled = true;
       clearScheduledTimeout();

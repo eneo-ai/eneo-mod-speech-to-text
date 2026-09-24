@@ -195,6 +195,23 @@ test("a break after ready pauses live text and tries again with a new session; t
   assert.equal(live.getSnapshot().pieces.length, 2, "the draft stays");
 });
 
+test("signed out mid-way: every refused handshake is tried again with the backoff, and live text resumes after the new login", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Budgeten för nästa år." });
+  sockets[0].drop(1006); // the login ended: the relay refuses the socket from here
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    elapse(30_000);
+    sockets[attempt].drop(1006); // still signed out: refused before ready
+    assert.equal(live.getSnapshot().status, "reconnecting", `never given up while recording (${attempt})`);
+  }
+  elapse(30_000); // signed in again: the next try is accepted
+  sockets[6].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Budgeten för nästa år."], "the draft stays");
+});
+
 test("offline, live text waits for the connection and starts again when it returns", () => {
   const { live, sockets, browser } = setup({ online: false });
   live.start();

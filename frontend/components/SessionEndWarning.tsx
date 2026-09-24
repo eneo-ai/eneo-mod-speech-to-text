@@ -25,15 +25,20 @@ const WARN_BEFORE_MS = 5 * 60_000;
  * The login ends at a fixed time, which only a new login can move. Five
  * minutes before, a dialog says so and offers that new login without leaving
  * the page, so nothing on it is lost (WCAG 2.2.1, extend): with Eneo SSO in a
- * window of its own, with the access code by entering it here.
+ * window of its own, with the access code by entering it here. Once it has
+ * ended (`signedOut`) the same dialog stays open until that new login, over a
+ * page that keeps everything, a recording included.
  */
 export function SessionEndWarning({
   endsAt,
   mode,
+  signedOut = false,
   onRenewed,
 }: {
   endsAt: number | null;
   mode: AuthMode | null;
+  /** The login has ended: nothing on the page is within reach until the new login. */
+  signedOut?: boolean;
   /** The access code signed in again: read the new end. */
   onRenewed: () => void;
 }) {
@@ -86,8 +91,10 @@ export function SessionEndWarning({
 
   const time = endsAt === null ? "" : new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
   const byCode = mode === "access_code";
+  const action = signedOut ? "Logga in igen" : "Fortsätt arbeta";
+  // Signed out, nothing but the new login closes it.
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
+    <AlertDialog open={open || signedOut} onOpenChange={setOpen}>
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -95,12 +102,15 @@ export function SessionEndWarning({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>Du loggas snart ut</AlertDialogTitle>
+          <AlertDialogTitle>{signedOut ? "Du behöver logga in igen" : "Du loggas snart ut"}</AlertDialogTitle>
           <AlertDialogDescription>
-            Inloggningen upphör kl. {time}.{" "}
+            {signedOut ? "Inloggningen har upphört. " : `Inloggningen upphör kl. ${time}. `}
             {byCode
-              ? "Ange åtkomstkoden och välj Fortsätt arbeta för att fortsätta. Allt på den här sidan finns kvar."
-              : "Fortsätt arbeta loggar in dig igen i ett nytt fönster. Allt på den här sidan finns kvar."}
+              ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
+              : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
+            {signedOut
+              ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
+              : "Allt på den här sidan finns kvar."}
           </AlertDialogDescription>
         </AlertDialogHeader>
         {byCode && (
@@ -125,14 +135,14 @@ export function SessionEndWarning({
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>
+          {!signedOut && <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>}
           {byCode ? (
             <Button type="submit" form={`${codeId}-form`} className="h-11" disabled={sending}>
-              Fortsätt arbeta
+              {action}
             </Button>
           ) : (
             <Button type="button" className="h-11" onClick={renewInWindow}>
-              Fortsätt arbeta
+              {action}
             </Button>
           )}
         </AlertDialogFooter>
