@@ -136,3 +136,9 @@ test("an answer that is not the JSON it claims to be is said in Swedish, and try
   assert.doesNotMatch(advice.message, /JSON|Unexpected token|SyntaxError/);
   assert.equal(advice.retry, true);
 });
+
+test("a request our own login's end refused is read after the new login, so it says to try again, not to log in", () => {
+  const advice = errorAdvice(new ApiError(401, "Session expired", { detail: "Session expired" }));
+  assert.equal(advice.message, "Inloggningen hade gått ut och det här skickades inte. Försök igen.");
+  assert.equal(advice.retry, true);
+});

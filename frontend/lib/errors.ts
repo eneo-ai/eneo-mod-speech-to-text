@@ -157,8 +157,9 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     logForSupport(err);
     if (err.code && OWNER_CODES[err.code]) return advice(OWNER_CODES[err.code], false, true);
     if (err.code && CODES[err.code]) return advice(CODES[err.code], RETRY_CODES.has(err.code));
-    // Our own session (no code) has run out; Eneo's 401 always carries a code.
-    if (err.status === 401) return advice(err.code ? MODULE_ACCESS : "Sessionen har gått ut. Logga in igen.");
+    // Our own session (no code) has run out; Eneo's 401 always carries a code. The page asks for the new login in
+    // place, so this is read after it.
+    if (err.status === 401) return err.code ? advice(MODULE_ACCESS) : advice("Inloggningen hade gått ut och det här skickades inte. Försök igen.", true);
     if (err.status === 403) return advice(NO_ACCESS);
     if (err.status === 404) return advice("Det du letade efter finns inte längre.");
     if (err.status === 408 || err.status === 429) return advice("Eneo hann inte svara. Försök igen om en stund.", true);
