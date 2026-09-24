@@ -205,7 +205,11 @@ test("a renewal after the login ended is refused: the window says so, stays, and
   });
   await open(page, "/inloggad?fel=utgangen");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
-  await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in igen i Tal till text.");
+  // The window cannot know whether the other tab's recording is on the device, so it promises nothing and says how to keep it.
+  await expect(page.getByRole("main")).toContainText(
+    "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen.",
+  );
+  await expect(page.getByRole("main")).not.toContainText("finns kvar");
   await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");
   expect(await page.evaluate(() => (window as unknown as { said: unknown[] }).said)).toEqual([]);
 });

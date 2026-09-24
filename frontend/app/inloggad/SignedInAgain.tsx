@@ -46,8 +46,9 @@ export function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
         {refusal === "annan-anvandare"
           ? `Stäng fönstret och logga in som ${name ?? "den som arbetar på sidan"} för att fortsätta.`
           : refusal === "utgangen"
-            ? // Only what a new login keeps: a recording is on the device; details and unsaved review edits are in the page.
-              "Stäng fönstret och logga in igen i Tal till text. En inspelning som inte hann skickas finns kvar och kan skickas efter inloggningen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
+            ? // This window cannot know whether the other tab's recording is kept on the device (see leaveWarning):
+              // it promises nothing and says how to keep it, as "Lämna sidan?" does.
+              "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
             : "Du kan stänga det här fönstret och fortsätta där du var."}
       </p>
     </main>
