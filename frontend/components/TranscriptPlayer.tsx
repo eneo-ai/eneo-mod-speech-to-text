@@ -704,7 +704,7 @@ export const TranscriptPlayer = forwardRef<
           type="button"
           variant="ghost"
           size="sm"
-          className="mx-1 mt-1 self-start"
+          className="mx-1 mt-1 shrink-0 self-start"
           onClick={() => {
             const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
             const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
@@ -824,7 +824,7 @@ export const TranscriptPlayer = forwardRef<
               type="button"
               variant="ghost"
               size="sm"
-              className="shrink-0 px-2 tabular-nums"
+              className="shrink-0 px-2 tabular-nums coarse:min-w-11"
               aria-label={`Hastighet ${rateLabel(rate)}`}
               onClick={cycleRate}
             >
@@ -952,7 +952,7 @@ function TurnBlock({
                   type="button"
                   // The name starts with the words on the button (WCAG 2.5.3) and says what it does.
                   aria-label={`${name}, ändra talare`}
-                  className="inline-flex min-h-6 items-center gap-1 rounded text-left text-[15px] font-semibold leading-tight text-ink decoration-dotted underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11"
+                  className="inline-flex min-h-6 items-center gap-1 rounded text-left text-[15px] font-semibold leading-tight text-ink decoration-dotted underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:min-w-11"
                 >
                   {name}
                   <ChevronDown aria-hidden className="size-3.5 text-ink-mute" />
@@ -966,7 +966,7 @@ function TurnBlock({
             onClick={onSeekTurn}
             aria-label={`Spela från ${clock}${partLabel}`}
             className={cn(
-              "-mx-1 inline-flex min-h-6 min-w-6 items-center rounded px-1 text-[13px] tabular-nums hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11",
+              "-mx-1 inline-flex min-h-6 min-w-6 items-center rounded px-1 text-[13px] tabular-nums hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:min-w-11",
               isActive ? "text-ink" : "text-ink-mute",
             )}
           >
