@@ -18,6 +18,10 @@ import {
 } from "./api";
 import { isSpeakerMappingCheckpoint } from "./speaker-mapping";
 
+/** Said when a changed edit reaches a pause that is already approved: Eneo keeps the decision that was saved. */
+export const DECIDED =
+  "Granskningen är redan godkänd med det som sparades, så ändringen kan inte sparas. Välj Fortsätt för att gå vidare med det sparade.";
+
 /** Label to name, a label the output leaves out counting as unnamed. */
 function namesOf(value: unknown): Map<string, string | null> {
   const speakers = (value as { speakers?: unknown } | null)?.speakers;
@@ -30,7 +34,7 @@ function namesOf(value: unknown): Map<string, string | null> {
 }
 
 /** Whether the pause already holds the edit: the same name for every speaker, or the same text. */
-function holds(checkpoint: FlowRunReviewCheckpointPublic, edit: ReviewEditedValue): boolean {
+export function holds(checkpoint: FlowRunReviewCheckpointPublic, edit: ReviewEditedValue): boolean {
   const payload = (checkpoint.current_payload_json ?? null) as Json | null;
   if (isSpeakerMappingCheckpoint(payload)) {
     const saved = namesOf((payload as { structured?: unknown }).structured);
@@ -91,7 +95,7 @@ export async function continueFromPause({
   checkpoint,
   edit,
   onCheckpoint,
-  onSaved,
+  onHeld,
 }: {
   flowId: string;
   runId: string;
@@ -100,20 +104,25 @@ export async function continueFromPause({
   edit: ReviewEditedValue | null;
   /** Each newer state of the pause (saved, approved), so a retry starts from it. */
   onCheckpoint: (checkpoint: FlowRunReviewCheckpointPublic) => void;
-  /** The edit is Eneo's now, whether or not the run goes on from here. */
-  onSaved?: () => void;
+  /** The edit is Eneo's, whether or not the run goes on from here. */
+  onHeld?: () => void;
 }): Promise<FlowRunPublic> {
   let pause: FlowRunReviewCheckpointPublic = checkpoint;
-  // Approved, the pause takes no more edits and the decision stands: a retry after a failed resume only resumes.
-  if (!isReviewCheckpointApproved(checkpoint)) {
+  if (isReviewCheckpointApproved(checkpoint)) {
+    // Approved, the pause takes no more edits and its decision stands: a retry after a failed resume only
+    // resumes, and an edit it does not hold is refused, never dropped on the way.
+    if (edit !== null && !holds(pause, edit)) throw new Error(DECIDED);
+    if (edit !== null) onHeld?.();
+  } else {
     if (edit !== null && !holds(pause, edit)) {
       pause = await editReviewCheckpoint(flowId, runId, pause.id, {
         expected_checkpoint_revision: pause.revision,
         edited_value: edit,
       });
       onCheckpoint(pause);
-      onSaved?.();
     }
+    // Saved now, or held already: from here the edit is Eneo's.
+    if (edit !== null) onHeld?.();
     pause = await approveWithRecovery(flowId, runId, pause);
     onCheckpoint(pause);
   }

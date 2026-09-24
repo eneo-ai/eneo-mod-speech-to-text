@@ -80,6 +80,25 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
 
+test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
+  await run(page, "run-review-approved", "flow-2");
+  await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: /^Spara/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Avbryt" }).click();
+
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && request.url().includes("/review-checkpoints/")) writes.push(request.url().split("/").filter(Boolean).at(-1)!);
+  });
+  await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  expect(writes, "nothing saved or approved again").toEqual(["resume"]);
+});
+
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
   expect(await axNode(page.locator("main textarea"))).toEqual({

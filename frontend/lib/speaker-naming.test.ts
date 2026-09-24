@@ -308,3 +308,16 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
   assert.equal(field?.value, "", "not the name the review had");
   await again.unmount();
 });
+
+test("once the pause is approved the dialog shows the saved names read-only, and its one action is Fortsätt", async () => {
+  const { view, field, saved, continued } = await dialog({ decided: true });
+  const content = document.querySelector('[role="dialog"]')!;
+  assert.match(content.textContent ?? "", /Namnen är redan sparade\./);
+  assert.equal(field("Talare 1").value, "Anna Berg");
+  assert.ok(field("Talare 1").disabled && field("Talare 2").disabled, "nothing to change any more");
+  assert.equal(button(document.body, "Spara"), null);
+  assert.equal(button(document.body, "Spara och fortsätt"), null);
+  await view.act(async () => button(document.body, "Fortsätt")!.click());
+  assert.deepEqual(continued.map((next) => next.map((r) => [r.label, r.name])), [[["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", null]]]);
+  assert.equal(saved.length, 0);
+});

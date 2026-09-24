@@ -155,6 +155,8 @@ RUNS = {
     "run-before-review": {"status": "running", "steps": [], "step_status": ["running", None]},
     "run-review": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    # Approved, and its resume did not go through: the saved names stand and the run only has to go on.
+    "run-review-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-corrected": DONE,
 }
 SPLIT = "Ramen höjs med två procent"
@@ -199,6 +201,9 @@ TEXT_CHECKPOINT = {
     "id": "cp-2", "flow_id": "flow-1", "flow_run_id": "run-review-text", "step_id": "s2", "step_label": "Sammanfattning",
     "output_type": "text", "current_payload_json": {"text": "Kommunstyrelsen beslutade att höja budgetramen med två procent."},
 }
+APPROVED_CHECKPOINT = dict(CHECKPOINT, flow_run_id="run-review-approved", state="approved", revision=3,
+                          approved_at="2026-09-24T09:05:00Z")
+PAUSES = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT, "run-review-approved": APPROVED_CHECKPOINT}
 # Runs started through the page: id -> status reads so far.
 STARTED = {}
 NEW_RUN = itertools.count(1)
@@ -363,7 +368,7 @@ class Handler(BaseHTTPRequestHandler):
         if what == ["steps"]:
             return self.send(200, run["steps"])
         if what == ["review-checkpoints", "active"]:
-            return self.send(200, {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}.get(run_id))
+            return self.send(200, PAUSES.get(run_id))
         if what == ["transcript-corrections"]:
             return self.send(200, corrections(run_id))
         return self.send(404, {"detail": "stub: " + path})
@@ -387,7 +392,7 @@ class Handler(BaseHTTPRequestHandler):
                                        "first_regenerated_step_id": "s2"})
             # Approving and resuming a pause: answered from copies, so a parallel test still sees the pause as it was.
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "review-checkpoints" and rest[4] in ("approve", "resume"):
-                checkpoint = dict({"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}[rest[1]], state="approved")
+                checkpoint = dict(PAUSES[rest[1]], state="approved")
                 if rest[4] == "approve":
                     return self.send(200, checkpoint)
                 run_id = "run-new-%d" % next(NEW_RUN)
@@ -410,7 +415,9 @@ class Handler(BaseHTTPRequestHandler):
         parts = urlparse(self.path).path.strip("/").split("/")
         # Saving a pause's edit (the names): the edited value comes back as the pause's own, one revision on.
         if len(parts) == 8 and parts[:3] == ["api", "eneo", "flows"] and parts[4] == "runs" and parts[6] == "review-checkpoints":
-            checkpoint = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}[parts[5]]
+            checkpoint = PAUSES[parts[5]]
+            if checkpoint["state"] != "awaiting_review":
+                return self.send(409, {"code": "flow_review_not_active", "detail": "The review is no longer active."})
             payload = dict(checkpoint["current_payload_json"])
             if isinstance(body.get("edited_value"), dict):
                 payload["structured"] = body["edited_value"]

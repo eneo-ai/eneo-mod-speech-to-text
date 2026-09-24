@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowRunReviewCheckpointPublic } from "./api";
-import { continueFromPause } from "./review-continue";
+import { clearDraft, unstoredDrafts, writeDraft, type DraftStorage } from "./drafts";
+import { continueFromPause, DECIDED } from "./review-continue";
 import { buildEditedMapping, buildSpeakerRows } from "./speaker-mapping";
 
 const PAUSE = "/api/eneo/flows/flow-1/runs/run-1/review-checkpoints/cp-1/";
@@ -132,3 +133,80 @@ test("names the pause already holds are not saved again; changed names are, whil
   });
   assert.deepEqual(server.calls, ["approve", "resume"], "nothing new to save");
 });
+
+test("an approved pause does not take a changed name: continuing with it is refused, never resumed with the old one", async (t) => {
+  const server = eneo(t);
+  let held = server.pause();
+  const go = (edit: unknown) =>
+    continueFromPause({ flowId: "flow-1", runId: "run-1", checkpoint: held, edit: edit as never, onCheckpoint: (cp) => (held = cp) });
+
+  await assert.rejects(go(named(held.current_payload_json, "Erik Lund")), "saved Erik, approved, the resume failed");
+  assert.equal(held.state, "approved");
+
+  // Erik changed to Sara after the approval, and Spara och fortsätt again.
+  await assert.rejects(go(named(held.current_payload_json, "Sara Holm")), (err: Error) => err.message === DECIDED);
+  assert.deepEqual(server.calls, ["edit", "approve", "resume"], "neither saved nor resumed");
+  assert.equal(
+    (server.pause().current_payload_json as { structured: { speakers: { label: string; name: string }[] } }).structured.speakers.find(
+      (speaker) => speaker.label === "SPEAKER_01",
+    )?.name,
+    "Erik Lund",
+  );
+});
+
+test("a kept draft goes once Eneo holds its content: unchanged names, and an approved retry, leave nothing unkept", async (t) => {
+  // A browser that refuses to keep drafts: the page alone holds them, and leaving would ask.
+  const refusing: DraftStorage = {
+    getItem: () => null,
+    setItem: () => {
+      throw new Error("QuotaExceededError");
+    },
+    removeItem: () => undefined,
+    key: () => null,
+    length: 0,
+  };
+  t.after(() => unstoredDrafts.forget());
+  const server = eneo(t);
+  let held = server.pause();
+  const keepAndGo = (name: string) => {
+    const edit = named(held.current_payload_json, name);
+    writeDraft(refusing, "user-1", "review:run-1:cp-1", edit);
+    return continueFromPause({
+      flowId: "flow-1",
+      runId: "run-1",
+      checkpoint: held,
+      edit,
+      onCheckpoint: (cp) => (held = cp),
+      onHeld: () => clearDraft(refusing, "user-1", "review:run-1:cp-1"),
+    });
+  };
+
+  await assert.rejects(keepAndGo("Erik Lund"), "saved and approved, the resume failed");
+  assert.equal(unstoredDrafts.any(), false, "saved: the draft went");
+
+  const run = await keepAndGo("Erik Lund");
+  assert.equal(run.status, "running");
+  assert.deepEqual(server.calls, ["edit", "approve", "resume", "resume"]);
+  assert.equal(unstoredDrafts.any(), false, "the approved retry held the same names: nothing left for a leave question");
+});
+
+test("unchanged names on an open pause: approved and resumed without a save, and their draft goes", async (t) => {
+  t.after(() => unstoredDrafts.forget());
+  const server = eneo(t, { resumeFailures: 0 });
+  const held = server.pause();
+  const edit = buildEditedMapping(buildSpeakerRows(held.current_payload_json as never));
+  const refused: DraftStorage = { getItem: () => null, setItem: () => { throw new Error("full"); }, removeItem: () => undefined, key: () => null, length: 0 };
+  writeDraft(refused, "user-1", "review:run-1:cp-1", edit);
+  assert.equal(unstoredDrafts.any(), true);
+  await continueFromPause({
+    flowId: "flow-1",
+    runId: "run-1",
+    checkpoint: held,
+    edit,
+    onCheckpoint: () => undefined,
+    onHeld: () => clearDraft(refused, "user-1", "review:run-1:cp-1"),
+  });
+  assert.deepEqual(server.calls, ["approve", "resume"]);
+  assert.equal(unstoredDrafts.any(), false, "the running view has no leave question to answer");
+});
+

@@ -66,6 +66,7 @@ export function SpeakerNamingDialog({
   onSave,
   onSaveAndContinue,
   continueDisabled = false,
+  decided = false,
   draftKey,
   children,
 }: {
@@ -88,6 +89,8 @@ export function SpeakerNamingDialog({
   onSaveAndContinue: (rows: SpeakerMappingRow[]) => Promise<string | null>;
   /** The flow cannot go on yet (the transcript's own changes are still being saved); saving can. */
   continueDisabled?: boolean;
+  /** The pause is approved: the saved names (`rows`) are shown read-only, and the one action is Fortsätt. */
+  decided?: boolean;
   /** Keeps names typed but not saved for this person through a reload, the dialog open again with them. */
   draftKey?: { ownerId: string; name: string };
   /** The button that opens the dialog; focus returns to it on close. */
@@ -106,9 +109,14 @@ export function SpeakerNamingDialog({
     );
   };
   const [open, setOpen] = useState(() => kept() !== null);
-  const [draft, setDraft] = useState<SpeakerMappingRow[]>(() => kept() ?? [...rows]);
+  const [typed, setDraft] = useState<SpeakerMappingRow[]>(() => kept() ?? [...rows]);
+  // Approved, what was saved is the decision: typed names are no longer the dialog's to show or keep.
+  const draft = decided ? [...rows] : typed;
+  useEffect(() => {
+    if (decided && draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
+  }, [decided, draftKey?.ownerId, draftKey?.name]);
   const rename = (label: string, name: string | null) => {
-    const next = draft.map((row) => (row.label === label ? { ...row, name } : row));
+    const next = typed.map((row) => (row.label === label ? { ...row, name } : row));
     setDraft(next);
     if (draftKey) writeDraft(browserDrafts(), draftKey.ownerId, draftKey.name, next);
   };
@@ -214,7 +222,7 @@ export function SpeakerNamingDialog({
                     aria-label={`Vem är ${title(row.label)}?`}
                     value={row.name}
                     options={names}
-                    disabled={disabled || saving !== null}
+                    disabled={disabled || decided || saving !== null}
                     placeholder="Välj eller skriv ett namn"
                     noneLabel="Inget namn (behåll etiketten)"
                     writeLabel="Skriv ett annat namn"
@@ -255,16 +263,19 @@ export function SpeakerNamingDialog({
           </p>
         )}
         <div className="flex flex-wrap justify-end gap-2 border-t border-border px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+          {decided && <p className="mr-auto self-center text-[14px] text-ink-soft">Namnen är redan sparade.</p>}
           <DialogClose asChild>
             <Button type="button" variant="ghost">
               Avbryt
             </Button>
           </DialogClose>
-          <Button type="button" variant="outline" disabled={disabled || saving !== null} onClick={() => void submit("save")}>
-            {saving === "save" ? "Sparar…" : "Spara"}
-          </Button>
+          {!decided && (
+            <Button type="button" variant="outline" disabled={disabled || saving !== null} onClick={() => void submit("save")}>
+              {saving === "save" ? "Sparar…" : "Spara"}
+            </Button>
+          )}
           <Button type="button" disabled={disabled || continueDisabled || saving !== null} onClick={() => void submit("continue")}>
-            {saving === "continue" ? "Fortsätter…" : "Spara och fortsätt"}
+            {saving === "continue" ? "Fortsätter…" : decided ? "Fortsätt" : "Spara och fortsätt"}
           </Button>
         </div>
       </DialogContent>

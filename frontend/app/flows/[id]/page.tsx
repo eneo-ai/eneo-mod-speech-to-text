@@ -22,7 +22,7 @@ import { RunResult } from "@/components/flow/RunResult";
 import { FlowRunPage } from "@/components/flow/FlowRunPage";
 import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
-import { continueFromPause } from "@/lib/review-continue";
+import { continueFromPause, holds } from "@/lib/review-continue";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -36,6 +36,7 @@ import {
   getRun,
   getRunContract,
   inputFileAudioUrl,
+  isReviewCheckpointApproved,
   rejectReviewCheckpoint,
   type FlowGraph,
   type FlowPublished,
@@ -417,7 +418,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const hold = (cp: FlowRunReviewCheckpointPublic) =>
       setRun((prev) => (prev.kind === "awaiting_review" ? { ...prev, checkpoint: cp } : prev));
     try {
-      const resumedRun = await continueFromPause({ flowId, runId, checkpoint, edit, onCheckpoint: hold, onSaved });
+      const resumedRun = await continueFromPause({ flowId, runId, checkpoint, edit, onCheckpoint: hold, onHeld: onSaved });
       // Följ körningen igen — den är nu i "running".
       setRun({ kind: "running", run: resumedRun, graph: null });
       void follow(resumedRun.id);
@@ -787,6 +788,15 @@ function ReviewView({
   const [rejectReason, setRejectReason] = useState<string>("");
   const fieldId = useId();
 
+  // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
+  useEffect(() => {
+    if (!isReviewCheckpointApproved(checkpoint)) return;
+    const held = (kept: ReviewEdit | null) =>
+      kept !== null && holds(checkpoint, kept.speakerRows ? buildEditedMapping(kept.speakerRows) : (kept.text ?? ""));
+    if (held(draft.initial)) draft.drop();
+    if (held(draft.yours)) draft.dropYours();
+  }, [checkpoint.revision, checkpoint.state]);
+
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
     setText(draft.initial?.text ?? extractCheckpointText(payload));
@@ -832,7 +842,11 @@ function ReviewView({
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
   // mapping är json-steget vi redigerar strukturerat via talarrader.
+  // Approved (and the resume still to go through): the saved decision is final, shown read-only, and the one
+  // thing left is to go on.
+  const decided = Boolean(isReviewCheckpointApproved(checkpoint));
   const editable =
+    !decided &&
     checkpoint.review_mode === "edit" &&
     !isSpeakerMapping &&
     (checkpoint.output_type == null || checkpoint.output_type === "text");
@@ -899,12 +913,13 @@ function ReviewView({
       setWorking(null);
       return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
     }
-    if (names) keepNames(names);
-    const edit = names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+    // Approved already: nothing is saved any more, the run is only resumed.
+    const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+    if (names && !decided) keepNames(names);
     try {
       return await onContinue(checkpoint, edit, {
         describe: names ? (err) => namingRefusal(err, names) : undefined,
-        // Saved, whether or not this view is shown again before the run goes on.
+        // Saved now or held already, whether or not this view is shown again before the run goes on.
         onSaved: () => draft.drop(),
       });
     } finally {
@@ -976,16 +991,22 @@ function ReviewView({
 
   const actions = (
     <div className="mt-auto flex items-center justify-between gap-3 pt-4">
-      <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
-        Avvisa
-      </Button>
+      {decided ? (
+        <p className="text-[13px] text-ink-soft">
+          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+        </p>
+      ) : (
+        <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
+          Avvisa
+        </Button>
+      )}
       <Button type="button" onClick={() => void saveAndApprove()} disabled={busy || continueBlocked}>
         {working === "approve" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
           <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
         )}
-        {dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+        {decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
       </Button>
     </div>
   );
@@ -1049,6 +1070,7 @@ function ReviewView({
                     onSave={saveNames}
                     onSaveAndContinue={saveAndApprove}
                     continueDisabled={continueBlocked}
+                    decided={decided}
                     draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
                   >
                     <Button type="button" variant="outline" className="self-start" disabled={busy}>
