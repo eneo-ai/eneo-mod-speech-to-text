@@ -28,6 +28,7 @@ from app.module_auth import (  # noqa: E402
     ModuleAuth,
     ModuleUser,
     SESSION_COOKIE,
+    STATE_COOKIE,
 )
 
 # Eneo's session ceiling in these tests; shorter than the module's 8-hour default.
@@ -286,6 +287,21 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertNotIn(SESSION_COOKIE, callback.cookies)
         self.assertEqual(self.client.cookies.get(SESSION_COOKIE), first)
         self.assertEqual(self.client.get("/api/auth/status").json()["user"]["id"], "user-id")
+
+    def test_a_renewal_without_a_live_session_is_refused_and_signs_no_one_in(self) -> None:
+        self.sign_in()
+        ended = time.time() + ENEO_SESSION_SECONDS + 60
+        for case, cookies in (("the session has ended", None), ("no session at all", {})):
+            with self.subTest(case), patch("app.module_auth.time.time", return_value=ended):
+                if cookies is not None:
+                    self.client.cookies.clear()
+                response = self.client.get("/api/auth/login", params={"renew": "1", "next": "/inloggad"})
+
+                # No handoff to Eneo: with no user to bind to, anyone could sign in under this page.
+                self.assertEqual(response.status_code, 303)
+                self.assertEqual(response.headers["location"], "/inloggad?fel=utgangen")
+                self.assertNotIn(STATE_COOKIE, response.cookies)
+                self.assertNotIn(SESSION_COOKIE, response.cookies)
 
     def test_failed_exchange_redirects_without_creating_session(self) -> None:
         self.exchange_client.response = FakeResponse(status_code=401)

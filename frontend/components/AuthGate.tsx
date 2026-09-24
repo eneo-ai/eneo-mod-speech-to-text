@@ -30,47 +30,58 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     let stopKeepalive: (() => void) | undefined;
+    let channel: BroadcastChannel | null = null;
 
     const observe = (s: AuthStatus) => {
-      if (!cancelled && s.authenticated && s.session_ends_in !== undefined) {
+      if (s.authenticated && s.session_ends_in !== undefined) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
         setMode(s.auth_mode);
       }
+    };
+    // Answers can come back out of order (a slow check, then a renewal's): only an answer to a later question
+    // than the last one used moves the end or the keepalive. A stopped keepalive's answers count the same way.
+    let asked = 0;
+    let used = 0;
+    const read = async (): Promise<AuthStatus | null> => {
+      const question = ++asked;
+      const s = await authStatus();
+      if (cancelled || question <= used) return null;
+      used = question;
+      observe(s);
       return s;
     };
     // The token keepalive follows the latest status: a renewed login brings a token of its own to refresh,
     // after the old one's keepalive stopped at the old end.
     const keepAlive = (s: AuthStatus) => {
       stopKeepalive?.();
-      stopKeepalive = keepSessionAlive(s, () => authStatus().then(observe));
+      stopKeepalive = keepSessionAlive(s, read);
     };
     const recheck = () =>
-      void authStatus().then(
-        (s) => !cancelled && keepAlive(observe(s)),
+      void read().then(
+        (s) => s && keepAlive(s),
         () => undefined,
       );
     recheckRef.current = recheck;
-    // A login renewed in its own window (or another tab) moves the end for this page too.
-    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
-    channel?.addEventListener("message", recheck);
     const onVisible = () => document.visibilityState === "visible" && recheck();
-    document.addEventListener("visibilitychange", onVisible);
 
-    authStatus()
+    read()
       .then((s) => {
-        if (cancelled) return;
-        observe(s);
+        if (!s) return;
         // I access_code-läget saknar sessionen användare; sessionUser ger då
         // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
         const sessionIdentity = sessionUser(s);
         if (!sessionIdentity) {
           router.replace("/");
-        } else {
-          setUser(sessionIdentity);
-          keepAlive(s);
+          return;
         }
+        setUser(sessionIdentity);
+        keepAlive(s);
+        // From here a login renewed in its own window (or another tab) moves the end for this page too.
+        channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
+        channel?.addEventListener("message", recheck);
+        document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
         if (!cancelled) router.replace("/");

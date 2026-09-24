@@ -3,7 +3,7 @@
  * checks: names and descriptions as Chromium's own tree gives them, the
  * groups around them, and the page titles.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
 import { addParticipants, chooseMode, open, sending, setup, STATES } from "./screens";
 
@@ -138,6 +138,42 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   await expect.poll(() => statusCalls - renewed, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
 });
 
+test("an old status answer that arrives after the renewal's moves neither the end nor the keepalive", async ({ page }) => {
+  const signedIn = { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
+  const before = { ...signedIn, session_ends_in: 200 };
+  const renewed = { ...signedIn, session_ends_in: 8 * 60 * 60, refresh_in: 1 };
+  let answer: object = before;
+  let calls = 0;
+  let holdNext = false;
+  const held: Route[] = [];
+  await page.route("**/api/auth/status", (route) => {
+    calls++;
+    if (holdNext) {
+      holdNext = false;
+      held.push(route);
+      return;
+    }
+    return route.fulfill({ json: answer });
+  });
+  await open(page, "/flows");
+  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
+  await expect(warning).toBeVisible();
+
+  // A slow check that will answer with the old login...
+  holdNext = true;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect.poll(() => held.length).toBe(1);
+  // ...then the renewal, answered at once...
+  answer = renewed;
+  await page.evaluate(() => new BroadcastChannel("tal-till-text:session").postMessage("inloggad"));
+  await expect(warning).toBeHidden();
+  // ...and the old answer last.
+  await held[0].fulfill({ json: before });
+  const renewedCalls = calls;
+  await expect.poll(() => calls - renewedCalls, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
+  await expect(warning).toBeHidden();
+});
+
 test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
   for (const [state, now, deadline] of [
     ["review", "2026-09-24T12:00:00+02:00", "8 okt 11:01"],
@@ -159,6 +195,19 @@ test("a renewal that signed in someone else says so and keeps the page's login",
   await open(page, "/inloggad?fel=annan-anvandare");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Du loggade in som en annan användare");
   await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
+});
+
+test("a renewal after the login ended is refused: the window says so, stays, and tells no tab it signed in", async ({ page }) => {
+  await page.addInitScript(() => {
+    const said: unknown[] = [];
+    (window as unknown as { said: unknown[] }).said = said;
+    new BroadcastChannel("tal-till-text:session").addEventListener("message", (event) => said.push(event.data));
+  });
+  await open(page, "/inloggad?fel=utgangen");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
+  await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in igen i Tal till text.");
+  await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");
+  expect(await page.evaluate(() => (window as unknown as { said: unknown[] }).said)).toEqual([]);
 });
 
 test("with the access code, the warning renews the login by the code, on the page", async ({ page }) => {

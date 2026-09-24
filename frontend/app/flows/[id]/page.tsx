@@ -756,7 +756,8 @@ function ReviewView({
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   useDocumentTitle(`${title} · Tal till text`);
-  // Eneo ends an unanswered review at this time (WCAG 2.2.1: the limit is said, 14 days unless the flow sets less).
+  // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
+  // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
     <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
   ) : null;
