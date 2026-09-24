@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
-import { ReadingMain } from "@/components/frame";
-import { OfflineBanner } from "@/components/OfflineBanner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
@@ -21,7 +19,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { StepView } from "@/lib/run-progress";
 import { StepList } from "./StepList";
-import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
+import { STATE_HEADING, StateCard } from "./StateCard";
+import { usePhaseHeading } from "./usePhaseHeading";
 
 /** The run goes on in Eneo: what happens now, every step, and a way to stop it. */
 export function RunProgress({
@@ -48,13 +47,12 @@ export function RunProgress({
   }
 
   return (
-    <ReadingMain className="gap-6">
-      <OfflineBanner waiting="run" />
+    <StateCard>
       <div className="flex flex-col gap-2">
         <h1
           ref={heading}
           tabIndex={-1}
-          className={PHASE_HEADING}
+          className={STATE_HEADING}
         >
           Dokumentet skapas
         </h1>
@@ -64,7 +62,7 @@ export function RunProgress({
         </p>
       </div>
       {steps.length > 0 && (
-        <section aria-label="Flödets steg" className="rounded-xl border bg-card p-4 md:p-6">
+        <section aria-label="Flödets steg">
           <StepList steps={steps} />
         </section>
       )}
@@ -96,21 +94,21 @@ export function RunProgress({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </ReadingMain>
+    </StateCard>
   );
 }
 
 /** Opening an earlier run: the shape of the view until its state is known. */
 export function RunOpening() {
   return (
-    <ReadingMain aria-busy="true" className="gap-6">
+    <StateCard aria-busy="true">
       <p role="status" className="sr-only">
         Hämtar körningen…
       </p>
-      <Skeleton className="h-8 w-2/3" />
+      <Skeleton className="h-7 w-2/3" />
       <Skeleton className="h-5 w-1/2" />
-      <Skeleton className="h-40 w-full rounded-xl" />
-    </ReadingMain>
+      <Skeleton className="h-32 w-full rounded-xl" />
+    </StateCard>
   );
 }
 
@@ -118,9 +116,9 @@ export function RunOpening() {
 export function RunUnread({ message, onRetry }: { message: string; onRetry: () => void }) {
   const heading = usePhaseHeading("Resultatet kunde inte hämtas");
   return (
-    <ReadingMain className="gap-6">
+    <StateCard>
       <div className="flex flex-col gap-2">
-        <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
+        <h1 ref={heading} tabIndex={-1} className={STATE_HEADING}>
           Resultatet kunde inte hämtas
         </h1>
         <p className="text-base">{message}</p>
@@ -133,6 +131,6 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
         </Button>
         <BackToFlows variant="outline" size="default" />
       </div>
-    </ReadingMain>
+    </StateCard>
   );
 }

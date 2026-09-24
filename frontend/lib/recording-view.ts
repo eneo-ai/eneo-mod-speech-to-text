@@ -142,14 +142,28 @@ export function leaveWarning(persistent: boolean | null, phase: SessionPhase, se
     : `${lost} Stoppa och välj Spara som fil först om du vill behålla den.`;
 }
 
-/** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
-export function detailsSummary(fields: FormField[], details: Record<string, DetailValue>): string {
-  const parts = fields.flatMap((field) => {
-    const value = details[field.name];
-    const text = Array.isArray(value) ? value.join(", ") : (value ?? "").trim();
-    return text ? [`${field.label || field.name}: ${text}`] : [];
+/**
+ * The filled details as label and text, in the form's order: the form being filled in, or the payload a run
+ * was started with (only the flow's own fields; anything else in it is not a detail).
+ */
+export function detailRows(fields: FormField[], values: Record<string, unknown>): { label: string; text: string }[] {
+  return fields.flatMap((field) => {
+    const value = values[field.name];
+    const text = Array.isArray(value)
+      ? value.map(String).filter((item) => item.trim()).join(", ")
+      : typeof value === "string"
+        ? value.trim()
+        : typeof value === "number"
+          ? String(value)
+          : "";
+    return text ? [{ label: field.label || field.name, text }] : [];
   });
-  return parts.length > 0 ? parts.join(" · ") : "Inga uppgifter ifyllda";
+}
+
+/** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
+export function detailsSummary(fields: FormField[], details: Record<string, DetailValue | unknown>): string {
+  const rows = detailRows(fields, details);
+  return rows.length > 0 ? rows.map(({ label, text }) => `${label}: ${text}`).join(" · ") : "Inga uppgifter ifyllda";
 }
 
 /** The reader is at the end of the draft (a line's height short still counts): new text may scroll it. */

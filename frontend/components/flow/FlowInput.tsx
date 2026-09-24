@@ -1,20 +1,18 @@
 "use client";
 
-import { ChevronDown, FileText } from "lucide-react";
+import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
-import { BackToFlows } from "@/components/flow/BackToFlows";
-import { ClassificationNote } from "@/components/flow/ClassificationNote";
+import { FlowAside } from "@/components/flow/FlowAside";
 import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FRAME } from "@/components/frame";
+import { FLOW_GRID, FRAME } from "@/components/frame";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -154,46 +152,25 @@ export function FlowInput({
         id="innehall"
         className={cn(
           FRAME,
-          "flex-1 pt-3",
-          "lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10 lg:pt-8",
+          FLOW_GRID,
+          "flex-1 pt-3 lg:pt-8",
           group === "capture"
             ? "flex min-h-0 flex-col overflow-y-auto lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:pb-6"
             : "pb-12 lg:items-start",
         )}
       >
         {/* While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box. */}
-        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}>
-          <BackToFlows onLeave={onLeave} className="hidden lg:inline-flex" />
-          <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
-            {published.name}
-          </h1>
-          <div className={cn("flex flex-col gap-5", holdsAudio && "hidden lg:flex")}>
-            {published.description && (
-              <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">{published.description}</p>
-            )}
-            <ClassificationNote classification={contract.security_classification} />
-          </div>
-          {holdsAudio && fields.length > 0 ? (
-            // While recording and after, the details fold into one line on a phone or tablet.
-            <Collapsible open={openDetails} onOpenChange={setDetailsOpen}>
-              <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
-                <span className="min-w-0 flex-1 truncate">
-                  <span className="sr-only">Uppgifter, </span>
-                  {detailsSummary(fields, snapshot.details)}
-                </span>
-                <ChevronDown
-                  aria-hidden
-                  className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
-                />
-              </CollapsibleTrigger>
-              <CollapsibleContent forceMount className="pt-4 data-[state=closed]:max-lg:hidden lg:pt-0">
-                {details}
-              </CollapsibleContent>
-            </Collapsible>
-          ) : (
-            details
-          )}
-        </div>
+        <FlowAside
+          published={published}
+          classification={contract.security_classification}
+          onLeave={onLeave}
+          compact={holdsAudio}
+          details={details}
+          summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
+          open={openDetails}
+          onOpenChange={setDetailsOpen}
+          className={cn(group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}
+        />
 
         <section
           ref={workspace}

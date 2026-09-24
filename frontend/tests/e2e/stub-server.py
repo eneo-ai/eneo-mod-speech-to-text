@@ -349,8 +349,10 @@ class Handler(BaseHTTPRequestHandler):
             body = {"id": run_id, "flow_id": fid, "status": run["status"], "flow_version": f["published"]["published_version"],
                     "created_at": "2026-09-24T09:00:00Z", "revision": 1}
             if not what:
+                # The details the run was started with, which the flow's page shows beside the run.
                 body.update(finished_at="2026-09-24T09:02:00Z", result=run.get("result"),
-                            result_files=run.get("result_files", []), error=run.get("error"))
+                            result_files=run.get("result_files", []), error=run.get("error"),
+                            input_payload_json={"deltagare": ["Anna Berg", "Erik Lund"]} if fid == "flow-1" else {})
             return self.send(200, body)
         if what == ["steps"]:
             return self.send(200, run["steps"])

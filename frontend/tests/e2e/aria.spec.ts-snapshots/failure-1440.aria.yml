@@ -1,7 +1,19 @@
 - main:
+  - link "Alla flöden":
+    - /url: /flows
+  - paragraph: Nämndmöte till rapport
+  - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
+  - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
+  - term: Deltagare
+  - definition: Anna Berg, Erik Lund
+  - status
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att köra flödet igen om en stund.
+  - button "Försök igen"
+  - link "Alla flöden":
+    - /url: /flows
+  - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
     - list:
@@ -57,10 +69,6 @@
         - button /Bakåt \d+ sekunder/
         - button /Framåt \d+ sekunder/
         - button "Hastighet 1×"
-  - button "Försök igen"
-  - link "Alla flöden":
-    - /url: /flows
-  - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Kontakta support":
     - heading "Kontakta support" [level=2]
     - text: Körnings-ID

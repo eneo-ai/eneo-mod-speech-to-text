@@ -23,6 +23,7 @@ import type { Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
+import { STATE_HEADING, StateCard } from "@/components/flow/StateCard";
 
 /** Each part of the recording as something the player can play, over its known length. */
 function usePartSources(recording: StoredRecording): PlayerSource[] {
@@ -92,9 +93,9 @@ export function ReadyPanel({
   }
 
   return (
-    <div className="flex flex-col gap-6 rounded-xl border border-rule-soft bg-paper p-5 md:p-6">
+    <StateCard>
       <div className="flex flex-col gap-1">
-        <h2 data-phase-heading tabIndex={-1} className="text-[22px] font-semibold tracking-[-0.01em] text-ink outline-none">
+        <h2 data-phase-heading tabIndex={-1} className={STATE_HEADING}>
           Inspelningen är klar
         </h2>
         <p className="text-[15px] text-ink-soft">
@@ -157,6 +158,6 @@ export function ReadyPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </StateCard>
   );
 }

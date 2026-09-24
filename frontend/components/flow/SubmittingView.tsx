@@ -1,14 +1,11 @@
 "use client";
 
 import { Loader2 } from "lucide-react";
-import type { FlowPublished } from "@/lib/api";
 import { formatBytes } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { PHASE_HEADING, usePhaseHeading } from "@/components/flow/usePhaseHeading";
+import { STATE_HEADING, StateCard } from "@/components/flow/StateCard";
+import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { Button } from "@/components/ui/button";
-import { ReadingMain } from "@/components/frame";
-import { OfflineBanner } from "@/components/OfflineBanner";
 import { RetryNotice } from "@/components/RetryNotice";
 
 export type SubmissionState =
@@ -23,13 +20,15 @@ export type SubmissionState =
     }
   | { kind: "starting"; wait: RetryWait | null };
 
-/** A document on its way: the upload, then the run's start, before the run's own view. */
+/**
+ * A document on its way, in the flow page's card: the upload, then the run's start, before the run's own view.
+ * The page around it is locked (FlowRunPage): leaving would abort the upload unasked, and Avbryt, which keeps
+ * the file and the details, is the way out.
+ */
 export function SubmittingView({
-  published,
   submission,
   onCancelSubmission,
 }: {
-  published: FlowPublished;
   submission: SubmissionState;
   onCancelSubmission: () => void;
 }) {
@@ -37,27 +36,22 @@ export function SubmittingView({
   const heading = usePhaseHeading("Dokumentet skapas");
   const isUploading = submission.kind === "uploading";
   return (
-    <>
-      {/* Leaving would abort the upload unasked: Avbryt, which keeps the file and details, is the way out. */}
-      <FlowTopBar title={published.name} titleIsHeading={false} locked />
-      <ReadingMain className="gap-6">
-        <OfflineBanner waiting={submission.kind === "idle" ? "run" : "upload"} />
-        <div className="flex flex-col gap-2">
-          <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
-            Dokumentet skapas
-          </h1>
-          <p role="status" className="flex items-center gap-2 text-base">
-            <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
-            {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
-          </p>
-        </div>
-        {isUploading ? (
-          <UploadProgressCard submission={submission} onCancel={onCancelSubmission} />
-        ) : (
-          submission.kind === "starting" && <RetryNotice wait={submission.wait} />
-        )}
-      </ReadingMain>
-    </>
+    <StateCard>
+      <div className="flex flex-col gap-2">
+        <h1 ref={heading} tabIndex={-1} className={STATE_HEADING}>
+          Dokumentet skapas
+        </h1>
+        <p role="status" className="flex items-center gap-2 text-base">
+          <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
+          {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
+        </p>
+      </div>
+      {isUploading ? (
+        <UploadProgress submission={submission} onCancel={onCancelSubmission} />
+      ) : (
+        submission.kind === "starting" && <RetryNotice wait={submission.wait} />
+      )}
+    </StateCard>
   );
 }
 
@@ -65,7 +59,7 @@ export function SubmittingView({
 const uploadMilestone = (percent: number | null) =>
   percent != null && percent >= 25 ? `${Math.floor(percent / 25) * 25} % uppladdat.` : "";
 
-function UploadProgressCard({
+function UploadProgress({
   submission,
   onCancel,
 }: {
@@ -74,7 +68,7 @@ function UploadProgressCard({
 }) {
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
   return (
-    <div className="paper-card p-4 md:p-5">
+    <div>
       <div className="flex items-start justify-between gap-4 mb-3">
         <div className="min-w-0">
           <div className="text-[14px] md:text-[15px] font-medium text-ink truncate">

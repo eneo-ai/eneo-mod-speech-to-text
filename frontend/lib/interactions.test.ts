@@ -236,15 +236,64 @@ const exits = (container: HTMLElement) => ({
   account: [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto")).length,
 });
 
+const IBIC = {
+  id: "flow-6",
+  name: "Genomförandeplan IBIC",
+  description: "Skapar en genomförandeplan ur en utredning.",
+  published_version: 2,
+} as import("./api").FlowPublished;
+const IBIC_CONTRACT = {
+  flow_id: "flow-6",
+  published_flow_version: 2,
+  form_fields: [
+    { name: "deltagare", label: "Deltagare", type: "list" },
+    { name: "talare", label: "Antal talare", type: "text" },
+    { name: "arende", label: "Ärende", type: "text" },
+  ],
+  steps_requiring_input: [],
+} as unknown as import("./api").RunContract;
+
+test("a run's states keep the flow's page: the way back, the flow, and the details it was started with, read only", async () => {
+  const { createElement } = await import("react");
+  const { FlowRunPage } = await import("../components/flow/FlowRunPage");
+  const view = await mount(
+    await signedIn(
+      createElement(
+        FlowRunPage,
+        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" } },
+        createElement("h1", null, "Dokumentet skapas"),
+      ),
+      [],
+    ),
+  );
+  const main = view.container.querySelector("main")!;
+  assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
+  assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
+  assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
+  const rows = [...main.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling?.textContent}`);
+  assert.deepEqual(rows, ["Deltagare: Max, Alexander", "Antal talare: 4"], "the filled details in the form's order, nothing Eneo added");
+  assert.equal(main.querySelectorAll("input, textarea, select").length, 0, "no editable form");
+  const headings = [...view.container.querySelectorAll("h1")].map((h) => h.textContent);
+  assert.deepEqual(headings, ["Dokumentet skapas"], "the state's heading stays the page's one h1");
+  await view.unmount();
+});
+
 test("upload under way: the header offers no way off the page, which would abort the upload unasked; Avbryt is the way out", async () => {
   const { createElement } = await import("react");
   const { SubmittingView } = await import("../components/flow/SubmittingView");
+  const { FlowRunPage } = await import("../components/flow/FlowRunPage");
   const navigated: string[] = [];
   let cancelled = 0;
-  const published = { id: "flow-6", name: "Genomförandeplan IBIC", published_version: 2 } as import("./api").FlowPublished;
   const submission = { kind: "uploading", filename: "underlag.pdf", loaded: 0, total: 2048, percent: 0, wait: null } as const;
   const view = await mount(
-    await signedIn(createElement(SubmittingView, { published, submission, onCancelSubmission: () => (cancelled += 1) }), navigated),
+    await signedIn(
+      createElement(
+        FlowRunPage,
+        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, locked: true },
+        createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
+      ),
+      navigated,
+    ),
   );
   assert.deepEqual(exits(view.container), { links: 0, account: 0 }, "no back link, no brand link, no sign-out while it uploads");
 

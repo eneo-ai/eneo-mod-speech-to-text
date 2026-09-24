@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FRAME, ReadingMain } from "@/components/frame";
+import { FLOW_GRID, FRAME, ReadingMain } from "@/components/frame";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
@@ -23,7 +23,7 @@ export function FlowSkeleton() {
         <Skeleton className="size-10 rounded-full" />
       </div>
       <div className="hidden h-16 border-b border-rule-soft bg-paper lg:block" />
-      <div className={cn(FRAME, "flex-1 pb-12 pt-3 lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:items-start lg:gap-10 lg:pt-8")}>
+      <div className={cn(FRAME, FLOW_GRID, "flex-1 pb-12 pt-3 lg:items-start lg:pt-8")}>
         <div className="flex flex-col gap-5">
           <Skeleton className="hidden h-7 w-3/4 lg:block" />
           <div className="flex flex-col gap-2">

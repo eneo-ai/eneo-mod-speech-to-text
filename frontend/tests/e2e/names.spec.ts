@@ -5,7 +5,7 @@
  */
 import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
-import { addParticipants, chooseMode, isLaptop, open, result, sending, setup, STATES } from "./screens";
+import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
 
 test("the input modes are named by their title and described by their line", async ({ page }) => {
   await setup(page);
@@ -41,6 +41,20 @@ test("the sending view is a page with a heading that takes focus, a named progre
   await expect(bar).toHaveAttribute("aria-valuenow", /^\d+$/);
   await expect(page.getByRole("status").filter({ hasText: "Laddar upp filen" })).toBeAttached();
   await expect(page).toHaveTitle("Dokumentet skapas · Tal till text");
+});
+
+test("a run opened while it runs keeps the flow's page: the way back, and the details it was started with", async ({ page }, info) => {
+  await run(page, "run-running");
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeFocused();
+  await expect(backLink(page)).toBeVisible();
+  if (isLaptop(info)) {
+    await expect(page.getByRole("main").getByText("Nämndmöte till rapport")).toBeVisible();
+    await expect(page.getByRole("definition").filter({ hasText: "Anna Berg, Erik Lund" })).toBeVisible();
+  } else {
+    // Below a laptop's width the details fold into one line above the card.
+    await expect(page.getByRole("button", { name: "Uppgifter, Deltagare: Anna Berg, Erik Lund" })).toBeVisible();
+  }
+  await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(0);
 });
 
 test("the review's text fields are labelled", async ({ page }, info) => {

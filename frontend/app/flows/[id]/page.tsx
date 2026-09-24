@@ -19,6 +19,8 @@ import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
+import { FlowRunPage } from "@/components/flow/FlowRunPage";
+import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { useReviewDraft } from "@/components/useReviewDraft";
@@ -160,6 +162,26 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
+  // The details a run was started with, shown beside its states: as sent, as the run Eneo returned carries
+  // them, or read once for a run opened while it runs (its polled status does not carry them).
+  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown }>({ runId: null, input: null });
+  const runningRun = run.kind === "running" ? run.run : null;
+  useEffect(() => {
+    if (!runningRun || startedWith.runId === runningRun.id) return;
+    if ("input_payload_json" in runningRun) {
+      setStartedWith({ runId: runningRun.id, input: (runningRun as FlowRunPublic).input_payload_json ?? null });
+      return;
+    }
+    let current = true;
+    getRun(flowId, runningRun.id)
+      .then((full) => current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null }))
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+    // Once per run shown running: the status reads that replace it later carry no details.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [runningRun?.id]);
   // This user's earlier runs of the flow, a page at a time.
   const [earlier] = useState(() => new EarlierRunsList(flowId));
   const earlierRuns = useSyncExternalStore(earlier.subscribe, earlier.getSnapshot, earlier.getSnapshot);
@@ -268,6 +290,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   async function sendInput({ input: runInput, payload, speakerLabels }: SubmitRequest) {
     if (!contract) throw new Error("Flödet har inte laddats klart.");
     setRunError(null);
+    setStartedWith({ runId: null, input: payload });
     setRun({ kind: "submitting" });
     setSubmission({ kind: "idle" });
     const abortController = new AbortController();
@@ -299,6 +322,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setSubmission({ kind: "idle" });
 
       writeRunIdToUrl(initialRun.id);
+      setStartedWith({ runId: initialRun.id, input: initialRun.input_payload_json ?? payload });
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
@@ -553,6 +577,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
   async function onStartAgain(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
+    setStartedWith({ runId: null, input: failed.run.input_payload_json ?? null });
     setRun({ kind: "submitting" });
     setSubmission({ kind: "starting", wait: null });
     // "Avbryt" and leaving the page end it: nothing more is sent, shown or followed.
@@ -630,13 +655,23 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
+  // A run's states keep the flow's page, with the details it was started with; only the state's card changes.
+  const flowPage = (
+    view: ReactNode,
+    { input = null, locked = false, offline = null }: { input?: unknown; locked?: boolean; offline?: OfflineWaiting } = {},
+  ) => (
+    <FlowRunPage published={published} contract={contract} input={input} locked={locked} offline={offline}>
+      {view}
+    </FlowRunPage>
+  );
+
   if (run.kind === "submitting") {
     return withLeave(
-      <SubmittingView
-        published={published}
-        submission={submission}
-        onCancelSubmission={onCancelSubmission}
-      />,
+      flowPage(<SubmittingView submission={submission} onCancelSubmission={onCancelSubmission} />, {
+        input: startedWith.input,
+        locked: true,
+        offline: submission.kind === "idle" ? "run" : "upload",
+      }),
     );
   }
 
@@ -659,39 +694,20 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  // A run's own views: the view's heading names the state, so the flow's name is not the heading.
-  const topBar = <FlowTopBar title={published.name} titleIsHeading={false} />;
+  if (run.kind === "opening") return flowPage(<RunOpening />);
 
-  if (run.kind === "opening") {
-    return (
-      <>
-        {topBar}
-        <RunOpening />
-      </>
-    );
-  }
-
-  if (run.kind === "unread") {
-    return (
-      <>
-        {topBar}
-        <RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />
-      </>
-    );
-  }
+  if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
   if (run.kind === "running") {
     const steps = runSteps(run.graph, run.run);
-    return (
-      <>
-        {topBar}
-        <RunProgress
-          steps={steps}
-          stage={runStage(steps, run.run.status)}
-          error={runError}
-          onCancel={() => onCancelRun(run.run.id)}
-        />
-      </>
+    return flowPage(
+      <RunProgress
+        steps={steps}
+        stage={runStage(steps, run.run.status)}
+        error={runError}
+        onCancel={() => onCancelRun(run.run.id)}
+      />,
+      { input: startedWith.runId === run.run.id ? startedWith.input : null, offline: "run" },
     );
   }
 
@@ -701,7 +717,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (runOutcome(run.run.status) === "succeeded") {
     return (
       <>
-        {topBar}
+        {/* The result has its own layout; its heading names the state, so the flow's name is not the heading. */}
+        <FlowTopBar title={published.name} titleIsHeading={false} />
       <RunResult
           flowId={flowId}
           flowName={published.name}
@@ -728,24 +745,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const sameInputHelps = !failure?.inputMustChange;
   const cancelled = runOutcome(run.run.status) === "cancelled";
   const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
-  return (
-    <>
-      {topBar}
-      <RunFailure
-        flowId={flowId}
-        flowName={published.name}
-        run={run.run}
-        failure={failure}
-        steps={steps}
-        stepResults={run.steps}
-        files={files}
-        showTranscript={transcribed}
-        error={runError}
-        refusal={retryRefusal}
-        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-      />
-    </>
+  return flowPage(
+    <RunFailure
+      flowId={flowId}
+      flowName={published.name}
+      run={run.run}
+      failure={failure}
+      steps={steps}
+      stepResults={run.steps}
+      files={files}
+      showTranscript={transcribed}
+      error={runError}
+      refusal={retryRefusal}
+      onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+      onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+    />,
+    { input: run.run.input_payload_json },
   );
 }
 

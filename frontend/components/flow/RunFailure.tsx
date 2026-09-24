@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { ReadingMain } from "@/components/frame";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,7 +16,8 @@ import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
-import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
+import { STATE_HEADING, StateCard } from "./StateCard";
+import { usePhaseHeading } from "./usePhaseHeading";
 
 /**
  * A run that did not finish: which step stopped and why, what never ran,
@@ -72,28 +72,72 @@ export function RunFailure({
   }
 
   return (
-    <ReadingMain id="innehall" className="gap-8">
-      <header className="flex flex-col gap-1">
-        <h1
-          ref={heading}
-          tabIndex={-1}
-          className={PHASE_HEADING}
-        >
-          {cancelled ? "Körningen avbröts" : "Dokumentet kunde inte skapas"}
-        </h1>
-        {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
-      </header>
+    <>
+      {/* What happened and what can be done, in the card; what the run left behind follows it. */}
+      <StateCard>
+        <header className="flex flex-col gap-1">
+          <h1
+            ref={heading}
+            tabIndex={-1}
+            className={STATE_HEADING}
+          >
+            {cancelled ? "Körningen avbröts" : "Dokumentet kunde inte skapas"}
+          </h1>
+          {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
+        </header>
 
-      {/* The heading takes focus when this view appears, so the callout need not interrupt. */}
-      <Alert role="note" variant={cancelled ? "default" : "destructive"}>
-        <Icon aria-hidden className="size-4" />
-        <AlertTitle className="leading-snug">
-          {failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
-        </AlertTitle>
-        <AlertDescription>
-          {failure?.summary ?? "Körningen kunde inte slutföras."}
-        </AlertDescription>
-      </Alert>
+        {/* The heading takes focus when this view appears, so the callout need not interrupt. */}
+        <Alert role="note" variant={cancelled ? "default" : "destructive"}>
+          <Icon aria-hidden className="size-4" />
+          <AlertTitle className="leading-snug">
+            {failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
+          </AlertTitle>
+          <AlertDescription>
+            {failure?.summary ?? "Körningen kunde inte slutföras."}
+          </AlertDescription>
+        </Alert>
+
+        <div className="flex flex-col gap-3">
+          {[refusal?.message, error].filter(Boolean).map((message) => (
+            <p key={message} role="alert" className="text-sm text-destructive">
+              {message}
+            </p>
+          ))}
+          <div className="flex flex-wrap gap-3">
+            {offerRetry && (
+              <Button
+                type="button"
+                variant={run.error?.retryable ? "default" : "outline"}
+                disabled={retrying}
+                onClick={() => void retry()}
+              >
+                {retrying ? <Spinner data-icon="inline-start" aria-hidden /> : <RotateCcw data-icon="inline-start" aria-hidden />}
+                Försök igen
+              </Button>
+            )}
+            {offerStartAgain && (
+              <Button type="button" onClick={() => void onStartAgain?.()}>
+                <Plus data-icon="inline-start" aria-hidden />
+                Starta en ny körning
+              </Button>
+            )}
+            <BackToFlows
+              variant={offerStartAgain || (offerRetry && run.error?.retryable) ? "outline" : "default"}
+              size="default"
+            />
+          </div>
+          {offerRetry && (
+            <p className="text-sm text-muted-foreground">
+              Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+            </p>
+          )}
+          {offerStartAgain && (
+            <p className="text-sm text-muted-foreground">
+              En ny körning använder samma ljud och uppgifter och gör om alla steg.
+            </p>
+          )}
+        </div>
+      </StateCard>
 
       {steps.length > 0 && (
         <section aria-labelledby="run-steps" className="flex flex-col gap-3">
@@ -117,49 +161,8 @@ export function RunFailure({
         />
       )}
 
-      <div className="flex flex-col gap-3">
-        {[refusal?.message, error].filter(Boolean).map((message) => (
-          <p key={message} role="alert" className="text-sm text-destructive">
-            {message}
-          </p>
-        ))}
-        <div className="flex flex-wrap gap-3">
-          {offerRetry && (
-            <Button
-              type="button"
-              variant={run.error?.retryable ? "default" : "outline"}
-              disabled={retrying}
-              onClick={() => void retry()}
-            >
-              {retrying ? <Spinner data-icon="inline-start" aria-hidden /> : <RotateCcw data-icon="inline-start" aria-hidden />}
-              Försök igen
-            </Button>
-          )}
-          {offerStartAgain && (
-            <Button type="button" onClick={() => void onStartAgain?.()}>
-              <Plus data-icon="inline-start" aria-hidden />
-              Starta en ny körning
-            </Button>
-          )}
-          <BackToFlows
-            variant={offerStartAgain || (offerRetry && run.error?.retryable) ? "outline" : "default"}
-            size="default"
-          />
-        </div>
-        {offerRetry && (
-          <p className="text-sm text-muted-foreground">
-            Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
-          </p>
-        )}
-        {offerStartAgain && (
-          <p className="text-sm text-muted-foreground">
-            En ny körning använder samma ljud och uppgifter och gör om alla steg.
-          </p>
-        )}
-      </div>
-
       <SupportDetails runId={run.id} failure={failure} code={run.error?.code} />
-    </ReadingMain>
+    </>
   );
 }
 

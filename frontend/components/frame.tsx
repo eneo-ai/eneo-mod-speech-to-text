@@ -10,6 +10,9 @@ import { cn } from "@/lib/utils";
 export const FRAME_WIDTH = "mx-auto w-full max-w-[1180px]";
 export const FRAME = cn(FRAME_WIDTH, "px-4 md:px-8");
 
+/** A flow's page from laptops: the flow and its details in a narrow column beside the working card. */
+export const FLOW_GRID = "lg:grid lg:grid-cols-[20rem_minmax(0,1fr)] lg:gap-10";
+
 /** One column read top to bottom (progress, sign-in, a flow's states), at a calm line length on FRAME's left edge. */
 export const READING = "w-full max-w-2xl";
 
