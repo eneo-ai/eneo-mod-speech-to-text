@@ -4,7 +4,7 @@
  * once it ended, the step results read once say which steps ever started.
  */
 
-import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep } from "./api";
+import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep, type RunContract } from "./api";
 import { carriesTranscript } from "./speaker-review";
 
 export type StepState = "waiting" | "running" | "done" | "failed" | "cancelled" | "not_run";
@@ -78,6 +78,17 @@ export function finishedRun(
   };
 }
 
+/**
+ * Whether the run was started on the flow's version the contract describes. A republished flow can have other
+ * steps and other fields, so today's contract says nothing about an older run; an unknown version is not guessed.
+ */
+export function ofContractVersion(
+  run: { flow_version?: number | null },
+  contract: Pick<RunContract, "published_flow_version"> | null | undefined,
+): boolean {
+  return run.flow_version != null && run.flow_version === contract?.published_flow_version;
+}
+
 /** The run contract's word for what a review step asks: naming the speakers, or looking over a result. */
 function reviewNote(review: FlowReviewStepContract | undefined): string | null {
   if (!review) return null;
@@ -86,11 +97,12 @@ function reviewNote(review: FlowReviewStepContract | undefined): string | null {
 
 export function runSteps(
   graph: FlowGraph | null,
-  run: { status: string; error?: Pick<FlowRunError, "step_order"> | null },
+  run: { status: string; flow_version?: number | null; error?: Pick<FlowRunError, "step_order"> | null },
   results: readonly FlowRunStep[] = [],
-  /** The steps that pause the run for the person, from the run contract. */
-  reviews: readonly FlowReviewStepContract[] = [],
+  /** The run contract, for the steps that pause the run for the person; used only for the run's own version. */
+  contract?: Pick<RunContract, "published_flow_version" | "steps_requiring_review"> | null,
 ): StepView[] {
+  const reviews = ofContractVersion(run, contract) ? (contract?.steps_requiring_review ?? []) : [];
   const outcome = runOutcome(run.status);
   const failedAt = run.error?.step_order ?? null;
   const byId = new Map(results.map((result) => [result.step_id, result]));

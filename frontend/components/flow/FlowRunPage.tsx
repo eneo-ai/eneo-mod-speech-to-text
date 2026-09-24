@@ -7,6 +7,7 @@ import { FLOW_GRID, FRAME } from "@/components/frame";
 import { OfflineBanner, type OfflineWaiting } from "@/components/OfflineBanner";
 import type { FlowPublished, RunContract } from "@/lib/api";
 import { detailRows, detailsSummary } from "@/lib/recording-view";
+import { ofContractVersion } from "@/lib/run-progress";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,6 +19,7 @@ export function FlowRunPage({
   published,
   contract,
   input,
+  version,
   locked = false,
   offline = null,
   children,
@@ -26,6 +28,8 @@ export function FlowRunPage({
   contract: RunContract;
   /** The details the run was started with (its input payload); unknown while it is being read. */
   input: unknown;
+  /** The flow version the details were given on: labelled by the contract's form only when it is the contract's own. */
+  version: number | null | undefined;
   /** While an upload is under way: leaving would abort it, so the page offers no way off. */
   locked?: boolean;
   /** What waits while the device is offline, said above the card in every state, so the card never moves. */
@@ -35,7 +39,7 @@ export function FlowRunPage({
   const [open, setOpen] = useState(false);
   const fields = contract.form_fields ?? [];
   const values = input && typeof input === "object" && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
-  const rows = detailRows(fields, values);
+  const rows = ofContractVersion({ flow_version: version }, contract) ? detailRows(fields, values) : [];
   return (
     <div className="flex min-h-dvh flex-col">
       <FlowTopBar title={published.name} titleIsHeading={false} locked={locked} />

@@ -52,25 +52,41 @@ test("a running run shows each step from the run-pinned graph, never 'I kö' for
 });
 
 test("a step that stops for the person says what it will ask, while it is still ahead, from the contract and not the name", () => {
-  const reviews: FlowReviewStepContract[] = [
-    {
-      step_id: "step-2",
-      step_order: 2,
-      review_mode: "edit",
-      output_type: "json",
-      output_contract: { properties: { speakers: { items: { properties: { label: { pattern: "^SPEAKER_\\d{2,}$" } } } } } },
-    },
-    // Named like the speaker step, but an ordinary review of the text.
-    { step_id: "step-3", step_order: 3, label: "Vem är vem?", review_mode: "view", output_type: "text" },
-  ];
+  const contract = {
+    published_flow_version: 3,
+    steps_requiring_review: [
+      {
+        step_id: "step-2",
+        step_order: 2,
+        review_mode: "edit",
+        output_type: "json",
+        output_contract: { properties: { speakers: { items: { properties: { label: { pattern: "^SPEAKER_\\d{2,}$" } } } } } },
+      },
+      // Named like the speaker step, but an ordinary review of the text.
+      { step_id: "step-3", step_order: 3, label: "Vem är vem?", review_mode: "view", output_type: "text" },
+    ] as FlowReviewStepContract[],
+  };
   const notes = (views: { note: string | null }[]) => views.map((view) => view.note);
+  const running = { status: "running", flow_version: 3 };
 
-  const ahead = runSteps(graph("running", null, null, null), { status: "running" }, [], reviews);
+  const ahead = runSteps(graph("running", null, null, null), running, [], contract);
   assert.deepEqual(notes(ahead), [null, "Här bekräftar du vem som är vem.", "Här granskar du resultatet.", null]);
 
-  const passed = runSteps(graph("completed", "completed", "running", null), { status: "running" }, [], reviews);
+  const passed = runSteps(graph("completed", "completed", "running", null), running, [], contract);
   assert.deepEqual(notes(passed), [null, null, null, null], "said only while the step is ahead");
-  assert.deepEqual(notes(runSteps(graph("running", null, null, null), { status: "running" })), [null, null, null, null]);
+  assert.deepEqual(notes(runSteps(graph("running", null, null, null), running)), [null, null, null, null]);
+});
+
+test("a run of an earlier version of the flow gets no review notes from today's contract, nor one whose version is unknown", () => {
+  const contract = {
+    published_flow_version: 4,
+    steps_requiring_review: [{ step_id: "step-2", step_order: 2, review_mode: "view", output_type: "text" }] as FlowReviewStepContract[],
+  };
+  const notes = (flowVersion?: number) =>
+    runSteps(graph("running", null, null, null), { status: "running", flow_version: flowVersion }, [], contract).map((view) => view.note);
+  assert.deepEqual(notes(4), [null, "Här granskar du resultatet.", null, null], "the run of today's version");
+  assert.deepEqual(notes(3), [null, null, null, null], "republished since the run started");
+  assert.deepEqual(notes(undefined), [null, null, null, null], "never guessed");
 });
 
 test("the stage line names what happens now, and waits truthfully between steps", () => {

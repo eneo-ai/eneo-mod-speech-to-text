@@ -121,7 +121,7 @@ type RunState =
   | { kind: "opening" }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
-  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status">; graph: FlowGraph | null }
+  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
       run: FlowRunPublic;
@@ -609,9 +609,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // A run's states keep the flow's page, with the details it was started with; only the state's card changes.
   const flowPage = (
     view: ReactNode,
-    { input = null, locked = false, offline = null }: { input?: unknown; locked?: boolean; offline?: OfflineWaiting } = {},
+    {
+      input = null,
+      version = null,
+      locked = false,
+      offline = null,
+    }: { input?: unknown; version?: number | null; locked?: boolean; offline?: OfflineWaiting } = {},
   ) => (
-    <FlowRunPage published={published} contract={contract} input={input} locked={locked} offline={offline}>
+    <FlowRunPage published={published} contract={contract} input={input} version={version} locked={locked} offline={offline}>
       {view}
     </FlowRunPage>
   );
@@ -620,6 +625,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return withLeave(
       flowPage(<SubmittingView submission={submission} onCancelSubmission={onCancelSubmission} />, {
         input: startedWith.input,
+        // Sent just now, from this contract's form.
+        version: contract.published_flow_version,
         locked: true,
         offline: submission.kind === "idle" ? "run" : "upload",
       }),
@@ -648,7 +655,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
   if (run.kind === "running") {
-    const steps = runSteps(run.graph, run.run, [], contract.steps_requiring_review);
+    const steps = runSteps(run.graph, run.run, [], contract);
     return flowPage(
       <RunProgress
         steps={steps}
@@ -656,7 +663,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         error={runError}
         onCancel={() => onCancelRun(run.run.id)}
       />,
-      { input: startedWith.runId === run.run.id ? startedWith.input : null, offline: "run" },
+      { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },
     );
   }
 
@@ -709,7 +716,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
       onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
     />,
-    { input: run.run.input_payload_json },
+    { input: run.run.input_payload_json, version: run.run.flow_version },
   );
 }
 

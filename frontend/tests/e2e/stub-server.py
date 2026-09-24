@@ -393,13 +393,15 @@ class Handler(BaseHTTPRequestHandler):
                 run_id = "run-new-%d" % next(NEW_RUN)
                 STARTED[run_id] = 0
                 return self.send(200, {"checkpoint": dict(checkpoint, state="resumed"),
-                                       "run": {"id": run_id, "flow_id": fid, "status": "running", "revision": 2}})
+                                       "run": {"id": run_id, "flow_id": fid, "status": "running", "revision": 2,
+                                               "flow_version": FLOWS[fid]["published"]["published_version"]}})
             if rest == ["runs"]:
                 if fid == "flow-3":
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})
                 run_id = "run-new-%d" % next(NEW_RUN)
                 STARTED[run_id] = 0
-                return self.send(201, {"id": run_id, "flow_id": fid, "status": "queued"})
+                return self.send(201, {"id": run_id, "flow_id": fid, "status": "queued",
+                                       "flow_version": FLOWS[fid]["published"]["published_version"]})
         return self.send(404, {"detail": "stub: " + self.path})
 
 

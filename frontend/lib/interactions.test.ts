@@ -260,7 +260,7 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
     await signedIn(
       createElement(
         FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" } },
+        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" }, version: 2 },
         createElement("h1", null, "Dokumentet skapas"),
       ),
       [],
@@ -278,6 +278,22 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   await view.unmount();
 });
 
+test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
+  const { createElement } = await import("react");
+  const { FlowRunPage } = await import("../components/flow/FlowRunPage");
+  for (const version of [1, null]) {
+    const view = await mount(
+      await signedIn(
+        createElement(FlowRunPage, { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max"], talare: "4" }, version }),
+        [],
+      ),
+    );
+    assert.equal(view.container.querySelectorAll("dt").length, 0, `version ${version}: the form may have changed since`);
+    assert.ok(!(view.container.textContent ?? "").includes("Max"), "nor the values, unlabelled");
+    await view.unmount();
+  }
+});
+
 test("upload under way: the header offers no way off the page, which would abort the upload unasked; Avbryt is the way out", async () => {
   const { createElement } = await import("react");
   const { SubmittingView } = await import("../components/flow/SubmittingView");
@@ -289,7 +305,7 @@ test("upload under way: the header offers no way off the page, which would abort
     await signedIn(
       createElement(
         FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, locked: true },
+        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, version: 2, locked: true },
         createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
       ),
       navigated,
