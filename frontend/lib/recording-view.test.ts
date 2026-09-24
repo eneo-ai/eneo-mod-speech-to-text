@@ -7,7 +7,6 @@ import {
   atBottom,
   detailsSummary,
   keepDetailsOpen,
-  leaveGuarded,
   leaveWarning,
   liveStatusLine,
   pageTitle,
@@ -148,16 +147,23 @@ test("pause excludes time: the timer counts only recorded time", async () => {
 function fakeWindow() {
   // The flow list, then the flow page.
   const entries: unknown[] = [{ page: "list" }, { page: "flow" }];
+  const urls = ["/flows", "/flows/flow-1"];
   let index = 1;
   const target = new EventTarget();
   const history = {
     get state() {
       return entries[index];
     },
-    pushState(state: unknown) {
+    pushState(state: unknown, _title: string, url?: string) {
       entries.splice(index + 1);
+      urls.splice(index + 1);
       entries.push(state);
+      urls.push(url ?? urls[index]);
       index += 1;
+    },
+    replaceState(state: unknown, _title: string, url?: string) {
+      entries[index] = state;
+      urls[index] = url ?? urls[index];
     },
     go(delta: number) {
       const next = Math.max(0, Math.min(entries.length - 1, index + delta));
@@ -170,7 +176,14 @@ function fakeWindow() {
     },
   };
   return {
-    win: Object.assign(target, { history }) as unknown as Pick<Window, "history" | "addEventListener" | "removeEventListener">,
+    win: Object.assign(target, {
+      history,
+      location: {
+        get href() {
+          return urls[index];
+        },
+      },
+    }) as unknown as Pick<Window, "history" | "location" | "addEventListener" | "removeEventListener">,
     entries,
     get index() {
       return index;
@@ -202,6 +215,17 @@ test("browser back during a recording keeps the page and asks; staying needs not
   await settleEvents();
   assert.equal(browser.index, 0, "Lämna sidan goes on back to the list");
   release();
+});
+
+test("an address the page writes while guarded, a started run's, stays once the guard takes its entry back", async () => {
+  const browser = fakeWindow();
+  const release = guardHistory(browser.win, () => undefined);
+  // The run started while Back still asked: the page writes its address onto the guard's entry.
+  browser.win.history.replaceState(browser.win.history.state, "", "/flows/flow-1?run=run-1");
+  release();
+  await settleEvents();
+  assert.equal(browser.index, 1, "back on the flow page's own entry, so Back from the run goes to the list");
+  assert.equal(browser.win.location.href, "/flows/flow-1?run=run-1", "which now has the run's address");
 });
 
 test("when the recording is done with, the guard takes its history entry back", async () => {
@@ -341,21 +365,12 @@ test("details a send found missing stay unfolded while they are filled in, until
   assert.equal(keepDetailsOpen(open, []), false);
 });
 
-test("leaving asks while audio is on the page or an upload is under way, not while the run starts", () => {
-  assert.equal(leaveGuarded(false, "idle", true), true, "a recording on the page");
-  assert.equal(leaveGuarded(false, "idle", false), false, "nothing to lose");
-  assert.equal(leaveGuarded(true, "idle", false), true, "sent, before its first byte");
-  assert.equal(leaveGuarded(true, "uploading", false), true, "a file on its way");
-  // The page writes the run's address as it starts; the guard's history entry, taken back later, would take it along.
-  assert.equal(leaveGuarded(true, "starting", true), false, "the run starting");
-});
-
 test("leaving an upload says it stops, and what is kept of a recording", () => {
-  assert.equal(leaveWarning(true, "setup", true), "Uppladdningen avbryts, och filen behöver väljas igen.");
-  assert.equal(leaveWarning(true, "ready", true), "Uppladdningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
+  assert.equal(leaveWarning(true, "setup", true), "Sändningen avbryts, och filen behöver väljas igen.");
+  assert.equal(leaveWarning(true, "ready", true), "Sändningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
   assert.equal(
     leaveWarning(false, "ready", true),
-    "Uppladdningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
+    "Sändningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
   );
 });
 

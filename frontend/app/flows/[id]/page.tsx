@@ -54,7 +54,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
-import { leaveGuarded, leaveWarning } from "@/lib/recording-view";
+import { leaveWarning } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
@@ -209,15 +209,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
   }, []);
 
-  // Leaving asks first while audio is being recorded or waits to become a document.
+  // Leaving asks first while audio is being recorded or waits to become a document (until Eneo has the run: an
+  // upload, and its start, which may retry or wait for a new login).
   const holdsAudio = snapshot.phase !== "setup";
   const submitting = run.kind === "submitting";
-  const leaving = useLeaveQuestion(
-    leaveGuarded(submitting, submission.kind, holdsAudio),
-    leaveWarning(input.persistent, snapshot.phase, submitting),
-  );
+  const leaving = useLeaveQuestion(submitting || holdsAudio, leaveWarning(input.persistent, snapshot.phase, submitting));
   useEffect(() => {
-    const shouldWarn = holdsAudio || submission.kind !== "idle";
+    const shouldWarn = holdsAudio || submitting;
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -226,7 +224,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, submission.kind]);
+  }, [holdsAudio, submitting]);
 
   // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {

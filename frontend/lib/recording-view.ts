@@ -103,17 +103,9 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
  * recordings only when the device keeps it; otherwise leaving loses it, and
  * the way to keep it is "Spara som fil" (after Stoppa, while recording).
  */
-/**
- * Whether leaving asks first: while audio is on the page, or an input is on its way. Not while the run starts:
- * the page writes the run's address then, and the guard's history entry, taken back after, would take it along.
- */
-export function leaveGuarded(submitting: boolean, submission: "idle" | "uploading" | "starting", holdsAudio: boolean): boolean {
-  return submitting ? submission !== "starting" : holdsAudio;
-}
-
-export function leaveWarning(persistent: boolean | null, phase: SessionPhase, uploading = false): string {
-  if (uploading && phase === "setup") return "Uppladdningen avbryts, och filen behöver väljas igen.";
-  const stops = uploading ? "Uppladdningen avbryts. " : "";
+export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false): string {
+  if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
+  const stops = sending ? "Sändningen avbryts. " : "";
   if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
   const lost = `${stops}Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"
