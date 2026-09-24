@@ -298,3 +298,25 @@ test("the 5-minute warning open when the login ends: after the new login the foc
     await view.unmount();
   }
 });
+
+test("when the login ends the focus moves into the sign-in dialog, onto its heading, so a screen reader says it", async () => {
+  const { createElement, useState } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  let setSignedOut: (on: boolean) => void = () => {};
+  function Page() {
+    const [signedOut, set] = useState(false);
+    setSignedOut = set;
+    return createElement(
+      "div",
+      null,
+      createElement("button", { type: "button" }, "Pausa på sidan"),
+      createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "eneo_sso", signedOut, onRenewed: () => {} }),
+    );
+  }
+  const { container, act } = await mount(createElement(Page));
+  button(container, "Pausa på sidan")!.focus();
+  await act(async () => setSignedOut(true));
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+  const heading = [...dialog.querySelectorAll("h2")].find((h) => h.textContent === "Du behöver logga in igen");
+  assert.ok(heading && document.activeElement === heading, "on the dialog's heading");
+});

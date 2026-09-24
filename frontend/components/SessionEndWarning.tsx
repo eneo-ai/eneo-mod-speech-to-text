@@ -63,6 +63,7 @@ export function SessionEndWarning({
   const problemId = useId();
   // The dialog has no button of its own on the page: focus goes back to where it was.
   const returnFocus = useRef<HTMLElement | null>(null);
+  const heading = useRef<HTMLHeadingElement | null>(null);
 
   // A later end (a renewed login) takes the warning away and sets it again for the new end.
   useEffect(() => {
@@ -119,6 +120,13 @@ export function SessionEndWarning({
   return (
     <AlertDialog open={open || signedOut} onOpenChange={setOpen}>
       <AlertDialogContent
+        // The login ended: the page under the focus is covered, so the focus moves into the dialog, onto its heading,
+        // and a screen reader says it (WCAG 2.4.3). The warning keeps Stäng as its first stop.
+        onOpenAutoFocus={(event) => {
+          if (!signedOut) return;
+          event.preventDefault();
+          heading.current?.focus();
+        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           const before = returnFocus.current;
@@ -129,7 +137,9 @@ export function SessionEndWarning({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{ended ? "Du behöver logga in igen" : "Du loggas snart ut"}</AlertDialogTitle>
+          <AlertDialogTitle ref={heading} tabIndex={-1} className="outline-none">
+            {ended ? "Du behöver logga in igen" : "Du loggas snart ut"}
+          </AlertDialogTitle>
           <AlertDialogDescription>
             {other && owner
               ? `Du är inloggad som ${userDisplayName(other)}. Logga in som ${userDisplayName(owner)} för att fortsätta. `
