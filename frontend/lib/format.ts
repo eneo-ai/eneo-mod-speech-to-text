@@ -31,9 +31,12 @@ export function formatRelativeDate(value: string | Date, now: Date = new Date())
   return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${day} ${date.getFullYear()}`;
 }
 
-/** "22 s", "32 min", "1 h 5 min"; rounded to the unit shown. */
+/**
+ * "22 s", "32 min", "1 h 5 min". Whole elapsed seconds, as the timer and the player count them: 7.6 s reads
+ * "7 s", never "8 s" beside "0:07"; minutes and hours are rounded to the unit shown.
+ */
 export function formatDuration(ms: number): string {
-  const seconds = Math.round(Math.max(0, ms) / 1000);
+  const seconds = Math.floor(Math.max(0, ms) / 1000);
   if (seconds < 60) return `${seconds} s`;
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
