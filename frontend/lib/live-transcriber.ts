@@ -163,6 +163,8 @@ export class LiveTranscriber {
   /** The recorder paused or went on: paused audio is not sent, and a session silence ended starts again. */
   setRecording(on: boolean): void {
     this.recording = on;
+    // Paused, a new try waits for recording to go on.
+    if (!on) this.clear("retryTimer");
     if (on && this.snapshot.status === "reconnecting" && this.retryTimer === null && !this.socket) this.connect();
   }
 
@@ -208,8 +210,8 @@ export class LiveTranscriber {
   }
 
   private connect() {
-    // One connection at a time: an attempt under way is never replaced.
-    if (this.socket) return;
+    // One connection at a time: an attempt under way is never replaced. None while paused or stopping.
+    if (this.socket || !this.recording || this.stopping) return;
     // Covered for a new login: live text waits for the page's own user (see LiveDeps.login).
     if (this.deps.login?.signedOut) {
       this.clear("retryTimer");

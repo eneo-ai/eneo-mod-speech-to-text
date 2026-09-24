@@ -367,3 +367,26 @@ test("covered before live text was ready, it waits too, and starts once the page
   assert.equal(live.getSnapshot().status, "live");
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7], "the audio from before the cover goes now");
 });
+
+test("paused while a new try waits, live text opens no connection until recording goes on", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1006); // a break: a new try is set for a second from now
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  live.setRecording(false); // Pausa
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no connection while paused");
+  live.setRecording(true);
+  assert.equal(sockets.length, 2, "going on connects");
+});
+
+test("stopped while a new try waits, live text opens no connection", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1006);
+  live.stop();
+  elapse(60_000);
+  assert.equal(sockets.length, 1);
+});
