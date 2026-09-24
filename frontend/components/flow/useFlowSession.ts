@@ -54,6 +54,7 @@ function browserCaptureDeps(): CaptureDeps {
     requestWakeLock: async () =>
       (await (navigator as NavigatorWithWakeLock).wakeLock?.request("screen")) ?? null,
     page: typeof document === "undefined" ? undefined : document,
+    window: typeof window === "undefined" ? undefined : window,
   };
 }
 

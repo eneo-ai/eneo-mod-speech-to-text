@@ -7,10 +7,10 @@
  * does the same for a recording that a reload cut off, and `continueStopped()`
  * for one the user stopped too early. A part nearing the
  * flow's per-file limit hands over to a new part on the same stream, the two
- * overlapping briefly, until the flow's file count is used up. A hidden page
- * flushes the current chunk, so a page the system kills loses as little as
- * possible; hiding alone does not pause, since a laptop keeps recording in a
- * background tab.
+ * overlapping briefly, until the flow's file count is used up. A hidden page,
+ * or a closing tab, flushes the current chunk, so a page the system kills
+ * loses as little as possible; hiding alone does not pause, since a laptop
+ * keeps recording in a background tab.
  */
 
 import { formatBytes } from "./format";
@@ -83,6 +83,8 @@ export interface CaptureDeps {
   createRecorder(stream: MediaStream, options: MediaRecorderOptions): MediaRecorder;
   requestWakeLock?(): Promise<WakeLockLike | null>;
   page?: PageLike;
+  /** The window: a closing tab says so there with pagehide, in older Safari without a visibilitychange. */
+  window?: Pick<Window, "addEventListener" | "removeEventListener">;
   now?(): number;
 }
 
@@ -381,6 +383,7 @@ export class RecordingCapture {
       track.addEventListener("mute", this.onMicrophoneLost);
     });
     this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
+    this.deps.window?.addEventListener("pagehide", this.flush);
     this.beginPart(stream);
   }
 
@@ -587,18 +590,19 @@ export class RecordingCapture {
     stream?.getTracks().forEach((track) => track.stop());
   }
 
+  /** A phone may freeze or kill a hidden page, and a tab may close: store what is recorded so far. */
+  private flush = () => {
+    try {
+      this.part?.recorder.requestData();
+    } catch {
+      // Nothing to flush.
+    }
+  };
+
   private onVisibilityChange = () => {
     const { status } = this.snapshot;
     if (status !== "recording" && status !== "paused") return;
-    if (this.deps.page?.visibilityState === "hidden") {
-      // A phone may freeze or kill a hidden page: store what is recorded so far.
-      try {
-        this.part?.recorder.requestData();
-      } catch {
-        // Nothing to flush.
-      }
-      return;
-    }
+    if (this.deps.page?.visibilityState === "hidden") return this.flush();
     // The wake lock ended with the hidden page; the microphone may have too.
     void this.takeWakeLock();
     const lost =
@@ -640,6 +644,7 @@ export class RecordingCapture {
 
   private finish() {
     this.deps.page?.removeEventListener("visibilitychange", this.onVisibilityChange);
+    this.deps.window?.removeEventListener("pagehide", this.flush);
     this.stopMicrophone();
     this.release?.();
     this.release = null;

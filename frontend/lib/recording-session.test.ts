@@ -116,6 +116,7 @@ async function setup(
   options: {
     store?: RecordingStore;
     page?: PageLike;
+    window?: EventTarget;
     now?: () => number;
     /** A denied microphone, or one the browser grants only once `wait` settles. */
     microphone?: { denied?: boolean; wait?: Promise<void> };
@@ -150,6 +151,7 @@ async function setup(
       };
     },
     page: options.page,
+    window: options.window as CaptureDeps["window"],
   };
   return { capture: new RecordingCapture(() => store, deps), store, streams, constraints, recorders, wakeLocks };
 }
@@ -215,6 +217,22 @@ test("a hidden page stores what is recorded so far; back with a working micropho
   streams[0].track.muted = true; // muted while hidden, without an event reaching the page
   show("visible");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+});
+
+test("a tab that closes stores the chunk it has, also where the browser says so only with pagehide", async () => {
+  const tab = new EventTarget();
+  const { capture, recorders, store } = await setup({ window: tab });
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  // The browser hands over what it has recorded since the last chunk.
+  recorders[0].requestData = () => recorders[0].emit("b");
+  tab.dispatchEvent(new Event("pagehide"));
+  const { id } = capture.getSnapshot().recording!;
+  await until(async () => (await texts(await store.readParts(id)))[0] === "ab", "the last chunk stored");
+
+  await capture.stop();
+  recorders[0].requestData = () => assert.fail("a stopped recording has nothing to hand over");
+  tab.dispatchEvent(new Event("pagehide"));
 });
 
 test("starting asks to keep the recording and the screen on; leaving the page leaves the recording paused for recovery", async () => {
