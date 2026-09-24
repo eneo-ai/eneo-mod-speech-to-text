@@ -1000,16 +1000,20 @@ function TurnBlock({
                 />
               );
             }
+            const shown = pieces(part.segment, ranges, hitsBySegment.get(part.segmentIndex));
             return (
               <span key={part.segmentIndex} className="group/part">
                 {/* While choosing, the sentence itself is the control. A span, since a button cannot break across
-                    lines inside the text; it then holds no other control, so a word is confirmed outside choosing. */}
+                    lines inside the text; it then holds no other control, so a word is confirmed outside choosing.
+                    Its name is the words it shows, then the action (WCAG 2.5.3): the hidden correction notes inside
+                    would split the visible words. */}
                 <span
                   data-segment-index={part.segmentIndex}
                   onClick={(e) => (choosable ? onStartEdit(part.segmentIndex) : onPartClick(part, e))}
                   {...(choosable && {
                     role: "button",
                     tabIndex: 0,
+                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}.`,
                     onKeyDown: (e: React.KeyboardEvent) => {
                       if (e.key !== "Enter" && e.key !== " ") return;
                       e.preventDefault();
@@ -1026,7 +1030,7 @@ function TurnBlock({
                       "bg-primary-soft/50 bg-clip-content py-1 hover:bg-primary/20 focus-visible:bg-primary/20 coarse:my-1 coarse:block coarse:min-h-11 coarse:bg-clip-border coarse:px-2 coarse:py-2.5 forced-colors:underline forced-colors:decoration-dotted",
                   )}
                 >
-                  {pieces(part.segment, ranges, hitsBySegment.get(part.segmentIndex)).map((piece, k, all) => {
+                  {shown.map((piece, k, all) => {
                     const key = piece.word ? wordKey(part.segment.sourceSegmentIndex ?? part.segmentIndex, piece.word) : null;
                     const confirmed = key !== null && confirmedWords.has(key);
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
@@ -1099,7 +1103,6 @@ function TurnBlock({
                       </span>
                     );
                   })}
-                  {choosable && <span className="sr-only"> Rätta meningen från {partClock}.</span>}
                 </span>
                 {" "}
               </span>

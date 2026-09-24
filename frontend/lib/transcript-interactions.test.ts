@@ -232,7 +232,8 @@ test("one Rätta per passage, after its text; in a passage of several sentences 
   await view.act(async () => first.click());
   assert.ok(view.container.textContent?.includes("Välj meningen du vill rätta."), "a hint above the passage");
   // Each sentence is the target, named by its own words first (WCAG 2.5.3); no pencil beside it.
-  assert.deepEqual(sentences().map((s) => s.textContent), ["Välkomna. Rätta meningen från 0:00.", "Vi har två punkter. Rätta meningen från 0:02."]);
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  assert.deepEqual(sentences().map((s) => computeAccessibleName(s)), ["Välkomna. Rätta meningen från 0:00.", "Vi har två punkter. Rätta meningen från 0:02."]);
   assert.ok(sentences().every((s) => s.tabIndex === 0 && !s.querySelector("button, [role=button]")), "focusable, with no control inside it");
   assert.equal(view.container.querySelectorAll('button[aria-label^="Rätta meningen"], button[aria-label^="Bekräfta att"]').length, 0);
   assert.equal(first.textContent?.trim(), "Klar");
@@ -242,6 +243,29 @@ test("one Rätta per passage, after its text; in a passage of several sentences 
   await view.act(async () => second.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   opened.push(view.container.querySelector("textarea")?.getAttribute("aria-label") ?? "");
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
+});
+
+test("a sentence corrected in its middle is named by the words it shows, unbroken, while choosing", async () => {
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const text = "Budgeten höjs nästa år.";
+  const corrected: CorrectionSet = {
+    ...EMPTY,
+    occurrences: [{ segment_index: 0, char_start: text.indexOf("höjs"), char_end: text.indexOf("höjs") + 4, original: "höjs", corrected: "sänks" }],
+  };
+  const passage: TranscriptSegment[] = [
+    { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text },
+    { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_00", text: "Vi tar det i oktober." },
+  ];
+  const view = await player(passage, { editable: true, corrections: corrected, onCorrectionsChange: () => undefined });
+  const rätta = [...view.container.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Rätta")!;
+  await view.act(async () => rätta.click());
+  const sentence = view.container.querySelector<HTMLElement>('[role="button"][data-segment-index="0"]')!;
+  // What a sighted user reads: the rendered text without the visually hidden notes.
+  const shown = (node: Node): string =>
+    node.nodeType === 3 ? node.textContent ?? "" : (node as Element).classList?.contains("sr-only") ? "" : [...node.childNodes].map(shown).join("");
+  assert.equal(shown(sentence), "Budgeten sänks nästa år.");
+  // WCAG 2.5.3: the computed name holds the visible words together, the action after them; the note stays out.
+  assert.equal(computeAccessibleName(sentence), "Budgeten sänks nästa år. Rätta meningen från 0:00.");
 });
 
 test("Bara det här inlägget on half of a split sentence moves that half only", async () => {
