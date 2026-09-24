@@ -69,7 +69,7 @@ export function ReviewFixtures() {
     <label className="mb-4 block"><input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} /> Skrivskyddat</label>
     {selected === "accessibility" && <details className="paper-card mb-3 p-4"><summary className="min-h-6 cursor-pointer">Talare</summary>
       <div className="mt-4"><SpeakerNamingDialog rows={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)}
-        passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }}>
+        passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }} onSaveAndContinue={async (rows) => { setNames(rows); return null; }}>
         <Button type="button" variant="outline">Namnge talarna</Button>
       </SpeakerNamingDialog></div>
     </details>}

@@ -17,6 +17,7 @@ async function dialog(props: Record<string, unknown> = {}) {
   const { createElement } = await import("react");
   const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
   const saved: SpeakerMappingRow[][] = [];
+  const continued: SpeakerMappingRow[][] = [];
   const listened: string[] = [];
   const view = await mount(
     createElement(SpeakerNamingDialog, {
@@ -29,6 +30,10 @@ async function dialog(props: Record<string, unknown> = {}) {
         saved.push(next);
         return null;
       },
+      onSaveAndContinue: async (next: SpeakerMappingRow[]) => {
+        continued.push(next);
+        return null;
+      },
       children: createElement("button", { type: "button" }, "Namnge talarna"),
       ...props,
     }),
@@ -36,7 +41,7 @@ async function dialog(props: Record<string, unknown> = {}) {
   const trigger = button(view.container, "Namnge talarna")!;
   await view.act(async () => trigger.click());
   const field = (label: string) => document.querySelector<HTMLInputElement>(`[role="dialog"] input[aria-label="Vem är ${label}?"]`)!;
-  return { view, trigger, field, saved, listened };
+  return { view, trigger, field, saved, continued, listened };
 }
 
 test("each speaker is a row: the mark, how many passages, what they say first, a sample and a name", async () => {
@@ -60,7 +65,7 @@ test("opening a filled name field by click and pressing Enter keeps its name", a
   assert.equal(active?.textContent?.startsWith("Erik Lund"), true, "the list opens on the field's own name");
   await view.act(async () => erik.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   assert.equal(field("Talare 2").value, "Erik Lund");
-  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  await view.act(async () => button(document.body, "Spara")!.click());
   assert.deepEqual(saved.at(-1)?.map((r) => r.name), ["Anna Berg", "Erik Lund"]);
 });
 
@@ -143,10 +148,28 @@ test("a name given to another speaker is said quietly, and only the row's own na
   assert.ok(own.querySelector("svg"), "the row's own choice is checked");
 });
 
-test("Spara namnen saves trimmed names, closes and gives the focus back", async () => {
-  const { view, trigger, field, saved } = await dialog();
+test("Spara och fortsätt saves the names and lets the flow go on, in one action", async () => {
+  const { view, field, saved, continued } = await dialog();
   await view.act(async () => type(field("Talare 2"), "  Erik Lund  "));
-  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
+  assert.deepEqual(continued.map((next) => next.map((r) => [r.label, r.name])), [[["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]]);
+  assert.equal(saved.length, 0, "not saved a second time on the side");
+});
+
+test("a refused Spara och fortsätt stays open, with the names kept and the reason", async () => {
+  const { view, field } = await dialog({ onSaveAndContinue: async () => "Flödet kunde inte fortsätta. Försök igen." });
+  await view.act(async () => type(field("Talare 2"), "Erik Lund"));
+  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
+  assert.ok(document.querySelector('[role="dialog"]'), "still open");
+  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Flödet kunde inte fortsätta/);
+  assert.equal(field("Talare 2").value, "Erik Lund");
+});
+
+test("Spara, for someone who stops here, saves trimmed names, closes and gives the focus back", async () => {
+  const { view, trigger, field, saved, continued } = await dialog();
+  await view.act(async () => type(field("Talare 2"), "  Erik Lund  "));
+  await view.act(async () => button(document.body, "Spara")!.click());
+  assert.equal(continued.length, 0);
   assert.deepEqual(saved[0].map((r) => [r.label, r.name]), [["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]);
   assert.ok(!document.querySelector('[role="dialog"]'), "closed");
   // Radix hands the focus back after closing; wait a turn. Compare as a boolean: a failed
@@ -156,17 +179,17 @@ test("Spara namnen saves trimmed names, closes and gives the focus back", async 
 });
 
 test("a name with a line break or a tab is not saved, and says why", async () => {
-  const { view, field, saved } = await dialog();
+  const { view, field, saved, continued } = await dialog();
   await view.act(async () => type(field("Talare 2"), "Erik\tLund"));
-  await view.act(async () => button(document.body, "Spara namnen")!.click());
-  assert.equal(saved.length, 0);
+  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
+  assert.equal(saved.length + continued.length, 0);
   assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Ett namn är en rad/);
 });
 
 test("a refused save stays open with Eneo's reason", async () => {
   const { view, field } = await dialog({ onSave: async () => "Granskningen har ändrats sedan du laddade sidan." });
   await view.act(async () => type(field("Talare 2"), "Erik Lund"));
-  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  await view.act(async () => button(document.body, "Spara")!.click());
   assert.ok(document.querySelector('[role="dialog"]'), "still open");
   assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Granskningen har ändrats/);
 });
@@ -219,12 +242,12 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
 });
 
-test("names typed but not saved come back after a reload, in the open dialog; Spara namnen or Avbryt ends them", async (t) => {
+test("names typed but not saved come back after a reload, in the open dialog; Spara or Avbryt ends them", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };
   const first = await dialog({ draftKey });
   await first.view.act(async () => type(first.field("Talare 2"), "Erik Lund"));
-  await first.view.unmount(); // the page reloaded before Spara namnen
+  await first.view.unmount(); // the page reloaded before Spara
 
   const reloaded = async () => {
     const { createElement } = await import("react");
@@ -236,6 +259,7 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
         passages: () => 1,
         quote: () => null,
         onSave: async () => null,
+        onSaveAndContinue: async () => null,
         draftKey,
         children: createElement("button", { type: "button" }, "Namnge talarna"),
       }),
@@ -253,7 +277,7 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
 
   const typed = await dialog({ draftKey });
   await typed.view.act(async () => type(typed.field("Talare 2"), "Sara Holm"));
-  await typed.view.act(async () => button(document.body, "Spara namnen")!.click());
+  await typed.view.act(async () => button(document.body, "Spara")!.click());
   await typed.view.unmount();
   const saved = await reloaded();
   assert.equal(field("Talare 2"), null, "saved names are the review's, not a draft");
@@ -275,6 +299,7 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
       passages: () => 1,
       quote: () => null,
       onSave: async () => null,
+      onSaveAndContinue: async () => null,
       draftKey,
       children: createElement("button", { type: "button" }, "Namnge talarna"),
     }),

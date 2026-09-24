@@ -385,12 +385,36 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(201, {"run": {"id": run_id, "flow_id": fid, "status": "queued", "revision": 1},
                                        "created": True, "source_run_id": rest[1], "correction_revision": 1,
                                        "first_regenerated_step_id": "s2"})
+            # Approving and resuming a pause: answered from copies, so a parallel test still sees the pause as it was.
+            if len(rest) == 5 and rest[0] == "runs" and rest[2] == "review-checkpoints" and rest[4] in ("approve", "resume"):
+                checkpoint = dict({"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}[rest[1]], state="approved")
+                if rest[4] == "approve":
+                    return self.send(200, checkpoint)
+                run_id = "run-new-%d" % next(NEW_RUN)
+                STARTED[run_id] = 0
+                return self.send(200, {"checkpoint": dict(checkpoint, state="resumed"),
+                                       "run": {"id": run_id, "flow_id": fid, "status": "running", "revision": 2}})
             if rest == ["runs"]:
                 if fid == "flow-3":
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})
                 run_id = "run-new-%d" % next(NEW_RUN)
                 STARTED[run_id] = 0
                 return self.send(201, {"id": run_id, "flow_id": fid, "status": "queued"})
+        return self.send(404, {"detail": "stub: " + self.path})
+
+
+    def do_PATCH(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        parts = urlparse(self.path).path.strip("/").split("/")
+        # Saving a pause's edit (the names): the edited value comes back as the pause's own, one revision on.
+        if len(parts) == 8 and parts[:3] == ["api", "eneo", "flows"] and parts[4] == "runs" and parts[6] == "review-checkpoints":
+            checkpoint = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}[parts[5]]
+            payload = dict(checkpoint["current_payload_json"])
+            if isinstance(body.get("edited_value"), dict):
+                payload["structured"] = body["edited_value"]
+            else:
+                payload["text"] = body.get("edited_value")
+            return self.send(200, dict(checkpoint, revision=checkpoint["revision"] + 1, current_payload_json=payload))
         return self.send(404, {"detail": "stub: " + self.path})
 
 

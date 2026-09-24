@@ -22,7 +22,7 @@ import { speakerDisplayLabel } from "@/lib/transcript";
 /**
  * The keyboard on a phone covers the lower part of the screen without making
  * the page shorter; the dialog follows the visible part, so the focused field
- * and "Spara namnen" stay in reach.
+ * and the actions stay in reach.
  */
 function useVisibleHeight(active: boolean): number | null {
   const [height, setHeight] = useState<number | null>(null);
@@ -51,7 +51,8 @@ function useVisibleHeight(active: boolean): number | null {
  * "Namnge talarna" at the review pause: one row per speaker with a sample to
  * listen to, the first thing they say, how many passages they have, and a name
  * picked from the participants or typed. Names are saved to the pause's edit,
- * which is what reaches the transcript and the document.
+ * which is what reaches the transcript and the document. "Spara och fortsätt"
+ * also lets the flow go on; "Spara" keeps the pause for later.
  */
 export function SpeakerNamingDialog({
   rows,
@@ -63,6 +64,8 @@ export function SpeakerNamingDialog({
   onListen,
   listenUnavailableReason,
   onSave,
+  onSaveAndContinue,
+  continueDisabled = false,
   draftKey,
   children,
 }: {
@@ -81,12 +84,16 @@ export function SpeakerNamingDialog({
   listenUnavailableReason?: (label: string) => string | null;
   /** Saves the names; returns why they were not saved, or null. */
   onSave: (rows: SpeakerMappingRow[]) => Promise<string | null>;
+  /** Saves the names and lets the flow go on (approve and resume); returns why it did not, or null. */
+  onSaveAndContinue: (rows: SpeakerMappingRow[]) => Promise<string | null>;
+  /** The flow cannot go on yet (the transcript's own changes are still being saved); saving can. */
+  continueDisabled?: boolean;
   /** Keeps names typed but not saved for this person through a reload, the dialog open again with them. */
   draftKey?: { ownerId: string; name: string };
   /** The button that opens the dialog; focus returns to it on close. */
   children: ReactNode;
 }) {
-  // Names typed before a reload, on the speakers there are now; Spara namnen or Avbryt ends them.
+  // Names typed before a reload, on the speakers there are now; saving them or Avbryt ends them.
   const kept = () => {
     const names = draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null;
     return (
@@ -111,7 +118,7 @@ export function SpeakerNamingDialog({
   };
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving] = useState<"save" | "continue" | null>(null);
   const height = useVisibleHeight(open);
 
   const title = (label: string) => speakerDisplayLabel(label);
@@ -122,7 +129,8 @@ export function SpeakerNamingDialog({
   };
   const names = [...new Set([...participants, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
 
-  async function save() {
+  /** Checks each name, then saves (and goes on); a refusal keeps the dialog and the names as they are. */
+  async function submit(action: "save" | "continue") {
     const found: Record<string, string> = {};
     for (const row of draft) {
       const problem = speakerNameProblem(row.name);
@@ -130,10 +138,11 @@ export function SpeakerNamingDialog({
     }
     setProblems(found);
     if (Object.keys(found).length > 0) return;
-    setSaving(true);
+    setSaving(action);
     setRefusal(null);
-    const refused = await onSave(draft.map((row) => ({ ...row, name: row.name?.trim() ? row.name.trim() : null })));
-    setSaving(false);
+    const rows = draft.map((row) => ({ ...row, name: row.name?.trim() ? row.name.trim() : null }));
+    const refused = await (action === "save" ? onSave : onSaveAndContinue)(rows);
+    setSaving(null);
     if (refused) setRefusal(refused);
     else close();
   }
@@ -205,7 +214,7 @@ export function SpeakerNamingDialog({
                     aria-label={`Vem är ${title(row.label)}?`}
                     value={row.name}
                     options={names}
-                    disabled={disabled || saving}
+                    disabled={disabled || saving !== null}
                     placeholder="Välj eller skriv ett namn"
                     noneLabel="Inget namn (behåll etiketten)"
                     writeLabel="Skriv ett annat namn"
@@ -251,8 +260,11 @@ export function SpeakerNamingDialog({
               Avbryt
             </Button>
           </DialogClose>
-          <Button type="button" disabled={disabled || saving} onClick={() => void save()}>
-            {saving ? "Sparar…" : "Spara namnen"}
+          <Button type="button" variant="outline" disabled={disabled || saving !== null} onClick={() => void submit("save")}>
+            {saving === "save" ? "Sparar…" : "Spara"}
+          </Button>
+          <Button type="button" disabled={disabled || continueDisabled || saving !== null} onClick={() => void submit("continue")}>
+            {saving === "continue" ? "Fortsätter…" : "Spara och fortsätt"}
           </Button>
         </div>
       </DialogContent>

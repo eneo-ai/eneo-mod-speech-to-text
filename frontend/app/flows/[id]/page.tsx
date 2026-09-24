@@ -406,10 +406,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
     void follow(runId);
   }
 
+  /** Approves the pause and resumes the run; returns why it did not, or null (also shown on the page). */
   async function onApproveAndResume(
     checkpoint: FlowRunReviewCheckpointPublic,
     runState: { run: FlowRunPublic; steps: FlowRunStep[] },
-  ) {
+  ): Promise<string | null> {
     setRunError(null);
     try {
       const approved = await approveCheckpointWithRecovery(
@@ -423,8 +424,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
       // Följ körningen igen — den är nu i "running".
       setRun({ kind: "running", run: resumedRun, graph: null });
       void follow(resumedRun.id);
+      return null;
     } catch (err) {
-      setRunError(friendlyError(err));
+      const message = friendlyError(err);
+      setRunError(message);
+      return message;
     }
   }
 
@@ -781,7 +785,8 @@ function ReviewView({
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
-  onApprove: (cp: FlowRunReviewCheckpointPublic) => Promise<void>;
+  /** Returns why the run did not go on, or null. */
+  onApprove: (cp: FlowRunReviewCheckpointPublic) => Promise<string | null>;
   onSaveEdit: (
     cp: FlowRunReviewCheckpointPublic,
     editedValue: ReviewEditedValue,
@@ -910,40 +915,49 @@ function ReviewView({
     [shownSegments],
   );
 
-  async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
+  /** The names to the pause's edit, kept as a draft until Eneo has them. */
+  async function storeNames(rows: SpeakerMappingRow[]) {
     const named = rows.filter((row) => !row.split || row.name);
     setSpeakerRows(named);
     draft.keep({ speakerRows: named });
-    const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
+    return onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
+  }
+
+  async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
+    const saved = await storeNames(rows);
     if ("error" in saved) return saved.error;
     draft.drop();
     return null;
   }
 
-  async function saveAndApprove() {
+  /**
+   * Saves what changed (the page's edit, or the names from "Namnge talarna"), then approves and resumes: the one
+   * way the flow goes on from here. Returns why it did not, or null.
+   */
+  async function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
     setWorking("approve");
     // Pågående korrigeringssparningar måste landa före godkännandet, som
     // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
     const correctionsSaved = await saveQueue.current;
     if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
       setWorking(null);
-      return;
+      return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
     }
     let cp = checkpoint;
-    if (dirty) {
+    if (names || dirty) {
       setSaving(true);
-      const updated = await onSaveEdit(checkpoint, pendingEditedValue());
+      const updated = names ? await storeNames(names) : await onSaveEdit(checkpoint, pendingEditedValue());
       setSaving(false);
       if ("error" in updated) {
         setWorking(null);
-        return;
+        return updated.error;
       }
       cp = updated;
       // Saved, whether or not this view is shown again before the run goes on.
       draft.drop();
     }
     try {
-      await onApprove(cp);
+      return await onApprove(cp);
     } finally {
       setWorking(null);
     }
@@ -971,6 +985,8 @@ function ReviewView({
   }
 
   const busy = working !== null || saving;
+  // The transcript's own changes must be saved before the flow goes on.
+  const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem));
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy;
 
@@ -1014,7 +1030,7 @@ function ReviewView({
       <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
         Avvisa
       </Button>
-      <Button type="button" onClick={saveAndApprove} disabled={busy || (isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem)))}>
+      <Button type="button" onClick={() => void saveAndApprove()} disabled={busy || continueBlocked}>
         {working === "approve" ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -1082,6 +1098,8 @@ function ReviewView({
                     onListen={hasAudio ? listenTo : undefined}
                     listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                     onSave={saveNames}
+                    onSaveAndContinue={saveAndApprove}
+                    continueDisabled={continueBlocked}
                     draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
                   >
                     <Button type="button" variant="outline" className="self-start" disabled={busy}>

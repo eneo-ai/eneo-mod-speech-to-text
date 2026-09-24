@@ -27,5 +27,6 @@
       - button "Visa namn":
         - img
   - button "Avbryt"
-  - button "Spara namnen"
+  - button "Spara"
+  - button "Spara och fortsätt"
   - button "Stäng"
