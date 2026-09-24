@@ -131,6 +131,9 @@ GRAPH = {
     ],
     "edges": [{"source": "s2", "target": "out", "kind": "flow_output", "label": None}],
 }
+# flow-2 stops for the person after transcribing: its second step is the speaker review.
+GRAPH_WITH_REVIEW = {**GRAPH, "nodes": [GRAPH["nodes"][0], dict(GRAPH["nodes"][1], id=REVIEW_STEP_ID, label="Talare",
+                                                               output_type="json")]}
 REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
           "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 FILES = [
@@ -148,6 +151,8 @@ RUNS = {
                    "error": {"code": "flow_step_failed", "retryable": True, "step_id": "s2", "step_order": 2,
                              "message": "Step 2 failed: the model provider returned 503 Service Unavailable."}},
     "run-running": {"status": "running", "steps": [], "step_status": ["completed", "running"]},
+    # Still transcribing, with the speaker review ahead (flow-2).
+    "run-before-review": {"status": "running", "steps": [], "step_status": ["running", None]},
     "run-review": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-corrected": DONE,
@@ -326,10 +331,11 @@ class Handler(BaseHTTPRequestHandler):
         if rest == ["run-contract"]:
             return self.send(200, f["contract"])
         if rest == ["graph"]:
+            graph = GRAPH_WITH_REVIEW if fid == "flow-2" else GRAPH
             run = run_state(parse_qs(url.query).get("run_id", [""])[0])
             if run is None:
-                return self.send(200, GRAPH)
-            return self.send(200, {**GRAPH, "nodes": [dict(n, run_status=s) for n, s in zip(GRAPH["nodes"], run["step_status"])]})
+                return self.send(200, graph)
+            return self.send(200, {**graph, "nodes": [dict(n, run_status=s) for n, s in zip(graph["nodes"], run["step_status"])]})
         if rest == ["runs"]:
             earlier = [] if fid != "flow-1" else [
                 {"id": "run-done", "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},

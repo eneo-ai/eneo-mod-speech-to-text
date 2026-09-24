@@ -22,9 +22,9 @@ import type { StepView } from "./run-progress";
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 
 const running: StepView[] = [
-  { order: 1, label: "Transkribera mötet", state: "done", transcribes: true },
-  { order: 2, label: "Analysera mötesinnehållet", state: "running", transcribes: false },
-  { order: 3, label: "Skapa rapport", state: "waiting", transcribes: false },
+  { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
+  { order: 2, label: "Analysera mötesinnehållet", state: "running", transcribes: false, note: null },
+  { order: 3, label: "Skapa rapport", state: "waiting", transcribes: false, note: "Här granskar du resultatet." },
 ];
 
 test("the running view names the stage once in a status region and says each step's state in words", () => {
@@ -37,7 +37,7 @@ test("the running view names the stage once in a status region and says each ste
   const words = text(html);
   assert.match(words, /Transkribera mötet Klar/);
   assert.match(words, /Analysera mötesinnehållet Pågår/);
-  assert.match(words, /Skapa rapport Väntar/);
+  assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
   assert.match(words, /Du kan stänga sidan\. Körningen fortsätter och resultatet finns kvar här\./);
   assert.match(words, /Avbryt körningen/);
@@ -47,10 +47,10 @@ test("the running view names the stage once in a status region and says each ste
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
 const steps: StepView[] = [
-  { order: 1, label: "Transkribera mötet", state: "done", transcribes: true },
-  { order: 2, label: "Analysera mötesinnehållet", state: "failed", transcribes: false },
-  { order: 3, label: "Skriv sammanfattning", state: "not_run", transcribes: false },
-  { order: 4, label: "Skapa rapport", state: "not_run", transcribes: false },
+  { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
+  { order: 2, label: "Analysera mötesinnehållet", state: "failed", transcribes: false, note: null },
+  { order: 3, label: "Skriv sammanfattning", state: "not_run", transcribes: false, note: null },
+  { order: 4, label: "Skapa rapport", state: "not_run", transcribes: false, note: null },
 ];
 const report: ResultFileView = {
   fileId: "file-1",

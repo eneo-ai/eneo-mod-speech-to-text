@@ -34,6 +34,7 @@ export function StepList({ steps }: { steps: readonly StepView[] }) {
                 {step.label}
               </span>
               <span className="text-sm text-muted-foreground">{stepStateLabel(step.state)}</span>
+              {step.note && <span className="basis-full text-sm text-muted-foreground">{step.note}</span>}
             </div>
           </li>
         );

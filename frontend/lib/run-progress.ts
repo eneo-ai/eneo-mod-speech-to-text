@@ -4,7 +4,7 @@
  * once it ended, the step results read once say which steps ever started.
  */
 
-import type { FlowGraph, FlowRunError, FlowRunStep } from "./api";
+import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep } from "./api";
 import { carriesTranscript } from "./speaker-review";
 
 export type StepState = "waiting" | "running" | "done" | "failed" | "cancelled" | "not_run";
@@ -15,6 +15,8 @@ export interface StepView {
   state: StepState;
   /** The step reads the recording, so while it runs it is transcribing. */
   transcribes: boolean;
+  /** What a step that stops for the person will ask of them, said while it is still ahead. */
+  note: string | null;
 }
 
 export type RunOutcome = "succeeded" | "failed" | "cancelled";
@@ -76,10 +78,18 @@ export function finishedRun(
   };
 }
 
+/** The run contract's word for what a review step asks: naming the speakers, or looking over a result. */
+function reviewNote(review: FlowReviewStepContract | undefined): string | null {
+  if (!review) return null;
+  return isSpeakerMappingReviewStep(review) ? "Här bekräftar du vem som är vem." : "Här granskar du resultatet.";
+}
+
 export function runSteps(
   graph: FlowGraph | null,
   run: { status: string; error?: Pick<FlowRunError, "step_order"> | null },
   results: readonly FlowRunStep[] = [],
+  /** The steps that pause the run for the person, from the run contract. */
+  reviews: readonly FlowReviewStepContract[] = [],
 ): StepView[] {
   const outcome = runOutcome(run.status);
   const failedAt = run.error?.step_order ?? null;
@@ -92,6 +102,7 @@ export function runSteps(
         transcribes: n.input_type === "audio",
         status: byId.get(n.id)?.status ?? n.run_status ?? null,
         result: byId.get(n.id),
+        review: reviews.find((review) => review.step_id === n.id),
       }))
     : results.map((result) => ({
         order: result.step_order ?? 0,
@@ -99,11 +110,12 @@ export function runSteps(
         transcribes: false,
         status: result.status,
         result: result as FlowRunStep | undefined,
+        review: reviews.find((review) => review.step_id === result.step_id),
       }));
 
   return rows
     .sort((a, b) => a.order - b.order)
-    .map(({ order, label, transcribes, status, result }) => {
+    .map(({ order, label, transcribes, status, result, review }) => {
       const s = status?.toLowerCase();
       let state: StepState;
       if (s === "completed") state = "done";
@@ -113,7 +125,7 @@ export function runSteps(
         const neverStarted = result ? !result.started_at : failedAt !== null && order > failedAt;
         state = neverStarted ? "not_run" : s;
       } else state = outcome ? "not_run" : "waiting";
-      return { order, label, transcribes, state };
+      return { order, label, transcribes, state, note: state === "waiting" ? reviewNote(review) : null };
     });
 }
 

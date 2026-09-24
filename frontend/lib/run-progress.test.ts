@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { FlowGraph, FlowGraphNode, FlowRunStep } from "./api";
+import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } from "./api";
 import { finishedRun, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
 
 const node = (order: number, label: string, extra: Partial<FlowGraphNode> = {}): FlowGraphNode => ({
@@ -49,6 +49,28 @@ test("a running run shows each step from the run-pinned graph, never 'I kö' for
   ]);
   assert.deepEqual(views.map((view) => stepStateLabel(view.state)), ["Klar", "Pågår", "Väntar", "Väntar"]);
   assert.ok(views.every((view) => stepStateLabel(view.state) !== "I kö"));
+});
+
+test("a step that stops for the person says what it will ask, while it is still ahead, from the contract and not the name", () => {
+  const reviews: FlowReviewStepContract[] = [
+    {
+      step_id: "step-2",
+      step_order: 2,
+      review_mode: "edit",
+      output_type: "json",
+      output_contract: { properties: { speakers: { items: { properties: { label: { pattern: "^SPEAKER_\\d{2,}$" } } } } } },
+    },
+    // Named like the speaker step, but an ordinary review of the text.
+    { step_id: "step-3", step_order: 3, label: "Vem är vem?", review_mode: "view", output_type: "text" },
+  ];
+  const notes = (views: { note: string | null }[]) => views.map((view) => view.note);
+
+  const ahead = runSteps(graph("running", null, null, null), { status: "running" }, [], reviews);
+  assert.deepEqual(notes(ahead), [null, "Här bekräftar du vem som är vem.", "Här granskar du resultatet.", null]);
+
+  const passed = runSteps(graph("completed", "completed", "running", null), { status: "running" }, [], reviews);
+  assert.deepEqual(notes(passed), [null, null, null, null], "said only while the step is ahead");
+  assert.deepEqual(notes(runSteps(graph("running", null, null, null), { status: "running" })), [null, null, null, null]);
 });
 
 test("the stage line names what happens now, and waits truthfully between steps", () => {

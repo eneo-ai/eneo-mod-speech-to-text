@@ -699,7 +699,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
   if (run.kind === "running") {
-    const steps = runSteps(run.graph, run.run);
+    const steps = runSteps(run.graph, run.run, [], contract.steps_requiring_review);
     return flowPage(
       <RunProgress
         steps={steps}

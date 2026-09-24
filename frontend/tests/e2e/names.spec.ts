@@ -57,6 +57,15 @@ test("a run opened while it runs keeps the flow's page: the way back, and the de
   await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(0);
 });
 
+test("a step that will stop for the person says what it asks while it is ahead, and not once it is done", async ({ page }) => {
+  await run(page, "run-before-review", "flow-2");
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  const review = page.getByRole("listitem").filter({ hasText: "Talare" });
+  await expect(review).toContainText("Väntar");
+  await expect(review).toContainText("Här bekräftar du vem som är vem.");
+  await expect(page.getByRole("listitem").filter({ hasText: "Transkribera" })).not.toContainText("Här ");
+});
+
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
   expect(await axNode(page.locator("main textarea"))).toEqual({
