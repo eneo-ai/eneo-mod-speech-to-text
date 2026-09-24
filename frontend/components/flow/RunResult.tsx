@@ -32,8 +32,12 @@ const subscribeWide = (onChange: () => void) => {
 const isWide = () => window.matchMedia(WIDE).matches;
 
 type View = "document" | "transcript";
-/** A panel shown as a plain column: no tab panel role, name or stop of its own. */
-const COLUMN = { role: undefined, "aria-labelledby": undefined, tabIndex: undefined } as const;
+/**
+ * No panel is a tab stop of its own (Radix makes each one): a panel is taller than the screen, so its focus could not
+ * be seen, and each starts with its own controls. Side by side a panel is a plain column, without the role and name.
+ */
+const PANEL = { tabIndex: undefined } as const;
+const COLUMN = { ...PANEL, role: undefined, "aria-labelledby": undefined } as const;
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -185,7 +189,7 @@ export function RunResult({
         <TabsContent
           value="document"
           forceMount
-          {...(tabs ? {} : COLUMN)}
+          {...(tabs ? PANEL : COLUMN)}
           className={cn("mt-0 flex min-w-0 flex-col gap-6", tabs && "data-[state=inactive]:hidden")}
         >
           {documentColumn}
@@ -195,7 +199,7 @@ export function RunResult({
           <TabsContent
             value="transcript"
             forceMount
-            {...(tabs ? {} : COLUMN)}
+            {...(tabs ? PANEL : COLUMN)}
             className={cn("mt-0 min-w-0", tabs ? "data-[state=inactive]:hidden" : "lg:sticky lg:top-6")}
           >
             {transcriptColumn}

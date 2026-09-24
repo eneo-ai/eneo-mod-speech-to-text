@@ -20,8 +20,9 @@ const Slider = React.forwardRef<
     )}
     {...props}
   >
-    <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20">
-      <SliderPrimitive.Range className="absolute h-full bg-primary" />
+    {/* Forced colours drop backgrounds: the track gets an edge and the played part the system's highlight. */}
+    <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20 forced-colors:border forced-colors:border-[CanvasText]">
+      <SliderPrimitive.Range className="absolute h-full bg-primary forced-colors:bg-[Highlight] forced-colors:forced-color-adjust-none" />
     </SliderPrimitive.Track>
     <SliderPrimitive.Thumb
       {...thumbProps}

@@ -140,6 +140,8 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
   assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
   const panels = view.container.querySelectorAll('[role="tabpanel"]');
   assert.equal(panels.length, 2, "both views stay mounted");
+  // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
+  assert.deepEqual([...panels].map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
 
   const search = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
   await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
