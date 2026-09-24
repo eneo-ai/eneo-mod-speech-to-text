@@ -384,7 +384,7 @@ export const TranscriptPlayer = forwardRef<
     if (!action) return;
     const target = e.target as HTMLElement;
     // The position slider moves by its own keys; controls and text fields keep theirs.
-    if (target.closest("button, a, input, select, textarea, [role=slider], [role=menuitemradio], [role=radio], [contenteditable]")) return;
+    if (target.closest("button, a, input, select, textarea, [role=button], [role=slider], [role=menuitemradio], [role=radio], [contenteditable]")) return;
     if (!hasAudio || audioUnavailable) return;
     if (action.preventDefault) e.preventDefault();
     if (action.skipMs === 0) playback.toggle();
@@ -908,9 +908,10 @@ function TurnBlock({
   const isActive = turn.parts.some((p) => activeIndices.has(p.segmentIndex));
   const storedSpeaker = rawSegments[turn.parts[0]?.segment.sourceSegmentIndex ?? turn.parts[0]?.segmentIndex ?? -1]?.speaker ?? null;
   const clock = formatClock(turn.start * 1_000);
-  // One "Rätta" per passage. A passage of several sentences first shows a pencil at each of them.
+  // One "Rätta" per passage. In a passage of several sentences it first makes each sentence the target.
   const [choosing, setChoosing] = useState(false);
   const several = turn.parts.length > 1;
+  const choosable = canEdit && several && choosing;
   const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
 
   const picker = (trigger: React.ReactNode) => (
@@ -979,6 +980,7 @@ function TurnBlock({
               </Button>,
             )}
         </div>
+        {choosable && <p className="mt-1 text-[13px] text-ink-mute">Välj meningen du vill rätta.</p>}
         <div className="mt-0.5 text-[15px] leading-[1.65] text-ink">
           {turn.parts.map((part) => {
             const partActive = activeIndices.has(part.segmentIndex);
@@ -998,17 +1000,37 @@ function TurnBlock({
                 />
               );
             }
+            const shown = pieces(part.segment, ranges, hitsBySegment.get(part.segmentIndex));
             return (
               <span key={part.segmentIndex} className="group/part">
+                {/* While choosing, the sentence itself is the control. A span, since a button cannot break across
+                    lines inside the text; it then holds no other control, so a word is confirmed outside choosing.
+                    Its name is the words it shows, then the action (WCAG 2.5.3): the hidden correction notes inside
+                    would split the visible words. */}
                 <span
                   data-segment-index={part.segmentIndex}
-                  onClick={(e) => onPartClick(part, e)}
+                  onClick={(e) => (choosable ? onStartEdit(part.segmentIndex) : onPartClick(part, e))}
+                  {...(choosable && {
+                    role: "button",
+                    tabIndex: 0,
+                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}.`,
+                    onKeyDown: (e: React.KeyboardEvent) => {
+                      if (e.key !== "Enter" && e.key !== " ") return;
+                      e.preventDefault();
+                      onStartEdit(part.segmentIndex);
+                    },
+                  })}
                   className={cn(
                     "cursor-pointer rounded-sm box-decoration-clone transition-colors",
                     partActive && "bg-primary/10",
+                    // A tint on every sentence, stronger where pointed at or focused (a dotted line in forced colours,
+                    // which drop tints); the padding grows the target to 24 px without moving the lines, and on a
+                    // touch screen each sentence is a 44 px row.
+                    choosable &&
+                      "bg-primary-soft/50 bg-clip-content py-1 hover:bg-primary/20 focus-visible:bg-primary/20 coarse:my-1 coarse:block coarse:min-h-11 coarse:bg-clip-border coarse:px-2 coarse:py-2.5 forced-colors:underline forced-colors:decoration-dotted",
                   )}
                 >
-                  {pieces(part.segment, ranges, hitsBySegment.get(part.segmentIndex)).map((piece, k, all) => {
+                  {shown.map((piece, k, all) => {
                     const key = piece.word ? wordKey(part.segment.sourceSegmentIndex ?? part.segmentIndex, piece.word) : null;
                     const confirmed = key !== null && confirmedWords.has(key);
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
@@ -1049,7 +1071,7 @@ function TurnBlock({
                           {piece.text}
                           {piece.correctedFrom !== null && <span className="sr-only"> (rättad från {piece.correctedFrom})</span>}
                         </Text>
-                        {lastOfWord && onToggleConfirmed && key !== null && (
+                        {lastOfWord && onToggleConfirmed && key !== null && !choosable && (
                           <button
                             type="button"
                             className="group/confirm -my-1 -ml-[1.5px] -mr-[4.5px] inline-grid size-6 translate-y-[-1px] place-items-center rounded-full align-middle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-[14.5px] coarse:-ml-[11.5px] coarse:-mr-[14.5px] coarse:size-11"
@@ -1082,16 +1104,6 @@ function TurnBlock({
                     );
                   })}
                 </span>
-                {canEdit && several && choosing && (
-                  <button
-                    type="button"
-                    onClick={() => onStartEdit(part.segmentIndex)}
-                    aria-label={`Rätta meningen från ${partClock}`}
-                    className="mx-1 -my-1 inline-grid size-6 place-items-center rounded align-middle text-primary hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:size-11"
-                  >
-                    <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
-                  </button>
-                )}
                 {" "}
               </span>
             );
@@ -1112,7 +1124,7 @@ function TurnBlock({
                   : "w-0 px-0 opacity-0 focus-visible:ml-0.5 focus-visible:w-auto focus-visible:px-1.5 focus-visible:opacity-100 group-hover/turn:ml-0.5 group-hover/turn:w-auto group-hover/turn:px-1.5 group-hover/turn:opacity-100",
               )}
             >
-              <Pencil aria-hidden className="size-3.5" strokeWidth={2} />
+              {choosing ? <Check aria-hidden className="size-3.5" strokeWidth={2} /> : <Pencil aria-hidden className="size-3.5" strokeWidth={2} />}
               {choosing ? "Klar" : "Rätta"}
             </button>
           )}
