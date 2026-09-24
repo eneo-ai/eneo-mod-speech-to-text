@@ -1051,6 +1051,7 @@ function ReviewView({
                     onListen={hasAudio ? listenTo : undefined}
                     listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                     onSave={saveNames}
+                    draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
                   >
                     <Button type="button" variant="outline" className="self-start" disabled={busy}>
                       <UsersRound data-icon="inline-start" aria-hidden />

@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel } from "@/lib/transcript";
 
@@ -62,6 +63,7 @@ export function SpeakerNamingDialog({
   onListen,
   listenUnavailableReason,
   onSave,
+  draftKey,
   children,
 }: {
   rows: readonly SpeakerMappingRow[];
@@ -79,11 +81,27 @@ export function SpeakerNamingDialog({
   listenUnavailableReason?: (label: string) => string | null;
   /** Saves the names; returns why they were not saved, or null. */
   onSave: (rows: SpeakerMappingRow[]) => Promise<string | null>;
+  /** Keeps names typed but not saved for this person through a reload, the dialog open again with them. */
+  draftKey?: { ownerId: string; name: string };
   /** The button that opens the dialog; focus returns to it on close. */
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<SpeakerMappingRow[]>([...rows]);
+  // Names typed before a reload, on the speakers there are now; Spara namnen or Avbryt ends them.
+  const kept = () => {
+    const names = draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null;
+    return names && rows.map((row) => ({ ...row, name: names.find((typed) => typed.label === row.label)?.name ?? row.name }));
+  };
+  const [open, setOpen] = useState(() => kept() !== null);
+  const [draft, setDraft] = useState<SpeakerMappingRow[]>(() => kept() ?? [...rows]);
+  const rename = (label: string, name: string | null) => {
+    const next = draft.map((row) => (row.label === label ? { ...row, name } : row));
+    setDraft(next);
+    if (draftKey) writeDraft(browserDrafts(), draftKey.ownerId, draftKey.name, next);
+  };
+  const close = () => {
+    setOpen(false);
+    if (draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
+  };
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [refusal, setRefusal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,19 +128,18 @@ export function SpeakerNamingDialog({
     const refused = await onSave(draft.map((row) => ({ ...row, name: row.name?.trim() ? row.name.trim() : null })));
     setSaving(false);
     if (refused) setRefusal(refused);
-    else setOpen(false);
+    else close();
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
-          setDraft([...rows]);
-          setProblems({});
-          setRefusal(null);
-        }
+        if (!next) return close();
+        setOpen(true);
+        setDraft([...rows]);
+        setProblems({});
+        setRefusal(null);
       }}
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
@@ -181,7 +198,7 @@ export function SpeakerNamingDialog({
                     noneLabel="Inget namn (behåll etiketten)"
                     writeLabel="Skriv ett annat namn"
                     optionNote={(name) => usedBy(name, row.label)}
-                    onChange={(name) => setDraft((all) => all.map((r) => (r.label === row.label ? { ...r, name } : r)))}
+                    onChange={(name) => rename(row.label, name)}
                   />
                   {unsure && <p className="text-[13px] text-ink-mute">Osäkert förslag</p>}
                   {problems[row.label] && (
