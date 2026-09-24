@@ -1,8 +1,10 @@
 /**
  * Captures audio into the recording store, one part (one audio file) per
  * MediaRecorder run. Losing the microphone pauses the recording: its track
- * ends or is muted (a phone call, a phone putting the page in the background)
- * or the recorder stops or fails by itself. `continueRecording()` then starts
+ * ends (another app takes it, permission goes) or the recorder stops or fails
+ * by itself. A muted track is only away for a moment (a headset changing its
+ * route): the recording goes on, says so (`muted`), and is itself again when
+ * the same track unmutes. `continueRecording()` then starts
  * a new part of the same recording on a fresh microphone stream; `adopt()`
  * does the same for a recording that a reload cut off, and `continueStopped()`
  * for one the user stopped too early. A part nearing the
@@ -77,6 +79,8 @@ export interface CaptureSnapshot {
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
   limitReached: boolean;
+  /** The microphone's track is muted for now; the recording goes on, and the same track's sound comes back. */
+  muted: boolean;
 }
 
 export interface WakeLockLike {
@@ -159,6 +163,7 @@ export class RecordingCapture {
     refused: null,
     remainingMs: null,
     limitReached: false,
+    muted: false,
   };
   private listeners = new Set<() => void>();
   private store: RecordingStore | null = null;
@@ -397,8 +402,10 @@ export class RecordingCapture {
   private record(stream: MediaStream) {
     stream.getAudioTracks().forEach((track) => {
       track.addEventListener("ended", this.onMicrophoneLost);
-      track.addEventListener("mute", this.onMicrophoneLost);
+      track.addEventListener("mute", this.onMuteChange);
+      track.addEventListener("unmute", this.onMuteChange);
     });
+    this.onMuteChange();
     this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
     this.deps.window?.addEventListener("pagehide", this.flush);
     this.beginPart(stream);
@@ -628,6 +635,11 @@ export class RecordingCapture {
 
   private onMicrophoneLost = () => void this.endParts("interrupt");
 
+  private onMuteChange = () => {
+    const muted = !!this.microphone?.getAudioTracks().some((track) => track.muted);
+    if (muted !== this.snapshot.muted) this.set({ muted });
+  };
+
   /** True, with the microphone let go, when the page went away during a start. */
   private left(generation: number): boolean {
     if (generation === this.generation) return false;
@@ -649,7 +661,8 @@ export class RecordingCapture {
     this.microphone = null;
     stream?.getAudioTracks().forEach((track) => {
       track.removeEventListener("ended", this.onMicrophoneLost);
-      track.removeEventListener("mute", this.onMicrophoneLost);
+      track.removeEventListener("mute", this.onMuteChange);
+      track.removeEventListener("unmute", this.onMuteChange);
     });
     stream?.getTracks().forEach((track) => track.stop());
   }
@@ -667,11 +680,12 @@ export class RecordingCapture {
     const { status } = this.snapshot;
     if (status !== "recording" && status !== "paused") return;
     if (this.deps.page?.visibilityState === "hidden") return this.flush();
-    // The wake lock ended with the hidden page; the microphone may have too.
+    // The wake lock ended with the hidden page; the microphone may have too, or be muted for now.
     void this.takeWakeLock();
+    this.onMuteChange();
     const lost =
       this.part?.recorder.state === "inactive" ||
-      this.microphone?.getAudioTracks().some((track) => track.readyState === "ended" || track.muted);
+      this.microphone?.getAudioTracks().some((track) => track.readyState === "ended");
     if (lost) this.onMicrophoneLost();
   };
 

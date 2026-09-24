@@ -278,6 +278,96 @@ test("a sent recording whose local copy cannot be deleted is never offered again
   assert.equal((await (await openRecordingStore(env)).get(kept.id))?.state, "uploaded");
 });
 
+test("a sent recording partly kept only in this tab is never offered as unsent when its deletion fails, here or after a reload", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  const remove = IDBObjectStore.prototype.delete;
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000); // the rest lives in this tab only
+    IDBObjectStore.prototype.delete = function () {
+      throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+    };
+    await store.accept(recording.id, "run-1");
+    assert.deepEqual(await store.listUnsent("user-1"), [], "not offered in this tab");
+    store.release(recording.id);
+    await settle();
+    // A reload while deleting still fails: the device's copy (the first chunk only) is not offered either.
+    const reloaded = await openRecordingStore(env);
+    assert.deepEqual(await reloaded.listUnsent("user-1"), [], "the part kept on the device is not offered as a recording to send");
+  } finally {
+    IDBObjectStore.prototype.put = put;
+    IDBObjectStore.prototype.delete = remove;
+  }
+  // Deleting works again: the next open cleans it up.
+  const recovered = await openRecordingStore(env);
+  assert.equal(await recovered.get(recording.id), null);
+});
+
+test("a sent recording the device has marked but cannot delete leaves nothing in this tab: a later recording is kept on the device again", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  const remove = IDBObjectStore.prototype.delete;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000); // the rest lives in this tab only
+    assert.equal(store.persistent, false);
+    IDBObjectStore.prototype.delete = function () {
+      throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+    };
+    await store.accept(recording.id, "run-1"); // the device's copy is marked "submitted"; deleting it fails
+    store.release(recording.id);
+    await settle();
+    IDBObjectStore.prototype.put = put; // the device has room again
+    const next = await store.create(meeting);
+    await store.startPart(next.id);
+    await store.append(next.id, 0, new Blob(["c"]), 1_000);
+    assert.equal(store.refused(recording.id), null, "the accepted audio is not held in this tab");
+    assert.equal(store.persistent, true, "the new recording is on the device, not only in this tab");
+  } finally {
+    IDBObjectStore.prototype.put = put;
+    IDBObjectStore.prototype.delete = remove;
+  }
+});
+
+test("a sent recording the device will neither mark nor delete stays hidden in this tab, which holds it until the delete succeeds", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  const remove = IDBObjectStore.prototype.delete;
+  IDBObjectStore.prototype.put = function () {
+    throw new DOMException("Disk full", "QuotaExceededError");
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+    IDBObjectStore.prototype.delete = function () {
+      throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+    };
+    await store.accept(recording.id, "run-1");
+    store.release(recording.id); // the send's lease ends
+    await settle();
+    assert.deepEqual(await store.listUnsent("user-1"), [], "the older copy on the device is not offered here");
+  } finally {
+    IDBObjectStore.prototype.put = put;
+    IDBObjectStore.prototype.delete = remove;
+  }
+});
+
 test("chunks of a recording being captured are stored even when reading the database fails", async () => {
   for (const env of [device(), device({ locks: undefined })]) await keepsChunksWhenReadsFail(env);
 });

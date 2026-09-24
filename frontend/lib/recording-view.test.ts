@@ -64,6 +64,7 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     persistent: true,
     refused: null,
     remainingMs: null as number | null,
+    muted: false,
     wakeLock: true,
   };
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
@@ -100,6 +101,10 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     ["Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.", stop],
     "interrupted, the flow's end is not what the user needs to know",
   );
+  assert.deepEqual(recordingNotices({ ...base, muted: true }), [
+    "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.",
+    stop,
+  ]);
   assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [
     "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.",
     stop,
@@ -368,6 +373,7 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const html = sheet({
     status: "reconnecting",
     started: true,
+    complete: false,
     pieces: [
       { text: "Välkomna till nämndens möte.", opensParagraph: true },
       { text: "Första punkten.", opensParagraph: false },
@@ -383,10 +389,10 @@ test("the live sheet is a named log of committed text; words still arriving are 
   assert.match(html, /<p role="status"[^>]*>Livetexten pausades\. Inspelningen fortsätter\.<\/p>/);
   assert.ok(!html.includes("Visa senaste"), "following the text: no jump button");
 
-  const empty = sheet({ status: "connecting", started: false, pieces: [], pending: "" });
+  const empty = sheet({ status: "connecting", started: false, complete: false, pieces: [], pending: "" });
   assert.match(empty, /Texten visas här när du börjar prata\./);
   assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status region is there before anything is said");
-  const refused = sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
+  const refused = sheet({ status: "unavailable", started: false, complete: false, pieces: [], pending: "" });
   assert.ok(!refused.includes("Texten visas här"), "no promise of text that will not come");
   assert.match(refused, /Livetexten kunde inte starta\./);
 });

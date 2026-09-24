@@ -367,3 +367,112 @@ test("covered before live text was ready, it waits too, and starts once the page
   assert.equal(live.getSnapshot().status, "live");
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7], "the audio from before the cover goes now");
 });
+
+test("paused while a new try waits, live text opens no connection until recording goes on", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1006); // a break: a new try is set for a second from now
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  live.setRecording(false); // Pausa
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no connection while paused");
+  live.setRecording(true);
+  assert.equal(sockets.length, 2, "going on connects");
+});
+
+test("stopped while a new try waits, live text opens no connection", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1006);
+  live.stop();
+  elapse(60_000);
+  assert.equal(sockets.length, 1);
+});
+
+test("the relay's final text is the draft's last word: it replaces what the session's deltas said", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Hej" });
+  live.stop();
+  sockets[0].event({ type: "transcript.done", text: "Hej världen" });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Hej världen"]);
+  assert.equal(live.getSnapshot().complete, true);
+  assert.equal(live.getSnapshot().status, "ended");
+});
+
+test("a stop waits for the final text as long as the relay allows it, in the background", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Budgeten" });
+  live.stop();
+  elapse(45_000); // the model server can take this long to finish
+  assert.notEqual(live.getSnapshot().status, "ended", "still waiting for the last words");
+  sockets[0].event({ type: "transcript.done", text: "Budgeten för nästa år." });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Budgeten för nästa år."]);
+  assert.equal(live.getSnapshot().complete, true);
+
+  const late = setup();
+  late.live.start();
+  late.sockets[0].ready();
+  late.live.stop();
+  late.elapse(60_000);
+  assert.equal(late.live.getSnapshot().status, "ended");
+  assert.equal(late.live.getSnapshot().complete, false, "no final text came: unfinished");
+});
+
+test("a connection that closes after the stop, before its final text, leaves the draft unfinished", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Hej" });
+  live.stop();
+  sockets[0].drop(1000);
+  assert.equal(live.getSnapshot().status, "ended");
+  assert.equal(live.getSnapshot().complete, false);
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Hej"], "what came is kept");
+});
+
+test("the final text replaces only its own session's words, not those of the sessions before a break", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Första delen." });
+  sockets[0].drop(1006);
+  elapse(1_000);
+  sockets[1].ready();
+  sockets[1].event({ type: "transcript.delta", text: "Andra" });
+  live.stop();
+  sockets[1].event({ type: "transcript.done", text: "Andra delen." });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Första delen.", "Andra delen."]);
+});
+
+test("an empty final text says the session heard nothing: its words go, the sessions before a break keep theirs", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Första delen." });
+  sockets[0].drop(1006);
+  elapse(1_000);
+  sockets[1].ready();
+  sockets[1].event({ type: "transcript.delta", text: "Provisional words." });
+  live.stop();
+  sockets[1].event({ type: "transcript.done", text: "" });
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Första delen."]);
+  assert.equal(live.getSnapshot().complete, true);
+});
+
+test("a final message without its text leaves the words as they came and the draft unfinished", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Provisional words." });
+  live.stop();
+  sockets[0].event({ type: "transcript.done" });
+  assert.equal(live.getSnapshot().status, "ended");
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Provisional words."]);
+  assert.equal(live.getSnapshot().complete, false);
+});

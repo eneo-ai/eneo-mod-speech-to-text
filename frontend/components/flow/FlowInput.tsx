@@ -256,6 +256,7 @@ function CaptureWorkspace({ input }: { input: Session }) {
     persistent: persistent !== false,
     refused: capture.refused,
     remainingMs: capture.remainingMs,
+    muted: capture.muted,
     wakeLock,
   });
   return (
