@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +52,9 @@ export function NameCombobox({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  // The row the arrow keys or the pointer moved to; until then the list marks the field's own name, so Enter
+  // on a list opened by a click keeps it (it never picks the first name).
+  const [moved, setMoved] = useState<number | null>(null);
   // Listan filtreras bara medan användaren skriver; öppnad med klick visar
   // den alla namn så att ett annat går att välja.
   const [typing, setTyping] = useState(false);
@@ -77,9 +79,10 @@ export function NameCombobox({
     return out;
   }, [options, query, trimmed, exact, typing, writeLabel]);
 
-  useEffect(() => {
-    if (active >= items.length) setActive(Math.max(0, items.length - 1));
-  }, [items.length, active]);
+  const isSelected = (option: Option) =>
+    option.kind === "name" ? option.name === value : option.kind === "none" && value === null;
+  // A row past the end (the last, or one the typing filtered away) is the last row.
+  const active = moved === null ? items.findIndex(isSelected) : Math.min(moved, items.length - 1);
 
   function choose(option: Option) {
     if (option.kind === "write") {
@@ -97,25 +100,28 @@ export function NameCombobox({
     inputRef.current?.focus();
   }
 
-  function openList() {
+  /** Opening by a click, the chevron or focus marks the field's own name; an arrow key marks its end of the list. */
+  function openList(marked: number | null = null) {
     setTyping(false);
+    setMoved(marked);
     setOpen(true);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
+      const delta = e.key === "ArrowDown" ? 1 : -1;
       if (!open) {
-        openList();
+        openList(delta > 0 ? 0 : Number.POSITIVE_INFINITY);
         return;
       }
-      const delta = e.key === "ArrowDown" ? 1 : -1;
-      setActive((i) => (i + delta + items.length) % items.length);
+      setMoved(active < 0 ? (delta > 0 ? 0 : items.length - 1) : (active + delta + items.length) % items.length);
     } else if (e.key === "Enter") {
       if (!open) return;
       e.preventDefault();
       const option = items[active];
       if (option) choose(option);
+      else setOpen(false);
     } else if (e.key === "Escape") {
       if (open) {
         e.preventDefault();
@@ -126,11 +132,10 @@ export function NameCombobox({
     }
   }
 
-  useEffect(() => {
-    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
-  }, [active, open, listId]);
+  // The marked row is brought into view when it becomes the marked one, and when the list itself mounts.
+  const reveal = useCallback((row: HTMLLIElement | null) => row?.scrollIntoView({ block: "nearest" }), []);
 
-  const activeId = open && items[active] ? `${listId}-${active}` : undefined;
+  const activeId = open && active >= 0 && items[active] ? `${listId}-${active}` : undefined;
 
   // The list floats over the page in its own layer, so a dialog's scrolling body never cuts it off;
   // the focus stays in the field, and a press outside the field and the list closes it. It closes at
@@ -158,10 +163,10 @@ export function NameCombobox({
           onChange(next === "" ? null : next);
           setTyping(true);
           setOpen(true);
-          setActive(0);
+          setMoved(0);
         }}
-        onFocus={openList}
-        onClick={openList}
+        onFocus={() => openList()}
+        onClick={() => openList()}
         onKeyDown={onKeyDown}
         className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] coarse:h-11 coarse:pr-11 coarse:text-base text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
       />
@@ -173,10 +178,10 @@ export function NameCombobox({
         onClick={(e) => {
           // Låt inte inputens onFocus öppna listan igen direkt efter en stängning.
           e.preventDefault();
-          const nextOpen = !open;
+          const wasOpen = open;
           inputRef.current?.focus();
-          setTyping(false);
-          setOpen(nextOpen);
+          if (wasOpen) setOpen(false);
+          else openList();
         }}
         className="absolute inset-y-0 right-0 grid w-8 place-items-center coarse:w-11 text-ink-mute hover:text-ink disabled:opacity-50"
       >
@@ -201,16 +206,17 @@ export function NameCombobox({
         aria-label={ariaLabel ? `Förslag: ${ariaLabel}` : "Namnförslag"}
       >
         {items.map((option, i) => {
-          const selected =
-            option.kind === "name" ? option.name === value : option.kind === "none" && value === null;
+          const selected = isSelected(option);
           const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;
           return (
             <li
               key={option.id}
               id={`${listId}-${i}`}
+              ref={i === active ? reveal : undefined}
               role="option"
-              aria-selected={selected}
-              onMouseEnter={() => setActive(i)}
+              // The row Enter would take; the name in the field keeps its check beside it.
+              aria-selected={i === active}
+              onMouseEnter={() => setMoved(i)}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => choose(option)}
               className={cn(
