@@ -78,6 +78,27 @@ export async function stop(page: Page) {
   await heading(page, "Inspelningen är klar");
 }
 
+/** The flow takes audio in `files` files of at most `seconds` each (Eneo's max_duration_seconds). */
+async function limitAudio(page: Page, seconds: number, files: number) {
+  await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
+    const contract = await (await route.fetch()).json();
+    contract.steps_requiring_input = contract.steps_requiring_input.map((step: object) => ({
+      ...step,
+      max_duration_seconds: seconds,
+      max_files: files,
+    }));
+    return route.fulfill({ json: contract });
+  });
+}
+
+/** A recording with a line in the recording bar, `line`, once `start` has set the scene. */
+async function recordingSays(page: Page, line: string | RegExp, start?: () => Promise<unknown>) {
+  await setup(page);
+  await record(page, "Spela in");
+  await start?.();
+  await expect(page.getByText(line)).toBeVisible({ timeout: 30_000 });
+}
+
 /** The login ends while the page is open: the page is covered and a dialog asks for a new login in place. */
 export async function endLogin(page: Page) {
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: "eneo_sso", user: null } }));
@@ -319,6 +340,59 @@ export const STATES: State[] = [
     },
   },
   { name: "sending", go: sending },
+  {
+    name: "time-left-15",
+    go: async (page) => {
+      await limitAudio(page, 12 * 60, 1);
+      await recordingSays(page, /^Mindre än 15 minuter kvar till flödets maxlängd\./);
+    },
+  },
+  {
+    name: "time-left-5",
+    go: async (page) => {
+      await limitAudio(page, 4 * 60, 1);
+      await recordingSays(page, /^Mindre än 5 minuter kvar till flödets maxlängd\./);
+    },
+  },
+  {
+    name: "too-long-for-one-file",
+    go: async (page) => {
+      // A page the browser held still past the handover (a laptop lid): its part runs past Eneo's time per file.
+      await page.clock.install();
+      await limitAudio(page, 60, 5);
+      await setup(page);
+      await record(page, "Spela in");
+      await page.clock.fastForward("02:00");
+      await stop(page);
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await expect(page.getByText(/Inspelningen är för lång för en fil/)).toBeVisible();
+    },
+  },
+  {
+    name: "silent-microphone",
+    go: async (page) => {
+      // A muted input: the stream carries digital silence.
+      await page.addInitScript(() => {
+        navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+      });
+      await recordingSays(page, "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
+    },
+  },
+  {
+    name: "disk-full",
+    go: async (page) => {
+      await page.addInitScript(() => {
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+          if ((window as unknown as { diskFull?: boolean }).diskFull) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+          return put.apply(this, args);
+        };
+      });
+      await recordingSays(page, /^Enheten har inte plats för att spara mer\./, () =>
+        page.evaluate(() => ((window as unknown as { diskFull?: boolean }).diskFull = true)),
+      );
+    },
+  },
   {
     name: "signed-out",
     go: async (page) => {
