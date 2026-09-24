@@ -52,3 +52,29 @@ test("signed out: the dialog asks for a new login, says the page and a recording
   });
   assert.ok(dialog(), "Escape keeps it open");
 });
+
+test("someone signing in here keeps only their own drafts: another person's typed details and review edits go", async (t) => {
+  const { createElement } = await import("react");
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const { AuthGate } = await import("../components/AuthGate");
+  const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+    window.sessionStorage.clear();
+  });
+  writeDraft(browserDrafts(), "user-1", "flow:flow-1", { motesnamn: "Byggnadsnämnden" });
+  writeDraft(browserDrafts(), "user-2", "flow:flow-1", { motesnamn: "Socialnämnden" });
+  const go = () => undefined;
+  const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
+  const { container, act } = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: "Sidan" })));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.match(container.textContent ?? "", /Sidan/);
+  assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1"), { motesnamn: "Byggnadsnämnden" });
+  assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1"), null);
+});

@@ -45,6 +45,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
+import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -91,6 +92,9 @@ import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { formatDeadline } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
+
+/** A review's unsaved edit: the text, or the speakers' names, on the revision it was made on. */
+type ReviewDraft = { revision: number; text?: string; speakerRows?: SpeakerMappingRow[] };
 
 interface PageProps {
   // App Router levererar params som en Promise och packar upp dem med React.use().
@@ -770,10 +774,18 @@ function ReviewView({
     [checkpoint.original_payload_json, payload],
   );
 
+  // Unsaved edits outlast a reload (a lost login, a tab put to sleep) for this person, on the revision they were made on.
+  const user = useAuthenticatedUser();
+  const draftName = `review:${runState.run.id}:${checkpoint.id}`;
+  const unsaved = () => {
+    const draft = readDraft<ReviewDraft>(browserDrafts(), user.id, draftName);
+    return draft?.revision === checkpoint.revision ? draft : null;
+  };
+
   const initialText = extractCheckpointText(payload);
-  const [text, setText] = useState<string>(initialText);
-  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(proposals);
-  const [editing, setEditing] = useState<boolean>(false);
+  const [text, setText] = useState<string>(() => unsaved()?.text ?? initialText);
+  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(() => unsaved()?.speakerRows ?? proposals);
+  const [editing, setEditing] = useState<boolean>(() => unsaved()?.text !== undefined);
   const [saving, setSaving] = useState<boolean>(false);
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
@@ -782,8 +794,9 @@ function ReviewView({
 
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
-    setText(extractCheckpointText(payload));
-    setSpeakerRows(buildSpeakerRows(payload));
+    const draft = unsaved();
+    setText(draft?.text ?? extractCheckpointText(payload));
+    setSpeakerRows(draft?.speakerRows ?? buildSpeakerRows(payload));
   }, [checkpoint.revision, checkpoint.current_payload_json]);
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
@@ -819,6 +832,10 @@ function ReviewView({
     JSON.stringify(buildEditedMapping(speakerRows)) !==
       JSON.stringify(buildEditedMapping(proposals));
   const dirty = isSpeakerMapping ? speakersDirty : textDirty;
+  useEffect(() => {
+    if (!dirty) return clearDraft(browserDrafts(), user.id, draftName);
+    writeDraft(browserDrafts(), user.id, draftName, { revision: checkpoint.revision, ...(isSpeakerMapping ? { speakerRows } : { text }) });
+  }, [dirty, text, speakerRows, checkpoint.revision, draftName, isSpeakerMapping, user.id]);
 
   const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
   const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
@@ -873,6 +890,8 @@ function ReviewView({
         return;
       }
       cp = updated;
+      // Saved, whether or not this view is shown again before the run goes on.
+      clearDraft(browserDrafts(), user.id, draftName);
     }
     try {
       await onApprove(cp);
@@ -884,9 +903,10 @@ function ReviewView({
   async function saveOnly() {
     if (!dirty) return;
     setSaving(true);
-    await onSaveEdit(checkpoint, pendingEditedValue());
+    const saved = await onSaveEdit(checkpoint, pendingEditedValue());
     setSaving(false);
-    setEditing(false);
+    // Refused (a lost login, a newer revision): the edit stays open with the text, for Spara ändring again.
+    if (!("error" in saved)) setEditing(false);
   }
 
   async function submitReject() {

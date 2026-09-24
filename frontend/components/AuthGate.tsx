@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import { Spinner } from "@/components/ui/spinner";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
@@ -94,6 +95,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           return;
         }
         setUser(sessionIdentity);
+        // Someone else's unsent details and edits are not this person's to see.
+        keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
         endPage = loginState.begin();
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.

@@ -14,6 +14,7 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
+import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
@@ -400,6 +401,8 @@ export interface FlowSessionOptions {
   /** A recording format the browser has and the flow takes, or null. */
   pickMimeType: (accepted: string[] | undefined) => string | null;
   storage?: KeyValueStorage | null;
+  /** Where the details typed so far are kept for this person until the document is made. */
+  drafts?: DraftStorage | null;
   /** Streams live text (Strömma), when the browser can. */
   live?: LiveClient | null;
 }
@@ -433,6 +436,8 @@ export class FlowSession {
 
   constructor(private readonly options: FlowSessionOptions) {
     this.flowName = options.flowName;
+    // What this person typed before a reload (a lost login, a tab put to sleep); the contract decides what fits.
+    this.details = readDraft<Record<string, DetailValue>>(options.drafts, options.ownerId, this.draftName()) ?? {};
     this.capture = new RecordingCapture(options.openStore, {
       ...options.captureDeps,
       getStream: async (constraints) => {
@@ -488,6 +493,7 @@ export class FlowSession {
 
   setDetail(name: string, value: DetailValue): void {
     this.details = { ...this.details, [name]: value };
+    writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
     if (filledValue(value)) this.invalid = this.invalid.filter((field) => field !== name);
     this.emit();
   }
@@ -651,6 +657,7 @@ export class FlowSession {
       this.closeLive();
     }
     if (input?.kind === "file") this.file = null;
+    clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
     this.emit();
     return true;
   }
@@ -703,6 +710,10 @@ export class FlowSession {
     } catch {
       return null;
     }
+  }
+
+  private draftName() {
+    return `flow:${this.options.flowId}`;
   }
 
   private inputStep() {

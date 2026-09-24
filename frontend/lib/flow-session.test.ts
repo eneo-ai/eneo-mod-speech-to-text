@@ -592,6 +592,54 @@ test("a recording Eneo already has says so, has the earlier runs read again, and
   assert.equal(refreshed, 1, "the earlier runs are read again, with the run Eneo has");
 });
 
+test("details typed before a lost login come back after it for the same person, not another; a sent document clears them", async () => {
+  const data = new Map<string, string>();
+  const drafts = {
+    get length() {
+      return data.size;
+    },
+    key: (index: number) => [...data.keys()][index] ?? null,
+    getItem: (key: string) => data.get(key) ?? null,
+    setItem: (key: string, value: string) => void data.set(key, value),
+    removeItem: (key: string) => void data.delete(key),
+  };
+  const session = (ownerId: string, flowId = "flow-1") =>
+    new FlowSession({
+      flowId,
+      flowName: "Nämndmöte till rapport",
+      ownerId,
+      openStore: () => openRecordingStore({}),
+      captureDeps: { getStream: async () => new FakeStream() as unknown as MediaStream, createRecorder: () => new FakeRecorder() as unknown as MediaRecorder },
+      pickMimeType: () => "audio/webm;codecs=opus",
+      storage: memoryStorage(),
+      drafts,
+    });
+  const before = session("user-1");
+  before.setContract(audioContract());
+  before.setDetail("motesnamn", "Byggnadsnämnden");
+  before.setDetail("deltagare", ["Anna Berg"]);
+  before.dispose(); // the page reloaded after the login was lost
+
+  const after = session("user-1");
+  after.setContract(audioContract());
+  assert.equal(after.getSnapshot().details.motesnamn, "Byggnadsnämnden");
+  assert.deepEqual(after.getSnapshot().details.deltagare, ["Anna Berg"]);
+  const other = session("user-2");
+  other.setContract(audioContract());
+  assert.equal(other.getSnapshot().details.motesnamn, "Kommunstyrelsen", "another person starts from the flow's defaults");
+  const otherFlow = session("user-1", "flow-2");
+  otherFlow.setContract(audioContract());
+  assert.equal(otherFlow.getSnapshot().details.motesnamn, "Kommunstyrelsen", "and another flow too");
+
+  after.setHandlers({ submit: async () => {} });
+  after.selectMode("ladda-upp");
+  after.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  assert.equal(await after.createDocument(), true);
+  const again = session("user-1");
+  again.setContract(audioContract());
+  assert.equal(again.getSnapshot().details.motesnamn, "Kommunstyrelsen", "sent: the draft is gone");
+});
+
 test("a send that fails keeps the recording and the details, and says why", async () => {
   const { session, recorders, store } = await setup();
   session.setHandlers({
