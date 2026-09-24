@@ -1008,6 +1008,8 @@ function ReviewView({
               )}
             </details>
 
+            {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
+            <h2 className="sr-only">Transkript</h2>
             <TranscriptPlayer
               ref={playerRef}
               className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
