@@ -88,7 +88,7 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
 });
 
 test("the PDF preview holds focus and gives it back", async ({ page }, info) => {
-  test.skip(!isLaptop(info) && info.project.name !== "zoom-200", "a phone opens the PDF in a new tab");
+  test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
   await run(page, "run-done");
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }), page.getByRole("dialog"));
 });

@@ -340,7 +340,8 @@ export const STATES: State[] = [
   },
   {
     name: "result-pdf-dialog",
-    only: (info) => !isPhone(info) && (info.project.use.viewport?.width ?? 0) >= 640,
+    // Below a laptop's width the document's PDF opens in a new tab instead.
+    only: isLaptop,
     go: async (page) => {
       await result(page);
       await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();

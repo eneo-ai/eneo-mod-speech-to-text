@@ -5,7 +5,7 @@
  */
 import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
-import { addParticipants, chooseMode, open, sending, setup, STATES } from "./screens";
+import { addParticipants, chooseMode, isLaptop, open, result, sending, setup, STATES } from "./screens";
 
 test("the input modes are named by their title and described by their line", async ({ page }) => {
   await setup(page);
@@ -172,6 +172,14 @@ test("an old status answer that arrives after the renewal's moves neither the en
   const renewedCalls = calls;
   await expect.poll(() => calls - renewedCalls, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
   await expect(warning).toBeHidden();
+});
+
+test("below a laptop's width the document's PDF opens in a new tab, and says so", async ({ page }, info) => {
+  test.skip(isLaptop(info), "from a laptop's width the PDF opens in a dialog");
+  await result(page);
+  const link = page.getByRole("link", { name: "Öppna PDF i en ny flik" });
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("href", /disposition=inline/);
 });
 
 test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
