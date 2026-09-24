@@ -395,8 +395,8 @@ function SetupWorkspace({
             checked={snapshot.speakerLabels}
             onCheckedChange={(on) => session.setSpeakerLabels(on)}
             aria-describedby="talare-hjalp"
-            // A 44 × 44 px hit area for a finger around the 44 × 24 px switch, from inside its 2 px border.
-            className="relative after:absolute after:-inset-x-0.5 after:-inset-y-3"
+            // A finger's hit area is 44 px tall: 12 px above and below the switch's padding box, over its own 10.
+            className="coarse:after:-inset-y-3"
           />
         </Field>
       ) : speakerOption?.required || reviewsSpeakers ? (
