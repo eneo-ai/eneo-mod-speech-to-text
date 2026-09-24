@@ -247,8 +247,9 @@ test("the local copy stays through every upload state and is deleted once Eneo a
   assert.deepEqual(await reopened.readParts(recording.id), []);
 });
 
-test("a sent recording whose local copy cannot be deleted is never offered again", async () => {
-  const store = await openRecordingStore(device());
+test("a sent recording whose local copy cannot be deleted is never offered again, and is deleted the next time the store opens", async () => {
+  const env = device();
+  const store = await openRecordingStore(env);
   const recording = await store.create(meeting);
   await store.startPart(recording.id);
   await store.append(recording.id, 0, new Blob(["audio"]), 2_000);
@@ -263,6 +264,18 @@ test("a sent recording whose local copy cannot be deleted is never offered again
     IDBObjectStore.prototype.delete = remove;
   }
   assert.deepEqual(await store.listUnsent("user-1"), []);
+  assert.equal((await store.get(recording.id))?.state, "submitted", "the audio is still on the device");
+
+  // The next page, or the next visit: Eneo has the run, so the audio goes.
+  const reopened = await openRecordingStore(env);
+  assert.equal(await reopened.get(recording.id), null);
+  assert.deepEqual(await texts(await reopened.readParts(recording.id)), []);
+
+  // A recording not yet accepted stays.
+  const kept = await reopened.create(meeting);
+  await reopened.setState(kept.id, "uploaded");
+  reopened.release(kept.id);
+  assert.equal((await (await openRecordingStore(env)).get(kept.id))?.state, "uploaded");
 });
 
 test("chunks of a recording being captured are stored even when reading the database fails", async () => {

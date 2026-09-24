@@ -399,8 +399,17 @@ export class RecordingStore {
     return this.change(async () => {
       const recording = await this.load(id);
       if (recording) await this.write({ ...recording, state: "submitted", runId });
-      // A copy left by a failed delete is "submitted" and never offered again.
+      // A copy left by a failed delete is "submitted": never offered again, and deleted when the store next opens.
       await this.delete(id).catch(() => undefined);
+    });
+  }
+
+  /** Deletes what a failed delete left of recordings Eneo accepted; only "submitted" ones, which only `accept` writes. */
+  removeAccepted(): Promise<void> {
+    return this.change(async () => {
+      for (const recording of await this.all()) {
+        if (recording.state === "submitted") await this.delete(recording.id).catch(() => undefined);
+      }
     });
   }
 
@@ -574,7 +583,9 @@ export async function openRecordingStore(env: StoreEnv): Promise<RecordingStore>
   if (env.indexedDB && env.keyRange) {
     try {
       const db = await openDatabase(env.indexedDB);
-      return new RecordingStore(idbBackend(db, env.keyRange), true, env);
+      const store = new RecordingStore(idbBackend(db, env.keyRange), true, env);
+      await store.removeAccepted().catch(() => undefined);
+      return store;
     } catch {
       // Private mode or blocked storage: fall through to memory.
     }
