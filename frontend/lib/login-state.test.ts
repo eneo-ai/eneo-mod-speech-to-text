@@ -9,10 +9,12 @@ const sessionEnded = () =>
     status: 401,
     headers: { "content-type": "application/json", "X-Auth-Required": "session" },
   });
-const signedIn = (sessionEndsIn = 8 * 3600): AuthStatus => ({
+const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+const erik = { id: "user-2", email: "erik@example.se", username: "Erik Lund" };
+const signedIn = (sessionEndsIn = 8 * 3600, user = anna): AuthStatus => ({
   authenticated: true,
   auth_mode: "eneo_sso",
-  user: { id: "user-1", email: "anna@example.se" },
+  user,
   session_ends_in: sessionEndsIn,
 });
 const signedOut: AuthStatus = { authenticated: false, auth_mode: "eneo_sso", user: null };
@@ -31,7 +33,7 @@ function signedInPage(t: import("node:test").TestContext, answers: Array<() => R
   const page = globalThis as { window?: unknown };
   const browserWindow = page.window;
   page.window = { location: { pathname: "/flows/flow-1", replace: (url: string) => navigated.push(url) } };
-  const end = loginState.begin();
+  const end = loginState.begin(anna);
   t.after(() => {
     end();
     globalThis.fetch = browserFetch;
@@ -104,7 +106,7 @@ test("the start page, which no signed-in page holds, never waits for a login", a
 
 test("the login's end time or a status that says signed out ends it too; a status that says signed in renews it", (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const end = loginState.begin();
+  const end = loginState.begin(anna);
   t.after(end);
   loginState.observe(signedIn(60));
   t.mock.timers.tick(59_000);
@@ -144,4 +146,51 @@ test("an upload the session end refused asks for the login, and is the user's to
   });
   await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm"), (error: ApiError) => error.status === 401);
   assert.equal(loginState.signedOut, true);
+});
+
+test("someone else signing in here unlocks nothing: what waits is not sent as them, and goes once the page's own user is back", async (t) => {
+  const { calls } = signedInPage(t, [sessionEnded, () => ok({ id: "run-1", flow_id: "flow-1", status: "running" })]);
+  const reading = getRunStatus("flow-1", "run-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  loginState.observe(signedIn(8 * 3600, erik));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loginState.signedOut, true, "the page stays covered");
+  assert.deepEqual(loginState.otherUser, erik, "and says who is signed in instead");
+  assert.equal(calls.length, 1, "nothing is sent again under Erik's login");
+
+  loginState.observe(signedIn());
+  assert.equal((await reading).status, "running");
+  assert.equal(loginState.signedOut, false);
+  assert.equal(loginState.otherUser, null);
+  assert.equal(calls.length, 2);
+});
+
+test("while signed out nothing leaves the page: a read waits for the page's user, anything else is refused unsent", async (t) => {
+  const { calls } = signedInPage(t, [() => ok({ id: "run-1", flow_id: "flow-1", status: "running" })]);
+  loginState.observe(signedIn(8 * 3600, erik)); // someone else, whose login every request would carry
+  await assert.rejects(cancelRun("flow-1", "run-1"), (error: ApiError) => error.status === 401);
+  const reading = getRunStatus("flow-1", "run-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 0);
+  loginState.observe(signedIn());
+  assert.equal((await reading).status, "running");
+  assert.deepEqual(calls.map((call) => call.method), ["GET"]);
+
+  class CountingXhr {
+    static sent = 0;
+    upload = {};
+    open() {}
+    setRequestHeader() {}
+    send() {
+      CountingXhr.sent += 1;
+    }
+  }
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = CountingXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => {
+    globalThis.XMLHttpRequest = browserXhr;
+  });
+  loginState.ended();
+  await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm"), (error: ApiError) => error.status === 401);
+  assert.equal(CountingXhr.sent, 0, "the upload is not sent either");
 });

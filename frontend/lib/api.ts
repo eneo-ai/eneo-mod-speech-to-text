@@ -54,11 +54,19 @@ function replayable(init: RequestInit): boolean {
   return method === "GET" || method === "HEAD" || new Headers(init.headers).has("Idempotency-Key");
 }
 
+/** What a request our login's end refused says; the same whether the backend or the page refused it. */
+const sessionEnded = () => new ApiError(401, "Session expired", { detail: "Session expired" });
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   again = false,
 ): Promise<T> {
+  // Signed out, or someone else signed in here: nothing leaves the page until its own user is back.
+  if (loginState.signedOut && !path.startsWith("/api/auth/")) {
+    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again);
+    throw sessionEnded();
+  }
   let res: Response;
   try {
     res = await fetch(path, {
@@ -638,6 +646,8 @@ function requestMultipartWithProgress<T>(
   );
   const idleTimeoutMs = resolveRuntimeUploadIdleTimeoutMs(opts.runtimeUploadPolicy);
 
+  // Signed out, or someone else signed in here: the upload is the user's to send again once back.
+  if (loginState.signedOut) return Promise.reject(sessionEnded());
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;

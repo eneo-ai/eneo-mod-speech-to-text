@@ -20,7 +20,7 @@ import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { ReadyPanel } from "@/components/flow/ReadyPanel";
 import { LiveSheet } from "@/components/flow/LiveSheet";
-import { FocusedRecorder, RecordingBar } from "@/components/flow/Recorder";
+import { FocusedRecorder, RecordingBar, SignedOutControls } from "@/components/flow/Recorder";
 import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/recording-hooks";
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
@@ -269,6 +269,11 @@ function CaptureWorkspace({ input }: { input: Session }) {
           storageNote={persistent ? storageLine(true) : null}
         />
       )}
+      <SignedOutControls
+        phase={phase}
+        onPause={() => session.togglePause()}
+        onStop={() => void session.stop()}
+      />
       <RecordingBar
         capture={session.capture}
         phase={phase}

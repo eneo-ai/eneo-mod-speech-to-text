@@ -1,6 +1,9 @@
 "use client";
 
 import { Pause, Play, Square } from "lucide-react";
+import { useContext } from "react";
+import { createPortal } from "react-dom";
+import { SignedOutSlot } from "@/components/AuthGate";
 import { Button } from "@/components/ui/button";
 import { LevelMeter } from "@/components/flow/LevelMeter";
 import { useElapsed } from "@/components/flow/recording-hooks";
@@ -168,5 +171,26 @@ export function RecordingBar({
         ))}
       </div>
     </div>
+  );
+}
+
+/**
+ * While the page is covered for a new login, a recording's Pausa and Stoppa stay in reach in the sign-in dialog:
+ * ending a meeting needs no login, and what is recorded stays on the device either way.
+ */
+export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPhase; onPause: () => void; onStop: () => void }) {
+  const slot = useContext(SignedOutSlot);
+  if (!slot || (phase !== "recording" && phase !== "paused")) return null;
+  return createPortal(
+    <div role="group" aria-label="Inspelningen" className="flex flex-wrap items-center gap-2">
+      <RecordingStatus phase={phase} className="mr-auto text-[15px]" />
+      <Button type="button" variant="outline" className="h-11" onClick={onPause}>
+        {phase === "recording" ? "Pausa" : "Fortsätt"}
+      </Button>
+      <Button type="button" variant="outline" className="h-11" onClick={onStop}>
+        Stoppa
+      </Button>
+    </div>,
+    slot,
   );
 }

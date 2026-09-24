@@ -78,3 +78,77 @@ test("someone signing in here keeps only their own drafts: another person's type
   assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1"), { motesnamn: "Byggnadsnämnden" });
   assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1"), null);
 });
+
+test("signed out, Logga in igen starts a new login; before the end, a renewal bound to the user signed in now", async (t) => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  const opened: string[] = [];
+  t.mock.method(window, "open", (url: string) => {
+    opened.push(url);
+    return {} as Window;
+  });
+  const endsAt = Date.now() + 60_000; // the warning is open: less than five minutes left
+  const warning = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} }));
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+  await warning.act(async () => new Promise((resolve) => setTimeout(resolve, 10))); // it opens on a timer
+  await warning.act(async () => button(dialog(), "Fortsätt arbeta")!.click());
+  await warning.unmount();
+  const ended = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", signedOut: true, onRenewed: () => {} }));
+  await ended.act(async () => button(dialog(), "Logga in igen")!.click());
+  // The backend refuses a renewal once there is no login left to bind it to.
+  assert.deepEqual(opened, ["/api/auth/login?renew=1&next=%2Finloggad", "/api/auth/login?next=%2Finloggad"]);
+});
+
+test("someone else signed in: the dialog says who, and whom to sign in as, and stays", async () => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  await mount(
+    createElement(SessionEndWarning, {
+      endsAt: Date.now() + 3_600_000,
+      mode: "eneo_sso",
+      signedOut: true,
+      owner: { id: "user-1", email: "anna@example.se", username: "Anna Berg" },
+      otherUser: { id: "user-2", email: "erik@example.se", username: "Erik Lund" },
+      onRenewed: () => {},
+    }),
+  );
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+  assert.match(dialog.textContent ?? "", /Du är inloggad som Erik Lund\. Logga in som Anna Berg för att fortsätta\./);
+  assert.ok(button(dialog, "Logga in igen"));
+  assert.equal(button(dialog, "Stäng"), null);
+});
+
+test("signed out, a recording can still be paused and stopped from the sign-in dialog, without logging in", async () => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  const { SignedOutSlot } = await import("../components/AuthGate");
+  const { SignedOutControls } = await import("../components/flow/Recorder");
+  const pressed: string[] = [];
+  let slot: HTMLElement | null = null;
+  const warning = await mount(
+    createElement(SessionEndWarning, {
+      endsAt: Date.now() + 3_600_000,
+      mode: "eneo_sso",
+      signedOut: true,
+      controlsRef: (element: HTMLElement | null) => (slot = element),
+      onRenewed: () => {},
+    }),
+  );
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+  assert.ok(slot && dialog.contains(slot), "the dialog keeps a place for the page's recording controls");
+  const recorder = (phase: "recording" | "paused" | "ready") =>
+    createElement(
+      SignedOutSlot.Provider,
+      { value: slot },
+      createElement(SignedOutControls, { phase, onPause: () => pressed.push("pausa"), onStop: () => pressed.push("stoppa") }),
+    );
+  const page = await mount(recorder("recording"));
+  await page.act(async () => button(dialog, "Pausa")!.click());
+  await page.act(async () => button(dialog, "Stoppa")!.click());
+  assert.deepEqual(pressed, ["pausa", "stoppa"]);
+  await page.unmount();
+  const ready = await mount(recorder("ready"));
+  assert.equal(button(dialog, "Stoppa"), null, "nothing to stop once the recording is done");
+  await ready.unmount();
+  await warning.unmount();
+});
