@@ -27,6 +27,20 @@ test("a WCAG violation blocks the gate whatever axe calls its impact", async ({ 
   expect(blocking(scan.violations).map((v) => v.id)).toContain("html-xml-lang-mismatch");
 });
 
+test("colours are measured once a colour change has ended, not halfway through it", async ({ page }) => {
+  // A button enabled a moment before the scan fades from its disabled grey to its colour.
+  await page.setContent(`
+    <style>
+      button { color: #fff; background: #ddd; border: 0; padding: 8px; transition: background-color 1s linear; }
+      button.on { background: #1d4ed8; }
+    </style>
+    <main><h1>Prov</h1><button>Godkänn</button></main>`);
+  await page.evaluate(() => requestAnimationFrame(() => document.querySelector("button")!.classList.add("on")));
+  await page.waitForFunction(() => document.getAnimations().length > 0);
+  const scan = await axe(page);
+  expect(scan.violations.map((v) => v.id)).not.toContain("color-contrast");
+});
+
 test("a focus outline that cannot be seen is not taken for a focus indicator", async ({ page }) => {
   await page.setContent(`
     <style>
