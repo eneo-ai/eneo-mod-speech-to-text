@@ -10,9 +10,19 @@ export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
 export async function settle(page: Page) {
-  // Animations and transitions both: a colour fading to its end would be measured halfway.
-  await page.waitForFunction(() =>
-    document.getAnimations().every((a) => a.playState !== "running" || a.effect?.getComputedTiming().iterations === Infinity),
+  // Animations and transitions both: a colour fading to its end would be measured halfway. A live page keeps
+  // starting new ones (a recording's level and timer), so only those running now are waited for, a few seconds
+  // at most.
+  await page.evaluate(() =>
+    Promise.race([
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations !== Infinity)
+          .map((a) => a.finished.catch(() => undefined)),
+      ),
+      new Promise((resolve) => setTimeout(resolve, 5_000)),
+    ]),
   );
 }
 
