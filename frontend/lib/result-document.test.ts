@@ -99,6 +99,8 @@ test("the PDF opens on its title, with its actions and Stäng before the viewer"
   assert.equal(document.activeElement?.textContent, pdf.name, "focus on the title, not in the viewer");
   const order = [...dialog.querySelectorAll("button, a, iframe")].map((el) => el.tagName === "IFRAME" ? "viewer" : el.textContent?.trim());
   assert.deepEqual(order, ["Öppna i ny flik", "Ladda ner", "Stäng", "viewer"]);
+  // Tab never enters the browser's PDF frame, which keeps Escape and shows no focus; "Öppna i ny flik" reads it.
+  assert.equal(dialog.querySelector("iframe")!.tabIndex, -1, "the viewer is not a Tab stop");
 });
 
 test("narrower than a laptop, Dokument and Transkript are tabs that keep each other's state", async (t) => {

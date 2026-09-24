@@ -133,7 +133,8 @@ export function NameCombobox({
   const activeId = open && items[active] ? `${listId}-${active}` : undefined;
 
   // The list floats over the page in its own layer, so a dialog's scrolling body never cuts it off;
-  // the focus stays in the field, and a press outside the field and the list closes it.
+  // the focus stays in the field, and a press outside the field and the list closes it. It closes at
+  // once, without the fade: Tab moves on as it closes, and a fading list would cover the next control.
   return (
     <Popover open={open} onOpenChange={(next) => !next && setOpen(false)}>
     <PopoverAnchor asChild>
@@ -192,7 +193,7 @@ export function NameCombobox({
       onInteractOutside={(e) => {
         if (rootRef.current?.contains(e.target as Node)) e.preventDefault();
       }}
-      className="max-h-60 w-[var(--radix-popper-anchor-width)] min-w-[12rem] overflow-y-auto rounded-md p-1"
+      className="max-h-60 w-[var(--radix-popper-anchor-width)] min-w-[12rem] overflow-y-auto rounded-md p-1 data-[state=closed]:!animate-none"
     >
       <ul
         id={listId}

@@ -40,9 +40,15 @@ test("a deadline always says its time, in another year too", () => {
 test("durations read as seconds under a minute, then minutes, then hours and minutes", () => {
   assert.equal(formatDuration(0), "0 s");
   assert.equal(formatDuration(22_400), "22 s");
-  assert.equal(formatDuration(59_600), "1 min");
+  assert.equal(formatDuration(60_000), "1 min");
   assert.equal(formatDuration(32 * 60_000 + 10_000), "32 min");
   assert.equal(formatDuration(65 * 60_000), "1 h 5 min");
   assert.equal(formatDuration(119 * 60_000 + 40_000), "2 h");
   assert.equal(formatDuration(3 * 3_600_000), "3 h");
+});
+
+test("a recording's length counts whole seconds, so every view shows the same one", () => {
+  // The ready view and the unsent-recordings card both show this recording; the timer stopped at 0:40.
+  assert.equal(formatDuration(40_600), "40 s");
+  assert.equal(formatDuration(59_600), "59 s");
 });

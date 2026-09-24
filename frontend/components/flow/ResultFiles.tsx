@@ -98,8 +98,9 @@ export function ResultFiles({
 /**
  * A PDF opens in the browser's own viewer: in a titled dialog where there is
  * room for it, in a new tab on a phone. The dialog opens on its title with its
- * actions and Stäng before the viewer, which keeps many tab stops and Escape
- * to itself once it has the focus.
+ * actions and Stäng before the viewer. The viewer is not in the Tab order: the
+ * browser's PDF frame keeps Escape to itself and shows this page no focus state,
+ * so keyboard users read the file with "Öppna i ny flik", in a whole tab.
  */
 export function OpenFile({
   file,
@@ -140,7 +141,11 @@ export function OpenFile({
         >
           <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
             <div className="flex min-w-0 flex-col gap-1.5">
-              <DialogTitle ref={title} tabIndex={-1} className="leading-snug outline-none [overflow-wrap:anywhere]">
+              <DialogTitle
+                ref={title}
+                tabIndex={-1}
+                className="rounded-sm leading-snug [overflow-wrap:anywhere] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+              >
                 {file.name}
               </DialogTitle>
               <DialogDescription>{file.meta}</DialogDescription>
@@ -165,7 +170,7 @@ export function OpenFile({
               </DialogClose>
             </div>
           </div>
-          <iframe src={url} title={file.name} className="min-h-0 w-full flex-1 rounded-md border bg-card" />
+          <iframe src={url} title={file.name} tabIndex={-1} className="min-h-0 w-full flex-1 rounded-md border bg-card" />
         </DialogContent>
       </Dialog>
     </>
