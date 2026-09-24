@@ -206,27 +206,40 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
 });
 
-test("one Rätta per passage, after its text; a passage of several sentences then shows a pencil at each", async () => {
+test("one Rätta per passage, after its text; in a passage of several sentences each sentence is then the target", async () => {
   const opened: string[] = [];
   const two: TranscriptSegment[] = [
-    { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." },
+    {
+      fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna.",
+      words: [{ word: "Välkomna.", start: 0, end: 1, probability: 0, charStart: 0, charEnd: 9, uncertain: true }],
+    },
     { fileIndex: 0, start: 2, end: 4, speaker: "SPEAKER_00", text: "Vi har två punkter." },
     { fileIndex: 0, start: 4, end: 6, speaker: "SPEAKER_01", text: "Tack." },
   ];
-  const view = await player(two, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
+  const view = await player(two, {
+    editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined,
+    confirmedWords: new Set<string>(), onToggleConfirmed: () => undefined,
+  });
   const rätta = [...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Rätta");
   assert.equal(rätta.length, 2, "one per passage, not one per sentence");
-  assert.equal(view.container.querySelectorAll('button[aria-label^="Rätta meningen"]').length, 0, "no pencils mid-passage at rest");
+  const sentences = () => [...view.container.querySelectorAll<HTMLElement>('[role="button"][data-segment-index]')];
+  assert.equal(sentences().length, 0, "no sentence targets at rest");
+  assert.equal(view.container.querySelectorAll('button[aria-label^="Bekräfta att"]').length, 1, "the uncertain word can be confirmed at rest");
   const first = rätta[0];
   assert.equal(first.getAttribute("aria-label"), "Rätta repliken från 0:00: välj mening");
   assert.ok(first.previousElementSibling?.textContent?.includes("Vi har två punkter."), "after the passage's last sentence");
+
   await view.act(async () => first.click());
-  assert.deepEqual(
-    [...view.container.querySelectorAll('button[aria-label^="Rätta meningen"]')].map((b) => b.getAttribute("aria-label")),
-    ["Rätta meningen från 0:00", "Rätta meningen från 0:02"],
-  );
+  assert.ok(view.container.textContent?.includes("Välj meningen du vill rätta."), "a hint above the passage");
+  // Each sentence is the target, named by its own words first (WCAG 2.5.3); no pencil beside it.
+  assert.deepEqual(sentences().map((s) => s.textContent), ["Välkomna. Rätta meningen från 0:00.", "Vi har två punkter. Rätta meningen från 0:02."]);
+  assert.ok(sentences().every((s) => s.tabIndex === 0 && !s.querySelector("button, [role=button]")), "focusable, with no control inside it");
+  assert.equal(view.container.querySelectorAll('button[aria-label^="Rätta meningen"], button[aria-label^="Bekräfta att"]').length, 0);
   assert.equal(first.textContent?.trim(), "Klar");
-  await view.act(async () => view.container.querySelector<HTMLButtonElement>('button[aria-label="Rätta meningen från 0:02"]')!.click());
+  assert.ok(first.querySelector(".lucide-check") && !first.querySelector(".lucide-pencil"), "Klar carries a check, not a pencil");
+
+  const second = sentences()[1];
+  await view.act(async () => second.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   opened.push(view.container.querySelector("textarea")?.getAttribute("aria-label") ?? "");
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
 });
