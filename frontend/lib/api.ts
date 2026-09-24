@@ -216,6 +216,8 @@ export interface RunContractStepInput {
   input_format?: string;
   max_files?: number;
   max_file_size_bytes?: number;
+  /** The longest audio Eneo takes per file (flow_audio_max_duration_seconds), for an audio input; null otherwise. */
+  max_duration_seconds?: number | null;
   accepted_mimetypes?: string[];
 }
 

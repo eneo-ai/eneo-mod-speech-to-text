@@ -9,6 +9,7 @@ import type { DeviceRefusal } from "./recording-store";
 
 const APP = "Tal till text";
 const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
+const MINUTE = 60_000;
 const INTERRUPTED = "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.";
 
 /**
@@ -61,6 +62,7 @@ export function recordingNotices({
   lowSpace,
   persistent,
   refused,
+  remainingMs,
   wakeLock,
 }: {
   phase: SessionPhase;
@@ -68,10 +70,17 @@ export function recordingNotices({
   lowSpace: boolean;
   persistent: boolean;
   refused: DeviceRefusal | null;
+  /** Recording time the flow still takes; null when it sets no end. */
+  remainingMs: number | null;
   wakeLock: boolean;
 }): string[] {
   const notices: string[] = [];
   if (phase === "interrupted") notices.push(INTERRUPTED);
+  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
+    // A step, not a count: the line changes twice, and never ticks.
+    const left = remainingMs <= 5 * MINUTE ? 5 : 15;
+    notices.push(`Mindre än ${left} minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.`);
+  }
   if (phase === "recording" && silent) notices.push("Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
   if (lowSpace) {
     notices.push("Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.");

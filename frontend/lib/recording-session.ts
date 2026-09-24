@@ -6,14 +6,15 @@
  * a new part of the same recording on a fresh microphone stream; `adopt()`
  * does the same for a recording that a reload cut off, and `continueStopped()`
  * for one the user stopped too early. A part nearing the
- * flow's per-file limit hands over to a new part on the same stream, the two
- * overlapping briefly, until the flow's file count is used up. A hidden page,
+ * flow's per-file limit, in bytes or in time, hands over to a new part on the
+ * same stream, the two overlapping briefly, until the flow's file count is
+ * used up. A hidden page,
  * or a closing tab, flushes the current chunk, so a page the system kills
  * loses as little as possible; hiding alone does not pause, since a laptop
  * keeps recording in a background tab.
  */
 
-import { formatBytes } from "./format";
+import { formatBytes, formatDuration } from "./format";
 import {
   continuable,
   IN_USE_ELSEWHERE,
@@ -44,6 +45,12 @@ export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } 
  * which a part's headroom has room for.
  */
 export const ROTATION_OVERLAP_MS = 150;
+
+/**
+ * Room a part keeps below Eneo's time per file: the chunk still to come, the overlap with the next part (a hidden
+ * tab may stretch both) and the page's clock against the decoded audio. A minute, or 5 % of a limit under 20 minutes.
+ */
+const durationHeadroom = (limitMs: number) => (limitMs < 20 * 60_000 ? limitMs * 0.05 : 60_000);
 
 // The recording's target rate, in bytes per millisecond.
 const TARGET_BYTES_PER_MS = SPEECH_RECORDING.audioBitsPerSecond / 8 / 1000;
@@ -91,9 +98,10 @@ export interface CaptureDeps {
   now?(): number;
 }
 
-/** The flow's limits for the audio step: bytes per file and files per run. */
+/** The flow's limits for the audio step: bytes and recorded time per file, and files per run. */
 export interface CaptureLimits {
   maxBytes?: number;
+  maxDurationMs?: number;
   maxFiles?: number;
 }
 
@@ -467,20 +475,26 @@ export class RecordingCapture {
     return part;
   }
 
-  /** Before the part could grow too large to send: a new part, or a stop once the flow takes no more files. */
+  /** Before the part could grow too large or too long to send: a new part, or a stop once the flow takes no more files. */
   private checkLimit(part: Part) {
-    const { maxBytes, maxFiles } = this.limits;
-    if (!maxBytes || part.bytes + this.headroom() <= maxBytes) return;
+    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
+    const full = !!maxBytes && part.bytes + this.headroom() > maxBytes;
+    const long = !!maxDurationMs && this.partElapsed(part) + durationHeadroom(maxDurationMs) >= maxDurationMs;
+    if (!full && !long) return;
     if (maxFiles === undefined || this.partCount < maxFiles) {
       this.rotate(part);
       return;
     }
-    const limit = maxFiles === 1 ? formatBytes(maxBytes) : `${maxFiles} filer om ${formatBytes(maxBytes)}`;
-    this.set({
-      limitReached: true,
-      remainingMs: 0,
-      error: `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`,
-    });
+    let error: string;
+    if (full) {
+      const limit = maxFiles === 1 ? formatBytes(maxBytes!) : `${maxFiles} filer om ${formatBytes(maxBytes!)}`;
+      error = `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`;
+    } else {
+      error =
+        `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +
+        `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+    }
+    this.set({ limitReached: true, remainingMs: 0, error });
     void this.stop();
   }
 
@@ -515,14 +529,19 @@ export class RecordingCapture {
     return Math.max(TARGET_BYTES_PER_MS, this.largestChunk / CHUNK_MS);
   }
 
-  /** Recording time left before the flow's last allowed file is full; null without a file count. */
+  /** Recording time left before the flow's last allowed file is full or long enough; null without a file count. */
   private remaining(part: Part | null): number | null {
-    const { maxBytes, maxFiles } = this.limits;
-    if (!maxBytes || maxFiles === undefined) return null;
-    const perPart = Math.max(0, maxBytes - this.headroom());
-    const running = part ? Math.max(0, perPart - part.bytes) : 0;
-    const later = Math.max(0, maxFiles - this.partCount) * perPart;
-    return Math.floor((running + later) / this.rate());
+    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
+    if (maxFiles === undefined || (!maxBytes && !maxDurationMs)) return null;
+    // The time a part holds from here: until the first of its limits.
+    const holds = (bytes: number, ms: number) =>
+      Math.min(
+        maxBytes ? Math.max(0, maxBytes - this.headroom() - bytes) / this.rate() : Infinity,
+        maxDurationMs ? Math.max(0, maxDurationMs - durationHeadroom(maxDurationMs) - ms) : Infinity,
+      );
+    const running = part ? holds(part.bytes, this.partElapsed(part)) : 0;
+    const later = Math.max(0, maxFiles - this.partCount) * holds(0, 0);
+    return Math.floor(running + later);
   }
 
   /** Ends the running parts, a full part still overlapping first; resolves once both have stopped. */

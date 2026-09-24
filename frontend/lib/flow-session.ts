@@ -721,10 +721,11 @@ export class FlowSession {
     return selectRuntimeInputStep(this.contract);
   }
 
-  /** The flow's limits for the audio step: bytes per file and files per run. */
+  /** The flow's limits for the audio step: bytes and time per file, and files per run. */
   private limits(): CaptureLimits {
     const step = this.inputStep();
-    return { maxBytes: step?.max_file_size_bytes, maxFiles: step?.max_files };
+    const seconds = step?.max_duration_seconds;
+    return { maxBytes: step?.max_file_size_bytes, maxDurationMs: seconds ? seconds * 1000 : undefined, maxFiles: step?.max_files };
   }
 
   /** Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. */

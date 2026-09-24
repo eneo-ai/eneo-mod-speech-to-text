@@ -762,6 +762,11 @@ test("the recorder tells how much recording time the flow still takes", async ()
   assert.equal(capture.getSnapshot().remainingMs, 16_700);
   recorders[0].emit(CHUNK);
   assert.equal(capture.getSnapshot().remainingMs, 14_700);
+
+  let now = 0;
+  const timed = await setup({ now: () => now });
+  await timed.capture.start(meeting, { maxDurationMs: 5 * 3_600_000, maxFiles: 1 });
+  assert.equal(timed.capture.getSnapshot().remainingMs, 5 * 3_600_000 - 60_000, "a time limit alone ends it too");
 });
 
 test("when the flow's last file is full the recording stops with that reason and keeps everything", async (t) => {
@@ -794,6 +799,76 @@ test("when the flow's last file is full the recording stops with that reason and
     single.capture.getSnapshot().error,
     "Inspelningen stoppades vid flödets gräns på 48,8\u00a0kB. Det som spelats in är sparat.",
   );
+});
+
+const HOUR = 3_600_000;
+// Eneo's flow_audio_max_duration_seconds, per decoded file, as the run contract gives it.
+const FIVE_HOURS = 5 * HOUR;
+
+test("a part hands over before Eneo's time per file, in recorded time without pauses, whatever the encoder's rate", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 2 * HOUR;
+  // Far above the 32 kbit/s target, and still far below the byte limit: only the time decides.
+  recorders[0].emit("x".repeat(100_000));
+  capture.togglePause();
+  now = 3 * HOUR; // an hour's break is not recorded time
+  capture.togglePause();
+  now = 6 * HOUR - 61_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1, "4:58:59 recorded");
+  assert.equal(capture.getSnapshot().remainingMs, 1_000 + (5 * HOUR - 60_000), "this part's last second, and one more file");
+  now = 6 * HOUR - 60_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2, "at 4:59 a new part takes over: the last minute is room for the final chunk and the overlap");
+  assert.equal(recorders[1].state, "recording");
+});
+
+test("a short limit keeps 5 % as room rather than a whole minute", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10 * 60_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 9 * 60_000 + 29_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1);
+  now = 9 * 60_000 + 30_000; // 30 s, 5 % of ten minutes, before the limit
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2);
+});
+
+test("a limit that is not whole hours is said in the module's durations", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 90 * 60_000, maxBytes: 10 ** 12, maxFiles: 1 });
+  now = 89 * 60_000;
+  recorders[0].emit("x");
+  await until(() => capture.getSnapshot().status === "stopped", "the stop");
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen nådde maxlängden 1 h 30 min och stoppades efter 1 h 29 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+});
+
+test("when the flow's last file reaches Eneo's time the recording stops, says when and what to do, and keeps everything", async () => {
+  let now = 0;
+  const { capture, store, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 1 });
+  now = 5 * HOUR - 16 * 60_000;
+  recorders[0].emit("a");
+  assert.equal(capture.getSnapshot().remainingMs, 15 * 60_000, "15 minutes left: the bar says so");
+  now = 5 * HOUR - 60_000;
+  recorders[0].emit("b");
+  await until(() => capture.getSnapshot().status === "stopped", "the stop at the limit");
+  const snapshot = capture.getSnapshot();
+  assert.equal(snapshot.limitReached, true);
+  assert.equal(snapshot.remainingMs, 0);
+  assert.equal(
+    snapshot.error,
+    "Inspelningen nådde maxlängden 5 h och stoppades efter 4 h 59 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+  assert.equal(recorders.length, 1, "no second part");
+  assert.deepEqual(await texts(await store.readParts(snapshot.recording!.id)), ["ab."], "every chunk, the last one too");
 });
 
 test("a stop, a page leave or a lost microphone during the overlap stops the full part first and keeps both parts once", async (t) => {

@@ -210,6 +210,22 @@ test("choosing a card only selects the mode; the microphone is asked for on the 
   assert.equal(session.getSnapshot().phase, "recording");
 });
 
+test("a recording keeps each file within the time the contract gives Eneo's audio, and without one only bytes count", async () => {
+  const [audio] = audioContract().steps_requiring_input!;
+  const recordFor = async (max_duration_seconds: number | null) => {
+    const { session } = await setup();
+    session.setContract(
+      audioContract({ steps_requiring_input: [{ ...audio, max_files: 1, max_file_size_bytes: 10 ** 12, max_duration_seconds }] }),
+    );
+    session.selectMode("spela-in");
+    await session.start();
+    return session.capture.getSnapshot().remainingMs!;
+  };
+  const timed = await recordFor(90 * 60);
+  assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);
+  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide, as before");
+});
+
 test("the last chosen mode is remembered per flow and used when it is still offered", async () => {
   const storage = memoryStorage();
   const first = await setup({ storage });

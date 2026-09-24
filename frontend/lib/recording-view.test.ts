@@ -57,7 +57,15 @@ test("a quiet stretch of a meeting is never reported: a real microphone's room t
 });
 
 test("the bar's line says what matters now, calmly, and always what Stoppa does", () => {
-  const base = { phase: "recording" as const, silent: false, lowSpace: false, persistent: true, refused: null, wakeLock: true };
+  const base = {
+    phase: "recording" as const,
+    silent: false,
+    lowSpace: false,
+    persistent: true,
+    refused: null,
+    remainingMs: null as number | null,
+    wakeLock: true,
+  };
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
   assert.deepEqual(recordingNotices(base), [stop]);
   assert.deepEqual(recordingNotices({ ...base, silent: true }), [
@@ -79,6 +87,19 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     "Enheten kan inte spara mer av inspelningen. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
     stop,
   ]);
+  const minutes = (count: number) => count * 60_000;
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(16) }), [stop], "nothing yet");
+  const fifteen = "Mindre än 15 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
+  const five = "Mindre än 5 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(15) }), [fifteen, stop]);
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(6) }), [fifteen, stop], "a quiet line, not a count");
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(5) }), [five, stop]);
+  assert.deepEqual(recordingNotices({ ...base, phase: "paused", remainingMs: minutes(3) }), [five, stop], "while paused too");
+  assert.deepEqual(
+    recordingNotices({ ...base, phase: "interrupted", remainingMs: 0 }),
+    ["Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.", stop],
+    "interrupted, the flow's end is not what the user needs to know",
+  );
   assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [
     "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.",
     stop,
