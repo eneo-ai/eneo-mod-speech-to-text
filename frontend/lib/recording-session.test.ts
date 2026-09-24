@@ -902,6 +902,52 @@ test("a stopped or left recording leaves no handover behind", async (t) => {
   }
 });
 
+/** Timers as a browser keeps them: whole milliseconds, cut down; `early` fires them that much before their time. */
+function browserTimers(t: import("node:test").TestContext, early = 0) {
+  const mocked = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void, ms = 0) => mocked(fn, Math.max(0, Math.floor(ms) - early))) as typeof setTimeout;
+  t.after(() => {
+    globalThis.setTimeout = mocked;
+  });
+}
+
+test("a deadline a fraction of a millisecond away still hands over: the delay rounds up", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t);
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(0.5);
+  capture.togglePause();
+  capture.togglePause(); // the deadline is now 7,999.5 ms of recording away
+  advance(7_999); // a browser would fire a 7,999.5 ms timer here, still short of it
+  advance(4_000);
+  assert.equal(recorders.length, 2, "handed over, not left recording past the limit");
+});
+
+test("a timer that fires a little early is set again for the rest", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t, 0.5);
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(7_999.5); // the handover's timer fires here, half a millisecond before its 8 s
+  assert.equal(recorders.length, 1);
+  advance(0.5);
+  assert.equal(recorders.length, 2, "and hands over at its time");
+});
+
+test("Stoppa just before the deadline starts no other recorder", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(7_999);
+  const stopped = capture.stop(); // the recorder's stop event comes after the deadline
+  advance(1);
+  await stopped;
+  assert.equal(capture.getSnapshot().status, "stopped");
+  assert.equal(recorders.length, 1, "no new part for a recording that is stopping");
+  assert.ok(recorders.every((recorder) => recorder.state === "inactive"));
+});
+
 test("a short limit keeps room for the overlap and a late timer", async () => {
   let now = 0;
   const { capture, recorders } = await setup({ now: () => now });

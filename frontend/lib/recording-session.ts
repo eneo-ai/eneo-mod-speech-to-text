@@ -508,18 +508,22 @@ export class RecordingCapture {
    * The time handover runs on its own timer on the recorded clock (pauses stop it), not on chunk delivery, which a
    * locked phone may hold back. Its bound: a page the browser suspends past the deadline, so that even this timer
    * fires late, can still overrun a part. That recording stays on the device, and the send refuses it and says so
-   * (FlowSession), with Spara som fil as the way to keep it.
+   * (submit-run's sendLeased), with Spara som fil as the way to keep it.
    */
   private scheduleHandover(part: Part) {
     this.clearHandover();
     const { maxDurationMs } = this.limits;
     if (!maxDurationMs || part.since === null) return;
     const due = maxDurationMs - durationHeadroom(maxDurationMs) - this.partElapsed(part);
-    // Checks the recorded time again when it fires: a pause since has moved the deadline, and going on sets it anew.
+    // Whole milliseconds, rounded up: a browser cuts a fraction off, which would fire short of the deadline.
     this.handover = setTimeout(() => {
       this.handover = null;
+      // A part that is ending (Stoppa, a page leave) hands over to nothing.
+      if (part !== this.part || part.ending) return;
       this.checkLimit(part);
-    }, Math.max(0, due));
+      // Short of the deadline still (a timer that fired early): again for the rest. A pause sets it anew on going on.
+      if (part === this.part && !part.ending && part.since !== null) this.scheduleHandover(part);
+    }, Math.max(0, Math.ceil(due)));
   }
 
   private clearHandover() {
@@ -591,6 +595,8 @@ export class RecordingCapture {
 
   private endPart(part: Part, reason: EndReason): Promise<void> {
     part.ending ??= reason;
+    // Its deadline goes as its end begins, not at the stop event after it.
+    if (part === this.part) this.clearHandover();
     try {
       if (part.recorder.state !== "inactive") part.recorder.stop();
     } catch {
