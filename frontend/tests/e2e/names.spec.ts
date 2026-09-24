@@ -3,7 +3,7 @@
  * checks: names and descriptions as Chromium's own tree gives them, the
  * groups around them, and the page titles.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
 import { addParticipants, chooseMode, open, sending, setup, STATES } from "./screens";
 
@@ -136,6 +136,42 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
   expect(logins[0]?.searchParams.get("renew"), "the login is a renewal, bound to this user").toBe("1");
   const renewed = statusCalls;
   await expect.poll(() => statusCalls - renewed, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
+});
+
+test("an old status answer that arrives after the renewal's moves neither the end nor the keepalive", async ({ page }) => {
+  const signedIn = { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
+  const before = { ...signedIn, session_ends_in: 200 };
+  const renewed = { ...signedIn, session_ends_in: 8 * 60 * 60, refresh_in: 1 };
+  let answer: object = before;
+  let calls = 0;
+  let holdNext = false;
+  const held: Route[] = [];
+  await page.route("**/api/auth/status", (route) => {
+    calls++;
+    if (holdNext) {
+      holdNext = false;
+      held.push(route);
+      return;
+    }
+    return route.fulfill({ json: answer });
+  });
+  await open(page, "/flows");
+  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
+  await expect(warning).toBeVisible();
+
+  // A slow check that will answer with the old login...
+  holdNext = true;
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect.poll(() => held.length).toBe(1);
+  // ...then the renewal, answered at once...
+  answer = renewed;
+  await page.evaluate(() => new BroadcastChannel("tal-till-text:session").postMessage("inloggad"));
+  await expect(warning).toBeHidden();
+  // ...and the old answer last.
+  await held[0].fulfill({ json: before });
+  const renewedCalls = calls;
+  await expect.poll(() => calls - renewedCalls, { timeout: 8_000 }).toBeGreaterThanOrEqual(2);
+  await expect(warning).toBeHidden();
 });
 
 test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
