@@ -46,7 +46,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
-import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { browserDrafts, clearDraft, readDraft, unstoredDrafts, writeDraft } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -54,7 +54,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
-import { leaveWarning } from "@/lib/recording-view";
+import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
@@ -206,16 +206,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => {
       followAbortRef.current?.abort();
       submitAbortRef.current?.abort();
+      // Left: what the browser could not keep is gone with the page.
+      unstoredDrafts.forget();
     };
   }, []);
 
   // Leaving asks first while audio is being recorded or waits to become a document (until Eneo has the run: an
-  // upload, and its start, which may retry or wait for a new login).
+  // upload, and its start, which may retry or wait for a new login), or typed work the browser could not keep.
   const holdsAudio = snapshot.phase !== "setup";
   const submitting = run.kind === "submitting";
-  const leaving = useLeaveQuestion(submitting || holdsAudio, leaveWarning(input.persistent, snapshot.phase, submitting));
+  const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
+  const leaving = useLeaveQuestion(
+    submitting || holdsAudio || unstored,
+    submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting) : UNSTORED_LEAVE,
+  );
   useEffect(() => {
-    const shouldWarn = holdsAudio || submitting;
+    const shouldWarn = holdsAudio || submitting || unstored;
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -224,7 +230,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, submitting]);
+  }, [holdsAudio, submitting, unstored]);
 
   // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
@@ -632,20 +638,23 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   if (run.kind === "awaiting_review") {
     return (
-      <ReviewView
-        flowId={flowId}
-        published={published}
-        checkpoint={run.checkpoint}
-        runState={{ run: run.run, steps: run.steps }}
-        runError={runError}
-        onApprove={(cp) =>
-          onApproveAndResume(cp, { run: run.run, steps: run.steps })
-        }
-        onSaveEdit={onSaveEdit}
-        onReject={(cp, reason) =>
-          onReject(cp, { run: run.run, steps: run.steps }, reason)
-        }
-      />
+      <>
+        <ReviewView
+          flowId={flowId}
+          published={published}
+          checkpoint={run.checkpoint}
+          runState={{ run: run.run, steps: run.steps }}
+          runError={runError}
+          onApprove={(cp) =>
+            onApproveAndResume(cp, { run: run.run, steps: run.steps })
+          }
+          onSaveEdit={onSaveEdit}
+          onReject={(cp, reason) =>
+            onReject(cp, { run: run.run, steps: run.steps }, reason)
+          }
+        />
+        {leaving.question}
+      </>
     );
   }
 

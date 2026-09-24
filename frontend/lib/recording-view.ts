@@ -98,6 +98,9 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
   return open || invalid.length > 0;
 }
 
+/** What "Lämna sidan?" says when only typed work is at stake, which the browser could not keep. */
+export const UNSTORED_LEAVE = "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.";
+
 /**
  * What "Lämna sidan?" says. The recording is promised back among unsent
  * recordings only when the device keeps it; otherwise leaving loses it, and
