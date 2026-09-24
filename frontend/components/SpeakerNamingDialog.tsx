@@ -89,7 +89,14 @@ export function SpeakerNamingDialog({
   // Names typed before a reload, on the speakers there are now; Spara namnen or Avbryt ends them.
   const kept = () => {
     const names = draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null;
-    return names && rows.map((row) => ({ ...row, name: names.find((typed) => typed.label === row.label)?.name ?? row.name }));
+    return (
+      names &&
+      rows.map((row) => {
+        // A name taken away (null) stays taken away; only a speaker the draft has no row for keeps the review's.
+        const typed = names.find((kept) => kept.label === row.label);
+        return typed ? { ...row, name: typed.name } : row;
+      })
+    );
   };
   const [open, setOpen] = useState(() => kept() !== null);
   const [draft, setDraft] = useState<SpeakerMappingRow[]>(() => kept() ?? [...rows]);

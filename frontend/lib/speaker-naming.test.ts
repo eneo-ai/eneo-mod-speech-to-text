@@ -183,3 +183,27 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
   assert.equal(field("Talare 2"), null, "saved names are the review's, not a draft");
   await saved.unmount();
 });
+
+test("a name removed but not saved stays removed after a reload", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-2" };
+  const first = await dialog({ draftKey });
+  await first.view.act(async () => type(first.field("Talare 1"), "")); // Anna Berg taken away
+  await first.view.unmount();
+  const { createElement } = await import("react");
+  const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
+  const again = await mount(
+    createElement(SpeakerNamingDialog, {
+      rows,
+      participants: [],
+      passages: () => 1,
+      quote: () => null,
+      onSave: async () => null,
+      draftKey,
+      children: createElement("button", { type: "button" }, "Namnge talarna"),
+    }),
+  );
+  const field = document.querySelector<HTMLInputElement>('[role="dialog"] input[aria-label="Vem är Talare 1?"]');
+  assert.equal(field?.value, "", "not the name the review had");
+  await again.unmount();
+});
