@@ -458,6 +458,28 @@ test("sending a recording uploads its parts and deletes the local copy only once
   assert.equal((await submitRecording(store, another.id, params(), { ...deps, startRun: async () => queuedRun })).id, "run-1");
 });
 
+test("a run request Eneo may already have answered goes again as it was, even with a part past the time limit", async () => {
+  const store = await openRecordingStore({});
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 91 * 60_000);
+  const request = { body: { expected_flow_version: 3 }, idempotencyKey: `flow-run:recording:${recording.id}` };
+  await store.startSubmission(recording.id, request);
+  store.release(recording.id);
+  await settle();
+  const timed: RunContract = { ...contract, steps_requiring_input: [{ ...contract.steps_requiring_input![0], max_duration_seconds: 90 * 60 }] };
+  const asked: string[] = [];
+  const run = await submitRecording(store, recording.id, params({ contract: timed }), {
+    upload: async () => assert.fail("nothing is uploaded again"),
+    startRun: async (_flowId, _body, key) => {
+      asked.push(key!);
+      return queuedRun;
+    },
+  });
+  assert.equal(run.id, "run-1", "the run its first send may have made");
+  assert.deepEqual(asked, [request.idempotencyKey]);
+});
+
 test("a send that stops keeps the recording and its uploaded parts; the next send uploads only the rest", async () => {
   const store = await openRecordingStore({});
   const recording = await stoppedRecording(store, [["a"], ["b"]]);

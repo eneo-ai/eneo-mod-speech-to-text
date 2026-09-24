@@ -22,7 +22,7 @@ import {
 import { friendlyError } from "./errors";
 import { filledValue } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
-import { formatBytes } from "./format";
+import { formatBytes, formatDuration } from "./format";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
 import { selectRuntimeInputStep } from "./upload";
 
@@ -245,6 +245,15 @@ async function sendLeased(
       await params.onStarting?.(asked);
       run = await ask(asked);
     } else {
+      // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be
+      // refused only after Eneo took the run, and the device's copy with it: the recording as it is stored now
+      // stays here, unsealed, where Spara som fil keeps it.
+      const limit = params.contract.steps_requiring_input?.find((step) => step.step_id === params.stepId)?.max_duration_seconds;
+      if (limit && recording.parts.some((part) => part.durationMs > limit * 1000)) {
+        throw new Error(
+          `Inspelningen är för lång för en fil: en del är längre än flödet tar emot (${formatDuration(limit * 1000)}). Välj Spara som fil för att behålla den.`,
+        );
+      }
       const files = await store.readParts(id);
       if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
       // Sealed from here on: see `sealed`.

@@ -5,23 +5,29 @@ import type { DetailValue, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
+import type { DeviceRefusal } from "./recording-store";
 
 const APP = "Tal till text";
 const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
+const MINUTE = 60_000;
 const INTERRUPTED = "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.";
 
-/** Silence after `afterMs` below `floor`; sound, or a reset, starts the count over. */
+/**
+ * Digital silence for `afterMs`: every read's loudest sample below `floor`, which only a muted or wrong input
+ * gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
+ * the count over.
+ */
 export class SilenceWatch {
   private quietSince: number | null = null;
 
   constructor(
     private readonly afterMs = 15_000,
-    // About −55 dBFS on the level scale: room tone, not speech.
-    private readonly floor = 0.1,
+    // Two steps of 16-bit audio (about −84 dBFS).
+    private readonly floor = 2 / 32_768,
   ) {}
 
-  update(level: number, now: number): boolean {
-    if (level >= this.floor) {
+  update(peak: number, now: number): boolean {
+    if (peak >= this.floor) {
       this.quietSince = null;
       return false;
     }
@@ -55,21 +61,35 @@ export function recordingNotices({
   silent,
   lowSpace,
   persistent,
+  refused,
+  remainingMs,
   wakeLock,
 }: {
   phase: SessionPhase;
   silent: boolean;
   lowSpace: boolean;
   persistent: boolean;
+  refused: DeviceRefusal | null;
+  /** Recording time the flow still takes; null when it sets no end. */
+  remainingMs: number | null;
   wakeLock: boolean;
 }): string[] {
   const notices: string[] = [];
   if (phase === "interrupted") notices.push(INTERRUPTED);
-  if (phase === "recording" && silent) notices.push("Vi hör inget ljud. Kontrollera att mikrofonen är på.");
+  if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
+    // A step, not a count: the line changes twice, and never ticks.
+    const left = remainingMs <= 5 * MINUTE ? 5 : 15;
+    notices.push(`Mindre än ${left} minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.`);
+  }
+  if (phase === "recording" && silent) notices.push("Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
   if (lowSpace) {
     notices.push("Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.");
   }
-  if (!persistent) {
+  if (refused) {
+    // Once, calmly: nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
+    const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
+    notices.push(`${cause} Inspelningen fortsätter, men välj Spara som fil när du stoppar.`);
+  } else if (!persistent) {
     notices.push("Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.");
   }
   if (!wakeLock) notices.push("Låt skärmen vara tänd under inspelningen.");

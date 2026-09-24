@@ -35,25 +35,41 @@ test("the tab title follows the state, so a user in another tab sees that record
   assert.equal(pageTitle("ready", 754_000, "Nämndmöte"), "Klart · Tal till text");
 });
 
-test("silence is reported after about 15 s without sound, and gone as soon as sound returns", () => {
+test("a muted or wrong microphone is reported after 15 s of digital silence, and no longer as soon as sound returns", () => {
   const watch = new SilenceWatch();
-  assert.equal(watch.update(0.02, 0), false);
-  assert.equal(watch.update(0.02, 14_900), false);
-  assert.equal(watch.update(0.02, 15_000), true);
-  assert.equal(watch.update(0.6, 15_100), false, "sound returns");
-  assert.equal(watch.update(0.02, 15_200), false, "the quiet starts over");
-  assert.equal(watch.update(0.02, 30_199), false);
-  assert.equal(watch.update(0.02, 30_200), true);
+  // The loudest sample of each read: zeros, as a muted or wrong input gives them.
+  assert.equal(watch.update(0, 0), false);
+  assert.equal(watch.update(0, 14_900), false);
+  assert.equal(watch.update(0, 15_000), true);
+  assert.equal(watch.update(0.3, 15_100), false, "sound returns");
+  assert.equal(watch.update(0, 15_200), false, "the silence starts over");
+  assert.equal(watch.update(1 / 32_768, 30_199), false, "one step of 16-bit audio is still digital silence");
+  assert.equal(watch.update(0, 30_200), true);
   watch.reset();
-  assert.equal(watch.update(0.02, 30_300), false, "a pause starts the count over");
+  assert.equal(watch.update(0, 30_300), false, "a pause starts the count over");
+});
+
+test("a quiet stretch of a meeting is never reported: a real microphone's room tone is not digital silence", () => {
+  const watch = new SilenceWatch();
+  // A quiet room through a laptop microphone: peaks around −70 dBFS, far below speech, far above zero.
+  const roomTone = 10 ** (-70 / 20);
+  for (let now = 0; now <= 10 * 60_000; now += 66) assert.equal(watch.update(roomTone, now), false, `at ${now} ms`);
 });
 
 test("the bar's line says what matters now, calmly, and always what Stoppa does", () => {
-  const base = { phase: "recording" as const, silent: false, lowSpace: false, persistent: true, wakeLock: true };
+  const base = {
+    phase: "recording" as const,
+    silent: false,
+    lowSpace: false,
+    persistent: true,
+    refused: null,
+    remainingMs: null as number | null,
+    wakeLock: true,
+  };
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
   assert.deepEqual(recordingNotices(base), [stop]);
   assert.deepEqual(recordingNotices({ ...base, silent: true }), [
-    "Vi hör inget ljud. Kontrollera att mikrofonen är på.",
+    "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.",
     stop,
   ]);
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), [stop], "no silence warning while paused");
@@ -63,6 +79,27 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     "Låt skärmen vara tänd under inspelningen.",
     stop,
   ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), [
+    "Enheten har inte plats för att spara mer. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+    stop,
+  ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }), [
+    "Enheten kan inte spara mer av inspelningen. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+    stop,
+  ]);
+  const minutes = (count: number) => count * 60_000;
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(16) }), [stop], "nothing yet");
+  const fifteen = "Mindre än 15 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
+  const five = "Mindre än 5 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(15) }), [fifteen, stop]);
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(6) }), [fifteen, stop], "a quiet line, not a count");
+  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(5) }), [five, stop]);
+  assert.deepEqual(recordingNotices({ ...base, phase: "paused", remainingMs: minutes(3) }), [five, stop], "while paused too");
+  assert.deepEqual(
+    recordingNotices({ ...base, phase: "interrupted", remainingMs: 0 }),
+    ["Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.", stop],
+    "interrupted, the flow's end is not what the user needs to know",
+  );
   assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [
     "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.",
     stop,

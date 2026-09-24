@@ -182,3 +182,119 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
   assert.equal(document.body.querySelector('input[aria-label="Vem är Talare 1?"]'), field, "the same field, still mounted");
   assert.equal(field.value, "Anna Berg");
 });
+
+test("after the new login the focus is back where it was, or on the page's heading when that is gone", async (t) => {
+  const { createElement, useState } = await import("react");
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const { AuthGate } = await import("../components/AuthGate");
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    })) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  let setShown: (shown: boolean) => void = () => {};
+  function Recorder() {
+    const [shown, set] = useState(true);
+    setShown = set;
+    return createElement(
+      "main",
+      null,
+      createElement("h2", { "data-phase-heading": "", tabIndex: -1 }, "Spelar in"),
+      shown && createElement("button", { type: "button" }, "Pausa"),
+    );
+  }
+  const go = () => undefined;
+  const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
+  const { container, act } = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: createElement(Recorder) })));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const signOutAndBack = async (whileOut = () => {}) => {
+    await act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
+    // As Chromium does once the page under the focus turns inert.
+    await act(async () => (document.activeElement as HTMLElement | null)?.blur());
+    await act(async () => whileOut());
+    await act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    // The sign-in dialog hands the focus back once it has closed.
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  };
+
+  const pausa = button(container, "Pausa")!;
+  pausa.focus();
+  await signOutAndBack();
+  assert.ok(document.activeElement === pausa, "back on Pausa");
+
+  pausa.focus();
+  await signOutAndBack(() => setShown(false));
+  const heading = container.querySelector("[data-phase-heading]");
+  assert.ok(document.activeElement === heading, "Pausa is gone: the page's heading");
+
+  // The focus was not on the page (the warning's button): the page's heading, never that.
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  t.after(() => outside.remove());
+  outside.focus();
+  await signOutAndBack();
+  assert.ok(document.activeElement === heading);
+});
+
+test("the 5-minute warning open when the login ends: after the new login the focus goes where it was before the warning, else the heading", async (t) => {
+  const { createElement, useState } = await import("react");
+  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
+  const { AuthGate } = await import("../components/AuthGate");
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const browserFetch = globalThis.fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+  for (const keep of [false, true]) {
+    // A second past the warning's five minutes: the warning opens a second after the page.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 5 * 60 + 1 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    let setShown: (shown: boolean) => void = () => {};
+    function Recorder() {
+      const [shown, set] = useState(true);
+      setShown = set;
+      return createElement(
+        "main",
+        null,
+        createElement("h2", { "data-phase-heading": "", tabIndex: -1 }, "Spelar in"),
+        shown && createElement("button", { type: "button" }, "Pausa"),
+      );
+    }
+    const go = () => undefined;
+    const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
+    const view = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: createElement(Recorder) })));
+    await view.act(async () => wait(20));
+    const pausa = button(view.container, "Pausa")!;
+    pausa.focus();
+    await view.act(async () => wait(1_100));
+    assert.ok(document.body.querySelector('[role="alertdialog"]'), "the warning is open");
+    await view.act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
+    if (!keep) await view.act(async () => setShown(false));
+    // The new login: the page reads the status again, with its new end.
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      })) as typeof fetch;
+    await view.act(async () => {
+      document.dispatchEvent(new window.Event("visibilitychange"));
+      await wait(20);
+    });
+    assert.ok(!document.body.querySelector('[role="alertdialog"]'), "closed");
+    const heading = view.container.querySelector("[data-phase-heading]");
+    if (keep) assert.ok(document.activeElement === pausa, "back on Pausa, where it was before the warning");
+    else assert.ok(document.activeElement === heading, "Pausa is gone: the page's heading, not the body");
+    await view.unmount();
+  }
+});

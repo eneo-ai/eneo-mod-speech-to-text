@@ -493,3 +493,50 @@ test("a review edit the browser will not keep is still the page's, through a ref
   assert.deepEqual(draft.yours, { text: "Min text" }, "din version survives the reload");
   await reloaded.unmount();
 });
+
+test("the recorder hears a muted microphone after 15 s of zeros, never a quiet room, and stops saying so when sound returns", async (t) => {
+  const { createElement } = await import("react");
+  const { useSilence } = await import("../components/flow/recording-hooks");
+  // What the microphone gives: the loudest sample of each read.
+  let peak = 0;
+  class FakeAudioContext {
+    state = "running";
+    resume = async () => undefined;
+    close = async () => undefined;
+    createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(0).fill(peak, 0, 1) });
+  }
+  const page = window as unknown as { AudioContext?: unknown };
+  const browserAudio = page.AudioContext;
+  page.AudioContext = FakeAudioContext;
+  t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+  let silent = false;
+  const microphone = {} as MediaStream;
+  function Recorder() {
+    silent = useSilence(microphone, true);
+    return null;
+  }
+  const view = await mount(createElement(Recorder));
+  // A read at a time: a mocked tick moves the clock to its end before the timers it runs.
+  const listen = (ms: number) =>
+    view.act(async () => {
+      for (let passed = 0; passed < ms; passed += 66) t.mock.timers.tick(66);
+    });
+  try {
+    await listen(14_800);
+    assert.equal(silent, false);
+    await listen(400);
+    assert.equal(silent, true, "15 s of zeros: a muted or wrong microphone");
+    peak = 0.3;
+    await listen(100);
+    assert.equal(silent, false, "sound returns");
+    peak = 10 ** (-70 / 20); // a quiet room's tone
+    for (let minute = 0; minute < 10; minute += 1) {
+      await listen(60_000);
+      assert.equal(silent, false, `a quiet room, minute ${minute + 1}`);
+    }
+  } finally {
+    await view.unmount();
+    page.AudioContext = browserAudio;
+  }
+});

@@ -11,13 +11,13 @@ export function levelFromRms(rms: number): number {
 
 /**
  * Calls `onLevel` about fifteen times a second with the input's level, which
- * rises at once and falls slowly so the display stays calm. `running` is false
- * while the browser keeps the audio context suspended and the level means
- * nothing.
+ * rises at once and falls slowly so the display stays calm, and the read's
+ * loudest sample as it is. `running` is false while the browser keeps the
+ * audio context suspended and the level means nothing.
  */
 export function useInputLevel(
   stream: MediaStream | null,
-  onLevel: (level: number, running: boolean) => void,
+  onLevel: (level: number, running: boolean, peak: number) => void,
 ): void {
   const listener = useRef(onLevel);
   listener.current = onLevel;
@@ -40,16 +40,20 @@ export function useInputLevel(
     const timer = setInterval(() => {
       analyser.getFloatTimeDomainData(samples);
       let sum = 0;
-      for (const sample of samples) sum += sample * sample;
+      let peak = 0;
+      for (const sample of samples) {
+        sum += sample * sample;
+        peak = Math.max(peak, Math.abs(sample));
+      }
       level = Math.max(levelFromRms(Math.sqrt(sum / samples.length)), level * 0.85);
-      listener.current(level, context.state === "running");
+      listener.current(level, context.state === "running", peak);
     }, 66);
     return () => {
       clearInterval(timer);
       source.disconnect();
       void context.close().catch(() => undefined);
       // Paused or gone: the display settles instead of freezing mid-word.
-      listener.current(0, false);
+      listener.current(0, false, 0);
     };
   }, [stream]);
 }

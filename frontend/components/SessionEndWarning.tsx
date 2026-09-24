@@ -37,6 +37,7 @@ export function SessionEndWarning({
   owner = null,
   otherUser = null,
   controlsRef,
+  onFocusBack,
   onRenewed,
 }: {
   endsAt: number | null;
@@ -51,6 +52,8 @@ export function SessionEndWarning({
   controlsRef?: (element: HTMLElement | null) => void;
   /** The access code signed in again: read the new end. */
   onRenewed: () => void;
+  /** After the dialog that covered an ended login has closed: the page gives the focus back, `before` the warning. */
+  onFocusBack?: (before: HTMLElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -103,12 +106,14 @@ export function SessionEndWarning({
 
   const time = endsAt === null ? "" : new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
   const byCode = mode === "access_code";
-  // The words stay as they were while the dialog closes: the new login would otherwise flash the warning's.
-  const [words, setWords] = useState({ ended: signedOut, other: otherUser });
-  if ((open || signedOut) && (words.ended !== signedOut || words.other?.id !== otherUser?.id)) {
-    setWords({ ended: signedOut, other: otherUser });
-  }
-  const { ended, other } = words;
+  // This dialog covered an ended login until it has closed, however it was opened: its words stay, and the
+  // focus goes back through the page (onFocusBack) once it is closed, not before.
+  const coveredEnd = useRef(false);
+  if (signedOut) coveredEnd.current = true;
+  const ended = coveredEnd.current;
+  // Who signed in instead, kept while the dialog closes.
+  const [other, setOther] = useState(otherUser);
+  if (signedOut && other?.id !== otherUser?.id) setOther(otherUser);
   const action = ended ? "Logga in igen" : "Fortsätt arbeta";
   // Signed out, nothing but the new login closes it.
   return (
@@ -116,7 +121,11 @@ export function SessionEndWarning({
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault();
-          returnFocus.current?.focus();
+          const before = returnFocus.current;
+          returnFocus.current = null;
+          if (!coveredEnd.current) return before?.focus();
+          coveredEnd.current = false;
+          onFocusBack?.(before);
         }}
       >
         <AlertDialogHeader>

@@ -6,19 +6,21 @@
  * a new part of the same recording on a fresh microphone stream; `adopt()`
  * does the same for a recording that a reload cut off, and `continueStopped()`
  * for one the user stopped too early. A part nearing the
- * flow's per-file limit hands over to a new part on the same stream, the two
- * overlapping briefly, until the flow's file count is used up. A hidden page
- * flushes the current chunk, so a page the system kills loses as little as
- * possible; hiding alone does not pause, since a laptop keeps recording in a
- * background tab.
+ * flow's per-file limit, in bytes or in time, hands over to a new part on the
+ * same stream, the two overlapping briefly, until the flow's file count is
+ * used up. A hidden page,
+ * or a closing tab, flushes the current chunk, so a page the system kills
+ * loses as little as possible; hiding alone does not pause, since a laptop
+ * keeps recording in a background tab.
  */
 
-import { formatBytes } from "./format";
+import { formatBytes, formatDuration } from "./format";
 import {
   continuable,
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
   sealed,
+  type DeviceRefusal,
   type NewRecording,
   type RecordingStore,
   type StoredRecording,
@@ -44,6 +46,13 @@ export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } 
  */
 export const ROTATION_OVERLAP_MS = 150;
 
+/**
+ * Room a part keeps below Eneo's time per file: the overlap with the next part, a timer a hidden tab fires late
+ * (about a second) and the page's clock against the decoded audio. A minute, or 5 % of a limit under 20 minutes,
+ * and never under two seconds.
+ */
+const durationHeadroom = (limitMs: number) => Math.max(limitMs < 20 * 60_000 ? limitMs * 0.05 : 60_000, 2_000);
+
 // The recording's target rate, in bytes per millisecond.
 const TARGET_BYTES_PER_MS = SPEECH_RECORDING.audioBitsPerSecond / 8 / 1000;
 // Re-read the storage estimate about once a minute.
@@ -62,6 +71,8 @@ export interface CaptureSnapshot {
   error: string | null;
   lowSpace: boolean;
   persistent: boolean;
+  /** The device stopped keeping this recording partway (full, or a refused write): the rest is in this tab only. */
+  refused: DeviceRefusal | null;
   /** Recording time left before the flow's last allowed file is full; null when the flow sets no such limit. */
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
@@ -83,12 +94,15 @@ export interface CaptureDeps {
   createRecorder(stream: MediaStream, options: MediaRecorderOptions): MediaRecorder;
   requestWakeLock?(): Promise<WakeLockLike | null>;
   page?: PageLike;
+  /** The window: a closing tab says so there with pagehide, in older Safari without a visibilitychange. */
+  window?: Pick<Window, "addEventListener" | "removeEventListener">;
   now?(): number;
 }
 
-/** The flow's limits for the audio step: bytes per file and files per run. */
+/** The flow's limits for the audio step: bytes and recorded time per file, and files per run. */
 export interface CaptureLimits {
   maxBytes?: number;
+  maxDurationMs?: number;
   maxFiles?: number;
 }
 
@@ -142,6 +156,7 @@ export class RecordingCapture {
     error: null,
     lowSpace: false,
     persistent: true,
+    refused: null,
     remainingMs: null,
     limitReached: false,
   };
@@ -151,6 +166,8 @@ export class RecordingCapture {
   // The part recording now, and a full part still recording its overlap.
   private part: Part | null = null;
   private overlapping: { part: Part; timer: ReturnType<typeof setTimeout> } | null = null;
+  // The running part's handover at Eneo's time per file.
+  private handover: ReturnType<typeof setTimeout> | null = null;
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
   private starting = false;
@@ -206,7 +223,7 @@ export class RecordingCapture {
         return;
       }
       this.prepare(limits, 0, 0);
-      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent });
+      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent, refused: null });
       this.record(stream);
       await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
@@ -271,6 +288,7 @@ export class RecordingCapture {
     } else if (part?.recorder.state === "paused") {
       part.recorder.resume();
       part.since = this.now();
+      this.scheduleHandover(part);
       this.set({ status: "recording" });
     }
   }
@@ -352,6 +370,7 @@ export class RecordingCapture {
         recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
         lowSpace,
         persistent: store.persistent,
+        refused: store.refused(found.id),
       });
       this.record(stream);
       await this.takeWakeLock();
@@ -381,6 +400,7 @@ export class RecordingCapture {
       track.addEventListener("mute", this.onMicrophoneLost);
     });
     this.deps.page?.addEventListener("visibilitychange", this.onVisibilityChange);
+    this.deps.window?.addEventListener("pagehide", this.flush);
     this.beginPart(stream);
   }
 
@@ -413,7 +433,10 @@ export class RecordingCapture {
       void part.index
         .then((index) => store.append(id, index, data, durationMs))
         .then(() => {
-          if (store.persistent !== this.snapshot.persistent) this.set({ persistent: store.persistent });
+          const refused = store.refused(id);
+          if (store.persistent !== this.snapshot.persistent || refused !== this.snapshot.refused) {
+            this.set({ persistent: store.persistent, refused });
+          }
         })
         .catch(() => undefined);
       this.chunks += 1;
@@ -439,6 +462,7 @@ export class RecordingCapture {
       // A full part ending its overlap has handed over; only the running part's end counts.
       if (this.part === part) {
         this.part = null;
+        this.clearHandover();
         // A stop nobody asked for means the microphone went away.
         if ((part.ending ?? "interrupt") === "interrupt") await this.pause();
       }
@@ -451,26 +475,62 @@ export class RecordingCapture {
     recorder.start(CHUNK_MS);
     part.since = this.now();
     this.part = part;
+    this.scheduleHandover(part);
     this.partCount += 1;
     this.set({ status: "recording", stream, partBytes: 0, remainingMs: this.remaining(part) });
     return part;
   }
 
-  /** Before the part could grow too large to send: a new part, or a stop once the flow takes no more files. */
+  /** Before the part could grow too large or too long to send: a new part, or a stop once the flow takes no more files. */
   private checkLimit(part: Part) {
-    const { maxBytes, maxFiles } = this.limits;
-    if (!maxBytes || part.bytes + this.headroom() <= maxBytes) return;
+    // Paused (Pausa), it waits: going on checks again (the next chunk, and a new deadline).
+    if (part.since === null) return;
+    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
+    const full = !!maxBytes && part.bytes + this.headroom() > maxBytes;
+    const long = !!maxDurationMs && this.partElapsed(part) + durationHeadroom(maxDurationMs) >= maxDurationMs;
+    if (!full && !long) return;
     if (maxFiles === undefined || this.partCount < maxFiles) {
       this.rotate(part);
       return;
     }
-    const limit = maxFiles === 1 ? formatBytes(maxBytes) : `${maxFiles} filer om ${formatBytes(maxBytes)}`;
-    this.set({
-      limitReached: true,
-      remainingMs: 0,
-      error: `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`,
-    });
+    let error: string;
+    if (full) {
+      const limit = maxFiles === 1 ? formatBytes(maxBytes!) : `${maxFiles} filer om ${formatBytes(maxBytes!)}`;
+      error = `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`;
+    } else {
+      error =
+        `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +
+        `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+    }
+    this.set({ limitReached: true, remainingMs: 0, error });
     void this.stop();
+  }
+
+  /**
+   * The time handover runs on its own timer on the recorded clock (pauses stop it), not on chunk delivery, which a
+   * locked phone may hold back. Its bound: a page the browser suspends past the deadline, so that even this timer
+   * fires late, can still overrun a part. That recording stays on the device, and the send refuses it and says so
+   * (submit-run's sendLeased), with Spara som fil as the way to keep it.
+   */
+  private scheduleHandover(part: Part) {
+    this.clearHandover();
+    const { maxDurationMs } = this.limits;
+    if (!maxDurationMs || part.since === null) return;
+    const due = maxDurationMs - durationHeadroom(maxDurationMs) - this.partElapsed(part);
+    // Whole milliseconds, rounded up: a browser cuts a fraction off, which would fire short of the deadline.
+    this.handover = setTimeout(() => {
+      this.handover = null;
+      // A part that is ending (Stoppa, a page leave) hands over to nothing.
+      if (part !== this.part || part.ending) return;
+      this.checkLimit(part);
+      // Short of the deadline still (a timer that fired early): again for the rest. Paused, going on sets it anew.
+      if (part === this.part && !part.ending && part.since !== null) this.scheduleHandover(part);
+    }, Math.max(0, Math.ceil(due)));
+  }
+
+  private clearHandover() {
+    if (this.handover !== null) clearTimeout(this.handover);
+    this.handover = null;
   }
 
   /** A new part takes over on the same microphone; the full one stops once the two overlap. */
@@ -504,14 +564,19 @@ export class RecordingCapture {
     return Math.max(TARGET_BYTES_PER_MS, this.largestChunk / CHUNK_MS);
   }
 
-  /** Recording time left before the flow's last allowed file is full; null without a file count. */
+  /** Recording time left before the flow's last allowed file is full or long enough; null without a file count. */
   private remaining(part: Part | null): number | null {
-    const { maxBytes, maxFiles } = this.limits;
-    if (!maxBytes || maxFiles === undefined) return null;
-    const perPart = Math.max(0, maxBytes - this.headroom());
-    const running = part ? Math.max(0, perPart - part.bytes) : 0;
-    const later = Math.max(0, maxFiles - this.partCount) * perPart;
-    return Math.floor((running + later) / this.rate());
+    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
+    if (maxFiles === undefined || (!maxBytes && !maxDurationMs)) return null;
+    // The time a part holds from here: until the first of its limits.
+    const holds = (bytes: number, ms: number) =>
+      Math.min(
+        maxBytes ? Math.max(0, maxBytes - this.headroom() - bytes) / this.rate() : Infinity,
+        maxDurationMs ? Math.max(0, maxDurationMs - durationHeadroom(maxDurationMs) - ms) : Infinity,
+      );
+    const running = part ? holds(part.bytes, this.partElapsed(part)) : 0;
+    const later = Math.max(0, maxFiles - this.partCount) * holds(0, 0);
+    return Math.floor(running + later);
   }
 
   /** Ends the running parts, a full part still overlapping first; resolves once both have stopped. */
@@ -532,6 +597,8 @@ export class RecordingCapture {
 
   private endPart(part: Part, reason: EndReason): Promise<void> {
     part.ending ??= reason;
+    // Its deadline goes as its end begins, not at the stop event after it.
+    if (part === this.part) this.clearHandover();
     try {
       if (part.recorder.state !== "inactive") part.recorder.stop();
     } catch {
@@ -587,18 +654,19 @@ export class RecordingCapture {
     stream?.getTracks().forEach((track) => track.stop());
   }
 
+  /** A phone may freeze or kill a hidden page, and a tab may close: store what is recorded so far. */
+  private flush = () => {
+    try {
+      this.part?.recorder.requestData();
+    } catch {
+      // Nothing to flush.
+    }
+  };
+
   private onVisibilityChange = () => {
     const { status } = this.snapshot;
     if (status !== "recording" && status !== "paused") return;
-    if (this.deps.page?.visibilityState === "hidden") {
-      // A phone may freeze or kill a hidden page: store what is recorded so far.
-      try {
-        this.part?.recorder.requestData();
-      } catch {
-        // Nothing to flush.
-      }
-      return;
-    }
+    if (this.deps.page?.visibilityState === "hidden") return this.flush();
     // The wake lock ended with the hidden page; the microphone may have too.
     void this.takeWakeLock();
     const lost =
@@ -640,6 +708,7 @@ export class RecordingCapture {
 
   private finish() {
     this.deps.page?.removeEventListener("visibilitychange", this.onVisibilityChange);
+    this.deps.window?.removeEventListener("pagehide", this.flush);
     this.stopMicrophone();
     this.release?.();
     this.release = null;

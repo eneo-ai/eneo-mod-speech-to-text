@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import {
@@ -112,10 +112,19 @@ function fakePage() {
   };
 }
 
+// A recording a test leaves running is left as a page would leave it, and its recorders' stops land before the
+// next test (which may mock the timers), so no handover timer outlives the test.
+const captures: RecordingCapture[] = [];
+afterEach(async () => {
+  captures.splice(0).forEach((capture) => capture.dispose());
+  for (let i = 0; i < 5; i += 1) await settle();
+});
+
 async function setup(
   options: {
     store?: RecordingStore;
     page?: PageLike;
+    window?: EventTarget;
     now?: () => number;
     /** A denied microphone, or one the browser grants only once `wait` settles. */
     microphone?: { denied?: boolean; wait?: Promise<void> };
@@ -150,8 +159,11 @@ async function setup(
       };
     },
     page: options.page,
+    window: options.window as CaptureDeps["window"],
   };
-  return { capture: new RecordingCapture(() => store, deps), store, streams, constraints, recorders, wakeLocks };
+  const capture = new RecordingCapture(() => store, deps);
+  captures.push(capture);
+  return { capture, store, streams, constraints, recorders, wakeLocks };
 }
 
 test("losing the microphone pauses the recording, keeps what was recorded, and 'Fortsätt spela in' records a new part", async () => {
@@ -215,6 +227,22 @@ test("a hidden page stores what is recorded so far; back with a working micropho
   streams[0].track.muted = true; // muted while hidden, without an event reaching the page
   show("visible");
   await until(() => capture.getSnapshot().status === "interrupted", "the pause");
+});
+
+test("a tab that closes stores the chunk it has, also where the browser says so only with pagehide", async () => {
+  const tab = new EventTarget();
+  const { capture, recorders, store } = await setup({ window: tab });
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  // The browser hands over what it has recorded since the last chunk.
+  recorders[0].requestData = () => recorders[0].emit("b");
+  tab.dispatchEvent(new Event("pagehide"));
+  const { id } = capture.getSnapshot().recording!;
+  await until(async () => (await texts(await store.readParts(id)))[0] === "ab", "the last chunk stored");
+
+  await capture.stop();
+  recorders[0].requestData = () => assert.fail("a stopped recording has nothing to hand over");
+  tab.dispatchEvent(new Event("pagehide"));
 });
 
 test("starting asks to keep the recording and the screen on; leaving the page leaves the recording paused for recovery", async () => {
@@ -744,6 +772,11 @@ test("the recorder tells how much recording time the flow still takes", async ()
   assert.equal(capture.getSnapshot().remainingMs, 16_700);
   recorders[0].emit(CHUNK);
   assert.equal(capture.getSnapshot().remainingMs, 14_700);
+
+  let now = 0;
+  const timed = await setup({ now: () => now });
+  await timed.capture.start(meeting, { maxDurationMs: 5 * 3_600_000, maxFiles: 1 });
+  assert.equal(timed.capture.getSnapshot().remainingMs, 5 * 3_600_000 - 60_000, "a time limit alone ends it too");
 });
 
 test("when the flow's last file is full the recording stops with that reason and keeps everything", async (t) => {
@@ -776,6 +809,215 @@ test("when the flow's last file is full the recording stops with that reason and
     single.capture.getSnapshot().error,
     "Inspelningen stoppades vid flödets gräns på 48,8\u00a0kB. Det som spelats in är sparat.",
   );
+});
+
+const HOUR = 3_600_000;
+// Eneo's flow_audio_max_duration_seconds, per decoded file, as the run contract gives it.
+const FIVE_HOURS = 5 * HOUR;
+
+test("a part hands over before Eneo's time per file, in recorded time without pauses, whatever the encoder's rate", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 2 * HOUR;
+  // Far above the 32 kbit/s target, and still far below the byte limit: only the time decides.
+  recorders[0].emit("x".repeat(100_000));
+  capture.togglePause();
+  now = 3 * HOUR; // an hour's break is not recorded time
+  capture.togglePause();
+  now = 6 * HOUR - 61_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1, "4:58:59 recorded");
+  assert.equal(capture.getSnapshot().remainingMs, 1_000 + (5 * HOUR - 60_000), "this part's last second, and one more file");
+  now = 6 * HOUR - 60_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2, "at 4:59 a new part takes over: the last minute is room for the final chunk and the overlap");
+  assert.equal(recorders[1].state, "recording");
+});
+
+test("a short limit keeps 5 % as room rather than a whole minute", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10 * 60_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 9 * 60_000 + 29_000;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1);
+  now = 9 * 60_000 + 30_000; // 30 s, 5 % of ten minutes, before the limit
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2);
+});
+
+/** A recorder whose clock moves with the test's mocked timers. */
+async function clocked(t: import("node:test").TestContext) {
+  let now = 0;
+  const made = await setup({ now: () => now });
+  return {
+    ...made,
+    advance(ms: number) {
+      now += ms;
+      t.mock.timers.tick(ms);
+    },
+  };
+}
+
+test("the handover comes at Eneo's time by the recorded clock, even when the browser holds the chunks back", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(4 * HOUR); // a locked phone: no chunk arrives
+  assert.equal(recorders.length, 1);
+  advance(HOUR - 60_000);
+  assert.equal(recorders.length, 2, "at 4:59, with no chunk since the start");
+  advance(150);
+  await settle();
+  assert.equal(recorders[0].state, "inactive", "the full part ends after the overlap");
+});
+
+test("a pause stops the handover's clock, and going on starts it again", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(4 * HOUR);
+  capture.togglePause();
+  advance(2 * HOUR); // past the deadline on the wall clock, not on the recorded one
+  assert.equal(recorders.length, 1, "no handover while paused");
+  capture.togglePause();
+  advance(HOUR - 61_000);
+  assert.equal(recorders.length, 1);
+  advance(1_000);
+  assert.equal(recorders.length, 2, "at 4:59 recorded");
+});
+
+test("a stopped or left recording leaves no handover behind", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  for (const end of ["stop", "leave"] as const) {
+    const { capture, recorders, advance } = await clocked(t);
+    await capture.start(meeting, { maxDurationMs: 5 * HOUR, maxBytes: 10 ** 12, maxFiles: 2 });
+    if (end === "stop") await capture.stop();
+    else capture.dispose();
+    await settle();
+    advance(6 * HOUR);
+    await settle();
+    assert.equal(recorders.length, 1, `${end}: no new part afterwards`);
+  }
+});
+
+/** Timers as a browser keeps them: whole milliseconds, cut down; `early` fires them that much before their time. */
+function browserTimers(t: import("node:test").TestContext, early = 0) {
+  const mocked = globalThis.setTimeout;
+  globalThis.setTimeout = ((fn: () => void, ms = 0) => mocked(fn, Math.max(0, Math.floor(ms) - early))) as typeof setTimeout;
+  t.after(() => {
+    globalThis.setTimeout = mocked;
+  });
+}
+
+test("a deadline a fraction of a millisecond away still hands over: the delay rounds up", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t);
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(0.5);
+  capture.togglePause();
+  capture.togglePause(); // the deadline is now 7,999.5 ms of recording away
+  advance(7_999); // a browser would fire a 7,999.5 ms timer here, still short of it
+  advance(4_000);
+  assert.equal(recorders.length, 2, "handed over, not left recording past the limit");
+});
+
+test("a timer that fires a little early is set again for the rest", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t, 0.5);
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(7_999.5); // the handover's timer fires here, half a millisecond before its 8 s
+  assert.equal(recorders.length, 1);
+  advance(0.5);
+  assert.equal(recorders.length, 2, "and hands over at its time");
+});
+
+test("Stoppa just before the deadline starts no other recorder", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(7_999);
+  const stopped = capture.stop(); // the recorder's stop event comes after the deadline
+  advance(1);
+  await stopped;
+  assert.equal(capture.getSnapshot().status, "stopped");
+  assert.equal(recorders.length, 1, "no new part for a recording that is stopping");
+  assert.ok(recorders.every((recorder) => recorder.state === "inactive"));
+});
+
+test("a handover timer that fires late, after Pausa, leaves the recording paused", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  browserTimers(t, -5); // the 8 s deadline fires 5 ms late
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  advance(8_001);
+  capture.togglePause(); // Pausa, before the late deadline
+  advance(10);
+  assert.equal(capture.getSnapshot().status, "paused", "Pausa holds");
+  assert.equal(recorders.length, 1, "no new part while paused");
+  capture.togglePause();
+  advance(10); // the new deadline is already due, and fires 5 ms late too
+  assert.equal(recorders.length, 2, "going on hands over");
+});
+
+test("a chunk that arrives after Pausa leaves the recording paused", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 8_001;
+  capture.togglePause();
+  recorders[0].emit("x"); // the browser hands over its last chunk after the pause
+  assert.equal(capture.getSnapshot().status, "paused");
+  assert.equal(recorders.length, 1, "no new part while paused");
+});
+
+test("a short limit keeps room for the overlap and a late timer", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 10_000, maxBytes: 10 ** 12, maxFiles: 2 });
+  now = 7_999;
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 1);
+  now = 8_000; // two seconds before a ten-second limit, not 5 % (half a second)
+  recorders[0].emit("x");
+  assert.equal(recorders.length, 2);
+});
+
+test("a limit that is not whole hours is said in the module's durations", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: 90 * 60_000, maxBytes: 10 ** 12, maxFiles: 1 });
+  now = 89 * 60_000;
+  recorders[0].emit("x");
+  await until(() => capture.getSnapshot().status === "stopped", "the stop");
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen nådde maxlängden 1 h 30 min och stoppades efter 1 h 29 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+});
+
+test("when the flow's last file reaches Eneo's time the recording stops, says when and what to do, and keeps everything", async () => {
+  let now = 0;
+  const { capture, store, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 1 });
+  now = 5 * HOUR - 16 * 60_000;
+  recorders[0].emit("a");
+  assert.equal(capture.getSnapshot().remainingMs, 15 * 60_000, "15 minutes left: the bar says so");
+  now = 5 * HOUR - 60_000;
+  recorders[0].emit("b");
+  await until(() => capture.getSnapshot().status === "stopped", "the stop at the limit");
+  const snapshot = capture.getSnapshot();
+  assert.equal(snapshot.limitReached, true);
+  assert.equal(snapshot.remainingMs, 0);
+  assert.equal(
+    snapshot.error,
+    "Inspelningen nådde maxlängden 5 h och stoppades efter 4 h 59 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+  assert.equal(recorders.length, 1, "no second part");
+  assert.deepEqual(await texts(await store.readParts(snapshot.recording!.id)), ["ab."], "every chunk, the last one too");
 });
 
 test("a stop, a page leave or a lost microphone during the overlap stops the full part first and keeps both parts once", async (t) => {
@@ -921,9 +1163,15 @@ test("the recorder says when space runs low or the device stops keeping the reco
   try {
     recorders[0].emit("y");
     await until(() => !capture.getSnapshot().persistent, "the lives-only-in-this-tab notice");
+    assert.equal(capture.getSnapshot().refused, "full", "the device is full, and the recorder says so");
+    recorders[0].emit("z");
+    await settle();
+    assert.equal(capture.getSnapshot().status, "recording", "and records on, into this tab");
   } finally {
     IDBObjectStore.prototype.put = put;
   }
+  const { id } = capture.getSnapshot().recording!;
+  assert.match((await texts(await store.readParts(id)))[0], /yz$/, "nothing recorded after the refusal is lost");
   await capture.stop();
   assert.equal(capture.getSnapshot().persistent, false, "the ready state after Stoppa still says so");
 });

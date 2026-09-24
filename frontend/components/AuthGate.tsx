@@ -29,9 +29,40 @@ export function useAuthenticatedUser(): AuthenticatedUser {
  * While the login has ended the page stays mounted, so nothing on it is lost and a recording goes on, but it is
  * neither shown nor within reach until the new login.
  */
-export function SignedOutCover({ signedOut, children }: { signedOut: boolean; children: React.ReactNode }) {
+export function SignedOutCover({
+  signedOut,
+  focusBack,
+  children,
+}: {
+  signedOut: boolean;
+  /** Set here: gives the focus back once the sign-in dialog has closed after a new login (SessionEndWarning). */
+  focusBack?: { current: ((before: HTMLElement | null) => void) | null };
+  children: React.ReactNode;
+}) {
   // The page's overlays open in here too, so a dialog with names or quotes is covered with the page.
   const [container, setContainer] = useState<HTMLElement | null>(null);
+  // Where on the page the focus was when the login ended, taken before the cover's inert moves it away.
+  const lost = useRef<{ from: HTMLElement | null } | null>(null);
+  useEffect(
+    () =>
+      loginState.subscribe(() => {
+        if (!loginState.signedOut || lost.current) return;
+        const active = document.activeElement;
+        lost.current = { from: active instanceof HTMLElement && container?.contains(active) ? active : null };
+      }),
+    [container],
+  );
+  // Back where it was on the page when the login ended, or before the warning that was open then (`before`), or on
+  // the page's heading when neither is on the page any more.
+  if (focusBack) {
+    focusBack.current = (before) => {
+      const from = lost.current?.from ?? null;
+      lost.current = null;
+      const onPage = (element: HTMLElement | null) => !!element?.isConnected && !!container?.contains(element);
+      const heading = container?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]") ?? null;
+      (onPage(from) ? from : onPage(before) ? before : heading)?.focus();
+    };
+  }
   return (
     <div ref={setContainer} className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
       <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
@@ -49,6 +80,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
+  const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -137,7 +169,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <AuthenticatedUserContext.Provider value={user}>
       <SignedOutSlot.Provider value={controls}>
-        <SignedOutCover signedOut={signedOut}>{children}</SignedOutCover>
+        <SignedOutCover signedOut={signedOut} focusBack={focusBack}>
+          {children}
+        </SignedOutCover>
       </SignedOutSlot.Provider>
       <SessionEndWarning
         endsAt={endsAt}
@@ -146,6 +180,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         owner={user}
         otherUser={otherUser}
         controlsRef={setControls}
+        onFocusBack={(before) => focusBack.current?.(before)}
         onRenewed={() => recheckRef.current()}
       />
     </AuthenticatedUserContext.Provider>

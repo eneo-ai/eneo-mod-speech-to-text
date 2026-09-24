@@ -210,6 +210,23 @@ test("choosing a card only selects the mode; the microphone is asked for on the 
   assert.equal(session.getSnapshot().phase, "recording");
 });
 
+test("a recording keeps each file within the time the contract gives Eneo's audio, and without one only bytes count", async (t) => {
+  const [audio] = audioContract().steps_requiring_input!;
+  const recordFor = async (max_duration_seconds: number | null) => {
+    const { session } = await setup();
+    t.after(() => session.dispose());
+    session.setContract(
+      audioContract({ steps_requiring_input: [{ ...audio, max_files: 1, max_file_size_bytes: 10 ** 12, max_duration_seconds }] }),
+    );
+    session.selectMode("spela-in");
+    await session.start();
+    return session.capture.getSnapshot().remainingMs!;
+  };
+  const timed = await recordFor(90 * 60);
+  assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);
+  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide, as before");
+});
+
 test("the last chosen mode is remembered per flow and used when it is still offered", async () => {
   const storage = memoryStorage();
   const first = await setup({ storage });
@@ -423,6 +440,49 @@ test("a chosen file becomes the document's input in Ladda upp; an unsent recordi
   assert.equal(session.getSnapshot().recording?.id, unsent.id);
   assert.equal(await session.createDocument(), true);
   assert.equal(sent[1].input?.kind, "recording");
+});
+
+test("a part longer than Eneo takes is not sent, whatever the page's copy of the recording says: it stays on the device, with why and how to keep it", async () => {
+  const { session, store } = await setup();
+  const [audio] = audioContract().steps_requiring_input!;
+  const contract = audioContract({ steps_requiring_input: [{ ...audio, max_duration_seconds: 90 * 60 }] });
+  session.setContract(contract);
+  let uploads = 0;
+  session.setHandlers({
+    submit: async ({ input, payload }) => {
+      if (input?.kind !== "recording") return;
+      await submitRecording(
+        store,
+        input.recording.id,
+        { flowId: "flow-1", contract, stepId: "step-audio", inputPayload: payload, online: createOnlineStatus() },
+        { upload: async () => ({ id: `file-${++uploads}` }), startRun: async () => ({ id: "run-1", flow_id: "flow-1", status: "queued" }) },
+      );
+    },
+  });
+  const recording = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["x"]), 60_000);
+  await store.setState(recording.id, "stopped");
+  session.adopt((await store.get(recording.id))!); // the page's copy: one minute
+  // Meanwhile another tab recorded on, past the flow's 90 minutes (a page the browser suspended past its handover).
+  await store.append(recording.id, 0, new Blob(["y"]), 91 * 60_000);
+  store.release(recording.id);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(await session.createDocument(), false);
+  assert.equal(uploads, 0, "nothing uploaded for Eneo to take and refuse later");
+  assert.equal(
+    session.getSnapshot().problem?.title,
+    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1 h 30 min). Välj Spara som fil för att behålla den.",
+  );
+  assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
 });
 
 test("a recording whose run request Eneo may already have answered is sent again as it was, whatever the details say now", async () => {
