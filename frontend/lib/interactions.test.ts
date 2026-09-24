@@ -320,6 +320,30 @@ test("Back during an upload asks first and says what leaving stops", async () =>
   await view.unmount();
 });
 
+test("signed out, Back still asks in a dialog that is shown, focused and answerable, outside the covered page", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { SignedOutCover } = await import("../components/AuthGate");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  function Recording() {
+    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  await settle(); // the history step the last test's guard took back
+  const view = await mount(await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), []));
+  await view.act(async () => {
+    window.history.back();
+    await settle();
+  });
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  assert.ok(dialog, "asked");
+  // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
+  assert.ok(!dialog.closest("[inert]"), "not in the covered page");
+  assert.ok(dialog.contains(document.activeElement), "the focus is in the question");
+  await view.act(async () => button(dialog, "Stanna kvar")!.click());
+  assert.equal(document.body.querySelector('[role="alertdialog"]'), null, "and it can be answered");
+  await view.unmount();
+});
+
 test("a review edit comes back on its revision; once the review changed it is neither applied nor lost, but waits as din version", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const { createElement, useState } = await import("react");
@@ -370,3 +394,4 @@ test("a review edit comes back on its revision; once the review changed it is ne
   await later.unmount();
   assert.equal(window.sessionStorage.length, 0, "nothing left behind");
 });
+

@@ -12,6 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { PortalContainer } from "@/components/ui/portal-container";
 import { guardHistory } from "@/lib/leave-guard";
 
 /**
@@ -40,24 +41,27 @@ export function useLeaveQuestion(active: boolean, warning: string) {
     ask(() => router.push("/flows"));
   };
 
+  // Outside the covered page while signed out, like the sign-in dialog: the question holds nothing of the page's.
   const question = (
-    <AlertDialog open={leave !== null} onOpenChange={(open) => !open && setLeave(null)}>
-      <AlertDialogContent
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          returnFocus.current?.focus();
-        }}
-      >
-        <AlertDialogHeader>
-          <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
-          <AlertDialogDescription>{warning}</AlertDialogDescription>
-        </AlertDialogHeader>
-        <AlertDialogFooter>
-          <AlertDialogCancel>Stanna kvar</AlertDialogCancel>
-          <AlertDialogAction onClick={() => leave?.()}>Lämna sidan</AlertDialogAction>
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <PortalContainer.Provider value={null}>
+      <AlertDialog open={leave !== null} onOpenChange={(open) => !open && setLeave(null)}>
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocus.current?.focus();
+          }}
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
+            <AlertDialogDescription>{warning}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Stanna kvar</AlertDialogCancel>
+            <AlertDialogAction onClick={() => leave?.()}>Lämna sidan</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </PortalContainer.Provider>
   );
   return { onLeave, question };
 }
