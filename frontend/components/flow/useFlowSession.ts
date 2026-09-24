@@ -113,10 +113,10 @@ export function useFlowSession({
     snapshot,
     capture,
     persistent: capture.recording ? capture.persistent : persistent,
-    // The ready state offers "Fortsätt spela in" when this browser can record for the flow and no
-    // send of the recording has begun (it is sealed from then on).
+    // The ready state offers "Fortsätt spela in" when this browser can record for the flow, no send of the
+    // recording has begun (it is sealed from then on), and it did not stop because the flow takes no more.
     continueStopped:
-      snapshot.modes.includes("spela-in") && !(snapshot.recording && sealed(snapshot.recording))
+      snapshot.modes.includes("spela-in") && !(snapshot.recording && sealed(snapshot.recording)) && !capture.limitReached
         ? () => void session.continueStopped()
         : undefined,
   };
