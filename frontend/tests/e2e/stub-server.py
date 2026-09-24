@@ -10,6 +10,9 @@ Runs the page can open with ?run=<id>:
   run-running   never ends, for the progress view
   run-review    paused for "who is who" (flow-2)
   run-review-text  paused for a text step's output to be checked
+  run-corrected finished like run-done, its transcript corrected after the document
+The paused run-review has a passage split off to a third speaker, and its
+checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like run-done.
 An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
@@ -107,11 +110,13 @@ SEGMENTS = [
     (1, 0.0, 3.5, "SPEAKER_01", "Andra punkten är skolskjutsarna."),
     (1, 3.5, 7.5, "SPEAKER_00", "Nya turer börjar gälla efter höstlovet."),
 ]
+SEGMENTS_HASH = hashlib.sha256(json.dumps(SEGMENTS, ensure_ascii=False).encode()).hexdigest()
 TRANSCRIBE_STEP = {
     "id": "result-1", "step_id": AUDIO_STEP_ID, "step_order": 1, "status": "completed",
     "started_at": "2026-09-24T09:00:00Z", "finished_at": "2026-09-24T09:01:00Z",
     "input_payload_json": {"transcription": {"file_ids": ["file-a", "file-b"], "segments": [
-        {"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)} for f, a, b, sp, t in SEGMENTS]}},
+        {"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)} for f, a, b, sp, t in SEGMENTS],
+        "segments_hash": SEGMENTS_HASH}},
     "output_payload_json": {"text": "Transkript"},
 }
 REPORT_STEP = {"id": "result-2", "step_id": "s2", "step_order": 2, "status": "completed",
@@ -145,7 +150,24 @@ RUNS = {
     "run-running": {"status": "running", "steps": [], "step_status": ["completed", "running"]},
     "run-review": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    "run-corrected": DONE,
 }
+SPLIT = "Ramen höjs med två procent"
+CORRECTIONS = {
+    # The reviewer gave the start of a passage to a speaker of its own, who then needs a name.
+    "run-review": {"speaker_edits": [{"segment_index": 2, "char_start": 0, "char_end": len(SPLIT), "original": SPLIT,
+                                      "original_speaker": "SPEAKER_00", "speaker": "SPEAKER_02", "decision": "confirmed"}]},
+    # Saved after the document (finished 09:02), so the result offers to make it again.
+    "run-corrected": {"occurrences": [{"segment_index": 4, "char_start": 0, "char_end": 3, "original": "Nya", "corrected": "Fler"}]},
+}
+
+
+def corrections(run_id):
+    if run_id not in CORRECTIONS:
+        return []
+    return [{"flow_run_id": run_id, "step_id": AUDIO_STEP_ID, "schema_version": 3, "segments_hash": SEGMENTS_HASH,
+             "occurrences": [], "speaker_edits": [], "revision": 1, "stale": False, "updated_at": "2026-09-24T09:30:00Z",
+             **CORRECTIONS[run_id]}]
 CHECKPOINT = {
     "id": "cp-1", "flow_id": "flow-2", "flow_run_id": "run-review", "step_id": REVIEW_STEP_ID, "step_order": 2,
     "attempt_no": 1, "schema_version": 1, "step_label": "Talare", "state": "awaiting_review", "revision": 1,
@@ -162,10 +184,12 @@ CHECKPOINT = {
             {"label": "SPEAKER_01", "name": "Erik Lund", "confidence": "medium", "evidence": "Föredrar ärendena."}]},
     },
 }
+# What the naming step proposed, before anyone edited it: the naming dialog's evidence.
+CHECKPOINT["original_payload_json"] = json.loads(json.dumps(CHECKPOINT["current_payload_json"]))
 # A text step paused for review (run-review-text): its output can be edited before the flow goes on.
 # Paused in December, its deadline falls in the next year.
 TEXT_CHECKPOINT = {
-    **{k: v for k, v in CHECKPOINT.items() if k != "current_payload_json"},
+    **{k: v for k, v in CHECKPOINT.items() if k not in ("current_payload_json", "original_payload_json")},
     "created_at": "2026-12-20T08:01:00Z", "updated_at": "2026-12-20T08:01:00Z", "expires_at": "2027-01-03T08:01:00Z",
     "id": "cp-2", "flow_id": "flow-1", "flow_run_id": "run-review-text", "step_id": "s2", "step_label": "Sammanfattning",
     "output_type": "text", "current_payload_json": {"text": "Kommunstyrelsen beslutade att höja budgetramen med två procent."},
@@ -323,7 +347,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"code": "flow_run_not_found", "detail": "Run not found."})
         if what in ([], ["status"]):
             body = {"id": run_id, "flow_id": fid, "status": run["status"], "flow_version": f["published"]["published_version"],
-                    "created_at": "2026-09-24T09:00:00Z"}
+                    "created_at": "2026-09-24T09:00:00Z", "revision": 1}
             if not what:
                 body.update(finished_at="2026-09-24T09:02:00Z", result=run.get("result"),
                             result_files=run.get("result_files", []), error=run.get("error"))
@@ -333,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
         if what == ["review-checkpoints", "active"]:
             return self.send(200, {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT}.get(run_id))
         if what == ["transcript-corrections"]:
-            return self.send(200, [])
+            return self.send(200, corrections(run_id))
         return self.send(404, {"detail": "stub: " + path})
 
     def do_POST(self):
@@ -347,6 +371,12 @@ class Handler(BaseHTTPRequestHandler):
                 if b'filename="langsam' in body:
                     time.sleep(6)  # holds the sending view on screen long enough to look at it
                 return self.send(201, {"id": "file-%d" % len(body), "filename": "upload"})
+            if len(rest) == 5 and rest[0] == "runs" and rest[2] == "steps" and rest[4] == "transcript-regenerations":
+                run_id = "run-new-%d" % next(NEW_RUN)
+                STARTED[run_id] = 0
+                return self.send(201, {"run": {"id": run_id, "flow_id": fid, "status": "queued", "revision": 1},
+                                       "created": True, "source_run_id": rest[1], "correction_revision": 1,
+                                       "first_regenerated_step_id": "s2"})
             if rest == ["runs"]:
                 if fid == "flow-3":
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})

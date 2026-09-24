@@ -4,7 +4,7 @@
   - paragraph: /Inspelning \d+ sep \d+:\d+ · \d+ s/
   - 'group /Uppspelning: Inspelning \d+ sep \d+:\d+/':
     - button "Spela upp"
-    - slider "Position"
+    - slider "Position i inspelningen"
     - text: /0:\d+ \/ 0:\d+/
   - button "Spara som fil"
   - paragraph: Inspelningen finns kvar på enheten tills dokumentet är skapat.

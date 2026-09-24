@@ -3,10 +3,9 @@
     - /url: /flows
     - img "Sundsvalls kommun"
     - text: ""
-  - button "Öppna konto för Erik Lund"
 - status: Spelar in.
 - main:
-  - link "Flöden":
+  - link "Alla flöden":
     - /url: /flows
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.

@@ -24,15 +24,20 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "ready", region: (page) => page.getByRole("region", { name: "Ljudet" }) },
   { state: "run-progress", region: (page) => page.getByRole("main") },
   { state: "result", region: (page) => page.getByRole("main"), fixedTime: true },
+  { state: "result-transcript-tab", region: (page) => page.getByRole("main"), fixedTime: true },
+  { state: "result-regenerate", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "failure", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "review", region: (page) => page.getByRole("main"), fixedTime: true },
+  { state: "naming-dialog", region: (page) => page.getByRole("dialog") },
   { state: "flow-republish-required", region: (page) => page.locator(".app-shell") },
 ];
 
 for (const { state, region, fixedTime } of SNAPSHOTS) {
   test(`aria ${state}`, async ({ page }, info) => {
+    const screen = STATES.find((s) => s.name === state)!;
+    test.skip(screen.only ? !screen.only(info) : false, "not on this width");
     if (fixedTime) await page.clock.setFixedTime(NOW);
-    await STATES.find((s) => s.name === state)!.go(page, info);
+    await screen.go(page, info);
     const width = info.project.use.viewport!.width;
     await expect(region(page)).toMatchAriaSnapshot({ name: `${state}-${width}.aria.yml` });
   });

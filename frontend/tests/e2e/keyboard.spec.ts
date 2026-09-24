@@ -24,6 +24,8 @@ const WALKS = [
   "ready",
   "run-progress",
   "result",
+  "result-transcript-tab",
+  "result-regenerate",
   "failure",
   "review",
   "review-reject",
@@ -89,6 +91,11 @@ test("the PDF preview holds focus and gives it back", async ({ page }, info) => 
   test.skip(!isLaptop(info) && info.project.name !== "zoom-200", "a phone opens the PDF in a new tab");
   await run(page, "run-done");
   await holdsFocus(page, page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }), page.getByRole("dialog"));
+});
+
+test("the naming dialog holds focus and gives it back", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  await holdsFocus(page, page.getByRole("button", { name: "Namnge talarna" }), page.getByRole("dialog", { name: "Namnge talarna" }));
 });
 
 test("the account menu holds focus and gives it back", async ({ page }) => {

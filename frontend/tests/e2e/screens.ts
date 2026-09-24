@@ -80,7 +80,7 @@ export async function stop(page: Page) {
 
 /** The way back to the flow list that the current width shows. */
 export function backLink(page: Page) {
-  return page.getByRole("link", { name: "Till flödena" }).or(page.getByRole("link", { name: "Flöden", exact: true })).filter({ visible: true }).first();
+  return page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first();
 }
 
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
@@ -136,7 +136,8 @@ export async function run(page: Page, id: string, flow = "flow-1") {
 export async function result(page: Page) {
   await run(page, "run-done");
   await heading(page, "Dokumentet är klart");
-  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+  // Below a laptop's width the transcript waits in its tab.
+  await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
 }
 
 export interface State {
@@ -333,7 +334,7 @@ export const STATES: State[] = [
     name: "result-steps-open",
     go: async (page) => {
       await result(page);
-      await page.getByRole("button", { name: /^Visa stegen/ }).click();
+      await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
       await expect(page.getByText("Flödets version 3")).toBeVisible();
     },
   },
@@ -344,6 +345,33 @@ export const STATES: State[] = [
       await result(page);
       await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "result-transcript-tab",
+    only: (info) => !isLaptop(info),
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("tab", { name: "Transkript" }).click();
+      await expect(page.getByRole("tab", { name: "Transkript" })).toHaveAttribute("aria-selected", "true");
+    },
+  },
+  {
+    name: "result-docked-player",
+    only: (info) => !isLaptop(info),
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("tab", { name: "Transkript" }).click();
+      await page.getByRole("button", { name: "Spela upp", exact: true }).first().click();
+      await page.getByRole("tab", { name: "Dokument" }).click();
+      await expect(page.getByRole("button", { name: "Pausa uppspelningen" })).toBeVisible();
+    },
+  },
+  {
+    name: "result-regenerate",
+    go: async (page) => {
+      await run(page, "run-corrected");
+      await expect(page.getByText("Dokumentet skapades före dina rättningar")).toBeVisible();
     },
   },
   {
@@ -367,6 +395,14 @@ export const STATES: State[] = [
       await run(page, "run-review", "flow-2");
       await heading(page, "Vem är vem?");
       await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+    },
+  },
+  {
+    name: "naming-dialog",
+    go: async (page) => {
+      await run(page, "run-review", "flow-2");
+      await page.getByRole("button", { name: "Namnge talarna" }).click();
+      await expect(page.getByRole("dialog", { name: "Namnge talarna" })).toBeVisible();
     },
   },
   {

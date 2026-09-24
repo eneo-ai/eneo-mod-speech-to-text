@@ -1,5 +1,5 @@
 - main:
-  - link "Flöden":
+  - link "Alla flöden":
     - /url: /flows
   - heading "Samråd till protokoll" [level=1]
   - paragraph: Gör ett protokoll av ett samrådsmöte.

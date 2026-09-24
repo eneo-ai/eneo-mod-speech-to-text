@@ -1,7 +1,8 @@
-- main:
+- banner:
   - img "Sundsvalls kommun"
-  - text: Tal till text v0.4 · Demo
-  - heading "Spela in samtal — i fickformat" [level=1]
+  - text: Tal till text
+- main:
+  - heading "Gör samtal och filer till text och dokument." [level=1]
   - paragraph: Ange åtkomstkoden för att fortsätta.
   - text: Åtkomstkod
   - textbox "Åtkomstkod"

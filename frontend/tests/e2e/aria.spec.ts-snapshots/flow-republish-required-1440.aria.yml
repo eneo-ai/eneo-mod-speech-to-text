@@ -7,5 +7,5 @@
 - main:
   - heading "Flödet kan inte användas just nu." [level=1]
   - paragraph: Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.
-  - link "Till flödena":
+  - link "Alla flöden":
     - /url: /flows
