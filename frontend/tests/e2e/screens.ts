@@ -362,6 +362,8 @@ export const STATES: State[] = [
       await limitAudio(page, 60, 5);
       await setup(page);
       await record(page, "Spela in");
+      // The recorder hands its audio over in real time, a chunk every 2 s: some audio first, then the lid.
+      await page.waitForTimeout(3_000);
       await page.clock.fastForward("02:00");
       await stop(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
