@@ -52,7 +52,9 @@ export function NameCombobox({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
-  const [active, setActive] = useState(0);
+  // The row the arrow keys or the pointer moved to; until then the list marks the field's own name, so Enter
+  // on a list opened by a click keeps it (it never picks the first name).
+  const [moved, setMoved] = useState<number | null>(null);
   // Listan filtreras bara medan användaren skriver; öppnad med klick visar
   // den alla namn så att ett annat går att välja.
   const [typing, setTyping] = useState(false);
@@ -77,9 +79,13 @@ export function NameCombobox({
     return out;
   }, [options, query, trimmed, exact, typing, writeLabel]);
 
+  const isSelected = (option: Option) =>
+    option.kind === "name" ? option.name === value : option.kind === "none" && value === null;
+  const active = moved ?? items.findIndex(isSelected);
+
   useEffect(() => {
-    if (active >= items.length) setActive(Math.max(0, items.length - 1));
-  }, [items.length, active]);
+    if (moved !== null && moved >= items.length) setMoved(Math.max(0, items.length - 1));
+  }, [items.length, moved]);
 
   function choose(option: Option) {
     if (option.kind === "write") {
@@ -99,6 +105,7 @@ export function NameCombobox({
 
   function openList() {
     setTyping(false);
+    setMoved(null);
     setOpen(true);
   }
 
@@ -110,12 +117,13 @@ export function NameCombobox({
         return;
       }
       const delta = e.key === "ArrowDown" ? 1 : -1;
-      setActive((i) => (i + delta + items.length) % items.length);
+      setMoved(active < 0 ? (delta > 0 ? 0 : items.length - 1) : (active + delta + items.length) % items.length);
     } else if (e.key === "Enter") {
       if (!open) return;
       e.preventDefault();
       const option = items[active];
       if (option) choose(option);
+      else setOpen(false);
     } else if (e.key === "Escape") {
       if (open) {
         e.preventDefault();
@@ -127,10 +135,10 @@ export function NameCombobox({
   }
 
   useEffect(() => {
-    if (open) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
+    if (open && active >= 0) document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active, open, listId]);
 
-  const activeId = open && items[active] ? `${listId}-${active}` : undefined;
+  const activeId = open && active >= 0 && items[active] ? `${listId}-${active}` : undefined;
 
   // The list floats over the page in its own layer, so a dialog's scrolling body never cuts it off;
   // the focus stays in the field, and a press outside the field and the list closes it. It closes at
@@ -158,7 +166,7 @@ export function NameCombobox({
           onChange(next === "" ? null : next);
           setTyping(true);
           setOpen(true);
-          setActive(0);
+          setMoved(0);
         }}
         onFocus={openList}
         onClick={openList}
@@ -201,8 +209,7 @@ export function NameCombobox({
         aria-label={ariaLabel ? `Förslag: ${ariaLabel}` : "Namnförslag"}
       >
         {items.map((option, i) => {
-          const selected =
-            option.kind === "name" ? option.name === value : option.kind === "none" && value === null;
+          const selected = isSelected(option);
           const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;
           return (
             <li
@@ -210,7 +217,7 @@ export function NameCombobox({
               id={`${listId}-${i}`}
               role="option"
               aria-selected={selected}
-              onMouseEnter={() => setActive(i)}
+              onMouseEnter={() => setMoved(i)}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => choose(option)}
               className={cn(

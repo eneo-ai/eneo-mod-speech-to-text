@@ -51,6 +51,19 @@ test("each speaker is a row: the mark, how many passages, what they say first, a
   assert.deepEqual(listened, ["SPEAKER_01"]);
 });
 
+test("opening a filled name field by click and pressing Enter keeps its name", async () => {
+  // Run 82089959: Talare 2 was "Erik", a click then Enter made it "Anna" in the transcript and the PDF.
+  const { view, field, saved } = await dialog({ rows: [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", "Erik Lund", 9)] });
+  const erik = field("Talare 2");
+  await view.act(async () => erik.click());
+  const active = document.getElementById(erik.getAttribute("aria-activedescendant") ?? "");
+  assert.equal(active?.textContent?.startsWith("Erik Lund"), true, "the list opens on the field's own name");
+  await view.act(async () => erik.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  assert.equal(field("Talare 2").value, "Erik Lund");
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.deepEqual(saved.at(-1)?.map((r) => r.name), ["Anna Berg", "Erik Lund"]);
+});
+
 test("a name given to another speaker is said quietly, and only the row's own name is checked", async () => {
   const { view, field } = await dialog();
   await view.act(async () => field("Talare 2").dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
