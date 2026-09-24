@@ -112,7 +112,7 @@ function fakeLiveClient() {
   const calls: string[] = [];
   const opened: string[] = [];
   const streams: unknown[] = [];
-  const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
+  const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
   const client: LiveClient = {
     open(stepId) {
       opened.push(stepId);

@@ -368,6 +368,7 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const html = sheet({
     status: "reconnecting",
     started: true,
+    complete: false,
     pieces: [
       { text: "Välkomna till nämndens möte.", opensParagraph: true },
       { text: "Första punkten.", opensParagraph: false },
@@ -383,10 +384,10 @@ test("the live sheet is a named log of committed text; words still arriving are 
   assert.match(html, /<p role="status"[^>]*>Livetexten pausades\. Inspelningen fortsätter\.<\/p>/);
   assert.ok(!html.includes("Visa senaste"), "following the text: no jump button");
 
-  const empty = sheet({ status: "connecting", started: false, pieces: [], pending: "" });
+  const empty = sheet({ status: "connecting", started: false, complete: false, pieces: [], pending: "" });
   assert.match(empty, /Texten visas här när du börjar prata\./);
   assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status region is there before anything is said");
-  const refused = sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
+  const refused = sheet({ status: "unavailable", started: false, complete: false, pieces: [], pending: "" });
   assert.ok(!refused.includes("Texten visas här"), "no promise of text that will not come");
   assert.match(refused, /Livetexten kunde inte starta\./);
 });

@@ -36,6 +36,8 @@ export interface LiveSnapshot {
   pending: string;
   /** A session has been live at least once. */
   started: boolean;
+  /** After the stop, the relay's final text came and the draft is it; false when the connection ended first. */
+  complete: boolean;
 }
 
 /** What the client needs of a WebSocket. */
@@ -76,8 +78,9 @@ const FIRST_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 // Tries before the first session was live; after that, live text keeps trying.
 const START_ATTEMPTS = 3;
-// How long a stop waits for the relay's last words.
-const STOP_WAIT_MS = 5_000;
+// How long a stop waits, in the background, for the relay's final text: Eneo's allowance for it
+// (flow_live_transcription_final_text_timeout_seconds, 60 s by default).
+const FINAL_TEXT_WAIT_MS = 60_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 
 /** wss://host/api/live/{flowId}/{stepId} on the page's own origin. */
@@ -94,7 +97,9 @@ export function openLiveSocket(Socket: typeof WebSocket, url: string): LiveSocke
 type Failure = "retry" | "refused" | "idle" | null;
 
 export class LiveTranscriber {
-  private snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
+  private snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  // The first piece of the current session: its final text replaces the session's pieces.
+  private sessionStart = 0;
   private listeners = new Set<() => void>();
   private socket: LiveSocket | null = null;
   private ready = false;
@@ -176,7 +181,7 @@ export class LiveTranscriber {
     this.clear("retryTimer");
     if (this.socket && this.ready) {
       this.socket.send(JSON.stringify({ type: "stop" }));
-      this.stopTimer = this.deps.setTimer(() => this.finish(), STOP_WAIT_MS);
+      this.stopTimer = this.deps.setTimer(() => this.finish(), FINAL_TEXT_WAIT_MS);
     } else {
       this.finish();
     }
@@ -254,6 +259,8 @@ export class LiveTranscriber {
         this.retryMs = FIRST_RETRY_MS;
         this.buffered.forEach((frame) => socket.send(frame));
         this.buffered = [];
+        this.commit();
+        this.sessionStart = this.snapshot.pieces.length;
         this.set({ status: "live", started: true });
         break;
       case "transcript.delta":
@@ -261,7 +268,11 @@ export class LiveTranscriber {
         break;
       case "transcript.done":
         this.commit();
-        if (this.stopping) this.finish();
+        this.reconcile(typeof event.text === "string" ? event.text : "");
+        if (this.stopping) {
+          this.set({ complete: true });
+          this.finish();
+        }
         break;
       case "error":
         this.failure = event.code === "idle_timeout" ? "idle" : event.retryable === true ? "retry" : "refused";
@@ -332,6 +343,16 @@ export class LiveTranscriber {
       this.commitTimer = null;
       this.commit();
     }, COMMIT_AFTER_MS);
+  }
+
+  /** The session's whole text, which the relay sends last: it replaces what the session's deltas said. */
+  private reconcile(text: string) {
+    const final = text.replace(/\s+/g, " ").trim();
+    const session = this.snapshot.pieces.slice(this.sessionStart);
+    if (!final || session.map((piece) => piece.text).join(" ").replace(/\s+/g, " ") === final) return;
+    const opensParagraph = session[0]?.opensParagraph ?? (this.opensParagraph || this.sessionStart === 0);
+    this.set({ pieces: [...this.snapshot.pieces.slice(0, this.sessionStart), { text: final, opensParagraph }] });
+    this.opensParagraph = false;
   }
 
   private commit() {

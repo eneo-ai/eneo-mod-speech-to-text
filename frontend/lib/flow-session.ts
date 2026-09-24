@@ -379,7 +379,7 @@ export interface LiveClient {
   open(stepId: string): LiveSession;
 }
 
-const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false };
+const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false, complete: false };
 
 /** Live text that could not be set up at all, as the sheet shows it. */
 const unavailableLive = (): LiveSession => ({
