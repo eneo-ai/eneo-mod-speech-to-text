@@ -2,6 +2,7 @@
 
 import type { LiveClient, LiveSession } from "@/lib/flow-session";
 import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps } from "@/lib/live-transcriber";
+import { loginState } from "@/lib/login-state";
 import { onlineStatus } from "@/lib/online-status";
 import { Pcm16Encoder } from "@/lib/pcm";
 
@@ -34,6 +35,7 @@ export function browserLiveClient(flowId: string): LiveClient {
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (timer) => window.clearTimeout(timer as number),
       online: onlineStatus,
+      login: loginState,
     }),
   });
 }

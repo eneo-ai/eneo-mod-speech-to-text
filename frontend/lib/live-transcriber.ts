@@ -56,6 +56,12 @@ export interface LiveDeps {
   setTimer: (fn: () => void, ms: number) => unknown;
   clearTimer: (timer: unknown) => void;
   online?: OnlineStatus;
+  /**
+   * The page's login (loginState): covered while signed out or someone else is signed in. The relay takes
+   * whoever's cookie the browser has then, so live text sends nothing and connects to nothing until the page's
+   * own user is back; the recording goes on meanwhile.
+   */
+  login?: { readonly signedOut: boolean; subscribe(listener: () => void): () => void };
   now?: () => number;
 }
 
@@ -104,6 +110,7 @@ export class LiveTranscriber {
   private lastWordsAt: number | null = null;
   private opensParagraph = true;
   private stopListening: (() => void) | null = null;
+  private stopFollowingLogin: (() => void) | null = null;
 
   constructor(private readonly deps: LiveDeps) {}
 
@@ -119,7 +126,26 @@ export class LiveTranscriber {
       this.deps.online?.subscribe((online) => {
         if (online && this.snapshot.status === "reconnecting" && this.recording) this.connect();
       }) ?? null;
+    this.stopFollowingLogin ??=
+      this.deps.login?.subscribe(() => {
+        if (this.deps.login?.signedOut) this.cover();
+        else if (this.snapshot.status === "reconnecting" && this.recording && this.retryTimer === null) this.connect();
+      }) ?? null;
     this.connect();
+  }
+
+  /** Covered for a new login: the connection closes at once, and nothing more goes to it. */
+  private cover() {
+    this.clear("retryTimer");
+    const socket = this.socket;
+    if (!socket || this.stopping) return;
+    this.ready = false;
+    if (this.snapshot.started) this.set({ status: "reconnecting" });
+    try {
+      socket.close(1000);
+    } catch {
+      // Already closing.
+    }
   }
 
   /** The next 100 ms of audio; sent when live, kept (bounded) until then. */
@@ -189,6 +215,12 @@ export class LiveTranscriber {
   private connect() {
     // One connection at a time: an attempt under way is never replaced.
     if (this.socket) return;
+    // Covered for a new login: live text waits for the page's own user (see LiveDeps.login).
+    if (this.deps.login?.signedOut) {
+      this.clear("retryTimer");
+      this.set({ status: "reconnecting" });
+      return;
+    }
     this.clear("retryTimer");
     this.ready = false;
     this.failure = null;
@@ -333,6 +365,8 @@ export class LiveTranscriber {
     }
     this.stopListening?.();
     this.stopListening = null;
+    this.stopFollowingLogin?.();
+    this.stopFollowingLogin = null;
     this.set({ status: "ended" });
   }
 

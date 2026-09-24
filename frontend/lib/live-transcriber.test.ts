@@ -48,7 +48,20 @@ function fakeBrowser(onLine: boolean) {
   };
 }
 
-function setup(options: { online?: boolean } = {}) {
+/** The page's login, as far as live text follows it: covered while signed out or someone else is signed in. */
+function fakeLogin() {
+  const listeners = new Set<() => void>();
+  const login = {
+    signedOut: false,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  return { login, cover: (on: boolean) => ((login.signedOut = on), listeners.forEach((listener) => listener())) };
+}
+
+function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
   const sockets: FakeSocket[] = [];
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
   const browser = fakeBrowser(options.online ?? true);
@@ -65,6 +78,7 @@ function setup(options: { online?: boolean } = {}) {
     },
     clearTimer: (timer) => void ((timer as { cleared: boolean }).cleared = true),
     online: createOnlineStatus(browser.target),
+    login: options.login,
   });
   /** Runs the timers that would fire within `ms`. */
   const elapse = (ms: number) => {
@@ -310,4 +324,27 @@ test("a socket the browser will not even open makes live text unavailable instea
   });
   live.start();
   assert.equal(live.getSnapshot().status, "unavailable");
+});
+
+test("covered for a new login, live text sends nothing and opens no connection; the page's own user back, it goes on", () => {
+  const { login, cover } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(new Uint8Array([1]).buffer);
+  assert.equal(sockets[0].frames().length, 1);
+
+  cover(true); // the login ended, or someone else signed in: the cookie is not the page's user's any more
+  assert.equal(sockets[0].closedWith, 1000, "the connection closes");
+  live.pushFrame(new Uint8Array([2]).buffer);
+  sockets[0].drop(1000); // the browser's close
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no connection while covered, whatever the backoff says");
+  assert.deepEqual(sockets[0].frames().map((frame) => new Uint8Array(frame)[0]), [1], "and no audio sent after the cover");
+  assert.equal(live.getSnapshot().status, "reconnecting", "live text waits; the recording goes on");
+
+  cover(false);
+  assert.equal(sockets.length, 2, "the page's own user is back");
+  sockets[1].ready();
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [2], "what was recorded meanwhile goes now");
 });
