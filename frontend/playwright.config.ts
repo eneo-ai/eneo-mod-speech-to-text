@@ -50,11 +50,13 @@ export default defineConfig({
     // 200 % zoom of a 1280 × 800 window.
     { name: "zoom-200", use: { viewport: { width: 640, height: 400 }, deviceScaleFactor: 2, colorScheme: "light" }, testIgnore: noSnapshots },
     { name: "forced-colors", use: { ...laptop, colorScheme: "light", forcedColors: "active" }, testIgnore: noSnapshots },
+    // Every per-state scan on every desktop width; keyboard order and focus management do not change past
+    // 1920, so the keyboard walks and dialog focus tests run there only.
     { name: "ultrawide-1920-light", use: { ...wide(1920, 1080), colorScheme: "light" }, testIgnore: noSnapshots },
     { name: "ultrawide-1920-dark", use: { ...wide(1920, 1080), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "ultrawide-2560-light", use: { ...wide(2560, 1440), colorScheme: "light" }, testIgnore: noSnapshots },
+    { name: "ultrawide-2560-light", use: { ...wide(2560, 1440), colorScheme: "light" }, testIgnore: scanOnly },
     { name: "ultrawide-2560-dark", use: { ...wide(2560, 1440), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "ultrawide-3440-light", use: { ...wide(3440, 1440), colorScheme: "light" }, testIgnore: noSnapshots },
+    { name: "ultrawide-3440-light", use: { ...wide(3440, 1440), colorScheme: "light" }, testIgnore: scanOnly },
     { name: "ultrawide-3440-dark", use: { ...wide(3440, 1440), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
   ],
