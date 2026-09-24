@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -23,7 +23,7 @@ import { SubmittingView, type SubmissionState } from "@/components/flow/Submitti
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
+import { LeaveContext, useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
 import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
   approveReviewCheckpoint,
@@ -605,58 +605,57 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (loadError) return <FlowUnavailable error={loadError} />;
   if (!published || !contract) return <FlowSkeleton />;
 
+  // The views that can hold unsent work: the leave question, and their top bar's exits through it.
+  const withLeave = (view: ReactNode) => (
+    <LeaveContext.Provider value={leaving}>
+      {view}
+      {leaving.question}
+    </LeaveContext.Provider>
+  );
+
   if (run.kind === "idle") {
-    return (
-      <>
-        <FlowInput
-          published={published}
-          contract={contract}
-          input={input}
-          ownerId={user.id}
-          notice={runError}
-          earlierRuns={earlierRuns}
-          onOpenRun={resumeRun}
-          onMoreRuns={() => void earlier.more()}
-          unsentRecordings={unsentRecordings}
-          onLeave={leaving.onLeave}
-        />
-        {leaving.question}
-      </>
+    return withLeave(
+      <FlowInput
+        published={published}
+        contract={contract}
+        input={input}
+        ownerId={user.id}
+        notice={runError}
+        earlierRuns={earlierRuns}
+        onOpenRun={resumeRun}
+        onMoreRuns={() => void earlier.more()}
+        unsentRecordings={unsentRecordings}
+        onLeave={leaving.onLeave}
+      />,
     );
   }
 
   if (run.kind === "submitting") {
-    return (
-      <>
-        <SubmittingView
-          published={published}
-          submission={submission}
-          onCancelSubmission={onCancelSubmission}
-        />
-        {leaving.question}
-      </>
+    return withLeave(
+      <SubmittingView
+        published={published}
+        submission={submission}
+        onCancelSubmission={onCancelSubmission}
+      />,
     );
   }
 
   if (run.kind === "awaiting_review") {
-    return (
-      <>
-        <ReviewView
-          flowId={flowId}
-          published={published}
-          checkpoint={run.checkpoint}
-          runState={{ run: run.run, steps: run.steps }}
-          runError={runError}
-          onApprove={(cp) =>
-            onApproveAndResume(cp, { run: run.run, steps: run.steps })
-          }
-          onSaveEdit={onSaveEdit}
-          onReject={(cp, reason) =>
-            onReject(cp, { run: run.run, steps: run.steps }, reason)
-          }
-        />
-        {leaving.question}
-      </>
+    return withLeave(
+      <ReviewView
+        flowId={flowId}
+        published={published}
+        checkpoint={run.checkpoint}
+        runState={{ run: run.run, steps: run.steps }}
+        runError={runError}
+        onApprove={(cp) =>
+          onApproveAndResume(cp, { run: run.run, steps: run.steps })
+        }
+        onSaveEdit={onSaveEdit}
+        onReject={(cp, reason) =>
+          onReject(cp, { run: run.run, steps: run.steps }, reason)
+        }
+      />,
     );
   }
 

@@ -344,6 +344,59 @@ test("signed out, Back still asks in a dialog that is shown, focused and answera
   await view.unmount();
 });
 
+test("while leaving would lose typed work, the top bar's links and Logga ut ask first", async (t) => {
+  const { createElement } = await import("react");
+  const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const navigated: string[] = [];
+  let loggedOut = 0;
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    loggedOut += 1;
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  function Review() {
+    const leaving = useLeaveQuestion(true, "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.");
+    return createElement(
+      LeaveContext.Provider,
+      { value: leaving },
+      createElement(FlowTopBar, { title: "Sammanfattning", titleIsHeading: false }),
+      leaving.question,
+    );
+  }
+  await settle(); // the history step the last test's guard took back
+  const view = await mount(await signedIn(createElement(Review), navigated));
+  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+
+  await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
+  assert.ok(asked(), "Alla flöden asks");
+  assert.deepEqual(navigated, []);
+  await view.act(async () => button(asked()!, "Stanna kvar")!.click());
+
+  const account = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
+  await view.act(async () => {
+    account.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));
+    await settle();
+  });
+  const logOut = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!;
+  await view.act(async () => {
+    logOut.click();
+    await settle();
+  });
+  assert.ok(asked(), "Logga ut asks");
+  assert.equal(loggedOut, 0, "not signed out yet");
+  await view.act(async () => {
+    button(asked()!, "Lämna sidan")!.click();
+    await settle();
+  });
+  assert.equal(loggedOut, 1, "signed out once the user chose to leave");
+  await view.unmount();
+});
+
 test("a review edit comes back on its revision; once the review changed it is neither applied nor lost, but waits as din version", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const { createElement, useState } = await import("react");

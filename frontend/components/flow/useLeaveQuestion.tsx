@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type MouseEvent } from "react";
+import { createContext, useEffect, useRef, useState, type MouseEvent } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -14,6 +14,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { PortalContainer } from "@/components/ui/portal-container";
 import { guardHistory } from "@/lib/leave-guard";
+
+/** The page's leave question for the exits in its top bar: the links, and signing out. */
+export const LeaveContext = createContext<{ onLeave(event: MouseEvent): void; leaveFirst(goOn: () => void): void }>({
+  onLeave: () => undefined,
+  leaveFirst: (goOn) => goOn(),
+});
 
 /**
  * While `active`, leaving the flow page asks first, in the page's own dialog: browser back through the history
@@ -63,5 +69,8 @@ export function useLeaveQuestion(active: boolean, warning: string) {
       </AlertDialog>
     </PortalContainer.Provider>
   );
-  return { onLeave, question };
+  /** Any other way off the page (signing out): asked first, then `goOn`. */
+  const leaveFirst = (goOn: () => void) => (active ? ask(goOn) : goOn());
+
+  return { onLeave, leaveFirst, question };
 }
