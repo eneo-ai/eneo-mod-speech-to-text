@@ -43,6 +43,26 @@ test("a focus outline that cannot be seen is not taken for a focus indicator", a
   expect((await focusStop(page))?.indicator, "black on white").toBe(true);
 });
 
+test("focus is measured where a phone shows it, also on a page wider than the phone", async ({ browser }) => {
+  // Content past the edge makes a phone's layout viewport wider than the screen; scrolled down, the box a script
+  // reads and the picture of the screen then disagree by the visual viewport's offset.
+  const context = await browser.newContext({ viewport: { width: 320, height: 568 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.setContent(`
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      body { margin: 0; font: 16px sans-serif; }
+      button { margin: 8px; outline: none; }
+      button:focus-visible { outline: 3px solid #111; outline-offset: 2px; }
+    </style>
+    <div style="width: 360px; height: 1200px"></div>
+    <button>Längst ner</button>
+    <div style="height: 900px"></div>`);
+  await page.keyboard.press("Tab");
+  expect((await focusStop(page))?.indicator, "a black ring on white").toBe(true);
+  await context.close();
+});
+
 test("a hit area grown by a pseudo-element is measured from the padding box, where its insets apply", async ({ page }) => {
   // 24 px across the border box, 16 px inside its 4 px border: grown by 12 px, the hit area is 40 px, not 48.
   await page.setContent(`

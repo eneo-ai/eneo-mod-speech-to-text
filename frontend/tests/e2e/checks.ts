@@ -247,7 +247,11 @@ export async function focusStop(page: Page): Promise<FocusStop | null> {
 type Rect = { x: number; y: number; width: number; height: number };
 
 /** How much of the owner's rendering focus changes by 3:1 or more, in CSS px². */
-async function seenChange(page: Page, owner: Rect): Promise<number> {
+async function seenChange(page: Page, box: Rect): Promise<number> {
+  // A phone's page wider than its screen widens the layout viewport, and the screen (the visual viewport) then
+  // scrolls inside it: the box a script reads is moved to where the screenshot sees it.
+  const shift = await page.evaluate(() => ({ x: visualViewport?.offsetLeft ?? 0, y: visualViewport?.offsetTop ?? 0 }));
+  const owner = { ...box, x: box.x - shift.x, y: box.y - shift.y };
   // Outlines and rings sit up to a few pixels outside the box.
   const viewport = page.viewportSize()!;
   const x = Math.max(0, Math.floor(owner.x - 6)), y = Math.max(0, Math.floor(owner.y - 6));
