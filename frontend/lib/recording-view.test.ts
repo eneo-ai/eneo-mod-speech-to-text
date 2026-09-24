@@ -49,7 +49,7 @@ test("silence is reported after about 15 s without sound, and gone as soon as so
 });
 
 test("the bar's line says what matters now, calmly, and always what Stoppa does", () => {
-  const base = { phase: "recording" as const, silent: false, lowSpace: false, persistent: true, wakeLock: true };
+  const base = { phase: "recording" as const, silent: false, lowSpace: false, persistent: true, refused: null, wakeLock: true };
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
   assert.deepEqual(recordingNotices(base), [stop]);
   assert.deepEqual(recordingNotices({ ...base, silent: true }), [
@@ -61,6 +61,14 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     "Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.",
     "Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.",
     "Låt skärmen vara tänd under inspelningen.",
+    stop,
+  ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), [
+    "Enheten har inte plats för att spara mer. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+    stop,
+  ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }), [
+    "Enheten kan inte spara mer av inspelningen. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
     stop,
   ]);
   assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [

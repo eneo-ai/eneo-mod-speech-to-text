@@ -939,9 +939,15 @@ test("the recorder says when space runs low or the device stops keeping the reco
   try {
     recorders[0].emit("y");
     await until(() => !capture.getSnapshot().persistent, "the lives-only-in-this-tab notice");
+    assert.equal(capture.getSnapshot().refused, "full", "the device is full, and the recorder says so");
+    recorders[0].emit("z");
+    await settle();
+    assert.equal(capture.getSnapshot().status, "recording", "and records on, into this tab");
   } finally {
     IDBObjectStore.prototype.put = put;
   }
+  const { id } = capture.getSnapshot().recording!;
+  assert.match((await texts(await store.readParts(id)))[0], /yz$/, "nothing recorded after the refusal is lost");
   await capture.stop();
   assert.equal(capture.getSnapshot().persistent, false, "the ready state after Stoppa still says so");
 });

@@ -5,6 +5,7 @@ import type { DetailValue, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
+import type { DeviceRefusal } from "./recording-store";
 
 const APP = "Tal till text";
 const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
@@ -55,12 +56,14 @@ export function recordingNotices({
   silent,
   lowSpace,
   persistent,
+  refused,
   wakeLock,
 }: {
   phase: SessionPhase;
   silent: boolean;
   lowSpace: boolean;
   persistent: boolean;
+  refused: DeviceRefusal | null;
   wakeLock: boolean;
 }): string[] {
   const notices: string[] = [];
@@ -69,7 +72,11 @@ export function recordingNotices({
   if (lowSpace) {
     notices.push("Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.");
   }
-  if (!persistent) {
+  if (refused) {
+    // Once, calmly: nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
+    const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
+    notices.push(`${cause} Inspelningen fortsätter, men välj Spara som fil när du stoppar.`);
+  } else if (!persistent) {
     notices.push("Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.");
   }
   if (!wakeLock) notices.push("Låt skärmen vara tänd under inspelningen.");

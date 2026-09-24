@@ -347,8 +347,22 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   await store.append(recording.id, 0, new Blob(["c"]), 3_000);
 
   assert.equal(store.persistent, false);
+  assert.equal(store.refused(recording.id), "full", "and says the device is full");
   assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
   assert.equal((await store.get(recording.id))?.parts[0].bytes, 3);
+
+  const other = await store.create(meeting);
+  await store.startPart(other.id);
+  assert.equal(store.refused(other.id), null, "a recording the device keeps");
+  IDBObjectStore.prototype.put = function () {
+    throw new DOMException("The database connection is closing.", "InvalidStateError");
+  };
+  try {
+    await store.append(other.id, 0, new Blob(["a"]), 1_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  assert.equal(store.refused(other.id), "failed", "a refusal that is not a full device");
 });
 
 test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {

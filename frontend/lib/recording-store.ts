@@ -21,6 +21,7 @@ export type RecordingState =
   | "submitted";
 
 export type RecordingInputMode = "record" | "stream";
+export type DeviceRefusal = "full" | "failed";
 
 export interface RecordingPart {
   index: number;
@@ -239,7 +240,8 @@ export class RecordingStore {
   private live = new Map<string, StoredRecording>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
-  private overflowed = new Set<string>();
+  // Recordings the device stopped keeping, and why: its storage is full, or it refused the write.
+  private overflowed = new Map<string, DeviceRefusal>();
 
   constructor(
     private backend: Backend,
@@ -250,6 +252,11 @@ export class RecordingStore {
   /** False when the audio (or part of it) lives only in this tab. */
   get persistent(): boolean {
     return this.durable && this.overflowed.size === 0;
+  }
+
+  /** Why the device stopped keeping this recording partway, or null while it keeps it. */
+  refused(id: string): DeviceRefusal | null {
+    return this.overflowed.get(id) ?? null;
   }
 
   /** A new recording, leased by this tab until `release`. */
@@ -563,9 +570,10 @@ export class RecordingStore {
       try {
         await this.backend.put(recording, chunk);
         return;
-      } catch {
+      } catch (error) {
         // Full disk or a lost database connection: keep the rest in this tab.
-        this.overflowed.add(recording.id);
+        const full = error instanceof DOMException && error.name === "QuotaExceededError";
+        this.overflowed.set(recording.id, full ? "full" : "failed");
       }
     }
     await this.overflow.put(recording, chunk);

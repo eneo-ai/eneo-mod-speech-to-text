@@ -19,6 +19,7 @@ import {
   IN_USE_ELSEWHERE,
   NOT_ON_DEVICE,
   sealed,
+  type DeviceRefusal,
   type NewRecording,
   type RecordingStore,
   type StoredRecording,
@@ -62,6 +63,8 @@ export interface CaptureSnapshot {
   error: string | null;
   lowSpace: boolean;
   persistent: boolean;
+  /** The device stopped keeping this recording partway (full, or a refused write): the rest is in this tab only. */
+  refused: DeviceRefusal | null;
   /** Recording time left before the flow's last allowed file is full; null when the flow sets no such limit. */
   remainingMs: number | null;
   /** The recording stopped because the flow takes no more files. */
@@ -144,6 +147,7 @@ export class RecordingCapture {
     error: null,
     lowSpace: false,
     persistent: true,
+    refused: null,
     remainingMs: null,
     limitReached: false,
   };
@@ -208,7 +212,7 @@ export class RecordingCapture {
         return;
       }
       this.prepare(limits, 0, 0);
-      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent });
+      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent, refused: null });
       this.record(stream);
       await this.takeWakeLock();
       if (generation !== this.generation) this.dispose();
@@ -354,6 +358,7 @@ export class RecordingCapture {
         recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
         lowSpace,
         persistent: store.persistent,
+        refused: store.refused(found.id),
       });
       this.record(stream);
       await this.takeWakeLock();
@@ -416,7 +421,10 @@ export class RecordingCapture {
       void part.index
         .then((index) => store.append(id, index, data, durationMs))
         .then(() => {
-          if (store.persistent !== this.snapshot.persistent) this.set({ persistent: store.persistent });
+          const refused = store.refused(id);
+          if (store.persistent !== this.snapshot.persistent || refused !== this.snapshot.refused) {
+            this.set({ persistent: store.persistent, refused });
+          }
         })
         .catch(() => undefined);
       this.chunks += 1;
