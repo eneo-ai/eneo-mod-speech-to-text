@@ -221,7 +221,7 @@ export function SpeakerNamingDialog({
             {refusal}
           </p>
         )}
-        <div className="flex justify-end gap-2 border-t border-border px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           <DialogClose asChild>
             <Button type="button" variant="ghost">
               Avbryt
