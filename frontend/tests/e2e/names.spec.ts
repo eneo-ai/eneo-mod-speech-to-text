@@ -161,6 +161,19 @@ test("a renewal that signed in someone else says so and keeps the page's login",
   await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
 });
 
+test("a renewal after the login ended is refused: the window says so, stays, and tells no tab it signed in", async ({ page }) => {
+  await page.addInitScript(() => {
+    const said: unknown[] = [];
+    (window as unknown as { said: unknown[] }).said = said;
+    new BroadcastChannel("tal-till-text:session").addEventListener("message", (event) => said.push(event.data));
+  });
+  await open(page, "/inloggad?fel=utgangen");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
+  await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in igen i Tal till text.");
+  await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");
+  expect(await page.evaluate(() => (window as unknown as { said: unknown[] }).said)).toEqual([]);
+});
+
 test("with the access code, the warning renews the login by the code, on the page", async ({ page }) => {
   let endsIn = 200;
   await page.route("**/api/auth/status", (route) =>

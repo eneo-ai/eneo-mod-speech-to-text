@@ -116,6 +116,10 @@ class PendingLogin(BaseModel):
     renew_tenant_id: str | None = None
 
 
+def with_query(path: str, query: str) -> str:
+    return f"{path}{'&' if '?' in path else '?'}{query}"
+
+
 def module_path(value: str | None) -> str:
     """``value`` when it is a path on the module's own origin, else the flow list."""
     if value and value.startswith("/") and not value.startswith("//") and "\\" not in value:
@@ -243,6 +247,11 @@ class ModuleAuth:
         # A login in a separate window (before the session ends) returns to a page that closes it, and is
         # bound to the user signed in now, so the page's work never passes to someone else.
         current = self.sessions.get(session_id) if renew else None
+        if renew and not isinstance(current, EneoSsoSession):
+            # Nobody left to bind to: refused, not an ordinary login that anyone could finish under this page.
+            refused = RedirectResponse(url=with_query(module_path(next_path), "fel=utgangen"), status_code=303)
+            refused.headers["Cache-Control"] = "no-store"
+            return refused
         pending = self.state_serializer.dumps(
             PendingLogin(
                 state=state,
@@ -398,8 +407,7 @@ class ModuleAuth:
             token.user.id != pending.renew_user_id or token.tenant_id != pending.renew_tenant_id
         ):
             logger.warning("A session renewal signed in a different user; the session is kept")
-            joiner = "&" if "?" in pending.next else "?"
-            response = RedirectResponse(url=f"{pending.next}{joiner}fel=annan-anvandare", status_code=303)
+            response = RedirectResponse(url=with_query(pending.next, "fel=annan-anvandare"), status_code=303)
             self._delete_state_cookie(response)
             self._secure_callback_response(response)
             return response
