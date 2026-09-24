@@ -319,3 +319,54 @@ test("Back during an upload asks first and says what leaving stops", async () =>
   assert.equal(dialog(), null);
   await view.unmount();
 });
+
+test("a review edit comes back on its revision; once the review changed it is neither applied nor lost, but waits as din version", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement, useState } = await import("react");
+  const { useReviewDraft } = await import("../components/useReviewDraft");
+  type Edit = { text?: string };
+  let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
+  let setRevision: (revision: number) => void = () => {};
+  function Review({ start }: { start: number }) {
+    const [revision, set] = useState(start);
+    setRevision = set;
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-1", revision);
+    return null;
+  }
+  const first = await mount(createElement(Review, { start: 3 }));
+  await first.act(async () => draft.keep({ text: "Min text" }));
+  await first.unmount(); // a reload
+  const again = await mount(createElement(Review, { start: 3 }));
+  assert.deepEqual(draft.initial, { text: "Min text" }, "back on the revision it was made on");
+
+  await again.act(async () => setRevision(4)); // the save was refused as out of date, and the latest came in
+  assert.equal(draft.initial, null, "never applied to the latest by itself");
+  assert.deepEqual(draft.yours, { text: "Min text" }, "but kept, as din version");
+  await again.act(async () => draft.drop()); // nothing typed on the latest: nothing to throw away
+  assert.deepEqual(draft.yours, { text: "Min text" }, "not lost by the editor becoming clean");
+  await again.act(async () => draft.keep({ text: "Ny text på den senaste" }));
+  await again.unmount();
+  const later = await mount(createElement(Review, { start: 4 }));
+  assert.deepEqual(draft.initial, { text: "Ny text på den senaste" });
+  assert.deepEqual(draft.yours, { text: "Min text" }, "an edit of the latest does not replace din version");
+
+  let taken: Edit | null = null;
+  await later.act(async () => {
+    taken = draft.takeYours();
+    draft.keep(taken!); // the page puts it in the editor, as its current edit
+  });
+  assert.deepEqual(taken, { text: "Min text" });
+  assert.equal(draft.yours, null, "taken");
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await later.act(async () => setRevision(5)); // refused again, before anything else was typed
+  await later.act(async () => {
+    draft.keep(draft.takeYours()!);
+  });
+  assert.equal(draft.yours, null, "taken straight from the refused save");
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await later.act(async () => setRevision(6));
+  await later.act(async () => draft.dropYours());
+  assert.equal(draft.yours, null, "Behåll den senaste lets it go");
+  await later.unmount();
+  assert.equal(window.sessionStorage.length, 0, "nothing left behind");
+});

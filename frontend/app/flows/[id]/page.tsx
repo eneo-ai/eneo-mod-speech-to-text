@@ -21,6 +21,8 @@ import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
+import { useReviewDraft } from "@/components/useReviewDraft";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
 import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
@@ -46,7 +48,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
-import { browserDrafts, clearDraft, readDraft, unstoredDrafts, writeDraft } from "@/lib/drafts";
+import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -95,8 +97,8 @@ import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { formatDeadline } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
 
-/** A review's unsaved edit: the text, or the speakers' names, on the revision it was made on. */
-type ReviewDraft = { revision: number; text?: string; speakerRows?: SpeakerMappingRow[] };
+/** A review's unsaved edit: the text, or the speakers' names. */
+type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
 
 interface PageProps {
   // App Router levererar params som en Promise och packar upp dem med React.use().
@@ -795,18 +797,15 @@ function ReviewView({
     [checkpoint.original_payload_json, payload],
   );
 
-  // Unsaved edits outlast a reload (a lost login, a tab put to sleep) for this person, on the revision they were made on.
+  // Unsaved edits outlast a reload (a lost login, a tab put to sleep) for this person; see useReviewDraft.
   const user = useAuthenticatedUser();
   const draftName = `review:${runState.run.id}:${checkpoint.id}`;
-  const unsaved = () => {
-    const draft = readDraft<ReviewDraft>(browserDrafts(), user.id, draftName);
-    return draft?.revision === checkpoint.revision ? draft : null;
-  };
+  const draft = useReviewDraft<ReviewEdit>(user.id, draftName, checkpoint.revision);
 
   const initialText = extractCheckpointText(payload);
-  const [text, setText] = useState<string>(() => unsaved()?.text ?? initialText);
-  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(() => unsaved()?.speakerRows ?? proposals);
-  const [editing, setEditing] = useState<boolean>(() => unsaved()?.text !== undefined);
+  const [text, setText] = useState<string>(() => draft.initial?.text ?? initialText);
+  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(() => draft.initial?.speakerRows ?? proposals);
+  const [editing, setEditing] = useState<boolean>(() => draft.initial?.text !== undefined);
   const [saving, setSaving] = useState<boolean>(false);
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
@@ -815,10 +814,29 @@ function ReviewView({
 
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
-    const draft = unsaved();
-    setText(draft?.text ?? extractCheckpointText(payload));
-    setSpeakerRows(draft?.speakerRows ?? buildSpeakerRows(payload));
+    setText(draft.initial?.text ?? extractCheckpointText(payload));
+    setSpeakerRows(draft.initial?.speakerRows ?? buildSpeakerRows(payload));
   }, [checkpoint.revision, checkpoint.current_payload_json]);
+
+  function editText(next: string) {
+    setText(next);
+    if (next === initialText) draft.drop();
+    else draft.keep({ text: next });
+  }
+
+  // "Använd din version" after the review changed: into the editor, as its current edit, for the user to save.
+  function takeYours() {
+    const yours = draft.takeYours();
+    if (yours?.text !== undefined) {
+      setText(yours.text);
+      setEditing(true);
+      draft.keep({ text: yours.text });
+    }
+    if (yours?.speakerRows) {
+      setSpeakerRows(yours.speakerRows);
+      draft.keep({ speakerRows: yours.speakerRows });
+    }
+  }
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
   // korrigeringar för spelaren.
@@ -853,10 +871,6 @@ function ReviewView({
     JSON.stringify(buildEditedMapping(speakerRows)) !==
       JSON.stringify(buildEditedMapping(proposals));
   const dirty = isSpeakerMapping ? speakersDirty : textDirty;
-  useEffect(() => {
-    if (!dirty) return clearDraft(browserDrafts(), user.id, draftName);
-    writeDraft(browserDrafts(), user.id, draftName, { revision: checkpoint.revision, ...(isSpeakerMapping ? { speakerRows } : { text }) });
-  }, [dirty, text, speakerRows, checkpoint.revision, draftName, isSpeakerMapping, user.id]);
 
   const speakerNames = useMemo(() => speakerNamesFromRows(speakerRows), [speakerRows]);
   const unmapped = isSpeakerMapping ? unmappedSpeakerLabels(speakerRows) : [];
@@ -887,9 +901,13 @@ function ReviewView({
   );
 
   async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
-    setSpeakerRows(rows.filter((row) => !row.split || row.name));
+    const named = rows.filter((row) => !row.split || row.name);
+    setSpeakerRows(named);
+    draft.keep({ speakerRows: named });
     const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
-    return "error" in saved ? saved.error : null;
+    if ("error" in saved) return saved.error;
+    draft.drop();
+    return null;
   }
 
   async function saveAndApprove() {
@@ -912,7 +930,7 @@ function ReviewView({
       }
       cp = updated;
       // Saved, whether or not this view is shown again before the run goes on.
-      clearDraft(browserDrafts(), user.id, draftName);
+      draft.drop();
     }
     try {
       await onApprove(cp);
@@ -926,8 +944,10 @@ function ReviewView({
     setSaving(true);
     const saved = await onSaveEdit(checkpoint, pendingEditedValue());
     setSaving(false);
-    // Refused (a lost login, a newer revision): the edit stays open with the text, for Spara ändring again.
-    if (!("error" in saved)) setEditing(false);
+    // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
+    if ("error" in saved) return;
+    setEditing(false);
+    draft.drop();
   }
 
   async function submitReject() {
@@ -1134,7 +1154,7 @@ function ReviewView({
           {editable && editing ? (
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => editText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
               aria-labelledby={`${fieldId}-innehall`}
               className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
@@ -1154,6 +1174,7 @@ function ReviewView({
                     onClick={() => {
                       setText(initialText);
                       setEditing(false);
+                      draft.drop();
                     }}
                     disabled={saving}
                     className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 coarse:min-h-11"
@@ -1183,6 +1204,22 @@ function ReviewView({
           )}
         </section>
 
+        {draft.yours && (
+          <Alert className="mb-3">
+            <AlertTitle>Din ändring sparades inte</AlertTitle>
+            <AlertDescription>
+              <p>Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={takeYours}>
+                  Använd din version
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => draft.dropYours()}>
+                  Behåll den senaste
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         {runError && (
           <p className="text-[13px] text-destructive mb-3" role="alert">
             {runError}
