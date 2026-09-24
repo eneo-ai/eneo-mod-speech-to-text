@@ -17,18 +17,18 @@ export function useElapsed(capture: RecordingCapture, running: boolean): number 
   return elapsed;
 }
 
-/** True while a recording input has stayed silent for about 15 s. */
+/** True while a recording input has given digital silence (a muted or wrong microphone) for about 15 s. */
 export function useSilence(stream: MediaStream | null, recording: boolean): boolean {
   const [silent, setSilent] = useState(false);
   const watch = useRef(new SilenceWatch());
-  useInputLevel(stream, (level, running) => {
+  useInputLevel(stream, (_level, running, peak) => {
     // A suspended audio context reads as silence; say nothing then.
     if (!recording || !running) {
       watch.current.reset();
       setSilent(false);
       return;
     }
-    setSilent(watch.current.update(level, Date.now()));
+    setSilent(watch.current.update(peak, Date.now()));
   });
   useEffect(() => {
     if (!recording) setSilent(false);

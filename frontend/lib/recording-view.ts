@@ -11,18 +11,22 @@ const APP = "Tal till text";
 const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
 const INTERRUPTED = "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.";
 
-/** Silence after `afterMs` below `floor`; sound, or a reset, starts the count over. */
+/**
+ * Digital silence for `afterMs`: every read's loudest sample below `floor`, which only a muted or wrong input
+ * gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
+ * the count over.
+ */
 export class SilenceWatch {
   private quietSince: number | null = null;
 
   constructor(
     private readonly afterMs = 15_000,
-    // About −55 dBFS on the level scale: room tone, not speech.
-    private readonly floor = 0.1,
+    // Two steps of 16-bit audio (about −84 dBFS).
+    private readonly floor = 2 / 32_768,
   ) {}
 
-  update(level: number, now: number): boolean {
-    if (level >= this.floor) {
+  update(peak: number, now: number): boolean {
+    if (peak >= this.floor) {
       this.quietSince = null;
       return false;
     }
@@ -68,7 +72,7 @@ export function recordingNotices({
 }): string[] {
   const notices: string[] = [];
   if (phase === "interrupted") notices.push(INTERRUPTED);
-  if (phase === "recording" && silent) notices.push("Vi hör inget ljud. Kontrollera att mikrofonen är på.");
+  if (phase === "recording" && silent) notices.push("Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
   if (lowSpace) {
     notices.push("Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.");
   }

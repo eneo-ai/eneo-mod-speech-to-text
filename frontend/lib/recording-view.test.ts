@@ -35,17 +35,25 @@ test("the tab title follows the state, so a user in another tab sees that record
   assert.equal(pageTitle("ready", 754_000, "Nämndmöte"), "Klart · Tal till text");
 });
 
-test("silence is reported after about 15 s without sound, and gone as soon as sound returns", () => {
+test("a muted or wrong microphone is reported after 15 s of digital silence, and no longer as soon as sound returns", () => {
   const watch = new SilenceWatch();
-  assert.equal(watch.update(0.02, 0), false);
-  assert.equal(watch.update(0.02, 14_900), false);
-  assert.equal(watch.update(0.02, 15_000), true);
-  assert.equal(watch.update(0.6, 15_100), false, "sound returns");
-  assert.equal(watch.update(0.02, 15_200), false, "the quiet starts over");
-  assert.equal(watch.update(0.02, 30_199), false);
-  assert.equal(watch.update(0.02, 30_200), true);
+  // The loudest sample of each read: zeros, as a muted or wrong input gives them.
+  assert.equal(watch.update(0, 0), false);
+  assert.equal(watch.update(0, 14_900), false);
+  assert.equal(watch.update(0, 15_000), true);
+  assert.equal(watch.update(0.3, 15_100), false, "sound returns");
+  assert.equal(watch.update(0, 15_200), false, "the silence starts over");
+  assert.equal(watch.update(1 / 32_768, 30_199), false, "one step of 16-bit audio is still digital silence");
+  assert.equal(watch.update(0, 30_200), true);
   watch.reset();
-  assert.equal(watch.update(0.02, 30_300), false, "a pause starts the count over");
+  assert.equal(watch.update(0, 30_300), false, "a pause starts the count over");
+});
+
+test("a quiet stretch of a meeting is never reported: a real microphone's room tone is not digital silence", () => {
+  const watch = new SilenceWatch();
+  // A quiet room through a laptop microphone: peaks around −70 dBFS, far below speech, far above zero.
+  const roomTone = 10 ** (-70 / 20);
+  for (let now = 0; now <= 10 * 60_000; now += 66) assert.equal(watch.update(roomTone, now), false, `at ${now} ms`);
 });
 
 test("the bar's line says what matters now, calmly, and always what Stoppa does", () => {
@@ -53,7 +61,7 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
   const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
   assert.deepEqual(recordingNotices(base), [stop]);
   assert.deepEqual(recordingNotices({ ...base, silent: true }), [
-    "Vi hör inget ljud. Kontrollera att mikrofonen är på.",
+    "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.",
     stop,
   ]);
   assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), [stop], "no silence warning while paused");
