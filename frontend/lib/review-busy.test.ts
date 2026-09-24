@@ -61,6 +61,8 @@ function eneo(t: { after: (fn: () => void) => void }) {
   return { calls, release };
 }
 
+const rejected: string[] = [];
+
 async function review() {
   const { createElement, useState } = await import("react");
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
@@ -88,7 +90,10 @@ async function review() {
         }
       },
       onSaveEdit: async () => ({ error: "unused" }),
-      onReject: async () => undefined,
+      onReject: async () => {
+        rejected.push("reject");
+        throw new Error("503");
+      },
     });
   }
   return mount(
@@ -143,3 +148,38 @@ test("the save's answer drops only the draft of the version it sent, never a new
   await view.act(async () => draft.drop({ text: "Second edit typed while waiting." }));
   assert.equal(draft.initial, null, "the version that was sent goes");
 });
+
+test("a rejection cannot start while Spara och fortsätt is under way, nor end its lock", async (t) => {
+  rejected.length = 0;
+  const server = eneo(t);
+  const view = await review();
+  await view.act(async () => button(view.container, "Redigera")!.click());
+  const field = () => view.container.querySelector("textarea")!;
+  await view.act(async () => type(field(), "First edit"));
+  await view.act(async () => button(view.container, "Avvisa")!.click());
+  const reason = () => [...view.container.querySelectorAll("textarea")].find((el) => el !== field())!;
+  await view.act(async () => type(reason(), "Fel möte."));
+
+  await view.act(async () => {
+    button(view.container, "Spara och fortsätt")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  assert.deepEqual(server.calls, ["edit"], "the save is under way");
+  const confirm = button(view.container, "Bekräfta avvisning")!;
+  assert.equal(confirm.disabled, true, "no second mutation while one is in flight");
+  await view.act(async () => {
+    confirm.click();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  assert.deepEqual(rejected, [], "the rejection did not start");
+  assert.equal(field().readOnly, true, "still locked: only the save's own end unlocks it");
+  await view.act(async () => type(field(), "Newer text."));
+
+  await view.act(async () => {
+    server.release();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.deepEqual(server.calls, ["edit", "approve"]);
+  assert.equal(field().value, "First edit", "what went is what was on screen when it was sent");
+});
+

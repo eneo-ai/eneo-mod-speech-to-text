@@ -124,8 +124,10 @@ export function ReviewView({
   const [text, setText] = useState<string>(() => draft.initial?.text ?? initialText);
   const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(() => draft.initial?.speakerRows ?? proposals);
   const [editing, setEditing] = useState<boolean>(() => draft.initial?.text !== undefined);
-  const [saving, setSaving] = useState<boolean>(false);
-  const [working, setWorking] = useState<"approve" | "reject" | null>(null);
+  // What is being sent to Eneo; while anything is, nothing else starts and nothing can be edited.
+  const [working, setWorking] = useState<"save" | "approve" | "reject" | null>(null);
+  const inFlight = useRef(false);
+  const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
   const fieldId = useId();
@@ -239,62 +241,72 @@ export function ReviewView({
     return { speakerRows: named };
   }
 
-  async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
-    const sent = keepNames(rows);
-    const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
-    if ("error" in saved) return saved.error;
-    draft.drop(sent);
-    return null;
+  /**
+   * One request to Eneo at a time: `work` runs only when nothing else is in flight, and only its own end makes the
+   * review idle again. Otherwise it answers `refused`.
+   */
+  async function exclusively<T>(kind: "save" | "approve" | "reject", work: () => Promise<T>, refused: T): Promise<T> {
+    if (inFlight.current) return refused;
+    inFlight.current = true;
+    setWorking(kind);
+    try {
+      return await work();
+    } finally {
+      inFlight.current = false;
+      setWorking(null);
+    }
+  }
+  const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
+
+  function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
+    return exclusively("save", async () => {
+      const sent = keepNames(rows);
+      const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
+      if ("error" in saved) return saved.error;
+      draft.drop(sent);
+      return null;
+    }, STILL_SENDING);
   }
 
   /**
    * Godkänn / Spara och fortsätt, from the page or the naming dialog: the page's edit or the names, saved when the
    * pause does not hold them yet, then approved and resumed (onContinue). Returns why it did not go on, or null.
    */
-  async function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
-    setWorking("approve");
-    // Pågående korrigeringssparningar måste landa före godkännandet, som
-    // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
-    const correctionsSaved = await saveQueue.current;
-    if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
-      setWorking(null);
-      return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
-    }
-    // Approved already: nothing is saved any more, the run is only resumed.
-    const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
-    // The version sent, as its draft holds it: only that is dropped once Eneo has it.
-    const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
-    try {
-      return await onContinue(checkpoint, edit, {
+  function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
+    return exclusively("approve", async () => {
+      // Pågående korrigeringssparningar måste landa före godkännandet, som
+      // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
+      const correctionsSaved = await saveQueue.current;
+      if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
+        return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
+      }
+      // Approved already: nothing is saved any more, the run is only resumed.
+      const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+      // The version sent, as its draft holds it: only that is dropped once Eneo has it.
+      const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
+      return onContinue(checkpoint, edit, {
         describe: names ? (err) => namingRefusal(err, names) : undefined,
         // Saved now or held already, whether or not this view is shown again before the run goes on.
         onSaved: () => draft.drop(sent),
       });
-    } finally {
-      setWorking(null);
-    }
+    }, STILL_SENDING);
   }
 
-  async function saveOnly() {
+  function saveOnly() {
     if (!dirty) return;
     const sent: ReviewEdit = { text };
-    setSaving(true);
-    const saved = await onSaveEdit(checkpoint, pendingEditedValue());
-    setSaving(false);
-    // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
-    if ("error" in saved) return;
-    setEditing(false);
-    draft.drop(sent);
+    void exclusively("save", async () => {
+      const saved = await onSaveEdit(checkpoint, pendingEditedValue());
+      // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
+      if ("error" in saved) return;
+      setEditing(false);
+      draft.drop(sent);
+    }, undefined);
   }
 
-  async function submitReject() {
+  function submitReject() {
     if (!rejectReason.trim()) return;
-    setWorking("reject");
-    try {
-      await onReject(checkpoint, rejectReason.trim());
-    } finally {
-      setWorking(null);
-    }
+    void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()).catch(() => undefined), undefined);
   }
 
   const busy = working !== null || saving;
@@ -327,11 +339,11 @@ export function ReviewView({
             setShowReject(false);
             setRejectReason("");
           }}
-          disabled={working === "reject"}
+          disabled={busy}
         >
           Avbryt
         </Button>
-        <Button type="button" onClick={submitReject} disabled={!rejectReason.trim() || working === "reject"}>
+        <Button type="button" onClick={submitReject} disabled={!rejectReason.trim() || busy}>
           {working === "reject" ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin" /> : null}
           Bekräfta avvisning
         </Button>
@@ -346,7 +358,7 @@ export function ReviewView({
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
         </p>
       ) : (
-        <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={working !== null || showReject}>
+        <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={busy || showReject}>
           Avvisa
         </Button>
       )}
