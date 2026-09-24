@@ -394,6 +394,32 @@ export const STATES: State[] = [
     },
   },
   {
+    name: "microphone-muted",
+    go: async (page) => {
+      // Chromium's fake microphone cannot be muted: the track says it is and fires the event, as a headset's route
+      // change does. The recording goes on, and the bar says so.
+      await page.addInitScript(() => {
+        const streams: MediaStream[] = [];
+        (window as unknown as { streams: MediaStream[] }).streams = streams;
+        const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = async (constraints) => {
+          const stream = await open(constraints);
+          streams.push(stream);
+          return stream;
+        };
+      });
+      await recordingSays(page, "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.", () =>
+        page.evaluate(() => {
+          for (const stream of (window as unknown as { streams: MediaStream[] }).streams)
+            for (const track of stream.getAudioTracks()) {
+              Object.defineProperty(track, "muted", { configurable: true, get: () => true });
+              track.dispatchEvent(new Event("mute"));
+            }
+        }),
+      );
+    },
+  },
+  {
     name: "signed-out",
     go: async (page) => {
       await setup(page);
