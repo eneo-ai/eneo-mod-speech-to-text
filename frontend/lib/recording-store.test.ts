@@ -311,6 +311,38 @@ test("a sent recording partly kept only in this tab is never offered as unsent w
   assert.equal(await recovered.get(recording.id), null);
 });
 
+test("a sent recording the device has marked but cannot delete leaves nothing in this tab: a later recording is kept on the device again", async () => {
+  const store = await openRecordingStore(device());
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  const put = IDBObjectStore.prototype.put;
+  const remove = IDBObjectStore.prototype.delete;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["b"]), 2_000); // the rest lives in this tab only
+    assert.equal(store.persistent, false);
+    IDBObjectStore.prototype.delete = function () {
+      throw new DOMException("Connection to Indexed Database server lost", "UnknownError");
+    };
+    await store.accept(recording.id, "run-1"); // the device's copy is marked "submitted"; deleting it fails
+    store.release(recording.id);
+    await settle();
+    IDBObjectStore.prototype.put = put; // the device has room again
+    const next = await store.create(meeting);
+    await store.startPart(next.id);
+    await store.append(next.id, 0, new Blob(["c"]), 1_000);
+    assert.equal(store.refused(recording.id), null, "the accepted audio is not held in this tab");
+    assert.equal(store.persistent, true, "the new recording is on the device, not only in this tab");
+  } finally {
+    IDBObjectStore.prototype.put = put;
+    IDBObjectStore.prototype.delete = remove;
+  }
+});
+
 test("a sent recording the device will neither mark nor delete stays hidden in this tab, which holds it until the delete succeeds", async () => {
   const store = await openRecordingStore(device());
   const recording = await store.create(meeting);

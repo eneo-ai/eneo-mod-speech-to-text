@@ -405,14 +405,16 @@ export class RecordingStore {
   accept(id: string, runId: string): Promise<void> {
     return this.change(async () => {
       const recording = await this.load(id);
+      // The device's copy says "submitted": what this tab holds is no longer needed.
+      let marked = false;
       if (recording) {
         const accepted: StoredRecording = { ...recording, state: "submitted", runId };
         await this.write(accepted);
         // The device's copy says so too, also when the rest lived only in this tab: a reload never offers it.
-        if (this.overflowed.has(id)) await this.backend.put(accepted).catch(() => undefined);
+        marked = !this.overflowed.has(id) || (await this.backend.put(accepted).then(() => true, () => false));
       }
       // A copy left by a failed delete is "submitted": never offered again, and deleted when the store next opens.
-      await this.delete(id).catch(() => undefined);
+      await this.delete(id).catch(() => (marked ? this.forget(id) : undefined));
     });
   }
 
@@ -588,6 +590,11 @@ export class RecordingStore {
     // The device's copy first: what this tab holds goes only once that is gone, so a failed delete leaves no
     // older copy to come back as the recording.
     await this.backend.delete(id);
+    await this.forget(id);
+  }
+
+  /** What this tab holds of the recording. */
+  private async forget(id: string): Promise<void> {
     this.live.delete(id);
     this.overflowed.delete(id);
     await this.overflow.delete(id);
