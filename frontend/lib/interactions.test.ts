@@ -297,3 +297,25 @@ test("the phone top bar's back chevron is named like every other way back", asyn
   assert.equal(chevron?.getAttribute("aria-label"), "Alla flöden");
   await view.unmount();
 });
+
+test("Back during an upload asks first and says what leaving stops", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { leaveGuarded, leaveWarning } = await import("./recording-view");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  function Page() {
+    // A file on its way: the page holds no audio.
+    return useLeaveQuestion(leaveGuarded(true, "uploading", false), leaveWarning(true, "setup", true)).question;
+  }
+  const view = await mount(await signedIn(createElement(Page), []));
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  await view.act(async () => {
+    window.history.back();
+    await settle();
+  });
+  assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
+  assert.match(dialog()?.textContent ?? "", /Uppladdningen avbryts/);
+  await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
+  assert.equal(dialog(), null);
+  await view.unmount();
+});

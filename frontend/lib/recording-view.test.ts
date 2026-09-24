@@ -7,6 +7,7 @@ import {
   atBottom,
   detailsSummary,
   keepDetailsOpen,
+  leaveGuarded,
   leaveWarning,
   liveStatusLine,
   pageTitle,
@@ -338,6 +339,24 @@ test("details a send found missing stay unfolded while they are filled in, until
   assert.equal(open, true, "the field being typed in stays in view");
   open = false; // the user folds them
   assert.equal(keepDetailsOpen(open, []), false);
+});
+
+test("leaving asks while audio is on the page or an upload is under way, not while the run starts", () => {
+  assert.equal(leaveGuarded(false, "idle", true), true, "a recording on the page");
+  assert.equal(leaveGuarded(false, "idle", false), false, "nothing to lose");
+  assert.equal(leaveGuarded(true, "idle", false), true, "sent, before its first byte");
+  assert.equal(leaveGuarded(true, "uploading", false), true, "a file on its way");
+  // The page writes the run's address as it starts; the guard's history entry, taken back later, would take it along.
+  assert.equal(leaveGuarded(true, "starting", true), false, "the run starting");
+});
+
+test("leaving an upload says it stops, and what is kept of a recording", () => {
+  assert.equal(leaveWarning(true, "setup", true), "Uppladdningen avbryts, och filen behöver väljas igen.");
+  assert.equal(leaveWarning(true, "ready", true), "Uppladdningen avbryts. Det som spelats in finns kvar bland osända inspelningar.");
+  assert.equal(
+    leaveWarning(false, "ready", true),
+    "Uppladdningen avbryts. Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Välj Spara som fil först om du vill behålla den.",
+  );
 });
 
 test("leaving promises the recording back only when the device keeps it, and otherwise says how to keep it", () => {

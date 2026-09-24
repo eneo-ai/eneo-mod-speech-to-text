@@ -21,6 +21,7 @@ import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
+import { useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
 import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
   approveReviewCheckpoint,
@@ -53,6 +54,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
+import { leaveGuarded, leaveWarning } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
@@ -209,6 +211,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   // Leaving asks first while audio is being recorded or waits to become a document.
   const holdsAudio = snapshot.phase !== "setup";
+  const submitting = run.kind === "submitting";
+  const leaving = useLeaveQuestion(
+    leaveGuarded(submitting, submission.kind, holdsAudio),
+    leaveWarning(input.persistent, snapshot.phase, submitting),
+  );
   useEffect(() => {
     const shouldWarn = holdsAudio || submission.kind !== "idle";
     if (!shouldWarn) return;
@@ -594,27 +601,34 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   if (run.kind === "idle") {
     return (
-      <FlowInput
-        published={published}
-        contract={contract}
-        input={input}
-        ownerId={user.id}
-        notice={runError}
-        earlierRuns={earlierRuns}
-        onOpenRun={resumeRun}
-        onMoreRuns={() => void earlier.more()}
-        unsentRecordings={unsentRecordings}
-      />
+      <>
+        <FlowInput
+          published={published}
+          contract={contract}
+          input={input}
+          ownerId={user.id}
+          notice={runError}
+          earlierRuns={earlierRuns}
+          onOpenRun={resumeRun}
+          onMoreRuns={() => void earlier.more()}
+          unsentRecordings={unsentRecordings}
+          onLeave={leaving.onLeave}
+        />
+        {leaving.question}
+      </>
     );
   }
 
   if (run.kind === "submitting") {
     return (
-      <SubmittingView
-        published={published}
-        submission={submission}
-        onCancelSubmission={onCancelSubmission}
-      />
+      <>
+        <SubmittingView
+          published={published}
+          submission={submission}
+          onCancelSubmission={onCancelSubmission}
+        />
+        {leaving.question}
+      </>
     );
   }
 
