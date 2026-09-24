@@ -348,3 +348,22 @@ test("covered for a new login, live text sends nothing and opens no connection; 
   sockets[1].ready();
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [2], "what was recorded meanwhile goes now");
 });
+
+test("covered before live text was ready, it waits too, and starts once the page's own user is back, with the audio kept", () => {
+  const { login, cover } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  live.pushFrame(new Uint8Array([7]).buffer); // before ready: kept for the session
+  cover(true);
+  assert.equal(sockets[0].closedWith, 1000);
+  sockets[0].drop(1000);
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "nothing opens while covered");
+  assert.equal(live.getSnapshot().status, "reconnecting", "waiting, not given up");
+
+  cover(false);
+  assert.equal(sockets.length, 2);
+  sockets[1].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7], "the audio from before the cover goes now");
+});

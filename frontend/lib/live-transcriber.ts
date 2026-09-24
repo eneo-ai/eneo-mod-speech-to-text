@@ -134,18 +134,13 @@ export class LiveTranscriber {
     this.connect();
   }
 
-  /** Covered for a new login: the connection closes at once, and nothing more goes to it. */
+  /**
+   * Covered for a new login: the connection is retired at once, as a break to come back from, also before its
+   * first `ready`; connect() then waits for the page's own user.
+   */
   private cover() {
     this.clear("retryTimer");
-    const socket = this.socket;
-    if (!socket || this.stopping) return;
-    this.ready = false;
-    if (this.snapshot.started) this.set({ status: "reconnecting" });
-    try {
-      socket.close(1000);
-    } catch {
-      // Already closing.
-    }
+    this.fail();
   }
 
   /** The next 100 ms of audio; sent when live, kept (bounded) until then. */
