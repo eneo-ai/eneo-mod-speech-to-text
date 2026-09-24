@@ -19,6 +19,7 @@ import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
+import { CopyButton } from "@/components/flow/CopyButton";
 import { FlowRunPage } from "@/components/flow/FlowRunPage";
 import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
@@ -811,6 +812,8 @@ function ReviewView({
 
   // "Använd din version" after the review changed: into the editor, as its current edit, for the user to save.
   function takeYours() {
+    // Approved, the saved decision is final: no draft is put in its place.
+    if (decided) return;
     const yours = draft.takeYours();
     if (yours?.text !== undefined) {
       setText(yours.text);
@@ -951,8 +954,9 @@ function ReviewView({
   const busy = working !== null || saving;
   // The transcript's own changes must be saved before the flow goes on.
   const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem));
+  // Approval folded the transcript's corrections in; a correction made after it would never reach the document.
   const canCorrect =
-    isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy;
+    isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
   const rejectSection = showReject ? (
     <section className="paper-card p-4 mb-5">
@@ -1161,7 +1165,8 @@ function ReviewView({
             />
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+              {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{decided ? initialText : text}</ReactMarkdown>
             </article>
           )}
 
@@ -1204,7 +1209,25 @@ function ReviewView({
           )}
         </section>
 
-        {draft.yours && (
+        {draft.yours && decided && (
+          // Kept to copy, never to continue with: the approved text above is the decision.
+          <Alert className="mb-3">
+            <AlertTitle>Din ändring sparades inte</AlertTitle>
+            <AlertDescription>
+              <p>Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den.</p>
+              {draft.yours.text !== undefined && (
+                <p className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-3 text-ink">{draft.yours.text}</p>
+              )}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
+                <Button type="button" size="sm" variant="ghost" onClick={() => draft.dropYours()}>
+                  Ta bort din version
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+        {draft.yours && !decided && (
           <Alert className="mb-3">
             <AlertTitle>Din ändring sparades inte</AlertTitle>
             <AlertDescription>

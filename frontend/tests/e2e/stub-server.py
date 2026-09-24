@@ -157,6 +157,7 @@ RUNS = {
     "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     # Approved, and its resume did not go through: the saved names stand and the run only has to go on.
     "run-review-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    "run-review-text-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-corrected": DONE,
 }
 SPLIT = "Ramen höjs med två procent"
@@ -203,7 +204,10 @@ TEXT_CHECKPOINT = {
 }
 APPROVED_CHECKPOINT = dict(CHECKPOINT, flow_run_id="run-review-approved", state="approved", revision=3,
                           approved_at="2026-09-24T09:05:00Z")
-PAUSES = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT, "run-review-approved": APPROVED_CHECKPOINT}
+APPROVED_TEXT_CHECKPOINT = dict(TEXT_CHECKPOINT, flow_run_id="run-review-text-approved", state="approved", revision=3,
+                               approved_at="2026-12-20T08:05:00Z")
+PAUSES = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT, "run-review-approved": APPROVED_CHECKPOINT,
+          "run-review-text-approved": APPROVED_TEXT_CHECKPOINT}
 # Runs started through the page: id -> status reads so far.
 STARTED = {}
 NEW_RUN = itertools.count(1)

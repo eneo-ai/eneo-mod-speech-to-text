@@ -84,6 +84,10 @@ test("an approved pause whose resume did not go through shows the saved names re
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
+  // Approval has folded the transcript's corrections in; nothing corrected now would reach the document.
+  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Rätta repliken/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /ändra talare$/ })).toHaveCount(0);
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeDisabled();
@@ -97,6 +101,28 @@ test("an approved pause whose resume did not go through shows the saved names re
   await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
   expect(writes, "nothing saved or approved again").toEqual(["resume"]);
+});
+
+test("an approved text review shows the saved decision; a draft from before it is only a note, and Fortsätt only resumes", async ({ page }) => {
+  const draft = "Kommunstyrelsen beslutade att sänka budgetramen.";
+  await page.addInitScript((text) => {
+    const key = "tal-till-text:draft:user-1:review:run-review-text-approved:cp-2";
+    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify({ revision: 2, edit: { text } }));
+  }, draft);
+  await run(page, "run-review-text-approved");
+  await expect(page.getByText("Granskningen är redan godkänd. Välj Fortsätt så går flödet vidare.")).toBeVisible();
+  await expect(page.getByRole("article")).toHaveText("Kommunstyrelsen beslutade att höja budgetramen med två procent.");
+  await expect(page.getByRole("button", { name: "Använd din version" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Redigera" })).toHaveCount(0);
+  await expect(page.getByText(draft), "the draft stays to copy").toBeVisible();
+
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET" && request.url().includes("/review-checkpoints/")) writes.push(request.url().split("/").filter(Boolean).at(-1)!);
+  });
+  await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  expect(writes).toEqual(["resume"]);
 });
 
 test("the review's text fields are labelled", async ({ page }, info) => {

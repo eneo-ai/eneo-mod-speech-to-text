@@ -991,6 +991,7 @@ function TurnBlock({
               return (
                 <LineEditor
                   key={part.segmentIndex}
+                  locked={!canEdit}
                   initial={textForEdit(part.segmentIndex)}
                   corrected={corrected}
                   label={`Rätta repliken från ${partClock}`}
@@ -1270,6 +1271,7 @@ function PickerOption({ value, label, name, markName = name, note }: { value: st
 }
 
 function LineEditor({
+  locked,
   initial,
   corrected,
   label,
@@ -1277,6 +1279,8 @@ function LineEditor({
   onCancel,
   onRevert,
 }: {
+  /** Correcting ended while the editor was open (the review was approved): what was typed stays to copy, unsaved. */
+  locked: boolean;
   initial: string;
   corrected: boolean;
   label: string;
@@ -1299,7 +1303,7 @@ function LineEditor({
       className="my-1"
       // Focus moving between the text and its buttons stays in the editor; leaving it all saves or closes.
       onBlur={(e) => {
-        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        if (locked || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
         if (value !== initial) onCommit(value);
         else onCancel();
       }}
@@ -1308,6 +1312,7 @@ function LineEditor({
         ref={ref}
         value={value}
         rows={1}
+        readOnly={locked}
         aria-label={label}
         onChange={(e) => {
           setValue(e.target.value);
@@ -1315,6 +1320,10 @@ function LineEditor({
           e.target.style.height = `${e.target.scrollHeight}px`;
         }}
         onKeyDown={(e) => {
+          if (locked) {
+            if (e.key === "Escape") onCancel();
+            return;
+          }
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             onCommit(value);
@@ -1325,21 +1334,30 @@ function LineEditor({
         }}
         className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[15px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-primary coarse:text-base"
       />
-      <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-mute">
-        {/* Pressed without taking the focus, so leaving the field does not save first. */}
-        <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)}>
-          Spara
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={onCancel}>
-          Avbryt
-        </Button>
-        <span className="coarse:hidden">Enter sparar · Esc avbryter</span>
-        {corrected && (
-          <Button type="button" size="sm" variant="link" className="px-0" onMouseDown={(e) => e.preventDefault()} onClick={onRevert}>
-            Återställ originalet
+      {locked ? (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-mute">
+          <span>Rättningen kan inte sparas längre. Kopiera texten om du vill behålla den.</span>
+          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            Stäng
           </Button>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-mute">
+          {/* Pressed without taking the focus, so leaving the field does not save first. */}
+          <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)}>
+            Spara
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={onCancel}>
+            Avbryt
+          </Button>
+          <span className="coarse:hidden">Enter sparar · Esc avbryter</span>
+          {corrected && (
+            <Button type="button" size="sm" variant="link" className="px-0" onMouseDown={(e) => e.preventDefault()} onClick={onRevert}>
+              Återställ originalet
+            </Button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

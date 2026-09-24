@@ -305,3 +305,41 @@ test("each passage's count of its speaker's passages is not a scan of the whole 
   await player(long, { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
   assert.ok(asked < 20 * long.length, `asked ${asked} times for ${long.length} passages`);
 });
+
+test("an approval that arrives while a passage is being corrected ends the correcting: the typed text stays only as a note, never saved", async () => {
+  const { createElement, useState } = await import("react");
+  const { TranscriptPlayer } = await import("../components/TranscriptPlayer");
+  const saved: CorrectionSet[] = [];
+  let approve!: () => void;
+  function Review() {
+    const [editable, setEditable] = useState(true);
+    approve = () => setEditable(false);
+    return createElement(TranscriptPlayer, {
+      segments: meeting,
+      fileCount: 0,
+      audioSrcFor: () => "",
+      speakerNames: {},
+      textFallback: "",
+      reviewEnabled: false,
+      editable,
+      corrections: EMPTY,
+      onCorrectionsChange: (next: CorrectionSet) => saved.push(next),
+    });
+  }
+  const view = await mount(createElement(Review));
+  await view.act(async () => button(view.container, "Rätta repliken från 0:02")!.click());
+  await view.act(async () => type(view.container.querySelector("textarea")!, "Första punkten gäller skolan."));
+
+  await view.act(async () => approve());
+  const note = view.container.querySelector("textarea")!;
+  assert.ok(note.readOnly, "what was typed stays to copy, read-only");
+  assert.equal(note.value, "Första punkten gäller skolan.");
+  assert.match(view.container.textContent ?? "", /Rättningen kan inte sparas längre/);
+  assert.equal(button(view.container, "Spara"), null, "nothing to save it with");
+  await view.act(async () => note.dispatchEvent(new window.FocusEvent("focusout", { bubbles: true })));
+  await view.act(async () => button(view.container, "Stäng")!.click());
+  assert.equal(view.container.querySelector("textarea"), null);
+  assert.deepEqual(saved, [], "never applied");
+  assert.equal(button(view.container, "Rätta repliken från 0:00"), null, "no correcting once approved");
+  assert.equal(button(view.container, "Talare 1, ändra talare"), null, "nor changing a speaker");
+});
