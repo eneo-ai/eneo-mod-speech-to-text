@@ -184,10 +184,16 @@
 
 
 /* Keyboard focus stays local to the control, including native selects. */
-.transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible,
-.transcript-player:focus-visible {
+.transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible {
   outline: 2px solid hsl(var(--primary));
   outline-offset: 3px;
+}
+/* The shortcut region is often taller than the screen and sits in a clipping card: its ring is drawn inside, and the
+   docked player, on screen whenever the transcript is, carries it too. Outlines, so forced colours keep them. */
+.transcript-player:focus-visible,
+.transcript-player:focus-visible [data-docked-player] {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: -2px;
 }
 .transcript-editor:has(.transcript-editor-text:focus-visible) .transcript-focus-label {
   outline: 2px solid hsl(var(--primary));
