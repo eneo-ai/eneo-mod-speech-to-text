@@ -136,7 +136,12 @@ export function SpeakerNamingDialog({
             Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriptet och dokumentet när du fortsätter.
           </DialogDescription>
         </DialogHeader>
-        <ul className="min-h-0 flex-1 overflow-y-auto px-6 [&_input]:scroll-my-3">
+        {/* Tab past the last control comes back to the first without scrolling to it (the dialog's focus trap
+            moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}
+        <ul
+          className="min-h-0 flex-1 overflow-y-auto px-6 [&_input]:scroll-my-3"
+          onFocus={(e) => e.target.scrollIntoView?.({ block: "nearest" })}
+        >
           {draft.map((row) => {
             const count = passages(row.label);
             const said = quote(row.label);
