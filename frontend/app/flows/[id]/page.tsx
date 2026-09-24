@@ -22,13 +22,13 @@ import { RunResult } from "@/components/flow/RunResult";
 import { FlowRunPage } from "@/components/flow/FlowRunPage";
 import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
+import { continueFromPause } from "@/lib/review-continue";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LeaveContext, useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
 import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
-  approveReviewCheckpoint,
   cancelRun,
   editReviewCheckpoint,
   getActiveReviewCheckpoint,
@@ -36,10 +36,7 @@ import {
   getRun,
   getRunContract,
   inputFileAudioUrl,
-  isReviewCheckpointApproved,
   rejectReviewCheckpoint,
-  resumeReviewCheckpoint,
-  reviewResumeIdempotencyKey,
   type FlowGraph,
   type FlowPublished,
   type FlowRunPublic,
@@ -406,82 +403,32 @@ function FlowDetail({ flowId }: { flowId: string }) {
     void follow(runId);
   }
 
-  /** Approves the pause and resumes the run; returns why it did not, or null (also shown on the page). */
-  async function onApproveAndResume(
+  /**
+   * Saves the pause's edit, approves and resumes (continueFromPause); returns why the flow did not go on, or null,
+   * also shown on the page. The pause's newer states reach the view, so trying again starts from them.
+   */
+  async function onContinue(
     checkpoint: FlowRunReviewCheckpointPublic,
-    runState: { run: FlowRunPublic; steps: FlowRunStep[] },
+    runId: string,
+    edit: ReviewEditedValue | null,
+    { describe = friendlyError, onSaved }: { describe?: (err: unknown) => string; onSaved?: () => void } = {},
   ): Promise<string | null> {
     setRunError(null);
+    const hold = (cp: FlowRunReviewCheckpointPublic) =>
+      setRun((prev) => (prev.kind === "awaiting_review" ? { ...prev, checkpoint: cp } : prev));
     try {
-      const approved = await approveCheckpointWithRecovery(
-        checkpoint,
-        runState.run.id,
-      );
-      const resumedRun = await resumeCheckpointWithRecovery(
-        approved,
-        runState.run,
-      );
+      const resumedRun = await continueFromPause({ flowId, runId, checkpoint, edit, onCheckpoint: hold, onSaved });
       // Följ körningen igen — den är nu i "running".
       setRun({ kind: "running", run: resumedRun, graph: null });
       void follow(resumedRun.id);
       return null;
     } catch (err) {
-      const message = friendlyError(err);
+      const message = describe(err);
       setRunError(message);
+      // The pause as Eneo has it now (a newer revision, or approved), so trying again starts from it.
+      const latest = await getActiveReviewCheckpoint(flowId, runId).catch(() => null);
+      if (latest?.id === checkpoint.id) hold(latest);
       return message;
-    }
-  }
-
-  async function approveCheckpointWithRecovery(
-    checkpoint: FlowRunReviewCheckpointPublic,
-    runId: string,
-  ): Promise<FlowRunReviewCheckpointPublic> {
-    try {
-      return await approveReviewCheckpoint(flowId, runId, checkpoint.id, {
-        expected_checkpoint_revision: checkpoint.revision,
-      });
-    } catch (err) {
-      const latest = await getActiveReviewCheckpoint(flowId, runId).catch(
-        () => null,
-      );
-      if (latest?.id === checkpoint.id && isReviewCheckpointApproved(latest)) {
-        return latest;
-      }
-      throw err;
-    }
-  }
-
-  async function resumeCheckpointWithRecovery(
-    checkpoint: FlowRunReviewCheckpointPublic,
-    run: FlowRunPublic,
-  ): Promise<FlowRunPublic> {
-    const idempotencyKey = reviewResumeIdempotencyKey(run.id, checkpoint.id);
-    try {
-      const resumed = await resumeReviewCheckpoint(
-        flowId,
-        run.id,
-        checkpoint.id,
-        { expected_checkpoint_revision: checkpoint.revision },
-        idempotencyKey,
-      );
-      return resumed.run;
-    } catch (err) {
-      const [latestRun, latestCheckpoint] = await Promise.all([
-        getRun(flowId, run.id).catch(() => null),
-        getActiveReviewCheckpoint(flowId, run.id).catch(() => null),
-      ]);
-      const checkpointMovedPastActiveReview =
-        !latestCheckpoint ||
-        (latestCheckpoint.id === checkpoint.id &&
-          latestCheckpoint.state === "resumed");
-      if (
-        latestRun &&
-        latestRun.status !== "awaiting_review" &&
-        checkpointMovedPastActiveReview
-      ) {
-        return latestRun;
-      }
-      throw err;
     }
   }
 
@@ -687,9 +634,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         checkpoint={run.checkpoint}
         runState={{ run: run.run, steps: run.steps }}
         runError={runError}
-        onApprove={(cp) =>
-          onApproveAndResume(cp, { run: run.run, steps: run.steps })
-        }
+        onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
         onSaveEdit={onSaveEdit}
         onReject={(cp, reason) =>
           onReject(cp, { run: run.run, steps: run.steps }, reason)
@@ -776,7 +721,7 @@ function ReviewView({
   checkpoint,
   runState,
   runError,
-  onApprove,
+  onContinue,
   onSaveEdit,
   onReject,
 }: {
@@ -785,8 +730,12 @@ function ReviewView({
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
-  /** Returns why the run did not go on, or null. */
-  onApprove: (cp: FlowRunReviewCheckpointPublic) => Promise<string | null>;
+  /** Saves the edit (when the pause does not hold it yet), approves and resumes; returns why not, or null. */
+  onContinue: (
+    cp: FlowRunReviewCheckpointPublic,
+    edit: ReviewEditedValue | null,
+    options?: { describe?: (err: unknown) => string; onSaved?: () => void },
+  ) => Promise<string | null>;
   onSaveEdit: (
     cp: FlowRunReviewCheckpointPublic,
     editedValue: ReviewEditedValue,
@@ -915,24 +864,24 @@ function ReviewView({
     [shownSegments],
   );
 
-  /** The names to the pause's edit, kept as a draft until Eneo has them. */
-  async function storeNames(rows: SpeakerMappingRow[]) {
+  /** The names on the page, and kept as a draft until Eneo has them. */
+  function keepNames(rows: SpeakerMappingRow[]) {
     const named = rows.filter((row) => !row.split || row.name);
     setSpeakerRows(named);
     draft.keep({ speakerRows: named });
-    return onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
   }
 
   async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
-    const saved = await storeNames(rows);
+    keepNames(rows);
+    const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
     if ("error" in saved) return saved.error;
     draft.drop();
     return null;
   }
 
   /**
-   * Saves what changed (the page's edit, or the names from "Namnge talarna"), then approves and resumes: the one
-   * way the flow goes on from here. Returns why it did not, or null.
+   * Godkänn / Spara och fortsätt, from the page or the naming dialog: the page's edit or the names, saved when the
+   * pause does not hold them yet, then approved and resumed (onContinue). Returns why it did not go on, or null.
    */
   async function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
     setWorking("approve");
@@ -943,21 +892,14 @@ function ReviewView({
       setWorking(null);
       return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
     }
-    let cp = checkpoint;
-    if (names || dirty) {
-      setSaving(true);
-      const updated = names ? await storeNames(names) : await onSaveEdit(checkpoint, pendingEditedValue());
-      setSaving(false);
-      if ("error" in updated) {
-        setWorking(null);
-        return updated.error;
-      }
-      cp = updated;
-      // Saved, whether or not this view is shown again before the run goes on.
-      draft.drop();
-    }
+    if (names) keepNames(names);
+    const edit = names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
     try {
-      return await onApprove(cp);
+      return await onContinue(checkpoint, edit, {
+        describe: names ? (err) => namingRefusal(err, names) : undefined,
+        // Saved, whether or not this view is shown again before the run goes on.
+        onSaved: () => draft.drop(),
+      });
     } finally {
       setWorking(null);
     }

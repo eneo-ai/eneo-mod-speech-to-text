@@ -66,15 +66,18 @@ test("a step that will stop for the person says what it asks while it is ahead, 
   await expect(page.getByRole("listitem").filter({ hasText: "Transkribera" })).not.toContainText("Här ");
 });
 
-test("naming the speakers and going on is one action: the names are saved, then the run goes on", async ({ page }, info) => {
+test("naming the speakers and going on is one action: a changed name is saved, then the run goes on", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
-  const saved: unknown[] = [];
+  const saved: { edited_value: { speakers: { label: string; name: string | null }[] } }[] = [];
   page.on("request", (request) => {
     if (request.method() === "PATCH" && request.url().includes("/review-checkpoints/")) saved.push(request.postDataJSON());
   });
-  await page.getByRole("dialog", { name: "Namnge talarna" }).getByRole("button", { name: "Spara och fortsätt" }).click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
+  await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
-  expect(saved, "the names were saved before the run went on").toHaveLength(1);
+  expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
+  expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
 
 test("the review's text fields are labelled", async ({ page }, info) => {
