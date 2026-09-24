@@ -3,9 +3,10 @@
 import { Laptop, Loader2, LogOut, Moon, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
+import { LeaveContext } from "@/components/flow/useLeaveQuestion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,8 @@ export function AccountMenu() {
   const [themeReady, setThemeReady] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = userDisplayName(user);
+  // Signing out leaves the page: asked first where that would lose something.
+  const { leaveFirst } = useContext(LeaveContext);
 
   useEffect(() => setThemeReady(true), []);
 
@@ -96,7 +99,7 @@ export function AccountMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={loggingOut}
-          onSelect={() => void onLogout()}
+          onSelect={() => leaveFirst(() => void onLogout())}
         >
           {loggingOut ? <Loader2 className="animate-spin" /> : <LogOut />}
           {loggingOut ? "Loggar ut…" : "Logga ut"}

@@ -13,7 +13,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ApiError, loginWithAccessCode, type AuthMode } from "@/lib/api";
+import { ApiError, loginWithAccessCode, type AuthMode, type AuthenticatedUser } from "@/lib/api";
+import { userDisplayName } from "@/lib/user-identity";
 
 /** Where the login window says it has signed in again; every tab of the module listens. */
 export const SESSION_CHANNEL = "tal-till-text:session";
@@ -25,15 +26,29 @@ const WARN_BEFORE_MS = 5 * 60_000;
  * The login ends at a fixed time, which only a new login can move. Five
  * minutes before, a dialog says so and offers that new login without leaving
  * the page, so nothing on it is lost (WCAG 2.2.1, extend): with Eneo SSO in a
- * window of its own, with the access code by entering it here.
+ * window of its own, with the access code by entering it here. Once it has
+ * ended (`signedOut`) the same dialog stays open until that new login, over a
+ * page that keeps everything, a recording included.
  */
 export function SessionEndWarning({
   endsAt,
   mode,
+  signedOut = false,
+  owner = null,
+  otherUser = null,
+  controlsRef,
   onRenewed,
 }: {
   endsAt: number | null;
   mode: AuthMode | null;
+  /** The login has ended: nothing on the page is within reach until the new login. */
+  signedOut?: boolean;
+  /** The page's user, the one to sign in as. */
+  owner?: AuthenticatedUser | null;
+  /** Someone else signed in instead: the page stays covered until its own user does. */
+  otherUser?: AuthenticatedUser | null;
+  /** Signed out, the place where the page puts a recording's Pausa and Stoppa, which need no login. */
+  controlsRef?: (element: HTMLElement | null) => void;
   /** The access code signed in again: read the new end. */
   onRenewed: () => void;
 }) {
@@ -60,8 +75,10 @@ export function SessionEndWarning({
   }, [endsAt]);
 
   function renewInWindow() {
-    // `renew`: the backend binds this login to the user signed in now.
-    const login = window.open("/api/auth/login?renew=1&next=%2Finloggad", "tal-till-text-inloggning", "popup,width=520,height=700");
+    // Before the end, `renew` binds the new login to the user signed in now. After it the backend has nobody to
+    // bind to and refuses a renewal: a new login instead, and AuthGate unlocks the page only for its own user.
+    const url = signedOut ? "/api/auth/login?next=%2Finloggad" : "/api/auth/login?renew=1&next=%2Finloggad";
+    const login = window.open(url, "tal-till-text-inloggning", "popup,width=520,height=700");
     setProblem(login === null ? "Fönstret kunde inte öppnas. Tillåt popup-fönster för Tal till text och försök igen." : null);
   }
 
@@ -86,8 +103,16 @@ export function SessionEndWarning({
 
   const time = endsAt === null ? "" : new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
   const byCode = mode === "access_code";
+  // The words stay as they were while the dialog closes: the new login would otherwise flash the warning's.
+  const [words, setWords] = useState({ ended: signedOut, other: otherUser });
+  if ((open || signedOut) && (words.ended !== signedOut || words.other?.id !== otherUser?.id)) {
+    setWords({ ended: signedOut, other: otherUser });
+  }
+  const { ended, other } = words;
+  const action = ended ? "Logga in igen" : "Fortsätt arbeta";
+  // Signed out, nothing but the new login closes it.
   return (
-    <AlertDialog open={open} onOpenChange={setOpen}>
+    <AlertDialog open={open || signedOut} onOpenChange={setOpen}>
       <AlertDialogContent
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -95,14 +120,22 @@ export function SessionEndWarning({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>Du loggas snart ut</AlertDialogTitle>
+          <AlertDialogTitle>{ended ? "Du behöver logga in igen" : "Du loggas snart ut"}</AlertDialogTitle>
           <AlertDialogDescription>
-            Inloggningen upphör kl. {time}.{" "}
+            {other && owner
+              ? `Du är inloggad som ${userDisplayName(other)}. Logga in som ${userDisplayName(owner)} för att fortsätta. `
+              : ended
+                ? "Inloggningen har upphört. "
+                : `Inloggningen upphör kl. ${time}. `}
             {byCode
-              ? "Ange åtkomstkoden och välj Fortsätt arbeta för att fortsätta. Allt på den här sidan finns kvar."
-              : "Fortsätt arbeta loggar in dig igen i ett nytt fönster. Allt på den här sidan finns kvar."}
+              ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
+              : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
+            {ended
+              ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
+              : "Allt på den här sidan finns kvar."}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {signedOut && <div ref={controlsRef} />}
         {byCode && (
           <form id={`${codeId}-form`} className="flex flex-col gap-2" onSubmit={(event) => void renewWithCode(event)}>
             <Label htmlFor={codeId}>Åtkomstkod</Label>
@@ -125,14 +158,14 @@ export function SessionEndWarning({
           </p>
         )}
         <AlertDialogFooter>
-          <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>
+          {!ended && <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>}
           {byCode ? (
             <Button type="submit" form={`${codeId}-form`} className="h-11" disabled={sending}>
-              Fortsätt arbeta
+              {action}
             </Button>
           ) : (
             <Button type="button" className="h-11" onClick={renewInWindow}>
-              Fortsätt arbeta
+              {action}
             </Button>
           )}
         </AlertDialogFooter>

@@ -48,7 +48,20 @@ function fakeBrowser(onLine: boolean) {
   };
 }
 
-function setup(options: { online?: boolean } = {}) {
+/** The page's login, as far as live text follows it: covered while signed out or someone else is signed in. */
+function fakeLogin() {
+  const listeners = new Set<() => void>();
+  const login = {
+    signedOut: false,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  };
+  return { login, cover: (on: boolean) => ((login.signedOut = on), listeners.forEach((listener) => listener())) };
+}
+
+function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
   const sockets: FakeSocket[] = [];
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
   const browser = fakeBrowser(options.online ?? true);
@@ -65,6 +78,7 @@ function setup(options: { online?: boolean } = {}) {
     },
     clearTimer: (timer) => void ((timer as { cleared: boolean }).cleared = true),
     online: createOnlineStatus(browser.target),
+    login: options.login,
   });
   /** Runs the timers that would fire within `ms`. */
   const elapse = (ms: number) => {
@@ -195,6 +209,23 @@ test("a break after ready pauses live text and tries again with a new session; t
   assert.equal(live.getSnapshot().pieces.length, 2, "the draft stays");
 });
 
+test("signed out mid-way: every refused handshake is tried again with the backoff, and live text resumes after the new login", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Budgeten för nästa år." });
+  sockets[0].drop(1006); // the login ended: the relay refuses the socket from here
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    elapse(30_000);
+    sockets[attempt].drop(1006); // still signed out: refused before ready
+    assert.equal(live.getSnapshot().status, "reconnecting", `never given up while recording (${attempt})`);
+  }
+  elapse(30_000); // signed in again: the next try is accepted
+  sockets[6].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Budgeten för nästa år."], "the draft stays");
+});
+
 test("offline, live text waits for the connection and starts again when it returns", () => {
   const { live, sockets, browser } = setup({ online: false });
   live.start();
@@ -293,4 +324,46 @@ test("a socket the browser will not even open makes live text unavailable instea
   });
   live.start();
   assert.equal(live.getSnapshot().status, "unavailable");
+});
+
+test("covered for a new login, live text sends nothing and opens no connection; the page's own user back, it goes on", () => {
+  const { login, cover } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(new Uint8Array([1]).buffer);
+  assert.equal(sockets[0].frames().length, 1);
+
+  cover(true); // the login ended, or someone else signed in: the cookie is not the page's user's any more
+  assert.equal(sockets[0].closedWith, 1000, "the connection closes");
+  live.pushFrame(new Uint8Array([2]).buffer);
+  sockets[0].drop(1000); // the browser's close
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no connection while covered, whatever the backoff says");
+  assert.deepEqual(sockets[0].frames().map((frame) => new Uint8Array(frame)[0]), [1], "and no audio sent after the cover");
+  assert.equal(live.getSnapshot().status, "reconnecting", "live text waits; the recording goes on");
+
+  cover(false);
+  assert.equal(sockets.length, 2, "the page's own user is back");
+  sockets[1].ready();
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [2], "what was recorded meanwhile goes now");
+});
+
+test("covered before live text was ready, it waits too, and starts once the page's own user is back, with the audio kept", () => {
+  const { login, cover } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  live.pushFrame(new Uint8Array([7]).buffer); // before ready: kept for the session
+  cover(true);
+  assert.equal(sockets[0].closedWith, 1000);
+  sockets[0].drop(1000);
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "nothing opens while covered");
+  assert.equal(live.getSnapshot().status, "reconnecting", "waiting, not given up");
+
+  cover(false);
+  assert.equal(sockets.length, 2);
+  sockets[1].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7], "the audio from before the cover goes now");
 });

@@ -2,9 +2,10 @@
 
 import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
-import type { MouseEvent, ReactNode } from "react";
+import { useContext, type MouseEvent, type ReactNode } from "react";
 import { AccountMenu } from "@/components/AccountMenu";
 import { AppHeader } from "@/components/AppHeader";
+import { LeaveContext } from "@/components/flow/useLeaveQuestion";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,6 +32,9 @@ export function FlowTopBar({
   locked?: boolean;
 }) {
   const Title = titleIsHeading ? "h1" : "p";
+  // The page's leave question, unless the view asks itself.
+  const leave = useContext(LeaveContext);
+  const onLeaveLink = onLeave ?? leave.onLeave;
   const account = !locked && trailing === undefined;
   return (
     <>
@@ -39,7 +43,7 @@ export function FlowTopBar({
           <Link
             href="/flows"
             aria-label="Alla flöden"
-            onClick={onLeave}
+            onClick={onLeaveLink}
             className="grid size-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <ChevronLeft aria-hidden className="size-6" strokeWidth={2} />
@@ -50,7 +54,7 @@ export function FlowTopBar({
         </Title>
         <div className="flex shrink-0 items-center pl-2">{trailing ?? (account && <AccountMenu />)}</div>
       </header>
-      <AppHeader onLeave={onLeave} account={account} linked={!locked} className="hidden lg:block" />
+      <AppHeader onLeave={onLeaveLink} account={account} linked={!locked} className="hidden lg:block" />
     </>
   );
 }

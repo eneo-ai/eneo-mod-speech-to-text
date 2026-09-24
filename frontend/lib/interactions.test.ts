@@ -297,3 +297,199 @@ test("the phone top bar's back chevron is named like every other way back", asyn
   assert.equal(chevron?.getAttribute("aria-label"), "Alla flöden");
   await view.unmount();
 });
+
+test("Back during an upload asks first and says what leaving stops", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { leaveWarning } = await import("./recording-view");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  function Page() {
+    // A file on its way: the page holds no audio.
+    return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
+  }
+  const view = await mount(await signedIn(createElement(Page), []));
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  await view.act(async () => {
+    window.history.back();
+    await settle();
+  });
+  assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
+  assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
+  await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
+  assert.equal(dialog(), null);
+  await view.unmount();
+});
+
+test("signed out, Back still asks in a dialog that is shown, focused and answerable, outside the covered page", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { SignedOutCover } = await import("../components/AuthGate");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  function Recording() {
+    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  await settle(); // the history step the last test's guard took back
+  const view = await mount(await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), []));
+  await view.act(async () => {
+    window.history.back();
+    await settle();
+  });
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  assert.ok(dialog, "asked");
+  // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
+  assert.ok(!dialog.closest("[inert]"), "not in the covered page");
+  assert.ok(dialog.contains(document.activeElement), "the focus is in the question");
+  await view.act(async () => button(dialog, "Stanna kvar")!.click());
+  assert.equal(document.body.querySelector('[role="alertdialog"]'), null, "and it can be answered");
+  await view.unmount();
+});
+
+test("while leaving would lose typed work, the top bar's links and Logga ut ask first", async (t) => {
+  const { createElement } = await import("react");
+  const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const navigated: string[] = [];
+  let loggedOut = 0;
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async () => {
+    loggedOut += 1;
+    return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  function Review() {
+    const leaving = useLeaveQuestion(true, "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.");
+    return createElement(
+      LeaveContext.Provider,
+      { value: leaving },
+      createElement(FlowTopBar, { title: "Sammanfattning", titleIsHeading: false }),
+      leaving.question,
+    );
+  }
+  await settle(); // the history step the last test's guard took back
+  const view = await mount(await signedIn(createElement(Review), navigated));
+  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+
+  await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
+  assert.ok(asked(), "Alla flöden asks");
+  assert.deepEqual(navigated, []);
+  await view.act(async () => button(asked()!, "Stanna kvar")!.click());
+
+  const account = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
+  await view.act(async () => {
+    account.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));
+    await settle();
+  });
+  const logOut = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!;
+  await view.act(async () => {
+    logOut.click();
+    await settle();
+  });
+  assert.ok(asked(), "Logga ut asks");
+  assert.equal(loggedOut, 0, "not signed out yet");
+  await view.act(async () => {
+    button(asked()!, "Lämna sidan")!.click();
+    await settle();
+  });
+  assert.equal(loggedOut, 1, "signed out once the user chose to leave");
+  await view.unmount();
+});
+
+test("a review edit comes back on its revision; once the review changed it is neither applied nor lost, but waits as din version", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement, useState } = await import("react");
+  const { useReviewDraft } = await import("../components/useReviewDraft");
+  type Edit = { text?: string };
+  let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
+  let setRevision: (revision: number) => void = () => {};
+  function Review({ start }: { start: number }) {
+    const [revision, set] = useState(start);
+    setRevision = set;
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-1", revision);
+    return null;
+  }
+  const first = await mount(createElement(Review, { start: 3 }));
+  await first.act(async () => draft.keep({ text: "Min text" }));
+  await first.unmount(); // a reload
+  const again = await mount(createElement(Review, { start: 3 }));
+  assert.deepEqual(draft.initial, { text: "Min text" }, "back on the revision it was made on");
+
+  await again.act(async () => setRevision(4)); // the save was refused as out of date, and the latest came in
+  assert.equal(draft.initial, null, "never applied to the latest by itself");
+  assert.deepEqual(draft.yours, { text: "Min text" }, "but kept, as din version");
+  await again.act(async () => draft.drop()); // nothing typed on the latest: nothing to throw away
+  assert.deepEqual(draft.yours, { text: "Min text" }, "not lost by the editor becoming clean");
+  await again.act(async () => draft.keep({ text: "Ny text på den senaste" }));
+  await again.unmount();
+  const later = await mount(createElement(Review, { start: 4 }));
+  assert.deepEqual(draft.initial, { text: "Ny text på den senaste" });
+  assert.deepEqual(draft.yours, { text: "Min text" }, "an edit of the latest does not replace din version");
+
+  let taken: Edit | null = null;
+  await later.act(async () => {
+    taken = draft.takeYours();
+    draft.keep(taken!); // the page puts it in the editor, as its current edit
+  });
+  assert.deepEqual(taken, { text: "Min text" });
+  assert.equal(draft.yours, null, "taken");
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await later.act(async () => setRevision(5)); // refused again, before anything else was typed
+  await later.act(async () => {
+    draft.keep(draft.takeYours()!);
+  });
+  assert.equal(draft.yours, null, "taken straight from the refused save");
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await later.act(async () => setRevision(6));
+  await later.act(async () => draft.dropYours());
+  assert.equal(draft.yours, null, "Behåll den senaste lets it go");
+  await later.unmount();
+  assert.equal(window.sessionStorage.length, 0, "nothing left behind");
+});
+
+test("a review edit the browser will not keep is still the page's, through a refused save; its only kept copy is never removed first", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement, useState } = await import("react");
+  const { useReviewDraft } = await import("../components/useReviewDraft");
+  type Edit = { text?: string };
+  let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
+  let setRevision: (revision: number) => void = () => {};
+  function Review({ start }: { start: number }) {
+    const [revision, set] = useState(start);
+    setRevision = set;
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-9", revision);
+    return null;
+  }
+  const storage = Object.getPrototypeOf(window.sessionStorage) as Storage;
+  const setItem = storage.setItem;
+  let refuse: (key: string) => boolean = () => true;
+  storage.setItem = function (this: Storage, key: string, value: string) {
+    if (refuse(key)) throw new DOMException("full", "QuotaExceededError");
+    return setItem.call(this, key, value);
+  };
+  t.after(() => {
+    storage.setItem = setItem;
+  });
+
+  // Nothing kept by the browser: the page still has the edit, also as din version after the review changed.
+  const refused = await mount(createElement(Review, { start: 3 }));
+  await refused.act(async () => void draft.keep({ text: "Min text" }));
+  assert.deepEqual(draft.initial, { text: "Min text" });
+  await refused.act(async () => setRevision(4));
+  assert.deepEqual(draft.yours, { text: "Min text" }, "din version, from the page itself");
+  await refused.unmount();
+  window.sessionStorage.clear();
+
+  // Only din version refused: its one kept copy (the older revision's edit) is not written over.
+  refuse = (key) => key.endsWith(":din");
+  const kept = await mount(createElement(Review, { start: 3 }));
+  await kept.act(async () => void draft.keep({ text: "Min text" }));
+  await kept.act(async () => setRevision(4));
+  await kept.act(async () => void draft.keep({ text: "Ny text" }));
+  await kept.unmount();
+  refuse = () => false;
+  const reloaded = await mount(createElement(Review, { start: 4 }));
+  assert.deepEqual(draft.yours, { text: "Min text" }, "din version survives the reload");
+  await reloaded.unmount();
+});

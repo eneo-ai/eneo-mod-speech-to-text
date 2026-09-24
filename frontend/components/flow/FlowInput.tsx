@@ -1,19 +1,8 @@
 "use client";
 
 import { ChevronDown, FileText } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -31,8 +20,8 @@ import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { ReadyPanel } from "@/components/flow/ReadyPanel";
 import { LiveSheet } from "@/components/flow/LiveSheet";
-import { FocusedRecorder, RecordingBar } from "@/components/flow/Recorder";
-import { useDocumentTitle, useElapsed, useLeaveGuard, useSilence } from "@/components/flow/recording-hooks";
+import { FocusedRecorder, RecordingBar, SignedOutControls } from "@/components/flow/Recorder";
+import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/recording-hooks";
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
@@ -45,7 +34,6 @@ import type { StoredRecording } from "@/lib/recording-store";
 import {
   detailsSummary,
   keepDetailsOpen,
-  leaveWarning,
   pageTitle,
   recordingAnnouncement,
   recordingNotices,
@@ -93,6 +81,7 @@ export function FlowInput({
   onOpenRun,
   onMoreRuns,
   unsentRecordings,
+  onLeave,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -104,6 +93,8 @@ export function FlowInput({
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   unsentRecordings: UnsentRecording[];
+  /** The page's links off the flow: they ask first while leaving would lose something (the page owns the question). */
+  onLeave: (event: MouseEvent) => void;
 }) {
   const { session, snapshot } = input;
   const { phase, mode } = snapshot;
@@ -127,22 +118,6 @@ export function FlowInput({
     shownGroup.current = group;
     workspace.current?.querySelector<HTMLElement>("[data-phase-heading]")?.focus();
   }, [group]);
-
-  // Leaving while audio is held asks first, in the page's own dialog; beforeunload keeps the browser's.
-  const router = useRouter();
-  const [leave, setLeave] = useState<(() => void) | null>(null);
-  // The question has no trigger of its own: focus goes back to where it was.
-  const returnFocus = useRef<HTMLElement | null>(null);
-  const ask = (goOn: () => void) => {
-    returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setLeave(() => goOn);
-  };
-  useLeaveGuard(holdsAudio, ask);
-  const onLeave = (event: MouseEvent) => {
-    if (!holdsAudio) return;
-    event.preventDefault();
-    ask(() => router.push("/flows"));
-  };
 
   const details = (
     <DetailsForm
@@ -171,25 +146,6 @@ export function FlowInput({
           ) : undefined
         }
       />
-      <AlertDialog open={leave !== null} onOpenChange={(open) => !open && setLeave(null)}>
-        <AlertDialogContent
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            returnFocus.current?.focus();
-          }}
-        >
-          <AlertDialogHeader>
-            <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
-            <AlertDialogDescription>{leaveWarning(input.persistent, phase)}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Stanna kvar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => leave?.()}>
-              Lämna sidan
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
       {/* Recording state changes are said once here; the timer never is. */}
       <p role="status" className="sr-only">
         {recordingAnnouncement(phase)}
@@ -313,6 +269,11 @@ function CaptureWorkspace({ input }: { input: Session }) {
           storageNote={persistent ? storageLine(true) : null}
         />
       )}
+      <SignedOutControls
+        phase={phase}
+        onPause={() => session.togglePause()}
+        onStop={() => void session.stop()}
+      />
       <RecordingBar
         capture={session.capture}
         phase={phase}

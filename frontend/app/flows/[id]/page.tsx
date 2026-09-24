@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -21,6 +21,9 @@ import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
+import { useReviewDraft } from "@/components/useReviewDraft";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { LeaveContext, useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
 import { useUnsentRecordings } from "@/components/UnsentRecordings";
 import {
   approveReviewCheckpoint,
@@ -45,6 +48,7 @@ import {
   type ReviewEditedValue,
   type RunContract,
 } from "@/lib/api";
+import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -52,6 +56,7 @@ import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
+import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
@@ -91,6 +96,9 @@ import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { formatDeadline } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
+
+/** A review's unsaved edit: the text, or the speakers' names. */
+type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
 
 interface PageProps {
   // App Router levererar params som en Promise och packar upp dem med React.use().
@@ -200,13 +208,22 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => {
       followAbortRef.current?.abort();
       submitAbortRef.current?.abort();
+      // Left: what the browser could not keep is gone with the page.
+      unstoredDrafts.forget();
     };
   }, []);
 
-  // Leaving asks first while audio is being recorded or waits to become a document.
+  // Leaving asks first while audio is being recorded or waits to become a document (until Eneo has the run: an
+  // upload, and its start, which may retry or wait for a new login), or typed work the browser could not keep.
   const holdsAudio = snapshot.phase !== "setup";
+  const submitting = run.kind === "submitting";
+  const unstored = useSyncExternalStore(unstoredDrafts.subscribe, unstoredDrafts.any, () => false);
+  const leaving = useLeaveQuestion(
+    submitting || holdsAudio || unstored,
+    submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting) : UNSTORED_LEAVE,
+  );
   useEffect(() => {
-    const shouldWarn = holdsAudio || submission.kind !== "idle";
+    const shouldWarn = holdsAudio || submitting || unstored;
     if (!shouldWarn) return;
 
     const handleBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -215,7 +232,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [holdsAudio, submission.kind]);
+  }, [holdsAudio, submitting, unstored]);
 
   // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
@@ -588,8 +605,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
   if (loadError) return <FlowUnavailable error={loadError} />;
   if (!published || !contract) return <FlowSkeleton />;
 
+  // The views that can hold unsent work: the leave question, and their top bar's exits through it.
+  const withLeave = (view: ReactNode) => (
+    <LeaveContext.Provider value={leaving}>
+      {view}
+      {leaving.question}
+    </LeaveContext.Provider>
+  );
+
   if (run.kind === "idle") {
-    return (
+    return withLeave(
       <FlowInput
         published={published}
         contract={contract}
@@ -600,22 +625,23 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onOpenRun={resumeRun}
         onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
-      />
+        onLeave={leaving.onLeave}
+      />,
     );
   }
 
   if (run.kind === "submitting") {
-    return (
+    return withLeave(
       <SubmittingView
         published={published}
         submission={submission}
         onCancelSubmission={onCancelSubmission}
-      />
+      />,
     );
   }
 
   if (run.kind === "awaiting_review") {
-    return (
+    return withLeave(
       <ReviewView
         flowId={flowId}
         published={published}
@@ -629,7 +655,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onReject={(cp, reason) =>
           onReject(cp, { run: run.run, steps: run.steps }, reason)
         }
-      />
+      />,
     );
   }
 
@@ -770,10 +796,15 @@ function ReviewView({
     [checkpoint.original_payload_json, payload],
   );
 
+  // Unsaved edits outlast a reload (a lost login, a tab put to sleep) for this person; see useReviewDraft.
+  const user = useAuthenticatedUser();
+  const draftName = `review:${runState.run.id}:${checkpoint.id}`;
+  const draft = useReviewDraft<ReviewEdit>(user.id, draftName, checkpoint.revision);
+
   const initialText = extractCheckpointText(payload);
-  const [text, setText] = useState<string>(initialText);
-  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(proposals);
-  const [editing, setEditing] = useState<boolean>(false);
+  const [text, setText] = useState<string>(() => draft.initial?.text ?? initialText);
+  const [speakerRows, setSpeakerRows] = useState<SpeakerMappingRow[]>(() => draft.initial?.speakerRows ?? proposals);
+  const [editing, setEditing] = useState<boolean>(() => draft.initial?.text !== undefined);
   const [saving, setSaving] = useState<boolean>(false);
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
@@ -782,9 +813,25 @@ function ReviewView({
 
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
-    setText(extractCheckpointText(payload));
-    setSpeakerRows(buildSpeakerRows(payload));
+    setText(draft.initial?.text ?? extractCheckpointText(payload));
+    setSpeakerRows(draft.initial?.speakerRows ?? buildSpeakerRows(payload));
   }, [checkpoint.revision, checkpoint.current_payload_json]);
+
+  function editText(next: string) {
+    setText(next);
+    if (next === initialText) draft.drop();
+    else draft.keep({ text: next });
+  }
+
+  // "Använd din version" after the review changed: into the editor, as its current edit, for the user to save.
+  function takeYours() {
+    const yours = draft.takeYours();
+    if (yours?.text !== undefined) {
+      setText(yours.text);
+      setEditing(true);
+    }
+    if (yours?.speakerRows) setSpeakerRows(yours.speakerRows);
+  }
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
   // korrigeringar för spelaren.
@@ -849,9 +896,13 @@ function ReviewView({
   );
 
   async function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
-    setSpeakerRows(rows.filter((row) => !row.split || row.name));
+    const named = rows.filter((row) => !row.split || row.name);
+    setSpeakerRows(named);
+    draft.keep({ speakerRows: named });
     const saved = await onSaveEdit(checkpoint, buildEditedMapping(rows), (err) => namingRefusal(err, rows));
-    return "error" in saved ? saved.error : null;
+    if ("error" in saved) return saved.error;
+    draft.drop();
+    return null;
   }
 
   async function saveAndApprove() {
@@ -873,6 +924,8 @@ function ReviewView({
         return;
       }
       cp = updated;
+      // Saved, whether or not this view is shown again before the run goes on.
+      draft.drop();
     }
     try {
       await onApprove(cp);
@@ -884,9 +937,12 @@ function ReviewView({
   async function saveOnly() {
     if (!dirty) return;
     setSaving(true);
-    await onSaveEdit(checkpoint, pendingEditedValue());
+    const saved = await onSaveEdit(checkpoint, pendingEditedValue());
     setSaving(false);
+    // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
+    if ("error" in saved) return;
     setEditing(false);
+    draft.drop();
   }
 
   async function submitReject() {
@@ -1011,6 +1067,7 @@ function ReviewView({
                     onListen={hasAudio ? listenTo : undefined}
                     listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                     onSave={saveNames}
+                    draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
                   >
                     <Button type="button" variant="outline" className="self-start" disabled={busy}>
                       <UsersRound data-icon="inline-start" aria-hidden />
@@ -1093,7 +1150,7 @@ function ReviewView({
           {editable && editing ? (
             <textarea
               value={text}
-              onChange={(e) => setText(e.target.value)}
+              onChange={(e) => editText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
               aria-labelledby={`${fieldId}-innehall`}
               className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
@@ -1113,6 +1170,7 @@ function ReviewView({
                     onClick={() => {
                       setText(initialText);
                       setEditing(false);
+                      draft.drop();
                     }}
                     disabled={saving}
                     className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 coarse:min-h-11"
@@ -1142,6 +1200,22 @@ function ReviewView({
           )}
         </section>
 
+        {draft.yours && (
+          <Alert className="mb-3">
+            <AlertTitle>Din ändring sparades inte</AlertTitle>
+            <AlertDescription>
+              <p>Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={takeYours}>
+                  Använd din version
+                </Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => draft.dropYours()}>
+                  Behåll den senaste
+                </Button>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         {runError && (
           <p className="text-[13px] text-destructive mb-3" role="alert">
             {runError}

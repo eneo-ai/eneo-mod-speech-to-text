@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useInputLevel } from "@/components/flow/LevelMeter";
-import { guardHistory } from "@/lib/leave-guard";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { SilenceWatch } from "@/lib/recording-view";
 
@@ -50,14 +49,4 @@ export function useDocumentTitle(title: string): void {
     },
     [],
   );
-}
-
-/** While active, browser back asks first: `onAttempt` gets the way on, to call if the user leaves. */
-export function useLeaveGuard(active: boolean, onAttempt: (leave: () => void) => void): void {
-  const attempt = useRef(onAttempt);
-  attempt.current = onAttempt;
-  useEffect(() => {
-    if (!active) return;
-    return guardHistory(window, (leave) => attempt.current(leave));
-  }, [active]);
 }

@@ -218,3 +218,68 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   await view.act(async () => type(field("Talare 1"), "Sara Holm"));
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
 });
+
+test("names typed but not saved come back after a reload, in the open dialog; Spara namnen or Avbryt ends them", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };
+  const first = await dialog({ draftKey });
+  await first.view.act(async () => type(first.field("Talare 2"), "Erik Lund"));
+  await first.view.unmount(); // the page reloaded before Spara namnen
+
+  const reloaded = async () => {
+    const { createElement } = await import("react");
+    const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
+    return mount(
+      createElement(SpeakerNamingDialog, {
+        rows,
+        participants: [],
+        passages: () => 1,
+        quote: () => null,
+        onSave: async () => null,
+        draftKey,
+        children: createElement("button", { type: "button" }, "Namnge talarna"),
+      }),
+    );
+  };
+  const field = (label: string) => document.querySelector<HTMLInputElement>(`[role="dialog"] input[aria-label="Vem är ${label}?"]`);
+  const again = await reloaded();
+  assert.equal(field("Talare 2")?.value, "Erik Lund", "open again, with the name typed before");
+  assert.equal(field("Talare 1")?.value, "Anna Berg");
+  await again.act(async () => button(document.body, "Avbryt")!.click());
+  await again.unmount();
+  const cancelled = await reloaded();
+  assert.equal(field("Talare 2"), null, "Avbryt threw the names away, as it did before");
+  await cancelled.unmount();
+
+  const typed = await dialog({ draftKey });
+  await typed.view.act(async () => type(typed.field("Talare 2"), "Sara Holm"));
+  await typed.view.act(async () => button(document.body, "Spara namnen")!.click());
+  await typed.view.unmount();
+  const saved = await reloaded();
+  assert.equal(field("Talare 2"), null, "saved names are the review's, not a draft");
+  await saved.unmount();
+});
+
+test("a name removed but not saved stays removed after a reload", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-2" };
+  const first = await dialog({ draftKey });
+  await first.view.act(async () => type(first.field("Talare 1"), "")); // Anna Berg taken away
+  await first.view.unmount();
+  const { createElement } = await import("react");
+  const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
+  const again = await mount(
+    createElement(SpeakerNamingDialog, {
+      rows,
+      participants: [],
+      passages: () => 1,
+      quote: () => null,
+      onSave: async () => null,
+      draftKey,
+      children: createElement("button", { type: "button" }, "Namnge talarna"),
+    }),
+  );
+  const field = document.querySelector<HTMLInputElement>('[role="dialog"] input[aria-label="Vem är Talare 1?"]');
+  assert.equal(field?.value, "", "not the name the review had");
+  await again.unmount();
+});

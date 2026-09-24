@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RunContract } from "@/lib/api";
+import { browserDrafts } from "@/lib/drafts";
 import { browserStorage, FlowSession } from "@/lib/flow-session";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import type { CaptureDeps } from "@/lib/recording-session";
@@ -77,6 +78,7 @@ export function useFlowSession({
       captureDeps: browserCaptureDeps(),
       pickMimeType,
       storage: browserStorage(),
+      drafts: browserDrafts(),
       live: supportsLiveText() ? browserLiveClient(flowId) : null,
     });
     created.setProbeDuration(probeDuration);
