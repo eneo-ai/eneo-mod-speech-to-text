@@ -41,14 +41,15 @@ export function AccountMenu() {
   }
 
   return (
-    <DropdownMenu>
+    // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           aria-label={`Öppna konto för ${displayName}`}
-          className="rounded-full p-0"
+          className="shrink-0 rounded-full p-0"
         >
           <Avatar>
             <AvatarFallback className="bg-primary text-[15px] font-semibold text-primary-foreground">

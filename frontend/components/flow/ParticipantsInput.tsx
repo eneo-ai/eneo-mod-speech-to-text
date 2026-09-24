@@ -36,6 +36,7 @@ export function ParticipantsInput({
   placeholder?: string;
 }) {
   const listId = useId();
+  const countId = useId();
   const input = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState("");
@@ -64,16 +65,19 @@ export function ParticipantsInput({
   };
 
   return (
+    // Layout only: the list and the field carry their own names, so no unnamed groups around them.
     <InputGroup
+      role="none"
       className={cn(
         "h-auto flex-col items-stretch rounded-xl border-rule bg-paper",
-        "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
+        // A 2 px ring: the edge turning blue alone is too small a change to see.
+        "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
         invalid && "border-destructive",
       )}
     >
       {names.length > 0 && (
-        <InputGroupAddon align="block-start" className="cursor-default py-0 pt-3 text-foreground">
-          <ul className="flex flex-wrap gap-x-2 gap-y-3">
+        <InputGroupAddon role="none" align="block-start" className="cursor-default py-0 pt-3 text-foreground">
+          <ul aria-label="Tillagda namn" className="flex flex-wrap gap-x-2 gap-y-3">
             {names.map((name) => (
               <li
                 key={name}
@@ -115,7 +119,8 @@ export function ParticipantsInput({
           autoCapitalize="words"
           enterKeyHint="enter"
           placeholder={placeholder}
-          aria-describedby={describedBy}
+          // The field says how many names it already holds; the list itself is named.
+          aria-describedby={[names.length > 0 ? countId : null, describedBy].filter(Boolean).join(" ") || undefined}
           aria-invalid={invalid || undefined}
           onChange={(event) => {
             const value = event.target.value;
@@ -180,6 +185,12 @@ export function ParticipantsInput({
       <p role="status" className="sr-only">
         {announcement}
       </p>
+      {names.length > 0 && (
+        // Hidden: read as the field's description only, not again as page text.
+        <span id={countId} hidden>
+          {names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`}
+        </span>
+      )}
     </InputGroup>
   );
 }

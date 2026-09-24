@@ -192,7 +192,10 @@ function SupportDetails({ runId, failure, code }: { runId: string; failure: RunE
           </CollapsibleTrigger>
           <CollapsibleContent>
             <div className="flex flex-col gap-1 pt-2 text-sm text-muted-foreground">
-              <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{failure.detail}</p>
+              {/* Eneo's own words, in English. */}
+              <p lang="en" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {failure.detail}
+              </p>
               {code && <p className="font-mono">{code}</p>}
             </div>
           </CollapsibleContent>

@@ -28,6 +28,9 @@ venv/
 Thumbs.db
 *.swp
 
+# --- Playwright ---
+test-results/
+
 # --- Logs ---
 *.log
 npm-debug.log*

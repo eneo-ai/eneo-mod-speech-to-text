@@ -83,8 +83,7 @@ export function recordingAnnouncement(phase: SessionPhase): string {
       return "Spelar in.";
     case "paused":
       return "Inspelningen är pausad.";
-    case "interrupted":
-      return INTERRUPTED;
+    // The recording bar's line says it; saying it here too would read it twice.
     default:
       return "";
   }

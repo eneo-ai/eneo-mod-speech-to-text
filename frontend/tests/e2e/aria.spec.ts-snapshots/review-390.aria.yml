@@ -1,0 +1,74 @@
+- main:
+  - heading "Vem är vem?" [level=1]
+  - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt 11:01\. Därefter avbryts körningen\./
+  - group:
+    - list:
+      - listitem:
+        - text: Talare 1
+        - combobox "Namn för Talare 1": Anna Berg
+        - button "Visa namn":
+          - img
+        - button "Lyssna på Talare 1":
+          - img
+        - paragraph: 3 repliker · förslag med hög säkerhet
+        - group: Varför?
+      - listitem:
+        - text: Talare 2
+        - combobox "Namn för Talare 2": Erik Lund
+        - button "Visa namn":
+          - img
+        - button "Lyssna på Talare 2":
+          - img
+        - paragraph: 2 repliker · förslag med medelhög säkerhet
+        - group: Varför?
+  - region "Inspelning och transkript":
+    - 'group "Uppspelning: Inspelningen"':
+      - button "Spela upp"
+      - slider "Position"
+      - text: /0:\d+ \/ 0:\d+/
+      - button "Hastighet 1×"
+    - button "Del 1" [pressed]
+    - button "Del 2"
+    - paragraph: Tryck på pennan vid en replik för att rätta texten, eller på talarens namn för att byta talare.
+    - button "Hämta granskat transkript"
+    - text: Del 1
+    - button /Spela från 0:\d+/
+    - button "Anna Berg":
+      - text: ""
+      - img
+    - text: Välkomna till kommunstyrelsens möte.
+    - button "Rätta repliken":
+      - img
+    - button /Spela från 0:\d+/
+    - button "Erik Lund":
+      - text: ""
+      - img
+    - text: Första punkten gäller budgeten för nästa år.
+    - button "Rätta repliken":
+      - img
+    - button /Spela från 0:\d+/
+    - button "Anna Berg":
+      - text: ""
+      - img
+    - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
+    - button "Rätta repliken":
+      - img
+    - text: Del 2
+    - button /Spela från 0:\d+/
+    - button "Erik Lund":
+      - text: ""
+      - img
+    - text: Andra punkten är skolskjutsarna.
+    - button "Rätta repliken":
+      - img
+    - button /Spela från 0:\d+/
+    - button "Anna Berg":
+      - text: ""
+      - img
+    - text: Nya turer börjar gälla efter höstlovet.
+    - button "Rätta repliken":
+      - img
+  - button "Avvisa"
+  - button "Godkänn och fortsätt":
+    - img
+    - text: ""

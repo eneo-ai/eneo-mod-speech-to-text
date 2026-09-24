@@ -79,7 +79,7 @@ export function UploadPanel({
         >
           <FileIcon aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[15px] font-medium text-ink">{file.filename}</p>
+            <p className="text-[15px] font-medium text-ink [overflow-wrap:anywhere]">{file.filename}</p>
             <p className="text-[13px] text-ink-soft">
               {formatBytes(file.blob.size)}
               {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}

@@ -7,7 +7,8 @@
     "build": "next build --webpack",
     "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:a11y": "playwright test"
   },
   "dependencies": {
     "@radix-ui/react-alert-dialog": "^1.1.23",
@@ -38,6 +39,8 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@tailwindcss/typography": "0.5.15",
     "@types/jsdom": "^30.0.0",
     "@types/node": "22.7.5",

@@ -144,6 +144,8 @@ export interface AuthStatus {
   user: AuthenticatedUser | null;
   /** Sekunder tills backend vill förnya Eneo-token; saknas när inget ska förnyas. */
   refresh_in?: number;
+  /** Sekunder tills inloggningen tar slut (Eneos tak eller modulens eget); en ny inloggning flyttar det. */
+  session_ends_in?: number;
 }
 
 export async function loginWithAccessCode(accessCode: string) {

@@ -1,0 +1,31 @@
+- main:
+  - paragraph: Gör ett protokoll av ett samrådsmöte.
+  - text: Deltagare (valfritt)
+  - textbox "Deltagare (valfritt)":
+    - /placeholder: Lägg till namn
+  - status
+  - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
+  - text: Ärende
+  - textbox "Ärende" [invalid]
+  - alert: Fyll i det här för att skapa dokumentet.
+  - region "Ljudet":
+    - status
+    - group "Hur vill du ge ljudet?":
+      - heading "Hur vill du ge ljudet?" [level=2]
+      - radiogroup "Hur vill du ge ljudet?":
+        - text: Strömma
+        - paragraph: Se texten medan du pratar.
+        - radio "Strömma"
+        - text: Spela in
+        - paragraph: Spela in nu och transkribera efteråt.
+        - radio "Spela in"
+        - text: Ladda upp
+        - paragraph: Välj en ljudfil från din enhet.
+        - radio "Ladda upp" [checked]:
+          - img
+    - text: Märk upp talare
+    - paragraph: Tar längre tid efter inspelningen.
+    - switch "Märk upp talare"
+    - paragraph: kommunstyrelsen-mote.wav
+    - paragraph: /\d+,\d+ kB · \d+ s/
+    - button "Byt fil"

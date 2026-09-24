@@ -76,7 +76,7 @@ export function LiveSheet({ live, recorder }: { live: LiveSession; recorder: Cap
         aria-label="Preliminär text"
         tabIndex={0}
         onScroll={(event) => setFollowing(atBottom(event.currentTarget))}
-        className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3 outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:px-7"
+        className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3 focus-visible:outline-none focus-visible:[outline-offset:-2px] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:px-7"
       >
         {empty && <p className="text-[17px] text-muted-foreground">Texten visas här när du börjar prata.</p>}
         <div className="flex max-w-[68ch] flex-col gap-4 text-[18px] leading-[1.6] text-foreground md:text-[19px]">

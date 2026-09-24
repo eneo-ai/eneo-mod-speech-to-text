@@ -1,0 +1,9 @@
+- banner:
+  - link "Till flödena":
+    - /url: /flows
+  - heading "Flödet kan inte användas just nu." [level=1]
+  - button "Öppna konto för Erik Lund"
+- main:
+  - paragraph: Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.
+  - link "Till flödena":
+    - /url: /flows

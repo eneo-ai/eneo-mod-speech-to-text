@@ -1,9 +1,10 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { authStatus, type AuthenticatedUser } from "@/lib/api";
+import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
+import { Spinner } from "@/components/ui/spinner";
+import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
@@ -21,14 +22,46 @@ export function useAuthenticatedUser(): AuthenticatedUser {
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
+  // When the login ends, and how a new login moves that.
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [mode, setMode] = useState<AuthMode | null>(null);
+  const recheckRef = useRef(() => {});
 
   useEffect(() => {
     let cancelled = false;
     let stopKeepalive: (() => void) | undefined;
 
+    const observe = (s: AuthStatus) => {
+      if (!cancelled && s.authenticated && s.session_ends_in !== undefined) {
+        const next = Date.now() + s.session_ends_in * 1000;
+        // The same end read again moves by the request's second or so; only a new login moves it far.
+        setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
+        setMode(s.auth_mode);
+      }
+      return s;
+    };
+    // The token keepalive follows the latest status: a renewed login brings a token of its own to refresh,
+    // after the old one's keepalive stopped at the old end.
+    const keepAlive = (s: AuthStatus) => {
+      stopKeepalive?.();
+      stopKeepalive = keepSessionAlive(s, () => authStatus().then(observe));
+    };
+    const recheck = () =>
+      void authStatus().then(
+        (s) => !cancelled && keepAlive(observe(s)),
+        () => undefined,
+      );
+    recheckRef.current = recheck;
+    // A login renewed in its own window (or another tab) moves the end for this page too.
+    const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
+    channel?.addEventListener("message", recheck);
+    const onVisible = () => document.visibilityState === "visible" && recheck();
+    document.addEventListener("visibilitychange", onVisible);
+
     authStatus()
       .then((s) => {
         if (cancelled) return;
+        observe(s);
         // I access_code-läget saknar sessionen användare; sessionUser ger då
         // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
         const sessionIdentity = sessionUser(s);
@@ -36,7 +69,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
           router.replace("/");
         } else {
           setUser(sessionIdentity);
-          stopKeepalive = keepSessionAlive(s, authStatus);
+          keepAlive(s);
         }
       })
       .catch(() => {
@@ -46,13 +79,16 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       stopKeepalive?.();
+      channel?.close();
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [router]);
 
   if (!user) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <Loader2 className="h-5 w-5 animate-spin text-ink-mute" />
+        <h1 className="sr-only">Tal till text</h1>
+        <Spinner className="size-5 text-ink-mute" />
       </main>
     );
   }
@@ -60,6 +96,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   return (
     <AuthenticatedUserContext.Provider value={user}>
       {children}
+      <SessionEndWarning endsAt={endsAt} mode={mode} onRenewed={() => recheckRef.current()} />
     </AuthenticatedUserContext.Provider>
   );
 }

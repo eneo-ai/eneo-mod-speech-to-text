@@ -7,6 +7,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { FRAME } from "@/components/frame";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { UnsentRecordings, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { getConfig } from "@/lib/api";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
@@ -31,6 +32,7 @@ function FlowsListPage() {
   const router = useRouter();
   const user = useAuthenticatedUser();
   const unsent = useUnsentRecordings(user.id);
+  useDocumentTitle("Välj ett flöde · Tal till text");
   const [lastFlowId, setLastFlowId] = useState<string | null>(null);
   useEffect(() => setLastFlowId(lastUsedFlow(browserStorage(), user.id)), [user.id]);
   const [groups, setGroups] = useState<FlowSpaceGroup[] | null>(null);

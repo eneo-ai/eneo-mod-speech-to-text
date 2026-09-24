@@ -108,7 +108,8 @@ export function RecordingBar({
   return (
     <div
       className={cn(
-        "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3",
+        // Pinned to the bottom, except on a short screen (200 % zoom, a phone on its side), where it would cover the live text.
+        "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3 [@media(max-height:480px)]:static",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8",
         "lg:static lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
       )}

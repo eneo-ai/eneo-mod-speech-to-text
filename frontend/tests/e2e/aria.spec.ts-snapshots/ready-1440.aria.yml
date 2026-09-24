@@ -1,0 +1,13 @@
+- region "Ljudet":
+  - status
+  - heading "Inspelningen är klar" [level=2]
+  - paragraph: /Inspelning \d+ sep \d+:\d+ · \d+ s/
+  - 'group /Uppspelning: Inspelning \d+ sep \d+:\d+/':
+    - button "Spela upp"
+    - slider "Position"
+    - text: /0:\d+ \/ 0:\d+/
+  - button "Spara som fil"
+  - paragraph: Inspelningen finns kvar på enheten tills dokumentet är skapat.
+  - button "Skapa dokument"
+  - button "Fortsätt spela in"
+  - button "Ta bort"

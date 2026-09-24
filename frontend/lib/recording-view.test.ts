@@ -74,7 +74,7 @@ test("recording state changes are announced once, never the timer", () => {
   assert.equal(recordingAnnouncement("starting"), "");
   assert.equal(recordingAnnouncement("recording"), "Spelar in.");
   assert.equal(recordingAnnouncement("paused"), "Inspelningen är pausad.");
-  assert.equal(recordingAnnouncement("interrupted"), "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.");
+  assert.equal(recordingAnnouncement("interrupted"), "", "the recording bar's line says it, once");
   assert.equal(recordingAnnouncement("ready"), "", "focus on the ready heading says it");
 });
 

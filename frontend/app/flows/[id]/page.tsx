@@ -5,7 +5,7 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import Link from "next/link";
 import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
-import { use, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { use, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -17,6 +17,7 @@ import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, ReadingMain } from "@/components/frame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { RunResult } from "@/components/flow/RunResult";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
 import { useFlowSession } from "@/components/flow/useFlowSession";
@@ -88,6 +89,7 @@ import {
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { formatDeadline } from "@/lib/format";
 import { selectRuntimeInputStep } from "@/lib/upload";
 
 interface PageProps {
@@ -748,6 +750,16 @@ function ReviewView({
 }) {
   const payload = (checkpoint.current_payload_json as Json | null) ?? null;
   const isSpeakerMapping = isSpeakerMappingCheckpoint(payload);
+  const title = isSpeakerMapping
+    ? SPEAKER_REVIEW_ENABLED
+      ? "Granska transkriptet"
+      : "Vem är vem?"
+    : (checkpoint.step_label ?? "Granska resultatet");
+  useDocumentTitle(`${title} · Tal till text`);
+  // Eneo ends an unanswered review at this time (WCAG 2.2.1: the limit is said, 14 days unless the flow sets less).
+  const deadline = checkpoint.expires_at ? (
+    <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+  ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -765,6 +777,7 @@ function ReviewView({
   const [working, setWorking] = useState<"approve" | "reject" | null>(null);
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
+  const fieldId = useId();
 
   // Synka när checkpoint uppdateras (t.ex. efter PATCH eller omhämtning).
   useEffect(() => {
@@ -891,8 +904,8 @@ function ReviewView({
 
   const rejectSection = showReject ? (
     <section className="paper-card p-4 mb-5">
-      <div className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
-      <p className="text-[12px] text-ink-soft mb-3">
+      <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
+      <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">
         Ange en kort motivering. Körningen kommer att avbrytas.
       </p>
       <textarea
@@ -900,7 +913,9 @@ function ReviewView({
         onChange={(e) => setRejectReason(e.target.value)}
         rows={3}
         placeholder="Skäl …"
-        className="w-full text-[13px] p-3 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 mb-3"
+        aria-labelledby={`${fieldId}-avvisa`}
+        aria-describedby={`${fieldId}-avvisa-hjalp`}
+        className={cn(REVIEW_FIELD, "text-[13px] p-3 mb-3")}
       />
       <div className="flex items-center justify-end gap-2">
         <Button
@@ -948,10 +963,11 @@ function ReviewView({
         <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
           {paused}
           <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
-            {SPEAKER_REVIEW_ENABLED ? "Granska transkriptet" : "Vem är vem?"}
+            {title}
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
+            {deadline}
           </p>
 
           <div className={SPEAKER_REVIEW_ENABLED ? "grid gap-3" : "grid gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start"}>
@@ -1053,17 +1069,18 @@ function ReviewView({
       <ReadingMain>
         {paused}
         <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
-          {checkpoint.step_label ?? "Granska resultatet"}
+          {title}
         </h1>
         <p className="text-[13px] text-ink-soft leading-relaxed mb-5">
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
+          {deadline}
         </p>
 
         <section className="paper-card p-4 mb-5">
           <div className="flex items-center justify-between mb-3">
-            <div className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
+            <div id={`${fieldId}-innehall`} className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
             <div className="text-[11px] text-ink-mute">
               {editable ? "Redigerbart" : "Skrivskyddat"}
             </div>
@@ -1074,7 +1091,8 @@ function ReviewView({
               value={text}
               onChange={(e) => setText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
-              className="w-full text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 rounded-lg border border-rule-soft bg-bg-2/40 focus:outline-none focus:border-ink/30 font-sans"
+              aria-labelledby={`${fieldId}-innehall`}
+              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
             />
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
@@ -1093,7 +1111,7 @@ function ReviewView({
                       setEditing(false);
                     }}
                     disabled={saving}
-                    className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50"
+                    className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 coarse:min-h-11"
                   >
                     Avbryt
                   </button>
@@ -1101,7 +1119,7 @@ function ReviewView({
                     type="button"
                     onClick={saveOnly}
                     disabled={!dirty || saving}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 coarse:min-h-11"
                   >
                     {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                     Spara ändring
@@ -1111,7 +1129,7 @@ function ReviewView({
                 <button
                   type="button"
                   onClick={() => setEditing(true)}
-                  className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors"
+                  className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors coarse:min-h-11"
                 >
                   Redigera
                 </button>
@@ -1131,6 +1149,10 @@ function ReviewView({
     </>
   );
 }
+
+// A review's text field: an edge that identifies it (3:1) and a ring on keyboard focus.
+const REVIEW_FIELD =
+  "w-full rounded-lg border border-input bg-bg-2/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function extractCheckpointText(payload: Json | null | undefined): string {
   if (!payload) return "";

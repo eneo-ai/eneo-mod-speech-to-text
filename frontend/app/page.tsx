@@ -7,6 +7,8 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "@/components/ui/spinner";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError, authStatus, loginWithAccessCode } from "@/lib/api";
 import type { AuthMode } from "@/lib/api";
 import { AppHeader } from "@/components/AppHeader";
@@ -20,6 +22,8 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [accessCode, setAccessCode] = useState("");
+  // Once the check is done: the layout's own title arrives after the first render and would replace an earlier one.
+  useDocumentTitle(checking ? "Tal till text" : "Logga in · Tal till text");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -67,7 +71,8 @@ export default function LoginPage() {
   if (checking) {
     return (
       <main className="min-h-screen grid place-items-center">
-        <Loader2 className="h-5 w-5 animate-spin text-ink-mute" />
+        <h1 className="sr-only">Tal till text</h1>
+        <Spinner className="size-5 text-ink-mute" />
       </main>
     );
   }
@@ -123,7 +128,8 @@ export default function LoginPage() {
                     type="password"
                     value={accessCode}
                     onChange={(event) => setAccessCode(event.target.value)}
-                    autoComplete="off"
+                    // A password manager may keep and fill the code (WCAG 3.3.8); pasting works either way.
+                    autoComplete="current-password"
                     required
                     maxLength={256}
                     disabled={submitting}

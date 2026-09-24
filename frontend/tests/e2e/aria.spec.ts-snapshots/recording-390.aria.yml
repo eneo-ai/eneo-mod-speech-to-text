@@ -1,0 +1,17 @@
+- banner:
+  - link "Till flödena":
+    - /url: /flows
+  - heading "Nämndmöte till rapport" [level=1]
+  - text: "Läge: Spela in"
+- status: Spelar in.
+- main:
+  - 'button "Uppgifter, Deltagare: Anna Berg"'
+  - region "Ljudet":
+    - status
+    - heading "Inspelning" [level=2]
+    - text: /Spelar in 0:\d+/
+    - paragraph: Texten skapas när du stoppar inspelningen. Inspelningen sparas på enheten medan du spelar in.
+    - button "Pausa"
+    - button "Stoppa"
+    - status:
+      - paragraph: Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.

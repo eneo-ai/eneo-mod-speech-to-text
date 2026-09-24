@@ -164,6 +164,8 @@ export function FlowInput({
         trailing={
           holdsAudio && mode ? (
             <Badge variant="soft" className="h-8 px-3 text-[14px] font-medium">
+              {/* Alone, "Spela in" reads like a command. */}
+              <span className="sr-only">Läge: </span>
               {MODE_TEXT[mode].name}
             </Badge>
           ) : undefined
@@ -203,7 +205,8 @@ export function FlowInput({
             : "pb-12 lg:items-start",
         )}
       >
-        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:min-h-0 lg:overflow-y-auto lg:pb-2")}>
+        {/* While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box. */}
+        <div className={cn("flex flex-col gap-5", group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}>
           <BackToFlows onLeave={onLeave} className="hidden lg:inline-flex" />
           <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
             {published.name}
@@ -218,7 +221,10 @@ export function FlowInput({
             // While recording and after, the details fold into one line on a phone or tablet.
             <Collapsible open={openDetails} onOpenChange={setDetailsOpen}>
               <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
-                <span className="min-w-0 flex-1 truncate">{detailsSummary(fields, snapshot.details)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="sr-only">Uppgifter, </span>
+                  {detailsSummary(fields, snapshot.details)}
+                </span>
                 <ChevronDown
                   aria-hidden
                   className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
@@ -271,9 +277,10 @@ export function FlowInput({
             <CaptureWorkspace input={input} />
           )}
         </section>
+        {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
+            form; inside main (it is the page's action), over main's side and bottom padding. */}
+        <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden" />
       </main>
-      {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its form. */}
-      <div ref={setDockSlot} className="sticky bottom-0 md:hidden" />
     </div>
   );
 }
@@ -388,6 +395,8 @@ function SetupWorkspace({
             checked={snapshot.speakerLabels}
             onCheckedChange={(on) => session.setSpeakerLabels(on)}
             aria-describedby="talare-hjalp"
+            // A 44 × 44 px hit area for a finger around the 44 × 24 px switch, from inside its 2 px border.
+            className="relative after:absolute after:-inset-x-0.5 after:-inset-y-3"
           />
         </Field>
       ) : speakerOption?.required || reviewsSpeakers ? (

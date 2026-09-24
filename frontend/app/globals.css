@@ -229,6 +229,8 @@
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
+  /* Loading spinners and skeletons stand still; the words beside them say that something is loading. */
+  .animate-spin, .animate-pulse { animation: none; }
 }
 
 @media (forced-colors: active) {

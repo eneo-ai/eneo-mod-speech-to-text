@@ -31,6 +31,16 @@ export function formatRelativeDate(value: string | Date, now: Date = new Date())
   return date.getFullYear() === now.getFullYear() ? `${day} ${time}` : `${day} ${date.getFullYear()}`;
 }
 
+/** A deadline always with its time: "i dag 23:59", "29 dec 09:01", "3 jan 2027 09:01"; empty for an invalid date. */
+export function formatDeadline(value: string | Date, now: Date = new Date()): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const time = `${two(date.getHours())}:${two(date.getMinutes())}`;
+  if (dayNumber(date) === dayNumber(now)) return `i dag ${time}`;
+  const year = date.getFullYear() === now.getFullYear() ? "" : ` ${date.getFullYear()}`;
+  return `${date.getDate()} ${MONTHS[date.getMonth()]}${year} ${time}`;
+}
+
 /** "22 s", "32 min", "1 h 5 min"; rounded to the unit shown. */
 export function formatDuration(ms: number): string {
   const seconds = Math.round(Math.max(0, ms) / 1000);
