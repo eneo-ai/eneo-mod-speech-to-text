@@ -91,7 +91,10 @@ export function SessionEndWarning({
 
   const time = endsAt === null ? "" : new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
   const byCode = mode === "access_code";
-  const action = signedOut ? "Logga in igen" : "Fortsätt arbeta";
+  // The words stay as they were while the dialog closes: the new login would otherwise flash the warning's.
+  const [ended, setEnded] = useState(signedOut);
+  if ((open || signedOut) && ended !== signedOut) setEnded(signedOut);
+  const action = ended ? "Logga in igen" : "Fortsätt arbeta";
   // Signed out, nothing but the new login closes it.
   return (
     <AlertDialog open={open || signedOut} onOpenChange={setOpen}>
@@ -102,13 +105,13 @@ export function SessionEndWarning({
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{signedOut ? "Du behöver logga in igen" : "Du loggas snart ut"}</AlertDialogTitle>
+          <AlertDialogTitle>{ended ? "Du behöver logga in igen" : "Du loggas snart ut"}</AlertDialogTitle>
           <AlertDialogDescription>
-            {signedOut ? "Inloggningen har upphört. " : `Inloggningen upphör kl. ${time}. `}
+            {ended ? "Inloggningen har upphört. " : `Inloggningen upphör kl. ${time}. `}
             {byCode
               ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
               : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
-            {signedOut
+            {ended
               ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
               : "Allt på den här sidan finns kvar."}
           </AlertDialogDescription>
@@ -135,7 +138,7 @@ export function SessionEndWarning({
           </p>
         )}
         <AlertDialogFooter>
-          {!signedOut && <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>}
+          {!ended && <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>}
           {byCode ? (
             <Button type="submit" form={`${codeId}-form`} className="h-11" disabled={sending}>
               {action}
