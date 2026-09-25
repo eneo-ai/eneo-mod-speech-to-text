@@ -5,7 +5,7 @@ import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
-import type { LiveSnapshot } from "./live-transcriber";
+import { LiveTranscriber, type LiveSnapshot, type LiveSocket } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
 import {
   FlowSession,
@@ -882,6 +882,83 @@ test("a Strömma recording continued after a reload or after Stoppa streams live
   assert.deepEqual(live.earlier, [undefined, [{ text: "Före Stoppa.", opensParagraph: true }]], "the draft from before Stoppa goes on");
   assert.deepEqual(live.streams, [streams[0], streams[1]]);
   assert.ok(session.getSnapshot().live);
+});
+
+/** Live text as the browser runs it (the real transcriber), with a relay the test speaks for. */
+function relayedLiveClient() {
+  const relays: Array<{ say(payload: object): void }> = [];
+  const client: LiveClient = {
+    open(_stepId, earlier) {
+      const transcriber = new LiveTranscriber(
+        {
+          openSocket: () => {
+            const socket: LiveSocket & { say(payload: object): void } = {
+              binaryType: "",
+              bufferedAmount: 0,
+              send: () => undefined,
+              close: () => undefined,
+              onopen: null,
+              onmessage: null,
+              onclose: null,
+              onerror: null,
+              say: (payload) => socket.onmessage?.({ data: JSON.stringify(payload) }),
+            };
+            relays.push(socket);
+            return socket;
+          },
+          setTimer: () => null,
+          clearTimer: () => undefined,
+        },
+        earlier,
+      );
+      transcriber.start();
+      return {
+        getSnapshot: transcriber.getSnapshot,
+        subscribe: transcriber.subscribe,
+        listen: () => undefined,
+        setRecording: (on) => transcriber.setRecording(on),
+        stop: () => transcriber.stop(),
+        dispose: () => transcriber.dispose(),
+      };
+    },
+  };
+  return { client, relays };
+}
+
+test("Fortsätt spela in keeps every word of the live draft: words that came after Stoppa, and all of it when the microphone is refused", async () => {
+  const live = relayedLiveClient();
+  let calls = 0;
+  const { session, recorders } = await setup({
+    live: live.client,
+    getStream: async () => {
+      calls += 1;
+      if (calls === 3) throw new DOMException("refused", "NotAllowedError");
+      return new FakeStream() as unknown as MediaStream;
+    },
+  });
+  const draft = () => session.getSnapshot().live?.getSnapshot().pieces.map((piece) => piece.text);
+  session.setContract(audioContract());
+  session.selectMode("stromma");
+  await session.start();
+  live.relays[0].say({ type: "ready" });
+  live.relays[0].say({ type: "transcript.delta", text: "Första delen." });
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  live.relays[0].say({ type: "transcript.delta", text: " Sista orden" }); // after Stoppa, before the final text
+
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.deepEqual(draft(), ["Första delen.", "Sista orden"], "the new part's live text goes on from all of it");
+
+  live.relays[1].say({ type: "ready" });
+  live.relays[1].say({ type: "transcript.delta", text: " Andra delen." });
+  recorders[1].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  await session.continueStopped(); // the microphone is refused
+  assert.equal(session.getSnapshot().phase, "ready");
+  assert.deepEqual(draft(), ["Första delen.", "Sista orden", "Andra delen."], "a refused continuation keeps the draft");
 });
 
 test("Ta bort removes the recording from the device for good and starts over with the details kept", async () => {

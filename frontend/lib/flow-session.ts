@@ -782,13 +782,18 @@ export class FlowSession {
     const live = recording.inputMode === "stream" && this.modes.includes("stromma");
     this.mode = live ? "stromma" : "spela-in";
     this.problem = null;
-    // After Stoppa, the live text so far goes on above the new part's.
-    if (live) this.openLive(recording.stepId, this.live?.getSnapshot().pieces);
+    // After Stoppa, the live text so far goes on above the new part's. Closed first, so words still arriving
+    // after Stoppa are part of it.
+    const earlier = this.live;
+    this.closeLive();
+    if (live) this.openLive(recording.stepId, earlier?.getSnapshot().pieces);
     this.emit();
     await takeOver(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
     if (status === "recording") return;
     this.closeLive();
+    // Refused: the draft stays with the stopped recording.
+    this.live = earlier;
     if (error) this.problem = { title: error };
     this.emit();
   }
