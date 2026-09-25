@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 import { ReadyPanel } from "../components/flow/ReadyPanel";
 import { UploadPanel } from "../components/flow/UploadPanel";
+import type { LiveSnapshot } from "./live-transcriber";
 import type { StoredRecording } from "./recording-store";
 
 const recording: StoredRecording = {
@@ -54,6 +55,42 @@ test("the ready state names the recording for people, never as a file or a type,
     }),
   );
   assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
+});
+
+test("after Stoppa, Strömma's live text stays to read and copy, marked as preliminary", () => {
+  const snapshot: LiveSnapshot = {
+    status: "ended",
+    started: true,
+    complete: false,
+    pending: "",
+    pieces: [
+      { text: "Välkomna till nämndens möte.", opensParagraph: true },
+      { text: "Första punkten.", opensParagraph: false },
+      { text: "Budgeten.", opensParagraph: true },
+    ],
+  };
+  const live = (pieces: LiveSnapshot["pieces"]) => ({
+    getSnapshot: () => ({ ...snapshot, pieces }),
+    subscribe: () => () => {},
+    listen: noop,
+    setRecording: noop,
+    stop: noop,
+    dispose: noop,
+  });
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording, persistent: true, problem: null, live: live(snapshot.pieces), onCreate: noop, onDiscard: noop }),
+  );
+  assert.match(html, /<h3 id="([^"]+)"[^>]*>Preliminär text<\/h3>/);
+  assert.match(html, /Den slutliga texten skapas med dokumentet\./);
+  assert.match(html, /<p>Välkomna till nämndens möte\. Första punkten\.<\/p><p>Budgeten\.<\/p>/);
+  assert.match(html, /role="region"[^>]*tabindex="0"|tabindex="0"[^>]*role="region"/, "a long draft scrolls by keyboard too");
+  assert.match(html, />Kopiera<\/button>/);
+  for (const nothing of [null, live([])]) {
+    const none = renderToStaticMarkup(
+      createElement(ReadyPanel, { recording, persistent: true, problem: null, live: nothing, onCreate: noop, onDiscard: noop }),
+    );
+    assert.doesNotMatch(none, /Preliminär text/);
+  }
 });
 
 test("a recording Eneo already has shows the earlier runs where the user is, and offers deleting it from the device", () => {

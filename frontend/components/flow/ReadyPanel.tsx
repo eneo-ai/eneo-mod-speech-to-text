@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, FileText, Mic, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,11 +15,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
+import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
+import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
-import type { Problem } from "@/lib/flow-session";
+import type { LiveSession, Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
@@ -49,6 +51,38 @@ function usePartSources(recording: StoredRecording): PlayerSource[] {
   return sources;
 }
 
+/** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
+function LiveDraft({ live }: { live: LiveSession }) {
+  const { pieces } = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
+  const headingId = useId();
+  const texts = paragraphs(pieces).map((group) => group.map((piece) => piece.text).join(" "));
+  if (texts.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex flex-col gap-0.5">
+          <h3 id={headingId} className="text-[15px] font-semibold text-ink">
+            Preliminär text
+          </h3>
+          <p className="text-[13px] text-ink-soft">Den slutliga texten skapas med dokumentet.</p>
+        </div>
+        <CopyButton text={texts.join("\n\n")} label="Kopiera" />
+      </div>
+      {/* Scrolls on its own, by keyboard too, so a long meeting's draft keeps the actions in reach. */}
+      <div
+        role="region"
+        aria-labelledby={headingId}
+        tabIndex={0}
+        className="flex max-h-60 flex-col gap-3 overflow-y-auto rounded-lg border border-rule-soft bg-paper px-4 py-3 text-[15px] leading-relaxed text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {texts.map((text, index) => (
+          <p key={index}>{text}</p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * "Inspelningen är klar": the recording, named for people, with its length
  * and playback, and one primary next step. Nothing here reads as an upload.
@@ -57,6 +91,7 @@ export function ReadyPanel({
   recording,
   persistent,
   problem,
+  live = null,
   onCreate,
   onContinue,
   onDiscard,
@@ -67,6 +102,8 @@ export function ReadyPanel({
   recording: StoredRecording;
   persistent: boolean | null;
   problem: Problem | null;
+  /** Strömma's live text, kept after Stoppa. */
+  live?: LiveSession | null;
   onCreate: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
   onContinue?: () => void;
@@ -104,6 +141,7 @@ export function ReadyPanel({
       </div>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
+      {live && <LiveDraft live={live} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="button" variant="outline" onClick={() => void save()}>

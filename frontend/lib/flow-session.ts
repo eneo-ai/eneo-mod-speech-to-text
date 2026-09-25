@@ -20,7 +20,7 @@ import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
 import { formatBytes } from "./format";
-import type { LiveSnapshot } from "./live-transcriber";
+import type { LivePiece, LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
@@ -381,8 +381,8 @@ export interface LiveSession {
 }
 
 export interface LiveClient {
-  /** Called in the start gesture, so the browser lets its audio run. */
-  open(stepId: string): LiveSession;
+  /** Called in the start gesture, so the browser lets its audio run; `earlier` is the draft to go on from. */
+  open(stepId: string, earlier?: LivePiece[]): LiveSession;
 }
 
 const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false, complete: false };
@@ -745,7 +745,8 @@ export class FlowSession {
     const live = recording.inputMode === "stream" && this.modes.includes("stromma");
     this.mode = live ? "stromma" : "spela-in";
     this.problem = null;
-    if (live) this.openLive(recording.stepId);
+    // After Stoppa, the live text so far goes on above the new part's.
+    if (live) this.openLive(recording.stepId, this.live?.getSnapshot().pieces);
     this.emit();
     await takeOver(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
@@ -755,10 +756,10 @@ export class FlowSession {
     this.emit();
   }
 
-  private openLive(stepId: string) {
+  private openLive(stepId: string, earlier?: LivePiece[]) {
     this.closeLive();
     try {
-      this.live = this.options.live?.open(stepId) ?? null;
+      this.live = this.options.live?.open(stepId, earlier) ?? null;
     } catch {
       // Live text could not even be set up: the recording goes on, and the sheet says so.
       this.live = unavailableLive();

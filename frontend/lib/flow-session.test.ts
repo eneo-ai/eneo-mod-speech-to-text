@@ -111,11 +111,13 @@ const audioContract = (overrides: Partial<RunContract> = {}): RunContract => ({
 function fakeLiveClient() {
   const calls: string[] = [];
   const opened: string[] = [];
+  const earlier: unknown[] = [];
   const streams: unknown[] = [];
   const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
   const client: LiveClient = {
-    open(stepId) {
+    open(stepId, pieces) {
       opened.push(stepId);
+      earlier.push(pieces);
       return {
         getSnapshot: () => snapshot,
         subscribe: () => () => undefined,
@@ -126,7 +128,7 @@ function fakeLiveClient() {
       };
     },
   };
-  return { client, calls, opened, streams };
+  return { client, calls, opened, earlier, streams, snapshot };
 }
 
 async function setup(
@@ -873,9 +875,11 @@ test("a Strömma recording continued after a reload or after Stoppa streams live
   recorders[0].emit("after");
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
+  live.snapshot.pieces = [{ text: "Före Stoppa.", opensParagraph: true }];
   await session.continueStopped();
   assert.equal(session.getSnapshot().phase, "recording");
   assert.deepEqual(live.opened, ["step-audio", "step-audio"], "a new live session for the new part");
+  assert.deepEqual(live.earlier, [undefined, [{ text: "Före Stoppa.", opensParagraph: true }]], "the draft from before Stoppa goes on");
   assert.deepEqual(live.streams, [streams[0], streams[1]]);
   assert.ok(session.getSnapshot().live);
 });

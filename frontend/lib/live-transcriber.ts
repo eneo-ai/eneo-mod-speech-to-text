@@ -124,7 +124,13 @@ export class LiveTranscriber {
   private stopListening: (() => void) | null = null;
   private stopFollowingLogin: (() => void) | null = null;
 
-  constructor(private readonly deps: LiveDeps) {}
+  /** `earlier`: the draft before Stoppa, when "Fortsätt spela in" goes on with the same recording. */
+  constructor(
+    private readonly deps: LiveDeps,
+    earlier: LivePiece[] = [],
+  ) {
+    this.snapshot = { ...this.snapshot, pieces: earlier };
+  }
 
   getSnapshot = (): LiveSnapshot => this.snapshot;
 

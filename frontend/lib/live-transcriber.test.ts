@@ -193,6 +193,27 @@ test("a pause inside a word commits only whole words, and a paragraph starts onl
   assert.equal(live.getSnapshot().pieces, whole, "the final text agrees with the whole words, so the paragraphs stay");
 });
 
+test("continued after Stoppa, the draft so far stays and the new part's words start a paragraph", () => {
+  const sockets: FakeSocket[] = [];
+  const earlier = [{ text: "Före Stoppa.", opensParagraph: true }];
+  const live = new LiveTranscriber(
+    {
+      openSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      setTimer: () => null,
+      clearTimer: () => undefined,
+    },
+    earlier,
+  );
+  live.start();
+  sockets[0].ready();
+  sockets[0].event({ type: "transcript.delta", text: "Efter pausen." });
+  assert.deepEqual(live.getSnapshot().pieces, [...earlier, { text: "Efter pausen.", opensParagraph: true }]);
+});
+
 test("speech without pauses still breaks into paragraphs at a sentence's end: after five sentences, or after a minute", () => {
   const speak = () => {
     const { live, sockets, at } = setup();
