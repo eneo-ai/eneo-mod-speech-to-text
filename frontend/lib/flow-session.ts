@@ -442,6 +442,8 @@ export class FlowSession {
   // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
   private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
+  // The chosen file's length being read; the probe resolves within its own bound.
+  private fileCheck: Promise<void> | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
   private live: LiveSession | null = null;
   private liveStream: MediaStream | null = null;
@@ -585,7 +587,7 @@ export class FlowSession {
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       const earlier = this.file;
       this.file = chosen;
-      void this.probeDuration?.(file)
+      const check: Promise<void> | undefined = this.probeDuration?.(file)
         .then((durationMs) => {
           if (this.file !== chosen || durationMs == null) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
@@ -597,7 +599,11 @@ export class FlowSession {
           }
           this.emit();
         })
-        .catch(() => undefined);
+        .catch(() => undefined)
+        .finally(() => {
+          if (this.fileCheck === check) this.fileCheck = null;
+        });
+      this.fileCheck = check ?? null;
     }
     this.emit();
   }
@@ -636,6 +642,14 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
+    // Ladda upp: a file whose length is still being read is sent only once it is known to fit.
+    const checking = this.snapshot.phase === "setup" && this.snapshot.mode === "ladda-upp" ? this.fileCheck : null;
+    if (checking) {
+      const candidate = this.file;
+      await checking;
+      // Refused, or another file chosen meanwhile: nothing is sent, and the page says why.
+      if (this.file?.blob !== candidate?.blob) return false;
+    }
     const { phase, mode } = this.snapshot;
     const input: SubmitRequest["input"] =
       phase === "ready" && this.ready

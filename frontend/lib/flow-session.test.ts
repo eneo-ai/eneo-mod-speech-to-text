@@ -984,6 +984,31 @@ test("Ladda upp refuses an empty file, and a file longer than the flow takes onc
   assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
 });
 
+test("a file whose length is still being read is sent only once it is known to fit; a length never known does not stop it", async () => {
+  const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
+  const lengths: Array<(ms: number | null) => void> = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setProbeDuration(() => new Promise((resolve) => lengths.push(resolve)));
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 60 }] }));
+  session.selectMode("ladda-upp");
+
+  session.chooseFile(new File(["audio"], "tva-minuter.mp3", { type: "audio/mpeg" }));
+  const tooLong = session.createDocument(); // before the browser has read the length
+  lengths[0](2 * 60_000);
+  assert.equal(await tooLong, false);
+  assert.equal(sent.length, 0, "a file over the flow's limit is never sent");
+  assert.equal(session.getSnapshot().problem?.title, "Filen är längre än flödet tar emot (högst 1\u00a0min).");
+
+  session.chooseFile(new File(["audio"], "okand.mp3", { type: "audio/mpeg" }));
+  const unknown = session.createDocument();
+  lengths[1](null); // the browser cannot tell: Eneo decides
+  assert.equal(await unknown, true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].input?.kind === "file" && sent[0].input.filename, "okand.mp3");
+});
+
 test("a document is sent under the type the flow takes, whatever name the browser gave it", async () => {
   const { session } = await setup();
   session.setContract(
