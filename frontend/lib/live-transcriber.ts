@@ -40,7 +40,7 @@ export interface LiveSnapshot {
   started: boolean;
   /** After the stop, the relay's final text came and the draft is it; false when the connection ended first. */
   complete: boolean;
-  /** Eneo's stored transcript of the whole recording, from the final text of the recording's only session. */
+  /** Eneo's stored transcript of the whole recording, from the final text of a recording heard whole. */
   transcriptId?: string;
 }
 
@@ -118,9 +118,11 @@ export class LiveTranscriber {
   private socket: LiveSocket | null = null;
   private ready = false;
   private buffered: ArrayBuffer[] = [];
-  // Samples the recording gave live text, and the sessions that said ready: only the one session can have heard all.
+  // Samples the recording gave live text. Only a recording heard whole, by one connection with no audio lost on the
+  // way, sends the count and keeps its transcript; anything else makes its text a preview, for good.
   private produced = 0;
-  private sessions = 0;
+  private whole = true;
+  private opened = false;
   private recording = true;
   private stopping = false;
   private failure: Failure = null;
@@ -208,13 +210,18 @@ export class LiveTranscriber {
     this.commit();
     this.clear("retryTimer");
     if (this.socket && this.ready) {
-      // A later session missed what the ones before it heard: its stop names no count, and Eneo keeps no text.
-      const stop = this.sessions === 1 ? { type: "stop", produced_samples: this.produced } : { type: "stop" };
+      // A recording not heard whole names no count, and Eneo keeps no text.
+      const stop = this.whole ? { type: "stop", produced_samples: this.produced } : { type: "stop" };
       this.socket.send(JSON.stringify(stop));
       this.stopTimer = this.deps.setTimer(() => this.finish(), FINAL_TEXT_WAIT_MS);
     } else {
       this.finish();
     }
+  }
+
+  /** Some of the recording's audio never reached live text: its text stays a preview. */
+  lose(): void {
+    this.whole = false;
   }
 
   /**
@@ -226,6 +233,7 @@ export class LiveTranscriber {
    * own close event; the audio meanwhile waits in the bounded buffer.
    */
   fail(): void {
+    this.lose();
     const socket = this.socket;
     if (!socket || this.stopping) return;
     this.failure = "retry";
@@ -254,6 +262,9 @@ export class LiveTranscriber {
       return;
     }
     this.clear("retryTimer");
+    // A second connection, before or after a ready: the first may have heard audio this one never gets.
+    if (this.opened) this.lose();
+    this.opened = true;
     this.ready = false;
     this.failure = null;
     this.attempts += 1;
@@ -285,7 +296,6 @@ export class LiveTranscriber {
     switch (event.type) {
       case "ready":
         this.ready = true;
-        this.sessions += 1;
         this.attempts = 0;
         this.retryMs = FIRST_RETRY_MS;
         this.buffered.forEach((frame) => socket.send(frame));
@@ -303,9 +313,8 @@ export class LiveTranscriber {
         const final = typeof event.text === "string" ? event.text : null;
         if (final !== null) this.reconcile(final);
         if (this.stopping) {
-          // Only the recording's one session has a stored transcript of all of it.
-          const transcriptId =
-            this.sessions === 1 && typeof event.transcript_id === "string" ? event.transcript_id : undefined;
+          // Only a recording heard whole has a stored transcript of all of it.
+          const transcriptId = this.whole && typeof event.transcript_id === "string" ? event.transcript_id : undefined;
           if (final !== null) this.set({ complete: true, transcriptId });
           this.finish();
         }

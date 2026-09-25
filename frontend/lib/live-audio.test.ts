@@ -242,3 +242,25 @@ test("audio that cannot feed live text ends the connection as a break, and the n
     session.dispose();
   }
 });
+
+test("audio that failed to set up, before or after ready, leaves the recording's text a preview: no count, no transcript", async () => {
+  for (const readyFirst of [false, true]) {
+    const { client, sockets, play, elapse } = setupLive({ failLoads: 1 });
+    const session = client.open("step-audio", "recording-1");
+    if (readyFirst) sockets[0].ready();
+    session.listen(stream);
+    await settle();
+    sockets[0].onclose?.({ code: 1000 });
+    elapse(1_000);
+    await settle();
+    sockets[1].ready();
+    play(0.25, 3_200);
+    deliver();
+    session.stop();
+    deliver();
+
+    assert.deepEqual(JSON.parse(sockets[1].sent.at(-1) as string), { type: "stop" }, `ready first: ${readyFirst}`);
+    sockets[1].onmessage?.({ data: JSON.stringify({ type: "transcript.done", text: "Hej.", transcript_id: "t-1" }) });
+    assert.equal(session.getSnapshot().transcriptId, undefined);
+  }
+});

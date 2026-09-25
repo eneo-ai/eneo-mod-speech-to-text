@@ -296,6 +296,21 @@ test("after a break no session heard the whole recording: the stop carries no co
   assert.equal(live.getSnapshot().transcriptId, undefined);
 });
 
+test("a connection lost before it said ready breaks the recording's text too: the next session's stop carries no count", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  live.pushFrame(frame(1));
+  sockets[0].event({ type: "error", code: "upstream_unavailable", retryable: true });
+  sockets[0].drop(1011);
+  elapse(1_000);
+  sockets[1].ready();
+  live.pushFrame(frame(2));
+  live.stop();
+  assert.equal(sockets[1].sent.at(-1), JSON.stringify({ type: "stop" }));
+  sockets[1].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-2" });
+  assert.equal(live.getSnapshot().transcriptId, undefined);
+});
+
 test("a refused start makes live text unavailable, and a refused handshake (1006) too", () => {
   const refused = setup();
   refused.live.start();
