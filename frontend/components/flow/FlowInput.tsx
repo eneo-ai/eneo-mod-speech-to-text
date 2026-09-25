@@ -28,6 +28,7 @@ import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from 
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
   browserStorage,
+  createActionLabel,
   labelsSpeakers,
   primaryActionLabel,
   readSpeakerCount,
@@ -216,6 +217,7 @@ export function FlowInput({
               problem={snapshot.problem}
               live={snapshot.live}
               finishing={snapshot.finishing}
+              createLabel={createActionLabel(contract.final_output?.output_type)}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}
@@ -325,6 +327,8 @@ function SetupWorkspace({
   const optionalFile = step?.required === false;
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
+  const outputType = contract.final_output?.output_type;
+  const create = createActionLabel(outputType);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
   const focusCount = () => document.getElementById(SPEAKER_COUNT_ID)?.focus();
@@ -335,10 +339,10 @@ function SetupWorkspace({
   const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
-      ? "Skapa dokument"
+      ? create
       : !audio && !file
         ? "Välj fil"
-        : primaryActionLabel(mode, file != null);
+        : primaryActionLabel(mode, file != null, outputType);
 
   function primary() {
     if (countInvalid) focusCount();
@@ -378,6 +382,7 @@ function SetupWorkspace({
     <div className="flex w-full flex-col gap-6">
       <UnsentRecordings
         recordings={unsentRecordings}
+        sendLabel={() => create}
         onSend={(recording) => {
           if (countInvalid) return focusCount();
           session.adopt(recording);
@@ -391,7 +396,7 @@ function SetupWorkspace({
       ) : (
         // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
         <h2 data-phase-heading tabIndex={-1} className="sr-only">
-          {modes[0] ? MODE_TEXT[modes[0]].name : "Skapa dokument"}
+          {modes[0] ? MODE_TEXT[modes[0]].name : create}
         </h2>
       )}
 

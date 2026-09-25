@@ -16,9 +16,9 @@ checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like run-done.
 An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
-republishing (409 on the contract); any unknown flow is gone (404). flow-2,
-labelling speakers, asks Antal talare; flows 1 and 3 ask it once Märk upp
-talare is on. The live
+republishing (409 on the contract); any unknown flow is gone (404). flow-2
+ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
+and 3 ask it once Märk upp talare is on. The live
 relay on /api/live/ answers a word per four audio frames.
 """
 
@@ -64,7 +64,7 @@ def flow(fid, name, description, version, space, fields, **contract):
 PARTICIPANTS = {"name": "deltagare", "label": "Deltagare", "type": "list", "required": False, "order": 1}
 FLOWS = {f["published"]["id"]: f for f in [
     flow("flow-1", "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
-         3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON,
+         3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON, final_output={"output_type": "pdf"},
          security_classification={"name": "Öppen information", "security_level": 1,
                                   "description": "Använd bara information som får lämnas ut till vem som helst."}),
     flow("flow-2", "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,
@@ -74,6 +74,7 @@ FLOWS = {f["published"]["id"]: f for f in [
          transcription={"live": {"available": False, "reason": "model_not_realtime"},
                         "speaker_labels": {"selectable": False, "required": True, "default": True},
                         "max_speakers": {"form_field": None}},
+         final_output={"output_type": "text"},
          steps_requiring_review=[{"step_id": REVIEW_STEP_ID, "step_order": 2, "review_mode": "edit", "output_type": "json",
                                   "output_contract": {"properties": {"speakers": {"items": {"properties": {
                                       "label": {"pattern": "^SPEAKER_\\d{2,}$"}}}}}}}]),
@@ -327,7 +328,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/eneo/flows/":
             return self.send(200, {"has_more": False, "count": len(FLOWS), "items": [
                 {**f["published"], "is_published": True, "space_id": f["space"][0], "space_name": f["space"][1],
-                 "input_type": "audio"} for f in FLOWS.values()]})
+                 "input_type": "audio", "output_type": (f["contract"].get("final_output") or {}).get("output_type")}
+                for f in FLOWS.values()]})
         parts = path.strip("/").split("/")
         if len(parts) < 5 or parts[:3] != ["api", "eneo", "flows"]:
             return self.send(404, {"detail": "stub: " + path})

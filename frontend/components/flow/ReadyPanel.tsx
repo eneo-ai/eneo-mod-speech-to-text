@@ -94,6 +94,7 @@ export function ReadyPanel({
   problem,
   live = null,
   finishing = false,
+  createLabel = "Skapa dokument",
   onCreate,
   onContinue,
   onDiscard,
@@ -108,6 +109,8 @@ export function ReadyPanel({
   live?: LiveSession | null;
   /** Strömma's final text is on its way: Skapa dokument waits for it. */
   finishing?: boolean;
+  /** What the action says: what the flow makes (lib/flow-session createActionLabel). */
+  createLabel?: string;
   onCreate: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
   onContinue?: () => void;
@@ -181,7 +184,7 @@ export function ReadyPanel({
           ) : (
             <FileText data-icon="inline-start" aria-hidden />
           )}
-          {finishing ? "Slutför texten…" : "Skapa dokument"}
+          {finishing ? "Slutför texten…" : createLabel}
         </Button>
         {onContinue && (
           <Button type="button" variant={moment ? "default" : "outline"} size="xl" className="sm:flex-1" onClick={onContinue}>

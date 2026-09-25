@@ -68,11 +68,14 @@ export function UnsentRecordings({
   onSend,
   onContinue,
   withFlowName = false,
+  sendLabel = () => "Skapa dokument",
 }: {
   recordings: UnsentRecording[];
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
+  /** What a recording's send says: what its flow makes (lib/flow-session createActionLabel). */
+  sendLabel?: (recording: StoredRecording) => string;
 }) {
   const headingId = useId();
   if (recordings.length === 0) return null;
@@ -102,6 +105,7 @@ export function UnsentRecordings({
             key={recording.id}
             recording={recording}
             withFlowName={withFlowName}
+            sendLabel={sendLabel(recording)}
             onSend={onSend}
             onContinue={continuable(recording) ? onContinue : undefined}
             primary={recording === resumable}
@@ -115,12 +119,14 @@ export function UnsentRecordings({
 function UnsentRecordingRow({
   recording,
   withFlowName,
+  sendLabel,
   onSend,
   onContinue,
   primary,
 }: {
   recording: UnsentRecording;
   withFlowName: boolean;
+  sendLabel: string;
   onSend: (recording: StoredRecording) => void;
   /** Given for a recording whose capture was cut off, where a recorder can take it over. */
   onContinue?: (recording: StoredRecording) => void;
@@ -212,7 +218,7 @@ function UnsentRecordingRow({
               </Button>
             )}
             <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => onSend(recording)}>
-              Skapa dokument
+              {sendLabel}
             </Button>
             <Button
               type="button"

@@ -181,11 +181,12 @@ export function submitProblem(
   error: unknown,
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
+  createLabel: string,
 ): Problem {
   if (error instanceof Error && error.message === ALREADY_SENT) return { title: ALREADY_SENT, sent: true };
   if (error instanceof ApiError) {
     if (error.code === "flow_run_stale_version") {
-      return { title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen." };
+      return { title: `Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj ${createLabel} igen.` };
     }
     const kept =
       inputKind === "recording" ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den." : "Välj ett annat flöde.";
@@ -281,10 +282,16 @@ export function readSpeakerCount(text: string | null): number | undefined | "inv
   return /^\d+$/.test(trimmed) && count >= 1 && count <= MAX_SPEAKER_COUNT ? count : "invalid";
 }
 
-export function primaryActionLabel(mode: InputMode, hasFile: boolean): string {
+/** The action that makes the run, by what the flow ends in: a PDF or Word file is a document, text or data is text. */
+export function createActionLabel(outputType: string | null | undefined): string {
+  // Unknown (an Eneo that does not say, a flow without steps) keeps the label it always had.
+  return outputType === "text" || outputType === "json" ? "Skapa text" : "Skapa dokument";
+}
+
+export function primaryActionLabel(mode: InputMode, hasFile: boolean, outputType?: string | null): string {
   if (mode === "stromma") return "Starta strömning";
   if (mode === "spela-in") return "Starta inspelning";
-  return hasFile ? "Skapa dokument" : "Välj ljudfil";
+  return hasFile ? createActionLabel(outputType) : "Välj ljudfil";
 }
 
 export function microphoneProblem(errorName: string | null): Problem {
@@ -735,7 +742,8 @@ export class FlowSession {
     } catch (error) {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
       if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
-      this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null);
+      const createLabel = createActionLabel(this.contract?.final_output?.output_type);
+      this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel);
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.
         await this.handlers.reloadFlow?.().catch(() => undefined);

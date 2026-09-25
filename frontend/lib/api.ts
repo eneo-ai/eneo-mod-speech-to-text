@@ -194,6 +194,8 @@ export interface FlowSparsePublic {
   space_name: string;
   /** How the flow takes its input: "audio", "document" or "file". */
   input_type?: FlowRuntimeInputFormat | string | null;
+  /** What the flow's last step makes, as the run contract's `final_output.output_type`. */
+  output_type?: FlowOutputType | string | null;
 }
 
 export interface FormField {
@@ -284,6 +286,8 @@ export interface RunContract {
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
   /** Null när flödet inte transkriberar ljud. */
   transcription?: FlowTranscriptionContract | null;
+  /** Vad körningen slutar i: "pdf" och "docx" är en fil, "text" och "json" text. Null för ett flöde utan steg. */
+  final_output?: { output_type: FlowOutputType | string } | null;
   /** Null när spacet saknar klassning eller organisationen stängt av klassningar. */
   security_classification?: FlowSecurityClassification | null;
 }

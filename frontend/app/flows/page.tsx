@@ -18,7 +18,7 @@ import {
   discoverConfiguredFlows,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
-import { browserStorage, lastUsedFlow } from "@/lib/flow-session";
+import { browserStorage, createActionLabel, lastUsedFlow } from "@/lib/flow-session";
 
 export default function FlowsPage() {
   return (
@@ -64,6 +64,8 @@ function FlowsListPage() {
   }, [attempt]);
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);
+  // What each flow makes, for its unsent recordings' action; until the list is read, the label it always had.
+  const outputTypes = new Map(groups?.flatMap((group) => group.flows.map((flow) => [flow.id, flow.output_type] as const)));
 
   return (
     <>
@@ -77,6 +79,7 @@ function FlowsListPage() {
           <UnsentRecordings
             recordings={unsent}
             withFlowName
+            sendLabel={(recording) => createActionLabel(outputTypes.get(recording.flowId))}
             onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
           />
         )}
