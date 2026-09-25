@@ -242,6 +242,28 @@ export const STATES: State[] = [
     },
   },
   {
+    name: "setup-count-from-names",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+      await page.getByRole("switch", { name: "Märk upp talare" }).click();
+      // Deltagare is the contract's participants field: the count follows the names.
+      await expect(page.getByRole("textbox", { name: /^Antal talare/ })).toHaveValue("2");
+    },
+  },
+  {
+    name: "setup-count-invalid",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await page.getByRole("switch", { name: "Märk upp talare" }).click();
+      await page.getByRole("textbox", { name: /^Antal talare/ }).fill("e");
+      await page.getByRole("button", { name: "Starta inspelning" }).click();
+      await expect(page.getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.")).toBeVisible();
+    },
+  },
+  {
     name: "upload-chosen-file",
     go: async (page) => {
       await setup(page);
@@ -512,6 +534,23 @@ export const STATES: State[] = [
     go: async (page) => {
       await run(page, "run-corrected");
       await expect(page.getByText("Dokumentet skapades före dina rättningar")).toBeVisible();
+    },
+  },
+  {
+    name: "result-text",
+    go: async (page) => {
+      // flow-2 gives its result back in the run: text, not a document.
+      await run(page, "run-plain", "flow-2");
+      await heading(page, "Texten är klar");
+    },
+  },
+  {
+    name: "result-pdf-preview-whole",
+    go: async (page) => {
+      await run(page, "run-pdf-long");
+      await heading(page, "Dokumentet är klart");
+      await page.getByRole("button", { name: "Visa hela texten" }).click();
+      await expect(page.getByRole("button", { name: "Visa mindre" })).toBeVisible();
     },
   },
   {
