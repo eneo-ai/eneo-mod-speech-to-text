@@ -23,7 +23,7 @@ import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/reco
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
+import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { browserStorage, labelsSpeakers, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
@@ -315,6 +315,9 @@ function SetupWorkspace({
   const optionalFile = step?.required === false;
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
+  const onContinue = modes.includes("spela-in") ? (recording: StoredRecording) => void session.continueCutOff(recording) : undefined;
+  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
+  const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? "Skapa dokument"
@@ -336,7 +339,7 @@ function SetupWorkspace({
           session.adopt(recording);
           void createDocument(session);
         }}
-        onContinue={modes.includes("spela-in") ? (recording) => void session.continueCutOff(recording) : undefined}
+        onContinue={onContinue}
       />
 
       {modes.length > 1 ? (
@@ -404,6 +407,7 @@ function SetupWorkspace({
           >
             <Button
               type="button"
+              variant={resuming ? "outline" : "default"}
               size="xl"
               className="w-full"
               // Not disabled: that would drop keyboard focus while the browser asks for the microphone.

@@ -99,7 +99,7 @@ type RunState =
 // Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
 // delad länk, kan återuppta samma körning i stället för att tappa den.
 const RUN_QUERY_PARAM = "run";
-// "Skicka" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
+// "Skapa dokument" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
 const RECORDING_QUERY_PARAM = "recording";
 
 function readRunIdFromUrl(): string | null {
@@ -222,7 +222,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [holdsAudio, submitting, unstored]);
 
-  // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
+  // Öppnad från "Skapa dokument" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
     if (!contract) return;
     const url = new URL(window.location.href);

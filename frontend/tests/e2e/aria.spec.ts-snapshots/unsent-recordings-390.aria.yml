@@ -5,6 +5,6 @@
     - listitem:
       - paragraph: /Inspelning \d+ sep \d+:\d+/
       - paragraph: /Nämndmöte till rapport · \d+ s/
-      - button "Skicka"
+      - button "Skapa dokument"
       - button "Spara som fil"
       - button "Ta bort"

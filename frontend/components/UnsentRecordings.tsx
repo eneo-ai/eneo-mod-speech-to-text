@@ -54,7 +54,15 @@ export function recordingDetails(
   return [...(withFlowName ? [recording.flowName] : []), formatDuration(recording.durationMs)].join(" · ");
 }
 
-/** Recordings kept on this device that Eneo has not received yet. */
+/** The recording a reload cut off that this tab can record on in, the first when there are more. */
+export function resumableRecording(recordings: UnsentRecording[]): UnsentRecording | undefined {
+  return recordings.find((recording) => !recording.exportOnly && continuable(recording));
+}
+
+/**
+ * Recordings kept on this device that Eneo has not received yet. Only "Fortsätt spela in" on a recording a
+ * reload cut off is filled: the page has one filled action.
+ */
 export function UnsentRecordings({
   recordings,
   onSend,
@@ -68,18 +76,24 @@ export function UnsentRecordings({
 }) {
   const headingId = useId();
   if (recordings.length === 0) return null;
+  const resumable = onContinue ? resumableRecording(recordings) : undefined;
+  const cutOff = recordings.length === 1 && resumable !== undefined;
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-3">
       <div className="flex flex-col gap-1">
         <h2 id={headingId} className="text-[19px] font-semibold leading-snug tracking-[-0.01em] text-ink">
-          {recordings.length === 1
-            ? "En inspelning är inte skickad"
-            : `${recordings.length} inspelningar är inte skickade`}
+          {cutOff
+            ? "Inspelningen avbröts"
+            : recordings.length === 1
+              ? "En inspelning är inte skickad"
+              : `${recordings.length} inspelningar är inte skickade`}
         </h2>
         <p className="text-[15px] leading-relaxed text-ink-soft">
-          {recordings.length === 1
-            ? "Den finns kvar på den här enheten tills den har skickats."
-            : "De finns kvar på den här enheten tills de har skickats."}
+          {cutOff
+            ? "Välj Fortsätt spela in så fortsätter den i samma inspelning."
+            : recordings.length === 1
+              ? "Den finns kvar på den här enheten tills den har skickats."
+              : "De finns kvar på den här enheten tills de har skickats."}
         </p>
       </div>
       <ul className="flex flex-col gap-3">
@@ -90,6 +104,7 @@ export function UnsentRecordings({
             withFlowName={withFlowName}
             onSend={onSend}
             onContinue={continuable(recording) ? onContinue : undefined}
+            primary={recording === resumable}
           />
         ))}
       </ul>
@@ -102,12 +117,15 @@ function UnsentRecordingRow({
   withFlowName,
   onSend,
   onContinue,
+  primary,
 }: {
   recording: UnsentRecording;
   withFlowName: boolean;
   onSend: (recording: StoredRecording) => void;
   /** Given for a recording whose capture was cut off, where a recorder can take it over. */
   onContinue?: (recording: StoredRecording) => void;
+  /** Its "Fortsätt spela in" is the page's filled action. */
+  primary: boolean;
 }) {
   const summaryId = useId();
   const questionId = useId();
@@ -186,19 +204,15 @@ function UnsentRecordingRow({
             {onContinue && (
               <Button
                 type="button"
+                variant={primary ? "default" : "outline"}
                 aria-describedby={summaryId}
                 onClick={() => onContinue(recording)}
               >
                 Fortsätt spela in
               </Button>
             )}
-            <Button
-              type="button"
-              variant={onContinue ? "outline" : "default"}
-              aria-describedby={summaryId}
-              onClick={() => onSend(recording)}
-            >
-              Skicka
+            <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => onSend(recording)}>
+              Skapa dokument
             </Button>
             <Button
               type="button"
