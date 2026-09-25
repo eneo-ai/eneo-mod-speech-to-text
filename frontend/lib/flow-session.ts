@@ -285,11 +285,12 @@ export function readSpeakerCount(text: string | null): number | undefined | "inv
 }
 
 /**
- * Whether the flow ends in text rather than a file: text or JSON, which the result view shows as text. A PDF or Word
- * file is a document, and so is an unknown type (an Eneo that does not say, a flow without steps), as it always was.
+ * Whether the flow's result is text rather than a document: exactly when Eneo gives it back in the run (delivery
+ * "payload"), which the result view shows. A file, a result sent on to a receiver, and an Eneo or flow that does not
+ * say are a document, as they always were.
  */
-export function makesText(outputType: string | null | undefined): boolean {
-  return outputType === "text" || outputType === "json";
+export function makesText(finalOutput: RunContract["final_output"]): boolean {
+  return finalOutput?.delivery === "payload";
 }
 
 /** The action that makes the run, by what the flow ends in (`makesText`). */
@@ -297,10 +298,10 @@ export function createActionLabel(text: boolean): string {
   return text ? "Skapa text" : "Skapa dokument";
 }
 
-export function primaryActionLabel(mode: InputMode, hasFile: boolean, outputType?: string | null): string {
+export function primaryActionLabel(mode: InputMode, hasFile: boolean, text = false): string {
   if (mode === "stromma") return "Starta strömning";
   if (mode === "spela-in") return "Starta inspelning";
-  return hasFile ? createActionLabel(makesText(outputType)) : "Välj ljudfil";
+  return hasFile ? createActionLabel(text) : "Välj ljudfil";
 }
 
 export function microphoneProblem(errorName: string | null): Problem {
@@ -777,7 +778,7 @@ export class FlowSession {
     } catch (error) {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
       if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
-      const createLabel = createActionLabel(makesText(this.contract?.final_output?.output_type));
+      const createLabel = createActionLabel(makesText(this.contract?.final_output));
       this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel);
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.

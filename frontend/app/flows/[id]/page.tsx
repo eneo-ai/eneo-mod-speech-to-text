@@ -617,7 +617,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         <SubmittingView
           submission={submission}
           onCancelSubmission={onCancelSubmission}
-          makesText={makesText(contract.final_output?.output_type)}
+          makesText={makesText(contract.final_output)}
         />,
         {
         input: startedWith.input,
@@ -665,7 +665,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         startedAt={run.run.created_at}
         error={runError}
         // Today's contract speaks only for a run of its own version.
-        makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output?.output_type)}
+        makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
         onCancel={() => onCancelRun(run.run.id)}
       />,
       { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },

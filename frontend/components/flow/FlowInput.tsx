@@ -129,7 +129,7 @@ export function FlowInput({
   // The flow's own count field, when the names filled it in: said under it, as under this module's field.
   const ownCountField = contract.transcription?.max_speakers?.form_field;
   // What the run makes, which the actions and the lines about it say: text, or a document.
-  const text = makesText(contract.final_output?.output_type);
+  const text = makesText(contract.final_output);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -343,8 +343,8 @@ function SetupWorkspace({
   const optionalFile = step?.required === false;
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
-  const outputType = contract.final_output?.output_type;
-  const create = createActionLabel(makesText(outputType));
+  const text = makesText(contract.final_output);
+  const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
   const focusCount = () => document.getElementById(SPEAKER_COUNT_ID)?.focus();
@@ -358,7 +358,7 @@ function SetupWorkspace({
       ? create
       : !audio && !file
         ? "Välj fil"
-        : primaryActionLabel(mode, file != null, outputType);
+        : primaryActionLabel(mode, file != null, text);
 
   function primary() {
     if (countInvalid) focusCount();

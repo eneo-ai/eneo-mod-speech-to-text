@@ -571,14 +571,18 @@ test("each mode has its own primary action", () => {
   assert.equal(primaryActionLabel("spela-in", false), "Starta inspelning");
   assert.equal(primaryActionLabel("ladda-upp", false), "Välj ljudfil");
   assert.equal(primaryActionLabel("ladda-upp", true), "Skapa dokument");
-  assert.equal(primaryActionLabel("ladda-upp", true, "text"), "Skapa text");
+  assert.equal(primaryActionLabel("ladda-upp", true, true), "Skapa text");
 });
 
-test("the action says what the flow makes: a document for a PDF or Word file, else text; unknown keeps Skapa dokument", () => {
-  const label = (type: string | null | undefined) => createActionLabel(makesText(type));
-  for (const type of ["pdf", "docx"]) assert.equal(label(type), "Skapa dokument", type);
-  for (const type of ["text", "json"]) assert.equal(label(type), "Skapa text", type);
-  for (const type of [null, undefined, "something_new"]) assert.equal(label(type), "Skapa dokument", String(type));
+test("the action says text exactly when Eneo gives the result back as text in the run, else a document as before", () => {
+  const label = (finalOutput: RunContract["final_output"]) => createActionLabel(makesText(finalOutput));
+  assert.equal(label({ output_type: "text", delivery: "payload" }), "Skapa text");
+  assert.equal(label({ output_type: "json", delivery: "payload" }), "Skapa text", "data the result view shows as text");
+  for (const type of ["pdf", "docx"]) assert.equal(label({ output_type: type, delivery: "artifact" }), "Skapa dokument", type);
+  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver: as before");
+  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how: as before");
+  assert.equal(label(null), "Skapa dokument", "a flow without steps");
+  assert.equal(label(undefined), "Skapa dokument");
 });
 
 test("a denied or missing microphone says what happened and what to do next, and nothing is recorded", async () => {
