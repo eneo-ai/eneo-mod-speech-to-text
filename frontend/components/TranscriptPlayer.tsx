@@ -257,6 +257,7 @@ export function TranscriptPlayer(
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
   const searchId = useId();
+  const pastId = useId();
 
   const [follow, setFollow] = useState(true);
   const [editingIndex, setEditingIndex] = useState(-1);
@@ -540,7 +541,7 @@ export function TranscriptPlayer(
       {tools && (
         <div className="flex flex-col gap-3 border-b border-rule-soft px-3 pb-3 pt-1">
           {labelled && (<>
-          {/* The speaker filter, nothing else: chips that wrap from a laptop's width and scroll on a phone. */}
+          {/* The speaker filter, nothing else: chips that wrap, so none is cut off on a phone. */}
           <ToggleGroup
             type="single"
             variant="chip"
@@ -549,7 +550,7 @@ export function TranscriptPlayer(
             onValueChange={(value) => setFilter(value || "all")}
             aria-label="Visa talare"
             className={cn(
-              "-mx-3 flex-nowrap justify-start overflow-x-auto px-3 py-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0",
+              "flex-wrap justify-start py-1",
               speakers.length > CHIP_LIMIT && "max-lg:hidden",
             )}
           >
@@ -720,6 +721,19 @@ export function TranscriptPlayer(
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}
       <div className="flex min-h-0 flex-1 flex-col">
+      {/* Each passage is a few Tab stops, a long meeting hundreds: the way past them, shown when it has focus.
+          It moves focus itself, so the address and the history stay the run's. */}
+      <Button asChild variant="outline" size="sm" className="sr-only focus:not-sr-only focus:m-2 focus:self-start focus:px-3 focus:py-1.5">
+        <a
+          href={`#${pastId}`}
+          onClick={(e) => {
+            e.preventDefault();
+            document.getElementById(pastId)?.focus();
+          }}
+        >
+          Hoppa förbi transkriptet
+        </a>
+      </Button>
       {/* Transkript: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
       <div
         ref={listRef}
@@ -796,9 +810,9 @@ export function TranscriptPlayer(
         )}
       </div>
 
-      {hasAudio && (
+      {hasAudio ? (
         // Docked under the text: on a phone it stays in view while the transcript is on screen.
-        <div data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:static lg:pb-2">
+        <div id={pastId} tabIndex={-1} data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:static lg:pb-2">
           <AudioPlayer playback={playback} label="Inspelningen">
             <Button
               type="button"
@@ -839,6 +853,9 @@ export function TranscriptPlayer(
             )}
           </AudioPlayer>
         </div>
+      ) : (
+        // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.
+        <span id={pastId} tabIndex={-1} />
       )}
       </div>
     </section>
@@ -1062,10 +1079,10 @@ function TurnBlock({
                             flagged &&
                               "bg-ochre/25 px-[2px] -mx-[2px] underline decoration-wavy decoration-ochre underline-offset-[3px]",
                             confirmed &&
-                              "bg-ok/15 px-[2px] -mx-[2px] text-ok underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
+                              "bg-ok/15 px-[2px] -mx-[2px] text-ink underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
                             piece.hit === "match" && "bg-primary-soft text-ink",
-                            piece.hit === "current" && "bg-primary text-primary-foreground",
-                            isWordActive && "bg-primary text-primary-foreground",
+                            (piece.hit === "current" || isWordActive) &&
+                              "bg-primary text-primary-foreground forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]",
                             piece.correctedFrom !== null &&
                               "underline decoration-dotted decoration-primary underline-offset-[3px]",
                           )}

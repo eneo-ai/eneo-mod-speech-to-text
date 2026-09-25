@@ -43,6 +43,20 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
 
+test("a link before the passages skips them: to the player under them, or past the transcript without audio", () => {
+  for (const [fileCount, target] of [[2, /^<div[^>]*data-docked-player/], [0, /^<[a-z]+ id="[^"]+" tabindex="-1"/]] as const) {
+    const html = render(fileCount);
+    const link = html.match(/<a[^>]*href="#([^"]+)"[^>]*>Hoppa förbi transkriptet<\/a>/);
+    assert.ok(link, `fileCount ${fileCount}: the skip link`);
+    assert.ok(html.indexOf(link[0]) < html.indexOf("Välkomna till mötet."), "before the first passage");
+    const at = html.indexOf(`id="${link[1]}"`);
+    assert.ok(at > html.lastIndexOf("Andra delen börjar här."), "its target comes after the last passage");
+    const element = html.slice(html.lastIndexOf("<", at));
+    assert.match(element, /^<[^>]*tabindex="-1"/, "the target takes focus");
+    assert.match(element, target);
+  }
+});
+
 test("a transcript without audio shows no controls and says why", () => {
   const html = render(0);
   assert.doesNotMatch(html, /Uppspelning:|<audio/);
