@@ -59,7 +59,8 @@ test("a run opened while it runs keeps the flow's page: the way back, and the de
 
 test("a step that will stop for the person says what it asks while it is ahead, and not once it is done", async ({ page }) => {
   await run(page, "run-before-review", "flow-2");
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  // flow-2 gives its result back in the run (delivery "payload"): it makes text, not a document.
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   const review = page.getByRole("listitem").filter({ hasText: "Talare" });
   await expect(review).toContainText("Väntar");
   await expect(review).toContainText("Här bekräftar du vem som är vem.");
@@ -75,7 +76,7 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
   await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
@@ -99,7 +100,7 @@ test("an approved pause whose resume did not go through shows the saved names re
     if (request.method() !== "GET" && request.url().includes("/review-checkpoints/")) writes.push(request.url().split("/").filter(Boolean).at(-1)!);
   });
   await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(writes, "nothing saved or approved again").toEqual(["resume"]);
 });
 
