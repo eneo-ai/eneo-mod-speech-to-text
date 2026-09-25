@@ -176,9 +176,12 @@ export class LiveTranscriber {
     this.fail();
   }
 
-  /** The next 100 ms of audio; sent when live, kept (bounded) until then. */
+  /**
+   * The next 100 ms of audio; sent when live, kept (bounded) until then. Audio gathered before a pause may still
+   * come after it: the audio pipeline, not this client, holds the pause.
+   */
   pushFrame(frame: ArrayBuffer): void {
-    if (!this.recording || this.stopping) return;
+    if (this.stopping) return;
     // Counted before any wait or discard, so Eneo can tell whether the session heard all of it.
     this.produced += frame.byteLength / 2;
     if (this.ready && this.socket) {
@@ -195,7 +198,7 @@ export class LiveTranscriber {
     if (this.buffered.length > MAX_BUFFERED_FRAMES) this.buffered.shift();
   }
 
-  /** The recorder paused or went on: paused audio is not sent, and a session silence ended starts again. */
+  /** The recorder paused or went on: paused, no new try starts, and a session silence ended starts again. */
   setRecording(on: boolean): void {
     this.recording = on;
     // Paused, a new try waits for recording to go on.

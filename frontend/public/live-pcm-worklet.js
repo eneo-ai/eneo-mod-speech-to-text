@@ -1,8 +1,8 @@
 // Strömma: hands the microphone's audio, mixed to mono, to the page in blocks
 // of about 40 ms. The page resamples it to 16 kHz PCM16 for the live-text relay.
-// While the recording is paused nothing is gathered, and each block names the
-// stretch of recording it belongs to, so audio from around a pause never
-// reaches live text after it.
+// While the recording is paused nothing is gathered. Each message from the page
+// (a pause, a resume, the stop) is answered with the audio gathered up to it,
+// marked `end`, so the page knows all of that stretch is there and none is lost.
 // Served from /public, so the Content-Security-Policy's script-src 'self' allows it.
 
 const BLOCK = 2048;
@@ -10,17 +10,19 @@ const BLOCK = 2048;
 class LivePcmProcessor extends AudioWorkletProcessor {
   constructor(options) {
     super();
-    const { recording = true, stretch = 0 } = options?.processorOptions ?? {};
-    this.recording = recording;
-    this.stretch = stretch;
+    this.recording = options?.processorOptions?.recording ?? true;
     this.block = new Float32Array(BLOCK);
     this.filled = 0;
-    // A pause or a resume on the page: what was gathered is dropped with its stretch.
     this.port.onmessage = ({ data }) => {
+      this.hand(true);
       this.recording = data.recording;
-      this.stretch = data.stretch;
-      this.filled = 0;
     };
+  }
+
+  hand(end) {
+    const samples = this.block.slice(0, this.filled);
+    this.port.postMessage({ samples, end }, [samples.buffer]);
+    this.filled = 0;
   }
 
   process(inputs) {
@@ -32,11 +34,7 @@ class LivePcmProcessor extends AudioWorkletProcessor {
       for (let c = 0; c < channels.length; c += 1) sum += channels[c][i];
       this.block[this.filled] = sum / channels.length;
       this.filled += 1;
-      if (this.filled === BLOCK) {
-        this.port.postMessage({ stretch: this.stretch, samples: this.block }, [this.block.buffer]);
-        this.block = new Float32Array(BLOCK);
-        this.filled = 0;
-      }
+      if (this.filled === BLOCK) this.hand(false);
     }
     return true;
   }

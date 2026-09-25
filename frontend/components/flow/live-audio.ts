@@ -8,6 +8,8 @@ import { Pcm16Encoder } from "@/lib/pcm";
 
 // Served from /public, which the Content-Security-Policy's script-src 'self' allows.
 const WORKLET = "/live-pcm-worklet.js";
+// How long the stop waits for the audio thread's last audio; without it the stop names no count.
+const LAST_AUDIO_WAIT_MS = 1_000;
 
 /** Strömma needs a socket and an AudioWorklet; without them the card is not offered. */
 export function supportsLiveText(): boolean {
@@ -61,9 +63,11 @@ export function liveClient(env: LiveEnv): LiveClient {
       let node: AudioWorkletNode | null = null;
       // Bumped by every wiring and unwiring, so a module that loads late never wires an old try.
       let attempt = 0;
-      // Bumped at every pause and resume; audio the worklet gathered in another stretch is dropped.
-      let stretch = 0;
       let recording = true;
+      // Messages the audio thread has not answered yet; a stop waits for all of them.
+      let unanswered = 0;
+      let stopping = false;
+      let lastAudioTimer: unknown = null;
 
       const deps = env.liveDeps(stepId, recordingId);
       const transcriber = new LiveTranscriber(
@@ -80,6 +84,7 @@ export function liveClient(env: LiveEnv): LiveClient {
 
       const unwire = () => {
         attempt += 1;
+        unanswered = 0;
         if (node) node.port.onmessage = null;
         source?.disconnect();
         node?.disconnect();
@@ -109,10 +114,15 @@ export function liveClient(env: LiveEnv): LiveClient {
           node = env.workletNode(audio, {
             numberOfInputs: 1,
             numberOfOutputs: 0,
-            processorOptions: { recording, stretch },
+            processorOptions: { recording },
           });
-          node.port.onmessage = ({ data }: MessageEvent<{ stretch: number; samples: Float32Array }>) => {
-            if (data.stretch === stretch) encoder?.push(data.samples);
+          node.port.onmessage = ({ data }: MessageEvent<{ samples: Float32Array; end: boolean }>) => {
+            encoder?.push(data.samples);
+            if (!data.end) return;
+            // A pause or the stop reached the audio thread, and all it gathered before is here: the stretch ends.
+            encoder?.flush();
+            unanswered -= 1;
+            if (unanswered === 0 && stopping) finishStop();
           };
           source.connect(node);
           await audio.resume();
@@ -122,7 +132,26 @@ export function liveClient(env: LiveEnv): LiveClient {
           // ends as a break, so the next try sets the audio up afresh.
           release();
           transcriber.fail();
+          // A stop waiting for this audio's last samples gets none.
+          if (stopping) finishStop();
         });
+      };
+
+      const clearLastAudioTimer = () => {
+        if (lastAudioTimer !== null) deps.clearTimer(lastAudioTimer);
+        lastAudioTimer = null;
+      };
+      const finishStop = () => {
+        clearLastAudioTimer();
+        encoder?.flush();
+        release();
+        transcriber.stop();
+      };
+
+      const ask = (message: { recording: boolean }) => {
+        if (!node) return;
+        unanswered += 1;
+        node.port.postMessage(message);
       };
 
       transcriber.start();
@@ -130,24 +159,32 @@ export function liveClient(env: LiveEnv): LiveClient {
         getSnapshot: transcriber.getSnapshot,
         subscribe: transcriber.subscribe,
         listen(next) {
+          // Another microphone: what the last one gathered and had not yet handed on is gone.
+          if (stream) transcriber.lose();
           stream = next;
           wire();
         },
-        // The pause holds before encoding: the audio up to it goes out, and nothing gathered after it ever does.
+        // The pause holds where the audio thread hears of it: the audio gathered up to it goes out, none after it.
         setRecording(on) {
           if (on === recording) return;
-          if (!on) encoder?.flush();
           recording = on;
-          stretch += 1;
-          node?.port.postMessage({ recording, stretch });
+          ask({ recording });
           transcriber.setRecording(on);
         },
+        // The audio thread's last audio first, then the stop message.
         stop() {
-          encoder?.flush();
-          release();
-          transcriber.stop();
+          if (stopping) return;
+          stopping = true;
+          if (!node) return finishStop();
+          ask({ recording: false });
+          lastAudioTimer = deps.setTimer(() => {
+            lastAudioTimer = null;
+            transcriber.lose();
+            finishStop();
+          }, LAST_AUDIO_WAIT_MS);
         },
         dispose() {
+          clearLastAudioTimer();
           release();
           transcriber.dispose();
         },

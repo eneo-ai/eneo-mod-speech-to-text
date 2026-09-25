@@ -13,7 +13,9 @@ type Listener = ((event: { data: unknown }) => void) | null;
 
 // Messages between the page and the audio thread wait here until delivered, as they do between threads.
 const inFlight: Array<() => void> = [];
-const deliver = () => inFlight.splice(0).forEach((send) => send());
+const deliver = () => {
+  while (inFlight.length > 0) inFlight.splice(0).forEach((send) => send());
+};
 
 /** One end of a MessageChannel. */
 class FakePort {
@@ -144,7 +146,7 @@ function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
 const stream = {} as MediaStream;
 const pcm = (value: number) => Math.round(value * 0x7fff);
 
-test("paused audio never reaches live text: the pause holds before encoding, and nothing gathered is left over", async () => {
+test("paused audio never reaches live text: from the moment the audio thread hears of the pause it gathers nothing", async () => {
   const { client, sockets, play } = setupLive();
   const session = client.open("step-audio");
   session.listen(stream);
@@ -154,7 +156,6 @@ test("paused audio never reaches live text: the pause holds before encoding, and
   play(0.25, 2_500); // a full frame and a part of the next
   deliver();
   session.setRecording(false);
-  play(0.75, 3_000); // paused, before the audio thread has heard of it
   deliver();
   play(0.75, 3_000); // paused: the microphone is still open
   deliver();
@@ -163,17 +164,13 @@ test("paused audio never reaches live text: the pause holds before encoding, and
   play(0.5, 3_300);
   deliver();
 
-  const heard = new Set(sockets[0].samples());
-  assert.ok(!heard.has(pcm(0.75)), "no paused sample, whole or in part");
-  assert.deepEqual([...heard].sort((a, b) => a - b), [pcm(0.25), pcm(0.5)]);
-  assert.equal(
-    sockets[0].samples().filter((sample) => sample === pcm(0.5)).length,
-    1_600,
-    "after the pause, frames start with the audio after it",
-  );
+  const heard = sockets[0].samples();
+  assert.ok(!heard.includes(pcm(0.75)), "no paused sample, whole or in part");
+  assert.equal(heard.filter((sample) => sample === pcm(0.25)).length, 2_500, "the audio up to the pause, all of it");
+  assert.equal(heard.filter((sample) => sample === pcm(0.5)).length, 1_600, "after the pause, frames start with the audio after it");
 });
 
-test("the stop counts every sample the recording gave live text, and none from a pause; the relay hears which recording", async () => {
+test("the stop counts every sample the audio thread gathered for the recording, still on its way or not; the relay hears which recording", async () => {
   const { client, sockets, named, play } = setupLive();
   const session = client.open("step-audio", "recording-1");
   session.listen(stream);
@@ -181,42 +178,46 @@ test("the stop counts every sample the recording gave live text, and none from a
   play(0.25, 2_500); // before ready: it waits
   deliver();
   sockets[0].ready();
+  play(0.25, 10_000); // still on its way to the page at the pause
   session.setRecording(false);
-  play(0.75, 3_000);
+  play(0.25, 1_000); // gathered before the audio thread heard of the pause: the stretch's last audio
+  deliver();
+  play(0.75, 3_000); // paused
   deliver();
   session.setRecording(true);
   deliver();
-  play(0.5, 3_300);
-  deliver();
+  play(0.5, 3_300); // a part block and blocks on their way at the stop
   session.stop();
+  deliver();
 
+  const captured = 2_500 + 10_000 + 1_000 + 3_300;
   assert.deepEqual(named, [["step-audio", "recording-1"]]);
   assert.ok(!sockets[0].samples().includes(pcm(0.75)));
-  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), {
-    type: "stop",
-    produced_samples: sockets[0].samples().length,
-  });
+  assert.equal(sockets[0].samples().length, captured, "nothing gathered is left behind");
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: captured });
 });
 
-test("a pause and a resume quicker than the audio thread hears of them let nothing from the pause through", async () => {
-  const { client, sockets, play } = setupLive();
-  const session = client.open("step-audio");
-  session.listen(stream);
-  await settle();
-  sockets[0].ready();
-
-  play(0.25, 1_600);
-  deliver();
-  session.setRecording(false);
-  play(0.75, 4_096); // the audio thread still thinks it records
-  session.setRecording(true);
-  deliver();
-  play(0.5, 3_300);
-  deliver();
-
-  const heard = new Set(sockets[0].samples());
-  assert.ok(!heard.has(pcm(0.75)), "blocks from the paused stretch are dropped on arrival");
-  assert.ok(heard.has(pcm(0.5)), "the audio after the resume goes on");
+test("audio live text cannot account for leaves the recording's text a preview: a new microphone stream, or a stop the audio thread never answers", async () => {
+  for (const lost of ["new stream", "no answer"]) {
+    const { client, sockets, play, elapse } = setupLive();
+    const session = client.open("step-audio", "recording-1");
+    session.listen(stream);
+    await settle();
+    sockets[0].ready();
+    play(0.25, 3_000);
+    if (lost === "new stream") {
+      session.listen({} as MediaStream); // the microphone came back; the old one's last audio is gone
+      await settle();
+      play(0.5, 3_000);
+      session.stop();
+      deliver();
+    } else {
+      deliver();
+      session.stop();
+      elapse(1_000);
+    }
+    assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop" }, lost);
+  }
 });
 
 test("audio that cannot feed live text ends the connection as a break, and the next try sets the audio up afresh", async () => {

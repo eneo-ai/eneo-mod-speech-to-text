@@ -108,7 +108,7 @@ function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>
 const frame = (byte: number) => new Uint8Array(3_200).fill(byte).buffer;
 const firstByte = (data: ArrayBuffer) => new Uint8Array(data)[0];
 
-test("frames from the moment recording starts wait for ready, then go in order; none while paused", () => {
+test("frames from the moment recording starts wait for ready, then go in order; audio from before a pause still goes", () => {
   const { live, sockets } = setup();
   live.start();
   assert.equal(live.getSnapshot().status, "connecting");
@@ -123,10 +123,10 @@ test("frames from the moment recording starts wait for ready, then go in order; 
   assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3], "the first words are not lost");
 
   live.setRecording(false);
-  live.pushFrame(frame(4));
+  live.pushFrame(frame(4)); // gathered before the pause, handed on after it
   live.setRecording(true);
   live.pushFrame(frame(5));
-  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3, 5], "paused audio is not sent");
+  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3, 4, 5]);
 });
 
 test("the wait for ready keeps a bounded buffer: the newest audio, not unbounded memory", () => {
@@ -255,14 +255,11 @@ test("stop sends the last audio, then the stop message, keeps the draft and ends
   assert.equal(sockets[0].frames().length, 1, "nothing after stop");
 });
 
-test("the stop counts every sample the recording gave the session, before the wait for ready and its bound; none while paused", () => {
+test("the stop counts every sample the recording gave the session, before the wait for ready and its bound", () => {
   const { live, sockets } = setup();
   live.start();
   for (let i = 0; i < 301; i += 1) live.pushFrame(frame(1)); // one more than the wait keeps
   sockets[0].ready();
-  live.setRecording(false);
-  live.pushFrame(frame(2));
-  live.setRecording(true);
   live.pushFrame(new Uint8Array(1_000).buffer); // the partial frame a pause or a stop flushes
   live.stop();
   assert.equal(sockets[0].frames().length, 301, "the oldest frame did not wait");
