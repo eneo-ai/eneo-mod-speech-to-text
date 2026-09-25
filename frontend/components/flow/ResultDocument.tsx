@@ -185,21 +185,21 @@ export function ResultDocument({
         </article>
       )}
 
-      {/* The file, under Eneo's name: its type and size, and Öppna where the browser can show it. No second download. */}
+      {/* The file, under Eneo's name: its type and size, and the name opens it where the browser can show it. No
+          second download. */}
       {file && Icon && (
-        <div className={cn("flex items-center gap-3 px-5 py-3", text && "border-t border-border")}>
+        <div data-file-row className={cn("relative flex items-center gap-3 px-5 py-3", text && "border-t border-border")}>
           <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
             <Icon className="size-[18px]" strokeWidth={2} />
           </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[14px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
+          <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+            {file.previewable && download && inline ? (
+              <OpenFile file={file} url={inline} download={download} name />
+            ) : (
+              <p className="text-[14px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
+            )}
             <p className="text-[13px] text-ink-mute">{file.meta}</p>
           </div>
-          {file.previewable && download && inline && (
-            <div className="hidden lg:block">
-              <OpenFile file={file} url={inline} download={download} variant="ghost" />
-            </div>
-          )}
         </div>
       )}
       <CopyStatus state={copyState} />

@@ -25,7 +25,8 @@
         - list:
           - listitem: Förvaltningen återkommer i oktober.
           - listitem: Nya skolskjutsturer gäller efter höstlovet.
-      - paragraph: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
+      - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:
+        - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=inline
       - paragraph: /PDF, \d+ B/
       - status
     - region "Fler filer":

@@ -32,6 +32,7 @@ import {
   ItemTitle,
 } from "@/components/ui/item";
 import { runArtifactUrl } from "@/lib/api";
+import { cn } from "@/lib/utils";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
@@ -43,6 +44,10 @@ export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   image: FileImage,
   other: File,
 };
+
+// A file's name as its link: it wraps like the name it is, and its stretched box makes the whole row the target.
+const NAME =
+  "h-auto whitespace-normal p-0 text-left text-[14px] leading-snug [overflow-wrap:anywhere] coarse:h-auto after:absolute after:inset-0 focus-visible:underline";
 
 /** The run's files under Eneo's names, each opened or downloaded through the module. */
 export function ResultFiles({
@@ -101,35 +106,56 @@ export function ResultFiles({
  * actions and Stäng before the viewer. The viewer is not in the Tab order: the
  * browser's PDF frame keeps Escape to itself and shows this page no focus state,
  * so keyboard users read the file with "Öppna i ny flik", in a whole tab.
+ *
+ * On the document's own row the file's name is the one control, and the whole
+ * row is its target: a new tab below a laptop's width, as Öppna PDF above the
+ * document does there, and the dialog from it.
  */
 export function OpenFile({
   file,
   url,
   download,
-  variant = "outline",
-  size,
+  name = false,
 }: {
   file: ResultFileView;
   url: string;
   download: string;
-  variant?: "outline" | "ghost";
-  size?: "sm";
+  name?: boolean;
 }) {
   const title = useRef<HTMLHeadingElement | null>(null);
   return (
     <>
-      <Button asChild variant={variant} size={size} className="sm:hidden">
-        <a href={url} target="_blank" rel="noopener noreferrer">
-          <ExternalLink data-icon="inline-start" aria-hidden />
-          Öppna<span className="sr-only"> {file.name} i en ny flik</span>
-        </a>
-      </Button>
+      {name ? (
+        <Button asChild variant="link" className={cn(NAME, "lg:hidden")}>
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            <span className="sr-only">Öppna </span>
+            {file.name}
+            <ExternalLink aria-hidden />
+            <span className="sr-only"> i en ny flik</span>
+          </a>
+        </Button>
+      ) : (
+        <Button asChild variant="outline" className="sm:hidden">
+          <a href={url} target="_blank" rel="noopener noreferrer">
+            <ExternalLink data-icon="inline-start" aria-hidden />
+            Öppna<span className="sr-only"> {file.name} i en ny flik</span>
+          </a>
+        </Button>
+      )}
       <Dialog>
         <DialogTrigger asChild>
-          <Button variant={variant} size={size} className="hidden sm:inline-flex">
-            <Eye data-icon="inline-start" aria-hidden />
-            Öppna<span className="sr-only"> {file.name}</span>
-          </Button>
+          {name ? (
+            <Button variant="link" className={cn(NAME, "hidden lg:inline-flex")}>
+              <span className="sr-only">Öppna </span>
+              {file.name}
+              <Eye aria-hidden />
+            </Button>
+          ) : (
+            <Button variant="outline" className="hidden sm:inline-flex">
+              <Eye data-icon="inline-start" aria-hidden />
+              Öppna<span className="sr-only"> {file.name}</span>
+            </Button>
+          )}
         </DialogTrigger>
         <DialogContent
           hideClose

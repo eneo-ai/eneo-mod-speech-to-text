@@ -21,9 +21,8 @@
       - list:
         - listitem: Förvaltningen återkommer i oktober.
         - listitem: Nya skolskjutsturer gäller efter höstlovet.
-    - paragraph: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
-    - paragraph: /PDF, \d+ B/
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
+    - paragraph: /PDF, \d+ B/
     - status
   - region "Fler filer":
     - heading "Fler filer" [level=2]

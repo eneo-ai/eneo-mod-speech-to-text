@@ -38,11 +38,19 @@ const filled = (within: ParentNode) => [
 test("the document's one filled action is its file's download; without a file it is copying the text", async () => {
   const withFile = await document_({ text, file: pdf });
   assert.deepEqual(filled(withFile.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"]);
-  // The file row names the file and opens it; it never offers the same download again.
-  const row = [...withFile.container.querySelectorAll("p")].find((p) => p.textContent === pdf.name)!.closest("div.flex")!;
+  // The file row names the file, and the name opens it; it never offers the same download again.
+  const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
+  const name = withFile.container.querySelector<HTMLAnchorElement>(`[data-file-row] a[href="${inline}"]`);
+  assert.ok(name, "the file's name is a link to the file");
+  assert.equal(name.target, "_blank", "as Öppna PDF: in a new tab");
+  assert.equal(name.textContent, `Öppna ${pdf.name} i en ny flik`);
+  const row = name.closest("[data-file-row]")!;
   assert.match(row.textContent ?? "", /PDF, 47,1\u00a0kB/);
   assert.ok(!row.querySelector("a[download]"), "no second download in the file row");
-  assert.ok([...row.querySelectorAll("button")].some((b) => b.textContent?.startsWith("Öppna")), "Öppna in the file row");
+  // From a laptop's width the name opens the preview instead; no Öppna beside it does the same again.
+  const controls = [...row.querySelectorAll("a, button")].map((el) => el.textContent);
+  assert.deepEqual(controls, [`Öppna ${pdf.name} i en ny flik`, `Öppna ${pdf.name}`]);
+  assert.equal(row.querySelector("button")!.getAttribute("aria-haspopup"), "dialog");
   await withFile.unmount();
 
   const textOnly = await document_({ text, file: null });
