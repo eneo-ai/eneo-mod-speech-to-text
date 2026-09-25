@@ -169,7 +169,7 @@ export function ResultDocument({
   title: string;
   /** Where there is no text: what the file says, see fileText. */
   preview?: string | null;
-  /** The flow makes text, not a document (`runMadeText`). */
+  /** The flow makes text, not a document (`runMakesText`). */
   madeText?: boolean;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;

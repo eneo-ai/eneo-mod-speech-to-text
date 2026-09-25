@@ -44,16 +44,17 @@ export function runResultView(
 }
 
 /**
- * Whether a run made text rather than a document: its own version's contract ends in text or JSON, which this view
- * shows as text. A PDF or Word file is a document, and so is a type Eneo does not say or a run of an older version
- * (today's contract says nothing of it), as it always was.
+ * Whether a run makes text rather than a document: its own version's contract delivers the final output as a
+ * payload (Eneo's `final_output.delivery`, from flow_run_contract_service `_output_delivery`), which this view shows
+ * as text. A file, an output sent on elsewhere, a delivery Eneo does not state or a run of an older version (today's
+ * contract says nothing of it) reads as a document, as it always did. The setup's makesText asks the same of the
+ * contract; the two fold into one.
  */
-export function runMadeText(
+export function runMakesText(
   run: { flow_version?: number | null },
   contract: Pick<RunContract, "published_flow_version" | "final_output"> | null | undefined,
 ): boolean {
-  const output = contract?.final_output?.output_type;
-  return ofContractVersion(run, contract) && (output === "text" || output === "json");
+  return ofContractVersion(run, contract) && contract?.final_output?.delivery === "payload";
 }
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";

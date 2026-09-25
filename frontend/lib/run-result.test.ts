@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowRunError, ResultFile } from "./api";
-import { runErrorView, runMadeText, runResultView } from "./run-result";
+import { runErrorView, runMakesText, runResultView } from "./run-result";
 
 const transcriptFile = (availability: string): ResultFile => ({
   file_id: "file-1",
@@ -168,14 +168,17 @@ test("audio over the flow's limit is too long, not too large: Eneo's ceilings me
   assert.match(runErrorView(runError({ code: "typed_io_input_too_large" })).summary, /större än flödet klarar/);
 });
 
-test("a finished run made text when its own version's contract ends in text or JSON; a file, no answer or another version is a document", () => {
-  const contract = (output_type?: string) => ({ published_flow_version: 3, final_output: output_type ? { output_type } : null });
+test("a run makes text when its own version's contract delivers the final output as a payload; a file, a sending or no answer is a document", () => {
+  const contract = (output_type: string, delivery?: "payload" | "artifact" | "outbound_http") => ({
+    published_flow_version: 3,
+    final_output: { output_type, delivery },
+  });
   const run = { flow_version: 3 };
-  assert.equal(runMadeText(run, contract("text")), true);
-  assert.equal(runMadeText(run, contract("json")), true);
-  assert.equal(runMadeText(run, contract("pdf")), false);
-  assert.equal(runMadeText(run, contract("docx")), false);
-  assert.equal(runMadeText(run, contract()), false, "an Eneo that does not say reads as before");
-  assert.equal(runMadeText({ flow_version: 2 }, contract("text")), false, "today's contract says nothing of an older version");
-  assert.equal(runMadeText(run, null), false);
+  assert.equal(runMakesText(run, contract("text", "payload")), true);
+  assert.equal(runMakesText(run, contract("json", "payload")), true);
+  assert.equal(runMakesText(run, contract("pdf", "artifact")), false);
+  assert.equal(runMakesText(run, contract("json", "outbound_http")), false, "sent on, not shown as text");
+  assert.equal(runMakesText(run, contract("text")), false, "an Eneo that does not say how it delivers reads as before");
+  assert.equal(runMakesText({ flow_version: 2 }, contract("text", "payload")), false, "today's contract says nothing of an older version");
+  assert.equal(runMakesText(run, null), false);
 });

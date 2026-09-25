@@ -10,7 +10,7 @@ import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runMadeText, type RunErrorView } from "@/lib/run-result";
+import { runMakesText, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
@@ -87,7 +87,7 @@ export function RunFailure({
             tabIndex={-1}
             className={STATE_HEADING}
           >
-            {cancelled ? "Körningen avbröts" : runMadeText(run, contract) ? "Texten kunde inte skapas" : "Dokumentet kunde inte skapas"}
+            {cancelled ? "Körningen avbröts" : runMakesText(run, contract) ? "Texten kunde inte skapas" : "Dokumentet kunde inte skapas"}
           </h1>
           {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
         </header>

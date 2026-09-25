@@ -443,7 +443,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
       flowId: "flow-1",
       flowName: "Intervju till sammanfattning",
       run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
-      contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text" } },
+      contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text", delivery: "payload" } },
       steps: [],
       stepResults: [transcribe] as never,
       files: [],
@@ -465,12 +465,12 @@ test("a flow that makes text that failed says the text could not be made", async
   const { createElement } = await import("react");
   const { RunFailure } = await import("../components/flow/RunFailure");
   const failure = { step: null, summary: "Körningen kunde inte slutföras.", detail: "x", inputMustChange: false };
-  const heading = async (output_type: string) => {
+  const heading = async (output_type: string, delivery: "payload" | "artifact" | "outbound_http") => {
     const view = await mount(
       createElement(RunFailure, {
         flowId: "flow-1", flowName: "Intervju till sammanfattning",
         run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "failed" } as never,
-        contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type } },
+        contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type, delivery } },
         failure, steps: [], stepResults: [], files: [],
       }),
     );
@@ -478,6 +478,8 @@ test("a flow that makes text that failed says the text could not be made", async
     await view.unmount();
     return h1;
   };
-  assert.equal(await heading("json"), "Texten kunde inte skapas");
-  assert.equal(await heading("pdf"), "Dokumentet kunde inte skapas");
+  assert.equal(await heading("json", "payload"), "Texten kunde inte skapas");
+  assert.equal(await heading("pdf", "artifact"), "Dokumentet kunde inte skapas");
+  // A flow that sends its JSON on makes no text to show: it reads as before.
+  assert.equal(await heading("json", "outbound_http"), "Dokumentet kunde inte skapas");
 });
