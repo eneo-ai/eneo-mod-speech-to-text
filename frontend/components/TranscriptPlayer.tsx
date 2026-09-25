@@ -18,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -484,6 +485,26 @@ export function TranscriptPlayer(
   }
 
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
+    // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
+    if (audioPending) {
+      return (
+        <section className={cn("flex flex-col gap-5 p-4", className)} aria-label="Transkript" aria-busy="true">
+          <p role="status" className="sr-only">
+            Hämtar transkriptet…
+          </p>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="flex gap-3">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <div className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-4 w-1/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+              </div>
+            </div>
+          ))}
+        </section>
+      );
+    }
     return (
       <section className={cn("flex flex-col", className)} aria-label="Transkript">
         <p className="px-4 pt-4 text-[12px] text-ink-mute">

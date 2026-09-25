@@ -49,6 +49,23 @@ test("a transcript without audio shows no controls and says why", () => {
   assert.match(html, /Ljudet är inte tillgängligt för den här körningen\./);
 });
 
+test("while the transcript is being read it shows its shape, never the raw text and a warning that flash by", () => {
+  const html = renderToStaticMarkup(
+    createElement(TranscriptPlayer, {
+      segments: [],
+      fileCount: 0,
+      audioSrcFor: () => "",
+      speakerNames: {},
+      textFallback: "[00:00:00 - 00:00:03] SPEAKER_00: Välkomna.",
+      audioPending: true,
+      reviewEnabled: false,
+    }),
+  );
+  assert.doesNotMatch(html, /saknar tidsmarkeringar|\[00:00:00/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /role="status"[^>]*>Hämtar transkriptet…</);
+});
+
 test("the highlight follows the playhead in each part's own time, as the transcript counts it", () => {
   const media: MediaLike = {
     src: "",
