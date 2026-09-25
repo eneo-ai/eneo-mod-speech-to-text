@@ -48,7 +48,7 @@ import { friendlyError } from "@/lib/errors";
 import { makesText, type SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
-import { recordingStore, type RunRequest } from "@/lib/recording-store";
+import { recordingStore } from "@/lib/recording-store";
 import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import {
@@ -57,8 +57,7 @@ import {
   runOutcome,
   runStage,
   runSteps,
-  streamedRun,
-  type StreamedRun,
+  runLabelsSpeakers,
 } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
@@ -136,10 +135,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
-  // The details a run was started with, shown beside its states: as sent, as the run Eneo returned carries
-  // them, or read once for a run opened while it runs (its polled status does not carry them). `streamed` is known
-  // only for a run sent from here: its request named Strömma's transcript.
-  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown; streamed?: StreamedRun }>({
+  // The details a run was started with, shown beside its states, and its own speaker-label choice for its progress
+  // line: as the run Eneo returned carries them, or read once for a run opened while it runs (its polled status does
+  // not carry them).
+  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown; speakerLabels?: boolean | null }>({
     runId: null,
     input: null,
   });
@@ -147,12 +146,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
   useEffect(() => {
     if (!runningRun || startedWith.runId === runningRun.id) return;
     if ("input_payload_json" in runningRun) {
-      setStartedWith({ runId: runningRun.id, input: (runningRun as FlowRunPublic).input_payload_json ?? null });
+      const full = runningRun as FlowRunPublic;
+      setStartedWith({ runId: full.id, input: full.input_payload_json ?? null, speakerLabels: full.speaker_labels });
       return;
     }
     let current = true;
     getRun(flowId, runningRun.id)
-      .then((full) => current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null }))
+      .then(
+        (full) =>
+          current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null, speakerLabels: full.speaker_labels }),
+      )
       .catch(() => undefined);
     return () => {
       current = false;
@@ -273,8 +276,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setSubmission({ kind: "idle" });
     const abortController = new AbortController();
     submitAbortRef.current = abortController;
-    // The request Eneo was last asked, which a refused live transcript leaves out.
-    let streamed: StreamedRun = null;
 
     try {
       const params = {
@@ -288,10 +289,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
-        onStarting: (request: RunRequest) => {
-          streamed = streamedRun(request.body, contract.transcription?.speaker_labels);
-          setSubmission({ kind: "starting", wait: null });
-        },
+        onStarting: () => setSubmission({ kind: "starting", wait: null }),
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };
@@ -306,7 +304,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setSubmission({ kind: "idle" });
 
       writeRunIdToUrl(initialRun.id);
-      setStartedWith({ runId: initialRun.id, input: initialRun.input_payload_json ?? payload, streamed });
+      setStartedWith({
+        runId: initialRun.id,
+        input: initialRun.input_payload_json ?? payload,
+        speakerLabels: initialRun.speaker_labels,
+      });
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
@@ -654,7 +656,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <RunProgress
         flowName={published.name}
         steps={steps}
-        stage={runStage(steps, run.run.status, startedWith.runId === run.run.id ? startedWith.streamed : null)}
+        stage={runStage(
+          steps,
+          run.run.status,
+          startedWith.runId === run.run.id &&
+            runLabelsSpeakers(startedWith.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
+        )}
         startedAt={run.run.created_at}
         error={runError}
         // Today's contract speaks only for a run of its own version.

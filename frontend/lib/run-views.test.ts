@@ -66,13 +66,13 @@ test("a flow that makes text says the text will be ready, as its action says Ska
 test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {
   const view = (startedAt?: string) =>
     renderToStaticMarkup(
-      createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Transkriberar ljudet", startedAt, onCancel: async () => undefined }),
+      createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", startedAt, onCancel: async () => undefined }),
     );
   const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
-  assert.match(text(html), /Transkriberar ljudet Har pågått i 12 min\. Det kan ta några minuter\./);
+  assert.match(text(html), /Tar fram texten Har pågått i 12 min\. Det kan ta några minuter\./);
   // The minutes count on without being read out on every change.
   assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
-  assert.match(text(view(undefined)), /Transkriberar ljudet Det kan ta några minuter\./, "before the start is known");
+  assert.match(text(view(undefined)), /Tar fram texten Det kan ta några minuter\./, "before the start is known");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
