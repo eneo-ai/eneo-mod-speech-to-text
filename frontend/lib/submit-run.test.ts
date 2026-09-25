@@ -1016,6 +1016,43 @@ test("a new run with the failed run's audio and details has a key of its own, ap
   assert.equal(startAgainRequest(failed, [steps[0]], contract), null);
 });
 
+test("a new run keeps the failed run's speaker choices where the flow still offers them, and drops them where it does not", () => {
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  const selectable = { selectable: true, required: false, default: false };
+  const offering = (
+    speaker_labels: NonNullable<RunContract["transcription"]>["speaker_labels"],
+    max_speakers: NonNullable<RunContract["transcription"]>["max_speakers"],
+  ): RunContract => ({ ...contract, transcription: { live: { available: false, reason: null }, speaker_labels, max_speakers } });
+  const body = (choices: Pick<FlowRunPublic, "speaker_labels" | "max_speakers">, now: RunContract) => {
+    const request = startAgainRequest({ id: "run-1", ...choices }, steps, now);
+    assert.ok(request && "body" in request);
+    return request.body;
+  };
+  const said = (sent: Json) => [sent.speaker_labels, sent.max_speakers];
+
+  assert.deepEqual(said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: null }))), [true, 3], "both come through");
+  assert.deepEqual(said(body({ speaker_labels: false, max_speakers: null }, offering(selectable, { form_field: null }))), [false, undefined], "labels off");
+  assert.deepEqual(
+    said(body({ speaker_labels: false, max_speakers: 3 }, offering(selectable, { form_field: null }))),
+    [false, undefined],
+    "a run that labels no speakers takes no bound (Eneo refuses one)",
+  );
+  assert.deepEqual(said(body({ speaker_labels: true, max_speakers: 3 }, { ...contract, transcription: null })), [undefined, undefined], "not offered now: dropped");
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: "antal" }))),
+    [true, undefined],
+    "the flow's own count field travels in the details",
+  );
+  assert.deepEqual(
+    said(body({ speaker_labels: null, max_speakers: 3 }, offering({ selectable: false, required: true, default: true }, { form_field: null }))),
+    [undefined, 3],
+    "labels the flow requires are not the run's to choose; the bound is kept",
+  );
+  assert.deepEqual(said(body({ speaker_labels: null, max_speakers: null }, offering(selectable, { form_field: null }))), [undefined, undefined], "the defaults: nothing to say");
+});
+
 test("Starta en ny körning is asked against the flow as published now, and a changed input asks for a new one instead", async () => {
   const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed", input_payload_json: { motesnamn: "KS" } };
   const steps: FlowRunStep[] = [

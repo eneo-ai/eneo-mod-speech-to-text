@@ -367,6 +367,10 @@ export interface FlowRunPublic {
   cancelled_at?: string | null;
   input_payload_json?: Json | null;
   job_id?: string | null;
+  /** Körningens eget val av talaruppmärkning; null när den tog flödets standard. */
+  speaker_labels?: boolean | null;
+  /** Den övre gräns för antalet talare som körningen fick; null betyder automatiskt eller ingen. */
+  max_speakers?: number | null;
 }
 
 export interface FlowRunStep {
