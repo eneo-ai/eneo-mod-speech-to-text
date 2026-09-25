@@ -60,7 +60,8 @@ export function FocusedRecorder({
   storageNote: string | null;
 }) {
   return (
-    <div className="flex flex-col items-center gap-6 rounded-xl border border-rule-soft bg-paper px-6 py-10 text-center md:py-14 lg:flex-1 lg:justify-center">
+    // On a short screen compact, so the bar docked under it hides none of it.
+    <div className="flex flex-col items-center gap-6 rounded-xl border border-rule-soft bg-paper px-6 py-10 text-center md:py-14 lg:flex-1 lg:justify-center short:gap-2 short:py-3 md:short:py-3">
       <h2 data-phase-heading tabIndex={-1} className="sr-only">
         Inspelning
       </h2>
@@ -68,15 +69,15 @@ export function FocusedRecorder({
       <Timer
         capture={capture}
         phase={phase}
-        className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink sm:text-[80px] md:text-[96px]"
+        className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink sm:text-[80px] md:text-[96px] short:text-[40px] sm:short:text-[40px] md:short:text-[40px]"
       />
       <LevelMeter
         stream={phase === "recording" ? stream : null}
         bars={25}
         variant="wave"
-        className="h-16 w-full max-w-xs justify-center"
+        className="h-16 w-full max-w-xs justify-center short:h-8"
       />
-      <p className="max-w-sm text-[15px] leading-relaxed text-ink-soft">
+      <p className="max-w-sm text-[15px] leading-relaxed text-ink-soft short:hidden">
         Texten skapas när du stoppar inspelningen.
         {storageNote && (
           <>
@@ -127,8 +128,9 @@ export function RecordingBar({
   return (
     <div
       className={cn(
-        // Pinned to the bottom, except on a short screen (200 % zoom, a phone on its side), where it would cover the live text.
-        "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3 [@media(max-height:480px)]:static",
+        // Pinned to the bottom; in Strömma on a short screen in the page's flow, where it would cover the live text.
+        "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3",
+        showStatus && "short:static",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8",
         "lg:static lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
       )}
@@ -157,8 +159,8 @@ export function RecordingBar({
             variant="outline"
             size="xl"
             className={cn(
-              // Wide enough for "Fortsätt", so pausing moves nothing.
-              showStatus ? "min-w-24 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
+              // Wide enough for "Fortsätt", so pausing moves nothing; on a phone, with less padding, in the same row.
+              showStatus ? "min-w-24 max-sm:px-4 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
             )}
             onClick={settled(onPause)}
           >
@@ -173,7 +175,7 @@ export function RecordingBar({
             type="button"
             size="xl"
             className={cn(
-              showStatus ? "sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
+              showStatus ? "max-sm:px-4 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
             )}
             onClick={settled(onStop)}
           >
@@ -189,7 +191,8 @@ export function RecordingBar({
             <p key={note}>{note}</p>
           ))}
         </div>
-        <p>{STOP_LINE}</p>
+        {/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */}
+        <p className={cn(showStatus && "short:hidden")}>{STOP_LINE}</p>
       </div>
     </div>
   );

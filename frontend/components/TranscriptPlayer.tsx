@@ -811,8 +811,9 @@ export function TranscriptPlayer(
       </div>
 
       {hasAudio ? (
-        // Docked under the text: on a phone it stays in view while the transcript is on screen.
-        <div id={pastId} tabIndex={-1} data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:static lg:pb-2">
+        // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
+        // would cover most of it, and stays at the end instead.
+        <div id={pastId} tabIndex={-1} data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:static lg:pb-2 short:static">
           <AudioPlayer playback={playback} label="Inspelningen">
             <Button
               type="button"

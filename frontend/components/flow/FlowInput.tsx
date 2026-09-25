@@ -186,7 +186,7 @@ export function FlowInput({
           className={cn(
             "flex min-w-0 flex-col gap-4",
             group === "capture"
-              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0"
+              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0 short:min-h-0"
               : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
           )}
         >
@@ -223,8 +223,9 @@ export function FlowInput({
           )}
         </section>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
-            form; inside main (it is the page's action), over main's side and bottom padding. */}
-        <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden" />
+            form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
+            it would let a recording scroll. On a short screen it stays at the page's end instead of covering it. */}
+        {group === "setup" && <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden short:static" />}
       </main>
     </div>
   );

@@ -107,6 +107,9 @@ const config: Config = {
     // `coarse:` is a touch screen: controls grow to 44 px targets there and keep a mouse's density elsewhere.
     // A variant, not a screen: a raw screen would switch off Tailwind's max-* variants.
     plugin(({ addVariant }) => addVariant("coarse", "@media (pointer: coarse)")),
+    // `short:` is a short screen (a phone on its side, 200 % zoom): docked bars go back into the page there.
+    // It sorts before sm:/md:, so a property those set too needs `md:short:` as well.
+    plugin(({ addVariant }) => addVariant("short", "@media (max-height: 480px)")),
   ],
 };
 
