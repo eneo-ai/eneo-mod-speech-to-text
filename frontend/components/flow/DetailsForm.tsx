@@ -175,8 +175,8 @@ export function DetailsForm({
 /** The id "Antal talare" carries, so a refused start can move focus to it. */
 export const SPEAKER_COUNT_ID = "antal-talare";
 
-/** Under a speaker count the names filled in, until the person edits it. */
-export const COUNT_FROM_NAMES = "Från antalet deltagare. Ändra om fler talar.";
+/** Said of a speaker count the names filled in, until the person edits it: this module's field and the flow's own. */
+export const COUNT_FROM_NAMES = "Ifyllt från antalet deltagare, ändra om fler talar.";
 
 /** "Antal talare": an upper bound on the speakers the run tells apart; left empty, Eneo decides. */
 export function SpeakerCountField({
@@ -218,7 +218,7 @@ export function SpeakerCountField({
           "Lämna tomt" beside it would contradict it. */}
       <FieldDescription id={helpId} className="text-[13px]">
         Används som övre gräns.{" "}
-        {fromNames ? "Ifyllt från antalet deltagare, ändra om fler talar." : "Lämna tomt om du är osäker."}
+        {fromNames ? COUNT_FROM_NAMES : "Lämna tomt om du är osäker."}
       </FieldDescription>
       {invalid && (
         <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>

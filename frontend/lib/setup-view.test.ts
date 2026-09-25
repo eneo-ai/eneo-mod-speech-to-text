@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ClassificationNote } from "../components/flow/ClassificationNote";
-import { DetailsForm, SpeakerCountField } from "../components/flow/DetailsForm";
+import { COUNT_FROM_NAMES, DetailsForm, SpeakerCountField } from "../components/flow/DetailsForm";
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
 import type { FlowSecurityClassification, FormField } from "./api";
@@ -135,7 +135,9 @@ test("Antal talare is a light number field with its help below, and a count that
 });
 
 test("a count from the names says so under its field, and names the field's description with it", () => {
-  const hint = "Från antalet deltagare. Ändra om fler talar.";
+  // One wording for a count the names filled in, under this module's field and under the flow's own.
+  assert.equal(COUNT_FROM_NAMES, "Ifyllt från antalet deltagare, ändra om fler talar.");
+  const hint = COUNT_FROM_NAMES;
   // One helper paragraph, the one the field names: "Lämna tomt" beside a filled-in number would contradict it.
   const own = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
   assert.match(own, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Ifyllt från antalet deltagare, ändra om fler talar\.</);
@@ -152,7 +154,7 @@ test("a count from the names says so under its field, and names the field's desc
       createElement(DetailsForm, { fields: [antal], details: { antal: "2" }, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop, notes }),
     );
   assert.match(form({ antal: hint }), /<input[^>]*id="detalj-antal"[^>]*aria-describedby="detalj-antal-not"/);
-  assert.match(form({ antal: hint }), /id="detalj-antal-not"[^>]*>Från antalet deltagare\. Ändra om fler talar\.</);
+  assert.match(form({ antal: hint }), /id="detalj-antal-not"[^>]*>Ifyllt från antalet deltagare, ändra om fler talar\.</);
   assert.ok(!form().includes(hint));
 });
 
