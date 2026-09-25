@@ -24,7 +24,8 @@ test("inline text is the complete result", () => {
   );
 });
 
-test("file-backed text shows its preview and says the whole text is in the file", () => {
+test("file-backed text shows its preview and says the whole text is in the file below it", () => {
+  // The run's only file: it is the document's own file row, under the preview, and no Filer list is shown.
   const view = runResultView({
     kind: "file_backed_text",
     preview: "Mötet började klockan nio",
@@ -33,7 +34,8 @@ test("file-backed text shows its preview and says the whole text is in the file"
 
   assert.equal(view.text, "Mötet började klockan nio");
   assert.match(view.note ?? "", /bara början/);
-  assert.match(view.note ?? "", /under Filer/);
+  assert.match(view.note ?? "", /Hela texten finns i filen nedanför\./);
+  assert.doesNotMatch(view.note ?? "", /Filer/);
 });
 
 test("file-backed text whose file was purged does not point at the file", () => {
@@ -45,7 +47,7 @@ test("file-backed text whose file was purged does not point at the file", () => 
 
   assert.equal(view.text, "Mötet började klockan nio");
   assert.match(view.note ?? "", /bara början/);
-  assert.doesNotMatch(view.note ?? "", /under Filer/);
+  assert.doesNotMatch(view.note ?? "", /nedanför|Filer/);
 });
 
 test("a structured value renders as text when it is a string, otherwise as JSON", () => {

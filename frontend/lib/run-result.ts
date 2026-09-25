@@ -17,13 +17,13 @@ export function runResultView(
     case "inline_text":
       return { text: result.text, note: null };
     case "file_backed_text":
-      // `preview` är bara början; hela texten finns i en fil i result_files.
+      // `preview` är bara början; hela texten finns i resultatets fil, som visas under förhandsvisningen.
       return {
         text: result.preview,
         note:
           result.file.availability === "content_purged"
             ? "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten har tagits bort och går inte längre att hämta."
-            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen under Filer.",
+            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen nedanför.",
       };
     case "structured":
       return {
@@ -39,7 +39,7 @@ export function runResultView(
         note: "Resultatet skickades vidare till mottagaren som är inställd i flödet.",
       };
     default:
-      // Artefakter listas under Filer.
+      // En artefakt är dokumentets egen fil (resultFileIds), inte text att visa.
       return { text: null, note: null };
   }
 }
