@@ -35,28 +35,42 @@ export function remarkResultHeadings() {
 export const RESULT_PROSE =
   "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h2:text-[22px] prose-h3:text-[20px] prose-h4:text-[17px] prose-p:text-[16px] prose-p:leading-relaxed prose-li:text-[16px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
 
-// The first part of a long text: whole blocks up to the first blank line past this many characters.
+// The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
+// and when no blank line comes before this many, the last line end or word boundary before it.
+const LEAD_MAX_CHARS = 1_400;
 /** Less than this left after the first part is shown with it: a disclosure for a few lines is not worth a press. */
 const REST_CHARS = 400;
 
 /**
- * A long text's first part: its blocks up to a blank line past LEAD_CHARS,
- * outside a fenced block, so it renders as the start of the whole. Null when
- * the text is short enough to show as it is.
+ * A long text's first part, outside a fenced block so it renders as the start of the whole: its blocks up to a
+ * blank line between LEAD_CHARS and LEAD_MAX_CHARS, else up to the last line end or space before LEAD_MAX_CHARS,
+ * with an ellipsis when that falls inside a line. Null when the text is short enough to show as it is.
  */
 function firstPart(text: string): string | null {
   let fence = "";
   let offset = 0;
+  let cut = 0;
+  let inLine = false;
   for (const line of text.split("\n")) {
+    if (offset > LEAD_MAX_CHARS) break;
     const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (marker && (!fence || (marker[0] === fence[0] && marker.length >= fence.length))) fence = fence ? "" : marker;
-    else if (!fence && !line.trim() && offset >= LEAD_CHARS) {
-      return text.length - offset >= REST_CHARS ? text.slice(0, offset).trimEnd() : null;
+    const toggles = Boolean(marker && (!fence || (marker[0] === fence[0] && marker.length >= fence.length)));
+    if (toggles) fence = fence ? "" : marker!;
+    if (!fence && !toggles && !line.trim() && offset >= LEAD_CHARS) {
+      [cut, inLine] = [offset, false];
+      break;
+    }
+    if (!fence) {
+      // Outside a fence after this line: its end, or a paragraph's last space before the bound, is a cut.
+      const room = LEAD_MAX_CHARS - offset;
+      const end = line.length <= room ? line.length : toggles ? -1 : line.lastIndexOf(" ", room);
+      if (end > 0) [cut, inLine] = [offset + end, end < line.length];
     }
     offset += line.length + 1;
   }
-  return null;
+  if (!cut || text.length - cut < REST_CHARS) return null;
+  return text.slice(0, cut).trimEnd() + (inLine ? " …" : "");
 }
 
 /**

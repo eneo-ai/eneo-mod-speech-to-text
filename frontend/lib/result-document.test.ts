@@ -483,3 +483,19 @@ test("a flow that makes text that failed says the text could not be made", async
   // A flow that sends its JSON on makes no text to show: it reads as before.
   assert.equal(await heading("json", "outbound_http"), "Dokumentet kunde inte skapas");
 });
+
+test("a long text in one paragraph shows its first part too, cut between two words", async () => {
+  const paragraph = "Nämnden diskuterade ärendet och beslutade enligt förslaget. ".repeat(125).trim();
+  const view = await document_({ text: null, file: pdf, preview: paragraph });
+  const preview = previewOf(view.container)!;
+  const more = button(preview, "Visa hela texten");
+  assert.ok(more, "Visa hela texten");
+  const article = document.getElementById(more.getAttribute("aria-controls")!)!;
+  const shown = article.textContent ?? "";
+  assert.ok(shown.length < paragraph.length / 3, `only the first part: ${shown.length} of ${paragraph.length}`);
+  assert.ok(shown.endsWith(" …"), "says the text goes on");
+  const start = shown.slice(0, -2);
+  assert.ok(paragraph.startsWith(start) && paragraph[start.length] === " ", "cut between two words");
+  await view.act(async () => more.click());
+  assert.equal(article.textContent, paragraph);
+});
