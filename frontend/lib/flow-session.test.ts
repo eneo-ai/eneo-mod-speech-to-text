@@ -7,6 +7,7 @@ import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
 import { LiveTranscriber, type LiveSnapshot, type LiveSocket } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
+import type { DraftStorage } from "./drafts";
 import {
   FlowSession,
   availableModes,
@@ -158,12 +159,27 @@ function fakeLiveClient() {
   };
 }
 
+/** A tab's sessionStorage, which the page's drafts live in across a reload. */
+function memoryDrafts(): DraftStorage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    key: (index) => [...data.keys()][index] ?? null,
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, value),
+    removeItem: (key) => void data.delete(key),
+  };
+}
+
 async function setup(
   options: {
     store?: RecordingStore;
     storage?: KeyValueStorage;
     getStream?: CaptureDeps["getStream"];
     live?: LiveClient | null;
+    drafts?: DraftStorage;
   } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
@@ -191,6 +207,7 @@ async function setup(
     pickMimeType: () => "audio/webm;codecs=opus",
     storage: options.storage ?? memoryStorage(),
     live: options.live === undefined ? fakeLiveClient().client : options.live,
+    drafts: options.drafts,
   });
   return { session, store, streams, recorders };
 }
@@ -419,6 +436,60 @@ test("Antal talare follows the number of names until the person edits it, and th
   other.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
   assert.equal(await other.session.createDocument(), true);
   assert.equal(sent[0].maxSpeakers, 2, "the prefill is sent as max_speakers");
+});
+
+test("a count the person edited comes back as typed after a reload, with their labels choice, and a recovered recording sends it", async () => {
+  const drafts = memoryDrafts();
+  const store = await openRecordingStore({});
+  // Labels off unless the person switches them on: the count is asked only then.
+  const contract = {
+    ...countContract({ speaker_labels: { selectable: true, required: false, default: false }, max_speakers: PARTICIPANTS }),
+    form_fields: [PEOPLE],
+  };
+  const before = await setup({ drafts, store });
+  before.session.setContract(contract);
+  before.session.setSpeakerLabels(true);
+  before.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  before.session.setSpeakerCount("4");
+  before.session.dispose(); // the page reloaded before the send
+
+  const sent: SubmitRequest[] = [];
+  const after = await setup({ drafts, store });
+  after.session.setHandlers({ submit: async (request) => void sent.push(request) });
+  after.session.setContract(contract);
+  const count = () => [after.session.getSnapshot().speakerCount, after.session.getSnapshot().speakerCountFromNames];
+  assert.equal(after.session.getSnapshot().speakerLabels, true, "the labels choice the person made");
+  assert.deepEqual(count(), ["4", false], "as typed, and still theirs");
+  after.session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["4", false], "the names do not change it");
+
+  const recording = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  after.session.adopt(recording);
+  assert.equal(await after.session.createDocument(), true);
+  assert.deepEqual([sent[0].speakerLabels, sent[0].maxSpeakers], [true, 4], "the bound the person saw");
+});
+
+test("a count that followed the names is worked out again from the restored names after a reload", async () => {
+  const drafts = memoryDrafts();
+  const contract = { ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] };
+  const before = await setup({ drafts });
+  before.session.setContract(contract);
+  before.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  before.session.dispose();
+
+  const after = await setup({ drafts });
+  after.session.setContract(contract);
+  const count = () => [after.session.getSnapshot().speakerCount, after.session.getSnapshot().speakerCountFromNames];
+  assert.deepEqual(count(), ["2", true], "from the restored names, with its hint");
+  after.session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["3", true], "and it still follows them");
 });
 
 test("only the participants field Eneo names fills the count: an agenda list, a missing field or a text field fill nothing", async () => {

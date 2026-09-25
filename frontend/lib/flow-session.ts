@@ -456,6 +456,13 @@ const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
   };
 };
 
+/** The speaker choices a draft keeps: the labels switch, and this module's count with whether the person set it. */
+interface SpeakerChoices {
+  labels: boolean | null;
+  count: string;
+  edited: boolean;
+}
+
 export interface FlowSessionOptions {
   flowId: string;
   flowName: string;
@@ -517,6 +524,11 @@ export class FlowSession {
     this.flowName = options.flowName;
     // What this person typed before a reload (a lost login, a tab put to sleep); the contract decides what fits.
     this.details = readDraft<Record<string, DetailValue>>(options.drafts, options.ownerId, this.draftName()) ?? {};
+    // And their speaker choices, so a recording sent after the reload gets the labels and the bound they saw.
+    const choices = readDraft<Partial<SpeakerChoices>>(options.drafts, options.ownerId, this.choicesDraftName());
+    if (typeof choices?.labels === "boolean") this.explicitSpeakerLabels = choices.labels;
+    if (typeof choices?.count === "string") this.speakerCountText = choices.count;
+    if (choices?.edited === true) this.countFollowsNames = false;
     this.capture = new RecordingCapture(options.openStore, {
       ...options.captureDeps,
       getStream: async (constraints) => {
@@ -557,6 +569,8 @@ export class FlowSession {
     // A count already there that the names did not give (the flow's default, a restored draft) is the person's.
     const own = this.ownCountField();
     if (own && filledValue(this.details[own]) && this.details[own] !== this.namesCount()) this.countFollowsNames = false;
+    // A count that followed the names follows the names restored with it.
+    if (contract && this.countFollowsNames) this.followNames();
     this.emit();
   }
 
@@ -579,6 +593,7 @@ export class FlowSession {
     if (name === this.ownCountField()) this.countFollowsNames = false;
     else if (this.countFollowsNames && name === this.participantsField()) this.followNames();
     writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
+    if (name === this.ownCountField() || name === this.participantsField()) this.keepChoices();
     this.invalid = this.invalid.filter((field) => !filledValue(this.details[field]));
     this.emit();
   }
@@ -586,11 +601,13 @@ export class FlowSession {
   setSpeakerCount(text: string): void {
     this.speakerCountText = text;
     this.countFollowsNames = false;
+    this.keepChoices();
     this.emit();
   }
 
   setSpeakerLabels(on: boolean): void {
     this.explicitSpeakerLabels = on;
+    this.keepChoices();
     this.emit();
   }
 
@@ -779,6 +796,7 @@ export class FlowSession {
     }
     if (input?.kind === "file") this.file = this.accepted = null;
     clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
+    clearDraft(this.options.drafts, this.options.ownerId, this.choicesDraftName());
     this.emit();
     return true;
   }
@@ -875,6 +893,20 @@ export class FlowSession {
 
   private draftName() {
     return `flow:${this.options.flowId}`;
+  }
+
+  /** Beside the details' draft, in the same store and key family. */
+  private choicesDraftName() {
+    return `${this.draftName()}:talare`;
+  }
+
+  private keepChoices() {
+    const choices: SpeakerChoices = {
+      labels: this.explicitSpeakerLabels,
+      count: this.speakerCountText,
+      edited: !this.countFollowsNames,
+    };
+    writeDraft(this.options.drafts, this.options.ownerId, this.choicesDraftName(), choices);
   }
 
   private inputStep() {
