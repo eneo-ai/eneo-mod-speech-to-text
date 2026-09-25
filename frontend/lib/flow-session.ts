@@ -217,6 +217,8 @@ export interface SessionSnapshot {
   fileChecking: boolean;
   /** Strömma's live text for the recording, when there is one. */
   live: LiveSession | null;
+  /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, briefly. */
+  finishing: boolean;
   problem: Problem | null;
 }
 
@@ -455,6 +457,9 @@ export class FlowSession {
   private live: LiveSession | null = null;
   private liveStream: MediaStream | null = null;
   private liveRecording: boolean | null = null;
+  // Whether live text names the recording, so its final text may bring a transcript, and whether that is awaited.
+  private liveNamed = false;
+  private finishing = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -649,6 +654,8 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
+    // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
+    if (this.finishing) return false;
     const { phase, mode, fileChecking } = this.snapshot;
     // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
     if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
@@ -801,6 +808,7 @@ export class FlowSession {
 
   private openLive(stepId: string, { recordingId, earlier }: { recordingId?: string; earlier?: LivePiece[] } = {}) {
     this.closeLive();
+    this.liveNamed = recordingId !== undefined;
     try {
       this.live = this.options.live?.open(stepId, recordingId, earlier) ?? null;
     } catch {
@@ -814,6 +822,8 @@ export class FlowSession {
     this.live = null;
     this.liveStream = null;
     this.liveRecording = null;
+    this.liveNamed = false;
+    this.finishing = false;
   }
 
   /** Live text follows the recorder: its microphone, pauses and the stop; its own failures never reach back. */
@@ -834,22 +844,37 @@ export class FlowSession {
     } else if (status === "stopped" && this.liveStream !== null) {
       this.liveStream = null;
       this.liveRecording = false;
-      if (recording) this.keepTranscript(live, recording.id);
-      live.stop();
+      if (recording && this.liveNamed) this.stopKeepingTranscript(live, recording.id);
+      else live.stop();
     }
   }
 
-  /** A clean session's stored transcript goes with the recording, so its run need not transcribe the audio again. */
-  private keepTranscript(live: LiveSession, recordingId: string) {
+  /**
+   * Stops live text that named the recording. A clean session's stored transcript goes with the recording, so its
+   * run need not transcribe the audio again; while live text awaits it, and until it is kept, Skapa dokument waits.
+   */
+  private stopKeepingTranscript(live: LiveSession, recordingId: string) {
+    let keeping = false;
+    const done = () => {
+      if (this.live !== live || !this.finishing) return;
+      this.finishing = false;
+      this.emit();
+    };
     const unsubscribe = live.subscribe(() => {
-      const { status, transcriptId } = live.getSnapshot();
-      if (transcriptId) {
+      const { status, transcriptId, finishing } = live.getSnapshot();
+      if (transcriptId && !keeping) {
+        keeping = true;
         void Promise.resolve(this.options.openStore())
           .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
-          .catch(() => undefined);
+          .catch(() => undefined)
+          .finally(done);
+      } else if (!keeping && !finishing) {
+        done();
       }
-      if (transcriptId || status === "ended") unsubscribe();
+      if (keeping || status === "ended") unsubscribe();
     });
+    live.stop();
+    this.finishing = live.getSnapshot().finishing === true;
   }
 
   private onCapture = () => {
@@ -887,6 +912,7 @@ export class FlowSession {
       // The latest pick while its length is read: the file shown is not yet the last one that fitted.
       fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
+      finishing: this.finishing,
       problem: this.problem,
     };
   }

@@ -118,6 +118,14 @@ test("after Stoppa, Strömma's live text stays to read and copy, marked as preli
   }
 });
 
+test("while Strömma's final text is on its way, Skapa dokument says so and waits, keeping its focus", () => {
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording, persistent: true, problem: null, finishing: true, onCreate: noop, onDiscard: noop }),
+  );
+  assert.match(html, /<button[^>]*aria-disabled="true"[^>]*>.*Slutför texten…<\/button>/);
+  assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*>.*Slutför texten/, "not disabled: focus stays on it");
+});
+
 test("a recording Eneo already has shows the earlier runs where the user is, and offers deleting it from the device", () => {
   const sent = renderToStaticMarkup(
     createElement(ReadyPanel, {

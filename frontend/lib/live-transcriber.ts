@@ -42,6 +42,11 @@ export interface LiveSnapshot {
   complete: boolean;
   /** Eneo's stored transcript of the whole recording, from the final text of a recording heard whole. */
   transcriptId?: string;
+  /**
+   * The recording ended with a count, so its final text may name a stored transcript: a document waits for it,
+   * for at most FINISHING_WAIT_MS. The text still counts if it comes later.
+   */
+  finishing?: boolean;
 }
 
 /** What the client needs of a WebSocket. */
@@ -88,6 +93,8 @@ const START_ATTEMPTS = 3;
 // How long a stop waits, in the background, for the relay's final text: Eneo's allowance for it
 // (flow_live_transcription_final_text_timeout_seconds, 60 s by default).
 const FINAL_TEXT_WAIT_MS = 60_000;
+// How long a document waits for that text's stored transcript: a person should not wait long.
+const FINISHING_WAIT_MS = 10_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
@@ -131,6 +138,7 @@ export class LiveTranscriber {
   private retryTimer: unknown = null;
   private commitTimer: unknown = null;
   private stopTimer: unknown = null;
+  private finishingTimer: unknown = null;
   private lastWordsAt: number | null = null;
   // The start, or a break: the next piece opens a paragraph. After a pause in speech, one opens at a sentence's end.
   private opensParagraph = true;
@@ -206,6 +214,11 @@ export class LiveTranscriber {
     if (on && this.snapshot.status === "reconnecting" && this.retryTimer === null && !this.socket) this.connect();
   }
 
+  /** The recording ended; its last audio may still come, and stop() follows it. A stop with a count is awaited from here. */
+  end(): void {
+    if (!this.stopping && this.whole && this.socket && this.ready) this.awaitFinalText();
+  }
+
   /** The recording stopped: the last audio, then the stop message, and the draft is kept. */
   stop(): void {
     if (this.stopping) return;
@@ -216,6 +229,8 @@ export class LiveTranscriber {
       // A recording not heard whole names no count, and Eneo keeps no text.
       const stop = this.whole ? { type: "stop", produced_samples: this.produced } : { type: "stop" };
       this.socket.send(JSON.stringify(stop));
+      if (this.whole) this.awaitFinalText();
+      else this.stopAwaiting();
       this.stopTimer = this.deps.setTimer(() => this.finish(), FINAL_TEXT_WAIT_MS);
     } else {
       this.finish();
@@ -371,6 +386,20 @@ export class LiveTranscriber {
     this.retryMs = Math.min(this.retryMs * 2, MAX_RETRY_MS);
   }
 
+  private awaitFinalText() {
+    if (this.snapshot.finishing) return;
+    this.set({ finishing: true });
+    this.finishingTimer = this.deps.setTimer(() => {
+      this.finishingTimer = null;
+      this.set({ finishing: false });
+    }, FINISHING_WAIT_MS);
+  }
+
+  private stopAwaiting() {
+    this.clear("finishingTimer");
+    if (this.snapshot.finishing) this.set({ finishing: false });
+  }
+
   private giveUp(status: "unavailable" | "stopped") {
     this.buffered = [];
     this.set({ status });
@@ -440,6 +469,7 @@ export class LiveTranscriber {
     this.clear("retryTimer");
     this.clear("commitTimer");
     this.clear("stopTimer");
+    this.stopAwaiting();
     this.commit();
     const socket = this.socket;
     this.socket = null;
@@ -457,7 +487,7 @@ export class LiveTranscriber {
     this.set({ status: "ended" });
   }
 
-  private clear(timer: "retryTimer" | "commitTimer" | "stopTimer") {
+  private clear(timer: "retryTimer" | "commitTimer" | "stopTimer" | "finishingTimer") {
     if (this[timer] === null) return;
     this.deps.clearTimer(this[timer]);
     this[timer] = null;

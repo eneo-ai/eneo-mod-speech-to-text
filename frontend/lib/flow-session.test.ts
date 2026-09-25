@@ -1347,6 +1347,30 @@ test("Strömma names the new recording to live text, and a clean session's store
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
 
+test("Skapa dokument waits while Strömma's final text is on its way, until its transcript is kept with the recording", async () => {
+  const sent: unknown[] = [];
+  const live = fakeLiveClient();
+  const { session, store, recorders } = await setup({ live: live.client });
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("audio");
+  live.report({ finishing: true }); // the stop counted the recording: its final text may name a transcript
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  assert.equal(session.getSnapshot().finishing, true);
+  assert.equal(await session.createDocument(), false, "a press now sends nothing and leaves nothing pending");
+  assert.deepEqual(sent, []);
+
+  live.report({ transcriptId: "transcript-1" });
+  await until(() => !session.getSnapshot().finishing, "the transcript kept");
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1", "kept before a send could seal the recording");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+});
+
 test("a transcript never stays with a recording of two parts, and live text for a new part names no recording", async () => {
   const live = fakeLiveClient();
   const { session, store, streams, recorders } = await setup({ live: live.client });

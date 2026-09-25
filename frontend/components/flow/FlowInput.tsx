@@ -208,6 +208,7 @@ export function FlowInput({
               persistent={input.persistent}
               problem={snapshot.problem}
               live={snapshot.live}
+              finishing={snapshot.finishing}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}

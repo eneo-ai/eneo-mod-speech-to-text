@@ -188,6 +188,7 @@ test("the stop counts every sample the audio thread gathered for the recording, 
   deliver();
   play(0.5, 3_300); // a part block and blocks on their way at the stop
   session.stop();
+  assert.equal(session.getSnapshot().finishing, true, "awaited from the stop, while the last audio comes");
   deliver();
 
   const captured = 2_500 + 10_000 + 1_000 + 3_300;

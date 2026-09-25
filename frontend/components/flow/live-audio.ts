@@ -175,6 +175,7 @@ export function liveClient(env: LiveEnv): LiveClient {
         stop() {
           if (stopping) return;
           stopping = true;
+          transcriber.end();
           if (!node) return finishStop();
           ask({ recording: false });
           lastAudioTimer = deps.setTimer(() => {

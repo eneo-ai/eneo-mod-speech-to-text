@@ -277,6 +277,39 @@ test("the only session's final text brings Eneo's stored transcript of the recor
   assert.equal(live.getSnapshot().transcriptId, "transcript-1");
 });
 
+test("a counted stop is awaited briefly: finishing from the recording's end until its final text, at most 10 s", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  live.end();
+  assert.equal(live.getSnapshot().finishing, true, "from the moment the recording ended, its last audio still coming");
+  live.stop();
+  assert.equal(live.getSnapshot().finishing, true);
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.equal(live.getSnapshot().finishing, false);
+
+  const late = setup();
+  late.live.start();
+  late.sockets[0].ready();
+  late.live.end();
+  late.live.stop();
+  late.elapse(10_000);
+  assert.equal(late.live.getSnapshot().finishing, false, "a person does not wait long");
+  late.sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-2" });
+  assert.equal(late.live.getSnapshot().transcriptId, "transcript-2", "a later final text still brings it");
+
+  const broken = setup();
+  broken.live.start();
+  broken.sockets[0].ready();
+  broken.sockets[0].drop(1011);
+  broken.elapse(1_000);
+  broken.sockets[1].ready();
+  broken.live.end();
+  broken.live.stop();
+  assert.ok(!broken.live.getSnapshot().finishing, "a stop without a count brings no transcript to wait for");
+});
+
 test("after a break no session heard the whole recording: the stop carries no count, and a transcript id is not kept", () => {
   const { live, sockets, elapse } = setup();
   live.start();
