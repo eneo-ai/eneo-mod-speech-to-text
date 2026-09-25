@@ -17,10 +17,11 @@ const pdf: ResultFileView = {
   meta: "PDF, 47,1 kB",
   available: true,
   previewable: true,
+  stepId: "step-2",
 };
 const text = "## Protokoll\n\nKommunstyrelsen godkänner förslaget.";
 
-async function document_(props: { text: string | null; file: ResultFileView | null }) {
+async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null }) {
   const { createElement } = await import("react");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
   return mount(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
@@ -338,4 +339,81 @@ test("a file whose link only its owner's session opens is never shared as a link
     "nothing to share: no menu, no Dela",
   );
   assert.ok(view.container.querySelector("a[download]"), "Ladda ner stays");
+});
+
+/** The preview of the file's text: the region its caption names. */
+const previewOf = (within: ParentNode) =>
+  [...within.querySelectorAll<HTMLElement>("section[aria-labelledby]")].find(
+    (section) => document.getElementById(section.getAttribute("aria-labelledby")!)?.textContent === "Förhandsvisning av texten i filen",
+  ) ?? null;
+const headingsIn = (within: ParentNode) =>
+  [...within.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => `${h.tagName} ${h.textContent}`);
+
+test("a document that is only its file shows the file's text under the file, as a preview", async () => {
+  const view = await document_({ text: null, file: pdf, preview: text });
+  const preview = previewOf(view.container);
+  assert.ok(preview, "a preview, named as one");
+  const row = view.container.querySelector("[data-file-row]")!;
+  assert.ok(row.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING, "under the file, which stays the document");
+  assert.deepEqual(headingsIn(preview), ["H2 Protokoll"], "its headings under the page's h1");
+  assert.match(preview.textContent ?? "", /Kommunstyrelsen godkänner förslaget\./);
+  assert.ok(!preview.querySelector("button"), "short: no Visa hela texten, and no second Kopiera");
+  await view.unmount();
+
+  const none = await document_({ text: null, file: pdf, preview: null });
+  assert.equal(previewOf(none.container), null, "no reliable text: no empty box");
+});
+
+test("a long file text shows its first part until Visa hela texten, a disclosure that says what it opens", async () => {
+  const point = (n: number) => `### Punkt ${n}\n\n${"Nämnden diskuterade ärendet och beslutade enligt förslaget. ".repeat(3)}`;
+  // A fenced block keeps its blank lines: the first part never ends inside it.
+  const code = "```\n" + "rad\n\n".repeat(200) + "sista raden\n```";
+  const long = ["## Protokoll", code, ...Array.from({ length: 12 }, (_, i) => point(i + 1))].join("\n\n");
+  const view = await document_({ text: null, file: pdf, preview: long });
+  const preview = previewOf(view.container)!;
+  const more = button(preview, "Visa hela texten")!;
+  assert.ok(more, "Visa hela texten");
+  assert.equal(more.getAttribute("aria-expanded"), "false");
+  const article = document.getElementById(more.getAttribute("aria-controls")!)!;
+  assert.ok(preview.contains(article), "it controls the text it opens");
+  assert.match(article.querySelector("pre")?.textContent ?? "", /sista raden/);
+  const shown = headingsIn(article);
+  assert.equal(shown[0], "H2 Protokoll");
+  assert.ok(shown.length < 13 && !shown.includes("H3 Punkt 12"), `only the first part: ${shown}`);
+
+  await view.act(async () => more.click());
+  assert.equal(more.getAttribute("aria-expanded"), "true");
+  assert.equal(more.textContent, "Visa mindre");
+  assert.deepEqual(headingsIn(article), ["H2 Protokoll", ...Array.from({ length: 12 }, (_, i) => `H3 Punkt ${i + 1}`)]);
+
+  await view.act(async () => more.click());
+  assert.ok(!headingsIn(article).includes("H3 Punkt 12"), "folded again");
+});
+
+test("a finished run whose document is only its file previews the text its own step laid out in it", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [] } } as never,
+      steps: [],
+      stepResults: [
+        { id: "result-1", step_id: "step-1", status: "completed", output_payload_json: { text: "Välkomna till mötet." } },
+        { id: "result-2", step_id: "step-2", status: "completed", output_payload_json: { text } },
+      ] as never,
+      files: [pdf],
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+  const preview = previewOf(view.container);
+  assert.ok(preview, "the file's text under it");
+  assert.match(preview.textContent ?? "", /Kommunstyrelsen godkänner förslaget\./);
+  assert.doesNotMatch(preview.textContent ?? "", /Välkomna/, "not the transcript the step read");
 });

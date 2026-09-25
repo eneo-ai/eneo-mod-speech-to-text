@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ResultFile } from "./api";
-import { resultFileViews, transcriptFileName } from "./run-files";
+import type { FlowRunStep, ResultFile } from "./api";
+import { fileText, resultFileViews, transcriptFileName } from "./run-files";
 
 const pdf: ResultFile = {
   file_id: "f1",
@@ -49,4 +49,25 @@ test("the module's own transcript export is named the way Eneo names documents",
   // Eneo dates a document by the run's day in UTC, so the export keeps that day too.
   assert.equal(transcriptFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-23 transkript.txt");
   assert.equal(transcriptFileName("", undefined), "transkript.txt");
+});
+
+test("a document's file says what its own step wrote: Eneo lays that text out in the file", () => {
+  const [file] = resultFileViews([{ ...pdf, step_id: "s2" }]);
+  assert.equal(file.stepId, "s2");
+  const transcribe: FlowRunStep = { id: "r1", step_id: "s1", status: "completed", output_payload_json: { text: "Transkript" } };
+  // The step read the transcript and wrote the report; the report is what the file says.
+  const report: FlowRunStep = {
+    id: "r2", step_id: "s2", status: "completed",
+    input_payload_json: { runtime_input: { text: "Transkript" } },
+    output_payload_json: { text: "## Protokoll\n\nBeslut." },
+  };
+  assert.equal(fileText(file, [transcribe, report]), "## Protokoll\n\nBeslut.");
+
+  // No reliable text, no preview.
+  const other = (output: object, extra: object = {}) => fileText(file, [transcribe, { ...report, output_payload_json: output, ...extra }]);
+  assert.equal(other({ text: '{"beslut":"Ja"}', structured: { beslut: "Ja" } }), null, "laid out from fields, not from the text");
+  assert.equal(other({ text: "## Protokoll", text_overflow: { generated_file_ids: ["f9"] } }), null, "only the start of a longer text");
+  assert.equal(other({ text: "## beslut\n\nJa" }, { model_parameters_json: { mode: "template_fill" } }), null, "a filled template lists its fields");
+  assert.equal(other({ text: " \n" }), null, "nothing written");
+  assert.equal(fileText({ ...file, stepId: null }, [transcribe, report]), null, "no step named: no guess from another step");
 });

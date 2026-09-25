@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
-import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
@@ -77,6 +77,8 @@ export function RunResult({
   // The document's file is the first one that can be fetched; any others are listed under it.
   const primary = files.find((file) => file.available) ?? null;
   const others = files.filter((file) => file !== primary);
+  // A document that is only its file shows what the file says under it.
+  const preview = !text && primary ? fileText(primary, stepResults) : null;
   const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
@@ -121,7 +123,7 @@ export function RunResult({
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}

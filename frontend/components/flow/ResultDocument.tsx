@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Copy, Download, ExternalLink, MoreHorizontal, Share2 } from "lucide-react";
+import { ChevronDown, Copy, Download, ExternalLink, MoreHorizontal, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { runArtifactUrl } from "@/lib/api";
@@ -34,6 +34,68 @@ export function remarkResultHeadings() {
 
 export const RESULT_PROSE =
   "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h2:text-[22px] prose-h3:text-[20px] prose-h4:text-[17px] prose-p:text-[16px] prose-p:leading-relaxed prose-li:text-[16px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
+
+// The first part of a long text: whole blocks up to the first blank line past this many characters.
+const LEAD_CHARS = 700;
+/** Less than this left after the first part is shown with it: a disclosure for a few lines is not worth a press. */
+const REST_CHARS = 400;
+
+/**
+ * A long text's first part: its blocks up to a blank line past LEAD_CHARS,
+ * outside a fenced block, so it renders as the start of the whole. Null when
+ * the text is short enough to show as it is.
+ */
+function firstPart(text: string): string | null {
+  let fence = "";
+  let offset = 0;
+  for (const line of text.split("\n")) {
+    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    if (marker && (!fence || (marker[0] === fence[0] && marker.length >= fence.length))) fence = fence ? "" : marker;
+    else if (!fence && !line.trim() && offset >= LEAD_CHARS) {
+      return text.length - offset >= REST_CHARS ? text.slice(0, offset).trimEnd() : null;
+    }
+    offset += line.length + 1;
+  }
+  return null;
+}
+
+/**
+ * What the file says, under it: the text Eneo laid out in it, named as a
+ * preview since the file stays the document. Its headings sit under the page's
+ * h1 as a text result's do. A long text shows its first part until Visa hela
+ * texten, a disclosure of the text above it.
+ */
+function FilePreview({ text }: { text: string }) {
+  const first = useMemo(() => firstPart(text), [text]);
+  const [whole, setWhole] = useState(false);
+  const more = useRef<HTMLButtonElement | null>(null);
+  const id = useId();
+  const toggle = () => {
+    setWhole(!whole);
+    // Folding a long text back would leave the reader far below it: the button comes back into view with them.
+    if (whole) requestAnimationFrame(() => more.current?.scrollIntoView({ block: "nearest" }));
+  };
+  return (
+    <section aria-labelledby={`${id}-name`} className="flex flex-col gap-4 border-t border-border px-5 py-6 md:px-10 md:py-8">
+      <p id={`${id}-name`} className="text-[13px] font-medium text-ink-mute">
+        Förhandsvisning av texten i filen
+      </p>
+      <article id={`${id}-text`} className={RESULT_PROSE}>
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{whole || !first ? text : first}</ReactMarkdown>
+      </article>
+      {first && (
+        <Button ref={more} type="button" variant="outline" className="self-start" aria-expanded={whole} aria-controls={`${id}-text`} onClick={toggle}>
+          <ChevronDown
+            data-icon="inline-start"
+            aria-hidden
+            className={cn("transition-transform duration-150 motion-reduce:transition-none", whole && "rotate-180")}
+          />
+          {whole ? "Visa mindre" : "Visa hela texten"}
+        </Button>
+      )}
+    </section>
+  );
+}
 
 /** Files larger than this are not read ahead for Dela; they download instead. */
 const SHARE_LIMIT_BYTES = 25 * 1024 * 1024;
@@ -94,6 +156,7 @@ export function ResultDocument({
   text,
   file,
   title,
+  preview = null,
 }: {
   flowId: string;
   runId: string;
@@ -103,6 +166,8 @@ export function ResultDocument({
   file: ResultFileView | null;
   /** What a share is called: the flow's name. */
   title: string;
+  /** Where there is no text: what the file says, see fileText. */
+  preview?: string | null;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
@@ -202,6 +267,7 @@ export function ResultDocument({
           </div>
         </div>
       )}
+      {preview && <FilePreview text={preview} />}
       <CopyStatus state={copyState} />
     </section>
     </>

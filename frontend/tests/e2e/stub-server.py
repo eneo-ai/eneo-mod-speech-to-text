@@ -11,6 +11,8 @@ Runs the page can open with ?run=<id>:
   run-review    paused for "who is who" (flow-2)
   run-review-text  paused for a text step's output to be checked
   run-corrected finished like run-done, its transcript corrected after the document
+  run-pdf       finished, the document only its PDF, previewed from the step's text
+  run-pdf-long  like run-pdf, a document long enough to fold
 The paused run-review has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like run-done.
@@ -143,6 +145,22 @@ FILES = [
 ]
 DONE = {"status": "completed", "result": {"kind": "inline_text", "text": REPORT}, "result_files": FILES,
         "steps": [TRANSCRIBE_STEP, REPORT_STEP], "step_status": ["completed", "completed"]}
+LONG_REPORT = REPORT + "".join(
+    f"\n\n### {title}\n\n{body} Ärendet bereddes av förvaltningen och föredrogs av handläggaren. "
+    "Ledamöterna ställde frågor om kostnaderna och om hur invånarna berörs. Beslutet justeras vid nästa sammanträde."
+    for title, body in [("Budget 2027", "Ramen höjs med två procent."), ("Skolskjutsar", "Nya turer efter höstlovet."),
+                        ("Äldreomsorg", "Två nya platser öppnar i vår."), ("Bredband", "Utbyggnaden fortsätter norrut."),
+                        ("Övriga frågor", "Inga övriga frågor anmäldes.")])
+
+
+def only_pdf(text):
+    """A document that is only its PDF (Eneo's artifact result), made from the report step's text."""
+    pdf = dict(FILES[0], step_id="s2")
+    return {"status": "completed", "result": {"kind": "artifact", "files": [pdf]}, "result_files": [pdf],
+            "steps": [TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": text})],
+            "step_status": ["completed", "completed"]}
+
+
 RUNS = {
     "run-done": DONE,
     "run-plain": {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
@@ -159,6 +177,8 @@ RUNS = {
     "run-review-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-review-text-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-corrected": DONE,
+    "run-pdf": only_pdf(REPORT),
+    "run-pdf-long": only_pdf(LONG_REPORT),
 }
 SPLIT = "Ramen höjs med två procent"
 CORRECTIONS = {

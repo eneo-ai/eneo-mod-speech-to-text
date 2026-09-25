@@ -4,7 +4,7 @@
  * and whether the browser's own viewer can show it. The page names nothing.
  */
 
-import type { ResultFile } from "./api";
+import type { FlowRunStep, ResultFile } from "./api";
 import { formatBytes } from "./format";
 
 export type FileKind = "pdf" | "word" | "spreadsheet" | "text" | "audio" | "image" | "other";
@@ -24,6 +24,8 @@ export interface ResultFileView {
   available: boolean;
   /** A PDF opens in the browser's own viewer. */
   previewable: boolean;
+  /** The step that made the file, when Eneo names it. */
+  stepId: string | null;
 }
 
 const KNOWN: [ext: string, mime: string, kind: FileKind, label: string][] = [
@@ -65,6 +67,7 @@ export function resultFileViews(files: readonly ResultFile[]): ResultFileView[] 
           : "Filen går inte att hämta.",
       available,
       previewable: available && type.kind === "pdf",
+      stepId: file.step_id ?? null,
     };
   });
 }
@@ -79,4 +82,21 @@ export function transcriptFileName(flowName: string, createdAt?: string): string
   const day = created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : "";
   const base = [name, day].filter(Boolean).join(" ");
   return base ? `${base} transkript.txt` : "transkript.txt";
+}
+
+/**
+ * What a generated document says, as Markdown: the text its own step wrote,
+ * which Eneo lays out in the file (a model's answer, or text a step renders
+ * verbatim), never what the step read. Null where that text is not the
+ * document: laid out from structured fields, only the start of a longer text,
+ * a filled template's list of its fields, or no step named.
+ */
+export function fileText(file: ResultFileView, steps: readonly FlowRunStep[]): string | null {
+  const step = file.stepId ? steps.find((s) => s.step_id === file.stepId) : undefined;
+  const output = step?.output_payload_json as { text?: unknown; structured?: unknown; text_overflow?: unknown } | null | undefined;
+  const mode = (step?.model_parameters_json as { mode?: unknown } | null | undefined)?.mode;
+  if (!output || typeof output.text !== "string" || "structured" in output || output.text_overflow || mode === "template_fill") {
+    return null;
+  }
+  return output.text.trim() ? output.text : null;
 }
