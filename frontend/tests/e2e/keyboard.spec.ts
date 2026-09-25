@@ -275,3 +275,32 @@ test("Antal talare keeps what was typed: a letter is an error the start sends fo
   await expect(count, "the start is refused and the field takes focus").toBeFocused();
   await expect(page.getByRole("button", { name: "Stoppa" })).toHaveCount(0);
 });
+
+test("the input modes are one Tab stop: every arrow moves and chooses, round the ends, the setup follows, Tab leaves", async ({ page }) => {
+  await setup(page);
+  const cards = page.getByRole("radio");
+  await expect(cards).toHaveCount(3);
+  const ACTION = ["Starta strömning", "Starta inspelning", "Välj ljudfil"];
+  const primary = page.getByRole("button", { name: new RegExp(`^(${ACTION.join("|")})$`) });
+  // A chosen mode other than the first: Tab enters the group where the choice is, not at its top.
+  await cards.nth(1).click();
+  await page.getByRole("heading", { name: "Hur vill du ge ljudet?" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
+  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
+  const arrow = async (key: string) => {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(60);
+    await page.keyboard.up(key);
+  };
+  for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
+    await arrow(key);
+    await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
+    await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
+    await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);
+  }
+  await expect(page.getByRole("button", { name: "Testa mikrofonen" }), "Strömma's own setup shows").toBeVisible();
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("role")), "the next Tab leaves the group").not.toBe("radio");
+  await expect(page.getByRole("switch", { name: "Märk upp talare" })).toBeFocused();
+});

@@ -147,7 +147,20 @@ export async function unnamedControls(page: Page) {
   return described;
 }
 
-/** The role, name and description Chromium's own tree gives one element, the ones a screen reader reads. */
+type AxProperty = { name: string; value: { value?: unknown } };
+// A toggle's off is said as much as its on; the others are said only when they hold.
+const TOGGLES = ["checked", "pressed", "expanded", "selected"];
+const FLAGS = ["disabled", "invalid", "required", "readonly", "busy"];
+
+/** The states a screen reader reads out, from Chromium's properties: "checked=true", "expanded=false" and so on. */
+export function axState(properties: AxProperty[] = []): string {
+  return properties
+    .filter((p) => p.value.value !== undefined && (TOGGLES.includes(p.name) || (FLAGS.includes(p.name) && ![false, "false"].includes(p.value.value as string))))
+    .map((p) => `${p.name}=${String(p.value.value)}`)
+    .join(" ");
+}
+
+/** The role, name, description and states Chromium's own tree gives one element, the ones a screen reader reads. */
 export async function axNode(locator: Locator) {
   const page = locator.page();
   await locator.evaluate((element) => element.setAttribute("data-ax-probe", ""));
@@ -158,10 +171,10 @@ export async function axNode(locator: Locator) {
       nodeId: number;
     };
     const { nodes } = (await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })) as {
-      nodes: { role?: { value: string }; name?: { value: string }; description?: { value: string } }[];
+      nodes: { role?: { value: string }; name?: { value: string }; description?: { value: string }; properties?: AxProperty[] }[];
     };
     const [node] = nodes;
-    return { role: node.role?.value ?? "", name: node.name?.value ?? "", description: node.description?.value ?? "" };
+    return { role: node.role?.value ?? "", name: node.name?.value ?? "", description: node.description?.value ?? "", state: axState(node.properties) || undefined };
   } finally {
     await cdp.detach();
     await locator.evaluate((element) => element.removeAttribute("data-ax-probe"));

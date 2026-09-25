@@ -7,16 +7,17 @@ import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
 
-test("the input modes are named by their title and described by their line", async ({ page }) => {
+test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
-  for (const [id, name, description] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar."],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt."],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet."],
-  ]) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description });
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  for (const [id, name, description, checked] of [
+    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
+    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  ] as const) {
+    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
-  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ name: "Hur vill du ge ljudet?" });
+  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du ge ljudet?" });
 });
 
 test("a field is not an unnamed group", async ({ page }) => {
