@@ -1371,6 +1371,45 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   assert.equal(sent.length, 1);
 });
 
+test("the wait for Strömma's text ends after 20 s, its keeping included; a send then waits for that write, never racing its lease", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sent: unknown[] = [];
+  const live = fakeLiveClient();
+  const store = await openRecordingStore({});
+  const keep = store.keepLiveTranscript.bind(store);
+  let write!: () => void;
+  // A slow write under the recording's lease.
+  store.keepLiveTranscript = async (id, transcriptId) => {
+    if (!(await store.lease(id))) return;
+    await new Promise<void>((resolve) => (write = resolve));
+    store.release(id);
+    await keep(id, transcriptId);
+  };
+  const { session, recorders } = await setup({ live: live.client, store });
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("audio");
+  live.report({ finishing: true });
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  live.report({ transcriptId: "transcript-1" });
+  await until(() => write !== undefined, "the write begun");
+
+  t.mock.timers.tick(19_999);
+  assert.equal(session.getSnapshot().finishing, true);
+  t.mock.timers.tick(1);
+  assert.equal(session.getSnapshot().finishing, false, "a person waits at most 20 s, whatever is still going on");
+
+  const created = session.createDocument();
+  await settle();
+  assert.deepEqual(sent, [], "not while the write holds the recording");
+  write();
+  assert.equal(await created, true);
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
+});
+
 test("live text stops with the recorder, before the stopped recording is stored", async () => {
   const live = fakeLiveClient();
   const { session, recorders } = await setup({ live: live.client });

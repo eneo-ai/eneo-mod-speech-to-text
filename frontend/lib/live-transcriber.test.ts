@@ -277,7 +277,7 @@ test("the only session's final text brings Eneo's stored transcript of the recor
   assert.equal(live.getSnapshot().transcriptId, "transcript-1");
 });
 
-test("a counted stop is awaited briefly: finishing from the recording's end until its final text, at most 10 s", () => {
+test("a counted stop is awaited: finishing from the recording's end until its final text", () => {
   const { live, sockets } = setup();
   live.start();
   sockets[0].ready();
@@ -288,16 +288,6 @@ test("a counted stop is awaited briefly: finishing from the recording's end unti
   assert.equal(live.getSnapshot().finishing, true);
   sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
   assert.equal(live.getSnapshot().finishing, false);
-
-  const late = setup();
-  late.live.start();
-  late.sockets[0].ready();
-  late.live.end();
-  late.live.stop();
-  late.elapse(10_000);
-  assert.equal(late.live.getSnapshot().finishing, false, "a person does not wait long");
-  late.sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-2" });
-  assert.equal(late.live.getSnapshot().transcriptId, "transcript-2", "a later final text still brings it");
 
   const broken = setup();
   broken.live.start();

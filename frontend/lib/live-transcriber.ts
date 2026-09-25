@@ -42,10 +42,7 @@ export interface LiveSnapshot {
   complete: boolean;
   /** Eneo's stored transcript of the whole recording, from the final text of a recording heard whole. */
   transcriptId?: string;
-  /**
-   * The recording ended with a count, so its final text may name a stored transcript: a document waits for it,
-   * for at most FINISHING_WAIT_MS. The text still counts if it comes later.
-   */
+  /** The recording ended with a count, so its final text, still to come, may name a stored transcript. */
   finishing?: boolean;
 }
 
@@ -93,8 +90,6 @@ const START_ATTEMPTS = 3;
 // How long a stop waits, in the background, for the relay's final text: Eneo's allowance for it
 // (flow_live_transcription_final_text_timeout_seconds, 60 s by default).
 const FINAL_TEXT_WAIT_MS = 60_000;
-// How long a document waits for that text's stored transcript: a person should not wait long.
-const FINISHING_WAIT_MS = 10_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
@@ -138,7 +133,6 @@ export class LiveTranscriber {
   private retryTimer: unknown = null;
   private commitTimer: unknown = null;
   private stopTimer: unknown = null;
-  private finishingTimer: unknown = null;
   private lastWordsAt: number | null = null;
   // The start, or a break: the next piece opens a paragraph. After a pause in speech, one opens at a sentence's end.
   private opensParagraph = true;
@@ -387,16 +381,10 @@ export class LiveTranscriber {
   }
 
   private awaitFinalText() {
-    if (this.snapshot.finishing) return;
-    this.set({ finishing: true });
-    this.finishingTimer = this.deps.setTimer(() => {
-      this.finishingTimer = null;
-      this.set({ finishing: false });
-    }, FINISHING_WAIT_MS);
+    if (!this.snapshot.finishing) this.set({ finishing: true });
   }
 
   private stopAwaiting() {
-    this.clear("finishingTimer");
     if (this.snapshot.finishing) this.set({ finishing: false });
   }
 
@@ -487,7 +475,7 @@ export class LiveTranscriber {
     this.set({ status: "ended" });
   }
 
-  private clear(timer: "retryTimer" | "commitTimer" | "stopTimer" | "finishingTimer") {
+  private clear(timer: "retryTimer" | "commitTimer" | "stopTimer") {
     if (this[timer] === null) return;
     this.deps.clearTimer(this[timer]);
     this[timer] = null;

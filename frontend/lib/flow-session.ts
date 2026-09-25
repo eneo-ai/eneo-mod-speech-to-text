@@ -403,6 +403,10 @@ export interface LiveClient {
   open(stepId: string, recordingId?: string, earlier?: LivePiece[]): LiveSession;
 }
 
+// How long Skapa dokument waits for Strömma's final text and its keeping: measured at 4 s on an idle machine and
+// over 10 s under load, against minutes for transcribing the audio again.
+const FINISHING_WAIT_MS = 20_000;
+
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
   const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
@@ -460,6 +464,9 @@ export class FlowSession {
   // Whether live text names the recording, so its final text may bring a transcript, and whether that is awaited.
   private liveNamed = false;
   private finishing = false;
+  private finishingTimer: ReturnType<typeof setTimeout> | null = null;
+  // A transcript being kept with its recording, under the recording's lease: a send waits for it.
+  private keeping: Promise<void> | null = null;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -673,6 +680,8 @@ export class FlowSession {
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
     const generation = this.generation;
+    // A transcript still being kept holds the recording's lease: the send waits for that local write.
+    await this.keeping;
     const repeated = input?.kind === "recording" && !!(await this.stored(input.recording.id))?.submission;
     // The page went away meanwhile: its run code is gone, and nothing may be sent for it.
     if (generation !== this.generation) return false;
@@ -823,7 +832,7 @@ export class FlowSession {
     this.liveStream = null;
     this.liveRecording = null;
     this.liveNamed = false;
-    this.finishing = false;
+    this.clearFinishing();
   }
 
   /** Live text follows the recorder: its microphone, pauses and the stop; its own failures never reach back. */
@@ -858,27 +867,40 @@ export class FlowSession {
    * run need not transcribe the audio again; while live text awaits it, and until it is kept, Skapa dokument waits.
    */
   private stopKeepingTranscript(live: LiveSession, recordingId: string) {
-    let keeping = false;
+    let kept = false;
     const done = () => {
       if (this.live !== live || !this.finishing) return;
-      this.finishing = false;
+      this.clearFinishing();
       this.emit();
     };
     const unsubscribe = live.subscribe(() => {
       const { status, transcriptId, finishing } = live.getSnapshot();
-      if (transcriptId && !keeping) {
-        keeping = true;
-        void Promise.resolve(this.options.openStore())
+      if (transcriptId && !kept) {
+        kept = true;
+        const keeping: Promise<void> = Promise.resolve(this.options.openStore())
           .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
           .catch(() => undefined)
-          .finally(done);
-      } else if (!keeping && !finishing) {
+          .finally(() => {
+            if (this.keeping === keeping) this.keeping = null;
+            done();
+          });
+        this.keeping = keeping;
+      } else if (!kept && !finishing) {
         done();
       }
-      if (keeping || status === "ended") unsubscribe();
+      if (kept || status === "ended") unsubscribe();
     });
     live.stop();
-    this.finishing = live.getSnapshot().finishing === true;
+    if (!live.getSnapshot().finishing) return;
+    // The whole wait, the text and its keeping, is bounded here; after it the text is still kept if it comes.
+    this.finishing = true;
+    this.finishingTimer = setTimeout(done, FINISHING_WAIT_MS);
+  }
+
+  private clearFinishing() {
+    if (this.finishingTimer !== null) clearTimeout(this.finishingTimer);
+    this.finishingTimer = null;
+    this.finishing = false;
   }
 
   private onCapture = () => {
