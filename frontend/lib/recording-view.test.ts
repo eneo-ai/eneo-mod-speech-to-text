@@ -32,7 +32,7 @@ test("the tab title follows the state, so a user in another tab sees that record
   assert.equal(pageTitle("recording", 754_000, "Nämndmöte"), "Spelar in 12:34 · Tal till text");
   assert.equal(pageTitle("paused", 754_000, "Nämndmöte"), "Pausad · Tal till text");
   assert.equal(pageTitle("interrupted", 754_000, "Nämndmöte"), "Pausad · Tal till text");
-  assert.equal(pageTitle("ready", 754_000, "Nämndmöte"), "Klart · Tal till text");
+  assert.equal(pageTitle("ready", 754_000, "Nämndmöte"), "Inte skickad · Tal till text", "Klart is the finished document's");
 });
 
 test("a muted or wrong microphone is reported after 15 s of digital silence, and no longer as soon as sound returns", () => {

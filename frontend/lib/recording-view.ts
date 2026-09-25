@@ -48,8 +48,9 @@ export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: stri
     case "paused":
     case "interrupted":
       return `Pausad · ${APP}`;
+    // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `Klart · ${APP}`;
+      return `Inte skickad · ${APP}`;
     default:
       return flowName ? `${flowName} · ${APP}` : APP;
   }
