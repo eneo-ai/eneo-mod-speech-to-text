@@ -6,10 +6,12 @@ import { createPortal } from "react-dom";
 import { SignedOutSlot } from "@/components/AuthGate";
 import { Button } from "@/components/ui/button";
 import { LevelMeter } from "@/components/flow/LevelMeter";
+import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { useElapsed } from "@/components/flow/recording-hooks";
-import type { SessionPhase } from "@/lib/flow-session";
+import type { Problem, SessionPhase } from "@/lib/flow-session";
 import { formatClock } from "@/lib/format";
 import type { RecordingCapture } from "@/lib/recording-session";
+import { STOP_LINE } from "@/lib/recording-view";
 import { cn } from "@/lib/utils";
 
 // Pausa and Stoppa appear under the finger that tapped Starta: a double tap's second tap must not end the meeting.
@@ -89,7 +91,8 @@ export function FocusedRecorder({
 
 /**
  * The recording's controls in fixed places: Pausa (Fortsätt while paused or
- * interrupted) and Stoppa, with the line saying what matters now. With
+ * interrupted) and Stoppa, with warnings above them and the line saying what
+ * else matters now under them. With
  * `showStatus`, the status, timer and level ride along (Strömma, where the
  * document sheet has the workspace).
  */
@@ -98,7 +101,8 @@ export function RecordingBar({
   phase,
   stream,
   showStatus,
-  notices,
+  warnings,
+  notes,
   onPause,
   onStop,
 }: {
@@ -106,7 +110,9 @@ export function RecordingBar({
   phase: SessionPhase;
   stream: MediaStream | null;
   showStatus: boolean;
-  notices: string[];
+  /** What can lose the meeting: said as alerts, above the controls. */
+  warnings: Problem[];
+  notes: string[];
   onPause: () => void;
   onStop: () => void;
 }) {
@@ -127,6 +133,13 @@ export function RecordingBar({
         "lg:static lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
       )}
     >
+      {warnings.length > 0 && (
+        <div className="mb-3 flex flex-col gap-2">
+          {warnings.map((warning) => (
+            <ProblemAlert key={warning.title} problem={warning} />
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         {showStatus && (
           // On a phone: the status over the timer and level, so the buttons keep the same row.
@@ -169,16 +182,14 @@ export function RecordingBar({
           </Button>
         </div>
       </div>
-      <div
-        role="status"
-        className={cn(
-          "mt-2 flex flex-col gap-0.5 text-[13px] leading-snug text-ink-soft",
-          showStatus ? "sm:text-right" : "text-center",
-        )}
-      >
-        {notices.map((notice) => (
-          <p key={notice}>{notice}</p>
-        ))}
+      <div className={cn("mt-2 flex flex-col gap-0.5 text-[13px] leading-snug text-ink-soft", showStatus ? "sm:text-right" : "text-center")}>
+        {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
+        <div role="status" className="flex flex-col gap-0.5">
+          {notes.map((note) => (
+            <p key={note}>{note}</p>
+          ))}
+        </div>
+        <p>{STOP_LINE}</p>
       </div>
     </div>
   );

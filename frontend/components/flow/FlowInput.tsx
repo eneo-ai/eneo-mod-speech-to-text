@@ -238,7 +238,7 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
   const silent = useSilence(capture.stream, phase === "recording");
   const [wakeLock, setWakeLock] = useState(true);
   useEffect(() => setWakeLock("wakeLock" in navigator), []);
-  const notices = recordingNotices({
+  const { warnings, notes } = recordingNotices({
     phase,
     silent,
     lowSpace: capture.lowSpace,
@@ -271,7 +271,8 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
         phase={phase}
         stream={capture.stream}
         showStatus={streaming}
-        notices={notices}
+        warnings={warnings}
+        notes={notes}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={() => void session.stop()}
       />

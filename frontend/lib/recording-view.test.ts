@@ -56,7 +56,7 @@ test("a quiet stretch of a meeting is never reported: a real microphone's room t
   for (let now = 0; now <= 10 * 60_000; now += 66) assert.equal(watch.update(roomTone, now), false, `at ${now} ms`);
 });
 
-test("the bar's line says what matters now, calmly, and always what Stoppa does", () => {
+test("the bar warns of what can lose the meeting, and says calmly what else matters now", () => {
   const base = {
     phase: "recording" as const,
     silent: false,
@@ -67,47 +67,47 @@ test("the bar's line says what matters now, calmly, and always what Stoppa does"
     muted: false,
     wakeLock: true,
   };
-  const stop = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
-  assert.deepEqual(recordingNotices(base), [stop]);
-  assert.deepEqual(recordingNotices({ ...base, silent: true }), [
-    "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.",
-    stop,
-  ]);
-  assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), [stop], "no silence warning while paused");
-  assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, wakeLock: false }), [
-    "Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.",
-    "Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.",
-    "Låt skärmen vara tänd under inspelningen.",
-    stop,
-  ]);
-  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), [
-    "Enheten har inte plats för att spara mer. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
-    stop,
-  ]);
-  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }), [
-    "Enheten kan inte spara mer av inspelningen. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
-    stop,
+  const none = { warnings: [], notes: [] };
+  assert.deepEqual(recordingNotices(base), none);
+  assert.deepEqual(recordingNotices({ ...base, silent: true }), {
+    warnings: [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }],
+    notes: [],
+  });
+  assert.deepEqual(recordingNotices({ ...base, phase: "paused", silent: true }), none, "no silence warning while paused");
+  assert.deepEqual(recordingNotices({ ...base, lowSpace: true, persistent: false, wakeLock: false }), {
+    warnings: [{ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." }],
+    notes: [
+      "Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.",
+      "Låt skärmen vara tänd under inspelningen.",
+    ],
+  });
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "full" }), {
+    warnings: [
+      { title: "Enheten har inte plats för att spara mer.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
+    ],
+    notes: [],
+  });
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
+    { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
   ]);
   const minutes = (count: number) => count * 60_000;
-  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(16) }), [stop], "nothing yet");
+  const notes = (options: Partial<Parameters<typeof recordingNotices>[0]>) =>
+    recordingNotices({ ...base, ...options }).notes;
+  assert.deepEqual(notes({ remainingMs: minutes(16) }), [], "nothing yet");
   const fifteen = "Mindre än 15 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
   const five = "Mindre än 5 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
-  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(15) }), [fifteen, stop]);
-  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(6) }), [fifteen, stop], "a quiet line, not a count");
-  assert.deepEqual(recordingNotices({ ...base, remainingMs: minutes(5) }), [five, stop]);
-  assert.deepEqual(recordingNotices({ ...base, phase: "paused", remainingMs: minutes(3) }), [five, stop], "while paused too");
+  assert.deepEqual(notes({ remainingMs: minutes(15) }), [fifteen]);
+  assert.deepEqual(notes({ remainingMs: minutes(6) }), [fifteen], "a quiet line, not a count");
+  assert.deepEqual(notes({ remainingMs: minutes(5) }), [five]);
+  assert.deepEqual(notes({ phase: "paused", remainingMs: minutes(3) }), [five], "while paused too");
+  const gone = { title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." };
   assert.deepEqual(
     recordingNotices({ ...base, phase: "interrupted", remainingMs: 0 }),
-    ["Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.", stop],
+    { warnings: [gone], notes: [] },
     "interrupted, the flow's end is not what the user needs to know",
   );
-  assert.deepEqual(recordingNotices({ ...base, muted: true }), [
-    "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.",
-    stop,
-  ]);
-  assert.deepEqual(recordingNotices({ ...base, phase: "interrupted" }), [
-    "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.",
-    stop,
+  assert.deepEqual(recordingNotices({ ...base, muted: true }).warnings, [
+    { title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." },
   ]);
 });
 
@@ -292,14 +292,15 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
       throw new Error("not used");
     },
   });
-  const bar = (phase: "recording" | "paused", showStatus: boolean) =>
+  const bar = (phase: "recording" | "paused", showStatus: boolean, warnings = [] as { title: string; detail?: string }[]) =>
     renderToStaticMarkup(
       createElement(RecordingBar, {
         capture,
         phase,
         stream: null,
         showStatus,
-        notices: ["Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet."],
+        warnings,
+        notes: ["Låt skärmen vara tänd under inspelningen."],
         onPause: () => {},
         onStop: () => {},
       }),
@@ -309,6 +310,13 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   assert.deepEqual(buttons(bar("paused", true)), ["Fortsätt", "Stoppa"]);
   assert.match(bar("recording", true), /<span aria-hidden="true" class="[^"]*bg-record[^"]*"><\/span>Spelar in/, "the red dot has its word");
   assert.match(bar("paused", true), />Pausad</);
+  // The fixed line is not in the live region, so a change there does not read it again.
+  assert.match(bar("recording", false), /<div role="status"[^>]*><p>Låt skärmen vara tänd under inspelningen\.<\/p><\/div>/);
+  assert.match(bar("recording", false), /<\/div><p[^>]*>Stoppa avslutar inspelningen\. Du väljer sedan att skapa dokumentet\.<\/p>/);
+  const warned = bar("recording", false, [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }]);
+  const alert = warned.indexOf('role="alert"');
+  assert.ok(alert >= 0 && alert < warned.indexOf(">Pausa<"), "a warning is an alert, above the controls");
+  assert.match(warned, />Vi hör inget från mikrofonen\.</);
 
   const recorder = renderToStaticMarkup(
     createElement(FocusedRecorder, { capture, phase: "recording", stream: null, storageNote: null }),

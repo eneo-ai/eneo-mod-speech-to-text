@@ -13,5 +13,5 @@
     - paragraph: Texten skapas när du stoppar inspelningen. Inspelningen sparas på enheten medan du spelar in.
     - button "Pausa"
     - button "Stoppa"
-    - status:
-      - paragraph: Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.
+    - status
+    - paragraph: Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.
