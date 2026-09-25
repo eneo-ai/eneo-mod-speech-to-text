@@ -19,7 +19,7 @@ import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
-import { formatBytes } from "./format";
+import { formatBytes, formatDuration } from "./format";
 import type { LivePiece, LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
@@ -147,6 +147,14 @@ function oversized(maxBytes: number, inputFormat: string | undefined): Problem {
   };
 }
 
+/** Known only once the browser has read the file's length; Eneo refuses it too, but only after the upload. */
+function tooLong(maxSeconds: number): Problem {
+  return {
+    title: `Filen är längre än flödet tar emot (högst ${formatDuration(maxSeconds * 1000)}).`,
+    detail: "Välj en kortare fil eller dela upp den.",
+  };
+}
+
 function unsupported(accepted: string[] | undefined): Problem {
   const formats = acceptedFormats(accepted);
   return { title: "Filtypen stöds inte.", detail: formats ? `Flödet tar emot ${formats}.` : undefined };
@@ -160,6 +168,7 @@ export function fileProblem(
   const accepted = step?.accepted_mimetypes;
   const type = uploadType(file, accepted);
   if (type && !isMimeAllowed(type, accepted)) return unsupported(accepted);
+  if (file.size === 0) return { title: "Filen är tom.", detail: "Välj en annan fil." };
   if (step?.max_file_size_bytes && file.size > step.max_file_size_bytes) return oversized(step.max_file_size_bytes, step.input_format);
   return null;
 }
@@ -563,18 +572,28 @@ export class FlowSession {
     this.probeDuration = probe;
   }
 
-  /** Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one. */
+  /**
+   * Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one.
+   * Its length is checked once the browser has read it.
+   */
   chooseFile(file: File): void {
     this.problem = fileProblem(file, this.inputStep());
     if (!this.problem) {
       const type = uploadType(file, this.inputStep()?.accepted_mimetypes);
       const blob = type === file.type ? file : file.slice(0, file.size, type);
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
+      const earlier = this.file;
       this.file = chosen;
       void this.probeDuration?.(file)
         .then((durationMs) => {
           if (this.file !== chosen || durationMs == null) return;
-          this.file = { ...chosen, durationMs };
+          const maxSeconds = this.inputStep()?.max_duration_seconds;
+          if (maxSeconds && durationMs > maxSeconds * 1000) {
+            this.file = earlier;
+            this.problem = tooLong(maxSeconds);
+          } else {
+            this.file = { ...chosen, durationMs };
+          }
           this.emit();
         })
         .catch(() => undefined);

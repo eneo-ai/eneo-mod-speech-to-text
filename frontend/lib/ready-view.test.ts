@@ -176,6 +176,10 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
   };
   const empty = renderToStaticMarkup(createElement(UploadPanel, { step, file: null, audio: true, inputRef: null, onChoose: noop }));
   assert.match(empty, /Flödet tar emot MP3, WAV, M4A och WebM, högst 200\u00a0MB\./);
+  const timed = renderToStaticMarkup(
+    createElement(UploadPanel, { step: { ...step, max_duration_seconds: 5 * 3_600 }, file: null, audio: true, inputRef: null, onChoose: noop }),
+  );
+  assert.match(timed, /Flödet tar emot MP3, WAV, M4A och WebM, högst 200\u00a0MB och 5 h\./);
   assert.doesNotMatch(empty.replace(/<input[^>]*>/, ""), /audio\//, "the chooser's accept list is the only place types show");
 
   const chosen = renderToStaticMarkup(

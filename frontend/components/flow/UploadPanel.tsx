@@ -32,7 +32,11 @@ export function UploadPanel({
   const inputId = useId();
   const [dragging, setDragging] = useState(false);
   const formats = acceptedFormats(step?.accepted_mimetypes);
-  const limit = step?.max_file_size_bytes ? `högst ${formatBytes(step.max_file_size_bytes)}` : null;
+  const maxima = [
+    step?.max_file_size_bytes ? formatBytes(step.max_file_size_bytes) : null,
+    step?.max_duration_seconds ? formatDuration(step.max_duration_seconds * 1000) : null,
+  ].filter(Boolean);
+  const limit = maxima.length > 0 ? `högst ${maxima.join(" och ")}` : null;
   const takes = [formats, limit].filter(Boolean).join(", ");
 
   const dropTarget = {

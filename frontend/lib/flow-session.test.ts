@@ -960,6 +960,30 @@ test("a chosen file is checked against the flow's types and size before anything
   assert.equal(session.getSnapshot().problem, null);
 });
 
+test("Ladda upp refuses an empty file, and a file longer than the flow takes once its length is known", async () => {
+  let length = 30 * 60_000;
+  const { session } = await setup();
+  session.setProbeDuration(async () => length);
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 5 * 3_600 }] }));
+  session.selectMode("ladda-upp");
+
+  session.chooseFile(new File([], "tom.mp3", { type: "audio/mpeg" }));
+  assert.deepEqual(session.getSnapshot().problem, { title: "Filen är tom.", detail: "Välj en annan fil." });
+  assert.equal(session.getSnapshot().file, null);
+
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  await until(() => session.getSnapshot().file?.durationMs != null, "the duration");
+  length = 6 * 3_600_000; // a whole day
+  session.chooseFile(new File(["audio"], "heldag.mp3", { type: "audio/mpeg" }));
+  await until(() => session.getSnapshot().problem !== null, "the refusal");
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filen är längre än flödet tar emot (högst 5 h).",
+    detail: "Välj en kortare fil eller dela upp den.",
+  });
+  assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
+});
+
 test("a document is sent under the type the flow takes, whatever name the browser gave it", async () => {
   const { session } = await setup();
   session.setContract(
