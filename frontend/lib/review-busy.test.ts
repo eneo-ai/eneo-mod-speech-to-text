@@ -61,9 +61,21 @@ function eneo(t: { after: (fn: () => void) => void }) {
   return { calls, release };
 }
 
+// The same pause at the "who is who" step: the speakers to name, and the transcript beside them.
+const speakers: FlowRunReviewCheckpointPublic = {
+  ...pause,
+  output_type: "json",
+  step_label: "Talare",
+  current_payload_json: {
+    speaker_mapping: { inventory: [{ label: "SPEAKER_00", line_count: 3 }, { label: "SPEAKER_01", line_count: 2 }] },
+    structured: { speakers: [{ label: "SPEAKER_00", name: "Anna Berg", confidence: "high", evidence: "" }] },
+  },
+};
+
 const rejected: string[] = [];
 
-async function review() {
+/** The review on the page; with `saves`, Spara ändring goes through and the page holds the saved text. */
+async function review(start = pause, { saves = false } = {}) {
   const { createElement, useState } = await import("react");
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
@@ -74,7 +86,7 @@ async function review() {
   const published = { id: "flow-1", name: "Nämndmöte till rapport", published_version: 3 } as FlowPublished;
   // The page's own wiring: the pause's newer states reach the view, a failure says why.
   function Page() {
-    const [checkpoint, setCheckpoint] = useState(pause);
+    const [checkpoint, setCheckpoint] = useState(start);
     return createElement(ReviewView, {
       flowId: "flow-1",
       published,
@@ -89,7 +101,12 @@ async function review() {
           return "Servern kunde inte nås just nu. Försök igen om en stund.";
         }
       },
-      onSaveEdit: async () => ({ error: "unused" }),
+      onSaveEdit: async (cp: FlowRunReviewCheckpointPublic, value: ReviewEditedValue) => {
+        if (!saves) return { error: "unused" };
+        const saved = { ...cp, revision: cp.revision + 1, current_payload_json: { text: value as string } };
+        setCheckpoint(saved);
+        return saved;
+      },
       onReject: async () => {
         rejected.push("reject");
         throw new Error("503");
@@ -183,3 +200,14 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
   assert.equal(field().value, "First edit", "what went is what was on screen when it was sent");
 });
 
+
+test("the pause's view takes the focus on its heading, so a screen reader starts there", async (t) => {
+  eneo(t);
+  for (const [start, name] of [[pause, "Sammanfattning"], [speakers, "Vem är vem?"]] as const) {
+    const view = await review(start);
+    const focused = document.activeElement;
+    assert.ok(focused?.tagName === "H1" && focused.textContent === name, `focus on ${focused?.tagName} "${focused?.textContent}"`);
+    assert.equal(document.title, `${name} · Tal till text`);
+    await view.unmount();
+  }
+});

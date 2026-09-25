@@ -122,6 +122,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+  // A run's view has been shown here: the setup that takes its place announces itself, unlike on first load.
+  const [shownRun, setShownRun] = useState(false);
+  if (run.kind !== "idle" && !shownRun) setShownRun(true);
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
@@ -568,6 +571,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
         onLeave={leaving.onLeave}
+        afterRun={shownRun}
       />,
     );
   }

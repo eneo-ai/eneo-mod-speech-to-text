@@ -20,7 +20,7 @@ import { useAuthenticatedUser } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, ReadingMain } from "@/components/frame";
-import { useDocumentTitle } from "@/components/flow/recording-hooks";
+import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
@@ -98,7 +98,7 @@ export function ReviewView({
       ? "Granska transkriptet"
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
-  useDocumentTitle(`${title} · Tal till text`);
+  const heading = usePhaseHeading(title);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
@@ -401,7 +401,7 @@ export function ReviewView({
         {header}
         <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
           {paused}
-          <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
+          <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
             {title}
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
@@ -518,7 +518,7 @@ export function ReviewView({
       {header}
       <ReadingMain>
         {paused}
-        <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
+        <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
           {title}
         </h1>
         <p className="text-[13px] text-ink-soft leading-relaxed mb-5">

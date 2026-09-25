@@ -80,6 +80,7 @@ export function FlowInput({
   onMoreRuns,
   unsentRecordings,
   onLeave,
+  afterRun = false,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -93,6 +94,8 @@ export function FlowInput({
   unsentRecordings: UnsentRecording[];
   /** The page's links off the flow: they ask first while leaving would lose something (the page owns the question). */
   onLeave: (event: MouseEvent) => void;
+  /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
+  afterRun?: boolean;
 }) {
   const { session, snapshot } = input;
   const { phase, mode } = snapshot;
@@ -110,6 +113,11 @@ export function FlowInput({
   const fields = contract.form_fields ?? [];
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
+
+  // Never on the page's first load, where the page starts from its top.
+  useEffect(() => {
+    if (afterRun) workspace.current?.querySelector<HTMLElement>("[data-phase-heading]")?.focus();
+  }, []);
 
   useEffect(() => {
     if (shownGroup.current === group) return;
