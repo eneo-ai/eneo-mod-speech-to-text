@@ -87,7 +87,7 @@ type RunState =
   | { kind: "opening" }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
-  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version">; graph: FlowGraph | null }
+  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
       run: FlowRunPublic;
@@ -99,7 +99,7 @@ type RunState =
 // Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
 // delad länk, kan återuppta samma körning i stället för att tappa den.
 const RUN_QUERY_PARAM = "run";
-// "Skicka" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
+// "Skapa dokument" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
 const RECORDING_QUERY_PARAM = "recording";
 
 function readRunIdFromUrl(): string | null {
@@ -122,6 +122,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+  // A run's view has been shown here: the setup that takes its place announces itself, unlike on first load.
+  const [shownRun, setShownRun] = useState(false);
+  if (run.kind !== "idle" && !shownRun) setShownRun(true);
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
@@ -219,7 +222,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [holdsAudio, submitting, unstored]);
 
-  // Öppnad från "Skicka" i flödeslistan: skicka inspelningen när flödet har laddats.
+  // Öppnad från "Skapa dokument" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
     if (!contract) return;
     const url = new URL(window.location.href);
@@ -568,6 +571,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
         onLeave={leaving.onLeave}
+        afterRun={shownRun}
       />,
     );
   }
@@ -624,8 +628,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const steps = runSteps(run.graph, run.run, [], contract);
     return flowPage(
       <RunProgress
+        flowName={published.name}
         steps={steps}
         stage={runStage(steps, run.run.status)}
+        startedAt={run.run.created_at}
         error={runError}
         onCancel={() => onCancelRun(run.run.id)}
       />,
@@ -681,6 +687,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       refusal={retryRefusal}
       onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
       onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+      onChooseInput={onRunAgain}
     />,
     { input: run.run.input_payload_json, version: run.run.flow_version },
   );

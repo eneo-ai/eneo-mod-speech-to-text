@@ -58,12 +58,18 @@ function listen() {
   new MutationObserver((mutations) => {
     for (const mutation of mutations) {
       const target = mutation.target instanceof Element ? mutation.target : mutation.target.parentElement;
-      const live = target?.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], [role="timer"]');
-      if (!live || live.id === "__next-route-announcer__") continue;
-      const text = spoken(live).replace(/\s+/g, " ").trim();
-      if (!text || last.get(live) === text) continue;
-      last.set(live, text);
-      said.push({ region: `${live.getAttribute("role") ?? "live"} ${live.getAttribute("aria-label") ?? ""}`.trim(), text });
+      // An alert is said when it is added, too, not only when its text changes.
+      const alerts = Array.from(mutation.addedNodes).flatMap((node) =>
+        node instanceof Element ? [node, ...Array.from(node.querySelectorAll('[role="alert"]'))].filter((el) => el.matches('[role="alert"]')) : [],
+      );
+      const changed = target?.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], [role="timer"]');
+      for (const live of changed ? [changed, ...alerts] : alerts) {
+        if (live.id === "__next-route-announcer__") continue;
+        const text = spoken(live).replace(/\s+/g, " ").trim();
+        if (!text || last.get(live) === text) continue;
+        last.set(live, text);
+        said.push({ region: `${live.getAttribute("role") ?? "live"} ${live.getAttribute("aria-label") ?? ""}`.trim(), text });
+      }
     }
   }).observe(document, { subtree: true, childList: true, characterData: true });
   (window as unknown as { said: typeof said }).said = said;

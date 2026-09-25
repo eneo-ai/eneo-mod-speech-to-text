@@ -11,15 +11,19 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
+  type RefObject,
 } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuthenticatedUser } from "@/components/AuthGate";
+import { usePlayback } from "@/components/flow/AudioPlayer";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, ReadingMain } from "@/components/frame";
-import { useDocumentTitle } from "@/components/flow/recording-hooks";
+import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
+import { remarkResultHeadings } from "@/components/flow/ResultDocument";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -51,11 +55,7 @@ import {
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
 import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
-import {
-  SpeakerMark,
-  TranscriptPlayer,
-  type TranscriptPlayerHandle,
-} from "@/components/TranscriptPlayer";
+import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
@@ -100,7 +100,7 @@ export function ReviewView({
       ? "Granska transkriptet"
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
-  useDocumentTitle(`${title} · Tal till text`);
+  const heading = usePhaseHeading(title);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
@@ -131,6 +131,22 @@ export function ReviewView({
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
   const fieldId = useId();
+
+  // A control that removes or disables itself hands the focus on once the view has changed, never to the page
+  // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
+  // edit's Avbryt back to Redigera.
+  const handOff = useRef<RefObject<HTMLElement | null> | null>(null);
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  const reasonField = useRef<HTMLTextAreaElement>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const textField = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const target = handOff.current?.current;
+    // Not there yet, or still disabled while a request ends: a later render hands it on.
+    if (!target || (target as HTMLButtonElement).disabled) return;
+    handOff.current = null;
+    target.focus();
+  });
 
   // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
   useEffect(() => {
@@ -169,7 +185,6 @@ export function ReviewView({
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
   // korrigeringar för spelaren.
-  const playerRef = useRef<TranscriptPlayerHandle | null>(null);
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
   const [transcript] = useTranscriptContext({
@@ -184,6 +199,21 @@ export function ReviewView({
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
   );
+
+  // One playback for the page: the transcript's player, and the speakers' samples in "Namnge talarna".
+  const sources = useMemo(
+    () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, runId, id), durationMs: null })),
+    [flowId, runId, transcript.fileIds],
+  );
+  const playback = usePlayback(sources);
+  const sounds = useSyncExternalStore(
+    playback.subscribe,
+    () => playback.getSnapshot().playing || playback.getSnapshot().starting,
+    () => false,
+  );
+  // The speaker whose sample was asked for; it plays while the playback does.
+  const [sample, setSample] = useState<string | null>(null);
+  const listening = sounds ? sample : null;
 
   const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
 
@@ -219,7 +249,14 @@ export function ReviewView({
     const target = firstSegmentForSpeaker(shownSegments, label);
     if (!target) return;
     const end = Math.min(shownSegments[target.segmentIndex].end, target.time + 8);
-    playerRef.current?.playRange(target.fileIndex, target.time, end);
+    setSample(label);
+    playback.playRange(target.fileIndex, target.time * 1_000, end * 1_000);
+  }
+
+  // Stoppa exempel, or the dialog closed: a sample that plays stops; the transcript's own playback plays on.
+  function stopListening() {
+    if (listening) playback.pause();
+    setSample(null);
   }
 
   // The speakers to name: the inventory, and any speaker split off in this review's corrections.
@@ -299,13 +336,15 @@ export function ReviewView({
       const saved = await onSaveEdit(checkpoint, pendingEditedValue());
       // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
       if ("error" in saved) return;
+      handOff.current = editButton;
       setEditing(false);
       draft.drop(sent);
     }, undefined);
   }
 
   function submitReject() {
-    if (!rejectReason.trim()) return;
+    // Approved, the pause is final: only resuming is left, never a rejection typed before it.
+    if (decided || !rejectReason.trim()) return;
     void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()).catch(() => undefined), undefined);
   }
 
@@ -316,26 +355,28 @@ export function ReviewView({
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
-  const rejectSection = showReject ? (
-    <section className="paper-card p-4 mb-5">
+  const rejectSection = showReject && !decided ? (
+    <section className={isSpeakerMapping ? undefined : "paper-card p-4 mb-5"}>
       <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
       <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">
         Ange en kort motivering. Körningen kommer att avbrytas.
       </p>
       <textarea
+        ref={reasonField}
         value={rejectReason}
         onChange={(e) => setRejectReason(e.target.value)}
         rows={3}
         placeholder="Skäl …"
         aria-labelledby={`${fieldId}-avvisa`}
         aria-describedby={`${fieldId}-avvisa-hjalp`}
-        className={cn(REVIEW_FIELD, "text-[13px] p-3 mb-3")}
+        className={cn(REVIEW_FIELD, "text-[13px] coarse:text-base p-3 mb-3")}
       />
       <div className="flex items-center justify-end gap-2">
         <Button
           type="button"
           variant="ghost"
           onClick={() => {
+            handOff.current = rejectButton;
             setShowReject(false);
             setRejectReason("");
           }}
@@ -352,24 +393,53 @@ export function ReviewView({
   ) : null;
 
   const actions = (
-    <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+    <div className={cn("flex flex-wrap items-center justify-between gap-3", !isSpeakerMapping && "mt-auto pt-4")}>
       {decided ? (
         <p className="text-[13px] text-ink-soft">
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
         </p>
       ) : (
-        <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={busy || showReject}>
+        <Button
+          ref={rejectButton}
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            handOff.current = reasonField;
+            setShowReject(true);
+          }}
+          disabled={busy || showReject}
+        >
           Avvisa
         </Button>
       )}
       <Button type="button" onClick={() => void saveAndApprove()} disabled={busy || continueBlocked}>
         {working === "approve" ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
         ) : (
-          <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+          <CheckCircle2 aria-hidden className="h-4 w-4" strokeWidth={2} />
         )}
         {decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
       </Button>
+    </div>
+  );
+
+  // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
+  // whole transcript.
+  const decision = (
+    <div className="mt-4 flex flex-col gap-4 border-t border-rule-soft pt-4">
+      {(runError || localError) && (
+        <p className="text-[13px] text-destructive" role="alert">
+          {runError ?? localError}
+        </p>
+      )}
+      {saveState === "error" && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>Försök spara igen</Button>
+          <Button type="button" variant="outline" size="sm" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</Button>
+        </div>
+      )}
+      {rejectSection}
+      {actions}
     </div>
   );
 
@@ -382,7 +452,7 @@ export function ReviewView({
         {header}
         <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
           {paused}
-          <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
+          <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
             {title}
           </h1>
           <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
@@ -428,6 +498,8 @@ export function ReviewView({
                     }
                     disabled={busy}
                     onListen={hasAudio ? listenTo : undefined}
+                    listening={listening}
+                    onStopListening={stopListening}
                     listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                     onSave={saveNames}
                     onSaveAndContinue={saveAndApprove}
@@ -447,12 +519,14 @@ export function ReviewView({
                   Talare utan namn behåller sin etikett i transkriptet.
                 </p>
               )}
+              {!SPEAKER_REVIEW_ENABLED && decision}
             </details>
+            {/* There the card folds away, so the decision follows it instead. */}
+            {SPEAKER_REVIEW_ENABLED && decision}
 
             {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
             <h2 className="sr-only">Transkript</h2>
             <TranscriptPlayer
-              ref={playerRef}
               className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
               segments={transcript.segments}
               speakerReviews={transcript.speakerReviews}
@@ -464,6 +538,7 @@ export function ReviewView({
               speakerNames={speakerNames}
               textFallback={initialText}
               audioPending={transcript.pending}
+              playback={playback}
               corrections={corrections}
               editable={canCorrect}
               onCorrectionsChange={onCorrectionsChange}
@@ -473,18 +548,6 @@ export function ReviewView({
               onToggleConfirmed={toggleConfirmed}
             />
           </div>
-
-          {(runError || localError) && (
-            <p className="text-[13px] text-destructive mt-4" role="alert">
-              {runError ?? localError}
-            </p>
-          )}
-          {saveState === "error" && <div className="mt-2 flex gap-4 text-[13px]">
-            <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
-            <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>
-          </div>}
-          <div className="mt-4">{rejectSection}</div>
-          {actions}
         </main>
       </>
     );
@@ -495,7 +558,7 @@ export function ReviewView({
       {header}
       <ReadingMain>
         {paused}
-        <h1 className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1">
+        <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
           {title}
         </h1>
         <p className="text-[13px] text-ink-soft leading-relaxed mb-5">
@@ -515,17 +578,18 @@ export function ReviewView({
 
           {editable && editing ? (
             <textarea
+              ref={textField}
               value={text}
               readOnly={busy}
               onChange={(e) => editText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
               aria-labelledby={`${fieldId}-innehall`}
-              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
+              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] coarse:text-base leading-relaxed p-3 md:p-4 font-sans")}
             />
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
               {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{decided ? initialText : text}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{decided ? initialText : text}</ReactMarkdown>
             </article>
           )}
 
@@ -534,8 +598,10 @@ export function ReviewView({
               {editing ? (
                 <>
                   <button
+                    key="avbryt"
                     type="button"
                     onClick={() => {
+                      handOff.current = editButton;
                       setText(initialText);
                       setEditing(false);
                       draft.drop();
@@ -551,14 +617,19 @@ export function ReviewView({
                     disabled={!dirty || busy}
                     className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 coarse:min-h-11"
                   >
-                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    {saving ? <Loader2 aria-hidden className="h-3 w-3 animate-spin" /> : null}
                     Spara ändring
                   </button>
                 </>
               ) : (
                 <button
+                  key="redigera"
+                  ref={editButton}
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    handOff.current = textField;
+                    setEditing(true);
+                  }}
                   disabled={busy}
                   className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors coarse:min-h-11"
                 >

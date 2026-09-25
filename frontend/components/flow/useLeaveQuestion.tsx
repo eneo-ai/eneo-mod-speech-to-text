@@ -12,6 +12,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { PortalContainer } from "@/components/ui/portal-container";
 import { guardHistory } from "@/lib/leave-guard";
 
@@ -61,9 +63,12 @@ export function useLeaveQuestion(active: boolean, warning: string) {
             <AlertDialogTitle>Lämna sidan?</AlertDialogTitle>
             <AlertDialogDescription>{warning}</AlertDialogDescription>
           </AlertDialogHeader>
+          {/* Staying is the filled action: leaving stops a recording or a sending. */}
           <AlertDialogFooter>
-            <AlertDialogCancel>Stanna kvar</AlertDialogCancel>
-            <AlertDialogAction onClick={() => leave?.()}>Lämna sidan</AlertDialogAction>
+            <AlertDialogCancel className={cn(buttonVariants(), "border-transparent hover:text-primary-foreground")}>Stanna kvar</AlertDialogCancel>
+            <AlertDialogAction className={buttonVariants({ variant: "outline" })} onClick={() => leave?.()}>
+              Lämna sidan
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

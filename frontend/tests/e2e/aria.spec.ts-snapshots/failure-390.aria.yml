@@ -5,8 +5,6 @@
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att köra flödet igen om en stund.
   - button "Försök igen"
-  - link "Alla flöden":
-    - /url: /flows
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
@@ -27,6 +25,8 @@
         - group
         - searchbox "Sök i transkriptet"
       - status
+      - link "Hoppa förbi transkriptet":
+        - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":
         - listitem /Talare 1, 0:\d+ i del 1/:

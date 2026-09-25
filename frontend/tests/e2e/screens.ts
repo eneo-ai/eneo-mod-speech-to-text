@@ -71,6 +71,8 @@ export async function record(page: Page, mode: "Strömma" | "Spela in") {
   await page.getByRole("button", { name: mode === "Strömma" ? "Starta strömning" : "Starta inspelning" }).click();
   await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Spelar in." })).toBeAttached();
+  // Pausa and Stoppa ignore a double tap's second tap for 700 ms after they appear.
+  await page.waitForTimeout(800);
 }
 
 export async function stop(page: Page) {
@@ -316,7 +318,8 @@ export const STATES: State[] = [
     go: async (page) => {
       await setup(page);
       await record(page, "Spela in");
-      await page.waitForTimeout(1_500);
+      // Well past 2 s, which the ready view calls very short.
+      await page.waitForTimeout(2_000);
       await stop(page);
       await expect(page.getByRole("slider", { name: "Position" })).toBeVisible();
     },
@@ -377,7 +380,7 @@ export const STATES: State[] = [
       await page.addInitScript(() => {
         navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
       });
-      await recordingSays(page, "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
+      await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
   },
   {
@@ -410,7 +413,7 @@ export const STATES: State[] = [
           return stream;
         };
       });
-      await recordingSays(page, "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.", () =>
+      await recordingSays(page, "Mikrofonen är tillfälligt borta.", () =>
         page.evaluate(() => {
           for (const stream of (window as unknown as { streams: MediaStream[] }).streams)
             for (const track of stream.getAudioTracks()) {

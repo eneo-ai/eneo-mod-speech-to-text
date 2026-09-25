@@ -5,7 +5,7 @@ import { ApiError, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
-import type { LiveSnapshot } from "./live-transcriber";
+import { LiveTranscriber, type LiveSnapshot, type LiveSocket } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
 import {
   FlowSession,
@@ -111,11 +111,13 @@ const audioContract = (overrides: Partial<RunContract> = {}): RunContract => ({
 function fakeLiveClient() {
   const calls: string[] = [];
   const opened: string[] = [];
+  const earlier: unknown[] = [];
   const streams: unknown[] = [];
   const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
   const client: LiveClient = {
-    open(stepId) {
+    open(stepId, pieces) {
       opened.push(stepId);
+      earlier.push(pieces);
       return {
         getSnapshot: () => snapshot,
         subscribe: () => () => undefined,
@@ -126,7 +128,7 @@ function fakeLiveClient() {
       };
     },
   };
-  return { client, calls, opened, streams };
+  return { client, calls, opened, earlier, streams, snapshot };
 }
 
 async function setup(
@@ -264,26 +266,23 @@ test("the mode is fixed while recording and paused", async () => {
   assert.equal(session.getSnapshot().mode, "spela-in");
 });
 
-test("speaker labels: off by default in Strömma, the flow's default otherwise, and an explicit choice survives mode changes", async () => {
+test("speaker labels: the flow's default in every mode, Strömma included, and an explicit choice survives mode changes", async () => {
   const option = { selectable: true, required: false, default: true };
-  assert.equal(speakerLabelsFor(option, "stromma", null), false);
-  assert.equal(speakerLabelsFor(option, "spela-in", null), true);
-  assert.equal(speakerLabelsFor(option, "ladda-upp", null), true);
-  assert.equal(speakerLabelsFor(option, "stromma", true), true);
-  assert.equal(speakerLabelsFor({ ...option, selectable: false }, "spela-in", true), null, "not offered: nothing is sent");
-  assert.equal(speakerLabelsFor(null, "spela-in", null), null);
+  assert.equal(speakerLabelsFor(option, null), true);
+  assert.equal(speakerLabelsFor({ ...option, default: false }, null), false);
+  assert.equal(speakerLabelsFor(option, false), false);
+  assert.equal(speakerLabelsFor({ ...option, selectable: false }, true), null, "not offered: nothing is sent");
+  assert.equal(speakerLabelsFor(null, null), null);
 
   const { session } = await setup();
   session.setContract(audioContract());
-  assert.equal(session.getSnapshot().speakerLabels, false, "Strömma is selected first");
-  session.selectMode("spela-in");
-  assert.equal(session.getSnapshot().speakerLabels, true);
+  assert.equal(session.getSnapshot().mode, "stromma", "Strömma is selected first");
+  assert.equal(session.getSnapshot().speakerLabels, true, "the flow promises speaker labels, so Strömma keeps them");
   session.setSpeakerLabels(false);
   session.selectMode("ladda-upp");
   assert.equal(session.getSnapshot().speakerLabels, false, "the explicit choice is kept");
-  session.selectMode("stromma");
   session.setSpeakerLabels(true);
-  session.selectMode("spela-in");
+  session.selectMode("stromma");
   assert.equal(session.getSnapshot().speakerLabels, true);
 });
 
@@ -876,11 +875,118 @@ test("a Strömma recording continued after a reload or after Stoppa streams live
   recorders[0].emit("after");
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
+  live.snapshot.pieces = [{ text: "Före Stoppa.", opensParagraph: true }];
   await session.continueStopped();
   assert.equal(session.getSnapshot().phase, "recording");
   assert.deepEqual(live.opened, ["step-audio", "step-audio"], "a new live session for the new part");
+  assert.deepEqual(live.earlier, [undefined, [{ text: "Före Stoppa.", opensParagraph: true }]], "the draft from before Stoppa goes on");
   assert.deepEqual(live.streams, [streams[0], streams[1]]);
   assert.ok(session.getSnapshot().live);
+});
+
+/** Live text as the browser runs it (the real transcriber), with a relay the test speaks for. */
+function relayedLiveClient() {
+  const relays: Array<{ say(payload: object): void }> = [];
+  const client: LiveClient = {
+    open(_stepId, earlier) {
+      const transcriber = new LiveTranscriber(
+        {
+          openSocket: () => {
+            const socket: LiveSocket & { say(payload: object): void } = {
+              binaryType: "",
+              bufferedAmount: 0,
+              send: () => undefined,
+              close: () => undefined,
+              onopen: null,
+              onmessage: null,
+              onclose: null,
+              onerror: null,
+              say: (payload) => socket.onmessage?.({ data: JSON.stringify(payload) }),
+            };
+            relays.push(socket);
+            return socket;
+          },
+          setTimer: () => null,
+          clearTimer: () => undefined,
+        },
+        earlier,
+      );
+      transcriber.start();
+      return {
+        getSnapshot: transcriber.getSnapshot,
+        subscribe: transcriber.subscribe,
+        listen: () => undefined,
+        setRecording: (on) => transcriber.setRecording(on),
+        stop: () => transcriber.stop(),
+        dispose: () => transcriber.dispose(),
+      };
+    },
+  };
+  return { client, relays };
+}
+
+test("Fortsätt spela in keeps every word of the live draft: words that came after Stoppa, and all of it when the microphone is refused", async () => {
+  const live = relayedLiveClient();
+  let calls = 0;
+  const { session, recorders } = await setup({
+    live: live.client,
+    getStream: async () => {
+      calls += 1;
+      if (calls === 3) throw new DOMException("refused", "NotAllowedError");
+      return new FakeStream() as unknown as MediaStream;
+    },
+  });
+  const draft = () => session.getSnapshot().live?.getSnapshot().pieces.map((piece) => piece.text);
+  session.setContract(audioContract());
+  session.selectMode("stromma");
+  await session.start();
+  live.relays[0].say({ type: "ready" });
+  live.relays[0].say({ type: "transcript.delta", text: "Första delen." });
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  live.relays[0].say({ type: "transcript.delta", text: " Sista orden" }); // after Stoppa, before the final text
+
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.deepEqual(draft(), ["Första delen.", "Sista orden"], "the new part's live text goes on from all of it");
+
+  live.relays[1].say({ type: "ready" });
+  live.relays[1].say({ type: "transcript.delta", text: " Andra delen." });
+  recorders[1].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  await session.continueStopped(); // the microphone is refused
+  assert.equal(session.getSnapshot().phase, "ready");
+  assert.deepEqual(draft(), ["Första delen.", "Sista orden", "Andra delen."], "a refused continuation keeps the draft");
+});
+
+test("when live text cannot be set up again on Fortsätt spela in, the recording goes on and the earlier draft stays", async () => {
+  const live = relayedLiveClient();
+  let opens = 0;
+  const client = {
+    ...live.client,
+    open: (...args: Parameters<typeof live.client.open>) => {
+      opens += 1;
+      if (opens === 2) throw new Error("no live text now");
+      return live.client.open(...args);
+    },
+  };
+  const { session, recorders } = await setup({ live: client });
+  const draft = () => session.getSnapshot().live?.getSnapshot().pieces.map((piece) => piece.text);
+  session.setContract(audioContract());
+  session.selectMode("stromma");
+  await session.start();
+  live.relays[0].say({ type: "ready" });
+  live.relays[0].say({ type: "transcript.delta", text: "Hela mötets text." });
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.equal(session.getSnapshot().live?.getSnapshot().status, "unavailable");
+  assert.deepEqual(draft(), ["Hela mötets text."]);
 });
 
 test("Ta bort removes the recording from the device for good and starts over with the details kept", async () => {
@@ -957,6 +1063,83 @@ test("a chosen file is checked against the flow's types and size before anything
   session.chooseFile(new File(["audio"], "Intervju.MP3"));
   assert.equal(session.getSnapshot().file?.filename, "Intervju.MP3");
   assert.equal(session.getSnapshot().problem, null);
+});
+
+test("Ladda upp refuses an empty file, and a file longer than the flow takes once its length is known", async () => {
+  let length = 30 * 60_000;
+  const { session } = await setup();
+  session.setProbeDuration(async () => length);
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 5 * 3_600 }] }));
+  session.selectMode("ladda-upp");
+
+  session.chooseFile(new File([], "tom.mp3", { type: "audio/mpeg" }));
+  assert.deepEqual(session.getSnapshot().problem, { title: "Filen är tom.", detail: "Välj en annan fil." });
+  assert.equal(session.getSnapshot().file, null);
+
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  await until(() => session.getSnapshot().file?.durationMs != null, "the duration");
+  length = 6 * 3_600_000; // a whole day
+  session.chooseFile(new File(["audio"], "heldag.mp3", { type: "audio/mpeg" }));
+  await until(() => session.getSnapshot().problem !== null, "the refusal");
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Filen är längre än flödet tar emot (högst 5\u00a0h).",
+    detail: "Välj en kortare fil eller dela upp den.",
+  });
+  assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
+});
+
+test("a file whose length is still being read cannot be sent yet; once known to fit it is, and a length never known does not stop it", async () => {
+  const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
+  const lengths: Array<(ms: number | null) => void> = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setProbeDuration(() => new Promise((resolve) => lengths.push(resolve)));
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 60 }] }));
+  session.selectMode("ladda-upp");
+  const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+  session.chooseFile(new File(["audio"], "tva-minuter.mp3", { type: "audio/mpeg" }));
+  assert.equal(session.getSnapshot().fileChecking, true);
+  // Pressed twice before the browser has read the length: nothing goes, and nothing waits to go later.
+  assert.equal(await session.createDocument(), false);
+  assert.equal(await session.createDocument(), false);
+  lengths[0](2 * 60_000);
+  await settled();
+  assert.equal(sent.length, 0, "a file over the flow's limit is never sent");
+  assert.equal(session.getSnapshot().problem?.title, "Filen är längre än flödet tar emot (högst 1\u00a0min).");
+
+  session.chooseFile(new File(["audio"], "okand.mp3", { type: "audio/mpeg" }));
+  lengths[1](null); // the browser cannot tell: Eneo decides
+  await settled();
+  assert.equal(session.getSnapshot().fileChecking, false);
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].input?.kind === "file" && sent[0].input.filename, "okand.mp3");
+});
+
+test("a refused file gives back the last file that fitted, never another pick still being read", async () => {
+  const lengths: Array<(ms: number | null) => void> = [];
+  const { session } = await setup();
+  session.setProbeDuration(() => new Promise((resolve) => lengths.push(resolve)));
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 60 }] }));
+  session.selectMode("ladda-upp");
+  const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+  session.chooseFile(new File(["audio"], "kort.mp3", { type: "audio/mpeg" }));
+  lengths[0](30_000);
+  await settled();
+  session.chooseFile(new File(["audio"], "lang-a.mp3", { type: "audio/mpeg" }));
+  session.chooseFile(new File(["audio"], "lang-b.mp3", { type: "audio/mpeg" }));
+  lengths[1](2 * 60_000);
+  await settled();
+  lengths[2](3 * 60_000);
+  await settled();
+  assert.equal(session.getSnapshot().problem?.title, "Filen är längre än flödet tar emot (högst 1\u00a0min).");
+  assert.equal(session.getSnapshot().file?.filename, "kort.mp3");
+  assert.equal(session.getSnapshot().file?.durationMs, 30_000);
 });
 
 test("a document is sent under the type the flow takes, whatever name the browser gave it", async () => {

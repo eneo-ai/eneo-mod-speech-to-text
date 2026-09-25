@@ -39,7 +39,7 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         return true;
       } catch (err) {
         setSaveState("error");
-        setLocalError(`${friendlyError(err)} Dina osparade rättningar finns kvar. Vid versionskonflikt behöver ändringarna jämföras med det aktuella underlaget innan de kan sparas.`);
+        setLocalError(`${friendlyError(err)} Dina osparade rättningar finns kvar.`);
         return false;
       }
     }).then((saved) => { if (!saved) setSaveState("error"); return saved; });

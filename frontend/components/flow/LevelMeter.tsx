@@ -66,7 +66,8 @@ function prefersReducedMotion(): boolean {
  * A calm level display: bars that light up with the input's level ("steps")
  * or a waveform that breathes with it ("wave"). Decorative for assistive
  * technology; the status in words carries the meaning. With reduced motion it
- * stays still.
+ * still shows the level, the live proof that the microphone hears, but jumps
+ * between levels instead of gliding, and the wave does not sway.
  */
 export function LevelMeter({
   stream,
@@ -87,7 +88,6 @@ export function LevelMeter({
   }, []);
 
   useInputLevel(stream, (level) => {
-    if (still.current) return;
     elements.current.forEach((element, index) => {
       if (!element) return;
       if (variant === "steps") {
@@ -95,7 +95,7 @@ export function LevelMeter({
       } else {
         // Taller in the middle, each bar at its own slight offset.
         const shape = 1 - Math.abs(index - (bars - 1) / 2) / (bars / 2);
-        const wobble = 0.75 + 0.25 * Math.sin(Date.now() / 180 + index * 1.7);
+        const wobble = still.current ? 1 : 0.75 + 0.25 * Math.sin(Date.now() / 180 + index * 1.7);
         element.style.transform = `scaleY(${Math.max(0.12, level * shape * wobble)})`;
       }
     });
@@ -113,8 +113,8 @@ export function LevelMeter({
           className={cn(
             "block w-[3px] shrink-0 rounded-full",
             variant === "steps"
-              ? "bg-rule-soft transition-colors duration-100 data-[lit=true]:bg-primary"
-              : "h-full origin-center scale-y-[0.12] bg-primary transition-transform duration-75",
+              ? "bg-rule-soft transition-colors duration-100 data-[lit=true]:bg-primary motion-reduce:transition-none"
+              : "h-full origin-center scale-y-[0.12] bg-primary transition-transform duration-75 motion-reduce:transition-none",
           )}
           style={variant === "steps" ? { height: `${40 + (60 * (index + 1)) / bars}%` } : undefined}
         />

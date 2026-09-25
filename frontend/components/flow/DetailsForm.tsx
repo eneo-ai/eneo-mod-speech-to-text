@@ -66,6 +66,8 @@ export function DetailsForm({
               ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
           const describedBy = [help ? helpId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
+          // Said before sending too, not only once the send finds it missing.
+          const required = field.required || undefined;
           return (
             <Field key={field.name} data-invalid={isInvalid || undefined} className="gap-2">
               <FieldLabel htmlFor={id} className="gap-1 text-[15px] font-semibold text-ink">
@@ -81,6 +83,7 @@ export function DetailsForm({
                   onAdded={onNamesAdded}
                   describedBy={describedBy}
                   invalid={isInvalid}
+                  required={required}
                 />
               ) : field.type === "select" && options(field).length > 0 ? (
                 <Select
@@ -88,7 +91,13 @@ export function DetailsForm({
                   value={text && options(field).includes(text) ? optionKey(options(field).indexOf(text)) : NONE}
                   onValueChange={(key) => onChange(field.name, key === NONE ? "" : options(field)[Number(key.slice(4))])}
                 >
-                  <SelectTrigger id={id} aria-describedby={describedBy} aria-invalid={isInvalid || undefined} className="text-[16px]">
+                  <SelectTrigger
+                    id={id}
+                    aria-describedby={describedBy}
+                    aria-invalid={isInvalid || undefined}
+                    aria-required={required}
+                    className="text-[16px]"
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -111,6 +120,7 @@ export function DetailsForm({
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
+                  aria-required={required}
                   className="rounded-xl text-[16px]"
                 />
               ) : (
@@ -119,10 +129,13 @@ export function DetailsForm({
                   name={field.name}
                   autoComplete="off"
                   type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+                  // A phone's number keyboard, not the one with letters and punctuation.
+                  inputMode={field.type === "number" ? "numeric" : undefined}
                   value={text}
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
+                  aria-required={required}
                   className="rounded-xl text-[16px]"
                 />
               )}

@@ -106,6 +106,31 @@ test("transcript: Tab to Spara and activate it saves once; leaving the editor sa
   outside.remove();
 });
 
+test("transcript: closing a line's editor from inside it gives the focus back to that passage's Rätta", async () => {
+  for (const close of ["Enter", "Escape", "Spara", "Avbryt"]) {
+    const { view, editor } = await mountEditableTranscript(() => undefined);
+    await view.act(async () => {
+      if (close === "Enter" || close === "Escape") editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: close, bubbles: true }));
+      else {
+        button(view.container, close)!.focus();
+        button(view.container, close)!.click();
+      }
+    });
+    assert.equal(view.container.querySelector("textarea"), null, `${close} closes the editor`);
+    const focused = document.activeElement;
+    assert.ok(focused === button(view.container, "Rätta repliken från 0:00"), `${close}: focus on ${focused?.tagName} "${focused?.textContent}"`);
+    await view.unmount();
+  }
+  // Leaving the editor for another control keeps the focus there.
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  const { view } = await mountEditableTranscript(() => undefined);
+  await view.act(async () => outside.focus());
+  assert.ok(document.activeElement === outside);
+  await view.unmount();
+  outside.remove();
+});
+
 test("a choice field keeps every option Eneo sends, also one that reads like 'no choice'", async () => {
   const { createElement } = await import("react");
   const { DetailsForm } = await import("../components/flow/DetailsForm");
@@ -278,6 +303,52 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   await view.unmount();
 });
 
+test("setup in place of a run's view focuses its heading, also for a flow that takes one kind of file; a first load does not", async () => {
+  const { createElement } = await import("react");
+  const { FlowInput } = await import("../components/flow/FlowInput");
+  const { useFlowSession } = await import("../components/flow/useFlowSession");
+  // One way to give the input (a document to upload), so there is no "Hur vill du ge ljudet?" to focus.
+  const contract = { ...IBIC_CONTRACT, steps_requiring_input: [{ step_id: "step-doc", input_format: "document" }] } as unknown as import("./api").RunContract;
+  function Setup({ afterRun }: { afterRun: boolean }) {
+    const input = useFlowSession({ flowId: "flow-6", flowName: IBIC.name, ownerId: "user-1", contract });
+    return createElement(FlowInput, {
+      published: IBIC,
+      contract,
+      input,
+      ownerId: "user-1",
+      notice: null,
+      earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
+      onOpenRun: () => undefined,
+      onMoreRuns: () => undefined,
+      unsentRecordings: [],
+      onLeave: () => undefined,
+      afterRun,
+    });
+  }
+  for (const afterRun of [false, true]) {
+    const view = await mount(await signedIn(createElement(Setup, { afterRun }), []));
+    const focused = document.activeElement;
+    const where = `${focused?.tagName} "${focused?.textContent?.slice(0, 40)}"`;
+    if (afterRun) assert.ok(focused?.matches("h2[data-phase-heading]") && focused.textContent === "Ladda upp", `after a run: focus on ${where}`);
+    else assert.ok(focused === document.body, `first load: focus on ${where}`);
+    await view.unmount();
+  }
+});
+
+test("a run's tab title names its state and its flow, so tabs and history entries of different flows differ", async () => {
+  const { createElement } = await import("react");
+  const { RunProgress } = await import("../components/flow/RunProgress");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const running = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined }));
+  assert.equal(document.title, "Skapar dokument · Nämndmöte · Tal till text");
+  await running.unmount();
+  const failed = await mount(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Nämndmöte", run: { id: "run-1", status: "failed" }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  assert.equal(document.title, "Misslyckades · Nämndmöte · Tal till text");
+  await failed.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
@@ -380,6 +451,8 @@ test("Back during an upload asks first and says what leaving stops", async () =>
   });
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
+  assert.match(button(dialog()!, "Stanna kvar")!.className, /\bbg-primary\b/, "staying is the filled action");
+  assert.doesNotMatch(button(dialog()!, "Lämna sidan")!.className, /\bbg-primary\b/);
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
   assert.equal(dialog(), null);
   await view.unmount();
@@ -603,5 +676,77 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;
+  }
+});
+
+test("a second tap on Starta lands on Stoppa or Pausa, and neither ends or pauses the recording it just started", async (t) => {
+  const { createElement } = await import("react");
+  const { RecordingBar } = await import("../components/flow/Recorder");
+  const { RecordingCapture } = await import("./recording-session");
+  const { openRecordingStore } = await import("./recording-store");
+  t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+  const unused = async () => {
+    throw new Error("not used");
+  };
+  const capture = new RecordingCapture(() => openRecordingStore({}), { getStream: unused, createRecorder: () => unused() as never });
+  const calls: string[] = [];
+  const view = await mount(
+    createElement(RecordingBar, {
+      capture,
+      phase: "recording",
+      stream: null,
+      showStatus: false,
+      warnings: [],
+      notes: [],
+      onPause: () => calls.push("pause"),
+      onStop: () => calls.push("stop"),
+    }),
+  );
+  try {
+    t.mock.timers.tick(300); // a double tap's second tap
+    await view.act(async () => {
+      button(view.container, "Stoppa")!.click();
+      button(view.container, "Pausa")!.click();
+    });
+    assert.deepEqual(calls, []);
+    t.mock.timers.tick(500);
+    await view.act(async () => button(view.container, "Pausa")!.click());
+    assert.deepEqual(calls, ["pause"], "a moment later, the controls work");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("with reduced motion, the level meter still shows the microphone's level, without moving between levels", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  let peak = 0.5;
+  class FakeAudioContext {
+    state = "running";
+    resume = async () => undefined;
+    close = async () => undefined;
+    createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak) });
+  }
+  const page = window as unknown as { AudioContext?: unknown; matchMedia: typeof window.matchMedia };
+  const browserAudio = page.AudioContext;
+  const browserMedia = page.matchMedia;
+  page.AudioContext = FakeAudioContext;
+  page.matchMedia = ((query: string) => ({ ...browserMedia(query), matches: query.includes("reduce") })) as typeof window.matchMedia;
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" }));
+  const lit = () => view.container.querySelectorAll('[data-lit="true"]').length;
+  try {
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.ok(lit() > 0, "speech lights the bars");
+    peak = 0;
+    for (let i = 0; i < 60; i += 1) await view.act(async () => t.mock.timers.tick(66));
+    assert.equal(lit(), 0, "and silence lets them go");
+    const bar = view.container.querySelector("span")!;
+    assert.match(bar.className, /motion-reduce:transition-none/);
+  } finally {
+    await view.unmount();
+    page.AudioContext = browserAudio;
+    page.matchMedia = browserMedia;
   }
 });

@@ -56,6 +56,28 @@ test("each speaker is a row: the mark, how many passages, what they say first, a
   assert.deepEqual(listened, ["SPEAKER_01"]);
 });
 
+test("a sample that plays says so and can be stopped; closing the dialog stops it too", async () => {
+  const stops: number[] = [];
+  const { view, listened } = await dialog({ listening: "SPEAKER_01", onStopListening: () => void stops.push(1) });
+  assert.equal(button(document.body, "Lyssna på exempel: Talare 1")?.textContent, "Lyssna på exempel");
+  const stop = button(document.body, "Stoppa exempel: Talare 2");
+  assert.equal(stop?.textContent, "Stoppa exempel", "the playing sample shows it plays");
+  await view.act(async () => stop!.click());
+  assert.equal(stops.length, 1);
+  assert.deepEqual(listened, [], "stopping plays nothing");
+  await view.act(async () => button(document.body, "Stäng")!.click());
+  assert.equal(stops.length, 2, "closing stops the sample");
+});
+
+test("why a sample cannot be played is a line under the row, not only a hover title", async () => {
+  const reason = "Det finns inget tilldelat exempel utan överlappande tal.";
+  const { field } = await dialog({ listenUnavailableReason: (label: string) => (label === "SPEAKER_01" ? reason : null) });
+  const rowOf = (label: string) => field(label).closest("li")!;
+  assert.equal(button(rowOf("Talare 2"), "Lyssna på exempel: Talare 2")?.disabled, true);
+  assert.match(rowOf("Talare 2").textContent ?? "", /Det finns inget tilldelat exempel utan överlappande tal\./);
+  assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Det finns inget tilldelat exempel/);
+});
+
 test("opening a filled name field by click and pressing Enter keeps its name", async () => {
   // Run 82089959: Talare 2 was "Erik", a click then Enter made it "Anna" in the transcript and the PDF.
   const { view, field, saved } = await dialog({ rows: [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", "Erik Lund", 9)] });
@@ -122,9 +144,44 @@ test("a list opened on a name far down shows that name", async (t) => {
   assert.ok(shown.some((text) => text.startsWith("Namn 19")), `scrolled to: ${JSON.stringify(shown)}`);
 });
 
+test("a pasted name and Enter keep that name, also where the list opens under a resting pointer", async () => {
+  // JD-01: "Bertil Eklund" pasted from the invitation became "Talare 2" in the transcript and the PDF.
+  const { view, input, key, option } = await nameField(null, ["Anna Berg", "Erik Lund"]);
+  await view.act(async () => type(input, "Bertil Eklund"));
+  // The list appears under a pointer that has not moved: that is no choice of a row.
+  await view.act(async () => option("Ingen").dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true })));
+  await key("Enter");
+  assert.equal(input.value, "Bertil Eklund");
+});
+
+test("the start of a participant's name and Enter keep what was typed; the arrow keys pick the longer name", async () => {
+  const { view, input, key, marked } = await nameField(null, ["Testperson 1 Efternamn", "Testperson 10 Efternamn"]);
+  await view.act(async () => type(input, "Testperson 1"));
+  await key("Enter");
+  assert.equal(input.value, "Testperson 1");
+  await view.act(async () => type(input, "Testperson 10"));
+  await key("ArrowDown");
+  assert.equal(marked(), "Testperson 10 Efternamn");
+  await key("Enter");
+  assert.equal(input.value, "Testperson 10 Efternamn");
+});
+
+test("moving to a name field does not open its list; a click, typing or the down arrow does", async () => {
+  // A list opened on focus covers the next row on every Tab.
+  const { view, input, key } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
+  await view.act(async () => input.focus());
+  assert.equal(input.getAttribute("aria-expanded"), "false");
+  assert.equal(document.querySelector('[role="listbox"]'), null);
+  await key("ArrowDown");
+  assert.equal(input.getAttribute("aria-expanded"), "true");
+  await key("Escape");
+  await view.act(async () => input.click());
+  assert.equal(input.getAttribute("aria-expanded"), "true");
+});
+
 test("inside the list, the row the keys are on is the selected one; the saved name keeps its check", async () => {
   const { view, input, key, option } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
-  await view.act(async () => input.focus());
+  await view.act(async () => input.click());
   await key("ArrowUp");
   assert.equal(option("Anna Berg").getAttribute("aria-selected"), "true");
   assert.equal(option("Erik Lund").getAttribute("aria-selected"), "false");
@@ -240,6 +297,27 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   // Once someone types another name, it is no longer the flow's guess.
   await view.act(async () => type(field("Talare 1"), "Sara Holm"));
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
+});
+
+test("Esc, Stäng or a click beside only close: the typed names are there when the dialog opens again; Avbryt ends them", async (t) => {
+  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name.
+  t.after(() => window.sessionStorage.clear());
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-3" };
+  const { view, trigger, field } = await dialog({ draftKey });
+  const shut = () => !document.querySelector('[role="dialog"]');
+  const escape = (target: Element) => view.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await view.act(async () => type(field("Talare 2"), "Bertil Eklund"));
+  await view.act(async () => button(document.body, "Stäng")!.click());
+  assert.ok(shut(), "Stäng closes");
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Stäng");
+  await escape(field("Talare 2"));
+  assert.ok(shut(), "Esc closes");
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Esc");
+  await view.act(async () => button(document.body, "Avbryt")!.click());
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "", "Avbryt threw the typed name away");
 });
 
 test("names typed but not saved come back after a reload, in the open dialog; Spara or Avbryt ends them", async (t) => {

@@ -50,7 +50,7 @@ function load(context: AudioContext): Promise<void> {
 
 export function liveClient(env: LiveEnv): LiveClient {
   return {
-    open(stepId): LiveSession {
+    open(stepId, earlier): LiveSession {
       // Made first, in the start gesture, so the browser lets it run; if it
       // cannot be made, nothing else has been set up.
       let context: AudioContext | null = env.audioContext();
@@ -66,14 +66,17 @@ export function liveClient(env: LiveEnv): LiveClient {
       let recording = true;
 
       const deps = env.liveDeps(stepId);
-      const transcriber = new LiveTranscriber({
-        ...deps,
-        // Each try at a connection also sets up again audio that failed before it.
-        openSocket: () => {
-          if (!node) wire();
-          return deps.openSocket();
+      const transcriber = new LiveTranscriber(
+        {
+          ...deps,
+          // Each try at a connection also sets up again audio that failed before it.
+          openSocket: () => {
+            if (!node) wire();
+            return deps.openSocket();
+          },
         },
-      });
+        earlier,
+      );
 
       const unwire = () => {
         attempt += 1;

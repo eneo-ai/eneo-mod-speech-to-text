@@ -52,8 +52,8 @@ export function NameCombobox({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
-  // The row the arrow keys or the pointer moved to; until then the list marks the field's own name, so Enter
-  // on a list opened by a click keeps it (it never picks the first name).
+  // The row the arrow keys or a moving pointer marked; until then the list marks the field's own name, so Enter
+  // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
   // Listan filtreras bara medan användaren skriver; öppnad med klick visar
   // den alla namn så att ett annat går att välja.
@@ -100,7 +100,7 @@ export function NameCombobox({
     inputRef.current?.focus();
   }
 
-  /** Opening by a click, the chevron or focus marks the field's own name; an arrow key marks its end of the list. */
+  /** Opening by a click or the chevron marks the field's own name; an arrow key marks its end of the list. */
   function openList(marked: number | null = null) {
     setTyping(false);
     setMoved(marked);
@@ -163,9 +163,9 @@ export function NameCombobox({
           onChange(next === "" ? null : next);
           setTyping(true);
           setOpen(true);
-          setMoved(0);
+          setMoved(null);
         }}
-        onFocus={() => openList()}
+        // Not on focus: a list that opens on every Tab covers the next field.
         onClick={() => openList()}
         onKeyDown={onKeyDown}
         className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] coarse:h-11 coarse:pr-11 coarse:text-base text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
@@ -176,7 +176,6 @@ export function NameCombobox({
         aria-label={open ? "Stäng listan" : "Visa namn"}
         disabled={disabled}
         onClick={(e) => {
-          // Låt inte inputens onFocus öppna listan igen direkt efter en stängning.
           e.preventDefault();
           const wasOpen = open;
           inputRef.current?.focus();
@@ -216,7 +215,8 @@ export function NameCombobox({
               role="option"
               // The row Enter would take; the name in the field keeps its check beside it.
               aria-selected={i === active}
-              onMouseEnter={() => setMoved(i)}
+              // A pointer that moves marks its row; a list opening under a resting one marks nothing.
+              onPointerMove={() => setMoved(i)}
               onPointerDown={(e) => e.preventDefault()}
               onClick={() => choose(option)}
               className={cn(

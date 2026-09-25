@@ -19,8 +19,8 @@ import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecording } from "./recording-store";
-import { formatBytes } from "./format";
-import type { LiveSnapshot } from "./live-transcriber";
+import { formatBytes, formatDuration } from "./format";
+import type { LivePiece, LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
@@ -147,6 +147,15 @@ function oversized(maxBytes: number, inputFormat: string | undefined): Problem {
   };
 }
 
+/** Known only once the browser has read the file's length; Eneo refuses it too, but only after the upload. */
+function tooLong(maxSeconds: number): Problem {
+  return {
+    // Kept on one line like a size: "5 h", never "5" and "h" apart.
+    title: `Filen är längre än flödet tar emot (högst ${formatDuration(maxSeconds * 1000).replace(/ /g, "\u00a0")}).`,
+    detail: "Välj en kortare fil eller dela upp den.",
+  };
+}
+
 function unsupported(accepted: string[] | undefined): Problem {
   const formats = acceptedFormats(accepted);
   return { title: "Filtypen stöds inte.", detail: formats ? `Flödet tar emot ${formats}.` : undefined };
@@ -160,6 +169,7 @@ export function fileProblem(
   const accepted = step?.accepted_mimetypes;
   const type = uploadType(file, accepted);
   if (type && !isMimeAllowed(type, accepted)) return unsupported(accepted);
+  if (file.size === 0) return { title: "Filen är tom.", detail: "Välj en annan fil." };
   if (step?.max_file_size_bytes && file.size > step.max_file_size_bytes) return oversized(step.max_file_size_bytes, step.input_format);
   return null;
 }
@@ -203,6 +213,8 @@ export interface SessionSnapshot {
   recording: StoredRecording | null;
   /** The file chosen in Ladda upp. */
   file: ChosenFile | null;
+  /** Its length is still being read; it cannot be sent yet. */
+  fileChecking: boolean;
   /** Strömma's live text for the recording, when there is one. */
   live: LiveSession | null;
   problem: Problem | null;
@@ -223,15 +235,13 @@ export function availableModes(
   return modes;
 }
 
-/** Live text is a draft, so speaker labels only add waiting there unless asked for. */
+/** The flow's own default in every mode, Strömma included, until the person chooses. */
 export function speakerLabelsFor(
   option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
-  mode: InputMode | null,
   explicit: boolean | null,
 ): boolean | null {
   if (!option?.selectable) return null;
-  if (explicit !== null) return explicit;
-  return mode === "stromma" ? false : option.default;
+  return explicit ?? option.default;
 }
 
 /** Whether the run labels speakers: the switch where the flow offers one, else whether the flow requires it. */
@@ -383,21 +393,22 @@ export interface LiveSession {
 }
 
 export interface LiveClient {
-  /** Called in the start gesture, so the browser lets its audio run. */
-  open(stepId: string): LiveSession;
+  /** Called in the start gesture, so the browser lets its audio run; `earlier` is the draft to go on from. */
+  open(stepId: string, earlier?: LivePiece[]): LiveSession;
 }
 
-const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false, complete: false };
-
-/** Live text that could not be set up at all, as the sheet shows it. */
-const unavailableLive = (): LiveSession => ({
-  getSnapshot: () => UNAVAILABLE_LIVE,
-  subscribe: () => () => undefined,
-  listen: () => undefined,
-  setRecording: () => undefined,
-  stop: () => undefined,
-  dispose: () => undefined,
-});
+/** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
+const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
+  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+    listen: () => undefined,
+    setRecording: () => undefined,
+    stop: () => undefined,
+    dispose: () => undefined,
+  };
+};
 
 export interface FlowSessionOptions {
   flowId: string;
@@ -426,7 +437,9 @@ export class FlowSession {
   private explicitSpeakerLabels: boolean | null = null;
   private starting = false;
   private ready: StoredRecording | null = null;
+  // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
   private file: ChosenFile | null = null;
+  private accepted: ChosenFile | null = null;
   private invalid: string[] = [];
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
@@ -565,7 +578,10 @@ export class FlowSession {
     this.probeDuration = probe;
   }
 
-  /** Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one. */
+  /**
+   * Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one.
+   * Its length is checked once the browser has read it; too long, it gives back the last file that fitted.
+   */
   chooseFile(file: File): void {
     this.problem = fileProblem(file, this.inputStep());
     if (!this.problem) {
@@ -573,13 +589,21 @@ export class FlowSession {
       const blob = type === file.type ? file : file.slice(0, file.size, type);
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
-      void this.probeDuration?.(file)
+      const check = this.probeDuration?.(file)
         .then((durationMs) => {
-          if (this.file !== chosen || durationMs == null) return;
-          this.file = { ...chosen, durationMs };
+          if (this.file !== chosen) return;
+          const maxSeconds = this.inputStep()?.max_duration_seconds;
+          if (durationMs != null && maxSeconds && durationMs > maxSeconds * 1000) {
+            this.file = this.accepted;
+            this.problem = tooLong(maxSeconds);
+          } else {
+            // A length the browser cannot tell is Eneo's to judge.
+            this.file = this.accepted = durationMs == null ? chosen : { ...chosen, durationMs };
+          }
           this.emit();
         })
         .catch(() => undefined);
+      if (!check) this.accepted = chosen;
     }
     this.emit();
   }
@@ -618,7 +642,9 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
-    const { phase, mode } = this.snapshot;
+    const { phase, mode, fileChecking } = this.snapshot;
+    // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
+    if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
     const input: SubmitRequest["input"] =
       phase === "ready" && this.ready
         ? { kind: "recording", recording: this.ready }
@@ -668,7 +694,7 @@ export class FlowSession {
       this.capture.reset();
       this.closeLive();
     }
-    if (input?.kind === "file") this.file = null;
+    if (input?.kind === "file") this.file = this.accepted = null;
     clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
     this.emit();
     return true;
@@ -747,23 +773,29 @@ export class FlowSession {
     const live = recording.inputMode === "stream" && this.modes.includes("stromma");
     this.mode = live ? "stromma" : "spela-in";
     this.problem = null;
-    if (live) this.openLive(recording.stepId);
+    // After Stoppa, the live text so far goes on above the new part's. Closed first, so words still arriving
+    // after Stoppa are part of it.
+    const earlier = this.live;
+    this.closeLive();
+    if (live) this.openLive(recording.stepId, earlier?.getSnapshot().pieces);
     this.emit();
     await takeOver(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
     if (status === "recording") return;
     this.closeLive();
+    // Refused: the draft stays with the stopped recording.
+    this.live = earlier;
     if (error) this.problem = { title: error };
     this.emit();
   }
 
-  private openLive(stepId: string) {
+  private openLive(stepId: string, earlier?: LivePiece[]) {
     this.closeLive();
     try {
-      this.live = this.options.live?.open(stepId) ?? null;
+      this.live = this.options.live?.open(stepId, earlier) ?? null;
     } catch {
       // Live text could not even be set up: the recording goes on, and the sheet says so.
-      this.live = unavailableLive();
+      this.live = unavailableLive(earlier);
     }
   }
 
@@ -825,13 +857,11 @@ export class FlowSession {
             : "setup",
       details: this.details,
       invalid: this.invalid,
-      speakerLabels: speakerLabelsFor(
-        this.contract?.transcription?.speaker_labels,
-        this.mode,
-        this.explicitSpeakerLabels,
-      ),
+      speakerLabels: speakerLabelsFor(this.contract?.transcription?.speaker_labels, this.explicitSpeakerLabels),
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
+      // The latest pick while its length is read: the file shown is not yet the last one that fitted.
+      fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
       problem: this.problem,
     };

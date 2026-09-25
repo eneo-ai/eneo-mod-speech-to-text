@@ -23,7 +23,7 @@ import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/reco
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
+import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { browserStorage, labelsSpeakers, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
@@ -64,7 +64,7 @@ const isPhone = () => window.matchMedia(PHONE).matches;
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
   const { phase } = input.snapshot;
   const elapsed = useElapsed(input.session.capture, phase === "recording");
-  useDocumentTitle(pageTitle(phase, elapsed, flowName));
+  useDocumentTitle(pageTitle(phase, elapsed, flowName, input.snapshot.problem?.sent === true));
   return null;
 }
 
@@ -80,6 +80,7 @@ export function FlowInput({
   onMoreRuns,
   unsentRecordings,
   onLeave,
+  afterRun = false,
 }: {
   published: FlowPublished;
   contract: RunContract;
@@ -93,6 +94,8 @@ export function FlowInput({
   unsentRecordings: UnsentRecording[];
   /** The page's links off the flow: they ask first while leaving would lose something (the page owns the question). */
   onLeave: (event: MouseEvent) => void;
+  /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
+  afterRun?: boolean;
 }) {
   const { session, snapshot } = input;
   const { phase, mode } = snapshot;
@@ -110,6 +113,11 @@ export function FlowInput({
   const fields = contract.form_fields ?? [];
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
+
+  // Never on the page's first load, where the page starts from its top.
+  useEffect(() => {
+    if (afterRun) workspace.current?.querySelector<HTMLElement>("[data-phase-heading]")?.focus();
+  }, []);
 
   useEffect(() => {
     if (shownGroup.current === group) return;
@@ -178,7 +186,7 @@ export function FlowInput({
           className={cn(
             "flex min-w-0 flex-col gap-4",
             group === "capture"
-              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0"
+              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0 short:min-h-0"
               : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
           )}
         >
@@ -199,6 +207,7 @@ export function FlowInput({
               recording={snapshot.recording}
               persistent={input.persistent}
               problem={snapshot.problem}
+              live={snapshot.live}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}
@@ -214,8 +223,9 @@ export function FlowInput({
           )}
         </section>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
-            form; inside main (it is the page's action), over main's side and bottom padding. */}
-        <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden" />
+            form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
+            it would let a recording scroll. On a short screen it stays at the page's end instead of covering it. */}
+        {group === "setup" && <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden short:static" />}
       </main>
     </div>
   );
@@ -229,7 +239,7 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
   const silent = useSilence(capture.stream, phase === "recording");
   const [wakeLock, setWakeLock] = useState(true);
   useEffect(() => setWakeLock("wakeLock" in navigator), []);
-  const notices = recordingNotices({
+  const { warnings, notes } = recordingNotices({
     phase,
     silent,
     lowSpace: capture.lowSpace,
@@ -262,7 +272,8 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
         phase={phase}
         stream={capture.stream}
         showStatus={streaming}
-        notices={notices}
+        warnings={warnings}
+        notes={notes}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={() => void session.stop()}
       />
@@ -294,7 +305,9 @@ function SetupWorkspace({
   unsentRecordings: UnsentRecording[];
 }) {
   const { session, snapshot, persistent } = input;
-  const { modes, mode, phase, problem, file } = snapshot;
+  const { modes, mode, phase, problem, file, fileChecking } = snapshot;
+  // Only Ladda upp waits for a file's length; the recording modes keep their own start action.
+  const checkingUpload = mode === "ladda-upp" && fileChecking;
   const speakerOption = contract.transcription?.speaker_labels;
   const recordingMode = mode === "spela-in" || mode === "stromma";
   const fileInput = useRef<HTMLInputElement>(null);
@@ -304,6 +317,9 @@ function SetupWorkspace({
   const optionalFile = step?.required === false;
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
+  const onContinue = modes.includes("spela-in") ? (recording: StoredRecording) => void session.continueCutOff(recording) : undefined;
+  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
+  const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? "Skapa dokument"
@@ -325,10 +341,17 @@ function SetupWorkspace({
           session.adopt(recording);
           void createDocument(session);
         }}
-        onContinue={modes.includes("spela-in") ? (recording) => void session.continueCutOff(recording) : undefined}
+        onContinue={onContinue}
       />
 
-      {modes.length > 1 && <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />}
+      {modes.length > 1 ? (
+        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
+      ) : (
+        // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
+        <h2 data-phase-heading tabIndex={-1} className="sr-only">
+          {modes[0] ? MODE_TEXT[modes[0]].name : "Skapa dokument"}
+        </h2>
+      )}
 
       {speakerOption?.selectable && snapshot.speakerLabels !== null ? (
         <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
@@ -386,18 +409,19 @@ function SetupWorkspace({
           >
             <Button
               type="button"
+              variant={resuming ? "outline" : "default"}
               size="xl"
               className="w-full"
               // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
-              aria-disabled={phase === "starting" || undefined}
+              aria-disabled={phase === "starting" || checkingUpload || undefined}
               onClick={primary}
             >
-              {phase === "starting" ? (
+              {phase === "starting" || checkingUpload ? (
                 <Spinner data-icon="inline-start" aria-hidden />
               ) : Icon ? (
                 <Icon data-icon="inline-start" aria-hidden />
               ) : null}
-              {phase === "starting" ? "Startar…" : label}
+              {phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
             </Button>
             {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
           </div>,

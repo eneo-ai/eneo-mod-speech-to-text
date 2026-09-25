@@ -1,16 +1,16 @@
 /** What the recording states say: the tab title, the bar's line, the announcements. */
 
 import type { FormField } from "./api";
-import type { DetailValue, SessionPhase } from "./flow-session";
+import type { DetailValue, Problem, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
 
 const APP = "Tal till text";
-const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
+/** The recording bar's fixed line under Pausa and Stoppa. */
+export const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
 const MINUTE = 60_000;
-const INTERRUPTED = "Inspelningen pausades när mikrofonen försvann. Det som spelats in finns kvar.";
 
 /**
  * Digital silence for `afterMs`: every read's loudest sample below `floor`, which only a muted or wrong input
@@ -40,22 +40,29 @@ export class SilenceWatch {
   }
 }
 
-/** The tab title, so a user in another tab still sees that recording runs. */
-export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string): string {
+/**
+ * The tab title, so a user in another tab still sees that recording runs. `sent`: Eneo turned out to have a
+ * run for the stopped recording already.
+ */
+export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string, sent = false): string {
   switch (phase) {
     case "recording":
       return `Spelar in ${formatClock(elapsedMs)} · ${APP}`;
     case "paused":
     case "interrupted":
       return `Pausad · ${APP}`;
+    // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `Klart · ${APP}`;
+      return `${sent ? "Redan skickad" : "Inte skickad"} · ${APP}`;
     default:
       return flowName ? `${flowName} · ${APP}` : APP;
   }
 }
 
-/** The recording bar's line: what matters now, then what Stoppa does. */
+/**
+ * What the recording bar says now: warnings of what can lose the meeting (no sound, no microphone, no room on
+ * the device), shown as alerts above the controls, and calmer notes in its line.
+ */
 export function recordingNotices({
   phase,
   silent,
@@ -76,30 +83,35 @@ export function recordingNotices({
   /** The microphone's track is muted for now (a headset changing its route). */
   muted: boolean;
   wakeLock: boolean;
-}): string[] {
-  const notices: string[] = [];
-  if (phase === "interrupted") notices.push(INTERRUPTED);
+}): { warnings: Problem[]; notes: string[] } {
+  const warnings: Problem[] = [];
+  const notes: string[] = [];
+  if (phase === "interrupted") {
+    warnings.push({ title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." });
+  }
   if (phase === "recording" && muted) {
-    notices.push("Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.");
+    warnings.push({ title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." });
   }
   if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
     // A step, not a count: the line changes twice, and never ticks.
     const left = remainingMs <= 5 * MINUTE ? 5 : 15;
-    notices.push(`Mindre än ${left} minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.`);
+    notes.push(`Mindre än ${left} minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.`);
   }
-  if (phase === "recording" && silent) notices.push("Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
+  if (phase === "recording" && silent) {
+    warnings.push({ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." });
+  }
   if (lowSpace) {
-    notices.push("Det finns lite lagringsutrymme kvar på enheten. Frigör utrymme om du ska spela in länge.");
+    warnings.push({ title: "Det finns lite lagringsutrymme kvar på enheten.", detail: "Frigör utrymme om du ska spela in länge." });
   }
   if (refused) {
-    // Once, calmly: nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
+    // Nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
     const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
-    notices.push(`${cause} Inspelningen fortsätter, men välj Spara som fil när du stoppar.`);
+    warnings.push({ title: cause, detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." });
   } else if (!persistent) {
-    notices.push("Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.");
+    notes.push("Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.");
   }
-  if (!wakeLock) notices.push("Låt skärmen vara tänd under inspelningen.");
-  return [...notices, STOP_LINE];
+  if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
+  return { warnings, notes };
 }
 
 /** Said once when the recording's state changes; never the timer. */
@@ -109,7 +121,7 @@ export function recordingAnnouncement(phase: SessionPhase): string {
       return "Spelar in.";
     case "paused":
       return "Inspelningen är pausad.";
-    // The recording bar's line says it; saying it here too would read it twice.
+    // The recording bar's warning says it; saying it here too would read it twice.
     default:
       return "";
   }
@@ -128,15 +140,17 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
 export const UNSTORED_LEAVE = "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.";
 
 /**
- * What "Lämna sidan?" says. The recording is promised back among unsent
- * recordings only when the device keeps it; otherwise leaving loses it, and
- * the way to keep it is "Spara som fil" (after Stoppa, while recording).
+ * What "Lämna sidan?" says. A running recording stops: it does not go on in
+ * the background. The recording is promised back among unsent recordings
+ * only when the device keeps it; otherwise leaving loses it, and the way to
+ * keep it is "Spara som fil" (after Stoppa, while recording).
  */
 export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false): string {
   if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
-  const stops = sending ? "Sändningen avbryts. " : "";
+  const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
+  const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
   if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
-  const lost = `${stops}Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan.`;
+  const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"
     ? `${lost} Välj Spara som fil först om du vill behålla den.`
     : `${lost} Stoppa och välj Spara som fil först om du vill behålla den.`;

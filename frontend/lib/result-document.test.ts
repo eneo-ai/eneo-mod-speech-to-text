@@ -50,6 +50,25 @@ test("the document's one filled action is its file's download; without a file it
   await textOnly.unmount();
 });
 
+test("the result's own headings sit under the page's h1: its top heading is an h2 whatever its Markdown level", async () => {
+  const outline = async (text: string) => {
+    const view = await document_({ text, file: null });
+    const headings = [...view.container.querySelectorAll("article :is(h1, h2, h3, h4, h5, h6)")].map((h) => `${h.tagName} ${h.textContent}`);
+    assert.ok(![...view.container.querySelectorAll("article *")].some((el) => el.hasAttribute("node")), "no markdown internals on the page");
+    await view.unmount();
+    return headings;
+  };
+  assert.deepEqual(await outline("# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText."), ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
+  // An underlined title is a heading like any other: here the top one.
+  assert.deepEqual(await outline("Protokoll\n=========\n\n## Beslut\n\nText."), ["H2 Protokoll", "H3 Beslut"]);
+  assert.deepEqual(await outline("Protokoll\n---------\n\nText."), ["H2 Protokoll"]);
+  // A code block holds no headings, whatever its fence and whatever it contains.
+  assert.deepEqual(
+    await outline("## Protokoll\n\n### Beslut\n\n````md\n```\n# inte en rubrik\n```\n````\n\nText."),
+    ["H2 Protokoll", "H3 Beslut"],
+  );
+});
+
 test("on a narrower screen Kopiera texten sits under Fler alternativ, a labelled menu", async () => {
   const view = await document_({ text, file: pdf });
   const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;

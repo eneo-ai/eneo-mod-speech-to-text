@@ -8,7 +8,7 @@ import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 
-function paragraphs(pieces: LivePiece[]): LivePiece[][] {
+export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   const out: LivePiece[][] = [];
   for (const piece of pieces) {
     if (piece.opensParagraph || out.length === 0) out.push([piece]);

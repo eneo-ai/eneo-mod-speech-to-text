@@ -43,10 +43,41 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
 
+test("a link before the passages skips them: to the player under them, or past the transcript without audio", () => {
+  for (const [fileCount, target] of [[2, /^<div[^>]*data-docked-player/], [0, /^<[a-z]+ id="[^"]+" tabindex="-1"/]] as const) {
+    const html = render(fileCount);
+    const link = html.match(/<a[^>]*href="#([^"]+)"[^>]*>Hoppa förbi transkriptet<\/a>/);
+    assert.ok(link, `fileCount ${fileCount}: the skip link`);
+    assert.ok(html.indexOf(link[0]) < html.indexOf("Välkomna till mötet."), "before the first passage");
+    const at = html.indexOf(`id="${link[1]}"`);
+    assert.ok(at > html.lastIndexOf("Andra delen börjar här."), "its target comes after the last passage");
+    const element = html.slice(html.lastIndexOf("<", at));
+    assert.match(element, /^<[^>]*tabindex="-1"/, "the target takes focus");
+    assert.match(element, target);
+  }
+});
+
 test("a transcript without audio shows no controls and says why", () => {
   const html = render(0);
   assert.doesNotMatch(html, /Uppspelning:|<audio/);
   assert.match(html, /Ljudet är inte tillgängligt för den här körningen\./);
+});
+
+test("while the transcript is being read it shows its shape, never the raw text and a warning that flash by", () => {
+  const html = renderToStaticMarkup(
+    createElement(TranscriptPlayer, {
+      segments: [],
+      fileCount: 0,
+      audioSrcFor: () => "",
+      speakerNames: {},
+      textFallback: "[00:00:00 - 00:00:03] SPEAKER_00: Välkomna.",
+      audioPending: true,
+      reviewEnabled: false,
+    }),
+  );
+  assert.doesNotMatch(html, /saknar tidsmarkeringar|\[00:00:00/);
+  assert.match(html, /aria-busy="true"/);
+  assert.match(html, /role="status"[^>]*>Hämtar transkriptet…</);
 });
 
 test("the highlight follows the playhead in each part's own time, as the transcript counts it", () => {
@@ -167,7 +198,7 @@ test("the review view names no speaker for an unlabelled transcript either", () 
   assert.doesNotMatch(html, /Okänd talare/);
 });
 
-test("no instruction lines: the pencil names its passage and is fully there on a touch screen", () => {
+test("no instruction lines: the pencil names its passage and is fully there for mouse and touch alike", () => {
   const html = renderToStaticMarkup(
     createElement(TranscriptPlayer, {
       segments,
@@ -185,7 +216,8 @@ test("no instruction lines: the pencil names its passage and is fully there on a
   assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
   const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
   assert.deepEqual(pencils.map(([, time]) => time), ["0:00", "0:02", "0:00"]);
-  for (const [, , classes] of pencils) assert.match(classes, /coarse:opacity-100/);
+  // Never hidden until hovered: a mouse user would not learn the action exists.
+  for (const [, , classes] of pencils) assert.doesNotMatch(classes, /opacity-0|(^|\s)w-0(\s|$)|group-hover/);
   // Each passage is a list item named by who speaks and when.
   assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
 });

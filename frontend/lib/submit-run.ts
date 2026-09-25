@@ -38,6 +38,8 @@ export interface RetryOptions {
   signal?: AbortSignal;
   /** A wait before the next attempt began (or ended, with null). */
   onWait?: (wait: RetryWait | null) => void;
+  /** Tries a server answering with errors gets; unlimited unless given. */
+  maxServerErrorTries?: number;
 }
 
 export function isRetryable(error: unknown): boolean {
@@ -51,7 +53,15 @@ export function isRetryable(error: unknown): boolean {
 
 const cancelled = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
 
+// An upload's tries against a server answering with errors: each one sends the whole file
+// again. Run requests and polling keep waiting, since giving up there can lose a run or its view.
+const UPLOAD_SERVER_ERROR_TRIES = 4;
+
+const serverError = (error: unknown) =>
+  error instanceof ApiError && (error.status === 408 || error.status >= 500);
+
 export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Promise<T> {
+  let serverErrors = 0;
   for (let attempt = 0; ; attempt += 1) {
     // A cancel between attempts, or before the first, sends nothing more.
     if (opts.signal?.aborted) throw cancelled();
@@ -59,6 +69,7 @@ export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Pr
       return await op();
     } catch (error) {
       if (opts.signal?.aborted || !isRetryable(error)) throw error;
+      if (serverError(error) && ++serverErrors >= (opts.maxServerErrorTries ?? Infinity)) throw error;
       await waitToRetry(Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** attempt), opts);
     }
   }
@@ -167,7 +178,8 @@ export async function submitRun(
           runtimeUploadPolicy: contract.runtime_upload_policy,
           onProgress: ({ loaded }) => report(file.filename, sent + loaded),
         }),
-      params,
+      // A lost connection is still waited out; the file stays on the device either way.
+      { ...params, maxServerErrorTries: UPLOAD_SERVER_ERROR_TRIES },
     );
     sent += file.blob.size;
     fileIds.push(uploaded.id);

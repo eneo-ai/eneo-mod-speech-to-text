@@ -145,16 +145,25 @@ test("the failed step is named from Eneo's description, else the flow graph", ()
         step_order: 2,
         details: { step_description: "Sammanfatta mötet" },
       }),
-      { "step-2": "Sammanfattning" },
+      { 2: "Sammanfattning" },
     ).step,
     "Steg 2, Sammanfatta mötet",
   );
   assert.equal(
-    runErrorView(runError({ step_id: "step-1", step_order: 1 }), {
-      "step-1": "Transkribering",
-    }).step,
+    runErrorView(runError({ step_id: "step-1", step_order: 1 }), { 1: "Transkribering" }).step,
     "Steg 1, Transkribering",
+  );
+  // Eneo's transcription limit names the step by its order only, as a real run reported it.
+  assert.equal(
+    runErrorView(runError({ code: "typed_io_audio_exceeds_limit", step_id: null, step_order: 1 }), { 1: "Transkribera ljud" }).step,
+    "Steg 1, Transkribera ljud",
   );
   assert.equal(runErrorView(runError({ step_order: 3 })).step, "Steg 3");
   assert.equal(runErrorView(runError({})).step, null);
+});
+
+test("audio over the flow's limit is too long, not too large: Eneo's ceilings measure the decoded length", () => {
+  const { summary } = runErrorView(runError({ code: "typed_io_audio_exceeds_limit" }));
+  assert.match(summary, /^Inspelningen eller filen är längre än flödet klarar\./);
+  assert.match(runErrorView(runError({ code: "typed_io_input_too_large" })).summary, /större än flödet klarar/);
 });

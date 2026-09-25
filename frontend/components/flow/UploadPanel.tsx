@@ -32,7 +32,11 @@ export function UploadPanel({
   const inputId = useId();
   const [dragging, setDragging] = useState(false);
   const formats = acceptedFormats(step?.accepted_mimetypes);
-  const limit = step?.max_file_size_bytes ? `högst ${formatBytes(step.max_file_size_bytes)}` : null;
+  const maxima = [
+    step?.max_file_size_bytes ? formatBytes(step.max_file_size_bytes) : null,
+    step?.max_duration_seconds ? formatDuration(step.max_duration_seconds * 1000).replace(/ /g, "\u00a0") : null,
+  ].filter(Boolean);
+  const limit = maxima.length > 0 ? `högst ${maxima.join(" och ")}` : null;
   const takes = [formats, limit].filter(Boolean).join(", ");
 
   const dropTarget = {
@@ -68,11 +72,18 @@ export function UploadPanel({
     />
   );
   const FileIcon = audio ? FileAudio : FileText;
+  // In the same place whichever view shows, so the choice is said once.
+  const chosenStatus = (
+    <p role="status" className="sr-only">
+      {file ? `Vald fil: ${file.filename}` : ""}
+    </p>
+  );
 
   if (file) {
     return (
       <>
         {chooser}
+        {chosenStatus}
         <div
           {...dropTarget}
           className={cn(
@@ -104,6 +115,7 @@ export function UploadPanel({
   return (
     <>
       {chooser}
+      {chosenStatus}
       <label
         htmlFor={inputId}
         data-drop-zone

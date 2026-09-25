@@ -2,11 +2,9 @@
 
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useId,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -20,6 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -58,13 +57,6 @@ import {
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
-
-export interface TranscriptPlayerHandle {
-  /** Flyttar spelhuvudet; med `autoplay` startar även uppspelningen. */
-  seekTo(fileIndex: number, time: number, autoplay?: boolean): void;
-  /** Plays from `start` and stops at `end` (seconds in the part), as a sample. */
-  playRange(fileIndex: number, start: number, end: number): void;
-}
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -205,9 +197,28 @@ function sourceSpan(
   return from === 0 && to === length && !shared ? null : { from, to };
 }
 
-export const TranscriptPlayer = forwardRef<
-  TranscriptPlayerHandle,
+export function TranscriptPlayer(
   {
+    segments,
+    speakerReviews = [],
+    reviewEnabled = SPEAKER_REVIEW_ENABLED,
+    correctionProblem,
+    fileCount,
+    audioSrcFor,
+    speakerNames,
+    textFallback,
+    audioPending = false,
+    className,
+    corrections,
+    editable = false,
+    onCorrectionsChange,
+    speakerOptions,
+    saveState = "idle",
+    confirmedWords = EMPTY_SET,
+    onToggleConfirmed,
+    downloadable = true,
+    playback: shared,
+  }: {
     /** Råa segment; korrigeringar läggs på vid visning. */
     segments: readonly TranscriptSegment[];
     speakerReviews?: readonly FileSpeakerReview[];
@@ -241,34 +252,12 @@ export const TranscriptPlayer = forwardRef<
      * (a pause control beside the document); otherwise the transcript owns one.
      */
     playback?: Playback;
-  }
->(function TranscriptPlayer(
-  {
-    segments,
-    speakerReviews = [],
-    reviewEnabled = SPEAKER_REVIEW_ENABLED,
-    correctionProblem,
-    fileCount,
-    audioSrcFor,
-    speakerNames,
-    textFallback,
-    audioPending = false,
-    className,
-    corrections,
-    editable = false,
-    onCorrectionsChange,
-    speakerOptions,
-    saveState = "idle",
-    confirmedWords = EMPTY_SET,
-    onToggleConfirmed,
-    downloadable = true,
-    playback: shared,
   },
-  ref,
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
   const searchId = useId();
+  const pastId = useId();
 
   const [follow, setFollow] = useState(true);
   const [editingIndex, setEditingIndex] = useState(-1);
@@ -367,12 +356,6 @@ export const TranscriptPlayer = forwardRef<
       playback.seek(fileIndex, time * 1_000, autoplay);
     },
     [hasAudio, playback],
-  );
-
-  useImperativeHandle(
-    ref,
-    () => ({ seekTo, playRange: (fileIndex, start, end) => playback.playRange(fileIndex, start * 1_000, end * 1_000) }),
-    [seekTo, playback],
   );
 
   function cycleRate() {
@@ -503,6 +486,26 @@ export const TranscriptPlayer = forwardRef<
   }
 
   if (!hasSegments && !(reviewEnabled && speakerReviews.length)) {
+    // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
+    if (audioPending) {
+      return (
+        <section className={cn("flex flex-col gap-5 p-4", className)} aria-label="Transkript" aria-busy="true">
+          <p role="status" className="sr-only">
+            Hämtar transkriptet…
+          </p>
+          {[0, 1, 2].map((row) => (
+            <div key={row} className="flex gap-3">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <div className="flex flex-1 flex-col gap-2">
+                <Skeleton className="h-4 w-1/4" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-4/5" />
+              </div>
+            </div>
+          ))}
+        </section>
+      );
+    }
     return (
       <section className={cn("flex flex-col", className)} aria-label="Transkript">
         <p className="px-4 pt-4 text-[12px] text-ink-mute">
@@ -538,7 +541,7 @@ export const TranscriptPlayer = forwardRef<
       {tools && (
         <div className="flex flex-col gap-3 border-b border-rule-soft px-3 pb-3 pt-1">
           {labelled && (<>
-          {/* The speaker filter, nothing else: chips that wrap from a laptop's width and scroll on a phone. */}
+          {/* The speaker filter, nothing else: chips that wrap, so none is cut off on a phone. */}
           <ToggleGroup
             type="single"
             variant="chip"
@@ -547,7 +550,7 @@ export const TranscriptPlayer = forwardRef<
             onValueChange={(value) => setFilter(value || "all")}
             aria-label="Visa talare"
             className={cn(
-              "-mx-3 flex-nowrap justify-start overflow-x-auto px-3 py-1 lg:mx-0 lg:flex-wrap lg:overflow-visible lg:px-0",
+              "flex-wrap justify-start py-1",
               speakers.length > CHIP_LIMIT && "max-lg:hidden",
             )}
           >
@@ -718,6 +721,19 @@ export const TranscriptPlayer = forwardRef<
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}
       <div className="flex min-h-0 flex-1 flex-col">
+      {/* Each passage is a few Tab stops, a long meeting hundreds: the way past them, shown when it has focus.
+          It moves focus itself, so the address and the history stay the run's. */}
+      {/* A plain link: a Button's touch height would outgrow sr-only and leave a small, invisible target. */}
+      <a
+        href={`#${pastId}`}
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById(pastId)?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:m-2 focus:inline-flex focus:min-h-9 focus:items-center focus:self-start focus:rounded-md focus:border focus:border-input focus:bg-card focus:px-3 focus:text-sm focus:font-medium focus:outline-none focus:ring-2 focus:ring-ring coarse:focus:min-h-11"
+      >
+        Hoppa förbi transkriptet
+      </a>
       {/* Transkript: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
       <div
         ref={listRef}
@@ -794,9 +810,10 @@ export const TranscriptPlayer = forwardRef<
         )}
       </div>
 
-      {hasAudio && (
-        // Docked under the text: on a phone it stays in view while the transcript is on screen.
-        <div data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:static lg:pb-2">
+      {hasAudio ? (
+        // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
+        // would cover most of it, and stays at the end instead.
+        <div id={pastId} tabIndex={-1} data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:static lg:pb-2 short:static">
           <AudioPlayer playback={playback} label="Inspelningen">
             <Button
               type="button"
@@ -837,11 +854,14 @@ export const TranscriptPlayer = forwardRef<
             )}
           </AudioPlayer>
         </div>
+      ) : (
+        // Without a player the way past the passages ends here, and Tab goes on to what follows the transcript.
+        <span id={pastId} tabIndex={-1} />
       )}
       </div>
     </section>
   );
-});
+}
 
 function TurnBlock({
   turn,
@@ -913,6 +933,14 @@ function TurnBlock({
   const several = turn.parts.length > 1;
   const choosable = canEdit && several && choosing;
   const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
+  // Closed from inside (Enter, Esc, Spara, Avbryt), the editor leaves the focus nowhere: it goes back to the passage's
+  // Rätta. Left for another control, the focus stays there.
+  const correct = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editingHere && (!document.activeElement || document.activeElement === document.body)) correct.current?.focus();
+    wasEditing.current = editingHere;
+  }, [editingHere]);
 
   const picker = (trigger: React.ReactNode) => (
     <SpeakerPicker
@@ -937,7 +965,7 @@ function TurnBlock({
       data-active={isActive}
       aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
       className={cn(
-        "group/turn flex gap-3 rounded-lg px-2 py-2.5 transition-colors",
+        "flex gap-3 rounded-lg px-2 py-2.5 transition-colors",
         isActive && "bg-primary-soft/60",
       )}
     >
@@ -1052,10 +1080,10 @@ function TurnBlock({
                             flagged &&
                               "bg-ochre/25 px-[2px] -mx-[2px] underline decoration-wavy decoration-ochre underline-offset-[3px]",
                             confirmed &&
-                              "bg-ok/15 px-[2px] -mx-[2px] text-ok underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
+                              "bg-ok/15 px-[2px] -mx-[2px] text-ink underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
                             piece.hit === "match" && "bg-primary-soft text-ink",
-                            piece.hit === "current" && "bg-primary text-primary-foreground",
-                            isWordActive && "bg-primary text-primary-foreground",
+                            (piece.hit === "current" || isWordActive) &&
+                              "bg-primary text-primary-foreground forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]",
                             piece.correctedFrom !== null &&
                               "underline decoration-dotted decoration-primary underline-offset-[3px]",
                           )}
@@ -1110,20 +1138,15 @@ function TurnBlock({
             );
           })}
           {canEdit && !editingHere && (
-            // After the passage, never mid-sentence: a mouse sees it on the passage it points at or has in
-            // focus, a touch screen on every passage.
+            // After the passage, never mid-sentence, and on every passage for mouse and touch alike: an action
+            // that appears only under the pointer is one a mouse user never learns exists.
             <button
+              ref={correct}
               type="button"
               aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
               aria-expanded={several ? choosing : undefined}
               onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
-              // At rest with a mouse it takes no room, so a passage never gains an empty line.
-              className={cn(
-                "-my-1 inline-flex min-h-6 items-center gap-1 overflow-hidden rounded align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:ml-0.5 coarse:min-h-11 coarse:w-auto coarse:px-1.5 coarse:text-ink-soft coarse:opacity-100",
-                choosing
-                  ? "ml-0.5 w-auto px-1.5 opacity-100"
-                  : "w-0 px-0 opacity-0 focus-visible:ml-0.5 focus-visible:w-auto focus-visible:px-1.5 focus-visible:opacity-100 group-hover/turn:ml-0.5 group-hover/turn:w-auto group-hover/turn:px-1.5 group-hover/turn:opacity-100",
-              )}
+              className="-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft"
             >
               {choosing ? <Check aria-hidden className="size-3.5" strokeWidth={2} /> : <Pencil aria-hidden className="size-3.5" strokeWidth={2} />}
               {choosing ? "Klar" : "Rätta"}

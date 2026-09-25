@@ -23,6 +23,7 @@ export function ParticipantsInput({
   onAdded,
   describedBy,
   invalid,
+  required,
   placeholder = "Lägg till namn",
 }: {
   id: string;
@@ -33,6 +34,7 @@ export function ParticipantsInput({
   onAdded?: (names: string[]) => void;
   describedBy?: string;
   invalid?: boolean;
+  required?: boolean;
   placeholder?: string;
 }) {
   const listId = useId();
@@ -122,6 +124,7 @@ export function ParticipantsInput({
           // The field says how many names it already holds; the list itself is named.
           aria-describedby={[names.length > 0 ? countId : null, describedBy].filter(Boolean).join(" ") || undefined}
           aria-invalid={invalid || undefined}
+          aria-required={required || undefined}
           onChange={(event) => {
             const value = event.target.value;
             const picked =

@@ -5,6 +5,7 @@
  */
 
 import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep, type RunContract } from "./api";
+import { formatDuration } from "./format";
 import { carriesTranscript } from "./speaker-review";
 
 export type StepState = "waiting" | "running" | "done" | "failed" | "cancelled" | "not_run";
@@ -70,11 +71,14 @@ export function finishedRun(
   runGraph: FlowGraph | null,
   run: { status: string; error?: Pick<FlowRunError, "step_order"> | null },
   results: readonly FlowRunStep[],
-): { steps: StepView[]; transcribed: boolean; stepLabels: Record<string, string> } {
+): { steps: StepView[]; transcribed: boolean; stepLabels: Record<number, string> } {
   return {
     steps: runSteps(runGraph, run, results),
     transcribed: results.some(carriesTranscript),
-    stepLabels: Object.fromEntries((runGraph?.nodes ?? []).map((node) => [node.id, node.label])),
+    // By order: a run error always names its step's order, not always its id.
+    stepLabels: Object.fromEntries(
+      (runGraph?.nodes ?? []).filter((node) => typeof node.step_order === "number").map((node) => [node.step_order, node.label]),
+    ),
   };
 }
 
@@ -139,6 +143,12 @@ export function runSteps(
       } else state = outcome ? "not_run" : "waiting";
       return { order, label, transcribes, state, note: state === "waiting" ? reviewNote(review) : null };
     });
+}
+
+/** How long the run has gone on, in whole minutes from its start: "Har pågått i 12 min"; nothing in its first minute. */
+export function runElapsed(createdAt: string | null | undefined, now: number): string | null {
+  const minutes = Math.floor((now - Date.parse(createdAt ?? "")) / 60_000);
+  return minutes >= 1 ? `Har pågått i ${formatDuration(minutes * 60_000)}` : null;
 }
 
 /** One line for what happens now; truthful between steps, never a percentage. */

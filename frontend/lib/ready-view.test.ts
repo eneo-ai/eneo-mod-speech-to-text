@@ -6,6 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 import { ReadyPanel } from "../components/flow/ReadyPanel";
 import { UploadPanel } from "../components/flow/UploadPanel";
+import type { LiveSnapshot } from "./live-transcriber";
 import type { StoredRecording } from "./recording-store";
 
 const recording: StoredRecording = {
@@ -54,6 +55,67 @@ test("the ready state names the recording for people, never as a file or a type,
     }),
   );
   assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
+});
+
+test("a recording of a moment says so, and makes Fortsätt spela in the one filled action", () => {
+  const variants = (html: string) =>
+    Object.fromEntries(
+      [...html.matchAll(/<button[^>]*class="([^"]*)"[^>]*>(?:<svg.*?<\/svg>)?([^<]+)<\/button>/g)].map(([, classes, label]) => [
+        label,
+        classes.includes("bg-primary") ? "filled" : "outline",
+      ]),
+    );
+  const ready = (durationMs: number, onContinue?: () => void) =>
+    renderToStaticMarkup(
+      createElement(ReadyPanel, { recording: { ...recording, durationMs }, persistent: true, problem: null, onCreate: noop, onContinue, onDiscard: noop }),
+    );
+  const note = /Inspelningen blev mycket kort\. Välj Fortsätt spela in om den stoppades av misstag\./;
+  const moment = ready(1_200, noop);
+  assert.match(moment, note);
+  assert.equal(variants(moment)["Fortsätt spela in"], "filled");
+  assert.equal(variants(moment)["Skapa dokument"], "outline");
+
+  const meeting = ready(32 * 60_000, noop);
+  assert.doesNotMatch(meeting, note);
+  assert.equal(variants(meeting)["Skapa dokument"], "filled");
+  assert.equal(variants(meeting)["Fortsätt spela in"], "outline");
+  assert.doesNotMatch(ready(1_200), note, "nothing to offer when the recorder cannot go on");
+});
+
+test("after Stoppa, Strömma's live text stays to read and copy, marked as preliminary", () => {
+  const snapshot: LiveSnapshot = {
+    status: "ended",
+    started: true,
+    complete: false,
+    pending: "",
+    pieces: [
+      { text: "Välkomna till nämndens möte.", opensParagraph: true },
+      { text: "Första punkten.", opensParagraph: false },
+      { text: "Budgeten.", opensParagraph: true },
+    ],
+  };
+  const live = (pieces: LiveSnapshot["pieces"]) => ({
+    getSnapshot: () => ({ ...snapshot, pieces }),
+    subscribe: () => () => {},
+    listen: noop,
+    setRecording: noop,
+    stop: noop,
+    dispose: noop,
+  });
+  const html = renderToStaticMarkup(
+    createElement(ReadyPanel, { recording, persistent: true, problem: null, live: live(snapshot.pieces), onCreate: noop, onDiscard: noop }),
+  );
+  assert.match(html, /<h3 id="([^"]+)"[^>]*>Preliminär text<\/h3>/);
+  assert.match(html, /Den slutliga texten skapas med dokumentet\./);
+  assert.match(html, /<p>Välkomna till nämndens möte\. Första punkten\.<\/p><p>Budgeten\.<\/p>/);
+  assert.match(html, /role="region"[^>]*tabindex="0"|tabindex="0"[^>]*role="region"/, "a long draft scrolls by keyboard too");
+  assert.match(html, />Kopiera<\/button>/);
+  for (const nothing of [null, live([])]) {
+    const none = renderToStaticMarkup(
+      createElement(ReadyPanel, { recording, persistent: true, problem: null, live: nothing, onCreate: noop, onDiscard: noop }),
+    );
+    assert.doesNotMatch(none, /Preliminär text/);
+  }
 });
 
 test("a recording Eneo already has shows the earlier runs where the user is, and offers deleting it from the device", () => {
@@ -114,6 +176,10 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
   };
   const empty = renderToStaticMarkup(createElement(UploadPanel, { step, file: null, audio: true, inputRef: null, onChoose: noop }));
   assert.match(empty, /Flödet tar emot MP3, WAV, M4A och WebM, högst 200\u00a0MB\./);
+  const timed = renderToStaticMarkup(
+    createElement(UploadPanel, { step: { ...step, max_duration_seconds: 5 * 3_600 }, file: null, audio: true, inputRef: null, onChoose: noop }),
+  );
+  assert.match(timed, /Flödet tar emot MP3, WAV, M4A och WebM, högst 200\u00a0MB och 5\u00a0h\./);
   assert.doesNotMatch(empty.replace(/<input[^>]*>/, ""), /audio\//, "the chooser's accept list is the only place types show");
 
   const chosen = renderToStaticMarkup(
@@ -126,6 +192,8 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
     }),
   );
   assert.match(chosen, />mote\.mp3</);
+  assert.match(chosen, /<p role="status" class="sr-only">Vald fil: mote\.mp3<\/p>/, "the choice is announced");
+  assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status is there before a file is chosen");
   assert.match(chosen, /1,2\u00a0MB · 32 min/);
   assert.match(chosen, />Byt fil<\/button>/);
 });
