@@ -63,8 +63,9 @@ function fakeLogin() {
 
 function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
   const sockets: FakeSocket[] = [];
-  const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
+  const timers: Array<{ fn: () => void; ms: number; at: number; cleared: boolean }> = [];
   const browser = fakeBrowser(options.online ?? true);
+  let clock = 0;
   const live = new LiveTranscriber({
     openSocket: () => {
       const socket = new FakeSocket();
@@ -72,13 +73,14 @@ function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>
       return socket;
     },
     setTimer: (fn, ms) => {
-      const timer = { fn, ms, cleared: false };
+      const timer = { fn, ms, at: clock + ms, cleared: false };
       timers.push(timer);
       return timer;
     },
     clearTimer: (timer) => void ((timer as { cleared: boolean }).cleared = true),
     online: createOnlineStatus(browser.target),
     login: options.login,
+    now: () => clock,
   });
   /** Runs the timers that would fire within `ms`. */
   const elapse = (ms: number) => {
@@ -89,7 +91,18 @@ function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>
       }
     }
   };
-  return { live, sockets, elapse, browser };
+  /** The clock moves to `time`, running the timers due by then in order. */
+  const at = (time: number) => {
+    for (;;) {
+      const due = timers.filter((timer) => !timer.cleared && timer.at <= time).sort((a, b) => a.at - b.at)[0];
+      if (!due) break;
+      clock = due.at;
+      due.cleared = true;
+      due.fn();
+    }
+    clock = time;
+  };
+  return { live, sockets, elapse, at, browser };
 }
 
 const frame = (byte: number) => new Uint8Array(3_200).fill(byte).buffer;
@@ -138,8 +151,71 @@ test("words arrive as a draft and become pieces at a sentence's end or after a p
   sockets[0].event({ type: "transcript.delta", text: " Första punkten" });
   assert.equal(live.getSnapshot().pending, " Första punkten", "still arriving: not yet a piece");
   elapse(2_000);
-  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Välkomna till nämndens möte.", "Första punkten"]);
-  assert.equal(live.getSnapshot().pending, "");
+  assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Välkomna till nämndens möte.", "Första"]);
+  assert.equal(live.getSnapshot().pending, " punkten", "the last word may still be arriving");
+});
+
+test("a pause inside a word commits only whole words, and a paragraph starts only at a sentence's end", () => {
+  const { live, sockets, at } = setup();
+  live.start();
+  sockets[0].ready();
+  const words = (time: number, text: string) => {
+    at(time);
+    sockets[0].event({ type: "transcript.delta", text });
+  };
+  const pieces = () => live.getSnapshot().pieces;
+  // As vadsa on CPU sends them: deltas cut words, and pause inside them.
+  words(0, "Välkomna till dagens möte i kommunst");
+  at(2_000);
+  assert.deepEqual(pieces().map((piece) => piece.text), ["Välkomna till dagens möte i"], "a screen reader never hears kommunst");
+  assert.equal(live.getSnapshot().pending, " kommunst");
+  words(2_100, "yrelsen. För");
+  words(4_500, "st går vi igenom protokollet från förra sammant");
+  words(10_600, "rädet. Dä"); // a pause of 6 s inside a word
+  words(12_000, "refter diskuterar vi budgeten.");
+  words(17_000, " Tack för det."); // a pause after a sentence
+  assert.deepEqual(
+    pieces().map((piece) => [piece.text, piece.opensParagraph]),
+    [
+      ["Välkomna till dagens möte i", true],
+      ["kommunstyrelsen.", false],
+      ["Först går vi igenom protokollet från förra", false],
+      ["sammanträdet. Därefter diskuterar vi budgeten.", false],
+      ["Tack för det.", true],
+    ],
+  );
+  const whole = live.getSnapshot().pieces;
+  live.stop();
+  sockets[0].event({
+    type: "transcript.done",
+    text: "Välkomna till dagens möte i kommunstyrelsen. Först går vi igenom protokollet från förra sammanträdet. Därefter diskuterar vi budgeten. Tack för det.",
+  });
+  assert.equal(live.getSnapshot().pieces, whole, "the final text agrees with the whole words, so the paragraphs stay");
+});
+
+test("speech without pauses still breaks into paragraphs at a sentence's end: after five sentences, or after a minute", () => {
+  const speak = () => {
+    const { live, sockets, at } = setup();
+    live.start();
+    sockets[0].ready();
+    return {
+      say: (time: number, text: string) => {
+        at(time);
+        sockets[0].event({ type: "transcript.delta", text });
+      },
+      opened: () => live.getSnapshot().pieces.flatMap((piece) => (piece.opensParagraph ? [piece.text] : [])),
+    };
+  };
+  const sentences = speak();
+  ["Ett.", " Två.", " Tre.", " Fyra.", " Fem.", " Sex."].forEach((text, i) => sentences.say(i * 500, text));
+  assert.deepEqual(sentences.opened(), ["Ett.", "Sex."]);
+
+  const minute = speak();
+  minute.say(0, "Vi börjar.");
+  for (let time = 3_000; time < 60_000; time += 3_000) minute.say(time, " och");
+  minute.say(60_000, " sedan slut.");
+  minute.say(61_000, " Nästa punkt.");
+  assert.deepEqual(minute.opened(), ["Vi börjar.", "Nästa punkt."]);
 });
 
 test("stop sends the last audio, then the stop message, keeps the draft and ends the session", () => {

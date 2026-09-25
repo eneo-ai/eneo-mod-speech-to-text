@@ -24,7 +24,7 @@ export type LiveStatus = "connecting" | "live" | "reconnecting" | "unavailable" 
 
 export interface LivePiece {
   text: string;
-  /** Speech resumed after a pause, or live text after a break. */
+  /** A sentence after a pause, or after a long paragraph; or live text after a break. */
   opensParagraph: boolean;
 }
 
@@ -71,9 +71,12 @@ export interface LiveDeps {
 const MAX_BUFFERED_FRAMES = 300;
 // A connection with as much queued is not keeping up; a new session takes over.
 const MAX_QUEUED_BYTES = MAX_BUFFERED_FRAMES * 3_200;
-// A pause in the words commits the draft so far; a longer one starts a paragraph.
+// A pause in the words commits the whole words so far. A paragraph starts at a sentence's end after a longer
+// pause, or once the paragraph holds five sentences or a minute of speech.
 const COMMIT_AFTER_MS = 2_000;
 const PARAGRAPH_AFTER_MS = 4_000;
+const PARAGRAPH_SENTENCES = 5;
+const PARAGRAPH_MS = 60_000;
 const FIRST_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
 // Tries before the first session was live; after that, live text keeps trying.
@@ -82,6 +85,7 @@ const START_ATTEMPTS = 3;
 // (flow_live_transcription_final_text_timeout_seconds, 60 s by default).
 const FINAL_TEXT_WAIT_MS = 60_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
+const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
 /** wss://host/api/live/{flowId}/{stepId} on the page's own origin. */
 export function liveSocketUrl(location: { protocol: string; host: string }, flowId: string, stepId: string): string {
@@ -113,7 +117,10 @@ export class LiveTranscriber {
   private commitTimer: unknown = null;
   private stopTimer: unknown = null;
   private lastWordsAt: number | null = null;
+  // The start, or a break: the next piece opens a paragraph. After a pause in speech, one opens at a sentence's end.
   private opensParagraph = true;
+  private paused = false;
+  private paragraph = { sentences: 0, since: 0 };
   private stopListening: (() => void) | null = null;
   private stopFollowingLogin: (() => void) | null = null;
 
@@ -332,8 +339,8 @@ export class LiveTranscriber {
 
   private addWords(text: string) {
     if (!text) return;
-    const now = (this.deps.now ?? Date.now)();
-    if (this.lastWordsAt !== null && now - this.lastWordsAt >= PARAGRAPH_AFTER_MS) this.opensParagraph = true;
+    const now = this.now();
+    if (this.lastWordsAt !== null && now - this.lastWordsAt >= PARAGRAPH_AFTER_MS) this.paused = true;
     this.lastWordsAt = now;
     const pending = this.snapshot.pending + text;
     this.clear("commitTimer");
@@ -344,7 +351,8 @@ export class LiveTranscriber {
     }
     this.commitTimer = this.deps.setTimer(() => {
       this.commitTimer = null;
-      this.commit();
+      // The last word may still be arriving ("kommunst"): it waits for the next words, a sentence's end or the stop.
+      this.commit(this.snapshot.pending.search(/\s\S*$/));
     }, COMMIT_AFTER_MS);
   }
 
@@ -362,16 +370,31 @@ export class LiveTranscriber {
     this.opensParagraph = false;
   }
 
-  private commit() {
+  /** The words so far become a piece: all of them, or those before `upTo`, the rest still pending. */
+  private commit(upTo = this.snapshot.pending.length) {
     this.clear("commitTimer");
-    const text = this.snapshot.pending.trim();
+    const cut = Math.max(upTo, 0);
+    const text = this.snapshot.pending.slice(0, cut).trim();
+    const pending = this.snapshot.pending.slice(cut);
     if (!text) {
-      if (this.snapshot.pending) this.set({ pending: "" });
+      if (pending !== this.snapshot.pending) this.set({ pending });
       return;
     }
-    const piece = { text, opensParagraph: this.opensParagraph || this.snapshot.pieces.length === 0 };
+    const now = this.now();
+    const last = this.snapshot.pieces.at(-1);
+    const long = this.paragraph.sentences >= PARAGRAPH_SENTENCES || now - this.paragraph.since >= PARAGRAPH_MS;
+    const opensParagraph = this.opensParagraph || !last || (SENTENCE_END.test(last.text) && (this.paused || long));
+    const sentences = text.match(SENTENCE_ENDS)?.length ?? 0;
+    this.paragraph = opensParagraph
+      ? { sentences, since: now }
+      : { sentences: this.paragraph.sentences + sentences, since: this.paragraph.since };
     this.opensParagraph = false;
-    this.set({ pieces: [...this.snapshot.pieces, piece], pending: "" });
+    this.paused = false;
+    this.set({ pieces: [...this.snapshot.pieces, { text, opensParagraph }], pending });
+  }
+
+  private now() {
+    return (this.deps.now ?? Date.now)();
   }
 
   private finish() {
