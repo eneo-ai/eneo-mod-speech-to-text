@@ -87,7 +87,7 @@ type RunState =
   | { kind: "opening" }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
-  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version">; graph: FlowGraph | null }
+  | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
   | {
       kind: "awaiting_review";
       run: FlowRunPublic;
@@ -628,8 +628,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const steps = runSteps(run.graph, run.run, [], contract);
     return flowPage(
       <RunProgress
+        flowName={published.name}
         steps={steps}
         stage={runStage(steps, run.run.status)}
+        startedAt={run.run.created_at}
         error={runError}
         onCancel={() => onCancelRun(run.run.id)}
       />,
@@ -685,6 +687,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       refusal={retryRefusal}
       onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
       onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+      onChooseInput={onRunAgain}
     />,
     { input: run.run.input_payload_json, version: run.run.flow_version },
   );

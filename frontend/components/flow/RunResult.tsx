@@ -71,7 +71,7 @@ export function RunResult({
   onRegenerated: (run: FlowRunPublic) => void;
 }) {
   const delivered = run.result?.kind === "outbound_http";
-  const heading = usePhaseHeading("Klart");
+  const heading = usePhaseHeading(`Klart · ${flowName}`);
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
   // The document's file is the first one that can be fetched; any others are listed under it.

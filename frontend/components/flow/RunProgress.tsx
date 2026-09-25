@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, RotateCcw } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,25 +17,36 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { StepView } from "@/lib/run-progress";
+import { runElapsed, type StepView } from "@/lib/run-progress";
 import { StepList } from "./StepList";
 import { STATE_HEADING, StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
 
-/** The run goes on in Eneo: what happens now, every step, and a way to stop it. */
+/** The run goes on in Eneo: what happens now, for how long, every step, and a way to stop it. */
 export function RunProgress({
+  flowName,
   steps,
   stage,
+  startedAt,
   error = null,
   onCancel,
 }: {
+  flowName: string;
   steps: readonly StepView[];
   stage: string;
+  /** When Eneo created the run; unknown until its first status read. */
+  startedAt?: string | null;
   error?: string | null;
   onCancel: () => Promise<void>;
 }) {
-  const heading = usePhaseHeading("Skapar dokument");
+  const heading = usePhaseHeading(`Skapar dokument · ${flowName}`);
   const [cancelling, setCancelling] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 15_000);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = runElapsed(startedAt, now);
 
   async function cancel() {
     setCancelling(true);
@@ -59,6 +70,10 @@ export function RunProgress({
         <p role="status" className="flex items-center gap-2 text-base">
           <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
           {stage}
+        </p>
+        {/* Outside the status region: the minutes count on without being read out. */}
+        <p className="pl-6 text-sm text-muted-foreground">
+          {elapsed && `${elapsed}. `}Det kan ta några minuter.
         </p>
       </div>
       {steps.length > 0 && (

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } from "./api";
-import { finishedRun, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
+import { finishedRun, runElapsed, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
 
 const node = (order: number, label: string, extra: Partial<FlowGraphNode> = {}): FlowGraphNode => ({
   id: `step-${order}`,
@@ -179,4 +179,25 @@ test("an earlier run whose own graph could not be read keeps its own results, ne
 
   const plain = finishedRun(null, { status: "completed" }, [result(1, "completed", true)]);
   assert.equal(plain.transcribed, false, "a run whose results hold no transcript shows none");
+});
+
+test("a finished run names its steps by their order, the one key every run error carries", () => {
+  const { stepLabels } = finishedRun(graph("completed", "failed", null, null), { status: "failed", error: { step_order: 2 } }, []);
+  assert.deepEqual(stepLabels, {
+    1: "Transkribera mötet",
+    2: "Analysera mötesinnehållet",
+    3: "Skriv sammanfattning",
+    4: "Skapa rapport",
+  });
+});
+
+test("a run that goes on says for how long, whole minutes from its start, and nothing in its first minute", () => {
+  const start = "2026-09-25T10:00:00Z";
+  const at = (minutes: number, seconds = 0) => Date.parse(start) + minutes * 60_000 + seconds * 1_000;
+  assert.equal(runElapsed(start, at(0, 59)), null);
+  assert.equal(runElapsed(start, at(1)), "Har pågått i 1 min");
+  assert.equal(runElapsed(start, at(12, 59)), "Har pågått i 12 min");
+  assert.equal(runElapsed(start, at(75)), "Har pågått i 1 h 15 min");
+  assert.equal(runElapsed(undefined, at(5)), null, "a run whose start is not known yet");
+  assert.equal(runElapsed(start, at(-3)), null, "a device clock behind Eneo's");
 });

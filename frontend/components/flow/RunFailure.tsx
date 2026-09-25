@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw } from "lucide-react";
+import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw, Upload } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
-import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -36,6 +35,7 @@ export function RunFailure({
   refusal = null,
   onRetry,
   onStartAgain,
+  onChooseInput,
 }: {
   flowId: string;
   flowName: string;
@@ -53,12 +53,15 @@ export function RunFailure({
   onRetry?: () => Promise<void> | void;
   /** A new run with the same audio and details: after a cancellation, or when Eneo cannot continue. */
   onStartAgain?: () => Promise<void> | void;
+  /** Back to the flow's setup, for another file or recording: offered when the input itself has to change. */
+  onChooseInput?: () => void;
 }) {
   const cancelled = run.status.toLowerCase() === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
   const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));
-  const heading = usePhaseHeading(cancelled ? "Avbruten" : "Misslyckades");
+  const offerChooseInput = Boolean(onChooseInput) && Boolean(failure?.inputMustChange);
+  const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
   const Icon = cancelled ? MinusCircle : CircleAlert;
 
@@ -92,7 +95,8 @@ export function RunFailure({
           <AlertTitle className="leading-snug">
             {failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
           </AlertTitle>
-          <AlertDescription>
+          {/* The title carries the alarm; the explanation reads in the page's own text colour. */}
+          <AlertDescription className="text-ink-soft">
             {failure?.summary ?? "Körningen kunde inte slutföras."}
           </AlertDescription>
         </Alert>
@@ -103,14 +107,16 @@ export function RunFailure({
               {message}
             </p>
           ))}
+          {/* The page offers one of these at most, the card's one filled action; the way back sits beside the card. */}
           <div className="flex flex-wrap gap-3">
+            {offerChooseInput && (
+              <Button type="button" onClick={onChooseInput}>
+                <Upload data-icon="inline-start" aria-hidden />
+                Välj en annan fil
+              </Button>
+            )}
             {offerRetry && (
-              <Button
-                type="button"
-                variant={run.error?.retryable ? "default" : "outline"}
-                disabled={retrying}
-                onClick={() => void retry()}
-              >
+              <Button type="button" disabled={retrying} onClick={() => void retry()}>
                 {retrying ? <Spinner data-icon="inline-start" aria-hidden /> : <RotateCcw data-icon="inline-start" aria-hidden />}
                 Försök igen
               </Button>
@@ -121,10 +127,6 @@ export function RunFailure({
                 Starta en ny körning
               </Button>
             )}
-            <BackToFlows
-              variant={offerStartAgain || (offerRetry && run.error?.retryable) ? "outline" : "default"}
-              size="default"
-            />
           </div>
           {offerRetry && (
             <p className="text-sm text-muted-foreground">

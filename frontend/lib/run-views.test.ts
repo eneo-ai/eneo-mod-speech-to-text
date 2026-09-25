@@ -29,7 +29,7 @@ const running: StepView[] = [
 
 test("the running view names the stage once in a status region and says each step's state in words", () => {
   const html = renderToStaticMarkup(
-    createElement(RunProgress, { steps: running, stage: "Analysera mötesinnehållet", onCancel: async () => undefined }),
+    createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Analysera mötesinnehållet", onCancel: async () => undefined }),
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
@@ -43,6 +43,18 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
   assert.match(html, /<ol[^>]*>(\s*<li)/);
+});
+
+test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {
+  const view = (startedAt?: string) =>
+    renderToStaticMarkup(
+      createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Transkriberar ljudet", startedAt, onCancel: async () => undefined }),
+    );
+  const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
+  assert.match(text(html), /Transkriberar ljudet Har pågått i 12 min\. Det kan ta några minuter\./);
+  // The minutes count on without being read out on every change.
+  assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
+  assert.match(text(view(undefined)), /Transkriberar ljudet Det kan ta några minuter\./, "before the start is known");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -141,8 +153,31 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   assert.match(words, /3f1c2a9e-0000-4000-8000-000000000001/);
   assert.match(words, /Kopiera körnings-ID/);
   assert.match(words, /Försök igen/);
-  assert.match(words, /Alla flöden/);
+  // The page's own way back is beside the card; the card holds the next step only.
+  assert.doesNotMatch(words, /Alla flöden/);
   assert.doesNotMatch(text(render(undefined)), /Försök igen/);
+});
+
+test("a failure the same input cannot pass offers another file as its one filled action, with Eneo's words calm, not red", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", status: "failed", created_at: created, error: { code: "typed_io_audio_exceeds_limit", message: "x", retryable: false, step_order: 1 } },
+      failure: { step: "Steg 1, Transkribera ljud", summary: "Inspelningen eller filen är längre än flödet klarar.", detail: "x", inputMustChange: true },
+      steps,
+      stepResults: [],
+      files: [],
+      onChooseInput: () => undefined,
+    }),
+  );
+  const words = text(html);
+  assert.match(words, /Steg 1, Transkribera ljud/);
+  assert.match(words, /Välj en annan fil/);
+  assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
+  const buttons = [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map(([, classes]) => classes);
+  assert.equal(buttons.filter((classes) => /\bbg-primary\b/.test(classes)).length, 1, "one filled action");
+  assert.match(html, /class="[^"]*text-ink-soft[^"]*"[^>]*>Inspelningen eller filen är längre/, "the description reads in the page's own text colour");
 });
 
 test("earlier runs list this flow's runs by when and status, each one tap from its result", () => {

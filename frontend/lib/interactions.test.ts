@@ -335,6 +335,20 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
   }
 });
 
+test("a run's tab title names its state and its flow, so tabs and history entries of different flows differ", async () => {
+  const { createElement } = await import("react");
+  const { RunProgress } = await import("../components/flow/RunProgress");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const running = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined }));
+  assert.equal(document.title, "Skapar dokument · Nämndmöte · Tal till text");
+  await running.unmount();
+  const failed = await mount(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Nämndmöte", run: { id: "run-1", status: "failed" }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  assert.equal(document.title, "Misslyckades · Nämndmöte · Tal till text");
+  await failed.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");

@@ -44,6 +44,8 @@ export function runResultView(
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";
 const TOO_LARGE = "Inspelningen eller filen är större än flödet klarar.";
+// Eneo's audio ceilings (a duration, or the decoded bytes it stands for) both measure how long the audio is.
+const TOO_LONG = "Inspelningen eller filen är längre än flödet klarar.";
 const SERVICE_UNAVAILABLE = "Tjänsten svarade inte eller var överbelastad.";
 const STOPPED = "Körningen tog för lång tid eller slutade svara och avbröts.";
 
@@ -61,7 +63,7 @@ const RUN_ERROR_EXPLANATIONS: Record<string, string> = {
   typed_io_transcription_failed: "Transkriberingen av ljudet misslyckades.",
   typed_io_transcription_empty: "Transkriberingen gav ingen text.",
   typed_io_empty_extraction: "Ingen text kunde läsas ur filen.",
-  typed_io_audio_exceeds_limit: TOO_LARGE,
+  typed_io_audio_exceeds_limit: TOO_LONG,
   typed_io_transcript_too_large: TOO_LARGE,
   typed_io_input_too_large: TOO_LARGE,
   typed_io_input_exceeds_model_window: TOO_LARGE,
@@ -103,10 +105,10 @@ export interface RunErrorView {
   inputMustChange: boolean;
 }
 
-/** Vad resultatvyn visar för Eneos typade slutfel (`run.error`). */
+/** Vad resultatvyn visar för Eneos typade slutfel (`run.error`); stegens namn efter deras ordning. */
 export function runErrorView(
   error: FlowRunError,
-  stepLabels: Record<string, string> = {},
+  stepLabels: Record<number, string> = {},
 ): RunErrorView {
   const explanation =
     RUN_ERROR_EXPLANATIONS[error.code] ?? "Körningen kunde inte slutföras.";
@@ -119,7 +121,7 @@ export function runErrorView(
     .join(" ");
   const stepName =
     error.details?.step_description ??
-    (error.step_id ? stepLabels[error.step_id] : undefined);
+    (error.step_order ? stepLabels[error.step_order] : undefined);
   const step = error.step_order
     ? [`Steg ${error.step_order}`, stepName].filter(Boolean).join(", ")
     : null;
