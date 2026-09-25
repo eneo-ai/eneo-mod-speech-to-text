@@ -467,6 +467,8 @@ export class FlowSession {
   private finishingTimer: ReturnType<typeof setTimeout> | null = null;
   // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
   private keepTranscript: (() => void) | null = null;
+  // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
+  private keepInFlight = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -663,6 +665,11 @@ export class FlowSession {
   async createDocument(): Promise<boolean> {
     // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
     if (this.finishing) return false;
+    if (this.keepInFlight && this.snapshot.phase === "ready") {
+      this.problem = { title: "Texten sparas fortfarande.", detail: "Försök igen om en stund." };
+      this.emit();
+      return false;
+    }
     const { phase, mode, fileChecking } = this.snapshot;
     // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
     if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
@@ -881,10 +888,16 @@ export class FlowSession {
       if (kept || !transcriptId || this.capture.getSnapshot().status !== "stopped") return;
       kept = true;
       this.keepTranscript = null;
+      this.keepInFlight = true;
       void Promise.resolve(this.options.openStore())
         .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
         .catch(() => undefined)
-        .finally(done);
+        .finally(() => {
+          this.keepInFlight = false;
+          if (this.problem?.title === "Texten sparas fortfarande.") this.problem = null;
+          done();
+          this.emit();
+        });
     });
     const unsubscribe = live.subscribe(() => {
       const { status, transcriptId, finishing } = live.getSnapshot();

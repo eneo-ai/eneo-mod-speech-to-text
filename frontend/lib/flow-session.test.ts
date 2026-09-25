@@ -1371,19 +1371,27 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   assert.equal(sent.length, 1);
 });
 
-test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, and nothing sends without one", async (t) => {
+test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, says why while the text is still being kept, and nothing sends without one", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const sent: unknown[] = [];
   const live = fakeLiveClient();
   const store = await openRecordingStore({});
   const keep = store.keepLiveTranscript.bind(store);
   let write!: () => void;
-  // A slow write under the recording's lease.
+  let writing: Promise<void> | null = null;
+  // A slow write under the recording's lease, holding the store's one queue as the real store does.
   store.keepLiveTranscript = async (id, transcriptId) => {
     if (!(await store.lease(id))) return;
-    await new Promise<void>((resolve) => (write = resolve));
+    writing = new Promise<void>((resolve) => (write = resolve));
+    await writing;
+    writing = null;
     store.release(id);
     await keep(id, transcriptId);
+  };
+  const get = store.get.bind(store);
+  store.get = async (id) => {
+    await writing;
+    return get(id);
   };
   const { session, recorders } = await setup({ live: live.client, store });
   session.setHandlers({ submit: async (request) => void sent.push(request) });
@@ -1401,13 +1409,17 @@ test("the wait for Strömma's text ends after 20 s, its keeping included; after 
   t.mock.timers.tick(1);
   assert.equal(session.getSnapshot().finishing, false, "a person waits at most 20 s, whatever is still going on");
 
-  let answered = false;
-  void session.createDocument().then(() => (answered = true));
-  await until(() => answered, "the press answered without waiting for the write");
-  assert.equal(sent.length, 1);
+  let answered: boolean | null = null;
+  void session.createDocument().then((result) => (answered = result));
+  await until(() => answered !== null, "the press answered without waiting for the write");
+  assert.equal(answered, false);
+  assert.equal(sent.length, 0);
+  assert.equal(session.getSnapshot().problem?.title, "Texten sparas fortfarande.");
   write();
   await settle();
-  assert.equal(sent.length, 1, "the write ending sends nothing on its own");
+  assert.equal(sent.length, 0, "the write ending sends nothing on its own");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
 });
 
 test("a final text that comes while the stopped recording is still being stored is kept once it is", async () => {
