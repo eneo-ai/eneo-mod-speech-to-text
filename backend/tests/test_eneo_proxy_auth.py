@@ -116,6 +116,23 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.proxy_client.calls, [])
 
+    def test_proxy_never_forwards_the_browsers_origin_to_eneo(self) -> None:
+        # The module checks the browser's Origin itself. Eneo refuses any origin it does not
+        # list, so passing the module's own hostname on would fail every write in production.
+        response = self.client.post(
+            "/api/eneo/flows/flow-1/runs/run-1/steps/step-1/transcript-regenerations/",
+            headers={
+                "Origin": "https://module.example.test",
+                "Referer": "https://module.example.test/flows/flow-1",
+            },
+            json={"expected_run_revision": 2, "expected_correction_revision": None, "segments_hash": "a" * 64},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        forwarded = {name.lower() for name in self.proxy_client.calls[0]["headers"]}
+        self.assertNotIn("origin", forwarded)
+        self.assertNotIn("referer", forwarded)
+
     def test_proxy_accepts_slash_stripped_allowlisted_path(self) -> None:
         # Next.js `next dev` strips the trailing slash from rewritten paths.
         response = self.client.get(

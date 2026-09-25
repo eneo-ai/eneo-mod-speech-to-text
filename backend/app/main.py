@@ -146,6 +146,10 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
     "x-space-id",
     # Intern proxy-budget för stora uploads.
     "x-upload-timeout-seconds",
+    # The module checks the browser's origin itself; Eneo refuses any origin it does not list,
+    # so the module's own hostname passed on would fail every write in production.
+    "origin",
+    "referer",
 }
 _HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
 
