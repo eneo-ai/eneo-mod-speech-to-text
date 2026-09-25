@@ -56,6 +56,28 @@ test("each speaker is a row: the mark, how many passages, what they say first, a
   assert.deepEqual(listened, ["SPEAKER_01"]);
 });
 
+test("a sample that plays says so and can be stopped; closing the dialog stops it too", async () => {
+  const stops: number[] = [];
+  const { view, listened } = await dialog({ listening: "SPEAKER_01", onStopListening: () => void stops.push(1) });
+  assert.equal(button(document.body, "Lyssna på exempel: Talare 1")?.textContent, "Lyssna på exempel");
+  const stop = button(document.body, "Stoppa exempel: Talare 2");
+  assert.equal(stop?.textContent, "Stoppa exempel", "the playing sample shows it plays");
+  await view.act(async () => stop!.click());
+  assert.equal(stops.length, 1);
+  assert.deepEqual(listened, [], "stopping plays nothing");
+  await view.act(async () => button(document.body, "Stäng")!.click());
+  assert.equal(stops.length, 2, "closing stops the sample");
+});
+
+test("why a sample cannot be played is a line under the row, not only a hover title", async () => {
+  const reason = "Det finns inget tilldelat exempel utan överlappande tal.";
+  const { field } = await dialog({ listenUnavailableReason: (label: string) => (label === "SPEAKER_01" ? reason : null) });
+  const rowOf = (label: string) => field(label).closest("li")!;
+  assert.equal(button(rowOf("Talare 2"), "Lyssna på exempel: Talare 2")?.disabled, true);
+  assert.match(rowOf("Talare 2").textContent ?? "", /Det finns inget tilldelat exempel utan överlappande tal\./);
+  assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Det finns inget tilldelat exempel/);
+});
+
 test("opening a filled name field by click and pressing Enter keeps its name", async () => {
   // Run 82089959: Talare 2 was "Erik", a click then Enter made it "Anna" in the transcript and the PDF.
   const { view, field, saved } = await dialog({ rows: [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", "Erik Lund", 9)] });

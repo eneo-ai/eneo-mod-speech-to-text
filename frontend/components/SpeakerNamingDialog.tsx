@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { ChevronDown, Headphones } from "lucide-react";
+import { ChevronDown, Headphones, Pause } from "lucide-react";
 import { NameCombobox } from "@/components/NameCombobox";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
 import { Button } from "@/components/ui/button";
@@ -62,6 +62,8 @@ export function SpeakerNamingDialog({
   quote,
   disabled = false,
   onListen,
+  listening = null,
+  onStopListening,
   listenUnavailableReason,
   onSave,
   onSaveAndContinue,
@@ -82,6 +84,10 @@ export function SpeakerNamingDialog({
   disabled?: boolean;
   /** Plays a short sample of the speaker through the page's one player. */
   onListen?: (label: string) => void;
+  /** The speaker whose sample plays now. */
+  listening?: string | null;
+  /** Stops a sample that plays: on Stoppa exempel, and whenever the dialog closes. */
+  onStopListening?: () => void;
   listenUnavailableReason?: (label: string) => string | null;
   /** Saves the names; returns why they were not saved, or null. */
   onSave: (rows: SpeakerMappingRow[]) => Promise<string | null>;
@@ -122,6 +128,7 @@ export function SpeakerNamingDialog({
   };
   const end = () => {
     setOpen(false);
+    onStopListening?.();
     setTyped(null);
     if (draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   };
@@ -162,7 +169,7 @@ export function SpeakerNamingDialog({
       onOpenChange={(next) => {
         // Esc, Stäng or a click beside only close: what was typed is there when it opens again.
         setOpen(next);
-        if (!next) return;
+        if (!next) return onStopListening?.();
         setProblems({});
         setRefusal(null);
       }}
@@ -188,6 +195,7 @@ export function SpeakerNamingDialog({
             const count = passages(row.label);
             const said = quote(row.label);
             const unavailable = listenUnavailableReason?.(row.label) ?? null;
+            const playing = listening === row.label;
             const proposal = proposals.find((p) => p.label === row.label);
             // The flow's own guess, still in the field, said to be one when it was not sure.
             const unsure = Boolean(proposal?.name && row.name?.trim() === proposal.name.trim() && proposal.confidence !== "high");
@@ -208,14 +216,15 @@ export function SpeakerNamingDialog({
                         size="sm"
                         className="-ml-2 self-start"
                         disabled={disabled || Boolean(unavailable)}
-                        title={unavailable ?? undefined}
-                        aria-label={`Lyssna på exempel: ${title(row.label)}`}
-                        onClick={() => onListen(row.label)}
+                        aria-label={`${playing ? "Stoppa exempel" : "Lyssna på exempel"}: ${title(row.label)}`}
+                        onClick={() => (playing ? onStopListening?.() : onListen(row.label))}
                       >
-                        <Headphones data-icon="inline-start" aria-hidden />
-                        Lyssna på exempel
+                        {playing ? <Pause data-icon="inline-start" aria-hidden /> : <Headphones data-icon="inline-start" aria-hidden />}
+                        {playing ? "Stoppa exempel" : "Lyssna på exempel"}
                       </Button>
                     )}
+                    {/* Said on the row, not only in a title a touch or keyboard user never sees. */}
+                    {onListen && unavailable && <p className="text-[13px] text-ink-mute">{unavailable}</p>}
                   </div>
                 </div>
                 <div className="flex flex-col gap-1 sm:w-64 sm:shrink-0">

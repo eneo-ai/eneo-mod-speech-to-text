@@ -2,11 +2,9 @@
 
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
 import {
-  forwardRef,
   useCallback,
   useEffect,
   useId,
-  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -58,13 +56,6 @@ import {
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
-
-export interface TranscriptPlayerHandle {
-  /** Flyttar spelhuvudet; med `autoplay` startar även uppspelningen. */
-  seekTo(fileIndex: number, time: number, autoplay?: boolean): void;
-  /** Plays from `start` and stops at `end` (seconds in the part), as a sample. */
-  playRange(fileIndex: number, start: number, end: number): void;
-}
 
 export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 
@@ -205,9 +196,28 @@ function sourceSpan(
   return from === 0 && to === length && !shared ? null : { from, to };
 }
 
-export const TranscriptPlayer = forwardRef<
-  TranscriptPlayerHandle,
+export function TranscriptPlayer(
   {
+    segments,
+    speakerReviews = [],
+    reviewEnabled = SPEAKER_REVIEW_ENABLED,
+    correctionProblem,
+    fileCount,
+    audioSrcFor,
+    speakerNames,
+    textFallback,
+    audioPending = false,
+    className,
+    corrections,
+    editable = false,
+    onCorrectionsChange,
+    speakerOptions,
+    saveState = "idle",
+    confirmedWords = EMPTY_SET,
+    onToggleConfirmed,
+    downloadable = true,
+    playback: shared,
+  }: {
     /** Råa segment; korrigeringar läggs på vid visning. */
     segments: readonly TranscriptSegment[];
     speakerReviews?: readonly FileSpeakerReview[];
@@ -241,30 +251,7 @@ export const TranscriptPlayer = forwardRef<
      * (a pause control beside the document); otherwise the transcript owns one.
      */
     playback?: Playback;
-  }
->(function TranscriptPlayer(
-  {
-    segments,
-    speakerReviews = [],
-    reviewEnabled = SPEAKER_REVIEW_ENABLED,
-    correctionProblem,
-    fileCount,
-    audioSrcFor,
-    speakerNames,
-    textFallback,
-    audioPending = false,
-    className,
-    corrections,
-    editable = false,
-    onCorrectionsChange,
-    speakerOptions,
-    saveState = "idle",
-    confirmedWords = EMPTY_SET,
-    onToggleConfirmed,
-    downloadable = true,
-    playback: shared,
   },
-  ref,
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
@@ -367,12 +354,6 @@ export const TranscriptPlayer = forwardRef<
       playback.seek(fileIndex, time * 1_000, autoplay);
     },
     [hasAudio, playback],
-  );
-
-  useImperativeHandle(
-    ref,
-    () => ({ seekTo, playRange: (fileIndex, start, end) => playback.playRange(fileIndex, start * 1_000, end * 1_000) }),
-    [seekTo, playback],
   );
 
   function cycleRate() {
@@ -841,7 +822,7 @@ export const TranscriptPlayer = forwardRef<
       </div>
     </section>
   );
-});
+}
 
 function TurnBlock({
   turn,

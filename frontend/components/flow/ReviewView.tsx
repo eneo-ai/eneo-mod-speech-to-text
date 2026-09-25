@@ -11,11 +11,13 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useAuthenticatedUser } from "@/components/AuthGate";
+import { usePlayback } from "@/components/flow/AudioPlayer";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, ReadingMain } from "@/components/frame";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
@@ -51,11 +53,7 @@ import {
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
 import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
-import {
-  SpeakerMark,
-  TranscriptPlayer,
-  type TranscriptPlayerHandle,
-} from "@/components/TranscriptPlayer";
+import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
@@ -169,7 +167,6 @@ export function ReviewView({
 
   // Transkriberingsstegets segment, ordtider, ljudfiler och sparade
   // korrigeringar för spelaren.
-  const playerRef = useRef<TranscriptPlayerHandle | null>(null);
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
   const [transcript] = useTranscriptContext({
@@ -184,6 +181,21 @@ export function ReviewView({
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
   );
+
+  // One playback for the page: the transcript's player, and the speakers' samples in "Namnge talarna".
+  const sources = useMemo(
+    () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, runId, id), durationMs: null })),
+    [flowId, runId, transcript.fileIds],
+  );
+  const playback = usePlayback(sources);
+  const sounds = useSyncExternalStore(
+    playback.subscribe,
+    () => playback.getSnapshot().playing || playback.getSnapshot().starting,
+    () => false,
+  );
+  // The speaker whose sample was asked for; it plays while the playback does.
+  const [sample, setSample] = useState<string | null>(null);
+  const listening = sounds ? sample : null;
 
   const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
 
@@ -219,7 +231,14 @@ export function ReviewView({
     const target = firstSegmentForSpeaker(shownSegments, label);
     if (!target) return;
     const end = Math.min(shownSegments[target.segmentIndex].end, target.time + 8);
-    playerRef.current?.playRange(target.fileIndex, target.time, end);
+    setSample(label);
+    playback.playRange(target.fileIndex, target.time * 1_000, end * 1_000);
+  }
+
+  // Stoppa exempel, or the dialog closed: a sample that plays stops; the transcript's own playback plays on.
+  function stopListening() {
+    if (listening) playback.pause();
+    setSample(null);
   }
 
   // The speakers to name: the inventory, and any speaker split off in this review's corrections.
@@ -428,6 +447,8 @@ export function ReviewView({
                     }
                     disabled={busy}
                     onListen={hasAudio ? listenTo : undefined}
+                    listening={listening}
+                    onStopListening={stopListening}
                     listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
                     onSave={saveNames}
                     onSaveAndContinue={saveAndApprove}
@@ -452,7 +473,6 @@ export function ReviewView({
             {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
             <h2 className="sr-only">Transkript</h2>
             <TranscriptPlayer
-              ref={playerRef}
               className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
               segments={transcript.segments}
               speakerReviews={transcript.speakerReviews}
@@ -464,6 +484,7 @@ export function ReviewView({
               speakerNames={speakerNames}
               textFallback={initialText}
               audioPending={transcript.pending}
+              playback={playback}
               corrections={corrections}
               editable={canCorrect}
               onCorrectionsChange={onCorrectionsChange}
