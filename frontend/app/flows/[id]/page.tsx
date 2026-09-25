@@ -45,13 +45,21 @@ import {
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
-import type { SubmitRequest } from "@/lib/flow-session";
+import { makesText, type SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore, type RunRequest } from "@/lib/recording-store";
 import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
-import { finishedRun, runOutcome, runStage, runSteps, streamedRun, type StreamedRun } from "@/lib/run-progress";
+import {
+  finishedRun,
+  ofContractVersion,
+  runOutcome,
+  runStage,
+  runSteps,
+  streamedRun,
+  type StreamedRun,
+} from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
@@ -643,6 +651,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         stage={runStage(steps, run.run.status, startedWith.runId === run.run.id ? startedWith.streamed : null)}
         startedAt={run.run.created_at}
         error={runError}
+        // Today's contract speaks only for a run of its own version.
+        makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output?.output_type)}
         onCancel={() => onCancelRun(run.run.id)}
       />,
       { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },

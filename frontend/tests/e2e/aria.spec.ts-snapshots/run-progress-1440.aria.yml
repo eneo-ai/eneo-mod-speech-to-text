@@ -6,5 +6,5 @@
     - list:
       - listitem: Transkribera Klar
       - listitem: Skriv rapporten Pågår
-  - paragraph: Du kan stänga sidan. Körningen fortsätter och resultatet finns kvar här.
+  - paragraph: Dokumentet blir klart även om du stänger sidan. Du hittar det här sedan.
   - button "Avbryt körningen"

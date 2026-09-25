@@ -282,10 +282,17 @@ export function readSpeakerCount(text: string | null): number | undefined | "inv
   return /^\d+$/.test(trimmed) && count >= 1 && count <= MAX_SPEAKER_COUNT ? count : "invalid";
 }
 
-/** The action that makes the run, by what the flow ends in: a PDF or Word file is a document, text or data is text. */
+/**
+ * Whether the flow ends in text rather than a file: text or JSON, which the result view shows as text. A PDF or Word
+ * file is a document, and so is an unknown type (an Eneo that does not say, a flow without steps), as it always was.
+ */
+export function makesText(outputType: string | null | undefined): boolean {
+  return outputType === "text" || outputType === "json";
+}
+
+/** The action that makes the run, by what the flow ends in. */
 export function createActionLabel(outputType: string | null | undefined): string {
-  // Unknown (an Eneo that does not say, a flow without steps) keeps the label it always had.
-  return outputType === "text" || outputType === "json" ? "Skapa text" : "Skapa dokument";
+  return makesText(outputType) ? "Skapa text" : "Skapa dokument";
 }
 
 export function primaryActionLabel(mode: InputMode, hasFile: boolean, outputType?: string | null): string {

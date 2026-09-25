@@ -29,6 +29,7 @@ export function RunProgress({
   stage,
   startedAt,
   error = null,
+  makesText = false,
   onCancel,
 }: {
   flowName: string;
@@ -37,6 +38,8 @@ export function RunProgress({
   /** When Eneo created the run; unknown until its first status read. */
   startedAt?: string | null;
   error?: string | null;
+  /** The flow ends in text, not a file (lib/flow-session makesText). */
+  makesText?: boolean;
   onCancel: () => Promise<void>;
 }) {
   const heading = usePhaseHeading(`Skapar dokument · ${flowName}`);
@@ -81,8 +84,11 @@ export function RunProgress({
           <StepList steps={steps} />
         </section>
       )}
+      {/* Reassurance for a page closed by mistake, not a request to close it. */}
       <p className="text-sm text-muted-foreground">
-        Du kan stänga sidan. Körningen fortsätter och resultatet finns kvar här.
+        {makesText
+          ? "Texten blir klar även om du stänger sidan. Du hittar den här sedan."
+          : "Dokumentet blir klart även om du stänger sidan. Du hittar det här sedan."}
       </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">

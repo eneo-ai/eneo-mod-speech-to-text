@@ -39,10 +39,21 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
-  assert.match(words, /Du kan stänga sidan\. Körningen fortsätter och resultatet finns kvar här\./);
+  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det här sedan\./);
+  assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
   assert.match(html, /<ol[^>]*>(\s*<li)/);
+});
+
+test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
+  const words = text(
+    renderToStaticMarkup(
+      createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
+    ),
+  );
+  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den här sedan\./);
+  assert.doesNotMatch(words, /Dokumentet blir klart/);
 });
 
 test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {
