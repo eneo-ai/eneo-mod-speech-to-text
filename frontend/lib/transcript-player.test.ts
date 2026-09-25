@@ -167,7 +167,7 @@ test("the review view names no speaker for an unlabelled transcript either", () 
   assert.doesNotMatch(html, /Okänd talare/);
 });
 
-test("no instruction lines: the pencil names its passage and is fully there on a touch screen", () => {
+test("no instruction lines: the pencil names its passage and is fully there for mouse and touch alike", () => {
   const html = renderToStaticMarkup(
     createElement(TranscriptPlayer, {
       segments,
@@ -185,7 +185,8 @@ test("no instruction lines: the pencil names its passage and is fully there on a
   assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
   const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
   assert.deepEqual(pencils.map(([, time]) => time), ["0:00", "0:02", "0:00"]);
-  for (const [, , classes] of pencils) assert.match(classes, /coarse:opacity-100/);
+  // Never hidden until hovered: a mouse user would not learn the action exists.
+  for (const [, , classes] of pencils) assert.doesNotMatch(classes, /opacity-0|(^|\s)w-0(\s|$)|group-hover/);
   // Each passage is a list item named by who speaks and when.
   assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
 });

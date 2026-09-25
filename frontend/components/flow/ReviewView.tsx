@@ -329,7 +329,7 @@ export function ReviewView({
         placeholder="Skäl …"
         aria-labelledby={`${fieldId}-avvisa`}
         aria-describedby={`${fieldId}-avvisa-hjalp`}
-        className={cn(REVIEW_FIELD, "text-[13px] p-3 mb-3")}
+        className={cn(REVIEW_FIELD, "text-[13px] coarse:text-base p-3 mb-3")}
       />
       <div className="flex items-center justify-end gap-2">
         <Button
@@ -479,12 +479,17 @@ export function ReviewView({
               {runError ?? localError}
             </p>
           )}
-          {saveState === "error" && <div className="mt-2 flex gap-4 text-[13px]">
-            <button type="button" className="underline" onClick={retryCorrections}>Försök spara igen</button>
-            <button type="button" className="underline" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</button>
-          </div>}
+          {saveState === "error" && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>Försök spara igen</Button>
+              <Button type="button" variant="outline" size="sm" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</Button>
+            </div>
+          )}
           <div className="mt-4">{rejectSection}</div>
-          {actions}
+          {/* Below laptop width the transcript is the page, so the decision stays in reach at the screen's bottom. */}
+          <div className="sticky bottom-0 z-10 -mx-4 mt-auto border-t border-border bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0">
+            {actions}
+          </div>
         </main>
       </>
     );
@@ -520,7 +525,7 @@ export function ReviewView({
               onChange={(e) => editText(e.target.value)}
               rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
               aria-labelledby={`${fieldId}-innehall`}
-              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] leading-relaxed p-3 md:p-4 font-sans")}
+              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] coarse:text-base leading-relaxed p-3 md:p-4 font-sans")}
             />
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">

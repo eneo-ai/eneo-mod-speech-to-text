@@ -937,7 +937,7 @@ function TurnBlock({
       data-active={isActive}
       aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
       className={cn(
-        "group/turn flex gap-3 rounded-lg px-2 py-2.5 transition-colors",
+        "flex gap-3 rounded-lg px-2 py-2.5 transition-colors",
         isActive && "bg-primary-soft/60",
       )}
     >
@@ -1110,20 +1110,14 @@ function TurnBlock({
             );
           })}
           {canEdit && !editingHere && (
-            // After the passage, never mid-sentence: a mouse sees it on the passage it points at or has in
-            // focus, a touch screen on every passage.
+            // After the passage, never mid-sentence, and on every passage for mouse and touch alike: an action
+            // that appears only under the pointer is one a mouse user never learns exists.
             <button
               type="button"
               aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
               aria-expanded={several ? choosing : undefined}
               onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
-              // At rest with a mouse it takes no room, so a passage never gains an empty line.
-              className={cn(
-                "-my-1 inline-flex min-h-6 items-center gap-1 overflow-hidden rounded align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:ml-0.5 coarse:min-h-11 coarse:w-auto coarse:px-1.5 coarse:text-ink-soft coarse:opacity-100",
-                choosing
-                  ? "ml-0.5 w-auto px-1.5 opacity-100"
-                  : "w-0 px-0 opacity-0 focus-visible:ml-0.5 focus-visible:w-auto focus-visible:px-1.5 focus-visible:opacity-100 group-hover/turn:ml-0.5 group-hover/turn:w-auto group-hover/turn:px-1.5 group-hover/turn:opacity-100",
-              )}
+              className="-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft"
             >
               {choosing ? <Check aria-hidden className="size-3.5" strokeWidth={2} /> : <Pencil aria-hidden className="size-3.5" strokeWidth={2} />}
               {choosing ? "Klar" : "Rätta"}
