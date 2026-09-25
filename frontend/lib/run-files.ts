@@ -85,18 +85,22 @@ export function transcriptFileName(flowName: string, createdAt?: string): string
 }
 
 /**
- * What a generated document says, as Markdown: the text its own step wrote,
- * which Eneo lays out in the file (a model's answer, or text a step renders
- * verbatim), never what the step read. Null where that text is not the
- * document: laid out from structured fields, only the start of a longer text,
- * a filled template's list of its fields, or no step named.
+ * What a generated document says, as Markdown: the text its own step wrote, only where Eneo lays that text out in
+ * the file as prose (its runtime/output_formats: `render_document_output` for a PDF or Word step), never what the
+ * step read. That is a model's answer (its parameters name the model) or the text a compose_text or render_verbatim
+ * step lays out as it is; whole (no `text_overflow`), from no output contract (a `structured` value is laid out from
+ * its fields) and not already a PDF (pdf.py keeps a text that starts with %PDF- as the file itself). Anything else,
+ * a filled template or a step Eneo does not say how it made, is null.
  */
 export function fileText(file: ResultFileView, steps: readonly FlowRunStep[]): string | null {
   const step = file.stepId ? steps.find((s) => s.step_id === file.stepId) : undefined;
   const output = step?.output_payload_json as { text?: unknown; structured?: unknown; text_overflow?: unknown } | null | undefined;
-  const mode = (step?.model_parameters_json as { mode?: unknown } | null | undefined)?.mode;
-  if (!output || typeof output.text !== "string" || "structured" in output || output.text_overflow || mode === "template_fill") {
-    return null;
-  }
-  return output.text.trim() ? output.text : null;
+  const parameters = step?.model_parameters_json as { mode?: unknown; model_id?: unknown } | null | undefined;
+  const laidOut =
+    parameters?.mode === "compose_text" ||
+    parameters?.mode === "render_verbatim" ||
+    (parameters?.mode === undefined && parameters != null && "model_id" in parameters);
+  if (!laidOut || !output || typeof output.text !== "string" || "structured" in output || output.text_overflow) return null;
+  const pdfBytes = file.kind === "pdf" && output.text.trimStart().startsWith("%PDF-");
+  return output.text.trim() && !pdfBytes ? output.text : null;
 }

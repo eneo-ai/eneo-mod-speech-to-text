@@ -404,7 +404,7 @@ test("a finished run whose document is only its file previews the text its own s
       steps: [],
       stepResults: [
         { id: "result-1", step_id: "step-1", status: "completed", output_payload_json: { text: "Välkomna till mötet." } },
-        { id: "result-2", step_id: "step-2", status: "completed", output_payload_json: { text } },
+        { id: "result-2", step_id: "step-2", status: "completed", model_parameters_json: { model_id: "model-1" }, output_payload_json: { text } },
       ] as never,
       files: [pdf],
       showTranscript: false,

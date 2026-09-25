@@ -157,7 +157,9 @@ def only_pdf(text):
     """A document that is only its PDF (Eneo's artifact result), made from the report step's text."""
     pdf = dict(FILES[0], step_id="s2")
     return {"status": "completed", "result": {"kind": "artifact", "files": [pdf]}, "result_files": [pdf],
-            "steps": [TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": text})],
+            # A model wrote the report: its parameters name the model, as Eneo records them.
+            "steps": [TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": text},
+                                            model_parameters_json={"model_id": "model-1", "model_name": "Modell"})],
             "step_status": ["completed", "completed"]}
 
 
