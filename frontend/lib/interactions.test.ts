@@ -303,6 +303,38 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   await view.unmount();
 });
 
+test("setup in place of a run's view focuses its heading, also for a flow that takes one kind of file; a first load does not", async () => {
+  const { createElement } = await import("react");
+  const { FlowInput } = await import("../components/flow/FlowInput");
+  const { useFlowSession } = await import("../components/flow/useFlowSession");
+  // One way to give the input (a document to upload), so there is no "Hur vill du ge ljudet?" to focus.
+  const contract = { ...IBIC_CONTRACT, steps_requiring_input: [{ step_id: "step-doc", input_format: "document" }] } as unknown as import("./api").RunContract;
+  function Setup({ afterRun }: { afterRun: boolean }) {
+    const input = useFlowSession({ flowId: "flow-6", flowName: IBIC.name, ownerId: "user-1", contract });
+    return createElement(FlowInput, {
+      published: IBIC,
+      contract,
+      input,
+      ownerId: "user-1",
+      notice: null,
+      earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
+      onOpenRun: () => undefined,
+      onMoreRuns: () => undefined,
+      unsentRecordings: [],
+      onLeave: () => undefined,
+      afterRun,
+    });
+  }
+  for (const afterRun of [false, true]) {
+    const view = await mount(await signedIn(createElement(Setup, { afterRun }), []));
+    const focused = document.activeElement;
+    const where = `${focused?.tagName} "${focused?.textContent?.slice(0, 40)}"`;
+    if (afterRun) assert.ok(focused?.matches("h2[data-phase-heading]") && focused.textContent === "Ladda upp", `after a run: focus on ${where}`);
+    else assert.ok(focused === document.body, `first load: focus on ${where}`);
+    await view.unmount();
+  }
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");

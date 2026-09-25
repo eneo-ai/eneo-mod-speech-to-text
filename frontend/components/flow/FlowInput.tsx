@@ -336,7 +336,14 @@ function SetupWorkspace({
         onContinue={modes.includes("spela-in") ? (recording) => void session.continueCutOff(recording) : undefined}
       />
 
-      {modes.length > 1 && <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />}
+      {modes.length > 1 ? (
+        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
+      ) : (
+        // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
+        <h2 data-phase-heading tabIndex={-1} className="sr-only">
+          {modes[0] ? MODE_TEXT[modes[0]].name : "Skapa dokument"}
+        </h2>
+      )}
 
       {speakerOption?.selectable && snapshot.speakerLabels !== null ? (
         <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
