@@ -625,7 +625,8 @@ export class FlowSession {
         : phase === "setup" && mode === "ladda-upp" && this.file
           ? { kind: "file", ...this.file }
           : null;
-    if (!input && this.modes.length > 0) return false;
+    // Without audio or a file only a flow that marks its file optional runs (Eneo reads required: false).
+    if (!input && this.modes.length > 0 && this.inputStep()?.required !== false) return false;
     const fields = this.contract?.form_fields ?? [];
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.

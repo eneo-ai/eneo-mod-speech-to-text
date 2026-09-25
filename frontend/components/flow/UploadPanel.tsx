@@ -17,12 +17,15 @@ export function UploadPanel({
   step,
   file,
   audio,
+  optional = false,
   inputRef,
   onChoose,
 }: {
   step: RunContractStepInput | null;
   file: ChosenFile | null;
   audio: boolean;
+  /** The flow runs without a file: the primary action sends, so choosing gets its own keyboard stop. */
+  optional?: boolean;
   inputRef: Ref<HTMLInputElement>;
   onChoose: (file: File) => void;
 }) {
@@ -116,6 +119,14 @@ export function UploadPanel({
         </span>
         {takes && <span className="block text-[14px] text-ink-soft">Flödet tar emot {takes}.</span>}
       </label>
+      {optional && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-[15px] text-ink-soft">{audio ? "Ljudfilen" : "Filen"} är valfri.</p>
+          <Button type="button" variant="outline" onClick={() => document.getElementById(inputId)?.click()}>
+            {audio ? "Välj ljudfil" : "Välj fil"}
+          </Button>
+        </div>
+      )}
     </>
   );
 }

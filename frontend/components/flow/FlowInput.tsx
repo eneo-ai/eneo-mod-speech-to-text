@@ -300,14 +300,20 @@ function SetupWorkspace({
   const fileInput = useRef<HTMLInputElement>(null);
   const step = selectRuntimeInputStep(contract);
   const audio = step?.input_format?.toLowerCase() === "audio";
+  // The flow runs without a file too: Skapa dokument sends the details alone, and choosing a file stays offered.
+  const optionalFile = step?.required === false;
+  const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
-  const Icon = mode === "ladda-upp" && file ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const label =
-    !mode ? "Skapa dokument" : !audio && !file ? "Välj fil" : primaryActionLabel(mode, file != null);
+    !mode || (mode === "ladda-upp" && optionalFile)
+      ? "Skapa dokument"
+      : !audio && !file
+        ? "Välj fil"
+        : primaryActionLabel(mode, file != null);
 
   function primary() {
     if (recordingMode) void session.start();
-    else if (mode === "ladda-upp" && !file) fileInput.current?.click();
+    else if (mode === "ladda-upp" && !file && !optionalFile) fileInput.current?.click();
     else void createDocument(session);
   }
 
@@ -357,6 +363,7 @@ function SetupWorkspace({
           step={step}
           file={file}
           audio={audio}
+          optional={optionalFile}
           inputRef={fileInput}
           onChoose={(chosen) => session.chooseFile(chosen)}
         />

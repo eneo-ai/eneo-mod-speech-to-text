@@ -415,6 +415,23 @@ test("Skapa dokument sends the recording with the details and the speaker choice
   assert.deepEqual(after.details.deltagare, ["Anna Berg", "Erik Lund"], "the participants stay for the next recording");
 });
 
+test("a file the flow marks optional may be left out: Skapa dokument sends the details alone; a required one still waits", async () => {
+  const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const step = audioContract().steps_requiring_input![0];
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, required: false }] }));
+  session.selectMode("ladda-upp");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].input, null);
+
+  session.setContract(audioContract());
+  session.selectMode("ladda-upp");
+  assert.equal(await session.createDocument(), false);
+  assert.equal(sent.length, 1, "a required file is never skipped");
+});
+
 test("a chosen file becomes the document's input in Ladda upp; an unsent recording from the list goes the same way", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const { session, store } = await setup();
