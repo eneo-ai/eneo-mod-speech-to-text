@@ -1050,6 +1050,11 @@ test("a new run keeps the failed run's speaker choices where the flow still offe
     [undefined, 3],
     "labels the flow requires are not the run's to choose; the bound is kept",
   );
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering({ selectable: false, required: true, default: true }, { form_field: null }))),
+    [undefined, 3],
+    "a required-labels run reads true, yet sends none (Eneo refuses a choice the flow does not offer)",
+  );
   assert.deepEqual(said(body({ speaker_labels: null, max_speakers: null }, offering(selectable, { form_field: null }))), [undefined, undefined], "the defaults: nothing to say");
 });
 
