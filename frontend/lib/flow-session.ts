@@ -214,6 +214,8 @@ export interface SessionSnapshot {
   speakerLabels: boolean | null;
   /** "Antal talare" as typed; null when the setup does not ask (labels off, or the flow's form asks, or none can). */
   speakerCount: string | null;
+  /** The count shown, this field or the flow's own, is the number of names: said under it until the person edits it. */
+  speakerCountFromNames: boolean;
   /** The recording being captured, or the stopped one that is ready. */
   recording: StoredRecording | null;
   /** The file chosen in Ladda upp. */
@@ -269,6 +271,15 @@ export function storageLine(persistent: boolean | null): string {
 /** Whether the setup asks "Antal talare": the run labels speakers, and the flow's own form asks no count. */
 function asksSpeakerCount(transcription: FlowTranscriptionContract | null | undefined, choice: boolean | null): boolean {
   return transcription?.max_speakers?.form_field === null && labelsSpeakers(transcription.speaker_labels, choice);
+}
+
+/**
+ * The field that holds the people at the meeting: the one list field (Eneo names the speaker-mapping step's
+ * participants field only inside the step). With none or several, which one holds the speakers is not guessed.
+ */
+function participantsField(fields: readonly FormField[]): string | null {
+  const lists = fields.filter((field) => field.type === "list");
+  return lists.length === 1 ? lists[0].name : null;
 }
 
 // ponytail: a sensible ceiling for a meeting, not Eneo's (which takes any count); raise it if a larger one is asked for.
@@ -480,6 +491,9 @@ export class FlowSession {
   private details: Record<string, DetailValue> = {};
   private explicitSpeakerLabels: boolean | null = null;
   private speakerCountText = "";
+  // The count, this field or the flow's own, is the number of names until the person edits it; a visible prefill
+  // only, since a bound from a list that misses someone would merge voices.
+  private countFollowsNames = true;
   private starting = false;
   private ready: StoredRecording | null = null;
   // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
@@ -549,6 +563,9 @@ export class FlowSession {
       null;
     // No contract yet (still loading): nothing to fit, and a restored draft waits for it.
     if (contract) this.details = fittingDetails(contract.form_fields ?? [], this.details);
+    // A count already there that the names did not give (the flow's default, a restored draft) is the person's.
+    const own = this.ownCountField();
+    if (own && filledValue(this.details[own]) && this.details[own] !== this.namesCount()) this.countFollowsNames = false;
     this.emit();
   }
 
@@ -568,13 +585,16 @@ export class FlowSession {
 
   setDetail(name: string, value: DetailValue): void {
     this.details = { ...this.details, [name]: value };
+    if (name === this.ownCountField()) this.countFollowsNames = false;
+    else if (this.countFollowsNames && name === participantsField(this.contract?.form_fields ?? [])) this.followNames();
     writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
-    if (filledValue(value)) this.invalid = this.invalid.filter((field) => field !== name);
+    this.invalid = this.invalid.filter((field) => !filledValue(this.details[field]));
     this.emit();
   }
 
   setSpeakerCount(text: string): void {
     this.speakerCountText = text;
+    this.countFollowsNames = false;
     this.emit();
   }
 
@@ -830,6 +850,26 @@ export class FlowSession {
     return readSpeakerCount(this.snapshot.speakerCount) === "invalid";
   }
 
+  /** The flow's own field that asks for the speaker count, when it has one. */
+  private ownCountField(): string | null {
+    return this.contract?.transcription?.max_speakers?.form_field ?? null;
+  }
+
+  /** The count the names give: their number; nothing without names, or past what this module's field takes. */
+  private namesCount(): string {
+    const field = participantsField(this.contract?.form_fields ?? []);
+    const names = field ? this.details[field] : undefined;
+    const count = Array.isArray(names) ? names.length : 0;
+    return count > 0 && (this.ownCountField() !== null || count <= MAX_SPEAKER_COUNT) ? String(count) : "";
+  }
+
+  /** The count field shown, the flow's own or this module's, takes the number of names. */
+  private followNames() {
+    const own = this.ownCountField();
+    if (own) this.details = { ...this.details, [own]: this.namesCount() };
+    else this.speakerCountText = this.namesCount();
+  }
+
   private draftName() {
     return `flow:${this.options.flowId}`;
   }
@@ -989,6 +1029,8 @@ export class FlowSession {
       capture.status === "recording" || capture.status === "paused" || capture.status === "interrupted";
     const transcription = this.contract?.transcription;
     const speakerLabels = speakerLabelsFor(transcription?.speaker_labels, this.explicitSpeakerLabels);
+    const speakerCount = asksSpeakerCount(transcription, speakerLabels) ? this.speakerCountText : null;
+    const own = this.ownCountField();
     return {
       modes: this.modes,
       mode: this.mode,
@@ -1002,7 +1044,10 @@ export class FlowSession {
       details: this.details,
       invalid: this.invalid,
       speakerLabels,
-      speakerCount: asksSpeakerCount(transcription, speakerLabels) ? this.speakerCountText : null,
+      speakerCount,
+      speakerCountFromNames:
+        this.countFollowsNames &&
+        (own ? filledValue(this.details[own]) : speakerCount !== null && speakerCount !== ""),
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
       // The latest pick while its length is read: the file shown is not yet the last one that fitted.

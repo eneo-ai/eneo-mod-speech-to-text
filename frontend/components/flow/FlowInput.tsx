@@ -9,7 +9,13 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { FlowAside } from "@/components/flow/FlowAside";
-import { createDocument, DetailsForm, SPEAKER_COUNT_ID, SpeakerCountField } from "@/components/flow/DetailsForm";
+import {
+  COUNT_FROM_NAMES,
+  createDocument,
+  DetailsForm,
+  SPEAKER_COUNT_ID,
+  SpeakerCountField,
+} from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FLOW_GRID, FRAME } from "@/components/frame";
@@ -119,6 +125,8 @@ export function FlowInput({
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
   if (openDetails !== detailsOpen) setDetailsOpen(openDetails);
   const fields = contract.form_fields ?? [];
+  // The flow's own count field, when the names filled it in: said under it, as under this module's field.
+  const ownCountField = contract.transcription?.max_speakers?.form_field;
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -141,6 +149,7 @@ export function FlowInput({
       onChange={(name, value) => session.setDetail(name, value)}
       suggestions={suggestions}
       onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
+      notes={ownCountField && snapshot.speakerCountFromNames ? { [ownCountField]: COUNT_FROM_NAMES } : undefined}
     />
   );
 
@@ -405,7 +414,11 @@ function SetupWorkspace({
         <div className="flex flex-col gap-4">
           {speakerChoice}
           {snapshot.speakerCount !== null && (
-            <SpeakerCountField value={snapshot.speakerCount} onChange={(text) => session.setSpeakerCount(text)} />
+            <SpeakerCountField
+              value={snapshot.speakerCount}
+              fromNames={snapshot.speakerCountFromNames}
+              onChange={(text) => session.setSpeakerCount(text)}
+            />
           )}
         </div>
       )}

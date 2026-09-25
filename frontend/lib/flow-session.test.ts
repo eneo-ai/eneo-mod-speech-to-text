@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, type RunContract } from "./api";
+import { ApiError, type FormField, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
@@ -380,6 +380,73 @@ test("a count goes with the run as maxSpeakers; empty or not asked sends none, a
   session.setSpeakerLabels(false);
   assert.equal(await session.createDocument(), true);
   assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
+});
+
+const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
+
+test("Antal talare follows the number of names until the person edits it, and the run gets what it shows", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setContract({ ...countContract(), form_fields: [PEOPLE] });
+  const count = () => [session.getSnapshot().speakerCount, session.getSnapshot().speakerCountFromNames];
+  assert.deepEqual(count(), ["", false], "no names: empty, no hint");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.deepEqual(count(), ["2", true], "the list field, whatever its name");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["3", true]);
+  session.setDetail("motesdeltagare", []);
+  assert.deepEqual(count(), ["", false], "no names again: empty");
+  session.setDetail("motesdeltagare", Array.from({ length: 21 }, (_, i) => `Person ${i}`));
+  assert.deepEqual(count(), ["", false], "never a prefill the field would refuse");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  session.setSpeakerCount("4");
+  assert.deepEqual(count(), ["4", false], "edited: the person's, and the hint goes");
+  session.setDetail("motesdeltagare", ["Gunnar"]);
+  assert.deepEqual(count(), ["4", false], "the names no longer change it");
+  session.setSpeakerCount("");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(session.getSnapshot().speakerCount, "", "cleared stays cleared");
+
+  const other = await setup();
+  other.session.setHandlers({ submit: async (request) => void sent.push(request) });
+  other.session.setContract({ ...countContract(), form_fields: [PEOPLE] });
+  other.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  other.session.selectMode("ladda-upp");
+  other.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await other.session.createDocument(), true);
+  assert.equal(sent[0].maxSpeakers, 2, "the prefill is sent as max_speakers");
+
+  const twoLists = await setup();
+  twoLists.session.setContract({ ...countContract(), form_fields: [PEOPLE, { ...PEOPLE, name: "ordforande" }] });
+  twoLists.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(twoLists.session.getSnapshot().speakerCount, "", "two lists: which holds the speakers is not guessed");
+});
+
+test("the flow's own count field is prefilled from the names in its place, and sent as that field", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
+  const contract = countContract({ max_speakers: { form_field: "antal" } });
+  session.setContract({ ...contract, form_fields: [PEOPLE, antal] });
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(session.getSnapshot().details.antal, "2");
+  assert.equal(session.getSnapshot().speakerCount, null, "no second count field");
+  assert.equal(session.getSnapshot().speakerCountFromNames, true);
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[0].payload.antal, "2", "sent as the flow's own field");
+  assert.equal(sent[0].maxSpeakers, undefined);
+
+  session.setDetail("antal", "");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual([session.getSnapshot().details.antal, session.getSnapshot().speakerCountFromNames], ["", false]);
+
+  const preset = await setup();
+  preset.session.setContract({ ...contract, form_fields: [PEOPLE, { ...antal, default: 5 }] });
+  preset.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(preset.session.getSnapshot().details.antal, "5", "a count already there (the flow's default, a restored draft) is kept");
 });
 
 test("details start from the flow's defaults, and a refreshed contract keeps the compatible ones", async () => {

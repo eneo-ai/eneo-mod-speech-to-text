@@ -119,6 +119,23 @@ test("Antal talare is a light number field with its help below, and a count that
   assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</);
 });
 
+test("a count from the names says so under its field, and names the field's description with it", () => {
+  const hint = "Från antalet deltagare. Ändra om fler talar.";
+  const own = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
+  assert.match(own, /id="antal-talare-namn"[^>]*>Från antalet deltagare\. Ändra om fler talar\.</);
+  assert.match(own, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-namn"/);
+  assert.ok(!renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop })).includes(hint));
+
+  const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
+  const form = (notes?: Record<string, string>) =>
+    renderToStaticMarkup(
+      createElement(DetailsForm, { fields: [antal], details: { antal: "2" }, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop, notes }),
+    );
+  assert.match(form({ antal: hint }), /<input[^>]*id="detalj-antal"[^>]*aria-describedby="detalj-antal-not"/);
+  assert.match(form({ antal: hint }), /id="detalj-antal-not"[^>]*>Från antalet deltagare\. Ändra om fler talar\.</);
+  assert.ok(!form().includes(hint));
+});
+
 test("the information row is the flow's classification as Eneo sends it, and there is none without one", () => {
   const row = (classification: FlowSecurityClassification | null) =>
     renderToStaticMarkup(createElement(ClassificationNote, { classification }));

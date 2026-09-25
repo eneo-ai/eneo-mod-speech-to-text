@@ -40,6 +40,7 @@ export function DetailsForm({
   onChange,
   suggestions,
   onNamesAdded,
+  notes,
 }: {
   fields: FormField[];
   details: Record<string, DetailValue>;
@@ -48,6 +49,8 @@ export function DetailsForm({
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
   onNamesAdded: (names: string[]) => void;
+  /** A line under a field for now, by its name: where its value came from. */
+  notes?: Record<string, string>;
 }) {
   if (fields.length === 0) return null;
   return (
@@ -57,7 +60,9 @@ export function DetailsForm({
         .map((field) => {
           const id = detailFieldId(field.name);
           const helpId = `${id}-hjalp`;
+          const noteId = `${id}-not`;
           const errorId = `${id}-fel`;
+          const note = notes?.[field.name];
           const isInvalid = invalid.includes(field.name);
           const value = details[field.name];
           const text = typeof value === "string" ? value : "";
@@ -65,7 +70,8 @@ export function DetailsForm({
             field.type === "list"
               ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
-          const describedBy = [help ? helpId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
+          const describedBy =
+            [help ? helpId : null, note ? noteId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
           // Said before sending too, not only once the send finds it missing.
           const required = field.required || undefined;
           return (
@@ -144,6 +150,11 @@ export function DetailsForm({
                   {help}
                 </FieldDescription>
               )}
+              {note && (
+                <FieldDescription id={noteId} className="text-[13px]">
+                  {note}
+                </FieldDescription>
+              )}
               {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa dokumentet.</FieldError>}
             </Field>
           );
@@ -155,9 +166,22 @@ export function DetailsForm({
 /** The id "Antal talare" carries, so a refused start can move focus to it. */
 export const SPEAKER_COUNT_ID = "antal-talare";
 
+/** Under a speaker count the names filled in, until the person edits it. */
+export const COUNT_FROM_NAMES = "Från antalet deltagare. Ändra om fler talar.";
+
 /** "Antal talare": an upper bound on the speakers the run tells apart; left empty, Eneo decides. */
-export function SpeakerCountField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+export function SpeakerCountField({
+  value,
+  onChange,
+  fromNames = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  /** The value is the number of names, not yet edited. */
+  fromNames?: boolean;
+}) {
   const helpId = `${SPEAKER_COUNT_ID}-hjalp`;
+  const namesId = `${SPEAKER_COUNT_ID}-namn`;
   const errorId = `${SPEAKER_COUNT_ID}-fel`;
   const invalid = readSpeakerCount(value) === "invalid";
   return (
@@ -177,7 +201,7 @@ export function SpeakerCountField({ value, onChange }: { value: string; onChange
         step={1}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}
+        aria-describedby={[helpId, fromNames ? namesId : null, invalid ? errorId : null].filter(Boolean).join(" ")}
         aria-invalid={invalid || undefined}
         // Room for two digits: the field makes each child full width, so this caps it.
         className="max-w-28 rounded-xl text-[16px]"
@@ -185,6 +209,11 @@ export function SpeakerCountField({ value, onChange }: { value: string; onChange
       <FieldDescription id={helpId} className="text-[13px]">
         Används som övre gräns. Lämna tomt om du är osäker.
       </FieldDescription>
+      {fromNames && (
+        <FieldDescription id={namesId} className="text-[13px]">
+          {COUNT_FROM_NAMES}
+        </FieldDescription>
+      )}
       {invalid && (
         <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>
       )}
