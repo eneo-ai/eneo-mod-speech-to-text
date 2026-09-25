@@ -50,12 +50,20 @@ test("the document's one filled action is its file's download; without a file it
   await textOnly.unmount();
 });
 
-test("the result's own headings sit under the page's h1: Markdown's # is an h2, ## an h3", async () => {
-  const view = await document_({ text: "# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText.", file: null });
-  const headings = [...view.container.querySelectorAll("article :is(h1, h2, h3, h4, h5, h6)")].map((h) => `${h.tagName} ${h.textContent}`);
-  assert.deepEqual(headings, ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
-  assert.ok(![...view.container.querySelectorAll("article *")].some((el) => el.hasAttribute("node")), "no markdown internals on the page");
-  await view.unmount();
+test("the result's own headings sit under the page's h1: its top heading is an h2 whatever its Markdown level", async () => {
+  const outline = async (text: string) => {
+    const view = await document_({ text, file: null });
+    const headings = [...view.container.querySelectorAll("article :is(h1, h2, h3, h4, h5, h6)")].map((h) => `${h.tagName} ${h.textContent}`);
+    assert.ok(![...view.container.querySelectorAll("article *")].some((el) => el.hasAttribute("node")), "no markdown internals on the page");
+    await view.unmount();
+    return headings;
+  };
+  assert.deepEqual(await outline("# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText."), ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
+  // A "#" line in a code block is no heading, so it does not set the top level.
+  assert.deepEqual(
+    await outline("## Protokoll\n\n### Beslut\n\n```sh\n# en kommentar\n```\n\nText."),
+    ["H2 Protokoll", "H3 Beslut"],
+  );
 });
 
 test("on a narrower screen Kopiera texten sits under Fler alternativ, a labelled menu", async () => {

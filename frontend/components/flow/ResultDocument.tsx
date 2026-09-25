@@ -12,8 +12,22 @@ import { cn } from "@/lib/utils";
 import { CopyStatus, useCopy } from "./CopyButton";
 import { FILE_ICONS, OpenFile } from "./ResultFiles";
 
-/** A result's own headings sit under the page's h1: Markdown's "#" is an h2, "##" an h3, and so on. */
-export const RESULT_HEADINGS: Components = { h1: "h2", h2: "h3", h3: "h4", h4: "h5", h5: "h6" };
+/**
+ * A result's own headings sit under the page's h1: its top heading is an h2 whatever its Markdown level, and
+ * deeper ones keep their distance to it, down to h6. The top level is the smallest "#" run outside code fences;
+ * without one, "#" is the top.
+ */
+export function resultHeadings(markdown: string): Components {
+  let fenced = false;
+  let top = 7;
+  for (const line of markdown.split("\n")) {
+    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
+    else if (!fenced) top = Math.min(top, /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line)?.[1].length ?? 7);
+  }
+  if (top === 7) top = 1;
+  // Every level is mapped, so a heading above the top (an underlined one) is never an h1 either.
+  return Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [`h${level}`, `h${Math.min(6, Math.max(2, level - top + 2))}`]));
+}
 
 export const RESULT_PROSE =
   "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h2:text-[22px] prose-h3:text-[20px] prose-h4:text-[17px] prose-p:text-[16px] prose-p:leading-relaxed prose-li:text-[16px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
@@ -164,7 +178,7 @@ export function ResultDocument({
 
       {text && (
         <article className={cn(RESULT_PROSE, "px-5 py-6 md:px-10 md:py-9")}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={RESULT_HEADINGS}>{text}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={resultHeadings(text)}>{text}</ReactMarkdown>
         </article>
       )}
 
