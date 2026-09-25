@@ -1042,7 +1042,7 @@ function TurnBlock({
                   {...(choosable && {
                     role: "button",
                     tabIndex: 0,
-                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}.`,
+                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}${partLabel}.`,
                     onKeyDown: (e: React.KeyboardEvent) => {
                       if (e.key !== "Enter" && e.key !== " ") return;
                       e.preventDefault();

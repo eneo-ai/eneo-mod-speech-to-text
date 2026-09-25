@@ -245,6 +245,26 @@ test("one Rätta per passage, after its text; in a passage of several sentences 
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
 });
 
+test("two parts that both start at 0:00 name their passages' and sentences' corrections by the part", async () => {
+  // The same words at the same time in both parts: only the part tells them apart for a screen reader.
+  const part = (fileIndex: number): TranscriptSegment[] => [
+    { fileIndex, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." },
+    { fileIndex, start: 2, end: 4, speaker: "SPEAKER_00", text: "Vi har två punkter." },
+  ];
+  const view = await player([...part(0), ...part(1)], { editable: true, corrections: EMPTY, onCorrectionsChange: () => undefined });
+  const rätta = [...view.container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Rätta");
+  assert.deepEqual(rätta.map((b) => b.getAttribute("aria-label")), ["Rätta repliken från 0:00 i del 1: välj mening", "Rätta repliken från 0:00 i del 2: välj mening"]);
+  for (const button of rätta) await view.act(async () => button.click());
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const sentences = [...view.container.querySelectorAll<HTMLElement>('[role="button"][data-segment-index]')];
+  assert.deepEqual(sentences.map((s) => computeAccessibleName(s)), [
+    "Välkomna. Rätta meningen från 0:00 i del 1.",
+    "Vi har två punkter. Rätta meningen från 0:02 i del 1.",
+    "Välkomna. Rätta meningen från 0:00 i del 2.",
+    "Vi har två punkter. Rätta meningen från 0:02 i del 2.",
+  ]);
+});
+
 test("a sentence corrected in its middle is named by the words it shows, unbroken, while choosing", async () => {
   const { computeAccessibleName } = await import("dom-accessibility-api");
   const text = "Budgeten höjs nästa år.";
