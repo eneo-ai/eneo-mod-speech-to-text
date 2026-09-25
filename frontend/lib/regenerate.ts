@@ -58,7 +58,7 @@ export type RegenerationOutcome =
   | { kind: "refused"; message: string; reload: boolean };
 
 /** Starts the new run. The key names the run and the corrections it is made from, so asking twice gives the same run. */
-export async function regenerate(offer: RegenerationRequest): Promise<RegenerationOutcome> {
+export async function regenerate(offer: RegenerationRequest, thing = "dokumentet"): Promise<RegenerationOutcome> {
   try {
     const { run } = await regenerateTranscript(
       offer.flowId,
@@ -73,12 +73,15 @@ export async function regenerate(offer: RegenerationRequest): Promise<Regenerati
     );
     return { kind: "started", run };
   } catch (err) {
-    return { kind: "refused", ...regenerationRefusal(err) };
+    return { kind: "refused", ...regenerationRefusal(err, thing) };
   }
 }
 
-/** Eneo's refusals in words for this action; `reload` when reading the page again is the way on. */
-export function regenerationRefusal(err: unknown): { message: string; reload: boolean } {
+/**
+ * Eneo's refusals in words for this action, about what the flow makes ("dokumentet" or "texten"); `reload` when
+ * reading the page again is the way on.
+ */
+export function regenerationRefusal(err: unknown, thing = "dokumentet"): { message: string; reload: boolean } {
   if (err instanceof ApiError) {
     switch (err.code) {
       case "flow_transcript_corrections_stale_revision":
@@ -90,17 +93,17 @@ export function regenerationRefusal(err: unknown): { message: string; reload: bo
       case "flow_run_stale_version":
         return {
           message:
-            "Flödet har ändrats sedan dokumentet skapades, så dokumentet kan inte skapas igen på samma sätt. Ladda ner det rättade transkriptet i stället.",
+            `Flödet har ändrats sedan ${thing} skapades, så ${thing} kan inte skapas igen på samma sätt. Ladda ner det rättade transkriptet i stället.`,
           reload: false,
         };
       case "flow_transcript_corrections_invalid_occurrence":
         return {
           message:
-            "Det här flödet kan inte skapa dokumentet igen från ett rättat transkript. Ladda ner det rättade transkriptet i stället.",
+            `Det här flödet kan inte skapa ${thing} igen från ett rättat transkript. Ladda ner det rättade transkriptet i stället.`,
           reload: false,
         };
       case "flow_run_access_denied":
-        return { message: "Du har inte behörighet att skapa dokumentet igen för den här körningen.", reload: false };
+        return { message: `Du har inte behörighet att skapa ${thing} igen för den här körningen.`, reload: false };
     }
   }
   return { message: friendlyError(err), reload: false };

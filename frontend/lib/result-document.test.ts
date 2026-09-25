@@ -417,3 +417,67 @@ test("a finished run whose document is only its file previews the text its own s
   assert.match(preview.textContent ?? "", /Kommunstyrelsen godkänner förslaget\./);
   assert.doesNotMatch(preview.textContent ?? "", /Välkomna/, "not the transcript the step read");
 });
+
+test("a flow that makes text says the text is ready, and offers to make the text again", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const hash = "b".repeat(64);
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    const path = String(url);
+    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-corrections")) {
+      return Response.json([{ flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: hash, occurrences: [], speaker_edits: [], revision: 1, stale: false, updated_at: "2026-09-24T10:00:00Z" }]);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: { transcription: { file_ids: [], segments_hash: hash, segments: [
+      { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+    ] } },
+  };
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Intervju till sammanfattning",
+      run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text" } },
+      steps: [],
+      stepResults: [transcribe] as never,
+      files: [],
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.equal(view.container.querySelector("h1")?.textContent, "Texten är klar");
+  const note = view.container.querySelector('[role="note"]')!;
+  assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
+  assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
+  assert.deepEqual([...view.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent), ["Text", "Transkript"]);
+  assert.ok(view.container.querySelector('section[aria-label="Texten"]'), "the text, named as such");
+  assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);
+});
+
+test("a flow that makes text that failed says the text could not be made", async () => {
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  const failure = { step: null, summary: "Körningen kunde inte slutföras.", detail: "x", inputMustChange: false };
+  const heading = async (output_type: string) => {
+    const view = await mount(
+      createElement(RunFailure, {
+        flowId: "flow-1", flowName: "Intervju till sammanfattning",
+        run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "failed" } as never,
+        contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type } },
+        failure, steps: [], stepResults: [], files: [],
+      }),
+    );
+    const h1 = view.container.querySelector("h1")?.textContent;
+    await view.unmount();
+    return h1;
+  };
+  assert.equal(await heading("json"), "Texten kunde inte skapas");
+  assert.equal(await heading("pdf"), "Dokumentet kunde inte skapas");
+});

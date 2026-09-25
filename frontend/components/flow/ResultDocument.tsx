@@ -157,6 +157,7 @@ export function ResultDocument({
   file,
   title,
   preview = null,
+  madeText = false,
 }: {
   flowId: string;
   runId: string;
@@ -168,6 +169,8 @@ export function ResultDocument({
   title: string;
   /** Where there is no text: what the file says, see fileText. */
   preview?: string | null;
+  /** The flow makes text, not a document (`runMadeText`). */
+  madeText?: boolean;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
@@ -231,7 +234,7 @@ export function ResultDocument({
         )}
       </div>
 
-    <section aria-label="Dokumentet" className="flex flex-col rounded-xl border bg-card">
+    <section aria-label={madeText ? "Texten" : "Dokumentet"} className="flex flex-col rounded-xl border bg-card">
       {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
       <div className="hidden items-center justify-end gap-1 border-b border-border px-4 py-2.5 lg:flex">
         {text && (

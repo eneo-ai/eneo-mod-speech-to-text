@@ -655,6 +655,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           stepResults={run.steps}
           files={files}
           showTranscript={transcribed}
+          contract={contract}
           audio={inputStep?.input_format?.toLowerCase() === "audio"}
           onNewRecording={onRunAgain}
           onRegenerated={(regenerated) => {
@@ -683,6 +684,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       stepResults={run.steps}
       files={files}
       showTranscript={transcribed}
+      contract={contract}
       error={runError}
       refusal={retryRefusal}
       onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}

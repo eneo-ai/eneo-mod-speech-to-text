@@ -1,4 +1,5 @@
-import type { FlowRunError, FlowRunResult } from "./api";
+import type { FlowRunError, FlowRunResult, RunContract } from "./api";
+import { ofContractVersion } from "./run-progress";
 
 export interface RunResultView {
   /** Markdown att visa, eller null när resultatet inte är text. */
@@ -40,6 +41,19 @@ export function runResultView(
       // Artefakter listas under Filer.
       return { text: null, note: null };
   }
+}
+
+/**
+ * Whether a run made text rather than a document: its own version's contract ends in text or JSON, which this view
+ * shows as text. A PDF or Word file is a document, and so is a type Eneo does not say or a run of an older version
+ * (today's contract says nothing of it), as it always was.
+ */
+export function runMadeText(
+  run: { flow_version?: number | null },
+  contract: Pick<RunContract, "published_flow_version" | "final_output"> | null | undefined,
+): boolean {
+  const output = contract?.final_output?.output_type;
+  return ofContractVersion(run, contract) && (output === "text" || output === "json");
 }
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";
