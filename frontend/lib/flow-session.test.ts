@@ -432,6 +432,31 @@ test("a file the flow marks optional may be left out: Skapa dokument sends the d
   assert.equal(sent.length, 1, "a required file is never skipped");
 });
 
+test("an optional file never turns a send from the unsent list into an empty run while a recording is starting", async () => {
+  const sent: unknown[] = [];
+  let grant: (stream: MediaStream) => void = () => undefined;
+  const { session, store } = await setup({ getStream: () => new Promise((resolve) => (grant = resolve)) });
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const step = audioContract().steps_requiring_input![0];
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, required: false }] }));
+  session.selectMode("spela-in");
+  const starting = session.start();
+  await until(() => session.getSnapshot().phase === "starting");
+  const unsent = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  session.adopt(unsent);
+  assert.equal(await session.createDocument(), false);
+  assert.equal(sent.length, 0);
+  grant(new FakeStream() as unknown as MediaStream);
+  await starting;
+});
+
 test("a chosen file becomes the document's input in Ladda upp; an unsent recording from the list goes the same way", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const { session, store } = await setup();

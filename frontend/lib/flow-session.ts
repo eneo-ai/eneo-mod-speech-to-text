@@ -625,8 +625,10 @@ export class FlowSession {
         : phase === "setup" && mode === "ladda-upp" && this.file
           ? { kind: "file", ...this.file }
           : null;
-    // Without audio or a file only a flow that marks its file optional runs (Eneo reads required: false).
-    if (!input && this.modes.length > 0 && this.inputStep()?.required !== false) return false;
+    // Without audio or a file, only Ladda upp in setup sends, and only for a flow whose file is optional
+    // (Eneo reads required: false): a send from the unsent list while a recording starts never goes empty.
+    const withoutFile = phase === "setup" && mode === "ladda-upp" && this.inputStep()?.required === false;
+    if (!input && this.modes.length > 0 && !withoutFile) return false;
     const fields = this.contract?.form_fields ?? [];
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
