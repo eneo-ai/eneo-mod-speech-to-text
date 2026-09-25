@@ -213,6 +213,8 @@ export interface SessionSnapshot {
   recording: StoredRecording | null;
   /** The file chosen in Ladda upp. */
   file: ChosenFile | null;
+  /** Its length is still being read; it cannot be sent yet. */
+  fileChecking: boolean;
   /** Strömma's live text for the recording, when there is one. */
   live: LiveSession | null;
   problem: Problem | null;
@@ -395,17 +397,18 @@ export interface LiveClient {
   open(stepId: string, earlier?: LivePiece[]): LiveSession;
 }
 
-const UNAVAILABLE_LIVE: LiveSnapshot = { status: "unavailable", pieces: [], pending: "", started: false, complete: false };
-
-/** Live text that could not be set up at all, as the sheet shows it. */
-const unavailableLive = (): LiveSession => ({
-  getSnapshot: () => UNAVAILABLE_LIVE,
-  subscribe: () => () => undefined,
-  listen: () => undefined,
-  setRecording: () => undefined,
-  stop: () => undefined,
-  dispose: () => undefined,
-});
+/** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
+const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
+  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+    listen: () => undefined,
+    setRecording: () => undefined,
+    stop: () => undefined,
+    dispose: () => undefined,
+  };
+};
 
 export interface FlowSessionOptions {
   flowId: string;
@@ -444,8 +447,6 @@ export class FlowSession {
   // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
   private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
-  // The chosen file's length being read; the probe resolves within its own bound.
-  private fileCheck: Promise<void> | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
   private live: LiveSession | null = null;
   private liveStream: MediaStream | null = null;
@@ -588,7 +589,7 @@ export class FlowSession {
       const blob = type === file.type ? file : file.slice(0, file.size, type);
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
-      const check: Promise<void> | undefined = this.probeDuration?.(file)
+      const check = this.probeDuration?.(file)
         .then((durationMs) => {
           if (this.file !== chosen) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
@@ -601,11 +602,7 @@ export class FlowSession {
           }
           this.emit();
         })
-        .catch(() => undefined)
-        .finally(() => {
-          if (this.fileCheck === check) this.fileCheck = null;
-        });
-      this.fileCheck = check ?? null;
+        .catch(() => undefined);
       if (!check) this.accepted = chosen;
     }
     this.emit();
@@ -645,15 +642,9 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
-    // Ladda upp: a file whose length is still being read is sent only once it is known to fit.
-    const checking = this.snapshot.phase === "setup" && this.snapshot.mode === "ladda-upp" ? this.fileCheck : null;
-    if (checking) {
-      const candidate = this.file;
-      await checking;
-      // Refused, or another file chosen meanwhile: nothing is sent, and the page says why.
-      if (this.file?.blob !== candidate?.blob) return false;
-    }
-    const { phase, mode } = this.snapshot;
+    const { phase, mode, fileChecking } = this.snapshot;
+    // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
+    if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
     const input: SubmitRequest["input"] =
       phase === "ready" && this.ready
         ? { kind: "recording", recording: this.ready }
@@ -804,7 +795,7 @@ export class FlowSession {
       this.live = this.options.live?.open(stepId, earlier) ?? null;
     } catch {
       // Live text could not even be set up: the recording goes on, and the sheet says so.
-      this.live = unavailableLive();
+      this.live = unavailableLive(earlier);
     }
   }
 
@@ -869,6 +860,8 @@ export class FlowSession {
       speakerLabels: speakerLabelsFor(this.contract?.transcription?.speaker_labels, this.explicitSpeakerLabels),
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
+      // The latest pick while its length is read: the file shown is not yet the last one that fitted.
+      fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
       problem: this.problem,
     };

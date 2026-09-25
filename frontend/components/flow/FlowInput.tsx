@@ -305,7 +305,7 @@ function SetupWorkspace({
   unsentRecordings: UnsentRecording[];
 }) {
   const { session, snapshot, persistent } = input;
-  const { modes, mode, phase, problem, file } = snapshot;
+  const { modes, mode, phase, problem, file, fileChecking } = snapshot;
   const speakerOption = contract.transcription?.speaker_labels;
   const recordingMode = mode === "spela-in" || mode === "stromma";
   const fileInput = useRef<HTMLInputElement>(null);
@@ -411,15 +411,15 @@ function SetupWorkspace({
               size="xl"
               className="w-full"
               // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
-              aria-disabled={phase === "starting" || undefined}
+              aria-disabled={phase === "starting" || fileChecking || undefined}
               onClick={primary}
             >
-              {phase === "starting" ? (
+              {phase === "starting" || fileChecking ? (
                 <Spinner data-icon="inline-start" aria-hidden />
               ) : Icon ? (
                 <Icon data-icon="inline-start" aria-hidden />
               ) : null}
-              {phase === "starting" ? "Startar…" : label}
+              {phase === "starting" ? "Startar…" : fileChecking ? "Kontrollerar filen…" : label}
             </Button>
             {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
           </div>,
