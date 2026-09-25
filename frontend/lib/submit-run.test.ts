@@ -70,14 +70,15 @@ const params = (overrides: Partial<SubmitParams> = {}): SubmitParams => ({
 
 test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 60 s", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  // Three server errors here: the fourth ends the send (see the next test).
   const failures = [
     uploadNetworkError(),
     apiError(408, "stalled"),
     apiError(429),
-    apiError(500),
-    apiError(502, "upstream_unreachable"),
-    apiError(503),
     apiError(504),
+    apiError(502, "upstream_unreachable"),
+    fetchFailed(),
+    apiError(429),
     fetchFailed(),
   ];
   let calls = 0;
@@ -104,6 +105,27 @@ test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 
   assert.equal(await result, "file-1");
   assert.equal(calls, failures.length + 1);
   assert.deepEqual(waits, [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000]);
+});
+
+test("a server that keeps failing gets four tries, then the error shows and the recording stays", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let calls = 0;
+  const waits: number[] = [];
+  const result = withRetry(
+    async () => {
+      calls += 1;
+      throw apiError(calls % 2 ? 503 : 408);
+    },
+    { online: params().online, onWait: (wait) => void (wait && waits.push(wait.retryAt - Date.now())) },
+  );
+  // The fourth try (a 408) is the error the page shows.
+  const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 408);
+  for (let i = 0; i < 3; i += 1) {
+    await until(() => waits.length === i + 1);
+    t.mock.timers.tick(waits[i]);
+  }
+  await failed;
+  assert.equal(calls, 4, "each try sends the whole recording again, so a broken server gets no more");
 });
 
 test("any other 4xx stops at once with its typed error, and so does a cancelled upload", async () => {

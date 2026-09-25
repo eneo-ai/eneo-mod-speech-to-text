@@ -17,6 +17,10 @@ const nextConfig = {
     // Obs: Next håller den klonade bodyn i minnet under uppladdningen, så
     // taket är också ett tak för processens minnesåtgång per upload.
     proxyClientMaxBodySize: "2gb",
+    // Next:s rewrite-proxy släpper annars ett anrop som varit tyst i 30 s. Medan FastAPI
+    // skickar en stor mötesfil vidare och Eneo sparar den får webbläsaren inget svar: då nådde
+    // uppladdningen 100 % och föll, fast Eneo hade sparat filen. 11 minuter tystnad räcker.
+    proxyTimeout: 660_000,
   },
   async headers() {
     return [

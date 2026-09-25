@@ -51,7 +51,16 @@ export function isRetryable(error: unknown): boolean {
 
 const cancelled = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
 
+// A lost connection is waited out for as long as it takes; a server that answers with an error
+// gets this many tries, since each one may send the whole recording again. The recording stays
+// on the device, and the error offers "Försök igen".
+const MAX_SERVER_ERROR_TRIES = 4;
+
+const serverError = (error: unknown) =>
+  error instanceof ApiError && (error.status === 408 || error.status >= 500);
+
 export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Promise<T> {
+  let serverErrors = 0;
   for (let attempt = 0; ; attempt += 1) {
     // A cancel between attempts, or before the first, sends nothing more.
     if (opts.signal?.aborted) throw cancelled();
@@ -59,6 +68,7 @@ export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Pr
       return await op();
     } catch (error) {
       if (opts.signal?.aborted || !isRetryable(error)) throw error;
+      if (serverError(error) && ++serverErrors >= MAX_SERVER_ERROR_TRIES) throw error;
       await waitToRetry(Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** attempt), opts);
     }
   }
