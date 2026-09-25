@@ -122,9 +122,44 @@ test("a list opened on a name far down shows that name", async (t) => {
   assert.ok(shown.some((text) => text.startsWith("Namn 19")), `scrolled to: ${JSON.stringify(shown)}`);
 });
 
+test("a pasted name and Enter keep that name, also where the list opens under a resting pointer", async () => {
+  // JD-01: "Bertil Eklund" pasted from the invitation became "Talare 2" in the transcript and the PDF.
+  const { view, input, key, option } = await nameField(null, ["Anna Berg", "Erik Lund"]);
+  await view.act(async () => type(input, "Bertil Eklund"));
+  // The list appears under a pointer that has not moved: that is no choice of a row.
+  await view.act(async () => option("Ingen").dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true })));
+  await key("Enter");
+  assert.equal(input.value, "Bertil Eklund");
+});
+
+test("the start of a participant's name and Enter keep what was typed; the arrow keys pick the longer name", async () => {
+  const { view, input, key, marked } = await nameField(null, ["Testperson 1 Efternamn", "Testperson 10 Efternamn"]);
+  await view.act(async () => type(input, "Testperson 1"));
+  await key("Enter");
+  assert.equal(input.value, "Testperson 1");
+  await view.act(async () => type(input, "Testperson 10"));
+  await key("ArrowDown");
+  assert.equal(marked(), "Testperson 10 Efternamn");
+  await key("Enter");
+  assert.equal(input.value, "Testperson 10 Efternamn");
+});
+
+test("moving to a name field does not open its list; a click, typing or the down arrow does", async () => {
+  // A list opened on focus covers the next row on every Tab.
+  const { view, input, key } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
+  await view.act(async () => input.focus());
+  assert.equal(input.getAttribute("aria-expanded"), "false");
+  assert.equal(document.querySelector('[role="listbox"]'), null);
+  await key("ArrowDown");
+  assert.equal(input.getAttribute("aria-expanded"), "true");
+  await key("Escape");
+  await view.act(async () => input.click());
+  assert.equal(input.getAttribute("aria-expanded"), "true");
+});
+
 test("inside the list, the row the keys are on is the selected one; the saved name keeps its check", async () => {
   const { view, input, key, option } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
-  await view.act(async () => input.focus());
+  await view.act(async () => input.click());
   await key("ArrowUp");
   assert.equal(option("Anna Berg").getAttribute("aria-selected"), "true");
   assert.equal(option("Erik Lund").getAttribute("aria-selected"), "false");
