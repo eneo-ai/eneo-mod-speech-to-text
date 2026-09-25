@@ -474,6 +474,10 @@ function SetupWorkspace({
               ) : null}
               {phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
             </Button>
+            {/* The wait for a chosen file's length is said, not only written on the button. */}
+            <p role="status" className="sr-only">
+              {checkingUpload ? "Kontrollerar filen…" : ""}
+            </p>
             {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
           </div>,
         )}

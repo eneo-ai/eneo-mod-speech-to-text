@@ -324,3 +324,15 @@ test("with the access code, the warning renews the login by the code, on the pag
   expect(codes).toEqual(["test-access-code-1234"]);
   await expect(page).toHaveURL(/\/flows$/);
 });
+
+test("while a chosen file's length is read, the wait is said, not only written on the button", async ({ page }) => {
+  // A file whose header the browser takes its time with: its length never arrives, so the check holds.
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "src", { configurable: true, set() {}, get: () => "" });
+  });
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(64) });
+  await expect(page.getByRole("button", { name: "Kontrollerar filen…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
+});
