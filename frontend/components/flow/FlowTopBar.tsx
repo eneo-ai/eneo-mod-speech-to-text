@@ -40,13 +40,16 @@ export function FlowTopBar({
     <>
       <header className={cn("flex min-h-14 items-center gap-1 px-2 pb-1 pt-2 md:px-6 lg:hidden", locked && "pl-4 md:pl-8")}>
         {!locked && (
+          // A 44 px target showing a soft 40 px button, the size of the account's round one on the other side.
           <Link
             href="/flows"
             aria-label="Alla flöden"
             onClick={onLeaveLink}
-            className="grid size-11 shrink-0 place-items-center rounded-full text-ink transition-colors hover:bg-bg-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="group grid size-11 shrink-0 place-items-center rounded-full text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
-            <ChevronLeft aria-hidden className="size-6" strokeWidth={2} />
+            <span className="grid size-10 place-items-center rounded-full bg-bg-2 transition-colors group-hover:bg-rule-soft group-active:bg-rule-soft">
+              <ChevronLeft aria-hidden className="size-6" strokeWidth={2.25} />
+            </span>
           </Link>
         )}
         <Title className="line-clamp-2 min-w-0 flex-1 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink [text-wrap:balance]">

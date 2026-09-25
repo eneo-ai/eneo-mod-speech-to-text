@@ -92,6 +92,7 @@ const report: ResultFileView = {
   meta: "PDF, 13,3\u00a0kB",
   available: true,
   previewable: true,
+  stepId: null,
 };
 
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {

@@ -6,12 +6,12 @@ import { Button } from "@/components/ui/button";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { FRAME, READING } from "@/components/frame";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep } from "@/lib/api";
+import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
-import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
+import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runResultView } from "@/lib/run-result";
+import { runMadeText, runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
 import { regenerationOffer } from "@/lib/regenerate";
@@ -55,6 +55,7 @@ export function RunResult({
   audio = true,
   onNewRecording,
   onRegenerated,
+  contract = null,
 }: {
   flowId: string;
   flowName: string;
@@ -69,14 +70,19 @@ export function RunResult({
   onNewRecording: () => void;
   /** A new run was started from the reviewed transcript; the page follows it. */
   onRegenerated: (run: FlowRunPublic) => void;
+  /** The flow's run contract: a run of its version that ends in text speaks of the text, not a document. */
+  contract?: RunContract | null;
 }) {
   const delivered = run.result?.kind === "outbound_http";
+  const madeText = runMadeText(run, contract);
   const heading = usePhaseHeading(`Klart · ${flowName}`);
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
   // The document's file is the first one that can be fetched; any others are listed under it.
   const primary = files.find((file) => file.available) ?? null;
   const others = files.filter((file) => file !== primary);
+  // A document that is only its file shows what the file says under it.
+  const preview = !text && primary ? fileText(primary, stepResults) : null;
   const { transcript, confirmedWords, editing, reload } = useRunTranscript(flowId, run.id, stepResults, showTranscript);
   const offer =
     // Whether the document is older than the saved corrections does not depend on the latest save.
@@ -119,9 +125,9 @@ export function RunResult({
     <>
       {note && <p className="text-[15px] leading-relaxed">{note}</p>}
       {offer && (
-        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} />
+        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} madeText={madeText} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} madeText={madeText} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
@@ -148,7 +154,7 @@ export function RunResult({
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
-            {delivered ? "Resultatet är skickat" : "Dokumentet är klart"}
+            {delivered ? "Resultatet är skickat" : madeText ? "Texten är klar" : "Dokumentet är klart"}
           </h1>
           {finished && (
             <p className="text-[14px] text-muted-foreground">
@@ -180,7 +186,7 @@ export function RunResult({
       >
         {tabs && (
           <TabsList ref={tabList} aria-label="Visa" className="self-start">
-            <TabsTrigger value="document">Dokument</TabsTrigger>
+            <TabsTrigger value="document">{madeText ? "Text" : "Dokument"}</TabsTrigger>
             <TabsTrigger value="transcript">Transkript</TabsTrigger>
           </TabsList>
         )}

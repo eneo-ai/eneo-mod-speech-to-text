@@ -6,11 +6,11 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Spinner } from "@/components/ui/spinner";
-import type { FlowRunPublic, FlowRunStep } from "@/lib/api";
+import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import type { RunErrorView } from "@/lib/run-result";
+import { runMadeText, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
@@ -36,10 +36,11 @@ export function RunFailure({
   onRetry,
   onStartAgain,
   onChooseInput,
+  contract = null,
 }: {
   flowId: string;
   flowName: string;
-  run: Pick<FlowRunPublic, "id" | "status" | "created_at" | "error">;
+  run: Pick<FlowRunPublic, "id" | "status" | "created_at" | "error" | "flow_version">;
   failure: RunErrorView | null;
   steps: readonly StepView[];
   stepResults: readonly FlowRunStep[];
@@ -55,6 +56,8 @@ export function RunFailure({
   onStartAgain?: () => Promise<void> | void;
   /** Back to the flow's setup, for another file or recording: offered when the input itself has to change. */
   onChooseInput?: () => void;
+  /** The flow's run contract: a run of its version that ends in text speaks of the text, not a document. */
+  contract?: RunContract | null;
 }) {
   const cancelled = run.status.toLowerCase() === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
@@ -84,7 +87,7 @@ export function RunFailure({
             tabIndex={-1}
             className={STATE_HEADING}
           >
-            {cancelled ? "Körningen avbröts" : "Dokumentet kunde inte skapas"}
+            {cancelled ? "Körningen avbröts" : runMadeText(run, contract) ? "Texten kunde inte skapas" : "Dokumentet kunde inte skapas"}
           </h1>
           {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
         </header>
