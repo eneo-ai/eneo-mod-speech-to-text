@@ -688,7 +688,7 @@ export function ReviewView({
 
 // A review's text field: an edge that identifies it (3:1) and a ring on keyboard focus.
 const REVIEW_FIELD =
-  "w-full rounded-lg border border-input bg-bg-2/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full rounded-lg border border-input bg-bg-2/40 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function extractCheckpointText(payload: Json | null | undefined): string {
   if (!payload) return "";

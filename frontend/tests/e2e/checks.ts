@@ -200,6 +200,33 @@ export function reflow(page: Page) {
   });
 }
 
+/** Placeholder text under 4.5:1 on its field (WCAG 1.4.3), which axe does not measure. */
+export function placeholderContrast(page: Page) {
+  return page.evaluate(() => {
+    type Rgba = [number, number, number, number];
+    const rgba = (color: string): Rgba => {
+      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
+      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+    };
+    const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
+    const luminance = ([r, g, b]: Rgba) =>
+      [r, g, b].map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const background = (e: Element | null): Rgba => {
+      if (!e) return [255, 255, 255, 1];
+      const own = rgba(getComputedStyle(e).backgroundColor);
+      return own[3] >= 0.99 ? own : over(own, background(e.parentElement));
+    };
+    return Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[placeholder], textarea[placeholder]"))
+      .filter((el) => el.placeholder && !el.value && el.getBoundingClientRect().width > 1 && !el.closest('[aria-hidden="true"], [inert]'))
+      .flatMap((el) => {
+        const back = background(el);
+        const [hi, lo] = [luminance(over(rgba(getComputedStyle(el, "::placeholder").color), back)), luminance(back)].sort((a, b) => b - a);
+        const ratio = (hi + 0.05) / (lo + 0.05);
+        return ratio < 4.5 ? [`${el.tagName.toLowerCase()} "${el.placeholder}" ${ratio.toFixed(2)}:1`] : [];
+      });
+  });
+}
+
 /** Animations that loop forever; with reduced motion there should be none. */
 export function endlessAnimations(page: Page) {
   return page.evaluate(() =>
