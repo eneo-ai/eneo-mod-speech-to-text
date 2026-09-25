@@ -201,12 +201,11 @@ export function SpeakerCountField({
         id={SPEAKER_COUNT_ID}
         name={SPEAKER_COUNT_ID}
         autoComplete="off"
-        type="number"
-        // A phone's number keyboard, not the one with letters and punctuation.
+        // Text with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing, while this
+        // keeps what was typed for readSpeakerCount to call it no count.
+        type="text"
         inputMode="numeric"
-        min={1}
-        max={MAX_SPEAKER_COUNT}
-        step={1}
+        pattern="[0-9]*"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}

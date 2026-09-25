@@ -121,17 +121,20 @@ test("Antal talare is a light number field with its help below, and a count that
   const empty = field("");
   assert.match(empty, /<label[^>]*for="antal-talare"[^>]*>Antal talare <span[^>]*>\(om du vet\)<\/span><\/label>/);
   const input = empty.match(/<input[^>]*id="antal-talare"[^>]*>/)?.[0] ?? "";
-  assert.match(input, /type="number"/);
+  // A text field with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing.
+  assert.match(input, /type="text"/);
   assert.match(input, /inputmode="numeric"/i, "a phone's number keyboard");
-  assert.match(input, /min="1"/);
+  assert.match(input, /pattern="\[0-9\]\*"/);
   assert.match(input, /aria-describedby="antal-talare-hjalp"/);
   assert.doesNotMatch(input, /aria-invalid/);
   assert.match(empty, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
   assert.doesNotMatch(empty, /role="alert"/);
 
-  const wrong = field("25");
-  assert.match(wrong, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-fel"[^>]*aria-invalid="true"/);
-  assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</);
+  for (const typed of ["25", "e", "-", "2+"]) {
+    const wrong = field(typed);
+    assert.match(wrong, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-fel"[^>]*aria-invalid="true"/, typed);
+    assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</, typed);
+  }
 });
 
 test("a count from the names says so under its field, and names the field's description with it", () => {

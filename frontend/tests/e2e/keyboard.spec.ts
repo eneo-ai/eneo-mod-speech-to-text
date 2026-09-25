@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
+import { axNode, changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
 import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
@@ -258,4 +258,20 @@ test("a wrong access code is said, and focus stays in the field to type it again
   await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
   // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
   await expect(field).toBeFocused();
+});
+
+test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await page.getByRole("switch", { name: "Märk upp talare" }).click();
+  const count = page.getByRole("textbox", { name: /^Antal talare/ });
+  await count.focus();
+  // A number field would read "e" as empty and let the run start without a count.
+  await page.keyboard.type("e");
+  await expect(count).toHaveValue("e");
+  await expect(count).toHaveAttribute("aria-invalid", "true");
+  expect((await axNode(count)).description).toContain("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.");
+  await page.getByRole("button", { name: "Starta inspelning" }).click();
+  await expect(count, "the start is refused and the field takes focus").toBeFocused();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toHaveCount(0);
 });
