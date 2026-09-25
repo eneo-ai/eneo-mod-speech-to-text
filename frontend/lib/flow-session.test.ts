@@ -1009,6 +1009,29 @@ test("a file whose length is still being read is sent only once it is known to f
   assert.equal(sent[0].input?.kind === "file" && sent[0].input.filename, "okand.mp3");
 });
 
+test("a refused file gives back the last file that fitted, never another pick still being read", async () => {
+  const lengths: Array<(ms: number | null) => void> = [];
+  const { session } = await setup();
+  session.setProbeDuration(() => new Promise((resolve) => lengths.push(resolve)));
+  const [step] = audioContract().steps_requiring_input!;
+  session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 60 }] }));
+  session.selectMode("ladda-upp");
+  const settled = () => new Promise((resolve) => setImmediate(resolve));
+
+  session.chooseFile(new File(["audio"], "kort.mp3", { type: "audio/mpeg" }));
+  lengths[0](30_000);
+  await settled();
+  session.chooseFile(new File(["audio"], "lang-a.mp3", { type: "audio/mpeg" }));
+  session.chooseFile(new File(["audio"], "lang-b.mp3", { type: "audio/mpeg" }));
+  lengths[1](2 * 60_000);
+  await settled();
+  lengths[2](3 * 60_000);
+  await settled();
+  assert.equal(session.getSnapshot().problem?.title, "Filen är längre än flödet tar emot (högst 1\u00a0min).");
+  assert.equal(session.getSnapshot().file?.filename, "kort.mp3");
+  assert.equal(session.getSnapshot().file?.durationMs, 30_000);
+});
+
 test("a document is sent under the type the flow takes, whatever name the browser gave it", async () => {
   const { session } = await setup();
   session.setContract(

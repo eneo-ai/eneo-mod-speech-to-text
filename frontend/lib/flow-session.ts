@@ -434,7 +434,9 @@ export class FlowSession {
   private explicitSpeakerLabels: boolean | null = null;
   private starting = false;
   private ready: StoredRecording | null = null;
+  // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
   private file: ChosenFile | null = null;
+  private accepted: ChosenFile | null = null;
   private invalid: string[] = [];
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
@@ -577,7 +579,7 @@ export class FlowSession {
 
   /**
    * Ladda upp: the file that becomes the document's input, checked first; a bad pick keeps the earlier one.
-   * Its length is checked once the browser has read it.
+   * Its length is checked once the browser has read it; too long, it gives back the last file that fitted.
    */
   chooseFile(file: File): void {
     this.problem = fileProblem(file, this.inputStep());
@@ -585,17 +587,17 @@ export class FlowSession {
       const type = uploadType(file, this.inputStep()?.accepted_mimetypes);
       const blob = type === file.type ? file : file.slice(0, file.size, type);
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
-      const earlier = this.file;
       this.file = chosen;
       const check: Promise<void> | undefined = this.probeDuration?.(file)
         .then((durationMs) => {
-          if (this.file !== chosen || durationMs == null) return;
+          if (this.file !== chosen) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
-          if (maxSeconds && durationMs > maxSeconds * 1000) {
-            this.file = earlier;
+          if (durationMs != null && maxSeconds && durationMs > maxSeconds * 1000) {
+            this.file = this.accepted;
             this.problem = tooLong(maxSeconds);
           } else {
-            this.file = { ...chosen, durationMs };
+            // A length the browser cannot tell is Eneo's to judge.
+            this.file = this.accepted = durationMs == null ? chosen : { ...chosen, durationMs };
           }
           this.emit();
         })
@@ -604,6 +606,7 @@ export class FlowSession {
           if (this.fileCheck === check) this.fileCheck = null;
         });
       this.fileCheck = check ?? null;
+      if (!check) this.accepted = chosen;
     }
     this.emit();
   }
@@ -700,7 +703,7 @@ export class FlowSession {
       this.capture.reset();
       this.closeLive();
     }
-    if (input?.kind === "file") this.file = null;
+    if (input?.kind === "file") this.file = this.accepted = null;
     clearDraft(this.options.drafts, this.options.ownerId, this.draftName());
     this.emit();
     return true;
