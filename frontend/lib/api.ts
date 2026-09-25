@@ -262,8 +262,9 @@ export interface FlowTranscriptionContract {
   /**
    * Finns när en transkriptionstjänst märker upp talare: körningen får skicka `max_speakers`, ett heltal ≥ 1
    * som övre gräns. `form_field` namnger flödets eget fält som redan frågar efter antalet; då frågar appen inte igen.
+   * `participants_field` namnger fältet med deltagarna som talar-kopplingssteget läser; null utan ett sådant steg.
    */
-  max_speakers?: { form_field: string | null } | null;
+  max_speakers?: { form_field: string | null; participants_field?: string | null } | null;
 }
 
 /**

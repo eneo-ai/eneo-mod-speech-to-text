@@ -20,6 +20,7 @@ import {
   speakerLabelsFor,
   storageLine,
   withLastUsedFirst,
+  type DetailValue,
   type KeyValueStorage,
   type LiveClient,
   type SubmitRequest,
@@ -384,15 +385,17 @@ test("a count goes with the run as maxSpeakers; empty or not asked sends none, a
 });
 
 const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
+/** Eneo names the speaker-mapping step's participants field; the count follows only that one. */
+const PARTICIPANTS = { form_field: null, participants_field: "motesdeltagare" };
 
 test("Antal talare follows the number of names until the person edits it, and the run gets what it shows", async () => {
   const sent: SubmitRequest[] = [];
   const { session } = await setup();
-  session.setContract({ ...countContract(), form_fields: [PEOPLE] });
+  session.setContract({ ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] });
   const count = () => [session.getSnapshot().speakerCount, session.getSnapshot().speakerCountFromNames];
   assert.deepEqual(count(), ["", false], "no names: empty, no hint");
   session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
-  assert.deepEqual(count(), ["2", true], "the list field, whatever its name");
+  assert.deepEqual(count(), ["2", true], "the participants field Eneo names");
   session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
   assert.deepEqual(count(), ["3", true]);
   session.setDetail("motesdeltagare", []);
@@ -410,17 +413,30 @@ test("Antal talare follows the number of names until the person edits it, and th
 
   const other = await setup();
   other.session.setHandlers({ submit: async (request) => void sent.push(request) });
-  other.session.setContract({ ...countContract(), form_fields: [PEOPLE] });
+  other.session.setContract({ ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] });
   other.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
   other.session.selectMode("ladda-upp");
   other.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
   assert.equal(await other.session.createDocument(), true);
   assert.equal(sent[0].maxSpeakers, 2, "the prefill is sent as max_speakers");
+});
 
-  const twoLists = await setup();
-  twoLists.session.setContract({ ...countContract(), form_fields: [PEOPLE, { ...PEOPLE, name: "ordforande" }] });
-  twoLists.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
-  assert.equal(twoLists.session.getSnapshot().speakerCount, "", "two lists: which holds the speakers is not guessed");
+test("only the participants field Eneo names fills the count: an agenda list, a missing field or a text field fill nothing", async () => {
+  const AGENDA: FormField = { name: "dagordning", label: "Dagordning", type: "list", required: false };
+  const fills = async (participantsField: string | null, fields: FormField[], name: string, value: DetailValue) => {
+    const { session } = await setup();
+    session.setContract({
+      ...countContract({ max_speakers: { form_field: null, participants_field: participantsField } }),
+      form_fields: fields,
+    });
+    session.setDetail(name, value);
+    return session.getSnapshot().speakerCount;
+  };
+  assert.equal(await fills(null, [AGENDA], "dagordning", ["Budget", "Skolskjuts"]), "", "an agenda is no list of speakers");
+  assert.equal(await fills("motesdeltagare", [AGENDA], "dagordning", ["Budget"]), "", "a field the form does not have");
+  const text: FormField = { name: "namn", label: "Vilka deltar?", type: "text", required: false };
+  assert.equal(await fills("namn", [text], "namn", "Gunnar, Maria"), "", "names in free text are not counted");
+  assert.equal(await fills("motesdeltagare", [AGENDA, PEOPLE], "motesdeltagare", ["Gunnar", "Maria"]), "2", "the named field, beside another list");
 });
 
 test("the flow's own count field is prefilled from the names in its place, and sent as that field", async () => {
@@ -428,7 +444,7 @@ test("the flow's own count field is prefilled from the names in its place, and s
   const { session } = await setup();
   session.setHandlers({ submit: async (request) => void sent.push(request) });
   const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
-  const contract = countContract({ max_speakers: { form_field: "antal" } });
+  const contract = countContract({ max_speakers: { form_field: "antal", participants_field: "motesdeltagare" } });
   session.setContract({ ...contract, form_fields: [PEOPLE, antal] });
   session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
   assert.equal(session.getSnapshot().details.antal, "2");

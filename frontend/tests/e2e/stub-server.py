@@ -18,7 +18,8 @@ An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
 republishing (409 on the contract); any unknown flow is gone (404). flow-2
 ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
-and 3 ask it once Märk upp talare is on. The live
+and 3 ask it once Märk upp talare is on, filled from Deltagare, which their
+contract names as the participants field. The live
 relay on /api/live/ answers a word per four audio frames.
 """
 
@@ -49,7 +50,7 @@ AUDIO_STEP = {
     "accepted_mimetypes": ["audio/webm", "audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"],
 }
 LIVE_ON = {"live": {"available": True, "reason": None}, "speaker_labels": {"selectable": True, "required": False, "default": False},
-           "max_speakers": {"form_field": None}}
+           "max_speakers": {"form_field": None, "participants_field": "deltagare"}}
 
 
 def flow(fid, name, description, version, space, fields, **contract):
@@ -73,7 +74,7 @@ FLOWS = {f["published"]["id"]: f for f in [
           {"name": "typ", "label": "Typ av intervju", "type": "select", "options": ["Medborgare", "Personal"], "required": False, "order": 2}],
          transcription={"live": {"available": False, "reason": "model_not_realtime"},
                         "speaker_labels": {"selectable": False, "required": True, "default": True},
-                        "max_speakers": {"form_field": None}},
+                        "max_speakers": {"form_field": None, "participants_field": None}},
          final_output={"output_type": "text"},
          steps_requiring_review=[{"step_id": REVIEW_STEP_ID, "step_order": 2, "review_mode": "edit", "output_type": "json",
                                   "output_contract": {"properties": {"speakers": {"items": {"properties": {

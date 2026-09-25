@@ -273,15 +273,6 @@ function asksSpeakerCount(transcription: FlowTranscriptionContract | null | unde
   return transcription?.max_speakers?.form_field === null && labelsSpeakers(transcription.speaker_labels, choice);
 }
 
-/**
- * The field that holds the people at the meeting: the one list field (Eneo names the speaker-mapping step's
- * participants field only inside the step). With none or several, which one holds the speakers is not guessed.
- */
-function participantsField(fields: readonly FormField[]): string | null {
-  const lists = fields.filter((field) => field.type === "list");
-  return lists.length === 1 ? lists[0].name : null;
-}
-
 // ponytail: a sensible ceiling for a meeting, not Eneo's (which takes any count); raise it if a larger one is asked for.
 export const MAX_SPEAKER_COUNT = 20;
 
@@ -586,7 +577,7 @@ export class FlowSession {
   setDetail(name: string, value: DetailValue): void {
     this.details = { ...this.details, [name]: value };
     if (name === this.ownCountField()) this.countFollowsNames = false;
-    else if (this.countFollowsNames && name === participantsField(this.contract?.form_fields ?? [])) this.followNames();
+    else if (this.countFollowsNames && name === this.participantsField()) this.followNames();
     writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
     this.invalid = this.invalid.filter((field) => !filledValue(this.details[field]));
     this.emit();
@@ -855,9 +846,21 @@ export class FlowSession {
     return this.contract?.transcription?.max_speakers?.form_field ?? null;
   }
 
-  /** The count the names give: their number; nothing without names, or past what this module's field takes. */
+  /**
+   * The field Eneo names as the one the speaker-mapping step reads the participants from, when the form has it.
+   * Never guessed from the field types: an agenda is a list too, and a wrong count would set a wrong bound.
+   */
+  private participantsField(): string | null {
+    const name = this.contract?.transcription?.max_speakers?.participants_field;
+    return name && (this.contract?.form_fields ?? []).some((field) => field.name === name) ? name : null;
+  }
+
+  /**
+   * The count the names give: their number, when the participants field holds a list of names; nothing without
+   * names, for names in free text, or past what this module's field takes.
+   */
   private namesCount(): string {
-    const field = participantsField(this.contract?.form_fields ?? []);
+    const field = this.participantsField();
     const names = field ? this.details[field] : undefined;
     const count = Array.isArray(names) ? names.length : 0;
     return count > 0 && (this.ownCountField() !== null || count <= MAX_SPEAKER_COUNT) ? String(count) : "";
