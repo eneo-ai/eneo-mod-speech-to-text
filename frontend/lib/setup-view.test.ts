@@ -136,10 +136,15 @@ test("Antal talare is a light number field with its help below, and a count that
 
 test("a count from the names says so under its field, and names the field's description with it", () => {
   const hint = "Från antalet deltagare. Ändra om fler talar.";
+  // One helper paragraph, the one the field names: "Lämna tomt" beside a filled-in number would contradict it.
   const own = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
-  assert.match(own, /id="antal-talare-namn"[^>]*>Från antalet deltagare\. Ändra om fler talar\.</);
-  assert.match(own, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-namn"/);
-  assert.ok(!renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop })).includes(hint));
+  assert.match(own, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Ifyllt från antalet deltagare, ändra om fler talar\.</);
+  assert.match(own, /<input[^>]*aria-describedby="antal-talare-hjalp"/);
+  assert.doesNotMatch(own, /Lämna tomt/);
+  assert.equal(own.match(/data-slot="field-description"/g)?.length, 1, "one helper paragraph");
+  const typed = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop }));
+  assert.match(typed, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
+  assert.doesNotMatch(typed, /Ifyllt från antalet deltagare/);
 
   const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
   const form = (notes?: Record<string, string>) =>

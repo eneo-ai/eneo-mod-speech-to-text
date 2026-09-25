@@ -190,7 +190,6 @@ export function SpeakerCountField({
   fromNames?: boolean;
 }) {
   const helpId = `${SPEAKER_COUNT_ID}-hjalp`;
-  const namesId = `${SPEAKER_COUNT_ID}-namn`;
   const errorId = `${SPEAKER_COUNT_ID}-fel`;
   const invalid = readSpeakerCount(value) === "invalid";
   return (
@@ -210,19 +209,17 @@ export function SpeakerCountField({
         step={1}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        aria-describedby={[helpId, fromNames ? namesId : null, invalid ? errorId : null].filter(Boolean).join(" ")}
+        aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}
         aria-invalid={invalid || undefined}
         // Room for two digits: the field makes each child full width, so this caps it.
         className={`${SINGLE_LINE} max-w-28`}
       />
+      {/* One paragraph, the one the field names: its second sentence says where a filled-in number came from, since
+          "Lämna tomt" beside it would contradict it. */}
       <FieldDescription id={helpId} className="text-[13px]">
-        Används som övre gräns. Lämna tomt om du är osäker.
+        Används som övre gräns.{" "}
+        {fromNames ? "Ifyllt från antalet deltagare, ändra om fler talar." : "Lämna tomt om du är osäker."}
       </FieldDescription>
-      {fromNames && (
-        <FieldDescription id={namesId} className="text-[13px]">
-          {COUNT_FROM_NAMES}
-        </FieldDescription>
-      )}
       {invalid && (
         <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>
       )}
