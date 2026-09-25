@@ -246,13 +246,54 @@ test("stop sends the last audio, then the stop message, keeps the draft and ends
   live.pushFrame(frame(7));
   sockets[0].event({ type: "transcript.delta", text: "Tack för i dag" });
   live.stop();
-  assert.deepEqual(sockets[0].sent.at(-1), JSON.stringify({ type: "stop" }));
+  assert.deepEqual(sockets[0].sent.at(-1), JSON.stringify({ type: "stop", produced_samples: 1_600 }));
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Tack för i dag"]);
   sockets[0].event({ type: "transcript.done", text: "Tack för i dag." });
   sockets[0].drop(1000);
   assert.equal(live.getSnapshot().status, "ended");
   live.pushFrame(frame(8));
   assert.equal(sockets[0].frames().length, 1, "nothing after stop");
+});
+
+test("the stop counts every sample the recording gave the session, before the wait for ready and its bound; none while paused", () => {
+  const { live, sockets } = setup();
+  live.start();
+  for (let i = 0; i < 301; i += 1) live.pushFrame(frame(1)); // one more than the wait keeps
+  sockets[0].ready();
+  live.setRecording(false);
+  live.pushFrame(frame(2));
+  live.setRecording(true);
+  live.pushFrame(new Uint8Array(1_000).buffer); // the partial frame a pause or a stop flushes
+  live.stop();
+  assert.equal(sockets[0].frames().length, 301, "the oldest frame did not wait");
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: 301 * 1_600 + 500 });
+});
+
+test("the only session's final text brings Eneo's stored transcript of the recording", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  live.stop();
+  assert.equal(live.getSnapshot().transcriptId, undefined, "not before the final text");
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.equal(live.getSnapshot().transcriptId, "transcript-1");
+});
+
+test("after a break no session heard the whole recording: the stop carries no count, and a transcript id is not kept", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  sockets[0].drop(1011);
+  elapse(1_000);
+  sockets[1].ready();
+  live.pushFrame(frame(2));
+  live.stop();
+  assert.equal(sockets[1].sent.at(-1), JSON.stringify({ type: "stop" }));
+  sockets[1].event({ type: "transcript.done", text: "Andra delen.", transcript_id: "transcript-2" });
+  assert.equal(live.getSnapshot().complete, true);
+  assert.equal(live.getSnapshot().transcriptId, undefined);
 });
 
 test("a refused start makes live text unavailable, and a refused handshake (1006) too", () => {
@@ -343,6 +384,13 @@ test("a long pause may end the session for silence; live text starts again when 
   assert.equal(sockets.length, 1, "no new session while paused");
   live.setRecording(true);
   assert.equal(sockets.length, 2);
+});
+
+test("the recording's id rides on the relay's address, so Eneo can keep a clean session's text for it", () => {
+  assert.equal(
+    liveSocketUrl({ protocol: "https:", host: "taltilltext.sundsvall.se" }, "flow-1", "step-a", "rec_1234-abcd"),
+    "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?recording_id=rec_1234-abcd",
+  );
 });
 
 test("the socket is the page's own origin, with no subprotocol", () => {

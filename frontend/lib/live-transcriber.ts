@@ -6,10 +6,12 @@
  * a live-text failure only changes this client's status.
  *
  * The relay's contract: wait for `ready` {sample_rate, max_seconds}, send
- * binary frames of at most 64 KiB, end with {"type":"stop"}; it answers
- * `transcript.delta` {text}, `transcript.done` {text} and `error` {code,
- * message, retryable}. A refused handshake (signed out, wrong origin) shows
- * only as close 1006; 1011 means Eneo's socket broke.
+ * binary frames of at most 64 KiB, end with {"type":"stop", produced_samples};
+ * it answers `transcript.delta` {text}, `transcript.done` {text,
+ * transcript_id?} and `error` {code, message, retryable}. A refused handshake
+ * (signed out, wrong origin) shows only as close 1006; 1011 means Eneo's
+ * socket broke. The address may name the recording (?recording_id=): Eneo
+ * then keeps the text of a session that heard all of it, as transcript_id.
  */
 
 import type { OnlineStatus } from "./online-status";
@@ -38,6 +40,8 @@ export interface LiveSnapshot {
   started: boolean;
   /** After the stop, the relay's final text came and the draft is it; false when the connection ended first. */
   complete: boolean;
+  /** Eneo's stored transcript of the whole recording, from the final text of the recording's only session. */
+  transcriptId?: string;
 }
 
 /** What the client needs of a WebSocket. */
@@ -87,10 +91,16 @@ const FINAL_TEXT_WAIT_MS = 60_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
-/** wss://host/api/live/{flowId}/{stepId} on the page's own origin. */
-export function liveSocketUrl(location: { protocol: string; host: string }, flowId: string, stepId: string): string {
+/** wss://host/api/live/{flowId}/{stepId} on the page's own origin, naming the recording when there is one. */
+export function liveSocketUrl(
+  location: { protocol: string; host: string },
+  flowId: string,
+  stepId: string,
+  recordingId?: string,
+): string {
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${scheme}//${location.host}/api/live/${encodeURIComponent(flowId)}/${encodeURIComponent(stepId)}`;
+  const query = recordingId ? `?recording_id=${encodeURIComponent(recordingId)}` : "";
+  return `${scheme}//${location.host}/api/live/${encodeURIComponent(flowId)}/${encodeURIComponent(stepId)}${query}`;
 }
 
 /** No subprotocol: the BFF selects none, and a browser fails a handshake that offered one. */
@@ -108,6 +118,9 @@ export class LiveTranscriber {
   private socket: LiveSocket | null = null;
   private ready = false;
   private buffered: ArrayBuffer[] = [];
+  // Samples the recording gave live text, and the sessions that said ready: only the one session can have heard all.
+  private produced = 0;
+  private sessions = 0;
   private recording = true;
   private stopping = false;
   private failure: Failure = null;
@@ -164,6 +177,8 @@ export class LiveTranscriber {
   /** The next 100 ms of audio; sent when live, kept (bounded) until then. */
   pushFrame(frame: ArrayBuffer): void {
     if (!this.recording || this.stopping) return;
+    // Counted before any wait or discard, so Eneo can tell whether the session heard all of it.
+    this.produced += frame.byteLength / 2;
     if (this.ready && this.socket) {
       if (this.socket.bufferedAmount + frame.byteLength <= MAX_QUEUED_BYTES) {
         this.socket.send(frame);
@@ -193,7 +208,9 @@ export class LiveTranscriber {
     this.commit();
     this.clear("retryTimer");
     if (this.socket && this.ready) {
-      this.socket.send(JSON.stringify({ type: "stop" }));
+      // A later session missed what the ones before it heard: its stop names no count, and Eneo keeps no text.
+      const stop = this.sessions === 1 ? { type: "stop", produced_samples: this.produced } : { type: "stop" };
+      this.socket.send(JSON.stringify(stop));
       this.stopTimer = this.deps.setTimer(() => this.finish(), FINAL_TEXT_WAIT_MS);
     } else {
       this.finish();
@@ -259,7 +276,7 @@ export class LiveTranscriber {
 
   private onMessage(socket: LiveSocket, data: unknown) {
     if (socket !== this.socket) return;
-    let event: { type?: unknown; text?: unknown; code?: unknown; retryable?: unknown };
+    let event: { type?: unknown; text?: unknown; code?: unknown; retryable?: unknown; transcript_id?: unknown };
     try {
       event = JSON.parse(String(data));
     } catch {
@@ -268,6 +285,7 @@ export class LiveTranscriber {
     switch (event.type) {
       case "ready":
         this.ready = true;
+        this.sessions += 1;
         this.attempts = 0;
         this.retryMs = FIRST_RETRY_MS;
         this.buffered.forEach((frame) => socket.send(frame));
@@ -285,7 +303,10 @@ export class LiveTranscriber {
         const final = typeof event.text === "string" ? event.text : null;
         if (final !== null) this.reconcile(final);
         if (this.stopping) {
-          if (final !== null) this.set({ complete: true });
+          // Only the recording's one session has a stored transcript of all of it.
+          const transcriptId =
+            this.sessions === 1 && typeof event.transcript_id === "string" ? event.transcript_id : undefined;
+          if (final !== null) this.set({ complete: true, transcriptId });
           this.finish();
         }
         break;

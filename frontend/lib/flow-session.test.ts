@@ -111,16 +111,22 @@ const audioContract = (overrides: Partial<RunContract> = {}): RunContract => ({
 function fakeLiveClient() {
   const calls: string[] = [];
   const opened: string[] = [];
+  const recordingIds: Array<string | undefined> = [];
   const earlier: unknown[] = [];
   const streams: unknown[] = [];
-  const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  const listeners = new Set<() => void>();
+  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
   const client: LiveClient = {
-    open(stepId, pieces) {
+    open(stepId, recordingId, pieces) {
       opened.push(stepId);
+      recordingIds.push(recordingId);
       earlier.push(pieces);
       return {
         getSnapshot: () => snapshot,
-        subscribe: () => () => undefined,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => void listeners.delete(listener);
+        },
         listen: (stream) => void streams.push(stream),
         setRecording: (on) => void calls.push(on ? "recording" : "paused"),
         stop: () => void calls.push("stop"),
@@ -128,7 +134,23 @@ function fakeLiveClient() {
       };
     },
   };
-  return { client, calls, opened, earlier, streams, snapshot };
+  /** What the relay's last message made of the session. */
+  const report = (patch: Partial<LiveSnapshot>) => {
+    snapshot = { ...snapshot, ...patch };
+    listeners.forEach((listener) => listener());
+  };
+  return {
+    client,
+    calls,
+    opened,
+    recordingIds,
+    earlier,
+    streams,
+    report,
+    get snapshot() {
+      return snapshot;
+    },
+  };
 }
 
 async function setup(
@@ -888,7 +910,7 @@ test("a Strömma recording continued after a reload or after Stoppa streams live
 function relayedLiveClient() {
   const relays: Array<{ say(payload: object): void }> = [];
   const client: LiveClient = {
-    open(_stepId, earlier) {
+    open(_stepId, _recordingId, earlier) {
       const transcriber = new LiveTranscriber(
         {
           openSocket: () => {
@@ -1307,6 +1329,43 @@ test("Strömma streams live text beside the recording: pause, a lost microphone 
   other.session.selectMode("spela-in");
   await other.session.start();
   assert.deepEqual(spelaIn.opened, []);
+});
+
+test("Strömma names the new recording to live text, and a clean session's stored transcript stays with it", async () => {
+  const live = fakeLiveClient();
+  const { session, store, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  assert.deepEqual(live.recordingIds, [id], "named before the microphone was asked for");
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  await settle();
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
+});
+
+test("a transcript never stays with a recording of two parts, and live text for a new part names no recording", async () => {
+  const live = fakeLiveClient();
+  const { session, store, streams, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("first");
+  streams[0].track.dispatchEvent(new Event("ended")); // a phone call takes the microphone
+  await until(() => session.getSnapshot().phase === "interrupted");
+  await session.continueRecording();
+  recorders[1].emit("second");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  await settle();
+  assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
+
+  await session.continueStopped();
+  assert.deepEqual(live.recordingIds, [id, undefined], "a preview only");
 });
 
 test("a microphone that cannot start leaves no live session behind", async () => {

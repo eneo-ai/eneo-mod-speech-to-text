@@ -52,6 +52,11 @@ export interface StoredRecording {
    * that never heard back repeats exactly this, and Eneo returns the run it made.
    */
   submission?: RunRequest | null;
+  /**
+   * Eneo's stored text of the live session (Strömma) that heard the whole recording, while it is one part: the
+   * run uses it instead of transcribing the audio again. A new part forgets it.
+   */
+  liveTranscriptId?: string | null;
 }
 
 export interface RunRequest {
@@ -62,7 +67,10 @@ export interface RunRequest {
 export type NewRecording = Pick<
   StoredRecording,
   "ownerId" | "flowId" | "flowName" | "stepId" | "inputMode" | "mimeType"
->;
+> & {
+  /** Chosen ahead when live text names the recording before it exists; a new one otherwise. */
+  id?: string;
+};
 
 /** One part as an audio file, ready to upload or save. */
 export interface RecordingFile {
@@ -261,7 +269,7 @@ export class RecordingStore {
 
   /** A new recording, leased by this tab until `release`. */
   async create(init: NewRecording): Promise<StoredRecording> {
-    const id = crypto.randomUUID();
+    const id = init.id ?? crypto.randomUUID();
     this.made.add(id);
     await this.lease(id);
     return this.change(async () => {
@@ -287,6 +295,7 @@ export class RecordingStore {
       await this.write({
         ...recording,
         state: "recording",
+        liveTranscriptId: null,
         parts: [
           ...recording.parts,
           { index, startedAt: this.now(), durationMs: 0, bytes: 0, chunks: 0, fileId: null },
@@ -333,6 +342,25 @@ export class RecordingStore {
   /** Eneo is about to be asked for the run: the request is kept first, and the send is "uploaded". */
   startSubmission(id: string, request: RunRequest): Promise<void> {
     return this.update(id, (recording) => ({ ...recording, state: "uploaded", submission: request }));
+  }
+
+  /**
+   * Keeps a live session's stored transcript with the recording it heard whole: still one part, and no send begun,
+   * which asked without it. Under the lease, so a send or a new part in another tab is never written over; a
+   * recording in use is left as it is, and its run transcribes the audio.
+   */
+  async keepLiveTranscript(id: string, transcriptId: string): Promise<void> {
+    if (!(await this.lease(id))) return;
+    try {
+      await this.change(async () => {
+        const recording = await this.load(id);
+        if (recording?.parts.length === 1 && !sealed(recording)) {
+          await this.write({ ...recording, liveTranscriptId: transcriptId });
+        }
+      });
+    } finally {
+      this.release(id);
+    }
   }
 
   /** Drops a run request that can never be answered; the uploads stay, and the recording sealed. */

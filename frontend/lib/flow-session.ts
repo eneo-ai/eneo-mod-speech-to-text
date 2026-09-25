@@ -393,8 +393,12 @@ export interface LiveSession {
 }
 
 export interface LiveClient {
-  /** Called in the start gesture, so the browser lets its audio run; `earlier` is the draft to go on from. */
-  open(stepId: string, earlier?: LivePiece[]): LiveSession;
+  /**
+   * Called in the start gesture, so the browser lets its audio run. `recordingId` names the recording the session
+   * hears from its start, so Eneo can keep the session's text for the run; without it the text is a preview only.
+   * `earlier` is the draft to go on from.
+   */
+  open(stepId: string, recordingId?: string, earlier?: LivePiece[]): LiveSession;
 }
 
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
@@ -543,12 +547,15 @@ export class FlowSession {
     this.microphoneError = null;
     this.starting = true;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    // Named ahead, so live text names the recording to Eneo from its first sample.
+    const recordingId = crypto.randomUUID();
     try {
       // Opened in the start gesture, so the browser lets its audio run; it connects while the microphone is asked for.
-      if (mode === "stromma") this.openLive(step.step_id);
+      if (mode === "stromma") this.openLive(step.step_id, { recordingId });
       this.emit();
       await this.capture.start(
         {
+          id: recordingId,
           ownerId: this.options.ownerId,
           flowId: this.options.flowId,
           flowName: this.flowName,
@@ -765,7 +772,10 @@ export class FlowSession {
     return { maxBytes: step?.max_file_size_bytes, maxDurationMs: seconds ? seconds * 1000 : undefined, maxFiles: step?.max_files };
   }
 
-  /** Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. */
+  /**
+   * Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. Its live text
+   * hears only the new part, so it names no recording: a preview only.
+   */
   private async recordOn(
     recording: StoredRecording,
     takeOver: (recordingId: string, limits: CaptureLimits) => Promise<void>,
@@ -777,7 +787,7 @@ export class FlowSession {
     // after Stoppa are part of it.
     const earlier = this.live;
     this.closeLive();
-    if (live) this.openLive(recording.stepId, earlier?.getSnapshot().pieces);
+    if (live) this.openLive(recording.stepId, { earlier: earlier?.getSnapshot().pieces });
     this.emit();
     await takeOver(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
@@ -789,10 +799,10 @@ export class FlowSession {
     this.emit();
   }
 
-  private openLive(stepId: string, earlier?: LivePiece[]) {
+  private openLive(stepId: string, { recordingId, earlier }: { recordingId?: string; earlier?: LivePiece[] } = {}) {
     this.closeLive();
     try {
-      this.live = this.options.live?.open(stepId, earlier) ?? null;
+      this.live = this.options.live?.open(stepId, recordingId, earlier) ?? null;
     } catch {
       // Live text could not even be set up: the recording goes on, and the sheet says so.
       this.live = unavailableLive(earlier);
@@ -810,7 +820,7 @@ export class FlowSession {
   private followLive() {
     const live = this.live;
     if (!live) return;
-    const { status, stream } = this.capture.getSnapshot();
+    const { status, stream, recording } = this.capture.getSnapshot();
     if (stream && stream !== this.liveStream) {
       this.liveStream = stream;
       live.listen(stream);
@@ -824,8 +834,22 @@ export class FlowSession {
     } else if (status === "stopped" && this.liveStream !== null) {
       this.liveStream = null;
       this.liveRecording = false;
+      if (recording) this.keepTranscript(live, recording.id);
       live.stop();
     }
+  }
+
+  /** A clean session's stored transcript goes with the recording, so its run need not transcribe the audio again. */
+  private keepTranscript(live: LiveSession, recordingId: string) {
+    const unsubscribe = live.subscribe(() => {
+      const { status, transcriptId } = live.getSnapshot();
+      if (transcriptId) {
+        void Promise.resolve(this.options.openStore())
+          .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
+          .catch(() => undefined);
+      }
+      if (transcriptId || status === "ended") unsubscribe();
+    });
   }
 
   private onCapture = () => {

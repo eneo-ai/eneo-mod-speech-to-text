@@ -18,8 +18,8 @@ export function supportsLiveText(): boolean {
 export interface LiveEnv {
   audioContext(): AudioContext;
   workletNode(context: AudioContext, options: AudioWorkletNodeOptions): AudioWorkletNode;
-  /** The transcriber's connection to the relay for one step, and its timers. */
-  liveDeps(stepId: string): LiveDeps;
+  /** The transcriber's connection to the relay for one step and recording, and its timers. */
+  liveDeps(stepId: string, recordingId?: string): LiveDeps;
 }
 
 /**
@@ -30,8 +30,8 @@ export function browserLiveClient(flowId: string): LiveClient {
   return liveClient({
     audioContext: () => new AudioContext(),
     workletNode: (context, options) => new AudioWorkletNode(context, "live-pcm", options),
-    liveDeps: (stepId) => ({
-      openSocket: () => openLiveSocket(WebSocket, liveSocketUrl(window.location, flowId, stepId)),
+    liveDeps: (stepId, recordingId) => ({
+      openSocket: () => openLiveSocket(WebSocket, liveSocketUrl(window.location, flowId, stepId, recordingId)),
       setTimer: (fn, ms) => window.setTimeout(fn, ms),
       clearTimer: (timer) => window.clearTimeout(timer as number),
       online: onlineStatus,
@@ -50,7 +50,7 @@ function load(context: AudioContext): Promise<void> {
 
 export function liveClient(env: LiveEnv): LiveClient {
   return {
-    open(stepId, earlier): LiveSession {
+    open(stepId, recordingId, earlier): LiveSession {
       // Made first, in the start gesture, so the browser lets it run; if it
       // cannot be made, nothing else has been set up.
       let context: AudioContext | null = env.audioContext();
@@ -65,7 +65,7 @@ export function liveClient(env: LiveEnv): LiveClient {
       let stretch = 0;
       let recording = true;
 
-      const deps = env.liveDeps(stepId);
+      const deps = env.liveDeps(stepId, recordingId);
       const transcriber = new LiveTranscriber(
         {
           ...deps,

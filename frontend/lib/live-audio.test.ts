@@ -79,6 +79,7 @@ function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
   const sockets: FakeSocket[] = [];
   const contexts: Array<{ state: string }> = [];
   const worklets: Processor[] = [];
+  const named: Array<[stepId: string, recordingId: string | undefined]> = [];
   const timers: Array<{ fn: () => void; ms: number; cleared: boolean }> = [];
   let failLoads = options.failLoads ?? 0;
   let failResumes = options.failResumes ?? 0;
@@ -108,8 +109,9 @@ function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
       worklets.push(processor);
       return { port, disconnect() {} } as unknown as AudioWorkletNode;
     },
-    liveDeps: () => ({
+    liveDeps: (stepId, recordingId) => ({
       openSocket: () => {
+        named.push([stepId, recordingId]);
         const socket = new FakeSocket();
         sockets.push(socket);
         return socket;
@@ -136,7 +138,7 @@ function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
       }
     }
   };
-  return { client, sockets, contexts, worklets, play, elapse };
+  return { client, sockets, contexts, worklets, named, play, elapse };
 }
 
 const stream = {} as MediaStream;
@@ -169,6 +171,31 @@ test("paused audio never reaches live text: the pause holds before encoding, and
     1_600,
     "after the pause, frames start with the audio after it",
   );
+});
+
+test("the stop counts every sample the recording gave live text, and none from a pause; the relay hears which recording", async () => {
+  const { client, sockets, named, play } = setupLive();
+  const session = client.open("step-audio", "recording-1");
+  session.listen(stream);
+  await settle();
+  play(0.25, 2_500); // before ready: it waits
+  deliver();
+  sockets[0].ready();
+  session.setRecording(false);
+  play(0.75, 3_000);
+  deliver();
+  session.setRecording(true);
+  deliver();
+  play(0.5, 3_300);
+  deliver();
+  session.stop();
+
+  assert.deepEqual(named, [["step-audio", "recording-1"]]);
+  assert.ok(!sockets[0].samples().includes(pcm(0.75)));
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), {
+    type: "stop",
+    produced_samples: sockets[0].samples().length,
+  });
 });
 
 test("a pause and a resume quicker than the audio thread hears of them let nothing from the pause through", async () => {
