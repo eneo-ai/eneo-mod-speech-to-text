@@ -47,6 +47,8 @@
         - group
         - searchbox "Sök i transkriptet"
       - status
+      - link "Hoppa förbi transkriptet":
+        - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":
         - listitem /Talare 1, 0:\d+ i del 1/:
