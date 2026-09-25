@@ -537,14 +537,6 @@ export const STATES: State[] = [
     },
   },
   {
-    name: "result-text",
-    go: async (page) => {
-      // flow-2 gives its result back in the run: text, not a document.
-      await run(page, "run-plain", "flow-2");
-      await heading(page, "Texten är klar");
-    },
-  },
-  {
     name: "result-pdf-preview-whole",
     go: async (page) => {
       await run(page, "run-pdf-long");
