@@ -342,7 +342,8 @@ export function ReviewView({
   }
 
   function submitReject() {
-    if (!rejectReason.trim()) return;
+    // Approved, the pause is final: only resuming is left, never a rejection typed before it.
+    if (decided || !rejectReason.trim()) return;
     void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()).catch(() => undefined), undefined);
   }
 
@@ -353,7 +354,7 @@ export function ReviewView({
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
-  const rejectSection = showReject ? (
+  const rejectSection = showReject && !decided ? (
     <section className={isSpeakerMapping ? undefined : "paper-card p-4 mb-5"}>
       <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
       <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">

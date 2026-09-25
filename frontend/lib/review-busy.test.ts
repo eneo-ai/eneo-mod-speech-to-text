@@ -29,8 +29,9 @@ const pause: FlowRunReviewCheckpointPublic = {
   current_payload_json: { text: "Utkast från flödet." },
 };
 
-/** Eneo's pause, with the edit's answer held until `release`, and approval failing (503). */
-function eneo(t: { after: (fn: () => void) => void }) {
+/** Eneo's pause, with the edit's answer held until `release`, and approval failing (503); with `approves`, the
+ * approval goes through and the resume after it fails. */
+function eneo(t: { after: (fn: () => void) => void }, { approves = false } = {}) {
   let release!: () => void;
   const held = new Promise<void>((resolve) => (release = resolve));
   let current = pause;
@@ -50,6 +51,12 @@ function eneo(t: { after: (fn: () => void) => void }) {
     }
     if (method === "POST" && path === `${PAUSE}approve/`) {
       calls.push("approve");
+      if (!approves) return json(503, { code: "upstream_unreachable" });
+      current = { ...current, state: "approved", revision: current.revision + 1 };
+      return json(200, current);
+    }
+    if (method === "POST" && path === `${PAUSE}resume/`) {
+      calls.push("resume");
       return json(503, { code: "upstream_unreachable" });
     }
     if (path.endsWith("/review-checkpoints/active/")) return json(200, current);
@@ -252,4 +259,23 @@ test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card unde
   assert.ok(card.contains(button(view.container, "Bekräfta avvisning")), "the reason form opens there too");
   const transcript = view.container.querySelector('section[aria-label="Transkript"], section[aria-label="Inspelning och transkript"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
+});
+
+test("an approved pause is final: a reason typed before approving cannot reject it, also when the resume failed", async (t) => {
+  rejected.length = 0;
+  const server = eneo(t, { approves: true });
+  const view = await review();
+  await view.act(async () => button(view.container, "Avvisa")!.click());
+  await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl …"]')!, "Fel möte."));
+  await view.act(async () => {
+    button(view.container, "Godkänn och fortsätt")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(server.calls, ["approve", "resume"], "approved, then the resume failed");
+  assert.ok(button(view.container, "Fortsätt"), "the one way on is Fortsätt");
+  // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
+  assert.ok(!button(view.container, "Bekräfta avvisning"), "no rejection of an approved pause");
+  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form");
+  assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
+  assert.deepEqual(rejected, []);
 });
