@@ -94,6 +94,9 @@ class FakeEneoSocket:
 
     def __init__(self) -> None:
         self.mode = "relay"
+        # The stop it answers, and its answer.
+        self.stop_frame = STOP
+        self.done = {"type": "transcript.done", "text": "hej då"}
         self.resume = threading.Event()
         self.close_code: int | None = None
         self.handshakes = []
@@ -150,8 +153,8 @@ class FakeEneoSocket:
                 if self.mode == "error_on_first_frame":
                     await socket.send(json.dumps(ERROR))
                     return
-                if frame == STOP:
-                    await socket.send(json.dumps({"type": "transcript.done", "text": "hej då"}))
+                if frame == self.stop_frame:
+                    await socket.send(json.dumps(self.done))
                     return
                 await socket.send(
                     json.dumps({"type": "transcript.delta", "text": f"{len(frame)} bytes "})
@@ -242,9 +245,9 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
     def sign_in(self, *, refresh_at: int) -> None:
         self.client.cookies.set(SESSION_COOKIE, self.create_session(refresh_at=refresh_at))
 
-    def connect(self, origin: str | None = MODULE_ORIGIN):
+    def connect(self, origin: str | None = MODULE_ORIGIN, query: str = ""):
         headers = {} if origin is None else {"Origin": origin}
-        return self.client.websocket_connect(LIVE_PATH, headers=headers)
+        return self.client.websocket_connect(LIVE_PATH + query, headers=headers)
 
     def assert_closed(self, browser, code: int = 1000) -> None:
         with self.assertRaises(WebSocketDisconnect) as ended:
@@ -286,6 +289,37 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
             handshake.headers["Sec-WebSocket-Protocol"], f"eneo-live.v1, ticket.{TICKET}"
         )
         self.assertNotIn("Origin", handshake.headers)
+
+    def test_the_recording_id_goes_with_the_ticket_request_only_when_valid(self) -> None:
+        recording_id = "3f2b8c1e-5d4a-4f6b-9c7d-2e1a0b9c8d7e"
+        queries = {
+            f"?recording_id={recording_id}": {"recording_id": recording_id},
+            "": None,
+            "?recording_id=short12": None,
+            f"?recording_id={'a' * 65}": None,
+            "?recording_id=not%2Fplain-1234": None,
+            # A trailing newline, which a pattern ending in `$` would let through.
+            "?recording_id=abcdefgh%0A": None,
+        }
+        for query, body in queries.items():
+            with self.subTest(query=query):
+                with self.connect(query=query) as browser:
+                    self.assertEqual(browser.receive_json(), READY)
+                # Without a valid id, Eneo is asked for a preview: no body at all.
+                self.assertEqual(self.eneo_api.calls[-1].get("json"), body)
+
+    def test_the_stop_count_and_the_transcript_id_pass_unchanged(self) -> None:
+        stop = '{"type":"stop","produced_samples":3200}'
+        done = {"type": "transcript.done", "text": "hej då", "transcript_id": "t-1"}
+        self.eneo_socket.stop_frame, self.eneo_socket.done = stop, done
+
+        with self.connect() as browser:
+            browser.receive_json()
+            browser.send_text(stop)
+            self.assertEqual(browser.receive_json(), done)
+            self.assert_closed(browser)
+
+        self.assertEqual(self.eneo_socket.frames, [stop])
 
     def test_frames_reach_eneo_unchanged(self) -> None:
         frames: list[bytes | str] = [

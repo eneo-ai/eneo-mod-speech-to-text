@@ -108,7 +108,7 @@ function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>
 const frame = (byte: number) => new Uint8Array(3_200).fill(byte).buffer;
 const firstByte = (data: ArrayBuffer) => new Uint8Array(data)[0];
 
-test("frames from the moment recording starts wait for ready, then go in order; none while paused", () => {
+test("frames from the moment recording starts wait for ready, then go in order; audio from before a pause still goes", () => {
   const { live, sockets } = setup();
   live.start();
   assert.equal(live.getSnapshot().status, "connecting");
@@ -123,10 +123,10 @@ test("frames from the moment recording starts wait for ready, then go in order; 
   assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3], "the first words are not lost");
 
   live.setRecording(false);
-  live.pushFrame(frame(4));
+  live.pushFrame(frame(4)); // gathered before the pause, handed on after it
   live.setRecording(true);
   live.pushFrame(frame(5));
-  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3, 5], "paused audio is not sent");
+  assert.deepEqual(sockets[0].frames().map(firstByte), [1, 2, 3, 4, 5]);
 });
 
 test("the wait for ready keeps a bounded buffer: the newest audio, not unbounded memory", () => {
@@ -246,13 +246,89 @@ test("stop sends the last audio, then the stop message, keeps the draft and ends
   live.pushFrame(frame(7));
   sockets[0].event({ type: "transcript.delta", text: "Tack för i dag" });
   live.stop();
-  assert.deepEqual(sockets[0].sent.at(-1), JSON.stringify({ type: "stop" }));
+  assert.deepEqual(sockets[0].sent.at(-1), JSON.stringify({ type: "stop", produced_samples: 1_600 }));
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Tack för i dag"]);
   sockets[0].event({ type: "transcript.done", text: "Tack för i dag." });
   sockets[0].drop(1000);
   assert.equal(live.getSnapshot().status, "ended");
   live.pushFrame(frame(8));
   assert.equal(sockets[0].frames().length, 1, "nothing after stop");
+});
+
+test("the stop counts every sample the recording gave the session, before the wait for ready and its bound", () => {
+  const { live, sockets } = setup();
+  live.start();
+  for (let i = 0; i < 301; i += 1) live.pushFrame(frame(1)); // one more than the wait keeps
+  sockets[0].ready();
+  live.pushFrame(new Uint8Array(1_000).buffer); // the partial frame a pause or a stop flushes
+  live.stop();
+  assert.equal(sockets[0].frames().length, 301, "the oldest frame did not wait");
+  assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop", produced_samples: 301 * 1_600 + 500 });
+});
+
+test("the only session's final text brings Eneo's stored transcript of the recording", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  live.stop();
+  assert.equal(live.getSnapshot().transcriptId, undefined, "not before the final text");
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.equal(live.getSnapshot().transcriptId, "transcript-1");
+});
+
+test("a counted stop is awaited: finishing from the recording's end until its final text", () => {
+  const { live, sockets } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  live.end();
+  assert.equal(live.getSnapshot().finishing, true, "from the moment the recording ended, its last audio still coming");
+  live.stop();
+  assert.equal(live.getSnapshot().finishing, true);
+  sockets[0].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-1" });
+  assert.equal(live.getSnapshot().finishing, false);
+
+  const broken = setup();
+  broken.live.start();
+  broken.sockets[0].ready();
+  broken.sockets[0].drop(1011);
+  broken.elapse(1_000);
+  broken.sockets[1].ready();
+  broken.live.end();
+  broken.live.stop();
+  assert.ok(!broken.live.getSnapshot().finishing, "a stop without a count brings no transcript to wait for");
+});
+
+test("after a break no session heard the whole recording: the stop carries no count, and a transcript id is not kept", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(frame(1));
+  sockets[0].drop(1011);
+  elapse(1_000);
+  sockets[1].ready();
+  live.pushFrame(frame(2));
+  live.stop();
+  assert.equal(sockets[1].sent.at(-1), JSON.stringify({ type: "stop" }));
+  sockets[1].event({ type: "transcript.done", text: "Andra delen.", transcript_id: "transcript-2" });
+  assert.equal(live.getSnapshot().complete, true);
+  assert.equal(live.getSnapshot().transcriptId, undefined);
+});
+
+test("a connection lost before it said ready breaks the recording's text too: the next session's stop carries no count", () => {
+  const { live, sockets, elapse } = setup();
+  live.start();
+  live.pushFrame(frame(1));
+  sockets[0].event({ type: "error", code: "upstream_unavailable", retryable: true });
+  sockets[0].drop(1011);
+  elapse(1_000);
+  sockets[1].ready();
+  live.pushFrame(frame(2));
+  live.stop();
+  assert.equal(sockets[1].sent.at(-1), JSON.stringify({ type: "stop" }));
+  sockets[1].event({ type: "transcript.done", text: "Hej.", transcript_id: "transcript-2" });
+  assert.equal(live.getSnapshot().transcriptId, undefined);
 });
 
 test("a refused start makes live text unavailable, and a refused handshake (1006) too", () => {
@@ -343,6 +419,13 @@ test("a long pause may end the session for silence; live text starts again when 
   assert.equal(sockets.length, 1, "no new session while paused");
   live.setRecording(true);
   assert.equal(sockets.length, 2);
+});
+
+test("the recording's id rides on the relay's address, so Eneo can keep a clean session's text for it", () => {
+  assert.equal(
+    liveSocketUrl({ protocol: "https:", host: "taltilltext.sundsvall.se" }, "flow-1", "step-a", "rec_1234-abcd"),
+    "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?recording_id=rec_1234-abcd",
+  );
 });
 
 test("the socket is the page's own origin, with no subprotocol", () => {

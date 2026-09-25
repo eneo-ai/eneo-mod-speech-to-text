@@ -14,6 +14,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
@@ -92,6 +93,7 @@ export function ReadyPanel({
   persistent,
   problem,
   live = null,
+  finishing = false,
   onCreate,
   onContinue,
   onDiscard,
@@ -104,6 +106,8 @@ export function ReadyPanel({
   problem: Problem | null;
   /** Strömma's live text, kept after Stoppa. */
   live?: LiveSession | null;
+  /** Strömma's final text is on its way: Skapa dokument waits for it. */
+  finishing?: boolean;
   onCreate: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
   onContinue?: () => void;
@@ -163,9 +167,21 @@ export function ReadyPanel({
 
       {moment && <p className="text-[15px] text-ink">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</p>}
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button type="button" variant={moment ? "outline" : "default"} size="xl" className="sm:flex-1" onClick={onCreate}>
-          <FileText data-icon="inline-start" aria-hidden />
-          Skapa dokument
+        <Button
+          type="button"
+          variant={moment ? "outline" : "default"}
+          size="xl"
+          className="sm:flex-1"
+          // Not disabled, so focus stays on it; a press does nothing until the text is in.
+          aria-disabled={finishing || undefined}
+          onClick={onCreate}
+        >
+          {finishing ? (
+            <Spinner data-icon="inline-start" aria-hidden />
+          ) : (
+            <FileText data-icon="inline-start" aria-hidden />
+          )}
+          {finishing ? "Slutför texten…" : "Skapa dokument"}
         </Button>
         {onContinue && (
           <Button type="button" variant={moment ? "default" : "outline"} size="xl" className="sm:flex-1" onClick={onContinue}>

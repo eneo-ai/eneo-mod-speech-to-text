@@ -128,6 +128,8 @@ export interface SubmitParams extends RetryOptions {
   idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
+  /** Eneo's stored live transcript of the one file, used instead of transcribing it again; never beside more files. */
+  liveTranscriptId?: string | null;
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
   onStarting?: (request: RunRequest) => void | Promise<void>;
 }
@@ -187,7 +189,11 @@ export async function submitRun(
   }
 
   const body: Json = { expected_flow_version: contract.published_flow_version };
-  if (fileIds.length > 0) body.step_inputs = { [stepId!]: { file_ids: fileIds } };
+  if (fileIds.length > 0) {
+    const input: Json = { file_ids: fileIds };
+    if (fileIds.length === 1 && params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
+    body.step_inputs = { [stepId!]: input };
+  }
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
   if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
   const key =
@@ -228,6 +234,27 @@ export async function submitRecording(
 const refusedByEneo = (error: unknown) =>
   error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
 
+/**
+ * Eneo will not use the request's live transcript: gone or expired, bound to another file, or not beside one audio
+ * file. It made no run for the request, so the same request without it goes under the same key, and the run
+ * transcribes the audio as for any recording.
+ */
+const LIVE_TRANSCRIPT_REFUSALS = new Set([
+  "flow_run_live_transcript_not_found",
+  "flow_run_live_transcript_already_bound",
+  "flow_run_live_transcript_requires_one_audio_file",
+]);
+
+/** The request without the live transcript it names, or null when it names none. */
+function withoutLiveTranscript({ body, idempotencyKey }: RunRequest): RunRequest | null {
+  const inputs = body.step_inputs as Record<string, Json> | undefined;
+  if (!inputs || !Object.values(inputs).some((input) => "live_transcript_id" in input)) return null;
+  const plain = Object.fromEntries(
+    Object.entries(inputs).map(([stepId, { live_transcript_id: _, ...input }]) => [stepId, input]),
+  );
+  return { body: { ...body, step_inputs: plain }, idempotencyKey };
+}
+
 async function sendLeased(
   store: RecordingStore,
   id: string,
@@ -250,12 +277,22 @@ async function sendLeased(
   };
   const ask = (request: RunRequest) =>
     withRetry(() => attempt(params.flowId, request.body, request.idempotencyKey, params.signal), params);
+  // Once, when Eneo will not use the live transcript: it is forgotten, and the request without it is kept and asked.
+  const withoutLive = async (error: unknown): Promise<FlowRunPublic> => {
+    const refused = error instanceof ApiError && LIVE_TRANSCRIPT_REFUSALS.has(error.code ?? "");
+    const plain = refused && asked ? withoutLiveTranscript(asked) : null;
+    if (!plain) throw error;
+    await store.dropLiveTranscript(id, plain);
+    asked = plain;
+    await params.onStarting?.(plain);
+    return ask(plain);
+  };
   let run: FlowRunPublic;
   try {
     if (asked) {
       // An earlier send never heard Eneo's answer: the same request gets the run it made.
       await params.onStarting?.(asked);
-      run = await ask(asked);
+      run = await ask(asked).catch(withoutLive);
     } else {
       // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be
       // refused only after Eneo took the run, and the device's copy with it: the recording as it is stored now
@@ -274,6 +311,7 @@ async function sendLeased(
         {
           ...params,
           idempotencyKey: `flow-run:recording:${id}`,
+          liveTranscriptId: recording.liveTranscriptId,
           files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
           onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
           onStarting: async (request) => {
@@ -283,7 +321,7 @@ async function sendLeased(
           },
         },
         { upload: deps?.upload ?? uploadStepRuntimeFile, startRun: attempt },
-      );
+      ).catch(withoutLive);
     }
   } catch (error) {
     // The recording's key already made a run, from another request: it is

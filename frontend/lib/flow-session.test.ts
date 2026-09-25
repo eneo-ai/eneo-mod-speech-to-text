@@ -111,16 +111,22 @@ const audioContract = (overrides: Partial<RunContract> = {}): RunContract => ({
 function fakeLiveClient() {
   const calls: string[] = [];
   const opened: string[] = [];
+  const recordingIds: Array<string | undefined> = [];
   const earlier: unknown[] = [];
   const streams: unknown[] = [];
-  const snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  const listeners = new Set<() => void>();
+  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
   const client: LiveClient = {
-    open(stepId, pieces) {
+    open(stepId, recordingId, pieces) {
       opened.push(stepId);
+      recordingIds.push(recordingId);
       earlier.push(pieces);
       return {
         getSnapshot: () => snapshot,
-        subscribe: () => () => undefined,
+        subscribe: (listener) => {
+          listeners.add(listener);
+          return () => void listeners.delete(listener);
+        },
         listen: (stream) => void streams.push(stream),
         setRecording: (on) => void calls.push(on ? "recording" : "paused"),
         stop: () => void calls.push("stop"),
@@ -128,7 +134,23 @@ function fakeLiveClient() {
       };
     },
   };
-  return { client, calls, opened, earlier, streams, snapshot };
+  /** What the relay's last message made of the session. */
+  const report = (patch: Partial<LiveSnapshot>) => {
+    snapshot = { ...snapshot, ...patch };
+    listeners.forEach((listener) => listener());
+  };
+  return {
+    client,
+    calls,
+    opened,
+    recordingIds,
+    earlier,
+    streams,
+    report,
+    get snapshot() {
+      return snapshot;
+    },
+  };
 }
 
 async function setup(
@@ -888,7 +910,7 @@ test("a Strömma recording continued after a reload or after Stoppa streams live
 function relayedLiveClient() {
   const relays: Array<{ say(payload: object): void }> = [];
   const client: LiveClient = {
-    open(_stepId, earlier) {
+    open(_stepId, _recordingId, earlier) {
       const transcriber = new LiveTranscriber(
         {
           openSocket: () => {
@@ -1307,6 +1329,157 @@ test("Strömma streams live text beside the recording: pause, a lost microphone 
   other.session.selectMode("spela-in");
   await other.session.start();
   assert.deepEqual(spelaIn.opened, []);
+});
+
+test("Strömma names the new recording to live text, and a clean session's stored transcript stays with it", async () => {
+  const live = fakeLiveClient();
+  const { session, store, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  assert.deepEqual(live.recordingIds, [id], "named before the microphone was asked for");
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  await settle();
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
+});
+
+test("Skapa dokument waits while Strömma's final text is on its way, until its transcript is kept with the recording", async () => {
+  const sent: unknown[] = [];
+  const live = fakeLiveClient();
+  const { session, store, recorders } = await setup({ live: live.client });
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("audio");
+  live.report({ finishing: true }); // the stop counted the recording: its final text may name a transcript
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  assert.equal(session.getSnapshot().finishing, true);
+  assert.equal(await session.createDocument(), false, "a press now sends nothing and leaves nothing pending");
+  assert.deepEqual(sent, []);
+
+  live.report({ transcriptId: "transcript-1" });
+  await until(() => !session.getSnapshot().finishing, "the transcript kept");
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1", "kept before a send could seal the recording");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+});
+
+test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, says why while the text is still being kept, and nothing sends without one", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const sent: unknown[] = [];
+  const live = fakeLiveClient();
+  const store = await openRecordingStore({});
+  const keep = store.keepLiveTranscript.bind(store);
+  let write!: () => void;
+  let writing: Promise<void> | null = null;
+  // A slow write under the recording's lease, holding the store's one queue as the real store does.
+  store.keepLiveTranscript = async (id, transcriptId) => {
+    if (!(await store.lease(id))) return;
+    writing = new Promise<void>((resolve) => (write = resolve));
+    await writing;
+    writing = null;
+    store.release(id);
+    await keep(id, transcriptId);
+  };
+  const get = store.get.bind(store);
+  store.get = async (id) => {
+    await writing;
+    return get(id);
+  };
+  const { session, recorders } = await setup({ live: live.client, store });
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  await session.start();
+  recorders[0].emit("audio");
+  live.report({ finishing: true });
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  live.report({ transcriptId: "transcript-1" });
+  await until(() => write !== undefined, "the write begun");
+
+  t.mock.timers.tick(19_999);
+  assert.equal(session.getSnapshot().finishing, true);
+  t.mock.timers.tick(1);
+  assert.equal(session.getSnapshot().finishing, false, "a person waits at most 20 s, whatever is still going on");
+
+  let answered: boolean | null = null;
+  void session.createDocument().then((result) => (answered = result));
+  await until(() => answered !== null, "the press answered without waiting for the write");
+  assert.equal(answered, false);
+  assert.equal(sent.length, 0);
+  assert.equal(session.getSnapshot().problem?.title, "Texten sparas fortfarande.");
+  write();
+  await settle();
+  assert.equal(sent.length, 0, "the write ending sends nothing on its own");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+});
+
+test("a final text that comes while the stopped recording is still being stored is kept once it is", async () => {
+  const live = fakeLiveClient();
+  const store = await openRecordingStore({});
+  const setState = store.setState.bind(store);
+  let stored: (() => void) | undefined;
+  // The capture holds the recording's lease until its stop is stored.
+  store.setState = async (recordingId, state) => {
+    if (state === "stopped") await new Promise<void>((resolve) => (stored = resolve));
+    return setState(recordingId, state);
+  };
+  const { session, recorders } = await setup({ live: live.client, store });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("audio");
+  live.report({ finishing: true });
+  const stopping = session.stop();
+  await until(() => stored !== undefined, "the stop being stored");
+  live.report({ status: "ended", finishing: false, complete: true, transcriptId: "transcript-1" });
+  await settle();
+  stored!();
+  await stopping;
+  await until(() => session.getSnapshot().phase === "ready" && !session.getSnapshot().finishing);
+  assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
+});
+
+test("live text stops with the recorder, before the stopped recording is stored", async () => {
+  const live = fakeLiveClient();
+  const { session, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  recorders[0].emit("audio");
+  const stopping = session.stop();
+  assert.equal(live.calls.at(-1), "stop", "no audio after the recorder's own stop reaches live text");
+  await stopping;
+});
+
+test("a transcript never stays with a recording of two parts, and live text for a new part names no recording", async () => {
+  const live = fakeLiveClient();
+  const { session, store, streams, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("first");
+  streams[0].track.dispatchEvent(new Event("ended")); // a phone call takes the microphone
+  await until(() => session.getSnapshot().phase === "interrupted");
+  await session.continueRecording();
+  recorders[1].emit("second");
+  live.report({ finishing: true });
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
+  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  await settle();
+  assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
+
+  await session.continueStopped();
+  assert.deepEqual(live.recordingIds, [id, undefined], "a preview only");
 });
 
 test("a microphone that cannot start leaves no live session behind", async () => {

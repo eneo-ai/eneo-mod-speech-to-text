@@ -99,6 +99,37 @@ test("a recording cut off mid-meeting is listed as unsent when the app is opened
   assert.deepEqual(await texts(await reopened.readParts(recording.id)), ["audio"]);
 });
 
+test("a live transcript stays with a one-part recording through a reload, goes with a new part, and never joins a send begun", async () => {
+  const env = device();
+  const tab = await openRecordingStore(env);
+  const recording = await tab.create(meeting);
+  await tab.startPart(recording.id);
+  await tab.setState(recording.id, "stopped");
+  tab.release(recording.id);
+  await settle(); // the lock goes with the browser's next turn
+  await tab.keepLiveTranscript(recording.id, "transcript-1");
+
+  const reopened = await openRecordingStore(env);
+  assert.equal((await reopened.get(recording.id))?.liveTranscriptId, "transcript-1", "a reload keeps it");
+  await reopened.startPart(recording.id); // Fortsätt spela in
+  assert.equal((await reopened.get(recording.id))?.liveTranscriptId, null, "the session heard only the first part");
+  await reopened.keepLiveTranscript(recording.id, "transcript-2");
+  assert.equal((await reopened.get(recording.id))?.liveTranscriptId, null, "two parts: never whole");
+
+  const sent = await reopened.create(meeting);
+  await reopened.startPart(sent.id);
+  await reopened.setState(sent.id, "uploading");
+  reopened.release(sent.id);
+  await reopened.keepLiveTranscript(sent.id, "transcript-3");
+  assert.equal((await reopened.get(sent.id))?.liveTranscriptId, null, "the send began without it");
+
+  // Another tab holding the recording (sending it, or recording on) is never written over.
+  const busy = await reopened.create(meeting);
+  await reopened.startPart(busy.id);
+  await tab.keepLiveTranscript(busy.id, "transcript-4");
+  assert.equal((await reopened.get(busy.id))?.liveTranscriptId, null);
+});
+
 test("unsent recordings are listed newest first, without those still leased or already sent", async () => {
   const store = await openRecordingStore(device());
   let changes = 0;

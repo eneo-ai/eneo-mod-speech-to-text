@@ -758,6 +758,8 @@ async def eneo_proxy(path: str, request: Request) -> Response:
 # credentials, opens Eneo's live socket itself (so the ticket never reaches
 # the browser and Eneo sees no browser Origin), and relays both ways
 # unchanged: PCM frames and the stop message up, Eneo's JSON events down.
+# The browser names its recording with ?recording_id=, which goes with the
+# ticket request, so Eneo can keep a clean session's text for the run.
 # Eneo owns the protocol and its limits; the relay only ends both sockets
 # together.
 # ---------------------------------------------------------------------------
@@ -771,6 +773,9 @@ _LIVE_SEND_TIMEOUT_SECONDS = 15
 # transcript.done repeats the session's whole text; Eneo bounds the messages
 # it reads from the model server the same way.
 _LIVE_MAX_MESSAGE_BYTES = 8 * 2**20
+# Eneo's pattern for a recording id; without a valid one the session is a
+# preview only.
+_LIVE_RECORDING_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
 class _LiveTicket(BaseModel):
@@ -806,11 +811,17 @@ def _eneo_unreachable() -> _LiveRefused:
 async def _open_live_session(
     websocket: WebSocket, flow_id: UUID, step_id: UUID
 ) -> ClientConnection:
+    recording_id = websocket.query_params.get("recording_id", "")
     try:
         response = await http_client.post(
             f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/steps/{step_id}"
             "/live-transcription-sessions/",
             headers=module_auth.upstream_auth_headers(websocket),
+            json=(
+                {"recording_id": recording_id}
+                if _LIVE_RECORDING_ID.fullmatch(recording_id)
+                else None
+            ),
             timeout=httpx.Timeout(10.0),
         )
     except httpx.RequestError:

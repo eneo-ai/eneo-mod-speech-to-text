@@ -217,6 +217,8 @@ export interface SessionSnapshot {
   fileChecking: boolean;
   /** Strömma's live text for the recording, when there is one. */
   live: LiveSession | null;
+  /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, briefly. */
+  finishing: boolean;
   problem: Problem | null;
 }
 
@@ -393,9 +395,17 @@ export interface LiveSession {
 }
 
 export interface LiveClient {
-  /** Called in the start gesture, so the browser lets its audio run; `earlier` is the draft to go on from. */
-  open(stepId: string, earlier?: LivePiece[]): LiveSession;
+  /**
+   * Called in the start gesture, so the browser lets its audio run. `recordingId` names the recording the session
+   * hears from its start, so Eneo can keep the session's text for the run; without it the text is a preview only.
+   * `earlier` is the draft to go on from.
+   */
+  open(stepId: string, recordingId?: string, earlier?: LivePiece[]): LiveSession;
 }
+
+// How long Skapa dokument waits for Strömma's final text and its keeping: measured at 4 s on an idle machine and
+// over 10 s under load, against minutes for transcribing the audio again.
+const FINISHING_WAIT_MS = 20_000;
 
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
@@ -451,6 +461,14 @@ export class FlowSession {
   private live: LiveSession | null = null;
   private liveStream: MediaStream | null = null;
   private liveRecording: boolean | null = null;
+  // Whether live text names the recording, so its final text may bring a transcript, and whether that is awaited.
+  private liveNamed = false;
+  private finishing = false;
+  private finishingTimer: ReturnType<typeof setTimeout> | null = null;
+  // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
+  private keepTranscript: (() => void) | null = null;
+  // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
+  private keepInFlight = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -543,12 +561,15 @@ export class FlowSession {
     this.microphoneError = null;
     this.starting = true;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
+    // Named ahead, so live text names the recording to Eneo from its first sample.
+    const recordingId = crypto.randomUUID();
     try {
       // Opened in the start gesture, so the browser lets its audio run; it connects while the microphone is asked for.
-      if (mode === "stromma") this.openLive(step.step_id);
+      if (mode === "stromma") this.openLive(step.step_id, { recordingId });
       this.emit();
       await this.capture.start(
         {
+          id: recordingId,
           ownerId: this.options.ownerId,
           flowId: this.options.flowId,
           flowName: this.flowName,
@@ -642,6 +663,13 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
+    // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
+    if (this.finishing) return false;
+    if (this.keepInFlight && this.snapshot.phase === "ready") {
+      this.problem = { title: "Texten sparas fortfarande.", detail: "Försök igen om en stund." };
+      this.emit();
+      return false;
+    }
     const { phase, mode, fileChecking } = this.snapshot;
     // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
     if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
@@ -765,7 +793,10 @@ export class FlowSession {
     return { maxBytes: step?.max_file_size_bytes, maxDurationMs: seconds ? seconds * 1000 : undefined, maxFiles: step?.max_files };
   }
 
-  /** Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. */
+  /**
+   * Records on in a new part of a stored recording, in the mode it was made in; a refusal says why. Its live text
+   * hears only the new part, so it names no recording: a preview only.
+   */
   private async recordOn(
     recording: StoredRecording,
     takeOver: (recordingId: string, limits: CaptureLimits) => Promise<void>,
@@ -777,7 +808,7 @@ export class FlowSession {
     // after Stoppa are part of it.
     const earlier = this.live;
     this.closeLive();
-    if (live) this.openLive(recording.stepId, earlier?.getSnapshot().pieces);
+    if (live) this.openLive(recording.stepId, { earlier: earlier?.getSnapshot().pieces });
     this.emit();
     await takeOver(recording.id, this.limits());
     const { status, error } = this.capture.getSnapshot();
@@ -789,10 +820,11 @@ export class FlowSession {
     this.emit();
   }
 
-  private openLive(stepId: string, earlier?: LivePiece[]) {
+  private openLive(stepId: string, { recordingId, earlier }: { recordingId?: string; earlier?: LivePiece[] } = {}) {
     this.closeLive();
+    this.liveNamed = recordingId !== undefined;
     try {
-      this.live = this.options.live?.open(stepId, earlier) ?? null;
+      this.live = this.options.live?.open(stepId, recordingId, earlier) ?? null;
     } catch {
       // Live text could not even be set up: the recording goes on, and the sheet says so.
       this.live = unavailableLive(earlier);
@@ -804,13 +836,28 @@ export class FlowSession {
     this.live = null;
     this.liveStream = null;
     this.liveRecording = null;
+    this.liveNamed = false;
+    this.keepTranscript = null;
+    this.clearFinishing();
   }
 
   /** Live text follows the recorder: its microphone, pauses and the stop; its own failures never reach back. */
   private followLive() {
     const live = this.live;
     if (!live) return;
-    const { status, stream } = this.capture.getSnapshot();
+    const { status, stream, recording, stopping } = this.capture.getSnapshot();
+    if (stopping || status === "stopped") {
+      if (status === "stopped") this.keepTranscript?.();
+      // Stored in more than one part (a new part at the flow's limit), it keeps no transcript: nothing to wait for.
+      if (status === "stopped" && recording && recording.parts.length > 1) this.clearFinishing();
+      // With the recorder's own stop, before the recording is stored: live text hears what the file has.
+      if (this.liveStream === null) return;
+      this.liveStream = null;
+      this.liveRecording = false;
+      if (recording && this.liveNamed) this.stopKeepingTranscript(live, recording.id);
+      else live.stop();
+      return;
+    }
     if (stream && stream !== this.liveStream) {
       this.liveStream = stream;
       live.listen(stream);
@@ -821,11 +868,54 @@ export class FlowSession {
         this.liveRecording = recording;
         live.setRecording(recording);
       }
-    } else if (status === "stopped" && this.liveStream !== null) {
-      this.liveStream = null;
-      this.liveRecording = false;
-      live.stop();
     }
+  }
+
+  /**
+   * Stops live text that named the recording. A clean session's stored transcript goes with the recording, so its
+   * run need not transcribe the audio again; while live text awaits it, and until it is kept, Skapa dokument waits.
+   */
+  private stopKeepingTranscript(live: LiveSession, recordingId: string) {
+    let kept = false;
+    const done = () => {
+      if (this.live !== live || !this.finishing) return;
+      this.clearFinishing();
+      this.emit();
+    };
+    // The capture holds the recording's lease until its stop is stored: the keep runs once both are there.
+    const keep = (this.keepTranscript = () => {
+      const { transcriptId } = live.getSnapshot();
+      if (kept || !transcriptId || this.capture.getSnapshot().status !== "stopped") return;
+      kept = true;
+      this.keepTranscript = null;
+      this.keepInFlight = true;
+      void Promise.resolve(this.options.openStore())
+        .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
+        .catch(() => undefined)
+        .finally(() => {
+          this.keepInFlight = false;
+          if (this.problem?.title === "Texten sparas fortfarande.") this.problem = null;
+          done();
+          this.emit();
+        });
+    });
+    const unsubscribe = live.subscribe(() => {
+      const { status, transcriptId, finishing } = live.getSnapshot();
+      keep();
+      if (!transcriptId && !finishing) done();
+      if (status === "ended") unsubscribe();
+    });
+    live.stop();
+    if (!live.getSnapshot().finishing) return;
+    // The whole wait, the text and its keeping, is bounded here; after it the text is still kept if it comes.
+    this.finishing = true;
+    this.finishingTimer = setTimeout(done, FINISHING_WAIT_MS);
+  }
+
+  private clearFinishing() {
+    if (this.finishingTimer !== null) clearTimeout(this.finishingTimer);
+    this.finishingTimer = null;
+    this.finishing = false;
   }
 
   private onCapture = () => {
@@ -863,6 +953,7 @@ export class FlowSession {
       // The latest pick while its length is read: the file shown is not yet the last one that fitted.
       fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
+      finishing: this.finishing,
       problem: this.problem,
     };
   }

@@ -416,21 +416,29 @@ varje försök. Andra 4xx-fel stoppar med Eneos felmeddelande.
 
 ### Strömma: live-text medan man spelar in
 
-Strömma visar texten medan användaren spelar in. Den är en förhandsvisning:
-inspelningen laddas upp och flödet körs som i Spela in, och körningens
-transkript är det som gäller. Run-kontraktets `transcription.live` säger i
-förväg om flödets ljudsteg kan visa live-text.
+Strömma visar texten medan användaren spelar in. Inspelningen laddas upp och
+flödet körs som i Spela in. Har en enda live-session hört hela inspelningen,
+och inspelningen är en enda fil, använder körningen sessionens text i stället
+för att transkribera ljudet en gång till. Annars transkriberar körningen ljudet
+som vanligt. Run-kontraktets `transcription.live` säger i förväg om flödets
+ljudsteg kan visa live-text.
 
-Browsern öppnar en WebSocket till `/api/live/{flowId}/{stepId}` på modulens
-egen origin, skickar mono PCM16 LE i 16 kHz som binära ramar och till sist
-`{"type":"stop"}`. Modulens backend:
+Browsern öppnar en WebSocket till `/api/live/{flowId}/{stepId}?recording_id={id}`
+på modulens egen origin, där `id` är inspelningens id på enheten. Den skickar
+mono PCM16 LE i 16 kHz som binära ramar och till sist
+`{"type":"stop","produced_samples":n}`, där `n` är alla sampel inspelningen gav
+sessionen, räknade innan något köas eller kastas. Efter ett avbrott och en ny
+session skickas bara `{"type":"stop"}`, och en fortsatt inspelning namnger
+ingen inspelning. Modulens backend:
 
 1. släpper bara in en inloggad användare vars `Origin` är `MODULE_PUBLIC_URL`
    (handshaken är en GET men kontrolleras som en mutation) och stänger annars
    med 1008 innan anslutningen accepteras;
 2. begär en engångsticket med `POST /api/v1/flows/{flowId}/steps/{stepId}/live-transcription-sessions/`
    och samma dubbla credentials som övriga Flow-anrop, efter att ha förnyat
-   modultoken om det är dags;
+   modultoken om det är dags. Ett giltigt `recording_id`
+   (`^[A-Za-z0-9_-]{8,64}$`) följer med i anropets body; saknas det eller är
+   det ogiltigt blir sessionen bara en förhandsvisning;
 3. öppnar Eneos WebSocket server-side med ticketen som subprotokoll och utan
    browserns `Origin`; ticketen når aldrig browsern;
 4. skickar ramar och `stop` oförändrade till Eneo, och Eneos JSON-händelser
@@ -441,6 +449,17 @@ Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`,
 får browsern en enda `error`-händelse med Eneos `code` och sedan en normal
 stängning. Når backend inte Eneo blir koden `upstream_unreachable` med
 `retryable: true`.
+
+Har `transcript.done` ett `transcript_id` sparas det med inspelningen på
+enheten, så länge inspelningen är en enda del och ingen sändning har börjat. En
+ny del glömmer det. Körningen skickar det som
+`step_inputs[stepId].live_transcript_id` bredvid stegets enda fil, och det
+ingår i den sparade körningsbegäran, så en upprepad sändning är identisk. Nekar
+Eneo det (`flow_run_live_transcript_not_found`,
+`flow_run_live_transcript_already_bound` eller
+`flow_run_live_transcript_requires_one_audio_file`) glöms det, och samma
+begäran utan det skickas en gång under samma nyckel. Användaren ser inget av
+detta.
 
 Varje startsätt för backend (imagen, backend-imagen och dev-kommandot ovan)
 tar emot högst 128 KiB per WebSocket-meddelande och 16 meddelanden i kö, så en
