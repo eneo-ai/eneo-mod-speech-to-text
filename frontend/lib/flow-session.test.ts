@@ -1371,6 +1371,17 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   assert.equal(sent.length, 1);
 });
 
+test("live text stops with the recorder, before the stopped recording is stored", async () => {
+  const live = fakeLiveClient();
+  const { session, recorders } = await setup({ live: live.client });
+  session.setContract(audioContract());
+  await session.start();
+  recorders[0].emit("audio");
+  const stopping = session.stop();
+  assert.equal(live.calls.at(-1), "stop", "no audio after the recorder's own stop reaches live text");
+  await stopping;
+});
+
 test("a transcript never stays with a recording of two parts, and live text for a new part names no recording", async () => {
   const live = fakeLiveClient();
   const { session, store, streams, recorders } = await setup({ live: live.client });

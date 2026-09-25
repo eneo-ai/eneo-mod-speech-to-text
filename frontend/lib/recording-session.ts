@@ -81,6 +81,8 @@ export interface CaptureSnapshot {
   limitReached: boolean;
   /** The microphone's track is muted for now; the recording goes on, and the same track's sound comes back. */
   muted: boolean;
+  /** Stoppa: the recorder has stopped and the recording is being stored; what follows its audio stops now too. */
+  stopping: boolean;
 }
 
 export interface WakeLockLike {
@@ -164,6 +166,7 @@ export class RecordingCapture {
     remainingMs: null,
     limitReached: false,
     muted: false,
+    stopping: false,
   };
   private listeners = new Set<() => void>();
   private store: RecordingStore | null = null;
@@ -303,11 +306,13 @@ export class RecordingCapture {
     const { recording, status } = this.snapshot;
     const store = this.store;
     if (!recording || !store || status === "idle" || status === "stopped") return null;
-    await this.endParts("stop");
+    const ended = this.endParts("stop");
+    this.set({ stopping: true });
+    await ended;
     await store.setState(recording.id, "stopped");
     const stopped = await store.get(recording.id);
     this.finish();
-    this.set({ status: "stopped", recording: stopped, stream: null });
+    this.set({ status: "stopped", recording: stopped, stream: null, stopping: false });
     return stopped;
   }
 

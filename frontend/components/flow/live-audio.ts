@@ -57,6 +57,9 @@ export function liveClient(env: LiveEnv): LiveClient {
       // cannot be made, nothing else has been set up.
       let context: AudioContext | null = env.audioContext();
       let loaded: Promise<void> | null = load(context);
+      // The worklet has loaded into this context: audio can reach live text without a wait.
+      let moduleReady = false;
+      void loaded.then(() => (moduleReady = true), () => undefined);
       let encoder: Pcm16Encoder | null = null;
       let stream: MediaStream | null = null;
       let source: MediaStreamAudioSourceNode | null = null;
@@ -97,6 +100,7 @@ export function liveClient(env: LiveEnv): LiveClient {
         void context?.close().catch(() => undefined);
         context = null;
         loaded = null;
+        moduleReady = false;
         encoder = null;
       };
       const wire = () => {
@@ -159,8 +163,10 @@ export function liveClient(env: LiveEnv): LiveClient {
         getSnapshot: transcriber.getSnapshot,
         subscribe: transcriber.subscribe,
         listen(next) {
-          // Another microphone: what the last one gathered and had not yet handed on is gone.
-          if (stream) transcriber.lose();
+          // The recorder started in this same task. Live text hears the recording from its first sample only when its
+          // audio is ready now: a worklet still loading or a context not running would miss the opening, and another
+          // microphone means what the last one gathered and had not yet handed on is gone.
+          if (stream || !moduleReady || context?.state !== "running") transcriber.lose();
           stream = next;
           wire();
         },

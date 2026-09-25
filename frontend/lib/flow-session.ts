@@ -830,7 +830,16 @@ export class FlowSession {
   private followLive() {
     const live = this.live;
     if (!live) return;
-    const { status, stream, recording } = this.capture.getSnapshot();
+    const { status, stream, recording, stopping } = this.capture.getSnapshot();
+    if (stopping || status === "stopped") {
+      // With the recorder's own stop, before the recording is stored: live text hears what the file has.
+      if (this.liveStream === null) return;
+      this.liveStream = null;
+      this.liveRecording = false;
+      if (recording && this.liveNamed) this.stopKeepingTranscript(live, recording.id);
+      else live.stop();
+      return;
+    }
     if (stream && stream !== this.liveStream) {
       this.liveStream = stream;
       live.listen(stream);
@@ -841,11 +850,6 @@ export class FlowSession {
         this.liveRecording = recording;
         live.setRecording(recording);
       }
-    } else if (status === "stopped" && this.liveStream !== null) {
-      this.liveStream = null;
-      this.liveRecording = false;
-      if (recording && this.liveNamed) this.stopKeepingTranscript(live, recording.id);
-      else live.stop();
     }
   }
 

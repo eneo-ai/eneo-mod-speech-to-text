@@ -76,7 +76,7 @@ class FakeSocket implements LiveSocket {
  * samples at a time. The context runs at 16 kHz, so a sample's value can be
  * read back from the frames the relay receives.
  */
-function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
+function setupLive(options: { failLoads?: number; failResumes?: number; suspended?: boolean } = {}) {
   const Processor = loadWorklet();
   const sockets: FakeSocket[] = [];
   const contexts: Array<{ state: string }> = [];
@@ -88,13 +88,17 @@ function setupLive(options: { failLoads?: number; failResumes?: number } = {}) {
   const client = liveClient({
     audioContext: () => {
       const context = {
-        state: "running",
+        state: options.suspended ? "suspended" : "running",
         sampleRate: 16_000,
         audioWorklet: {
           addModule: () => (failLoads-- > 0 ? Promise.reject(new Error("offline")) : Promise.resolve()),
         },
         createMediaStreamSource: () => ({ connect() {}, disconnect() {} }),
-        resume: () => (failResumes-- > 0 ? Promise.reject(new Error("not allowed")) : Promise.resolve()),
+        resume: () => {
+          if (failResumes-- > 0) return Promise.reject(new Error("not allowed"));
+          context.state = "running";
+          return Promise.resolve();
+        },
         close() {
           context.state = "closed";
           return Promise.resolve();
@@ -173,6 +177,7 @@ test("paused audio never reaches live text: from the moment the audio thread hea
 test("the stop counts every sample the audio thread gathered for the recording, still on its way or not; the relay hears which recording", async () => {
   const { client, sockets, named, play } = setupLive();
   const session = client.open("step-audio", "recording-1");
+  await settle(); // the microphone is asked for meanwhile
   session.listen(stream);
   await settle();
   play(0.25, 2_500); // before ready: it waits
@@ -202,6 +207,7 @@ test("audio live text cannot account for leaves the recording's text a preview: 
   for (const lost of ["new stream", "no answer"]) {
     const { client, sockets, play, elapse } = setupLive();
     const session = client.open("step-audio", "recording-1");
+    await settle();
     session.listen(stream);
     await settle();
     sockets[0].ready();
@@ -264,5 +270,20 @@ test("audio that failed to set up, before or after ready, leaves the recording's
     assert.deepEqual(JSON.parse(sockets[1].sent.at(-1) as string), { type: "stop" }, `ready first: ${readyFirst}`);
     sockets[1].onmessage?.({ data: JSON.stringify({ type: "transcript.done", text: "Hej.", transcript_id: "t-1" }) });
     assert.equal(session.getSnapshot().transcriptId, undefined);
+  }
+});
+
+test("live text not ready when the recorder starts misses its opening: the stop names no count", async () => {
+  for (const late of ["the worklet still loading", "the audio not running"]) {
+    const { client, sockets, play } = setupLive({ suspended: late === "the audio not running" });
+    const session = client.open("step-audio", "recording-1");
+    if (late === "the audio not running") await settle();
+    session.listen(stream); // in the task that started the recorder
+    await settle();
+    sockets[0].ready();
+    play(0.25, 3_200);
+    session.stop();
+    deliver();
+    assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop" }, late);
   }
 });
