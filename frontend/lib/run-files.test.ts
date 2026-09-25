@@ -55,10 +55,11 @@ test("a document's file says what its own step wrote: Eneo lays that text out in
   const [file] = resultFileViews([{ ...pdf, step_id: "s2" }]);
   assert.equal(file.stepId, "s2");
   const transcribe: FlowRunStep = { id: "r1", step_id: "s1", status: "completed", output_payload_json: { text: "Transkript" } };
-  // The step read the transcript and wrote the report; the report is what the file says.
+  // A model step read the transcript and wrote the report (its parameters name the model); the report is what the file says.
   const report: FlowRunStep = {
     id: "r2", step_id: "s2", status: "completed",
     input_payload_json: { runtime_input: { text: "Transkript" } },
+    model_parameters_json: { model_id: "model-1", model_name: "Modell", provider: "azure" },
     output_payload_json: { text: "## Protokoll\n\nBeslut." },
   };
   assert.equal(fileText(file, [transcribe, report]), "## Protokoll\n\nBeslut.");
@@ -70,6 +71,12 @@ test("a document's file says what its own step wrote: Eneo lays that text out in
   assert.equal(other({ text: "## beslut\n\nJa" }, { model_parameters_json: { mode: "template_fill" } }), null, "a filled template lists its fields");
   assert.equal(other({ text: " \n" }), null, "nothing written");
   assert.equal(fileText({ ...file, stepId: null }, [transcribe, report]), null, "no step named: no guess from another step");
+  // Eneo keeps a PDF step's text that is already a PDF (%PDF- after leading space) as the file itself.
+  assert.equal(other({ text: " \n%PDF-1.7\n1 0 obj" }), null, "the file's bytes, not its text");
+  // Only what Eneo lays out as prose: a step it does not say how it made the file, or one that makes none, gives nothing.
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: { mode: "a_later_mode" } }), null, "a mode not known to lay text out");
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: { mode: "transcribe_only" } }), null, "a transcript step renders no document");
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: null }), null, "no parameters: not known how the file was made");
 });
 
 test("a flow that writes a summary and renders it verbatim previews the summary, not the transcript", () => {

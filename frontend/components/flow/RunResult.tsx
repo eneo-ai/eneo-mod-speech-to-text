@@ -11,7 +11,7 @@ import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
 import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runMadeText, runResultView } from "@/lib/run-result";
+import { runMakesText, runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
 import { regenerationOffer } from "@/lib/regenerate";
@@ -74,7 +74,7 @@ export function RunResult({
   contract?: RunContract | null;
 }) {
   const delivered = run.result?.kind === "outbound_http";
-  const madeText = runMadeText(run, contract);
+  const madeText = runMakesText(run, contract);
   const heading = usePhaseHeading(`Klart · ${flowName}`);
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;

@@ -26,7 +26,7 @@ export function RegenerateNotice({
   onStarted: (run: FlowRunPublic) => void;
   /** Reads the transcript and its corrections again, after they changed elsewhere. */
   onReload: () => void;
-  /** The flow makes text, not a document (`runMadeText`): the notice speaks of the text. */
+  /** The flow makes text, not a document (`runMakesText`): the notice speaks of the text. */
   madeText?: boolean;
 }) {
   const thing = madeText ? "texten" : "dokumentet";

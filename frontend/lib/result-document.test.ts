@@ -404,7 +404,7 @@ test("a finished run whose document is only its file previews the text its own s
       steps: [],
       stepResults: [
         { id: "result-1", step_id: "step-1", status: "completed", output_payload_json: { text: "Välkomna till mötet." } },
-        { id: "result-2", step_id: "step-2", status: "completed", output_payload_json: { text } },
+        { id: "result-2", step_id: "step-2", status: "completed", model_parameters_json: { model_id: "model-1" }, output_payload_json: { text } },
       ] as never,
       files: [pdf],
       showTranscript: false,
@@ -443,7 +443,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
       flowId: "flow-1",
       flowName: "Intervju till sammanfattning",
       run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
-      contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text" } },
+      contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type: "text", delivery: "payload" } },
       steps: [],
       stepResults: [transcribe] as never,
       files: [],
@@ -465,12 +465,12 @@ test("a flow that makes text that failed says the text could not be made", async
   const { createElement } = await import("react");
   const { RunFailure } = await import("../components/flow/RunFailure");
   const failure = { step: null, summary: "Körningen kunde inte slutföras.", detail: "x", inputMustChange: false };
-  const heading = async (output_type: string) => {
+  const heading = async (output_type: string, delivery: "payload" | "artifact" | "outbound_http") => {
     const view = await mount(
       createElement(RunFailure, {
         flowId: "flow-1", flowName: "Intervju till sammanfattning",
         run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "failed" } as never,
-        contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type } },
+        contract: { flow_id: "flow-1", published_flow_version: 7, final_output: { output_type, delivery } },
         failure, steps: [], stepResults: [], files: [],
       }),
     );
@@ -478,6 +478,24 @@ test("a flow that makes text that failed says the text could not be made", async
     await view.unmount();
     return h1;
   };
-  assert.equal(await heading("json"), "Texten kunde inte skapas");
-  assert.equal(await heading("pdf"), "Dokumentet kunde inte skapas");
+  assert.equal(await heading("json", "payload"), "Texten kunde inte skapas");
+  assert.equal(await heading("pdf", "artifact"), "Dokumentet kunde inte skapas");
+  // A flow that sends its JSON on makes no text to show: it reads as before.
+  assert.equal(await heading("json", "outbound_http"), "Dokumentet kunde inte skapas");
+});
+
+test("a long text in one paragraph shows its first part too, cut between two words", async () => {
+  const paragraph = "Nämnden diskuterade ärendet och beslutade enligt förslaget. ".repeat(125).trim();
+  const view = await document_({ text: null, file: pdf, preview: paragraph });
+  const preview = previewOf(view.container)!;
+  const more = button(preview, "Visa hela texten");
+  assert.ok(more, "Visa hela texten");
+  const article = document.getElementById(more.getAttribute("aria-controls")!)!;
+  const shown = article.textContent ?? "";
+  assert.ok(shown.length < paragraph.length / 3, `only the first part: ${shown.length} of ${paragraph.length}`);
+  assert.ok(shown.endsWith(" …"), "says the text goes on");
+  const start = shown.slice(0, -2);
+  assert.ok(paragraph.startsWith(start) && paragraph[start.length] === " ", "cut between two words");
+  await view.act(async () => more.click());
+  assert.equal(article.textContent, paragraph);
 });

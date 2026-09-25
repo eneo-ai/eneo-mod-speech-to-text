@@ -45,9 +45,10 @@ export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   other: File,
 };
 
-// A file's name as its link: it wraps like the name it is, and its stretched box makes the whole row the target.
+// A file's name as its link: it wraps like the name it is, a 44 px target of its own on a touch screen as every
+// control is, and its stretched box makes the whole row the target.
 const NAME =
-  "h-auto whitespace-normal p-0 text-left text-[14px] leading-snug [overflow-wrap:anywhere] coarse:h-auto after:absolute after:inset-0 focus-visible:underline";
+  "h-auto whitespace-normal p-0 text-left text-[14px] leading-snug [overflow-wrap:anywhere] coarse:h-auto coarse:min-h-11 after:absolute after:inset-0 focus-visible:underline";
 
 /** The run's files under Eneo's names, each opened or downloaded through the module. */
 export function ResultFiles({
