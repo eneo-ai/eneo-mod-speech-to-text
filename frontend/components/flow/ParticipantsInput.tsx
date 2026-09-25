@@ -157,7 +157,8 @@ export function ParticipantsInput({
               remove(names[names.length - 1]);
             }
           }}
-          className="px-3 text-[16px] text-ink placeholder:text-ink-mute"
+          // The row's height with "Lägg till" in it, on every pointer: typing never makes the field taller.
+          className="h-11 px-3 text-[16px] text-ink placeholder:text-ink-mute"
         />
         {text.trim() && (
           <InputGroupAddon align="inline-end">
