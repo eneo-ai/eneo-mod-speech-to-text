@@ -12,6 +12,4 @@
     - button "Använd din version"
     - button "Behåll den senaste"
   - button "Avvisa"
-  - button "Godkänn och fortsätt":
-    - img
-    - text: ""
+  - button "Godkänn och fortsätt"

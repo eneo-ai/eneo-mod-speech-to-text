@@ -723,17 +723,17 @@ export function TranscriptPlayer(
       <div className="flex min-h-0 flex-1 flex-col">
       {/* Each passage is a few Tab stops, a long meeting hundreds: the way past them, shown when it has focus.
           It moves focus itself, so the address and the history stay the run's. */}
-      <Button asChild variant="outline" size="sm" className="sr-only focus:not-sr-only focus:m-2 focus:self-start focus:px-3 focus:py-1.5">
-        <a
-          href={`#${pastId}`}
-          onClick={(e) => {
-            e.preventDefault();
-            document.getElementById(pastId)?.focus();
-          }}
-        >
-          Hoppa förbi transkriptet
-        </a>
-      </Button>
+      {/* A plain link: a Button's touch height would outgrow sr-only and leave a small, invisible target. */}
+      <a
+        href={`#${pastId}`}
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById(pastId)?.focus();
+        }}
+        className="sr-only focus:not-sr-only focus:m-2 focus:inline-flex focus:min-h-9 focus:items-center focus:self-start focus:rounded-md focus:border focus:border-input focus:bg-card focus:px-3 focus:text-sm focus:font-medium focus:outline-none focus:ring-2 focus:ring-ring coarse:focus:min-h-11"
+      >
+        Hoppa förbi transkriptet
+      </a>
       {/* Transkript: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
       <div
         ref={listRef}

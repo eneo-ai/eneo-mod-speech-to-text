@@ -380,7 +380,7 @@ export const STATES: State[] = [
       await page.addInitScript(() => {
         navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
       });
-      await recordingSays(page, "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
+      await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
   },
   {
@@ -413,7 +413,7 @@ export const STATES: State[] = [
           return stream;
         };
       });
-      await recordingSays(page, "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.", () =>
+      await recordingSays(page, "Mikrofonen är tillfälligt borta.", () =>
         page.evaluate(() => {
           for (const stream of (window as unknown as { streams: MediaStream[] }).streams)
             for (const track of stream.getAudioTracks()) {

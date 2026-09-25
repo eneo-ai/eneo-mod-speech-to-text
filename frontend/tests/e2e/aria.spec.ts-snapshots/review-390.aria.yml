@@ -1,13 +1,16 @@
 - main:
   - paragraph: Pausat i steg 2
   - heading "Vem är vem?" [level=1]
-  - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt 11:01\. Därefter avbryts körningen\./
+  - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
   - group:
     - list:
       - listitem: Talare 1 Anna Berg
       - listitem: Talare 2 Erik Lund
       - listitem: Talare 3 Inget namn
     - button "Namnge talarna"
+    - button "Avvisa"
+    - button "Godkänn och fortsätt"
+  - heading "Transkript" [level=2]
   - region "Inspelning och transkript":
     - radiogroup "Visa talare":
       - radio "Alla" [checked]
@@ -19,6 +22,8 @@
       - searchbox "Sök i transkriptet"
     - status
     - button "Hämta granskat transkript"
+    - link "Hoppa förbi transkriptet":
+      - /url: /#.+/
     - heading "Del 1" [level=3]
     - list "Del 1":
       - listitem /Anna Berg, 0:\d+ i del 1/:
@@ -58,7 +63,3 @@
       - slider "Position i inspelningen"
       - text: /0:\d+ \/ 0:\d+/
       - button "Hastighet 1×"
-  - button "Avvisa"
-  - button "Godkänn och fortsätt":
-    - img
-    - text: ""
