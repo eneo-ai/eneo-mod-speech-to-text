@@ -83,15 +83,15 @@ export function AccountMenu() {
           onValueChange={setTheme}
         >
           <DropdownMenuRadioItem value="light" disabled={!themeReady}>
-            <Sun />
+            <Sun aria-hidden />
             Ljust
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="dark" disabled={!themeReady}>
-            <Moon />
+            <Moon aria-hidden />
             Mörkt
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value="system" disabled={!themeReady}>
-            <Laptop />
+            <Laptop aria-hidden />
             System
           </DropdownMenuRadioItem>
         </DropdownMenuRadioGroup>
@@ -101,7 +101,7 @@ export function AccountMenu() {
           disabled={loggingOut}
           onSelect={() => leaveFirst(() => void onLogout())}
         >
-          {loggingOut ? <Loader2 className="animate-spin" /> : <LogOut />}
+          {loggingOut ? <Loader2 aria-hidden className="animate-spin" /> : <LogOut aria-hidden />}
           {loggingOut ? "Loggar ut…" : "Logga ut"}
         </DropdownMenuItem>
       </DropdownMenuContent>

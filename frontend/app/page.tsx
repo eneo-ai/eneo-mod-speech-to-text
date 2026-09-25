@@ -115,7 +115,7 @@ export default function LoginPage() {
                 disabled={submitting}
                 className="w-full sm:w-auto"
               >
-                {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {submitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
                 {submitting ? "Öppnar Eneo…" : "Logga in med Eneo"}
               </Button>
             )}
@@ -143,7 +143,7 @@ export default function LoginPage() {
                   disabled={submitting}
                   className="w-full sm:w-auto"
                 >
-                  {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {submitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
                   {submitting ? "Loggar in…" : "Fortsätt"}
                 </Button>
               </form>
