@@ -1,4 +1,5 @@
 import type { FlowRunError, FlowRunResult, RunContract } from "./api";
+import { makesText } from "./flow-session";
 import { ofContractVersion } from "./run-progress";
 
 export interface RunResultView {
@@ -46,15 +47,13 @@ export function runResultView(
 /**
  * Whether a run makes text rather than a document: its own version's contract delivers the final output as a
  * payload (Eneo's `final_output.delivery`, from flow_run_contract_service `_output_delivery`), which this view shows
- * as text. A file, an output sent on elsewhere, a delivery Eneo does not state or a run of an older version (today's
- * contract says nothing of it) reads as a document, as it always did. The setup's makesText asks the same of the
- * contract; the two fold into one.
+ * as text (the setup's makesText). A run of an older version reads as a document: today's contract says nothing of it.
  */
 export function runMakesText(
   run: { flow_version?: number | null },
   contract: Pick<RunContract, "published_flow_version" | "final_output"> | null | undefined,
 ): boolean {
-  return ofContractVersion(run, contract) && contract?.final_output?.delivery === "payload";
+  return ofContractVersion(run, contract) && makesText(contract?.final_output);
 }
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";
