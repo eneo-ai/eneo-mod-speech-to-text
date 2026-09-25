@@ -366,3 +366,12 @@ test("a correction's save is said from its first word: the live region waits in 
   expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element))).toBe(true);
   await expect(page.getByRole("status").filter({ hasText: "Rättningar sparade" })).toBeAttached();
 });
+
+test("a passage's actions say which part they are in, as its play button does, so no two are named alike", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
+  await result(page);
+  // Two parts, each starting at 0:00: the part tells the two passages apart.
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 1", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 2", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00", exact: true })).toHaveCount(0);
+});

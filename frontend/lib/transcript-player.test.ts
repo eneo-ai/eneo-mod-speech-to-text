@@ -215,7 +215,8 @@ test("no instruction lines: the pencil names its passage and is fully there for 
   const shown = html.replace(/<[^>]+>/g, " ");
   assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
   const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
-  assert.deepEqual(pencils.map(([, time]) => time), ["0:00", "0:02", "0:00"]);
+  // Each with its part, as the play button: the two parts both start at 0:00.
+  assert.deepEqual(pencils.map(([, time]) => time), ["0:00 i del 1", "0:02 i del 1", "0:00 i del 2"]);
   // Never hidden until hovered: a mouse user would not learn the action exists.
   for (const [, , classes] of pencils) assert.doesNotMatch(classes, /opacity-0|(^|\s)w-0(\s|$)|group-hover/);
   // Each passage is a list item named by who speaks and when.

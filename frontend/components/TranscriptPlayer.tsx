@@ -1022,7 +1022,7 @@ function TurnBlock({
                   locked={!canEdit}
                   initial={textForEdit(part.segmentIndex)}
                   corrected={corrected}
-                  label={`Rätta repliken från ${partClock}`}
+                  label={`Rätta repliken från ${partClock}${partLabel}`}
                   onCommit={(text) => onCommitLine(part.segmentIndex, text)}
                   onCancel={onCancelEdit}
                   onRevert={() => onRevertLine(part.segmentIndex)}
@@ -1143,7 +1143,8 @@ function TurnBlock({
             <button
               ref={correct}
               type="button"
-              aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
+              // With the part, as the play button: two parts both start at 0:00.
+              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
               aria-expanded={several ? choosing : undefined}
               onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
               className="-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft"
