@@ -961,6 +961,34 @@ test("Fortsätt spela in keeps every word of the live draft: words that came aft
   assert.deepEqual(draft(), ["Första delen.", "Sista orden", "Andra delen."], "a refused continuation keeps the draft");
 });
 
+test("when live text cannot be set up again on Fortsätt spela in, the recording goes on and the earlier draft stays", async () => {
+  const live = relayedLiveClient();
+  let opens = 0;
+  const client = {
+    ...live.client,
+    open: (...args: Parameters<typeof live.client.open>) => {
+      opens += 1;
+      if (opens === 2) throw new Error("no live text now");
+      return live.client.open(...args);
+    },
+  };
+  const { session, recorders } = await setup({ live: client });
+  const draft = () => session.getSnapshot().live?.getSnapshot().pieces.map((piece) => piece.text);
+  session.setContract(audioContract());
+  session.selectMode("stromma");
+  await session.start();
+  live.relays[0].say({ type: "ready" });
+  live.relays[0].say({ type: "transcript.delta", text: "Hela mötets text." });
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+
+  await session.continueStopped();
+  assert.equal(session.getSnapshot().phase, "recording");
+  assert.equal(session.getSnapshot().live?.getSnapshot().status, "unavailable");
+  assert.deepEqual(draft(), ["Hela mötets text."]);
+});
+
 test("Ta bort removes the recording from the device for good and starts over with the details kept", async () => {
   const { session, recorders, store } = await setup();
   session.setContract(audioContract());
@@ -1061,7 +1089,7 @@ test("Ladda upp refuses an empty file, and a file longer than the flow takes onc
   assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");
 });
 
-test("a file whose length is still being read is sent only once it is known to fit; a length never known does not stop it", async () => {
+test("a file whose length is still being read cannot be sent yet; once known to fit it is, and a length never known does not stop it", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const lengths: Array<(ms: number | null) => void> = [];
   const { session } = await setup();
@@ -1070,18 +1098,23 @@ test("a file whose length is still being read is sent only once it is known to f
   const [step] = audioContract().steps_requiring_input!;
   session.setContract(audioContract({ steps_requiring_input: [{ ...step, max_duration_seconds: 60 }] }));
   session.selectMode("ladda-upp");
+  const settled = () => new Promise((resolve) => setImmediate(resolve));
 
   session.chooseFile(new File(["audio"], "tva-minuter.mp3", { type: "audio/mpeg" }));
-  const tooLong = session.createDocument(); // before the browser has read the length
+  assert.equal(session.getSnapshot().fileChecking, true);
+  // Pressed twice before the browser has read the length: nothing goes, and nothing waits to go later.
+  assert.equal(await session.createDocument(), false);
+  assert.equal(await session.createDocument(), false);
   lengths[0](2 * 60_000);
-  assert.equal(await tooLong, false);
+  await settled();
   assert.equal(sent.length, 0, "a file over the flow's limit is never sent");
   assert.equal(session.getSnapshot().problem?.title, "Filen är längre än flödet tar emot (högst 1\u00a0min).");
 
   session.chooseFile(new File(["audio"], "okand.mp3", { type: "audio/mpeg" }));
-  const unknown = session.createDocument();
   lengths[1](null); // the browser cannot tell: Eneo decides
-  assert.equal(await unknown, true);
+  await settled();
+  assert.equal(session.getSnapshot().fileChecking, false);
+  assert.equal(await session.createDocument(), true);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].input?.kind === "file" && sent[0].input.filename, "okand.mp3");
 });
