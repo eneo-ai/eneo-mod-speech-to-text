@@ -11,7 +11,7 @@ import { useElapsed } from "@/components/flow/recording-hooks";
 import type { Problem, SessionPhase } from "@/lib/flow-session";
 import { formatClock } from "@/lib/format";
 import type { RecordingCapture } from "@/lib/recording-session";
-import { STOP_LINE } from "@/lib/recording-view";
+import { stopLine } from "@/lib/recording-view";
 import { cn } from "@/lib/utils";
 
 // Pausa and Stoppa appear under the finger that tapped Starta: a double tap's second tap must not end the meeting.
@@ -104,6 +104,7 @@ export function RecordingBar({
   showStatus,
   warnings,
   notes,
+  makesText = false,
   onPause,
   onStop,
 }: {
@@ -114,6 +115,8 @@ export function RecordingBar({
   /** What can lose the meeting: said as alerts, above the controls. */
   warnings: Problem[];
   notes: string[];
+  /** The flow ends in text, not a file. */
+  makesText?: boolean;
   onPause: () => void;
   onStop: () => void;
 }) {
@@ -192,7 +195,7 @@ export function RecordingBar({
           ))}
         </div>
         {/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */}
-        <p className={cn(showStatus && "short:hidden")}>{STOP_LINE}</p>
+        <p className={cn(showStatus && "short:hidden")}>{stopLine(makesText)}</p>
       </div>
     </div>
   );

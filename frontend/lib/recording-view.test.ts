@@ -12,6 +12,7 @@ import {
   pageTitle,
   recordingAnnouncement,
   recordingNotices,
+  stopLine,
 } from "./recording-view";
 import { guardHistory } from "./leave-guard";
 import { FlowSession, type LiveSession } from "./flow-session";
@@ -55,6 +56,23 @@ test("a quiet stretch of a meeting is never reported: a real microphone's room t
   // A quiet room through a laptop microphone: peaks around −70 dBFS, far below speech, far above zero.
   const roomTone = 10 ** (-70 / 20);
   for (let now = 0; now <= 10 * 60_000; now += 66) assert.equal(watch.update(roomTone, now), false, `at ${now} ms`);
+});
+
+test("while recording for a flow that makes text, the bar's lines speak of the text", () => {
+  assert.equal(stopLine(false), "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.");
+  assert.equal(stopLine(true), "Stoppa avslutar inspelningen. Du väljer sedan att skapa texten.");
+  const { notes } = recordingNotices({
+    phase: "recording",
+    silent: false,
+    lowSpace: false,
+    persistent: false,
+    refused: null,
+    remainingMs: null,
+    muted: false,
+    wakeLock: true,
+    makesText: true,
+  });
+  assert.deepEqual(notes, ["Inspelningen sparas bara i den här fliken. Stäng inte fliken innan texten är skapad."]);
 });
 
 test("the bar warns of what can lose the meeting, and says calmly what else matters now", () => {

@@ -301,15 +301,15 @@ export function makesText(outputType: string | null | undefined): boolean {
   return outputType === "text" || outputType === "json";
 }
 
-/** The action that makes the run, by what the flow ends in. */
-export function createActionLabel(outputType: string | null | undefined): string {
-  return makesText(outputType) ? "Skapa text" : "Skapa dokument";
+/** The action that makes the run, by what the flow ends in (`makesText`). */
+export function createActionLabel(text: boolean): string {
+  return text ? "Skapa text" : "Skapa dokument";
 }
 
 export function primaryActionLabel(mode: InputMode, hasFile: boolean, outputType?: string | null): string {
   if (mode === "stromma") return "Starta strömning";
   if (mode === "spela-in") return "Starta inspelning";
-  return hasFile ? createActionLabel(outputType) : "Välj ljudfil";
+  return hasFile ? createActionLabel(makesText(outputType)) : "Välj ljudfil";
 }
 
 export function microphoneProblem(errorName: string | null): Problem {
@@ -769,7 +769,7 @@ export class FlowSession {
     } catch (error) {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
       if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
-      const createLabel = createActionLabel(this.contract?.final_output?.output_type);
+      const createLabel = createActionLabel(makesText(this.contract?.final_output?.output_type));
       this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel);
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.

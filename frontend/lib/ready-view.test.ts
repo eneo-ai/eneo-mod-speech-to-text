@@ -26,6 +26,25 @@ const recording: StoredRecording = {
 
 const noop = () => {};
 
+test("for a flow that makes text, the ready state speaks of the text, never the document", () => {
+  const live = {
+    getSnapshot: (): LiveSnapshot => ({ status: "ended", started: true, complete: true, pending: "", pieces: [{ text: "Hej.", opensParagraph: true }] }),
+    subscribe: () => () => {},
+    listen: noop,
+    setRecording: noop,
+    stop: noop,
+    dispose: noop,
+  };
+  const view = (persistent: boolean) =>
+    renderToStaticMarkup(createElement(ReadyPanel, { recording, persistent, problem: null, live, makesText: true, onCreate: noop, onDiscard: noop }));
+  const kept = view(true);
+  assert.match(kept, />Skapa text<\/button>/);
+  assert.match(kept, /Inspelningen finns kvar på enheten tills texten är skapad\./);
+  assert.match(kept, /Den slutliga texten skapas när du väljer Skapa text\./);
+  assert.match(view(false), /Stäng inte fliken innan texten är skapad\./);
+  assert.doesNotMatch(kept + view(false), /[Dd]okument/);
+});
+
 test("the ready state names the recording for people, never as a file or a type, with one primary next step", () => {
   const html = renderToStaticMarkup(
     createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate: noop, onDiscard: noop }),

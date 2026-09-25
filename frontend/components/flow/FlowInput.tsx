@@ -36,6 +36,7 @@ import {
   browserStorage,
   createActionLabel,
   labelsSpeakers,
+  makesText,
   primaryActionLabel,
   readSpeakerCount,
   storageLine,
@@ -127,6 +128,8 @@ export function FlowInput({
   const fields = contract.form_fields ?? [];
   // The flow's own count field, when the names filled it in: said under it, as under this module's field.
   const ownCountField = contract.transcription?.max_speakers?.form_field;
+  // What the run makes, which the actions and the lines about it say: text, or a document.
+  const text = makesText(contract.final_output?.output_type);
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -147,6 +150,7 @@ export function FlowInput({
       details={snapshot.details}
       invalid={snapshot.invalid}
       onChange={(name, value) => session.setDetail(name, value)}
+      makesText={text}
       suggestions={suggestions}
       onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
       notes={ownCountField && snapshot.speakerCountFromNames ? { [ownCountField]: COUNT_FROM_NAMES } : undefined}
@@ -226,7 +230,7 @@ export function FlowInput({
               problem={snapshot.problem}
               live={snapshot.live}
               finishing={snapshot.finishing}
-              createLabel={createActionLabel(contract.final_output?.output_type)}
+              makesText={text}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
               onDiscard={() => void session.discard()}
@@ -238,6 +242,7 @@ export function FlowInput({
             <CaptureWorkspace
               input={input}
               speakers={labelsSpeakers(contract.transcription?.speaker_labels, snapshot.speakerLabels)}
+              makesText={text}
             />
           )}
         </section>
@@ -251,7 +256,7 @@ export function FlowInput({
 }
 
 /** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
-function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boolean }) {
+function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
   const { session, snapshot, capture, persistent } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
@@ -267,6 +272,7 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
     remainingMs: capture.remainingMs,
     muted: capture.muted,
     wakeLock,
+    makesText,
   });
   return (
     <>
@@ -293,6 +299,7 @@ function CaptureWorkspace({ input, speakers }: { input: Session; speakers: boole
         showStatus={streaming}
         warnings={warnings}
         notes={notes}
+        makesText={makesText}
         onPause={() => (phase === "interrupted" ? void session.continueRecording() : session.togglePause())}
         onStop={() => void session.stop()}
       />
@@ -337,7 +344,7 @@ function SetupWorkspace({
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
   const outputType = contract.final_output?.output_type;
-  const create = createActionLabel(outputType);
+  const create = createActionLabel(makesText(outputType));
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
   const focusCount = () => document.getElementById(SPEAKER_COUNT_ID)?.focus();

@@ -18,7 +18,7 @@ import {
   discoverConfiguredFlows,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
-import { browserStorage, createActionLabel, lastUsedFlow } from "@/lib/flow-session";
+import { browserStorage, createActionLabel, lastUsedFlow, makesText } from "@/lib/flow-session";
 
 export default function FlowsPage() {
   return (
@@ -79,7 +79,7 @@ function FlowsListPage() {
           <UnsentRecordings
             recordings={unsent}
             withFlowName
-            sendLabel={(recording) => createActionLabel(outputTypes.get(recording.flowId))}
+            sendLabel={(recording) => createActionLabel(makesText(outputTypes.get(recording.flowId)))}
             onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
           />
         )}

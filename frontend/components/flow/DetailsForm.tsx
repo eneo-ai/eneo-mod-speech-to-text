@@ -41,6 +41,7 @@ export function DetailsForm({
   suggestions,
   onNamesAdded,
   notes,
+  makesText = false,
 }: {
   fields: FormField[];
   details: Record<string, DetailValue>;
@@ -51,6 +52,8 @@ export function DetailsForm({
   onNamesAdded: (names: string[]) => void;
   /** A line under a field for now, by its name: where its value came from. */
   notes?: Record<string, string>;
+  /** The flow ends in text, not a file. */
+  makesText?: boolean;
 }) {
   if (fields.length === 0) return null;
   return (
@@ -155,7 +158,7 @@ export function DetailsForm({
                   {note}
                 </FieldDescription>
               )}
-              {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa dokumentet.</FieldError>}
+              {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa {makesText ? "texten" : "dokumentet"}.</FieldError>}
             </Field>
           );
         })}

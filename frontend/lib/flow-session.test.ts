@@ -14,6 +14,7 @@ import {
   fileAccept,
   lastUsedFlow,
   createActionLabel,
+  makesText,
   primaryActionLabel,
   readSpeakerCount,
   speakerLabelsFor,
@@ -487,9 +488,10 @@ test("each mode has its own primary action", () => {
 });
 
 test("the action says what the flow makes: a document for a PDF or Word file, else text; unknown keeps Skapa dokument", () => {
-  for (const type of ["pdf", "docx"]) assert.equal(createActionLabel(type), "Skapa dokument", type);
-  for (const type of ["text", "json"]) assert.equal(createActionLabel(type), "Skapa text", type);
-  for (const type of [null, undefined, "something_new"]) assert.equal(createActionLabel(type), "Skapa dokument", String(type));
+  const label = (type: string | null | undefined) => createActionLabel(makesText(type));
+  for (const type of ["pdf", "docx"]) assert.equal(label(type), "Skapa dokument", type);
+  for (const type of ["text", "json"]) assert.equal(label(type), "Skapa text", type);
+  for (const type of [null, undefined, "something_new"]) assert.equal(label(type), "Skapa dokument", String(type));
 });
 
 test("a denied or missing microphone says what happened and what to do next, and nothing is recorded", async () => {

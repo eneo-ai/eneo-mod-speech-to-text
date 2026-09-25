@@ -611,7 +611,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   if (run.kind === "submitting") {
     return withLeave(
-      flowPage(<SubmittingView submission={submission} onCancelSubmission={onCancelSubmission} />, {
+      flowPage(
+        <SubmittingView
+          submission={submission}
+          onCancelSubmission={onCancelSubmission}
+          makesText={makesText(contract.final_output?.output_type)}
+        />,
+        {
         input: startedWith.input,
         // Sent just now, from this contract's form.
         version: contract.published_flow_version,

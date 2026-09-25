@@ -10,6 +10,7 @@ const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ ru
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { SubmittingView } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
@@ -54,6 +55,12 @@ test("a flow that makes text says the text will be ready, as its action says Ska
   );
   assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den här sedan\./);
   assert.doesNotMatch(words, /Dokumentet blir klart/);
+  assert.match(words, /^Texten skapas /, "the heading");
+  assert.doesNotMatch(words, /[Dd]okument/);
+  const sending = renderToStaticMarkup(
+    createElement(SubmittingView, { submission: { kind: "starting", wait: null }, onCancelSubmission: () => undefined, makesText: true }),
+  );
+  assert.match(sending, /<h1[^>]*>Texten skapas<\/h1>/, "the same heading while it is sent, so nothing changes when the run starts");
 });
 
 test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {

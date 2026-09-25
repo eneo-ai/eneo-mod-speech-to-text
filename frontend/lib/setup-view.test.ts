@@ -84,6 +84,21 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
+test("a missing detail of a flow that makes text says the text, not the document", () => {
+  const html = renderToStaticMarkup(
+    createElement(DetailsForm, {
+      fields: [{ name: "arende", label: "Ärende", type: "text", required: true }],
+      details: {},
+      invalid: ["arende"],
+      onChange: noop,
+      suggestions: [],
+      onNamesAdded: noop,
+      makesText: true,
+    }),
+  );
+  assert.match(html, /id="detalj-arende-fel"[^>]*>Fyll i det här för att skapa texten\.</);
+});
+
 test("a required detail says so to a screen reader before sending, and a number field opens a number keyboard", () => {
   const fields: FormField[] = [
     { name: "deltagare", label: "Deltagare", type: "list", required: true },
