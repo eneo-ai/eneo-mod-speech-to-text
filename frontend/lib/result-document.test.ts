@@ -50,6 +50,14 @@ test("the document's one filled action is its file's download; without a file it
   await textOnly.unmount();
 });
 
+test("the result's own headings sit under the page's h1: Markdown's # is an h2, ## an h3", async () => {
+  const view = await document_({ text: "# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText.", file: null });
+  const headings = [...view.container.querySelectorAll("article :is(h1, h2, h3, h4, h5, h6)")].map((h) => `${h.tagName} ${h.textContent}`);
+  assert.deepEqual(headings, ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
+  assert.ok(![...view.container.querySelectorAll("article *")].some((el) => el.hasAttribute("node")), "no markdown internals on the page");
+  await view.unmount();
+});
+
 test("on a narrower screen Kopiera texten sits under Fler alternativ, a labelled menu", async () => {
   const view = await document_({ text, file: pdf });
   const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
