@@ -240,3 +240,16 @@ test("a control that removes or disables itself hands the focus on, never to the
   assert.equal(view.container.querySelector("textarea"), null, "saved");
   assert.ok(focused() === button(view.container, "Redigera"), `Spara ändring: on Redigera, not ${focused()?.tagName}`);
 });
+
+test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card under Namnge talarna, before the transcript", async (t) => {
+  eneo(t);
+  const view = await review(speakers);
+  const card = button(view.container, "Namnge talarna")!.closest("details")!;
+  const approve = button(view.container, "Godkänn och fortsätt")!;
+  assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
+  assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
+  await view.act(async () => button(view.container, "Avvisa")!.click());
+  assert.ok(card.contains(button(view.container, "Bekräfta avvisning")), "the reason form opens there too");
+  const transcript = view.container.querySelector('section[aria-label="Transkript"], section[aria-label="Inspelning och transkript"]')!;
+  assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
+});

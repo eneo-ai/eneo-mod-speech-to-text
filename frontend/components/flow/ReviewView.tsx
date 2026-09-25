@@ -354,7 +354,7 @@ export function ReviewView({
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
   const rejectSection = showReject ? (
-    <section className="paper-card p-4 mb-5">
+    <section className={isSpeakerMapping ? undefined : "paper-card p-4 mb-5"}>
       <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
       <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">
         Ange en kort motivering. Körningen kommer att avbrytas.
@@ -391,7 +391,7 @@ export function ReviewView({
   ) : null;
 
   const actions = (
-    <div className="mt-auto flex items-center justify-between gap-3 pt-4">
+    <div className={cn("flex flex-wrap items-center justify-between gap-3", !isSpeakerMapping && "mt-auto pt-4")}>
       {decided ? (
         <p className="text-[13px] text-ink-soft">
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
@@ -418,6 +418,26 @@ export function ReviewView({
         )}
         {decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
       </Button>
+    </div>
+  );
+
+  // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
+  // whole transcript.
+  const decision = (
+    <div className="mt-4 flex flex-col gap-4 border-t border-rule-soft pt-4">
+      {(runError || localError) && (
+        <p className="text-[13px] text-destructive" role="alert">
+          {runError ?? localError}
+        </p>
+      )}
+      {saveState === "error" && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>Försök spara igen</Button>
+          <Button type="button" variant="outline" size="sm" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</Button>
+        </div>
+      )}
+      {rejectSection}
+      {actions}
     </div>
   );
 
@@ -497,7 +517,10 @@ export function ReviewView({
                   Talare utan namn behåller sin etikett i transkriptet.
                 </p>
               )}
+              {!SPEAKER_REVIEW_ENABLED && decision}
             </details>
+            {/* There the card folds away, so the decision follows it instead. */}
+            {SPEAKER_REVIEW_ENABLED && decision}
 
             {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
             <h2 className="sr-only">Transkript</h2>
@@ -523,20 +546,6 @@ export function ReviewView({
               onToggleConfirmed={toggleConfirmed}
             />
           </div>
-
-          {(runError || localError) && (
-            <p className="text-[13px] text-destructive mt-4" role="alert">
-              {runError ?? localError}
-            </p>
-          )}
-          {saveState === "error" && (
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>Försök spara igen</Button>
-              <Button type="button" variant="outline" size="sm" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</Button>
-            </div>
-          )}
-          <div className="mt-4">{rejectSection}</div>
-          {actions}
         </main>
       </>
     );
