@@ -47,32 +47,3 @@ export function guardHistory(win: GuardWindow, onAttempt: (leave: () => void) =>
     win.history.back();
   };
 }
-
-/**
- * Browser Back and Forward between the flow page and a run opened from its list (a history entry of its own):
- * `show` gets the run the address names, or null for the flow page. The address is read once the move has
- * settled, so a guard putting its entry back, or taking it away and restoring a started run's address, is no move.
- * Leaving the flow's page is the router's. Returns the stop.
- */
-export function followRunAddress(
-  win: GuardWindow,
-  shown: () => string | null,
-  show: (runId: string | null) => void,
-): () => void {
-  const path = new URL(win.location.href, "http://localhost").pathname;
-  let settle: ReturnType<typeof setTimeout> | undefined;
-  const onPopState = () => {
-    clearTimeout(settle);
-    settle = setTimeout(() => {
-      const address = new URL(win.location.href, "http://localhost");
-      if (address.pathname !== path) return;
-      const runId = address.searchParams.get("run");
-      if (runId !== shown()) show(runId);
-    });
-  };
-  win.addEventListener("popstate", onPopState);
-  return () => {
-    clearTimeout(settle);
-    win.removeEventListener("popstate", onPopState);
-  };
-}

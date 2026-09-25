@@ -13,7 +13,7 @@ import {
   recordingAnnouncement,
   recordingNotices,
 } from "./recording-view";
-import { followRunAddress, guardHistory } from "./leave-guard";
+import { guardHistory } from "./leave-guard";
 import { FlowSession, type LiveSession } from "./flow-session";
 import type { LiveSnapshot } from "./live-transcriber";
 import { openRecordingStore } from "./recording-store";
@@ -277,63 +277,6 @@ test("when the recording is done with, the guard takes its history entry back", 
   release();
   await settleEvents();
   assert.equal(browser.index, 1, "back on the flow page's own entry");
-});
-
-/** Browser Back or Forward, then the page's read once the move has settled. */
-const settleMove = () => new Promise((resolve) => setTimeout(resolve, 10));
-
-/** The flow page following its address: what it shows, and each time the address told it to show something. */
-function followed(browser: ReturnType<typeof fakeWindow>) {
-  let shown: string | null = null;
-  const shows: Array<string | null> = [];
-  const stop = followRunAddress(browser.win, () => shown, (runId) => {
-    shows.push(runId);
-    shown = runId;
-  });
-  return {
-    shows,
-    stop,
-    show: (runId: string) => (shown = runId),
-    /** Opening a run from the list. */
-    open: (runId: string) => {
-      browser.win.history.pushState(browser.win.history.state, "", `/flows/flow-1?run=${runId}`);
-      shown = runId;
-    },
-  };
-}
-
-test("an earlier run opened from the list is a step of its own: Back shows the flow page, Forward the run again", async () => {
-  const browser = fakeWindow();
-  const page = followed(browser);
-  page.open("run-1");
-
-  browser.pressBack();
-  await settleMove();
-  assert.deepEqual(page.shows, [null], "back on the flow page");
-  browser.win.history.go(1);
-  await settleMove();
-  assert.deepEqual(page.shows, [null, "run-1"], "Forward opens the run again");
-
-  browser.win.history.go(-2);
-  await settleMove();
-  assert.deepEqual(page.shows, [null, "run-1"], "leaving for the list is the router's; the page shows nothing more");
-  page.stop();
-});
-
-test("a leave guard's own history steps are no move: asking on Back, and taking its entry back under a started run", async () => {
-  const browser = fakeWindow();
-  const page = followed(browser);
-  const release = guardHistory(browser.win, () => undefined);
-  browser.pressBack();
-  await settleMove();
-  // The run started while guarded: the page writes its address onto the guard's entry and shows the run.
-  browser.win.history.replaceState(browser.win.history.state, "", "/flows/flow-1?run=run-1");
-  page.show("run-1");
-  release();
-  await settleMove();
-  assert.equal(browser.win.location.href, "/flows/flow-1?run=run-1");
-  assert.deepEqual(page.shows, [], "the run stays on screen");
-  page.stop();
 });
 
 test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and the timer is never in a live region", async () => {

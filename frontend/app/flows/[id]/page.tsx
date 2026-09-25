@@ -48,7 +48,6 @@ import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
-import { followRunAddress } from "@/lib/leave-guard";
 import { recordingStore } from "@/lib/recording-store";
 import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
@@ -85,7 +84,7 @@ type RunState =
   | { kind: "idle" }
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
-  | { kind: "opening"; runId: string }
+  | { kind: "opening" }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
@@ -108,13 +107,12 @@ function readRunIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
 }
 
-/** `push`: a history entry of its own, so browser Back returns to the flow page (a run opened from the list). */
-function writeRunIdToUrl(runId: string | null, push = false) {
+function writeRunIdToUrl(runId: string | null) {
   if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   if (runId) url.searchParams.set(RUN_QUERY_PARAM, runId);
   else url.searchParams.delete(RUN_QUERY_PARAM);
-  window.history[push ? "pushState" : "replaceState"](window.history.state, "", url);
+  window.history.replaceState(window.history.state, "", url);
 }
 
 function FlowDetail({ flowId }: { flowId: string }) {
@@ -307,24 +305,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
-  function resumeRun(runId: string, push = false) {
+  function resumeRun(runId: string) {
     setRunError(null);
     setRetryRefusal(null);
-    writeRunIdToUrl(runId, push);
-    setRun({ kind: "opening", runId });
+    writeRunIdToUrl(runId);
+    setRun({ kind: "opening" });
     void follow(runId);
   }
-
-  // Browser Back and Forward between the flow page and a run opened from its list show what the address names.
-  const shownRun = useRef<string | null>(null);
-  shownRun.current =
-    run.kind === "idle" || run.kind === "submitting" ? null : run.kind === "opening" || run.kind === "unread" ? run.runId : run.run.id;
-  useEffect(
-    () => followRunAddress(window, () => shownRun.current, (runId) => (runId ? resumeRun(runId) : onRunAgain())),
-    // Once: the page's own handlers keep no state of their own between renders.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
 
   /**
    * Följer körningen via dess status och den körningslåsta grafen tills den
@@ -580,7 +567,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         ownerId={user.id}
         notice={runError}
         earlierRuns={earlierRuns}
-        onOpenRun={(runId) => resumeRun(runId, true)}
+        onOpenRun={resumeRun}
         onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
         onLeave={leaving.onLeave}
