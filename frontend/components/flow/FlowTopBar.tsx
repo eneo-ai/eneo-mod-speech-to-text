@@ -52,7 +52,8 @@ export function FlowTopBar({
             </span>
           </Link>
         )}
-        <Title className="line-clamp-2 min-w-0 flex-1 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink [text-wrap:balance]">
+        {/* Every word of the name, however many lines it takes: a clamped heading loses words nothing else says. */}
+        <Title className="min-w-0 flex-1 text-[19px] font-semibold leading-tight tracking-[-0.01em] text-ink [overflow-wrap:anywhere] [text-wrap:balance]">
           {title}
         </Title>
         <div className="flex shrink-0 items-center pl-2">{trailing ?? (account && <AccountMenu />)}</div>

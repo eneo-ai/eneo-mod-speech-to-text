@@ -32,7 +32,8 @@ for (const state of STATES) {
     const touchTargets = coarse ? await targetSizes(page, 44, false) : [];
     const layout = edges ? await reflow(page) : null;
     let spaced = null;
-    if (project === "phone-390-light" || project.startsWith("ultrawide")) {
+    // The narrowest phone is where added spacing runs out of room first.
+    if (project === "phone-320-light" || project === "phone-390-light" || project.startsWith("ultrawide")) {
       const style = await page.addStyleTag({ content: TEXT_SPACING });
       spaced = await reflow(page);
       await style.evaluate((element) => (element as Element).remove());
@@ -59,7 +60,11 @@ for (const state of STATES) {
       expect.soft(layout.horizontalScroll, "horizontal scroll (WCAG 1.4.10)").toBe(false);
       expect.soft([...layout.beyond, ...layout.clipped], "content past the edge or cut off (WCAG 1.4.10)").toEqual([]);
     }
-    if (spaced) expect.soft(spaced.clipped, "content cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);
+    if (spaced) {
+      expect.soft(spaced.clipped, "content cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);
+      // A heading cut short with an ellipsis loses words nothing else on the page says.
+      expect.soft(spaced.truncated.filter((item) => /^h[1-6] /.test(item)), "a heading cut short with increased text spacing (WCAG 1.4.12)").toEqual([]);
+    }
     expect.soft(motion, "endless animation despite reduced motion").toEqual([]);
   });
 }
