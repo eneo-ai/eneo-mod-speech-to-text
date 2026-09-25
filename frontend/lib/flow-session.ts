@@ -841,6 +841,8 @@ export class FlowSession {
     if (!live) return;
     const { status, stream, recording, stopping } = this.capture.getSnapshot();
     if (stopping || status === "stopped") {
+      // Stored in more than one part (a new part at the flow's limit), it keeps no transcript: nothing to wait for.
+      if (status === "stopped" && recording && recording.parts.length > 1) this.clearFinishing();
       // With the recorder's own stop, before the recording is stored: live text hears what the file has.
       if (this.liveStream === null) return;
       this.liveStream = null;

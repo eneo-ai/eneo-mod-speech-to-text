@@ -1432,8 +1432,10 @@ test("a transcript never stays with a recording of two parts, and live text for 
   await until(() => session.getSnapshot().phase === "interrupted");
   await session.continueRecording();
   recorders[1].emit("second");
+  live.report({ finishing: true });
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
   live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
