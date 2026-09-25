@@ -14,6 +14,12 @@ import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession
 const NONE = "none";
 const optionKey = (index: number) => `opt:${index}`;
 
+// One height for every single-line detail on every pointer: 44 px inside a 1 px border, as the list field's row
+// (ParticipantsInput). The text is 16 px, so a phone does not zoom in on it.
+const SINGLE_LINE = "h-[46px] coarse:h-[46px] rounded-xl text-[16px]";
+// A text box keeps its lines; its first one starts where a single-line field's text does.
+const MULTI_LINE = "rounded-xl py-2.5 text-[16px]";
+
 /** The id a field's control carries, so a problem can move focus to it. */
 export const detailFieldId = (name: string) => `detalj-${name}`;
 
@@ -105,7 +111,7 @@ export function DetailsForm({
                     aria-describedby={describedBy}
                     aria-invalid={isInvalid || undefined}
                     aria-required={required}
-                    className="text-[16px]"
+                    className={SINGLE_LINE}
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -130,7 +136,7 @@ export function DetailsForm({
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
                   aria-required={required}
-                  className="rounded-xl text-[16px]"
+                  className={MULTI_LINE}
                 />
               ) : (
                 <Input
@@ -145,7 +151,7 @@ export function DetailsForm({
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
                   aria-required={required}
-                  className="rounded-xl text-[16px]"
+                  className={SINGLE_LINE}
                 />
               )}
               {help && (
@@ -207,7 +213,7 @@ export function SpeakerCountField({
         aria-describedby={[helpId, fromNames ? namesId : null, invalid ? errorId : null].filter(Boolean).join(" ")}
         aria-invalid={invalid || undefined}
         // Room for two digits: the field makes each child full width, so this caps it.
-        className="max-w-28 rounded-xl text-[16px]"
+        className={`${SINGLE_LINE} max-w-28`}
       />
       <FieldDescription id={helpId} className="text-[13px]">
         Används som övre gräns. Lämna tomt om du är osäker.
