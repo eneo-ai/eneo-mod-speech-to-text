@@ -1,0 +1,34 @@
+- banner:
+  - link "Tal till text – Sundsvalls kommun":
+    - /url: /flows
+    - img "Sundsvalls kommun"
+    - text: ""
+  - button "Öppna konto för Erik Lund"
+- main:
+  - heading "Välj ett flöde" [level=1]
+  - region "Kommunledningskontoret":
+    - heading "Kommunledningskontoret" [level=2]
+    - list:
+      - listitem:
+        - link "Nämndmöte till rapport Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.":
+          - /url: /flows/flow-1
+          - text: ""
+          - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
+      - listitem:
+        - link "Intervju till sammanfattning Sammanfattar en intervju med citat och teman.":
+          - /url: /flows/flow-2
+          - text: ""
+          - paragraph: Sammanfattar en intervju med citat och teman.
+  - region "Socialtjänsten":
+    - heading "Socialtjänsten" [level=2]
+    - list:
+      - listitem:
+        - link "Samråd till protokoll Gör ett protokoll av ett samrådsmöte.":
+          - /url: /flows/flow-3
+          - text: ""
+          - paragraph: Gör ett protokoll av ett samrådsmöte.
+      - listitem:
+        - link "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor Behöver publiceras om.":
+          - /url: /flows/flow-4
+          - text: ""
+          - paragraph: Behöver publiceras om.

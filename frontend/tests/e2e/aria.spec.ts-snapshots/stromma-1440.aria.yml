@@ -1,0 +1,12 @@
+- region "Ljudet":
+  - status
+  - region "Preliminär text, den slutliga skapas när du är klar":
+    - heading "Preliminär text, den slutliga skapas när du är klar" [level=2]
+    - log "Preliminär text":
+      - paragraph: /Välkomna till/
+    - status
+  - text: /Spelar in 0:\d+/
+  - button "Pausa"
+  - button "Stoppa"
+  - status:
+    - paragraph: Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.

@@ -12,7 +12,8 @@
 // Varje etikett i inventariet måste förekomma exakt en gång. Eneo räknar
 // sedan om transkriptet med namnen och uppdaterar `{{transkribering}}`.
 
-import type { Json } from "./api";
+import { ApiError, type Json } from "./api";
+import { friendlyError } from "./errors";
 
 export type SpeakerConfidence = "low" | "medium" | "high";
 
@@ -23,6 +24,8 @@ export interface SpeakerMappingRow {
   name: string | null;
   confidence: SpeakerConfidence;
   evidence: string;
+  /** Split off from another speaker at this pause: not in the inventory, sent only once it has a name. */
+  split?: boolean;
 }
 
 // Type-alias (inte interface) så värdet är tilldelningsbart till Json/ReviewEditedValue.
@@ -140,7 +143,41 @@ export function buildSpeakerRows(payload: Payload): SpeakerMappingRow[] {
       evidence: typeof proposal?.evidence === "string" ? proposal.evidence : "",
     });
   }
+  // A speaker the reviewer split off at this pause is not in the inventory; its saved name still is a row.
+  for (const [label, proposal] of proposalByLabel) {
+    if (rows.some((row) => row.label === label)) continue;
+    rows.push({
+      label,
+      lineCount: 0,
+      samples: [],
+      name: typeof proposal.name === "string" && proposal.name.trim() ? proposal.name : null,
+      confidence: confidenceOf(proposal.confidence),
+      evidence: typeof proposal.evidence === "string" ? proposal.evidence : "",
+      split: true,
+    });
+  }
   return rows;
+}
+
+/**
+ * The rows with a row for every label a speaker edit at this pause introduced
+ * (a speaker split in two), so the new speaker can be named too.
+ */
+export function withSplitLabels(rows: readonly SpeakerMappingRow[], labels: readonly (string | null)[]): SpeakerMappingRow[] {
+  const out = [...rows];
+  for (const label of labels) {
+    if (!label || out.some((row) => row.label === label)) continue;
+    out.push({ label, lineCount: 0, samples: [], name: null, confidence: "low", evidence: "", split: true });
+  }
+  return out;
+}
+
+/** Why a speaker name cannot be saved, or null: a name is one line, without tabs or other control characters. */
+export function speakerNameProblem(name: string | null): string | null {
+  if (name === null) return null;
+  return /[\u0000-\u001f\u007f\u2028\u2029]/.test(name)
+    ? "Ett namn är en rad, utan radbrytningar, tabbar eller andra styrtecken."
+    : null;
 }
 
 /** Värdet Eneo förväntar sig som `edited_value` för checkpointen. */
@@ -148,7 +185,8 @@ export function buildEditedMapping(
   rows: readonly SpeakerMappingRow[],
 ): SpeakerMappingEditedValue {
   return {
-    speakers: rows.map((row) => ({
+    // Every inventory label exactly once; a split-off speaker only when it has a name to carry.
+    speakers: rows.filter((row) => !row.split || row.name?.trim()).map((row) => ({
       label: row.label,
       name: row.name?.trim() ? row.name.trim() : null,
       confidence: row.confidence,
@@ -212,4 +250,17 @@ export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],
 ): string[] {
   return rows.filter((row) => !row.name?.trim()).map((row) => row.label);
+}
+
+/**
+ * A refused save of the names in words. An Eneo from before split speakers
+ * could be named refuses the whole mapping for such a name; say which.
+ */
+export function namingRefusal(err: unknown, rows: readonly SpeakerMappingRow[]): string {
+  const split = rows.filter((row) => row.split && row.name?.trim());
+  if (err instanceof ApiError && err.code === "typed_io_validation_failed" && split.length > 0) {
+    const which = split.map((row) => row.label.replace(/^SPEAKER_(\d+)$/, (_, n) => `Talare ${Number(n) + 1}`)).join(", ");
+    return `Eneo tar ännu inte emot namn på en talare som delats upp i granskningen (${which}). Ta bort det namnet och spara igen.`;
+  }
+  return friendlyError(err);
 }

@@ -83,11 +83,13 @@ class AudioProxyTests(unittest.TestCase):
         self.original_client = main.http_client
         self.fake = FakeAudioClient()
         main.http_client = self.fake
-        main._signed_audio_urls.clear()
+        main._signed_urls.clear()
         self.client = TestClient(main.app)
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,
+            refresh_at=int(time.time()) + 30,
+            session_expires_at=int(time.time()) + 3600,
             module_key="speech-to-text",
             tenant_id="tenant-id",
             user=ModuleUser(id="user-id", email="user@example.test"),
@@ -97,7 +99,7 @@ class AudioProxyTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         main.http_client = self.original_client
-        main._signed_audio_urls.clear()
+        main._signed_urls.clear()
 
     def test_rebase_signed_url_keeps_path_and_token(self) -> None:
         self.assertEqual(

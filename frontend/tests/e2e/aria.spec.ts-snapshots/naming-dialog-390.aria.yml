@@ -1,0 +1,32 @@
+- dialog "Namnge talarna":
+  - heading "Namnge talarna" [level=2]
+  - paragraph: Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriptet och dokumentet när du fortsätter.
+  - list:
+    - listitem:
+      - paragraph: Talare 1 · 3 inlägg
+      - paragraph: ”Välkomna till kommunstyrelsens möte.”
+      - 'button "Lyssna på exempel: Talare 1"'
+      - combobox "Vem är Talare 1?": Anna Berg
+      - button "Visa namn":
+        - img
+      - button "Varför?"
+    - listitem:
+      - paragraph: Talare 2 · 2 inlägg
+      - paragraph: ”Första punkten gäller budgeten för nästa år.”
+      - 'button "Lyssna på exempel: Talare 2"'
+      - combobox "Vem är Talare 2?": Erik Lund
+      - button "Visa namn":
+        - img
+      - paragraph: Osäkert förslag
+      - button "Varför?"
+    - listitem:
+      - paragraph: Talare 3 · 1 inlägg
+      - paragraph: ”Ramen höjs med två procent”
+      - 'button "Lyssna på exempel: Talare 3"'
+      - combobox "Vem är Talare 3?"
+      - button "Visa namn":
+        - img
+  - button "Avbryt"
+  - button "Spara"
+  - button "Spara och fortsätt"
+  - button "Stäng"

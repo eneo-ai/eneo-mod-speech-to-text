@@ -27,7 +27,7 @@ Produktionsimagen `ghcr.io/eneo-ai/eneo-mod-speech-to-text` paketerar båda proc
 ```bash
 cp .env.example .env
 # Fyll i auth-läge, Eneo/module-URL:er, ENEO_API_KEY och SESSION_SECRET
-# (samt valfri DEMO_SPACE_ID).
+# (samt DEMO_SPACE_ID i access_code-läget).
 # Sätt COOKIE_SECURE=false för lokal http://localhost.
 
 docker compose up --build
@@ -76,7 +76,7 @@ set -a
 source .env
 set +a
 cd backend
-.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log --ws-max-size 131072 --ws-max-queue 16
 ```
 
 6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:
@@ -138,6 +138,12 @@ cd .. && docker compose --env-file .env.example config -q
 docker build -t eneo-mod-speech-to-text:test .
 ```
 
+Tillgänglighetsgrinden (WCAG 2.2 AA) körs före push med `cd frontend && npx playwright install chromium && npm run test:a11y`. Den startar en stubbackend (`frontend/tests/e2e/stub-server.py`, bara för test) och `next dev` på port 3401 och besöker varje skärm med falsk mikrofon: axe på 320, 390, 1440, 1920, 2560 och 3440 px i ljust och mörkt, telefonerna och en surfplatta i båda riktningarna som pekskärm, forced colors, reducerad rörelse och 200 % zoom, där varje WCAG-överträdelse stoppar grinden oavsett allvarlighetsgrad och övriga axe-regler när de är allvarliga eller kritiska; tangentbordsvandringar där fokus mäts i den renderade sidan (en indikator med minst 3:1 förändring, inte skymd); ARIA-ögonblicksbilder och texten som når live-regionerna; reflow (inget innehåll utanför kanten eller avklippt, på de smalaste och bredaste skärmarna) och målstorlekar (24 px med mus, 44 px med finger, `pointer: coarse`). På 1920, 2560 och 3440 px körs alla kontroller per skärm i ljust och mörkt (axe, namn, målstorlekar, reflow och textavstånd); tangentbordsvandringarna och fokustesterna för dialoger, som mäter synligt och ej skymt fokus, körs på 1920 px, eftersom tangentbordsordning och fokushantering inte ändras på bredare skärmar. Stoppa din egen `npm run dev` i samma utcheckning först (Next tillåter en dev-server per utcheckning). Mätvärden per skärm hamnar i `frontend/test-results/a11y/*/findings.json`, rapporten i `frontend/test-results/a11y-report`. Efter en avsiktlig ändring i vad skärmläsaren får: granska och uppdatera ögonblicksbilderna med `npm run test:a11y -- aria.spec.ts --update-snapshots`.
+
+Grinden bevisar DOM:en och den renderade sidan: roller, namn, tillstånd, fokus, kontrast, layout och vilken text som hamnar i live-regionerna. Vad en skärmläsare faktiskt läser upp är en manuell kontroll, liksom det axe inte kan avgöra själv (axe:s _incomplete_, listade som `manual check` i rapporten och i `findings.json`). PDF-förhandsvisningen visar PDF:en i webbläsarens egen visare, där en sida inte kan fånga Escape. Grinden kräver därför att visaren inte stänger in fokus: antingen är den inget tabbstopp och dialogen har en länk som öppnar filen i en ny flik, eller så leder Tab ut ur visaren tillbaka till dialogens kontroller och visaren visar synligt fokus. Escape ska stänga dialogen från dialogens egna kontroller; Escape inifrån visaren krävs inte.
+
+Tidsgränser (WCAG 2.2.1): inloggningen varnar fem minuter före slutet och kan förnyas utan att lämna sidan. En granskningspaus visar när Eneo avbryter körningen. Kriteriet uppfylls bara när flödets granskningsfönster är längre än 20 timmar; Eneos standard är 14 dagar, och ett flöde som ställer in ett kortare fönster uppfyller det inte.
+
 ---
 
 ## Autentisering
@@ -154,6 +160,7 @@ Flödet:
 2. Eneo autentiserar användaren och skickar tillbaka en engångsticket till `/api/auth/callback`.
 3. Callbacken verifierar och förbrukar `state`, växlar ticket server-side med modulens registrerade service key och skapar en HttpOnly-modulsession.
 4. Varje proxat Eneo-anrop skickar både modulens service key och den kortlivade module-user-token som BFF:en hämtar ur sessionen.
+5. När halva tokenens livslängd har gått förnyar BFF:en den via `POST /api/v1/module-auth/{module_key}/token/refresh/`. Nekar Eneo förnyelsen, till exempel när Eneos sessionstak har passerats, avslutas modulsessionen och användaren loggar in igen.
 
 Callbacken redirectar alltid till en ren URL och returnerar `Referrer-Policy: no-referrer`. Backendens Uvicorn-accesslogg är avstängd så att callbackens ticket och state inte hamnar i containerloggar. Ingress-/Traefik-loggning måste också exkludera callbackens query string.
 
@@ -211,10 +218,10 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    | `AUTH_MODE` | `eneo_sso` (standard) eller tillfälligt `access_code` |
    | `APP_ACCESS_CODE` | endast i `access_code`; en separat, slumpmässig Dokploy-secret |
    | `COOKIE_SECURE` | `true` |
-   | `DEMO_SPACE_ID` | (valfritt) UUID för space; skippar space-väljaren |
-   | `DEMO_SPACE_NAME` | (valfritt) visningsnamn för det space:t |
+   | `DEMO_SPACE_ID` | krävs i `access_code` för flödeslistan: modulnyckeln listar bara flödena i detta space (utan det loggar backend ett fel vid start och sidan säger att flödena inte kan visas). Används inte med `eneo_sso`, där listan omfattar alla användarens spaces |
    | `UPLOAD_PROXY_TIMEOUT_SECONDS` | (valfritt) timeout för backendens upload-forwarding till Eneo, default `1800` |
-   | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_TOKEN_EXPIRY_MINUTES`), så höj båda |
+   | `SESSION_MAX_AGE_MINUTES` | (valfritt) hur länge en inloggning gäller, default `480` (8 timmar). I `eneo_sso` gäller min(detta, Eneos `MODULE_AUTH_MAX_SESSION_HOURS`); den kortlivade modultoken förnyas automatiskt via Eneo under tiden |
+   | `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION` | (valfritt) organisationen i sidhuvudet, se [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet); utan dem visas Sundsvalls kommun |
 
 3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy/Traefik sköter HTTPS-certifikatet.
 
@@ -226,6 +233,20 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
    - `eneo_sso`: callback-URL:en blir ren efter lyckad login
    - båda lägen: flödeslistan visas och ett riktigt Flow-anrop lyckas
 
+### Egen organisation i sidhuvudet
+
+Sidhuvudet visar Sundsvalls kommuns logga bredvid "Tal till text" om inget annat anges. En annan kommun eller
+myndighet byter den utan att bygga om:
+
+1. Montera en mapp med loggan i backend-tjänsten, till exempel `./branding:/branding:ro`.
+2. Sätt `ORGANIZATION_NAME=Umeå kommun` och `ORGANIZATION_LOGO=/branding/logo.svg` (SVG eller PNG, högst 1 MiB); `ORGANIZATION_LOGO_DARK` är en valfri logga för mörkt tema.
+3. Starta om tjänsterna. `SHOW_ORGANIZATION=false` visar i stället bara "Tal till text".
+
+Namnet är loggans alternativtext. Ett namn utan logga visas som text. En fil som saknas eller inte är en SVG eller
+PNG loggas en gång vid start, och namnet visas i stället. Backend serverar loggan från samma origin
+(`/api/branding/logo/light` och `/dark`), eftersom sidans CSP bara tillåter egna bilder. Färgerna följer
+fortfarande modulens tema.
+
 ### Vid problem
 
 - **Backend kraschar vid start:** kontrollera basvariablerna samt `ENEO_PUBLIC_URL` i SSO-läge eller `APP_ACCESS_CODE` i kodläge. `ENEO_API_KEY` krävs i båda.
@@ -233,7 +254,7 @@ Produktionsimagen exponerar port `3001` och healthcheck på `/health`. Eneos Com
 - **Kodlogin fungerar men Flow-anrop nekas:** Eneo-routen kräver sannolikt module-user-token; byt till `eneo_sso` när handoff-kontraktet är deployat.
 - **502 vid uppladdning:** Eneo-load-balancer-problem; kolla `docker compose logs backend` för exakt httpx-fel.
 - **504 vid uppladdning:** backendens upload-forwarding till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`.
-- **Tom flödeslista:** API-nyckeln har inget space scope, eller `DEMO_SPACE_ID` pekar på fel space.
+- **Tom flödeslista:** användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space.
 
 ---
 
@@ -341,5 +362,93 @@ flow-kontraktet och håller uppladdningen vid liv så länge progress fortsätte
 Inspelaren använder komprimerat browserformat, i första hand WebM/Opus när
 flödet accepterar det, och ber `MediaRecorder` om korta chunks under inspelning.
 Det minskar risken att långa möten bygger upp en enda stor intern recorder-buffer.
-Det är fortfarande inte live-streaming till Eneo: Eneo-körningen startar när hela
-ljudfilen har laddats upp och ett `file_id` finns.
+Eneo-körningen startar fortfarande först när hela ljudfilen har laddats upp och
+ett `file_id` finns; Strömma (nedan) strömmar bara en förhandstext.
+
+### Inspelningen sparas på enheten
+
+Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB, under
+inspelningens id, del och löpnummer. En omladdning, en krasch eller en utgången
+session förlorar därför högst den senaste biten. Inspelningen visas sedan som
+osänd i flödeslistan och på flödets sida, med **Skicka**, **Spara som fil** och
+**Ta bort**, för den som spelade in den. Den lokala kopian tas bort först när
+Eneo har tagit emot körningen. Utan IndexedDB (vissa privata lägen) finns
+inspelningen bara i fliken, och det står i inspelaren.
+
+Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefon
+lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny
+del. Det går också efter en omladdning: en inspelning som avbröts utan stopp
+visas som osänd på flödets sida med **Fortsätt spela in**, som spelar in direkt
+i en ny del av samma inspelning, med tiden räknad från det som redan sparats.
+Efter **Stoppa** finns **Fortsätt spela in** också bredvid **Skapa dokument**:
+det spelar in en ny del av samma inspelning på samma sätt, tills inspelningen
+har börjat skickas. Med Strömma kommer livetexten tillbaka för den nya delen.
+Innan en del når flödets största filstorlek startar nästa del på samma
+mikrofon. Marginalen räknas från bithastigheten och chunkintervallet, och de två
+delarna spelar in samtidigt i 150 ms, eftersom Chrome tappar de sista
+millisekunderna före ett stopp. När flödets sista fil (`max_files`) är full
+stoppas inspelningen med ett meddelande, och allt som spelats in finns kvar.
+Återstående inspelningstid finns i inspelarens tillstånd (`remainingMs`). En del
+som inte fick något ljud räknas inte som fil. Delarna skickas i ordning som
+filer i samma körning (`file_ids`), med inspelningens egen idempotensnyckel, så
+att Eneo gör en körning per inspelning även om två flikar skickar den.
+
+En inspelning används av en flik i taget: den flik som spelar in den, skickar
+den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när
+fliken stängs eller kraschar. Andra flikar visar den inte som osänd så länge,
+och **Skicka** eller **Ta bort** där nekas med ett meddelande. Utan Web Locks
+(Safari före 15.4) kan bara fliken som spelade in en inspelning skicka,
+fortsätta eller ta bort den; andra flikar, och samma flik efter en omladdning,
+kan spara den som fil.
+
+Inspelaren spelar in tal i mono med 32 kbit/s, med Opus när webbläsaren kan och
+annars webbläsarens eget format (Safari: `audio/mp4`). Ett möte på fem timmar
+blir då ungefär 72 MB. Chromes WebM-filer saknar längd i sitt huvud; när en del
+sätts ihop till en fil skrivs den inspelade längden dit, så att uppspelningen
+visar rätt längd och går att spola i.
+
+Uppladdning och start av körning försöker igen vid nätverksfel, 408, 429 och
+5xx, med en väntetid som börjar på 1 s och fördubblas upp till 60 s, och direkt
+när anslutningen är tillbaka. Körningen startas med samma idempotensnyckel vid
+varje försök. Andra 4xx-fel stoppar med Eneos felmeddelande.
+
+### Strömma: live-text medan man spelar in
+
+Strömma visar texten medan användaren spelar in. Den är en förhandsvisning:
+inspelningen laddas upp och flödet körs som i Spela in, och körningens
+transkript är det som gäller. Run-kontraktets `transcription.live` säger i
+förväg om flödets ljudsteg kan visa live-text.
+
+Browsern öppnar en WebSocket till `/api/live/{flowId}/{stepId}` på modulens
+egen origin, skickar mono PCM16 LE i 16 kHz som binära ramar och till sist
+`{"type":"stop"}`. Modulens backend:
+
+1. släpper bara in en inloggad användare vars `Origin` är `MODULE_PUBLIC_URL`
+   (handshaken är en GET men kontrolleras som en mutation) och stänger annars
+   med 1008 innan anslutningen accepteras;
+2. begär en engångsticket med `POST /api/v1/flows/{flowId}/steps/{stepId}/live-transcription-sessions/`
+   och samma dubbla credentials som övriga Flow-anrop, efter att ha förnyat
+   modultoken om det är dags;
+3. öppnar Eneos WebSocket server-side med ticketen som subprotokoll och utan
+   browserns `Origin`; ticketen når aldrig browsern;
+4. skickar ramar och `stop` oförändrade till Eneo, och Eneos JSON-händelser
+   (`ready`, `transcript.delta`, `transcript.done`, `error`) oförändrade
+   tillbaka. Stänger ena sidan stänger backend den andra.
+
+Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`,
+får browsern en enda `error`-händelse med Eneos `code` och sedan en normal
+stängning. Når backend inte Eneo blir koden `upstream_unreachable` med
+`retryable: true`.
+
+Varje startsätt för backend (imagen, backend-imagen och dev-kommandot ovan)
+tar emot högst 128 KiB per WebSocket-meddelande och 16 meddelanden i kö, så en
+anslutning buffrar högst 2 MiB innan Eneo ser ramarna. Ett test kräver att
+startsätten har samma gränser. Går en av sidorna inte att skriva till på 15
+sekunder avslutar backend sessionen.
+
+Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma
+`/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i
+produktionsimagen; Traefik släpper igenom den utan extra konfiguration
+(verifierat med Next 16.3.4 och Traefik 3.7, även en anslutning utan ljud i 90
+sekunder). Går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom
+WebSocket-uppgraderingar till Eneo.

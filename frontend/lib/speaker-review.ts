@@ -1,3 +1,4 @@
+import type { FlowRunStep } from "./api";
 import { needsSpeakerReview, type TranscriptSegment } from "./transcript";
 
 /** Review controls are opt-in; evidence is always preserved. */
@@ -42,6 +43,21 @@ export function speakerReviewsFromTranscription(value: unknown): FileSpeakerRevi
       overlapDetection: entry.version === 1 && entry.overlap_detection === "available" ? "available" : "unavailable", overlaps }];
   });
 }
+
+/** The transcription a step result's input carries, as the transcription step stores it. */
+export function stepTranscription(step: FlowRunStep | undefined): unknown {
+  return (step?.input_payload_json as { transcription?: unknown } | null | undefined)?.transcription;
+}
+
+/**
+ * A step result that transcribed audio, and so holds a transcript: its
+ * segments (in Eneo's transcript source, or inline from an older Eneo), or
+ * at least its text.
+ */
+export function carriesTranscript(step: FlowRunStep | undefined): boolean {
+  return stepTranscription(step) != null;
+}
+
 
 export interface ReviewPassage {
   key: string;

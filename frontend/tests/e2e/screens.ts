@@ -1,0 +1,594 @@
+/**
+ * How to reach every screen and state of the app against the stub backend
+ * (stub-server.py): each state is a name and the steps a user takes to get there.
+ */
+import { expect, type Page, type TestInfo } from "@playwright/test";
+
+/** Opens a page of the app, with Next's dev-only indicator hidden (it is not the app). */
+export async function open(page: Page, path: string) {
+  await page.goto(path);
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
+}
+
+export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
+export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
+
+const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("heading", { name })).toBeVisible();
+
+export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query = "") {
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: mode, user: null } }));
+  await open(page, `/${query}`);
+  await expect(page.getByRole("button", { name: mode === "eneo_sso" ? "Logga in med Eneo" : "Fortsätt" })).toBeVisible();
+}
+
+async function loading(page: Page, path: string) {
+  await page.route("**/api/auth/status", () => {});
+  await open(page, path);
+  await expect(page.locator("main svg")).toBeVisible();
+}
+
+/** The flow list five minutes before the login ends: the warning is open. */
+export async function sessionWarning(page: Page) {
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: {
+        authenticated: true,
+        auth_mode: "eneo_sso",
+        user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
+        session_ends_in: 200,
+      },
+    }),
+  );
+  await open(page, "/flows");
+  await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
+}
+
+export async function flows(page: Page) {
+  await open(page, "/flows");
+  await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
+}
+
+export async function setup(page: Page, flow = "flow-1") {
+  await open(page, `/flows/${flow}`);
+  await heading(page, "Hur vill du ge ljudet?");
+}
+
+export async function chooseMode(page: Page, mode: "Strömma" | "Spela in" | "Ladda upp") {
+  await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).click();
+}
+
+export async function addParticipants(page: Page, names: string[]) {
+  const input = page.getByRole("textbox", { name: /^Deltagare/ });
+  for (const name of names) {
+    await input.fill(name);
+    await input.press("Enter");
+  }
+  await expect(page.getByRole("button", { name: `Ta bort ${names.at(-1)}` })).toBeVisible();
+}
+
+export async function record(page: Page, mode: "Strömma" | "Spela in") {
+  await chooseMode(page, mode);
+  await page.getByRole("button", { name: mode === "Strömma" ? "Starta strömning" : "Starta inspelning" }).click();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Spelar in." })).toBeAttached();
+}
+
+export async function stop(page: Page) {
+  await page.getByRole("button", { name: "Stoppa" }).click();
+  await heading(page, "Inspelningen är klar");
+}
+
+/** The flow takes audio in `files` files of at most `seconds` each (Eneo's max_duration_seconds). */
+async function limitAudio(page: Page, seconds: number, files: number) {
+  await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
+    const contract = await (await route.fetch()).json();
+    contract.steps_requiring_input = contract.steps_requiring_input.map((step: object) => ({
+      ...step,
+      max_duration_seconds: seconds,
+      max_files: files,
+    }));
+    return route.fulfill({ json: contract });
+  });
+}
+
+/** A recording with a line in the recording bar, `line`, once `start` has set the scene. */
+async function recordingSays(page: Page, line: string | RegExp, start?: () => Promise<unknown>) {
+  await setup(page);
+  await record(page, "Spela in");
+  await start?.();
+  await expect(page.getByText(line)).toBeVisible({ timeout: 30_000 });
+}
+
+/** The login ends while the page is open: the page is covered and a dialog asks for a new login in place. */
+export async function endLogin(page: Page) {
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: "eneo_sso", user: null } }));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", { name: "Du behöver logga in igen" })).toBeVisible();
+}
+
+/** The way back to the flow list that the current width shows. */
+export function backLink(page: Page) {
+  return page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first();
+}
+
+/** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
+export async function leaveRecording(page: Page) {
+  await setup(page);
+  await record(page, "Spela in");
+  await page.waitForTimeout(1_500);
+  await stop(page);
+  await backLink(page).click();
+  await page.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
+  await expect(page.getByRole("heading", { name: "En inspelning är inte skickad" })).toBeVisible();
+}
+
+/** A short silent WAV file. */
+export function wav(seconds = 1): Buffer {
+  const rate = 8_000;
+  const data = Buffer.alloc(rate * seconds * 2);
+  const head = Buffer.alloc(44);
+  head.write("RIFF", 0);
+  head.writeUInt32LE(36 + data.length, 4);
+  head.write("WAVEfmt ", 8);
+  head.writeUInt32LE(16, 16);
+  head.writeUInt16LE(1, 20);
+  head.writeUInt16LE(1, 22);
+  head.writeUInt32LE(rate, 24);
+  head.writeUInt32LE(rate * 2, 28);
+  head.writeUInt16LE(2, 32);
+  head.writeUInt16LE(16, 34);
+  head.write("data", 36);
+  head.writeUInt32LE(data.length, 40);
+  return Buffer.concat([head, data]);
+}
+
+export async function chooseFile(page: Page, name = "kommunstyrelsen-mote.wav") {
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name, mimeType: "audio/wav", buffer: wav() });
+  await expect(page.getByRole("button", { name: "Byt fil" })).toBeVisible();
+}
+
+/** The view while the file goes to Eneo, held there by the stub's slow answer to a "langsam" file. */
+export async function sending(page: Page) {
+  await setup(page);
+  await chooseFile(page, "langsam-uppladdning.wav");
+  await page.getByRole("button", { name: "Skapa dokument" }).click();
+  await expect(page.getByText("Laddar upp filen")).toBeVisible();
+}
+
+export async function run(page: Page, id: string, flow = "flow-1") {
+  await open(page, `/flows/${flow}?run=${id}`);
+}
+
+/** The finished run with its transcript loaded. */
+export async function result(page: Page) {
+  await run(page, "run-done");
+  await heading(page, "Dokumentet är klart");
+  // Below a laptop's width the transcript waits in its tab.
+  await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
+}
+
+export interface State {
+  name: string;
+  go: (page: Page, info: TestInfo) => Promise<void>;
+  /** Only where the state exists, e.g. the PDF dialog is a new tab on a phone. */
+  only?: (info: TestInfo) => boolean;
+}
+
+/** Every screen and state the gate visits. */
+export const STATES: State[] = [
+  { name: "signin-sso", go: (page) => signIn(page, "eneo_sso") },
+  { name: "signin-access-code", go: (page) => signIn(page, "access_code") },
+  {
+    name: "signin-error",
+    go: async (page) => {
+      await signIn(page, "access_code", "?auth_error=1");
+      await expect(page.getByRole("alert").filter({ hasText: "Inloggningen kunde inte" })).toBeVisible();
+    },
+  },
+  // The sign-in page and a signed-in page while the session is still being asked for.
+  { name: "signin-loading", go: (page) => loading(page, "/") },
+  { name: "page-loading", go: (page) => loading(page, "/flows") },
+  { name: "flow-list", go: flows },
+  { name: "session-warning", go: sessionWarning },
+  {
+    name: "signed-in-again",
+    go: async (page) => {
+      await open(page, "/inloggad");
+      await heading(page, "Du är inloggad igen");
+    },
+  },
+  {
+    name: "flow-list-error",
+    go: async (page) => {
+      await page.route("**/api/eneo/flows/?*", (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
+      await open(page, "/flows");
+      await expect(page.getByRole("alert").filter({ hasText: /\w/ })).toBeVisible();
+    },
+  },
+  {
+    name: "account-menu",
+    go: async (page) => {
+      await flows(page);
+      await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+    },
+  },
+  { name: "unsent-recordings", go: leaveRecording },
+  {
+    name: "setup",
+    go: async (page) => {
+      await setup(page);
+      await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+    },
+  },
+  {
+    name: "setup-participants",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Strömma");
+      await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+    },
+  },
+  {
+    name: "setup-microphone-check",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Spela in");
+      await page.getByRole("button", { name: "Testa mikrofonen" }).click();
+      await expect(page.getByRole("button", { name: "Sluta testa" })).toBeVisible();
+    },
+  },
+  {
+    name: "upload-chosen-file",
+    go: async (page) => {
+      await setup(page);
+      await chooseFile(page);
+    },
+  },
+  {
+    name: "setup-required-detail",
+    go: async (page) => {
+      await setup(page, "flow-3");
+      await chooseFile(page);
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await expect(page.getByText("Fyll i det här för att skapa dokumentet.")).toBeVisible();
+    },
+  },
+  {
+    name: "setup-republished",
+    go: async (page) => {
+      await setup(page, "flow-3");
+      await chooseFile(page);
+      await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "Flödet har uppdaterats" })).toBeVisible();
+    },
+  },
+  {
+    name: "recording",
+    go: async (page) => {
+      await setup(page);
+      await addParticipants(page, ["Anna Berg"]);
+      await record(page, "Spela in");
+    },
+  },
+  {
+    name: "recording-paused",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await page.getByRole("button", { name: "Pausa" }).click();
+      await expect(page.getByRole("button", { name: "Fortsätt" })).toBeVisible();
+    },
+  },
+  {
+    name: "recording-details-open",
+    only: (info) => !isLaptop(info),
+    go: async (page) => {
+      await setup(page);
+      await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+      await record(page, "Spela in");
+      await page.getByRole("button", { name: /^Uppgifter, Deltagare: Anna Berg/ }).click();
+      await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
+    },
+  },
+  {
+    name: "stromma",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Strömma");
+      // The stub's first word, not the placeholder: live text has arrived.
+      await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("Välkomna", { timeout: 15_000 });
+    },
+  },
+  {
+    name: "leave-dialog",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await backLink(page).click();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
+    name: "ready",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await page.waitForTimeout(1_500);
+      await stop(page);
+      await expect(page.getByRole("slider", { name: "Position" })).toBeVisible();
+    },
+  },
+  {
+    name: "ready-delete-dialog",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+      await page.getByRole("button", { name: "Ta bort" }).click();
+      await expect(page.getByRole("alertdialog", { name: "Ta bort inspelningen?" })).toBeVisible();
+    },
+  },
+  {
+    name: "unsent-on-setup",
+    go: async (page) => {
+      await leaveRecording(page);
+      await setup(page);
+      await expect(page.getByRole("heading", { name: "En inspelning är inte skickad" })).toBeVisible();
+    },
+  },
+  { name: "sending", go: sending },
+  {
+    name: "time-left-15",
+    go: async (page) => {
+      await limitAudio(page, 12 * 60, 1);
+      await recordingSays(page, /^Mindre än 15 minuter kvar till flödets maxlängd\./);
+    },
+  },
+  {
+    name: "time-left-5",
+    go: async (page) => {
+      await limitAudio(page, 4 * 60, 1);
+      await recordingSays(page, /^Mindre än 5 minuter kvar till flödets maxlängd\./);
+    },
+  },
+  {
+    name: "too-long-for-one-file",
+    go: async (page) => {
+      // A page the browser held still past the handover (a laptop lid): its part runs past Eneo's time per file.
+      await page.clock.install();
+      await limitAudio(page, 60, 5);
+      await setup(page);
+      await record(page, "Spela in");
+      // The recorder hands its audio over in real time, a chunk every 2 s: some audio first, then the lid.
+      await page.waitForTimeout(3_000);
+      await page.clock.fastForward("02:00");
+      await stop(page);
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await expect(page.getByText(/Inspelningen är för lång för en fil/)).toBeVisible();
+    },
+  },
+  {
+    name: "silent-microphone",
+    go: async (page) => {
+      // A muted input: the stream carries digital silence.
+      await page.addInitScript(() => {
+        navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+      });
+      await recordingSays(page, "Vi hör inget från mikrofonen. Kontrollera att den inte är avstängd.");
+    },
+  },
+  {
+    name: "disk-full",
+    go: async (page) => {
+      await page.addInitScript(() => {
+        const put = IDBObjectStore.prototype.put;
+        IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+          if ((window as unknown as { diskFull?: boolean }).diskFull) throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+          return put.apply(this, args);
+        };
+      });
+      await recordingSays(page, /^Enheten har inte plats för att spara mer\./, () =>
+        page.evaluate(() => ((window as unknown as { diskFull?: boolean }).diskFull = true)),
+      );
+    },
+  },
+  {
+    name: "microphone-muted",
+    go: async (page) => {
+      // Chromium's fake microphone cannot be muted: the track says it is and fires the event, as a headset's route
+      // change does. The recording goes on, and the bar says so.
+      await page.addInitScript(() => {
+        const streams: MediaStream[] = [];
+        (window as unknown as { streams: MediaStream[] }).streams = streams;
+        const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+        navigator.mediaDevices.getUserMedia = async (constraints) => {
+          const stream = await open(constraints);
+          streams.push(stream);
+          return stream;
+        };
+      });
+      await recordingSays(page, "Mikrofonen är tillfälligt borta. Inspelningen fortsätter av sig själv när den är tillbaka.", () =>
+        page.evaluate(() => {
+          for (const stream of (window as unknown as { streams: MediaStream[] }).streams)
+            for (const track of stream.getAudioTracks()) {
+              Object.defineProperty(track, "muted", { configurable: true, get: () => true });
+              track.dispatchEvent(new Event("mute"));
+            }
+        }),
+      );
+    },
+  },
+  {
+    name: "signed-out",
+    go: async (page) => {
+      await setup(page);
+      await endLogin(page);
+    },
+  },
+  {
+    name: "signed-out-recording",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await endLogin(page);
+      // A recording's Pausa and Stoppa need no login: they stay in reach in the sign-in dialog.
+      await expect(page.getByRole("alertdialog").getByRole("button", { name: "Pausa" })).toBeVisible();
+    },
+  },
+  {
+    name: "signed-out-leave",
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await endLogin(page);
+      await page.goBack();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
+    name: "run-progress",
+    go: async (page) => {
+      await run(page, "run-running");
+      await heading(page, "Dokumentet skapas");
+      await expect(page.getByRole("status").filter({ hasText: "Skriv rapporten" })).toBeVisible();
+    },
+  },
+  {
+    name: "run-started",
+    go: async (page) => {
+      await setup(page);
+      await chooseFile(page);
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await heading(page, "Dokumentet skapas");
+    },
+  },
+  { name: "result", go: result },
+  {
+    name: "result-steps-open",
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
+      await expect(page.getByText("Flödets version 3")).toBeVisible();
+    },
+  },
+  {
+    name: "result-pdf-dialog",
+    // Below a laptop's width the document's PDF opens in a new tab instead.
+    only: isLaptop,
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "result-transcript-tab",
+    only: (info) => !isLaptop(info),
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("tab", { name: "Transkript" }).click();
+      await expect(page.getByRole("tab", { name: "Transkript" })).toHaveAttribute("aria-selected", "true");
+    },
+  },
+  {
+    name: "result-docked-player",
+    only: (info) => !isLaptop(info),
+    go: async (page) => {
+      await result(page);
+      await page.getByRole("tab", { name: "Transkript" }).click();
+      await page.getByRole("button", { name: "Spela upp", exact: true }).first().click();
+      await page.getByRole("tab", { name: "Dokument" }).click();
+      await expect(page.getByRole("button", { name: "Pausa uppspelningen" })).toBeVisible();
+    },
+  },
+  {
+    name: "result-regenerate",
+    go: async (page) => {
+      await run(page, "run-corrected");
+      await expect(page.getByText("Dokumentet skapades före dina rättningar")).toBeVisible();
+    },
+  },
+  {
+    name: "result-without-transcript",
+    go: async (page) => {
+      await run(page, "run-plain");
+      await heading(page, "Dokumentet är klart");
+    },
+  },
+  {
+    name: "failure",
+    go: async (page) => {
+      await run(page, "run-failed");
+      await heading(page, "Dokumentet kunde inte skapas");
+      await page.getByRole("button", { name: "Visa teknisk information" }).click();
+    },
+  },
+  {
+    name: "review",
+    go: async (page) => {
+      await run(page, "run-review", "flow-2");
+      await heading(page, "Vem är vem?");
+      await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+    },
+  },
+  {
+    name: "naming-dialog",
+    go: async (page) => {
+      await run(page, "run-review", "flow-2");
+      // With the transcript read, each speaker's sample can be played, so the dialog opens on the first one's button.
+      await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+      await page.getByRole("button", { name: "Namnge talarna" }).click();
+      await expect(page.getByRole("dialog", { name: "Namnge talarna" })).toBeVisible();
+    },
+  },
+  {
+    name: "review-reject",
+    go: async (page) => {
+      await run(page, "run-review", "flow-2");
+      await page.getByRole("button", { name: "Avvisa" }).click();
+      await expect(page.getByRole("button", { name: "Bekräfta avvisning" })).toBeVisible();
+    },
+  },
+  {
+    name: "review-text-edit",
+    go: async (page) => {
+      await run(page, "run-review-text");
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await expect(page.locator("main textarea")).toBeVisible();
+    },
+  },
+  {
+    name: "review-din-version",
+    go: async (page) => {
+      await run(page, "run-review-text");
+      await heading(page, "Sammanfattning");
+      await page.getByRole("button", { name: "Redigera" }).click();
+      await page.locator("main textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      // Someone else saves the review meanwhile: the page opens on the newer revision, and the edit waits beside it.
+      await page.route("**/review-checkpoints/active**", async (route) => {
+        const checkpoint = await (await route.fetch()).json();
+        return route.fulfill({ json: { ...checkpoint, revision: checkpoint.revision + 1 } });
+      });
+      await page.reload();
+      await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
+    },
+  },
+  {
+    name: "flow-gone",
+    go: async (page) => {
+      await open(page, "/flows/flow-gone");
+      await heading(page, "Flödet är inte längre tillgängligt.");
+    },
+  },
+  {
+    name: "flow-republish-required",
+    go: async (page) => {
+      await open(page, "/flows/flow-4");
+      await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
+    },
+  },
+];

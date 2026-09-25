@@ -135,6 +135,8 @@ const LINE_RE =
   /^\[(\d{2,}):(\d{2}):(\d{2}) - (\d{2,}):(\d{2}):(\d{2})\](?: ([^:\n]+?):)? ?(.*)$/;
 // Fler ljudfiler sammanfogas med rubriken "## Del N".
 const PART_HEADER_RE = /^## Del (\d+)\b/;
+// Utan segment skriver Eneo texten i block om högst fem minuter: "### 0:00 - 5:00".
+const BLOCK_HEADER_RE = /^### (\d+):(\d{2}) - (\d+):(\d{2})\s*$/;
 
 function hms(h: string, m: string, s: string): number {
   return Number(h) * 3600 + Number(m) * 60 + Number(s);
@@ -151,14 +153,29 @@ export function parseTranscriptText(
 ): TranscriptSegment[] {
   const segments: TranscriptSegment[] = [];
   let fileIndex = 0;
+  // The time block the following paragraphs belong to.
+  let block: TranscriptSegment | null = null;
   for (const line of text.split("\n")) {
     const header = PART_HEADER_RE.exec(line);
     if (header) {
       fileIndex = Math.max(0, Number(header[1]) - 1);
+      block = null;
+      continue;
+    }
+    const heading = BLOCK_HEADER_RE.exec(line);
+    if (heading) {
+      // Only "## Del N" names a block's file; a clock starting over does not (the loader
+      // decides what several unnamed files may seek).
+      const start = Number(heading[1]) * 60 + Number(heading[2]);
+      block = { fileIndex, start, end: Number(heading[3]) * 60 + Number(heading[4]), speaker: null, text: "" };
+      segments.push(block);
       continue;
     }
     const m = LINE_RE.exec(line);
-    if (!m) continue;
+    if (!m) {
+      if (block && line.trim()) block.text = block.text ? `${block.text} ${line.trim()}` : line.trim();
+      continue;
+    }
     const [, h1, m1, s1, h2, m2, s2, speaker, body] = m;
     segments.push({
       fileIndex,
@@ -369,16 +386,6 @@ export function countUncertainWords(segments: readonly TranscriptSegment[]): num
   return n;
 }
 
-export function formatClock(seconds: number, withHours = false): string {
-  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
-  const h = Math.floor(total / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const s = total % 60;
-  const mm = String(m).padStart(2, "0");
-  const ss = String(s).padStart(2, "0");
-  return withHours || h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
-}
-
 export const SPEAKER_COLOR_COUNT = 6;
 
 /** Stabil färgplats per etikett: SPEAKER_03 → 3 mod 6, annars en enkel hash. */
@@ -394,4 +401,65 @@ export function speakerColorIndex(label: string): number {
 export function speakerDisplayLabel(label: string): string {
   const m = /^SPEAKER_(\d+)$/.exec(label);
   return m ? `Talare ${Number(m[1]) + 1}` : label;
+}
+
+/** A transcript without speaker labels reads as paragraphs: one block per timed segment, never one merged block. */
+export function paragraphTurns(segments: readonly TranscriptSegment[]): TranscriptTurn[] {
+  return segments.map((segment, segmentIndex) => ({
+    index: segmentIndex,
+    speaker: null,
+    fileIndex: segment.fileIndex,
+    start: segment.start,
+    end: segment.end,
+    parts: [{ segmentIndex, segment }],
+  }));
+}
+
+/** A passage Eneo marked for a speaker check that nobody has decided yet. */
+export function pendingSpeakerReview(turn: TranscriptTurn): boolean {
+  const first = turn.parts[0]?.segment;
+  return Boolean(first) && needsSpeakerReview(first) && !first.decision;
+}
+
+export interface SpeakerSummary {
+  label: string;
+  /** Passages (turns) the speaker has; passages still to check count for no one. */
+  passages: number;
+}
+
+/** The speakers in the order they first speak. */
+export function speakerSummaries(turns: readonly TranscriptTurn[]): SpeakerSummary[] {
+  const passages = new Map<string, number>();
+  for (const turn of turns) {
+    if (!turn.speaker || pendingSpeakerReview(turn) || turn.parts[0].segment.decision === "unresolved") continue;
+    passages.set(turn.speaker, (passages.get(turn.speaker) ?? 0) + 1);
+  }
+  return [...passages].map(([label, count]) => ({ label, passages: count }));
+}
+
+/** "Anna Berg" → "A", "Talare 3" → "3": the letter in a speaker's round mark. */
+export function speakerInitial(name: string): string {
+  const numbered = /^Talare (\d+)$/.exec(name.trim());
+  if (numbered) return numbered[1];
+  return (Array.from(name.trim())[0] ?? "?").toLocaleUpperCase("sv-SE");
+}
+
+export interface SearchHit {
+  segmentIndex: number;
+  start: number;
+  end: number;
+}
+
+/** Every place the words occur, in reading order; case and å, ä, ö fold as a reader expects. */
+export function findHits(segments: readonly TranscriptSegment[], query: string): SearchHit[] {
+  const needle = query.trim();
+  if (!needle) return [];
+  const pattern = new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "giu");
+  return segments.flatMap((segment, segmentIndex) =>
+    [...segment.text.matchAll(pattern)].map((match) => ({
+      segmentIndex,
+      start: match.index,
+      end: match.index + match[0].length,
+    })),
+  );
 }

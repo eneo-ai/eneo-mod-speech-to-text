@@ -89,6 +89,15 @@ test("audio MIME picker never falls through to a preferred type that the flow di
   );
 });
 
+test("the recorder prefers Opus and falls back to the browser's own format", () => {
+  const chrome = (mime: string) => ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].includes(mime);
+  const firefox = (mime: string) => mime.startsWith("audio/webm") || mime.startsWith("audio/ogg");
+  const safari = (mime: string) => mime === "audio/mp4";
+  assert.equal(pickSupportedAudioMimetype(undefined, chrome), "audio/webm;codecs=opus");
+  assert.equal(pickSupportedAudioMimetype(undefined, firefox), "audio/webm;codecs=opus");
+  assert.equal(pickSupportedAudioMimetype(undefined, safari), "audio/mp4");
+});
+
 test("runtime input selection uses the first published file input by step order", () => {
   const contract = {
     flow_id: "flow",

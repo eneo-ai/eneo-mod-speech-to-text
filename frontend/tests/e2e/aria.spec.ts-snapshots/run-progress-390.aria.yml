@@ -1,0 +1,10 @@
+- main:
+  - status
+  - heading "Dokumentet skapas" [level=1]
+  - status: Skriv rapporten
+  - region "Flödets steg":
+    - list:
+      - listitem: Transkribera Klar
+      - listitem: Skriv rapporten Pågår
+  - paragraph: Du kan stänga sidan. Körningen fortsätter och resultatet finns kvar här.
+  - button "Avbryt körningen"

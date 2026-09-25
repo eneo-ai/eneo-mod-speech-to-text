@@ -4,6 +4,8 @@ import { correctionWriteProblem } from "./transcript-corrections";
 // key and, in Eneo SSO mode, the short-lived module-user token from its
 // HttpOnly session.
 
+import { loginState } from "./login-state";
+import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
   resolveRuntimeUploadInitialTimeoutMs,
@@ -46,35 +48,54 @@ async function parseError(res: Response): Promise<ApiError> {
   return new ApiError(res.status, msg, body, code);
 }
 
+/** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
+function replayable(init: RequestInit): boolean {
+  const method = (init.method ?? "GET").toUpperCase();
+  return method === "GET" || method === "HEAD" || new Headers(init.headers).has("Idempotency-Key");
+}
+
+/** What a request our login's end refused says; the same whether the backend or the page refused it. */
+const sessionEnded = () => new ApiError(401, "Session expired", { detail: "Session expired" });
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
+  again = false,
 ): Promise<T> {
-  const res = await fetch(path, {
-    ...init,
-    credentials: "include",
-    headers: {
-      Accept: "application/json",
-      ...(init.body && !(init.body instanceof FormData)
-        ? { "Content-Type": "application/json" }
-        : {}),
-      ...init.headers,
-    },
-  });
+  // Signed out, or someone else signed in here: nothing leaves the page until its own user is back.
+  if (loginState.signedOut && !path.startsWith("/api/auth/")) {
+    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again);
+    throw sessionEnded();
+  }
+  let res: Response;
+  try {
+    res = await fetch(path, {
+      ...init,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(init.body && !(init.body instanceof FormData)
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...init.headers,
+      },
+    });
+  } catch (error) {
+    // fetch rejects with a TypeError when the network is down (not on abort).
+    if (error instanceof TypeError) onlineStatus.reportNetworkFailure();
+    throw error;
+  }
+  onlineStatus.reportReachable();
 
   if (!res.ok) {
-    // Bounce to login bara om backend explicit signalerar att VÅR session
-    // har gått ut (X-Auth-Required: session). En vanlig 401 från Eneo
-    // (t.ex. ogiltig API-nyckel) får INTE trigga redirect — då hamnar vi
-    // i en login-loop. Felet får i stället bubbla upp och visas i UI:t.
-    if (
-      res.status === 401 &&
-      res.headers.get("X-Auth-Required") === "session" &&
-      typeof window !== "undefined" &&
-      !path.startsWith("/api/auth/") &&
-      window.location.pathname !== "/"
-    ) {
-      window.location.replace("/");
+    // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
+    // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
+    // is safe to send twice waits for it and goes again.
+    if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
+      loginState.ended();
+      if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
+        return request<T>(path, init, true);
+      }
     }
     throw await parseError(res);
   }
@@ -83,7 +104,12 @@ async function request<T>(
 
   const ctype = res.headers.get("content-type") || "";
   if (ctype.includes("application/json")) {
-    return (await res.json()) as T;
+    try {
+      return (await res.json()) as T;
+    } catch {
+      // As the upload client does: a body that is not the JSON it claims is the request's own error.
+      throw new ApiError(res.status, "Servern svarade med ogiltig JSON.", null, "invalid_json_response");
+    }
   }
   return (await res.text()) as unknown as T;
 }
@@ -91,14 +117,27 @@ async function request<T>(
 // ---------- Config ----------
 
 export interface AppConfig {
-  demo_space_id: string | null;
-  demo_space_name: string | null;
-  /** Lista över alla konfigurerade spaces. Tom = inget hårdkodat space (frontend visar väljare). */
-  demo_space_ids?: string[];
+  /**
+   * Hur flödeslistan frågar Eneo, avgjort av modulens inloggningsläge: med
+   * Eneo SSO alla användarens spaces (space_id null), med åtkomstkod det
+   * konfigurerade spacet; null när åtkomstkodsläget saknar ett space.
+   */
+  flow_list: { space_id: string | null } | null;
 }
 
 export async function getConfig() {
   return request<AppConfig>("/api/config");
+}
+
+/**
+ * The organisation beside "Tal till text", a deployment setting of the
+ * module's backend (GET /api/branding): Sundsvall's bundled logo
+ * ("default"), the deployment's own ("custom", with a dark variant when
+ * `dark_logo`), or the name as text (null). No organisation shows the
+ * product name alone.
+ */
+export interface Branding {
+  organization: { name: string; logo: "default" | "custom" | null; dark_logo: boolean } | null;
 }
 
 // ---------- Auth ----------
@@ -115,6 +154,10 @@ export interface AuthStatus {
   authenticated: boolean;
   auth_mode: AuthMode;
   user: AuthenticatedUser | null;
+  /** Sekunder tills backend vill förnya Eneo-token; saknas när inget ska förnyas. */
+  refresh_in?: number;
+  /** Sekunder tills inloggningen tar slut (Eneos tak eller modulens eget); en ny inloggning flyttar det. */
+  session_ends_in?: number;
 }
 
 export async function loginWithAccessCode(accessCode: string) {
@@ -134,13 +177,6 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface SpaceSparse {
-  id: string;
-  name: string;
-  description?: string | null;
-  personal?: boolean;
-}
-
 export interface PaginatedResponse<T> {
   items: T[];
   count?: number;
@@ -153,6 +189,11 @@ export interface FlowSparsePublic {
   description?: string | null;
   published_version?: number | null;
   is_published?: boolean;
+  /** The flow's space; discovery lists every space the user belongs to. */
+  space_id: string;
+  space_name: string;
+  /** How the flow takes its input: "audio", "document" or "file". */
+  input_type?: FlowRuntimeInputFormat | string | null;
 }
 
 export interface FormField {
@@ -175,6 +216,8 @@ export interface RunContractStepInput {
   input_format?: string;
   max_files?: number;
   max_file_size_bytes?: number;
+  /** The longest audio Eneo takes per file (flow_audio_max_duration_seconds), for an audio input; null otherwise. */
+  max_duration_seconds?: number | null;
   accepted_mimetypes?: string[];
 }
 
@@ -199,6 +242,34 @@ export interface FlowReviewStepContract {
   output_contract?: Json | null;
 }
 
+export type LiveTranscriptionUnavailableReason =
+  | "transcription_disabled"
+  | "transcription_service_mode"
+  | "model_unavailable"
+  | "model_not_realtime";
+
+/**
+ * Val för ett flöde som transkriberar inspelat ljud. `live` säger om ljudsteget
+ * kan visa live-text medan man spelar in. Körningen skickar `speaker_labels`
+ * (boolean) i POST …/runs/ bara när `speaker_labels.selectable` är sant;
+ * utan val gäller flödets `default`.
+ */
+export interface FlowTranscriptionContract {
+  live: { available: boolean; reason: LiveTranscriptionUnavailableReason | null };
+  speaker_labels: { selectable: boolean; required: boolean; default: boolean };
+}
+
+/**
+ * Säkerhetsklassningen för flödets space: vilken information flödet får ta
+ * emot, med namn och beskrivning som organisationen skrev dem.
+ */
+export interface FlowSecurityClassification {
+  name: string;
+  description: string | null;
+  /** Högre nivå tillåter känsligare information. */
+  security_level: number;
+}
+
 export interface RunContract {
   flow_id: string;
   published_flow_version: number;
@@ -206,7 +277,10 @@ export interface RunContract {
   steps_requiring_input?: RunContractStepInput[];
   steps_requiring_review?: FlowReviewStepContract[];
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
-  recommended_run_payload?: Json;
+  /** Null när flödet inte transkriberar ljud. */
+  transcription?: FlowTranscriptionContract | null;
+  /** Null när spacet saknar klassning eller organisationen stängt av klassningar. */
+  security_classification?: FlowSecurityClassification | null;
 }
 
 export interface FlowPublished {
@@ -239,17 +313,39 @@ export interface ResultFile {
   availability?: string;
 }
 
+/**
+ * Körningens typade slutresultat, diskriminerat på `kind`. Eneo sätter det
+ * bara när körningen blev klar; annars är det null.
+ */
+export type FlowRunResult =
+  | { kind: "inline_text"; text: string }
+  | { kind: "file_backed_text"; preview: string; file: ResultFile }
+  | { kind: "structured"; value: unknown; output_contract: Json | null }
+  | { kind: "artifact"; files: ResultFile[] }
+  | { kind: "outbound_http"; delivery_status: "delivered" };
+
+/**
+ * Körningens typade slutfel. Förgrena på `code`; `message` är teknisk detalj
+ * för support och ska inte tolkas. `retryable` säger om en ny körning är säker.
+ */
+export interface FlowRunError {
+  schema_version?: number;
+  code: string;
+  message: string;
+  source?: string | null;
+  step_id?: string | null;
+  step_order?: number | null;
+  details?: { step_description?: string | null; [k: string]: unknown } | null;
+  retryable: boolean;
+}
+
 export interface FlowRunPublic {
   id: string;
   flow_id: string;
   status: string; // se FlowRunStatus — behåll string för forward-compat
-  output_payload_json?: {
-    text?: string;
-    structured?: { final_output?: string; [k: string]: unknown };
-    [k: string]: unknown;
-  } | null;
+  result?: FlowRunResult | null;
   result_files?: ResultFile[];
-  error_message?: string | null;
+  error?: FlowRunError | null;
   created_at?: string;
   updated_at?: string;
   started_at?: string;
@@ -403,12 +499,6 @@ export function reviewResumeIdempotencyKey(
  * har en `label` med mönstret `^SPEAKER_\d{2,}$`. Det räcker för att känna
  * igen steget innan körningen startar.
  */
-/** Körningar som fortfarande går att följa eller agera på. */
-export function isResumableRunStatus(status: string): boolean {
-  const s = status.toLowerCase();
-  return s === "queued" || s === "running" || s === "awaiting_review";
-}
-
 export function isSpeakerMappingReviewStep(
   step: FlowReviewStepContract | null | undefined,
 ): boolean {
@@ -510,15 +600,9 @@ export type RuntimeUploadTimeoutReason =
   | "stalled"
   | "server_not_responding";
 
-export interface RuntimeUploadTimeoutEvent {
-  reason: RuntimeUploadTimeoutReason;
-  timeoutMs: number;
-}
-
 interface UploadRequestOptions {
   signal?: AbortSignal;
   onProgress?: (progress: UploadProgress) => void;
-  onTimeout?: (event: RuntimeUploadTimeoutEvent) => void;
   runtimeUploadPolicy?: FlowRuntimeUploadPolicy | null;
 }
 
@@ -564,6 +648,8 @@ function requestMultipartWithProgress<T>(
   );
   const idleTimeoutMs = resolveRuntimeUploadIdleTimeoutMs(opts.runtimeUploadPolicy);
 
+  // Signed out, or someone else signed in here: the upload is the user's to send again once back.
+  if (loginState.signedOut) return Promise.reject(sessionEnded());
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -588,9 +674,9 @@ function requestMultipartWithProgress<T>(
     ) => {
       clearScheduledTimeout();
       timeoutId = setTimeout(() => {
-        opts.onTimeout?.({ reason, timeoutMs });
-        xhr.abort();
+        // Settled first: abort() fires "abort" before it returns, which would read as a cancel.
         rejectOnce(new ApiError(408, formatTimeoutReason(reason), null, reason));
+        xhr.abort();
       }, timeoutMs);
     };
 
@@ -611,6 +697,9 @@ function requestMultipartWithProgress<T>(
     };
 
     xhr.onload = () => {
+      onlineStatus.reportReachable();
+      // The login ended: the dialog asks for a new one, and the send is the user's to start again.
+      if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended();
       if (settled) return;
       settled = true;
       clearScheduledTimeout();
@@ -642,6 +731,7 @@ function requestMultipartWithProgress<T>(
     };
 
     xhr.onerror = () => {
+      onlineStatus.reportNetworkFailure();
       rejectOnce(
         new ApiError(
           0,
@@ -700,30 +790,15 @@ async function sha256Hex(value: string): Promise<string> {
 
 // ---------- API-anrop ----------
 
-export async function listSpaces() {
-  return request<PaginatedResponse<SpaceSparse>>(
-    "/api/eneo/spaces/?include_personal=true",
-  );
-}
-
-/** Hämtar en specifik space direkt. Funkar även när /spaces/-listning är tom (scope-begränsade keys). */
-export async function getSpace(spaceId: string) {
-  return request<SpaceSparse>(`/api/eneo/spaces/${spaceId}/`);
-}
-
-export async function listFlows(
-  spaceId: string,
-  limit = 50,
-  offset = 0,
-) {
-  const qs = new URLSearchParams({
-    space_id: spaceId,
-    limit: String(limit),
-    offset: String(offset),
-  });
-  return request<PaginatedResponse<FlowSparsePublic>>(
-    `/api/eneo/flows/?${qs.toString()}`,
-  );
+/**
+ * One page of the published flows the user can run. Without `spaceId` Eneo
+ * lists every space the user belongs to, narrowed by the module key's scope;
+ * items come oldest first and `has_more` says whether another page follows.
+ */
+export async function listPublishedFlows({ limit, offset, spaceId }: { limit: number; offset: number; spaceId?: string }) {
+  const query = new URLSearchParams({ published_only: "true", limit: String(limit), offset: String(offset) });
+  if (spaceId) query.set("space_id", spaceId);
+  return request<OffsetPaginatedResponse<FlowSparsePublic>>(`/api/eneo/flows/?${query}`);
 }
 
 export async function getPublishedFlow(flowId: string) {
@@ -732,15 +807,6 @@ export async function getPublishedFlow(flowId: string) {
 
 export async function getRunContract(flowId: string) {
   return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
-}
-
-// input_format för det första steget som kräver input (lägst step_order).
-// "audio" → mikrofon, "document"/"file"/"image" → dokument/fil.
-export function firstInputFormat(contract: RunContract): string | null {
-  const steps = [...(contract.steps_requiring_input ?? [])].sort(
-    (a, b) => (a.step_order ?? 0) - (b.step_order ?? 0),
-  );
-  return steps[0]?.input_format?.toLowerCase() ?? null;
 }
 
 // ---------- Flow graph ----------
@@ -754,6 +820,8 @@ export interface FlowGraphNode {
   input_type: string | null;
   output_type: string | null; // "text" | "json" | "docx" | "pdf" | ...
   output_mode: string | null;
+  /** Only on a run-pinned graph (`?run_id=`): the step's status in that run, null before it has one. */
+  run_status?: FlowStepResultStatus | string | null;
 }
 
 export interface FlowGraphEdge {
@@ -768,35 +836,27 @@ export interface FlowGraph {
   edges: FlowGraphEdge[];
 }
 
-export async function getFlowGraph(flowId: string) {
-  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/`);
-}
-
-/** Returnerar `output_type` för det steg som matar flow_output-edgen (t.ex. "docx", "text"). */
-export function getFlowOutputType(graph: FlowGraph): string | null {
-  const flowOutputEdge = graph.edges.find((e) => e.kind === "flow_output");
-  if (!flowOutputEdge) return null;
-  const lastStep = graph.nodes.find((n) => n.id === flowOutputEdge.source);
-  return lastStep?.output_type ?? null;
-}
-
-const TEXTUAL_OUTPUT_TYPES = new Set(["text", "markdown", "json"]);
-
-/** True om output kan renderas som text/markdown i UI; false för binära artefakter (DOCX/PDF/...). */
-export function isTextualOutput(outputType: string | null | undefined): boolean {
-  if (!outputType) return true; // default: visa som text om vi inte vet
-  return TEXTUAL_OUTPUT_TYPES.has(outputType.toLowerCase());
+/**
+ * The graph of the version a run pinned, each step annotated with its status
+ * in that run. Unlike the step results it is not audited per read, so it is
+ * what a progress poll reads.
+ */
+export async function getRunGraph(flowId: string, runId: string) {
+  const query = new URLSearchParams({ run_id: runId });
+  return request<FlowGraph>(`/api/eneo/flows/${flowId}/graph/?${query}`);
 }
 
 export async function startRun(
   flowId: string,
   body: Json,
   idempotencyKey: string,
+  signal?: AbortSignal,
 ) {
   return request<FlowRunPublic>(`/api/eneo/flows/${flowId}/runs/`, {
     method: "POST",
     headers: { "Idempotency-Key": idempotencyKey },
     body: JSON.stringify(body),
+    signal,
   });
 }
 
@@ -849,26 +909,6 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export async function getArtifactSignedUrl(
-  flowId: string,
-  runId: string,
-  fileId: string,
-  expiresInSeconds = 3600,
-) {
-  // TODO(eneo-refactor): När Eneo-prod stabiliserats på nya specen, behåll bara `expires_in`
-  // och uppdatera responstypen till `expires_at?: number`.
-  return request<{ url: string; expires_at?: string | number }>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/signed-url/`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        expires_in_seconds: expiresInSeconds, // legacy fältnamn
-        expires_in: expiresInSeconds, // ny spec
-      }),
-    },
-  );
-}
-
 // --- Cancel / redispatch / list ---
 
 export async function cancelRun(flowId: string, runId: string) {
@@ -878,6 +918,28 @@ export async function cancelRun(flowId: string, runId: string) {
   );
 }
 
+/** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
+export interface FlowRunRetryPublic {
+  run: FlowRunPublic;
+  /** False when the same key replays a retry Eneo already accepted. */
+  created: boolean;
+  source_run_id: string;
+  first_executed_step_order: number;
+  reused_step_orders: number[];
+}
+
+/**
+ * Continues a failed run from its first unfinished step: Eneo creates a child
+ * run that reuses the completed steps (a long recording is not transcribed
+ * again) and keeps the source's inputs, files and choices.
+ */
+export async function retryFlowRunFromFailedStep(flowId: string, runId: string, idempotencyKey: string) {
+  return request<FlowRunRetryPublic>(`/api/eneo/flows/${flowId}/runs/${runId}/retry/`, {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+  });
+}
+
 export async function redispatchRun(flowId: string, runId: string) {
   return request<FlowRunRedispatchResponse>(
     `/api/eneo/flows/${flowId}/runs/${runId}/redispatch/`,
@@ -885,8 +947,13 @@ export async function redispatchRun(flowId: string, runId: string) {
   );
 }
 
-export async function listRuns(flowId: string, limit = 50, offset = 0) {
-  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+/**
+ * The caller's latest runs of a flow. `mine=true` keeps a colleague's runs
+ * out, which Eneo would otherwise list for a space admin or the flow's owner;
+ * a module session counts as its signed-in user.
+ */
+export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { limit?: number; offset?: number } = {}) {
+  const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: String(offset) });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );
@@ -952,6 +1019,42 @@ export async function getTranscriptWords(
   );
 }
 
+/** A text file the run produced (its content as text), through the module's artifact route. */
+export async function getRunArtifactText(flowId: string, runId: string, fileId: string) {
+  return request<string>(`/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content`);
+}
+
+/**
+ * One page (200 segments) of the transcript an attempt stored. Present: the
+ * segments with their absolute index, the source hash corrections must carry,
+ * and on the first page the speaker review. Omitted: Eneo kept no segments
+ * (the step's text is then the transcript). Unavailable: written before Eneo
+ * kept sources.
+ */
+export type TranscriptSourcePage =
+  | {
+      status: "present";
+      source_hash: string;
+      next_segment_index: number | null;
+      segments: Record<string, unknown>[];
+      speaker_review?: unknown;
+    }
+  | { status: "omitted"; reason: number }
+  | { status: "unavailable_pre_row" };
+
+export async function getTranscriptSource(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  attemptNo: number,
+  startSegmentIndex: number,
+) {
+  const query = new URLSearchParams({ start_segment_index: String(startSegmentIndex) });
+  return request<TranscriptSourcePage>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/attempts/${attemptNo}/transcript-source/?${query}`,
+  );
+}
+
 /**
  * Same-origin ljudkälla för en av körningens inmatade filer. Modulens backend
  * hämtar den signerade Eneo-URL:en med sina egna credentials och strömmar
@@ -963,6 +1066,16 @@ export function inputFileAudioUrl(
   fileId: string,
 ): string {
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
+}
+
+/**
+ * Same-origin address of a file the run generated. The module backend streams
+ * it from Eneo the same way, under the name Eneo gave it; a PDF can open
+ * inline (a frame on this origin, or a new tab), anything else downloads.
+ */
+export function runArtifactUrl(flowId: string, runId: string, fileId: string, inline = false): string {
+  const query = new URLSearchParams({ disposition: inline ? "inline" : "attachment" });
+  return `/api/eneo/flows/${flowId}/runs/${runId}/artifacts/${fileId}/content?${query}`;
 }
 
 // --- Transkriptkorrigeringar ---
@@ -1025,6 +1138,36 @@ export async function saveTranscriptCorrections(
   return request<TranscriptCorrectionsPublic>(
     `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-corrections/`,
     { method: "PATCH", body: JSON.stringify(body) },
+  );
+}
+
+export interface FlowTranscriptRegenerationPublic {
+  /** The new run: the source run, its document and files stay as they were. */
+  run: FlowRunPublic;
+  /** False when the same request and key replayed an accepted run. */
+  created: boolean;
+  source_run_id: string;
+  correction_revision: number | null;
+  first_regenerated_step_id: string;
+}
+
+/**
+ * A new run of the same published flow version from the reviewed transcript:
+ * the transcription step (and a speaker naming step after it) is taken as
+ * reviewed, the steps after it run again. The same key and request replay the
+ * accepted run; stale revisions, a changed publication or an unsupported flow
+ * layout are refused before anything is created.
+ */
+export async function regenerateTranscript(
+  flowId: string,
+  runId: string,
+  stepId: string,
+  body: { expected_run_revision: number; expected_correction_revision: number | null; segments_hash: string },
+  idempotencyKey: string,
+) {
+  return request<FlowTranscriptRegenerationPublic>(
+    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-regenerations/`,
+    { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
   );
 }
 

@@ -3,9 +3,10 @@
 import { Laptop, Loader2, LogOut, Moon, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
-import { useEffect, useState } from "react";
+import { useContext, useEffect, useState } from "react";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
+import { LeaveContext } from "@/components/flow/useLeaveQuestion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import {
@@ -28,6 +29,8 @@ export function AccountMenu() {
   const [themeReady, setThemeReady] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = userDisplayName(user);
+  // Signing out leaves the page: asked first where that would lose something.
+  const { leaveFirst } = useContext(LeaveContext);
 
   useEffect(() => setThemeReady(true), []);
 
@@ -41,17 +44,18 @@ export function AccountMenu() {
   }
 
   return (
-    <DropdownMenu>
+    // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           type="button"
           variant="ghost"
           size="icon"
           aria-label={`Öppna konto för ${displayName}`}
-          className="rounded-full p-0"
+          className="shrink-0 rounded-full p-0"
         >
           <Avatar>
-            <AvatarFallback className="bg-accent text-[15px] font-semibold text-accent-foreground">
+            <AvatarFallback className="bg-primary text-[15px] font-semibold text-primary-foreground">
               {userInitial(user)}
             </AvatarFallback>
           </Avatar>
@@ -71,7 +75,7 @@ export function AccountMenu() {
         </DropdownMenuLabel>
 
         <DropdownMenuSeparator />
-        <DropdownMenuLabel className="eyebrow-sm px-2.5 py-2 font-normal">
+        <DropdownMenuLabel className="px-2.5 py-2 text-xs font-normal text-ink-mute">
           Tema
         </DropdownMenuLabel>
         <DropdownMenuRadioGroup
@@ -95,7 +99,7 @@ export function AccountMenu() {
         <DropdownMenuSeparator />
         <DropdownMenuItem
           disabled={loggingOut}
-          onSelect={() => void onLogout()}
+          onSelect={() => leaveFirst(() => void onLogout())}
         >
           {loggingOut ? <Loader2 className="animate-spin" /> : <LogOut />}
           {loggingOut ? "Loggar ut…" : "Logga ut"}

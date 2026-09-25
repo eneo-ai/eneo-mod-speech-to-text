@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useState } from "react";
 import fixtures from "@/tests/fixtures/speaker_review.json";
-import { SpeakerMappingEditor } from "@/components/SpeakerMappingEditor";
+import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
+import { Button } from "@/components/ui/button";
 import type { SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { locateWords, segmentsFromTranscription } from "@/lib/transcript";
@@ -67,7 +68,10 @@ export function ReviewFixtures() {
     <label className="mb-4 block"><input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} /> Tillgängligt testljud</label>
     <label className="mb-4 block"><input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} /> Skrivskyddat</label>
     {selected === "accessibility" && <details className="paper-card mb-3 p-4"><summary className="min-h-6 cursor-pointer">Talare</summary>
-      <div className="mt-4"><SpeakerMappingEditor rows={names} proposals={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)} onChange={setNames} disabled={readOnly} /></div>
+      <div className="mt-4"><SpeakerNamingDialog rows={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)}
+        passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }} onSaveAndContinue={async (rows) => { setNames(rows); return null; }}>
+        <Button type="button" variant="outline">Namnge talarna</Button>
+      </SpeakerNamingDialog></div>
     </details>}
     <TranscriptPlayer key={`${selected}:${audio}`} segments={segments} speakerReviews={reviews} reviewEnabled
       fileCount={audio ? selected === "two-files" ? 2 : 1 : 0} audioSrcFor={() => url}

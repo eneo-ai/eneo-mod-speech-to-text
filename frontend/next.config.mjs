@@ -1,9 +1,13 @@
+import { backendBase } from "./lib/backend-base.mjs";
+
 const isDev = process.env.NODE_ENV === "development";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
   poweredByHeader: false,
+  // `next dev` skriver annars ospårade AGENTS.md och CLAUDE.md i frontend/ vid varje start.
+  agentRules: false,
   skipTrailingSlashRedirect: true,
   experimental: {
     // Next klonar request-bodyn för proxade rewrites (våra /api/*-anrop till
@@ -55,14 +59,19 @@ const nextConfig = {
           },
         ],
       },
+      {
+        // The result page previews a generated PDF in a same-origin frame; the
+        // backend serves only PDFs inline here. Later rules win per header key.
+        source: "/api/eneo/flows/:flowId/runs/:runId/artifacts/:fileId/content",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+        ],
+      },
     ];
   },
   async rewrites() {
-    // I `next dev` (devcontainer/lokalt) kör backend på samma host; Compose-
-    // tjänstenamnet gäller bara när frontend körs som container i Compose.
-    const target =
-      process.env.INTERNAL_API_BASE ||
-      (isDev ? "http://127.0.0.1:8000" : "http://speech-to-text-backend:8000");
+    const target = backendBase();
     return [
       {
         source: "/api/:path*",

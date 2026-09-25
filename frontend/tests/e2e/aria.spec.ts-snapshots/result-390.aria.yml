@@ -1,0 +1,35 @@
+- main:
+  - heading "Dokumentet är klart" [level=1]
+  - paragraph: /Skapad i dag \d+:\d+/
+  - button "Ny inspelning"
+  - tablist "Visa":
+    - tab "Dokument" [selected]
+    - tab "Transkript"
+  - tabpanel "Dokument":
+    - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+      - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=attachment
+    - link "Öppna PDF i en ny flik":
+      - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=inline
+    - button "Fler alternativ"
+    - region "Dokumentet":
+      - article:
+        - heading "Protokoll" [level=2]
+        - paragraph:
+          - text: Kommunstyrelsen beslutade att
+          - strong: höja budgetramen
+          - text: med två procent.
+        - list:
+          - listitem: Förvaltningen återkommer i oktober.
+          - listitem: Nya skolskjutsturer gäller efter höstlovet.
+      - paragraph: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
+      - paragraph: /PDF, \d+ B/
+      - status
+    - region "Fler filer":
+      - heading "Fler filer" [level=2]
+      - list:
+        - listitem:
+          - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/
+          - paragraph: /Word, \d+ kB/
+          - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
+            - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-docx/content?disposition=attachment
+    - button "Hur resultatet togs fram 2 steg"

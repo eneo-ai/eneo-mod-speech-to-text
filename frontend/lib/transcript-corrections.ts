@@ -15,7 +15,10 @@
 //     talaren oavgjord. Återställning tar bort beslutsöverlägget.
 //   - Talaretiketter måste ha formen SPEAKER_NN.
 
-import { effectiveSpeakerLabel, formatClock, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { effectiveSpeakerLabel, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+
+/** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
+export const MAX_SPEAKER_EDITS = 2000;
 
 export interface CorrectionOccurrence {
   segment_index: number;
@@ -494,6 +497,14 @@ export function withSpeakerDecision(set: CorrectionSet, segments: readonly Trans
   return next;
 }
 
+/** "00:01:05": the transcript text's own timestamp, as Eneo writes it and parseTranscriptText reads it. */
+function textTimestamp(seconds: number): string {
+  const total = Math.max(0, Math.floor(Number.isFinite(seconds) ? seconds : 0));
+  return [Math.floor(total / 3600), Math.floor((total % 3600) / 60), total % 60]
+    .map((part) => String(part).padStart(2, "0"))
+    .join(":");
+}
+
 /** Plain text uses the same effective attribution and spans as the player. */
 export function renderReviewedTranscript(segments: readonly TranscriptSegment[], set: CorrectionSet, names: Readonly<Record<string, string>> = {}): string {
   const out = applyCorrections(segments, set).segments;
@@ -505,7 +516,7 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
     if (multiple && segment.fileIndex !== file) { lines.push(`## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
     const label = effectiveSpeakerLabel(segment, (s) => s ? names[s]?.trim() || s : "");
     const marker = label === "Överlappande tal – osäker talare" || label === "Talare går inte att avgöra";
-    lines.push(`[${formatClock(segment.start, true).padStart(8, "0")} - ${formatClock(segment.end, true).padStart(8, "0")}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
+    lines.push(`[${textTimestamp(segment.start)} - ${textTimestamp(segment.end)}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
   }
   return lines.join("\n");
 }

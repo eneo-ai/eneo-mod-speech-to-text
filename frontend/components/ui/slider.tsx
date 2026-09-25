@@ -1,0 +1,35 @@
+"use client"
+
+import * as React from "react"
+import * as SliderPrimitive from "@radix-ui/react-slider"
+
+import { cn } from "@/lib/utils"
+
+// `thumbProps` names the thumb: the role="slider" element is the thumb, not the root.
+const Slider = React.forwardRef<
+  React.ElementRef<typeof SliderPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> & {
+    thumbProps?: React.ComponentPropsWithoutRef<typeof SliderPrimitive.Thumb>
+  }
+>(({ className, thumbProps, ...props }, ref) => (
+  <SliderPrimitive.Root
+    ref={ref}
+    className={cn(
+      "relative flex w-full touch-none select-none items-center",
+      className
+    )}
+    {...props}
+  >
+    {/* Forced colours drop backgrounds: the track gets an edge and the played part the system's highlight. */}
+    <SliderPrimitive.Track className="relative h-1.5 w-full grow overflow-hidden rounded-full bg-primary/20 forced-colors:border forced-colors:border-[CanvasText]">
+      <SliderPrimitive.Range className="absolute h-full bg-primary forced-colors:bg-[Highlight] forced-colors:forced-color-adjust-none" />
+    </SliderPrimitive.Track>
+    <SliderPrimitive.Thumb
+      {...thumbProps}
+      className="block size-4 rounded-full border-2 border-primary bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
+    />
+  </SliderPrimitive.Root>
+))
+Slider.displayName = SliderPrimitive.Root.displayName
+
+export { Slider }
