@@ -64,6 +64,7 @@ PARTICIPANTS = {"name": "deltagare", "label": "Deltagare", "type": "list", "requ
 FLOWS = {f["published"]["id"]: f for f in [
     flow("flow-1", "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
          3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON,
+         final_output={"step_id": "s2", "step_order": 2, "output_type": "pdf", "output_mode": "pass_through", "delivery": "artifact"},
          security_classification={"name": "Öppen information", "security_level": 1,
                                   "description": "Använd bara information som får lämnas ut till vem som helst."}),
     flow("flow-2", "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,

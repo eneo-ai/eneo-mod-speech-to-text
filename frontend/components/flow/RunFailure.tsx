@@ -10,7 +10,7 @@ import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runMakesText, type RunErrorView } from "@/lib/run-result";
+import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
@@ -40,7 +40,7 @@ export function RunFailure({
 }: {
   flowId: string;
   flowName: string;
-  run: Pick<FlowRunPublic, "id" | "status" | "created_at" | "error" | "flow_version">;
+  run: Pick<FlowRunPublic, "id" | "status" | "created_at" | "error" | "flow_version" | "result">;
   failure: RunErrorView | null;
   steps: readonly StepView[];
   stepResults: readonly FlowRunStep[];
@@ -56,7 +56,7 @@ export function RunFailure({
   onStartAgain?: () => Promise<void> | void;
   /** Back to the flow's setup, for another file or recording: offered when the input itself has to change. */
   onChooseInput?: () => void;
-  /** The flow's run contract: a run of its version that ends in text speaks of the text, not a document. */
+  /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
   const cancelled = run.status.toLowerCase() === "cancelled";
@@ -87,7 +87,7 @@ export function RunFailure({
             tabIndex={-1}
             className={STATE_HEADING}
           >
-            {cancelled ? "Körningen avbröts" : runMakesText(run, contract) ? "Texten kunde inte skapas" : "Dokumentet kunde inte skapas"}
+            {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
           </h1>
           {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
         </header>

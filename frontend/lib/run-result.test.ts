@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowRunError, ResultFile } from "./api";
-import { runErrorView, runMakesText, runResultView } from "./run-result";
+import { runErrorView, runOutput, runResultView } from "./run-result";
 
 const transcriptFile = (availability: string): ResultFile => ({
   file_id: "file-1",
@@ -168,17 +168,23 @@ test("audio over the flow's limit is too long, not too large: Eneo's ceilings me
   assert.match(runErrorView(runError({ code: "typed_io_input_too_large" })).summary, /större än flödet klarar/);
 });
 
-test("a run makes text when its own version's contract delivers the final output as a payload; a file, a sending or no answer is a document", () => {
-  const contract = (output_type: string, delivery?: "payload" | "artifact" | "outbound_http") => ({
+test("a finished run says what it made in its own result; one without a result is read from its version's contract", () => {
+  const contract = (delivery?: "payload" | "artifact" | "outbound_http") => ({
     published_flow_version: 3,
-    final_output: { output_type, delivery },
+    final_output: { output_type: "text", delivery },
   });
-  const run = { flow_version: 3 };
-  assert.equal(runMakesText(run, contract("text", "payload")), true);
-  assert.equal(runMakesText(run, contract("json", "payload")), true);
-  assert.equal(runMakesText(run, contract("pdf", "artifact")), false);
-  assert.equal(runMakesText(run, contract("json", "outbound_http")), false, "sent on, not shown as text");
-  assert.equal(runMakesText(run, contract("text")), false, "an Eneo that does not say how it delivers reads as before");
-  assert.equal(runMakesText({ flow_version: 2 }, contract("text", "payload")), false, "today's contract says nothing of an older version");
-  assert.equal(runMakesText(run, null), false);
+  const done = (result: object, flow_version = 2) => ({ flow_version, result: result as never });
+  // A finished run of an older version: its own result decides, whatever the flow is today.
+  assert.equal(runOutput(done({ kind: "inline_text", text: "x" }), contract("artifact")), "text");
+  assert.equal(runOutput(done({ kind: "file_backed_text", preview: "x", file: { file_id: "f" } }), null), "text");
+  assert.equal(runOutput(done({ kind: "structured", value: {}, output_contract: null }), null), "text");
+  assert.equal(runOutput(done({ kind: "artifact", files: [] }), contract("payload")), "document");
+  assert.equal(runOutput(done({ kind: "outbound_http", delivery_status: "delivered" }), contract("payload")), null);
+  // No result (failed, cancelled): the contract speaks only for its own version, and only as it states the delivery.
+  const failed = (flow_version: number) => ({ flow_version, result: null });
+  assert.equal(runOutput(failed(3), contract("payload")), "text");
+  assert.equal(runOutput(failed(3), contract("artifact")), "document");
+  assert.equal(runOutput(failed(3), contract("outbound_http")), null, "sent on: neither text nor a document");
+  assert.equal(runOutput(failed(3), contract()), null, "no delivery stated");
+  assert.equal(runOutput(failed(2), contract("payload")), null, "today's contract says nothing of an older version");
 });

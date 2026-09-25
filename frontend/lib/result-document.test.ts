@@ -480,8 +480,8 @@ test("a flow that makes text that failed says the text could not be made", async
   };
   assert.equal(await heading("json", "payload"), "Texten kunde inte skapas");
   assert.equal(await heading("pdf", "artifact"), "Dokumentet kunde inte skapas");
-  // A flow that sends its JSON on makes no text to show: it reads as before.
-  assert.equal(await heading("json", "outbound_http"), "Dokumentet kunde inte skapas");
+  // A flow that sends its JSON on makes neither: the words stay neutral.
+  assert.equal(await heading("json", "outbound_http"), "Resultatet kunde inte skapas");
 });
 
 test("a long text in one paragraph shows its first part too, cut between two words", async () => {
