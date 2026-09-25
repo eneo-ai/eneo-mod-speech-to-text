@@ -157,7 +157,7 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
     createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
-      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
       steps: [],
       stepResults: [transcribe] as never,
       files: [pdf],
@@ -217,7 +217,7 @@ test("a failed later save keeps the note that the document is older, and says wh
     createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
-      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
       steps: [],
       stepResults: [transcribe] as never,
       files: [pdf],
@@ -400,7 +400,7 @@ test("a finished run whose document is only its file previews the text its own s
     createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
-      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [] } } as never,
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
       steps: [],
       stepResults: [
         { id: "result-1", step_id: "step-1", status: "completed", output_payload_json: { text: "Välkomna till mötet." } },
@@ -498,4 +498,32 @@ test("a long text in one paragraph shows its first part too, cut between two wor
   assert.ok(paragraph.startsWith(start) && paragraph[start.length] === " ", "cut between two words");
   await view.act(async () => more.click());
   assert.equal(article.textContent, paragraph);
+});
+
+test("the document is the file Eneo names as the run's result, not the first file any step made", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  globalThis.fetch = (async () => Response.json([])) as typeof fetch;
+  const earlier: ResultFileView = { ...pdf, fileId: "file-0", name: "Underlag.pdf", stepId: "step-1" };
+  const view = await mount(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: {
+        id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z",
+        result: { kind: "artifact", files: [{ file_id: "file-1", name: pdf.name, mimetype: "application/pdf" }] },
+      } as never,
+      steps: [],
+      stepResults: [],
+      files: [earlier, pdf],
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+  assert.match(view.container.querySelector("[data-file-row]")?.textContent ?? "", /Protokoll kommunstyrelsen/, "the final step's file");
+  const more = view.container.querySelector('section[aria-labelledby="result-files"]');
+  assert.match(more?.textContent ?? "", /Fler filerUnderlag\.pdf/, "the earlier step's file listed under it");
 });

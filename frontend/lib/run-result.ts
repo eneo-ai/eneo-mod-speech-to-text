@@ -57,6 +57,13 @@ export function runMakesText(
   return ofContractVersion(run, contract) && contract?.final_output?.delivery === "payload";
 }
 
+/** The files Eneo names as the run's result (the final step's, or the whole text's), apart from every other run file. */
+export function resultFileIds(result: FlowRunResult | null | undefined): string[] {
+  if (result?.kind === "artifact") return result.files.map((file) => file.file_id);
+  if (result?.kind === "file_backed_text") return [result.file.file_id];
+  return [];
+}
+
 const CANCELLED = "Körningen avbröts innan den blev klar.";
 const TOO_LARGE = "Inspelningen eller filen är större än flödet klarar.";
 // Eneo's audio ceilings (a duration, or the decoded bytes it stands for) both measure how long the audio is.

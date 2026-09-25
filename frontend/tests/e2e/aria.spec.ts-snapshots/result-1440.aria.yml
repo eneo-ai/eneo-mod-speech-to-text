@@ -5,20 +5,21 @@
   - link "Alla flöden":
     - /url: /flows
   - region "Dokumentet":
-    - button "Kopiera texten"
     - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=attachment
-    - article:
-      - heading "Protokoll" [level=2]
-      - paragraph:
-        - text: Kommunstyrelsen beslutade att
-        - strong: höja budgetramen
-        - text: med två procent.
-      - list:
-        - listitem: Förvaltningen återkommer i oktober.
-        - listitem: Nya skolskjutsturer gäller efter höstlovet.
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
     - paragraph: /PDF, \d+ B/
+    - region "Förhandsvisning av texten i filen":
+      - paragraph: Förhandsvisning av texten i filen
+      - article:
+        - heading "Protokoll" [level=2]
+        - paragraph:
+          - text: Kommunstyrelsen beslutade att
+          - strong: höja budgetramen
+          - text: med två procent.
+        - list:
+          - listitem: Förvaltningen återkommer i oktober.
+          - listitem: Nya skolskjutsturer gäller efter höstlovet.
     - status
   - region "Fler filer":
     - heading "Fler filer" [level=2]

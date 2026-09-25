@@ -11,7 +11,7 @@ import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
 import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runMakesText, runResultView } from "@/lib/run-result";
+import { resultFileIds, runMakesText, runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
 import { regenerationOffer } from "@/lib/regenerate";
@@ -78,8 +78,10 @@ export function RunResult({
   const heading = usePhaseHeading(`Klart · ${flowName}`);
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
-  // The document's file is the first one that can be fetched; any others are listed under it.
-  const primary = files.find((file) => file.available) ?? null;
+  // The document's file is the result's own (Eneo's run.result, not any step's file) that can be fetched; any other
+  // run files are listed under it.
+  const resultIds = resultFileIds(run.result);
+  const primary = files.find((file) => file.available && resultIds.includes(file.fileId)) ?? null;
   const others = files.filter((file) => file !== primary);
   // A document that is only its file shows what the file says under it.
   const preview = !text && primary ? fileText(primary, stepResults) : null;
