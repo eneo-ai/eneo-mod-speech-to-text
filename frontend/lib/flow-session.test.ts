@@ -1371,7 +1371,7 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   assert.equal(sent.length, 1);
 });
 
-test("the wait for Strömma's text ends after 20 s, its keeping included; a send then waits for that write, never racing its lease", async (t) => {
+test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, and nothing sends without one", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const sent: unknown[] = [];
   const live = fakeLiveClient();
@@ -1389,7 +1389,6 @@ test("the wait for Strömma's text ends after 20 s, its keeping included; a send
   session.setHandlers({ submit: async (request) => void sent.push(request) });
   session.setContract(audioContract());
   await session.start();
-  const id = session.getSnapshot().recording!.id;
   recorders[0].emit("audio");
   live.report({ finishing: true });
   await session.stop();
@@ -1402,11 +1401,38 @@ test("the wait for Strömma's text ends after 20 s, its keeping included; a send
   t.mock.timers.tick(1);
   assert.equal(session.getSnapshot().finishing, false, "a person waits at most 20 s, whatever is still going on");
 
-  const created = session.createDocument();
-  await settle();
-  assert.deepEqual(sent, [], "not while the write holds the recording");
+  let answered = false;
+  void session.createDocument().then(() => (answered = true));
+  await until(() => answered, "the press answered without waiting for the write");
+  assert.equal(sent.length, 1);
   write();
-  assert.equal(await created, true);
+  await settle();
+  assert.equal(sent.length, 1, "the write ending sends nothing on its own");
+});
+
+test("a final text that comes while the stopped recording is still being stored is kept once it is", async () => {
+  const live = fakeLiveClient();
+  const store = await openRecordingStore({});
+  const setState = store.setState.bind(store);
+  let stored: (() => void) | undefined;
+  // The capture holds the recording's lease until its stop is stored.
+  store.setState = async (recordingId, state) => {
+    if (state === "stopped") await new Promise<void>((resolve) => (stored = resolve));
+    return setState(recordingId, state);
+  };
+  const { session, recorders } = await setup({ live: live.client, store });
+  session.setContract(audioContract());
+  await session.start();
+  const id = session.getSnapshot().recording!.id;
+  recorders[0].emit("audio");
+  live.report({ finishing: true });
+  const stopping = session.stop();
+  await until(() => stored !== undefined, "the stop being stored");
+  live.report({ status: "ended", finishing: false, complete: true, transcriptId: "transcript-1" });
+  await settle();
+  stored!();
+  await stopping;
+  await until(() => session.getSnapshot().phase === "ready" && !session.getSnapshot().finishing);
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
 

@@ -465,8 +465,8 @@ export class FlowSession {
   private liveNamed = false;
   private finishing = false;
   private finishingTimer: ReturnType<typeof setTimeout> | null = null;
-  // A transcript being kept with its recording, under the recording's lease: a send waits for it.
-  private keeping: Promise<void> | null = null;
+  // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
+  private keepTranscript: (() => void) | null = null;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -680,8 +680,6 @@ export class FlowSession {
     // A run request Eneo may already have answered is sent again as it was, with its own details.
     // The store says whether there is one: an earlier send here may have kept one since.
     const generation = this.generation;
-    // A transcript still being kept holds the recording's lease: the send waits for that local write.
-    await this.keeping;
     const repeated = input?.kind === "recording" && !!(await this.stored(input.recording.id))?.submission;
     // The page went away meanwhile: its run code is gone, and nothing may be sent for it.
     if (generation !== this.generation) return false;
@@ -832,6 +830,7 @@ export class FlowSession {
     this.liveStream = null;
     this.liveRecording = null;
     this.liveNamed = false;
+    this.keepTranscript = null;
     this.clearFinishing();
   }
 
@@ -841,6 +840,7 @@ export class FlowSession {
     if (!live) return;
     const { status, stream, recording, stopping } = this.capture.getSnapshot();
     if (stopping || status === "stopped") {
+      if (status === "stopped") this.keepTranscript?.();
       // Stored in more than one part (a new part at the flow's limit), it keeps no transcript: nothing to wait for.
       if (status === "stopped" && recording && recording.parts.length > 1) this.clearFinishing();
       // With the recorder's own stop, before the recording is stored: live text hears what the file has.
@@ -875,22 +875,22 @@ export class FlowSession {
       this.clearFinishing();
       this.emit();
     };
+    // The capture holds the recording's lease until its stop is stored: the keep runs once both are there.
+    const keep = (this.keepTranscript = () => {
+      const { transcriptId } = live.getSnapshot();
+      if (kept || !transcriptId || this.capture.getSnapshot().status !== "stopped") return;
+      kept = true;
+      this.keepTranscript = null;
+      void Promise.resolve(this.options.openStore())
+        .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
+        .catch(() => undefined)
+        .finally(done);
+    });
     const unsubscribe = live.subscribe(() => {
       const { status, transcriptId, finishing } = live.getSnapshot();
-      if (transcriptId && !kept) {
-        kept = true;
-        const keeping: Promise<void> = Promise.resolve(this.options.openStore())
-          .then((store) => store.keepLiveTranscript(recordingId, transcriptId))
-          .catch(() => undefined)
-          .finally(() => {
-            if (this.keeping === keeping) this.keeping = null;
-            done();
-          });
-        this.keeping = keeping;
-      } else if (!kept && !finishing) {
-        done();
-      }
-      if (kept || status === "ended") unsubscribe();
+      keep();
+      if (!transcriptId && !finishing) done();
+      if (status === "ended") unsubscribe();
     });
     live.stop();
     if (!live.getSnapshot().finishing) return;
