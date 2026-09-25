@@ -16,6 +16,7 @@ import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
   discoverConfiguredFlows,
+  listCreateLabels,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage, lastUsedFlow } from "@/lib/flow-session";
@@ -64,6 +65,7 @@ function FlowsListPage() {
   }, [attempt]);
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);
+  const createLabel = listCreateLabels(groups);
 
   return (
     <>
@@ -77,6 +79,7 @@ function FlowsListPage() {
           <UnsentRecordings
             recordings={unsent}
             withFlowName
+            sendLabel={(recording) => createLabel(recording.flowId)}
             onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
           />
         )}

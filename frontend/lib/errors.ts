@@ -50,6 +50,8 @@ const CODES: Record<string, string> = {
   flow_run_unknown_step_input: RELOAD,
   flow_run_runtime_input_disabled: RELOAD,
   flow_run_speaker_labels_not_selectable: RELOAD,
+  flow_run_max_speakers_not_available:
+    "Flödet märker inte längre upp talare, så antalet talare kan inte användas. Ladda om sidan och försök igen.",
   flow_run_top_level_file_ids_not_supported: RELOAD,
   flow_input_upload_not_supported: "Det här flödet tar inte emot filuppladdning.",
   flow_run_required_step_input_missing: "Flödet saknar en fil det behöver. Lägg till den och försök igen.",

@@ -71,7 +71,8 @@ export function ParticipantsInput({
     <InputGroup
       role="none"
       className={cn(
-        "h-auto flex-col items-stretch rounded-xl border-rule bg-paper",
+        // Sized by its content on every pointer, so "Lägg till" has the same room with names or without.
+        "h-auto flex-col items-stretch rounded-xl border-rule bg-paper coarse:h-auto",
         // A 2 px ring: the edge turning blue alone is too small a change to see.
         "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
         invalid && "border-destructive",
@@ -156,7 +157,8 @@ export function ParticipantsInput({
               remove(names[names.length - 1]);
             }
           }}
-          className="px-3 text-[16px] text-ink placeholder:text-ink-mute"
+          // The row's height with "Lägg till" in it, on every pointer: typing never makes the field taller.
+          className="h-11 px-3 text-[16px] text-ink placeholder:text-ink-mute"
         />
         {text.trim() && (
           <InputGroupAddon align="inline-end">
@@ -169,8 +171,8 @@ export function ParticipantsInput({
                 addTyped();
                 input.current?.focus();
               }}
-              // On a touch screen the pseudo-element makes the target 44 px.
-              className="relative px-3 text-[15px] coarse:after:absolute coarse:after:-inset-1.5"
+              // The chips' height on every pointer; on a touch screen the pseudo-element makes the target 44 px.
+              className="relative px-3 text-[15px] coarse:h-8 coarse:after:absolute coarse:after:-inset-1.5"
             >
               <Plus data-icon="inline-start" aria-hidden />
               Lägg till

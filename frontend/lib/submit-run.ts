@@ -20,7 +20,7 @@ import {
   type RunContract,
 } from "./api";
 import { friendlyError } from "./errors";
-import { filledValue } from "./flow-session";
+import { filledValue, labelsSpeakers, speakerLabelsFor } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes, formatDuration } from "./format";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
@@ -128,6 +128,8 @@ export interface SubmitParams extends RetryOptions {
   idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
+  /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
+  maxSpeakers?: number;
   /** Eneo's stored live transcript of the one file, used instead of transcribing it again; never beside more files. */
   liveTranscriptId?: string | null;
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
@@ -196,6 +198,7 @@ export async function submitRun(
   }
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
   if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
+  if (params.maxSpeakers !== undefined) body.max_speakers = params.maxSpeakers;
   const key =
     params.idempotencyKey ??
     (await deriveRunIdempotencyKey({
@@ -409,16 +412,16 @@ const INPUT_CHANGED =
   "Flödet har ändrats sedan körningen och tar nu emot andra uppgifter eller filer. Gör en ny inspelning eller välj filen på nytt.";
 
 /**
- * A new run with the failed run's audio, already in Eneo, and its details,
- * against `contract`: the way on when Eneo cannot continue the run (the flow
- * changed since, or nothing finished) and after a cancelled run. Its key names
- * the source, apart from the retry's, since the source was keyed on this same
- * body. When the flow now takes its input at another step, fewer files or a
- * detail the run lacks, the input needs another look: `review` says so. Null
- * when the run has no audio to start again with.
+ * A new run with the failed run's audio, already in Eneo, its details and its
+ * speaker choices, against `contract`: the way on when Eneo cannot continue the
+ * run (the flow changed since, or nothing finished) and after a cancelled run.
+ * Its key names the source, apart from the retry's, since the source was keyed
+ * on this same body. When the flow now takes its input at another step, fewer
+ * files or a detail the run lacks, the input needs another look: `review` says
+ * so. Null when the run has no audio to start again with.
  */
 export function startAgainRequest(
-  failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
+  failed: Pick<FlowRunPublic, "id" | "input_payload_json" | "speaker_labels" | "max_speakers">,
   steps: readonly FlowRunStep[],
   contract: RunContract,
 ): RunRequest | { review: string } | null {
@@ -441,6 +444,16 @@ export function startAgainRequest(
     step_inputs: { [step.step_id]: { file_ids: fileIds } },
   };
   if (Object.keys(payload).length > 0) body.input_payload_json = payload;
+  // The run's own choices, where the flow still lets a run make them; a choice it no longer offers is dropped.
+  const option = contract.transcription?.speaker_labels;
+  const labels = option?.selectable && typeof failed.speaker_labels === "boolean" ? failed.speaker_labels : null;
+  if (labels !== null) body.speaker_labels = labels;
+  // A bound goes top level only where the flow asks no count of its own (that one travels in the details), and only
+  // to a run that labels speakers, which Eneo requires of one.
+  const bound = typeof failed.max_speakers === "number" ? failed.max_speakers : null;
+  if (bound !== null && contract.transcription?.max_speakers?.form_field === null && labelsSpeakers(option, speakerLabelsFor(option, labels))) {
+    body.max_speakers = bound;
+  }
   return { body, idempotencyKey: `flow-run-again:${failed.id}` };
 }
 
@@ -456,7 +469,7 @@ export type StartAgainOutcome =
  */
 export async function startAgain(
   flowId: string,
-  failed: Pick<FlowRunPublic, "id" | "input_payload_json">,
+  failed: Pick<FlowRunPublic, "id" | "input_payload_json" | "speaker_labels" | "max_speakers">,
   steps: readonly FlowRunStep[],
   opts: RetryOptions,
   deps: { getContract: typeof getRunContract } & Pick<SubmitDeps, "startRun"> = {

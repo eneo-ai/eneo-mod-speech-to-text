@@ -8,8 +8,9 @@ import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
 
 const APP = "Tal till text";
-/** The recording bar's fixed line under Pausa and Stoppa. */
-export const STOP_LINE = "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.";
+/** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
+export const stopLine = (makesText: boolean) =>
+  `Stoppa avslutar inspelningen. Du väljer sedan att skapa ${makesText ? "texten" : "dokumentet"}.`;
 const MINUTE = 60_000;
 
 /**
@@ -72,6 +73,7 @@ export function recordingNotices({
   remainingMs,
   muted,
   wakeLock,
+  makesText = false,
 }: {
   phase: SessionPhase;
   silent: boolean;
@@ -83,6 +85,8 @@ export function recordingNotices({
   /** The microphone's track is muted for now (a headset changing its route). */
   muted: boolean;
   wakeLock: boolean;
+  /** The flow ends in text, not a file. */
+  makesText?: boolean;
 }): { warnings: Problem[]; notes: string[] } {
   const warnings: Problem[] = [];
   const notes: string[] = [];
@@ -108,7 +112,9 @@ export function recordingNotices({
     const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
     warnings.push({ title: cause, detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." });
   } else if (!persistent) {
-    notes.push("Inspelningen sparas bara i den här fliken. Stäng inte fliken innan dokumentet är skapat.");
+    notes.push(
+      `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,
+    );
   }
   if (!wakeLock) notes.push("Låt skärmen vara tänd under inspelningen.");
   return { warnings, notes };

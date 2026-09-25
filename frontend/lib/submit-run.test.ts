@@ -846,6 +846,58 @@ test("the run body carries speaker_labels only when the page passes the choice",
   assert.equal("speaker_labels" in bodies[1], false);
 });
 
+test("the run body carries max_speakers only when the page passes a count, and a file's key covers it", async () => {
+  const asked: Array<{ body: Json; key: string }> = [];
+  const deps: SubmitDeps = {
+    upload: async () => ({ id: "file-1" }),
+    startRun: async (_flowId, body, key) => {
+      asked.push({ body, key: key! });
+      return queuedRun;
+    },
+  };
+  const files = [{ blob: new Blob(["a"]), filename: "mote.webm" }];
+  await submitRun(params({ files, maxSpeakers: 3 }), deps);
+  await submitRun(params({ files, maxSpeakers: 3 }), deps);
+  await submitRun(params({ files }), deps);
+  assert.equal(asked[0].body.max_speakers, 3);
+  assert.equal("max_speakers" in asked[2].body, false, "no count: automatic, or the flow's own field");
+  assert.equal(asked[1].key, asked[0].key, "the same request is the same run");
+  assert.notEqual(asked[2].key, asked[0].key, "another count is another run");
+});
+
+test("a recording's count is kept in its stored request, and the repeat after a reload sends it exactly", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const eneo = fakeEneo();
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ maxSpeakers: 3, signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload: async () => ({ id: "file-1" }),
+      startRun: async (flowId, body, key) => {
+        await eneo.startRun(flowId, body, key); // Eneo makes the run,
+        throw fetchFailed(); // and its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort();
+  await assert.rejects(sending);
+  assert.equal((await store.get(recording.id))?.submission?.body.max_speakers, 3, "stored as it was asked");
+
+  // After a reload the field starts empty: the stored request goes again under the recording's key, count and all.
+  const run = await submitRecording(store, recording.id, params(), {
+    upload: async () => assert.fail("nothing is uploaded again"),
+    startRun: eneo.startRun,
+  });
+  assert.equal(run.id, "run-1", "Eneo's run for it, not an idempotency conflict");
+  assert.equal(eneo.runs.size, 1);
+});
+
 test("a live transcript goes beside a recording's one file, in the request a lost answer repeats; never beside two files", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const store = await openRecordingStore({});
@@ -962,6 +1014,53 @@ test("a new run with the failed run's audio and details has a key of its own, ap
   assert.notEqual(request!.idempotencyKey, replay);
   // Without the recording there is nothing to start again with.
   assert.equal(startAgainRequest(failed, [steps[0]], contract), null);
+});
+
+test("a new run keeps the failed run's speaker choices where the flow still offers them, and drops them where it does not", () => {
+  const steps: FlowRunStep[] = [
+    { id: "result-1", step_id: "step-audio", step_order: 1, status: "completed", runtime_input_file_ids: ["file-a"] },
+  ];
+  const selectable = { selectable: true, required: false, default: false };
+  const offering = (
+    speaker_labels: NonNullable<RunContract["transcription"]>["speaker_labels"],
+    max_speakers: NonNullable<RunContract["transcription"]>["max_speakers"],
+  ): RunContract => ({ ...contract, transcription: { live: { available: false, reason: null }, speaker_labels, max_speakers } });
+  const body = (choices: Pick<FlowRunPublic, "speaker_labels" | "max_speakers">, now: RunContract) => {
+    const request = startAgainRequest({ id: "run-1", ...choices }, steps, now);
+    assert.ok(request && "body" in request);
+    return request.body;
+  };
+  const said = (sent: Json) => [sent.speaker_labels, sent.max_speakers];
+
+  // Eneo settles the run's labels at admission, so its public value is its own even where it took a default.
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: null }))),
+    [true, 3],
+    "both come through: the run's settled true beats the flow's default, now off, and keeps its bound",
+  );
+  assert.deepEqual(said(body({ speaker_labels: false, max_speakers: null }, offering(selectable, { form_field: null }))), [false, undefined], "labels off");
+  assert.deepEqual(
+    said(body({ speaker_labels: false, max_speakers: 3 }, offering(selectable, { form_field: null }))),
+    [false, undefined],
+    "a run that labels no speakers takes no bound (Eneo refuses one)",
+  );
+  assert.deepEqual(said(body({ speaker_labels: true, max_speakers: 3 }, { ...contract, transcription: null })), [undefined, undefined], "not offered now: dropped");
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: "antal" }))),
+    [true, undefined],
+    "the flow's own count field travels in the details",
+  );
+  assert.deepEqual(
+    said(body({ speaker_labels: null, max_speakers: 3 }, offering({ selectable: false, required: true, default: true }, { form_field: null }))),
+    [undefined, 3],
+    "labels the flow requires are not the run's to choose; the bound is kept",
+  );
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering({ selectable: false, required: true, default: true }, { form_field: null }))),
+    [undefined, 3],
+    "a required-labels run reads true, yet sends none (Eneo refuses a choice the flow does not offer)",
+  );
+  assert.deepEqual(said(body({ speaker_labels: null, max_speakers: null }, offering(selectable, { form_field: null }))), [undefined, undefined], "the defaults: nothing to say");
 });
 
 test("Starta en ny körning is asked against the flow as published now, and a changed input asks for a new one instead", async () => {

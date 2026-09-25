@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ClassificationNote } from "../components/flow/ClassificationNote";
-import { DetailsForm } from "../components/flow/DetailsForm";
+import { COUNT_FROM_NAMES, DetailsForm, SpeakerCountField } from "../components/flow/DetailsForm";
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
 import type { FlowSecurityClassification, FormField } from "./api";
@@ -84,6 +84,21 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
+test("a missing detail of a flow that makes text says the text, not the document", () => {
+  const html = renderToStaticMarkup(
+    createElement(DetailsForm, {
+      fields: [{ name: "arende", label: "Ärende", type: "text", required: true }],
+      details: {},
+      invalid: ["arende"],
+      onChange: noop,
+      suggestions: [],
+      onNamesAdded: noop,
+      makesText: true,
+    }),
+  );
+  assert.match(html, /id="detalj-arende-fel"[^>]*>Fyll i det här för att skapa texten\.</);
+});
+
 test("a required detail says so to a screen reader before sending, and a number field opens a number keyboard", () => {
   const fields: FormField[] = [
     { name: "deltagare", label: "Deltagare", type: "list", required: true },
@@ -99,6 +114,51 @@ test("a required detail says so to a screen reader before sending, and a number 
   assert.doesNotMatch(control("detalj-talare"), /aria-required/);
   assert.match(control("detalj-talare"), /inputMode="numeric"|inputmode="numeric"/);
   assert.doesNotMatch(control("detalj-arende"), /inputmode/i);
+});
+
+test("Antal talare is a light number field with its help below, and a count that is no count says so at the field", () => {
+  const field = (value: string) => renderToStaticMarkup(createElement(SpeakerCountField, { value, onChange: noop }));
+  const empty = field("");
+  assert.match(empty, /<label[^>]*for="antal-talare"[^>]*>Antal talare <span[^>]*>\(om du vet\)<\/span><\/label>/);
+  const input = empty.match(/<input[^>]*id="antal-talare"[^>]*>/)?.[0] ?? "";
+  // A text field with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing.
+  assert.match(input, /type="text"/);
+  assert.match(input, /inputmode="numeric"/i, "a phone's number keyboard");
+  assert.match(input, /pattern="\[0-9\]\*"/);
+  assert.match(input, /aria-describedby="antal-talare-hjalp"/);
+  assert.doesNotMatch(input, /aria-invalid/);
+  assert.match(empty, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
+  assert.doesNotMatch(empty, /role="alert"/);
+
+  for (const typed of ["25", "e", "-", "2+"]) {
+    const wrong = field(typed);
+    assert.match(wrong, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-fel"[^>]*aria-invalid="true"/, typed);
+    assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</, typed);
+  }
+});
+
+test("a count from the names says so under its field, and names the field's description with it", () => {
+  // One wording for a count the names filled in, under this module's field and under the flow's own.
+  assert.equal(COUNT_FROM_NAMES, "Ifyllt från antalet deltagare, ändra om fler talar.");
+  const hint = COUNT_FROM_NAMES;
+  // One helper paragraph, the one the field names: "Lämna tomt" beside a filled-in number would contradict it.
+  const own = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
+  assert.match(own, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Ifyllt från antalet deltagare, ändra om fler talar\.</);
+  assert.match(own, /<input[^>]*aria-describedby="antal-talare-hjalp"/);
+  assert.doesNotMatch(own, /Lämna tomt/);
+  assert.equal(own.match(/data-slot="field-description"/g)?.length, 1, "one helper paragraph");
+  const typed = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop }));
+  assert.match(typed, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
+  assert.doesNotMatch(typed, /Ifyllt från antalet deltagare/);
+
+  const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
+  const form = (notes?: Record<string, string>) =>
+    renderToStaticMarkup(
+      createElement(DetailsForm, { fields: [antal], details: { antal: "2" }, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop, notes }),
+    );
+  assert.match(form({ antal: hint }), /<input[^>]*id="detalj-antal"[^>]*aria-describedby="detalj-antal-not"/);
+  assert.match(form({ antal: hint }), /id="detalj-antal-not"[^>]*>Ifyllt från antalet deltagare, ändra om fler talar\.</);
+  assert.ok(!form().includes(hint));
 });
 
 test("the information row is the flow's classification as Eneo sends it, and there is none without one", () => {

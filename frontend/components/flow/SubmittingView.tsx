@@ -28,18 +28,22 @@ export type SubmissionState =
 export function SubmittingView({
   submission,
   onCancelSubmission,
+  makesText = false,
 }: {
   submission: SubmissionState;
   onCancelSubmission: () => void;
+  /** The flow ends in text, not a file. */
+  makesText?: boolean;
 }) {
   // The run's own view follows under the same heading, so nothing moves when it starts.
-  const heading = usePhaseHeading("Dokumentet skapas");
+  const title = makesText ? "Texten skapas" : "Dokumentet skapas";
+  const heading = usePhaseHeading(title);
   const isUploading = submission.kind === "uploading";
   return (
     <StateCard>
       <div className="flex flex-col gap-2">
         <h1 ref={heading} tabIndex={-1} className={STATE_HEADING}>
-          Dokumentet skapas
+          {title}
         </h1>
         <p role="status" className="flex items-center gap-2 text-base">
           <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />

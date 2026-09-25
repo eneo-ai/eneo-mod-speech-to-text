@@ -2,7 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } from "./api";
-import { finishedRun, runElapsed, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
+import {
+  finishedRun,
+  runElapsed,
+  runLabelsSpeakers,
+  runOutcome,
+  runStage,
+  runStatusLabel,
+  runSteps,
+  stepStateLabel,
+} from "./run-progress";
 
 const node = (order: number, label: string, extra: Partial<FlowGraphNode> = {}): FlowGraphNode => ({
   id: `step-${order}`,
@@ -94,7 +103,7 @@ test("the stage line names what happens now, and waits truthfully between steps"
   assert.equal(runStage(runSteps(graph("pending"), { status: "running" }), "running"), "Startar körningen");
   // Without the graph nothing is known about the steps, so nothing is claimed.
   assert.equal(runStage([], "running"), "Körningen pågår");
-  assert.equal(runStage(runSteps(graph("running"), { status: "running" }), "running"), "Transkriberar ljudet");
+  assert.equal(runStage(runSteps(graph("running"), { status: "running" }), "running"), "Tar fram texten");
   assert.equal(
     runStage(runSteps(graph("completed", "running"), { status: "running" }), "running"),
     "Analysera mötesinnehållet",
@@ -107,6 +116,28 @@ test("the stage line names what happens now, and waits truthfully between steps"
     runStage(runSteps(graph("completed", "completed", "completed", "completed"), { status: "running" }), "running"),
     "Slutför körningen",
   );
+});
+
+test("the audio step says the text is being made, with the speakers when the run labels them, however Eneo makes it", () => {
+  // True whether Eneo transcribes the audio, uses Strömma's text, or falls back from it: no claim of either.
+  const audioRunning = runSteps(graph("running"), { status: "running" });
+  assert.equal(runStage(audioRunning, "running"), "Tar fram texten");
+  assert.equal(runStage(audioRunning, "running", true), "Tar fram texten och märker upp talare");
+  assert.equal(
+    runStage(runSteps(graph("completed", "running"), { status: "running" }), "running", true),
+    "Analysera mötesinnehållet",
+    "the steps after it keep their own names",
+  );
+});
+
+test("whether a run labels speakers: its own choice, else the flow's default at the run's version; unknown says no", () => {
+  const selectable = { selectable: true, required: false, default: true };
+  assert.equal(runLabelsSpeakers(true, selectable, false), true, "the run's own choice, whatever the version");
+  assert.equal(runLabelsSpeakers(false, selectable, true), false);
+  assert.equal(runLabelsSpeakers(null, selectable, true), true, "the flow's default at the run's own version");
+  assert.equal(runLabelsSpeakers(null, selectable, false), false, "another version's default is not known");
+  assert.equal(runLabelsSpeakers(null, { selectable: false, required: true, default: true }, true), true, "labels the flow requires");
+  assert.equal(runLabelsSpeakers(undefined, selectable, true), false, "an Eneo that does not say");
 });
 
 test("after a failure the failed step says Misslyckades and the steps that never started say Kördes inte", () => {

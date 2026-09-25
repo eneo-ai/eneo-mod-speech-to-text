@@ -1,24 +1,30 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, type RunContract } from "./api";
+import { ApiError, type FormField, type RunContract } from "./api";
 import { openRecordingStore, type RecordingStore } from "./recording-store";
 import { createOnlineStatus } from "./online-status";
 import { submitRecording } from "./submit-run";
 import { LiveTranscriber, type LiveSnapshot, type LiveSocket } from "./live-transcriber";
 import type { CaptureDeps } from "./recording-session";
+import type { DraftStorage } from "./drafts";
 import {
   FlowSession,
   availableModes,
   acceptedFormats,
   fileAccept,
   lastUsedFlow,
+  createActionLabel,
+  makesText,
   primaryActionLabel,
+  readSpeakerCount,
   speakerLabelsFor,
   storageLine,
   withLastUsedFirst,
+  type DetailValue,
   type KeyValueStorage,
   type LiveClient,
+  type SubmitRequest,
 } from "./flow-session";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -153,12 +159,27 @@ function fakeLiveClient() {
   };
 }
 
+/** A tab's sessionStorage, which the page's drafts live in across a reload. */
+function memoryDrafts(): DraftStorage {
+  const data = new Map<string, string>();
+  return {
+    get length() {
+      return data.size;
+    },
+    key: (index) => [...data.keys()][index] ?? null,
+    getItem: (key) => data.get(key) ?? null,
+    setItem: (key, value) => void data.set(key, value),
+    removeItem: (key) => void data.delete(key),
+  };
+}
+
 async function setup(
   options: {
     store?: RecordingStore;
     storage?: KeyValueStorage;
     getStream?: CaptureDeps["getStream"];
     live?: LiveClient | null;
+    drafts?: DraftStorage;
   } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
@@ -186,6 +207,7 @@ async function setup(
     pickMimeType: () => "audio/webm;codecs=opus",
     storage: options.storage ?? memoryStorage(),
     live: options.live === undefined ? fakeLiveClient().client : options.live,
+    drafts: options.drafts,
   });
   return { session, store, streams, recorders };
 }
@@ -308,6 +330,213 @@ test("speaker labels: the flow's default in every mode, Strömma included, and a
   assert.equal(session.getSnapshot().speakerLabels, true);
 });
 
+/** A flow whose transcription service labels speakers, and whose form asks no count of its own. */
+const countContract = (transcription: Partial<NonNullable<RunContract["transcription"]>> = {}) =>
+  audioContract({
+    transcription: {
+      live: { available: true, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      max_speakers: { form_field: null },
+      ...transcription,
+    },
+  });
+
+test("Antal talare is asked only when the flow's form asks no count and the run labels speakers", async () => {
+  const { session } = await setup();
+  session.setContract(countContract());
+  assert.equal(session.getSnapshot().speakerCount, "", "labels on by the flow's default: asked, and empty");
+  session.setSpeakerLabels(false);
+  assert.equal(session.getSnapshot().speakerCount, null, "Märk upp talare off: not asked");
+  session.setSpeakerLabels(true);
+  session.setSpeakerCount("4");
+  assert.equal(session.getSnapshot().speakerCount, "4");
+  session.setContract(countContract({ max_speakers: { form_field: "antal_talare" } }));
+  assert.equal(session.getSnapshot().speakerCount, null, "the flow's own form asks for the count");
+  session.setContract(countContract({ max_speakers: null }));
+  assert.equal(session.getSnapshot().speakerCount, null, "no service labels speakers");
+  session.setContract(audioContract());
+  assert.equal(session.getSnapshot().speakerCount, null, "an Eneo that offers no max_speakers");
+  session.setContract(countContract({ speaker_labels: { selectable: false, required: true, default: true } }));
+  assert.equal(session.getSnapshot().speakerCount, "4", "a flow that requires labels asks too, with what was typed");
+});
+
+test("Antal talare takes a whole number from 1 to 20, or nothing", () => {
+  for (const [text, count] of [["", undefined], ["  ", undefined], ["1", 1], [" 4 ", 4], ["20", 20]] as const) {
+    assert.equal(readSpeakerCount(text), count, JSON.stringify(text));
+  }
+  for (const text of ["0", "21", "2.5", "-1", "1e1", "tre"]) assert.equal(readSpeakerCount(text), "invalid", text);
+  assert.equal(readSpeakerCount(null), undefined, "not asked: nothing");
+});
+
+test("a count goes with the run as maxSpeakers; empty or not asked sends none, and one that is no count starts and sends nothing", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(countContract());
+  session.selectMode("spela-in");
+  session.setSpeakerCount("25");
+  await session.start();
+  assert.equal(session.getSnapshot().phase, "setup", "never a recording whose count cannot be sent or put right");
+  session.setSpeakerCount("4");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[0].maxSpeakers, 4);
+
+  const upload = () => session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  session.selectMode("ladda-upp");
+  upload();
+  session.setSpeakerCount("0");
+  assert.equal(await session.createDocument(), false);
+  assert.equal(sent.length, 1, "a count that is no count is never sent");
+  session.setSpeakerCount("");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[1].maxSpeakers, undefined, "empty: automatic");
+  upload();
+  session.setSpeakerCount("3");
+  session.setSpeakerLabels(false);
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
+});
+
+const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
+/** Eneo names the speaker-mapping step's participants field; the count follows only that one. */
+const PARTICIPANTS = { form_field: null, participants_field: "motesdeltagare" };
+
+test("Antal talare follows the number of names until the person edits it, and the run gets what it shows", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setContract({ ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] });
+  const count = () => [session.getSnapshot().speakerCount, session.getSnapshot().speakerCountFromNames];
+  assert.deepEqual(count(), ["", false], "no names: empty, no hint");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.deepEqual(count(), ["2", true], "the participants field Eneo names");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["3", true]);
+  session.setDetail("motesdeltagare", []);
+  assert.deepEqual(count(), ["", false], "no names again: empty");
+  session.setDetail("motesdeltagare", Array.from({ length: 21 }, (_, i) => `Person ${i}`));
+  assert.deepEqual(count(), ["", false], "never a prefill the field would refuse");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  session.setSpeakerCount("4");
+  assert.deepEqual(count(), ["4", false], "edited: the person's, and the hint goes");
+  session.setDetail("motesdeltagare", ["Gunnar"]);
+  assert.deepEqual(count(), ["4", false], "the names no longer change it");
+  session.setSpeakerCount("");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(session.getSnapshot().speakerCount, "", "cleared stays cleared");
+
+  const other = await setup();
+  other.session.setHandlers({ submit: async (request) => void sent.push(request) });
+  other.session.setContract({ ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] });
+  other.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  other.session.selectMode("ladda-upp");
+  other.session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await other.session.createDocument(), true);
+  assert.equal(sent[0].maxSpeakers, 2, "the prefill is sent as max_speakers");
+});
+
+test("a count the person edited comes back as typed after a reload, with their labels choice, and a recovered recording sends it", async () => {
+  const drafts = memoryDrafts();
+  const store = await openRecordingStore({});
+  // Labels off unless the person switches them on: the count is asked only then.
+  const contract = {
+    ...countContract({ speaker_labels: { selectable: true, required: false, default: false }, max_speakers: PARTICIPANTS }),
+    form_fields: [PEOPLE],
+  };
+  const before = await setup({ drafts, store });
+  before.session.setContract(contract);
+  before.session.setSpeakerLabels(true);
+  before.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  before.session.setSpeakerCount("4");
+  before.session.dispose(); // the page reloaded before the send
+
+  const sent: SubmitRequest[] = [];
+  const after = await setup({ drafts, store });
+  after.session.setHandlers({ submit: async (request) => void sent.push(request) });
+  after.session.setContract(contract);
+  const count = () => [after.session.getSnapshot().speakerCount, after.session.getSnapshot().speakerCountFromNames];
+  assert.equal(after.session.getSnapshot().speakerLabels, true, "the labels choice the person made");
+  assert.deepEqual(count(), ["4", false], "as typed, and still theirs");
+  after.session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["4", false], "the names do not change it");
+
+  const recording = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  after.session.adopt(recording);
+  assert.equal(await after.session.createDocument(), true);
+  assert.deepEqual([sent[0].speakerLabels, sent[0].maxSpeakers], [true, 4], "the bound the person saw");
+});
+
+test("a count that followed the names is worked out again from the restored names after a reload", async () => {
+  const drafts = memoryDrafts();
+  const contract = { ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] };
+  const before = await setup({ drafts });
+  before.session.setContract(contract);
+  before.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  before.session.dispose();
+
+  const after = await setup({ drafts });
+  after.session.setContract(contract);
+  const count = () => [after.session.getSnapshot().speakerCount, after.session.getSnapshot().speakerCountFromNames];
+  assert.deepEqual(count(), ["2", true], "from the restored names, with its hint");
+  after.session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual(count(), ["3", true], "and it still follows them");
+});
+
+test("only the participants field Eneo names fills the count: an agenda list, a missing field or a text field fill nothing", async () => {
+  const AGENDA: FormField = { name: "dagordning", label: "Dagordning", type: "list", required: false };
+  const fills = async (participantsField: string | null, fields: FormField[], name: string, value: DetailValue) => {
+    const { session } = await setup();
+    session.setContract({
+      ...countContract({ max_speakers: { form_field: null, participants_field: participantsField } }),
+      form_fields: fields,
+    });
+    session.setDetail(name, value);
+    return session.getSnapshot().speakerCount;
+  };
+  assert.equal(await fills(null, [AGENDA], "dagordning", ["Budget", "Skolskjuts"]), "", "an agenda is no list of speakers");
+  assert.equal(await fills("motesdeltagare", [AGENDA], "dagordning", ["Budget"]), "", "a field the form does not have");
+  const text: FormField = { name: "namn", label: "Vilka deltar?", type: "text", required: false };
+  assert.equal(await fills("namn", [text], "namn", "Gunnar, Maria"), "", "names in free text are not counted");
+  assert.equal(await fills("motesdeltagare", [AGENDA, PEOPLE], "motesdeltagare", ["Gunnar", "Maria"]), "2", "the named field, beside another list");
+});
+
+test("the flow's own count field is prefilled from the names in its place, and sent as that field", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
+  const contract = countContract({ max_speakers: { form_field: "antal", participants_field: "motesdeltagare" } });
+  session.setContract({ ...contract, form_fields: [PEOPLE, antal] });
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(session.getSnapshot().details.antal, "2");
+  assert.equal(session.getSnapshot().speakerCount, null, "no second count field");
+  assert.equal(session.getSnapshot().speakerCountFromNames, true);
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[0].payload.antal, "2", "sent as the flow's own field");
+  assert.equal(sent[0].maxSpeakers, undefined);
+
+  session.setDetail("antal", "");
+  session.setDetail("motesdeltagare", ["Gunnar", "Maria", "Sara"]);
+  assert.deepEqual([session.getSnapshot().details.antal, session.getSnapshot().speakerCountFromNames], ["", false]);
+
+  const preset = await setup();
+  preset.session.setContract({ ...contract, form_fields: [PEOPLE, { ...antal, default: 5 }] });
+  preset.session.setDetail("motesdeltagare", ["Gunnar", "Maria"]);
+  assert.equal(preset.session.getSnapshot().details.antal, "5", "a count already there (the flow's default, a restored draft) is kept");
+});
+
 test("details start from the flow's defaults, and a refreshed contract keeps the compatible ones", async () => {
   const { session } = await setup();
   session.setContract(audioContract());
@@ -342,6 +571,18 @@ test("each mode has its own primary action", () => {
   assert.equal(primaryActionLabel("spela-in", false), "Starta inspelning");
   assert.equal(primaryActionLabel("ladda-upp", false), "Välj ljudfil");
   assert.equal(primaryActionLabel("ladda-upp", true), "Skapa dokument");
+  assert.equal(primaryActionLabel("ladda-upp", true, true), "Skapa text");
+});
+
+test("the action says text exactly when Eneo gives the result back as text in the run, else a document as before", () => {
+  const label = (finalOutput: RunContract["final_output"]) => createActionLabel(makesText(finalOutput));
+  assert.equal(label({ output_type: "text", delivery: "payload" }), "Skapa text");
+  assert.equal(label({ output_type: "json", delivery: "payload" }), "Skapa text", "data the result view shows as text");
+  for (const type of ["pdf", "docx"]) assert.equal(label({ output_type: type, delivery: "artifact" }), "Skapa dokument", type);
+  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver: as before");
+  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how: as before");
+  assert.equal(label(null), "Skapa dokument", "a flow without steps");
+  assert.equal(label(undefined), "Skapa dokument");
 });
 
 test("a denied or missing microphone says what happened and what to do next, and nothing is recorded", async () => {

@@ -22,7 +22,7 @@ import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
-import type { LiveSession, Problem } from "@/lib/flow-session";
+import { createActionLabel, type LiveSession, type Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
@@ -53,7 +53,7 @@ function usePartSources(recording: StoredRecording): PlayerSource[] {
 }
 
 /** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
-function LiveDraft({ live }: { live: LiveSession }) {
+function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean }) {
   const { pieces } = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
   const texts = paragraphs(pieces).map((group) => group.map((piece) => piece.text).join(" "));
@@ -65,7 +65,9 @@ function LiveDraft({ live }: { live: LiveSession }) {
           <h3 id={headingId} className="text-[15px] font-semibold text-ink">
             Preliminär text
           </h3>
-          <p className="text-[13px] text-ink-soft">Den slutliga texten skapas med dokumentet.</p>
+          <p className="text-[13px] text-ink-soft">
+            {makesText ? "Den slutliga texten skapas när du väljer Skapa text." : "Den slutliga texten skapas med dokumentet."}
+          </p>
         </div>
         <CopyButton text={texts.join("\n\n")} label="Kopiera" />
       </div>
@@ -94,6 +96,7 @@ export function ReadyPanel({
   problem,
   live = null,
   finishing = false,
+  makesText = false,
   onCreate,
   onContinue,
   onDiscard,
@@ -108,6 +111,8 @@ export function ReadyPanel({
   live?: LiveSession | null;
   /** Strömma's final text is on its way: Skapa dokument waits for it. */
   finishing?: boolean;
+  /** The flow ends in text, not a file: the action and the lines say text. */
+  makesText?: boolean;
   onCreate: () => void;
   /** "Fortsätt spela in": offered when the recorder can add a part to a stopped recording. */
   onContinue?: () => void;
@@ -123,6 +128,7 @@ export function ReadyPanel({
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   const name = recordingName(recording.startedAt);
+  const made = makesText ? "texten är skapad" : "dokumentet är skapat";
   // Stopped a moment after it started, most likely by mistake: going on is the likely next step.
   const moment = onContinue !== undefined && recording.durationMs < 2_000;
 
@@ -147,7 +153,7 @@ export function ReadyPanel({
       </div>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
-      {live && <LiveDraft live={live} />}
+      {live && <LiveDraft live={live} makesText={makesText} />}
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <Button type="button" variant="outline" onClick={() => void save()}>
@@ -156,8 +162,8 @@ export function ReadyPanel({
         </Button>
         <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-mute">
           {persistent
-            ? "Inspelningen finns kvar på enheten tills dokumentet är skapat."
-            : "Inspelningen finns bara i den här fliken. Stäng inte fliken innan dokumentet är skapat."}
+            ? `Inspelningen finns kvar på enheten tills ${made}.`
+            : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
         </p>
       </div>
 
@@ -181,7 +187,7 @@ export function ReadyPanel({
           ) : (
             <FileText data-icon="inline-start" aria-hidden />
           )}
-          {finishing ? "Slutför texten…" : "Skapa dokument"}
+          {finishing ? "Slutför texten…" : createActionLabel(makesText)}
         </Button>
         {onContinue && (
           <Button type="button" variant={moment ? "default" : "outline"} size="xl" className="sm:flex-1" onClick={onContinue}>

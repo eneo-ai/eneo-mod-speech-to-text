@@ -147,7 +147,20 @@ export async function unnamedControls(page: Page) {
   return described;
 }
 
-/** The role, name and description Chromium's own tree gives one element, the ones a screen reader reads. */
+type AxProperty = { name: string; value: { value?: unknown } };
+// A toggle's off is said as much as its on; the others are said only when they hold.
+const TOGGLES = ["checked", "pressed", "expanded", "selected"];
+const FLAGS = ["disabled", "invalid", "required", "readonly", "busy"];
+
+/** The states a screen reader reads out, from Chromium's properties: "checked=true", "expanded=false" and so on. */
+export function axState(properties: AxProperty[] = []): string {
+  return properties
+    .filter((p) => p.value.value !== undefined && (TOGGLES.includes(p.name) || (FLAGS.includes(p.name) && ![false, "false"].includes(p.value.value as string))))
+    .map((p) => `${p.name}=${String(p.value.value)}`)
+    .join(" ");
+}
+
+/** The role, name, description and states Chromium's own tree gives one element, the ones a screen reader reads. */
 export async function axNode(locator: Locator) {
   const page = locator.page();
   await locator.evaluate((element) => element.setAttribute("data-ax-probe", ""));
@@ -158,10 +171,10 @@ export async function axNode(locator: Locator) {
       nodeId: number;
     };
     const { nodes } = (await cdp.send("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false })) as {
-      nodes: { role?: { value: string }; name?: { value: string }; description?: { value: string } }[];
+      nodes: { role?: { value: string }; name?: { value: string }; description?: { value: string }; properties?: AxProperty[] }[];
     };
     const [node] = nodes;
-    return { role: node.role?.value ?? "", name: node.name?.value ?? "", description: node.description?.value ?? "" };
+    return { role: node.role?.value ?? "", name: node.name?.value ?? "", description: node.description?.value ?? "", state: axState(node.properties) || undefined };
   } finally {
     await cdp.detach();
     await locator.evaluate((element) => element.removeAttribute("data-ax-probe"));
@@ -197,6 +210,33 @@ export function reflow(page: Page) {
       (clamped ? truncated : clipped).push(describe(el));
     }
     return { horizontalScroll: document.documentElement.scrollWidth > width + 1, beyond, clipped, truncated };
+  });
+}
+
+/** Placeholder text under 4.5:1 on its field (WCAG 1.4.3), which axe does not measure. */
+export function placeholderContrast(page: Page) {
+  return page.evaluate(() => {
+    type Rgba = [number, number, number, number];
+    const rgba = (color: string): Rgba => {
+      const n = (color.match(/[\d.]+/g) ?? []).map(Number);
+      return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
+    };
+    const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
+    const luminance = ([r, g, b]: Rgba) =>
+      [r, g, b].map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const background = (e: Element | null): Rgba => {
+      if (!e) return [255, 255, 255, 1];
+      const own = rgba(getComputedStyle(e).backgroundColor);
+      return own[3] >= 0.99 ? own : over(own, background(e.parentElement));
+    };
+    return Array.from(document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[placeholder], textarea[placeholder]"))
+      .filter((el) => el.placeholder && !el.value && el.getBoundingClientRect().width > 1 && !el.closest('[aria-hidden="true"], [inert]'))
+      .flatMap((el) => {
+        const back = background(el);
+        const [hi, lo] = [luminance(over(rgba(getComputedStyle(el, "::placeholder").color), back)), luminance(back)].sort((a, b) => b - a);
+        const ratio = (hi + 0.05) / (lo + 0.05);
+        return ratio < 4.5 ? [`${el.tagName.toLowerCase()} "${el.placeholder}" ${ratio.toFixed(2)}:1`] : [];
+      });
   });
 }
 

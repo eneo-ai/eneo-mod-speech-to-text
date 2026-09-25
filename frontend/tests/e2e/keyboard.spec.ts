@@ -7,8 +7,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
-import { backLink, isLaptop, open, run, setup, STATES } from "./screens";
+import { axNode, changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
+import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
   "signin-access-code",
@@ -247,4 +247,60 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
+});
+
+test("a wrong access code is said, and focus stays in the field to type it again", async ({ page }) => {
+  await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } }));
+  await signIn(page, "access_code");
+  const field = page.getByLabel("Åtkomstkod");
+  await field.fill("fel-kod");
+  await field.press("Enter");
+  await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
+  // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
+  await expect(field).toBeFocused();
+});
+
+test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {
+  await setup(page);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await page.getByRole("switch", { name: "Märk upp talare" }).click();
+  const count = page.getByRole("textbox", { name: /^Antal talare/ });
+  await count.focus();
+  // A number field would read "e" as empty and let the run start without a count.
+  await page.keyboard.type("e");
+  await expect(count).toHaveValue("e");
+  await expect(count).toHaveAttribute("aria-invalid", "true");
+  expect((await axNode(count)).description).toContain("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.");
+  await page.getByRole("button", { name: "Starta inspelning" }).click();
+  await expect(count, "the start is refused and the field takes focus").toBeFocused();
+  await expect(page.getByRole("button", { name: "Stoppa" })).toHaveCount(0);
+});
+
+test("the input modes are one Tab stop: every arrow moves and chooses, round the ends, the setup follows, Tab leaves", async ({ page }) => {
+  await setup(page);
+  const cards = page.getByRole("radio");
+  await expect(cards).toHaveCount(3);
+  const ACTION = ["Starta strömning", "Starta inspelning", "Välj ljudfil"];
+  const primary = page.getByRole("button", { name: new RegExp(`^(${ACTION.join("|")})$`) });
+  // A chosen mode other than the first: Tab enters the group where the choice is, not at its top.
+  await cards.nth(1).click();
+  await page.getByRole("heading", { name: "Hur vill du ge ljudet?" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
+  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
+  const arrow = async (key: string) => {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(60);
+    await page.keyboard.up(key);
+  };
+  for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
+    await arrow(key);
+    await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
+    await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
+    await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);
+  }
+  await expect(page.getByRole("button", { name: "Testa mikrofonen" }), "Strömma's own setup shows").toBeVisible();
+  await page.keyboard.press("Tab");
+  expect(await page.evaluate(() => document.activeElement?.getAttribute("role")), "the next Tab leaves the group").not.toBe("radio");
+  await expect(page.getByRole("switch", { name: "Märk upp talare" })).toBeFocused();
 });

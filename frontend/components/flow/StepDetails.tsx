@@ -17,7 +17,8 @@ export function StepDetails({ steps, version }: { steps: readonly StepView[]; ve
   return (
     <Collapsible open={open} onOpenChange={setOpen} className="flex flex-col gap-3">
       <CollapsibleTrigger asChild>
-        <Button variant="ghost" className="group -ml-3 self-start px-3">
+        {/* The label wraps rather than running off a narrow screen, e.g. with wider letter spacing (WCAG 1.4.12). */}
+        <Button variant="ghost" className="group -ml-3 h-auto min-h-9 self-start whitespace-normal px-3 py-1.5 text-left coarse:h-auto coarse:min-h-11">
           <ChevronDown
             data-icon="inline-start"
             aria-hidden

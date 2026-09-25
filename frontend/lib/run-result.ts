@@ -1,4 +1,6 @@
-import type { FlowRunError, FlowRunResult } from "./api";
+import type { FlowRunError, FlowRunResult, RunContract } from "./api";
+import { makesText } from "./flow-session";
+import { ofContractVersion } from "./run-progress";
 
 export interface RunResultView {
   /** Markdown att visa, eller null när resultatet inte är text. */
@@ -15,13 +17,13 @@ export function runResultView(
     case "inline_text":
       return { text: result.text, note: null };
     case "file_backed_text":
-      // `preview` är bara början; hela texten finns i en fil i result_files.
+      // `preview` är bara början; hela texten finns i resultatets fil, som visas under förhandsvisningen.
       return {
         text: result.preview,
         note:
           result.file.availability === "content_purged"
             ? "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten har tagits bort och går inte längre att hämta."
-            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen under Filer.",
+            : "Texten är för lång för att visas i sin helhet, så här visas bara början. Hela texten finns i filen nedanför.",
       };
     case "structured":
       return {
@@ -37,9 +39,51 @@ export function runResultView(
         note: "Resultatet skickades vidare till mottagaren som är inställd i flödet.",
       };
     default:
-      // Artefakter listas under Filer.
+      // En artefakt är dokumentets egen fil (resultFileIds), inte text att visa.
       return { text: null, note: null };
   }
+}
+
+/** What a run makes: text (JSON shown as text), a document, or null where neither can be said. */
+export type RunOutput = "text" | "document" | null;
+
+/**
+ * What a run makes, for its page's words. A finished run says so in its own result, whatever version it ran:
+ * text (inline, file-backed or structured) or a file. A run without one (failed, cancelled) is read from the
+ * contract, only of its own version and only as it states the delivery (`makesText`). Null, neutral words, where
+ * neither says: an output sent on, another version, a delivery not stated.
+ */
+export function runOutput(
+  run: { flow_version?: number | null; result?: FlowRunResult | null },
+  contract: Pick<RunContract, "published_flow_version" | "final_output"> | null | undefined,
+): RunOutput {
+  switch (run.result?.kind) {
+    case "inline_text":
+    case "file_backed_text":
+    case "structured":
+      return "text";
+    case "artifact":
+      return "document";
+    case "outbound_http":
+      return null;
+  }
+  if (!ofContractVersion(run, contract)) return null;
+  return makesText(contract?.final_output) ? "text" : contract?.final_output?.delivery === "artifact" ? "document" : null;
+}
+
+/** The words for what a run makes: "texten", "dokumentet" or, neutral, "resultatet"; its tab and its two headings. */
+export function outputWords(output: RunOutput) {
+  const [thing, tab, gender] =
+    output === "text" ? ["texten", "Text", "klar"] : output === "document" ? ["dokumentet", "Dokument", "klart"] : ["resultatet", "Resultat", "klart"];
+  const named = thing[0].toUpperCase() + thing.slice(1);
+  return { thing, named, tab, ready: `${named} är ${gender}`, failed: `${named} kunde inte skapas` };
+}
+
+/** The files Eneo names as the run's result (the final step's, or the whole text's), apart from every other run file. */
+export function resultFileIds(result: FlowRunResult | null | undefined): string[] {
+  if (result?.kind === "artifact") return result.files.map((file) => file.file_id);
+  if (result?.kind === "file_backed_text") return [result.file.file_id];
+  return [];
 }
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";

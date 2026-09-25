@@ -6,13 +6,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import type { FormField } from "@/lib/api";
-import type { DetailValue, FlowSession } from "@/lib/flow-session";
+import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
 
 // Radix Select takes no empty value, so its items carry keys of their own:
 // "none" for no choice and "opt:<n>" for the flow's n-th option, which no
 // option string can be mistaken for.
 const NONE = "none";
 const optionKey = (index: number) => `opt:${index}`;
+
+// One height for every single-line detail on every pointer: 44 px inside a 1 px border, as the list field's row
+// (ParticipantsInput). The text is 16 px, so a phone does not zoom in on it.
+const SINGLE_LINE = "h-[46px] coarse:h-[46px] rounded-xl text-[16px]";
+// A text box keeps its lines; its first one starts where a single-line field's text does.
+const MULTI_LINE = "rounded-xl py-2.5 text-[16px]";
 
 /** The id a field's control carries, so a problem can move focus to it. */
 export const detailFieldId = (name: string) => `detalj-${name}`;
@@ -40,6 +46,8 @@ export function DetailsForm({
   onChange,
   suggestions,
   onNamesAdded,
+  notes,
+  makesText = false,
 }: {
   fields: FormField[];
   details: Record<string, DetailValue>;
@@ -48,6 +56,10 @@ export function DetailsForm({
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
   onNamesAdded: (names: string[]) => void;
+  /** A line under a field for now, by its name: where its value came from. */
+  notes?: Record<string, string>;
+  /** The flow ends in text, not a file. */
+  makesText?: boolean;
 }) {
   if (fields.length === 0) return null;
   return (
@@ -57,7 +69,9 @@ export function DetailsForm({
         .map((field) => {
           const id = detailFieldId(field.name);
           const helpId = `${id}-hjalp`;
+          const noteId = `${id}-not`;
           const errorId = `${id}-fel`;
+          const note = notes?.[field.name];
           const isInvalid = invalid.includes(field.name);
           const value = details[field.name];
           const text = typeof value === "string" ? value : "";
@@ -65,7 +79,8 @@ export function DetailsForm({
             field.type === "list"
               ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
-          const describedBy = [help ? helpId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
+          const describedBy =
+            [help ? helpId : null, note ? noteId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
           // Said before sending too, not only once the send finds it missing.
           const required = field.required || undefined;
           return (
@@ -96,7 +111,7 @@ export function DetailsForm({
                     aria-describedby={describedBy}
                     aria-invalid={isInvalid || undefined}
                     aria-required={required}
-                    className="text-[16px]"
+                    className={SINGLE_LINE}
                   >
                     <SelectValue />
                   </SelectTrigger>
@@ -121,7 +136,7 @@ export function DetailsForm({
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
                   aria-required={required}
-                  className="rounded-xl text-[16px]"
+                  className={MULTI_LINE}
                 />
               ) : (
                 <Input
@@ -136,7 +151,7 @@ export function DetailsForm({
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
                   aria-required={required}
-                  className="rounded-xl text-[16px]"
+                  className={SINGLE_LINE}
                 />
               )}
               {help && (
@@ -144,10 +159,69 @@ export function DetailsForm({
                   {help}
                 </FieldDescription>
               )}
-              {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa dokumentet.</FieldError>}
+              {note && (
+                <FieldDescription id={noteId} className="text-[13px]">
+                  {note}
+                </FieldDescription>
+              )}
+              {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa {makesText ? "texten" : "dokumentet"}.</FieldError>}
             </Field>
           );
         })}
     </FieldGroup>
+  );
+}
+
+/** The id "Antal talare" carries, so a refused start can move focus to it. */
+export const SPEAKER_COUNT_ID = "antal-talare";
+
+/** Said of a speaker count the names filled in, until the person edits it: this module's field and the flow's own. */
+export const COUNT_FROM_NAMES = "Ifyllt från antalet deltagare, ändra om fler talar.";
+
+/** "Antal talare": an upper bound on the speakers the run tells apart; left empty, Eneo decides. */
+export function SpeakerCountField({
+  value,
+  onChange,
+  fromNames = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  /** The value is the number of names, not yet edited. */
+  fromNames?: boolean;
+}) {
+  const helpId = `${SPEAKER_COUNT_ID}-hjalp`;
+  const errorId = `${SPEAKER_COUNT_ID}-fel`;
+  const invalid = readSpeakerCount(value) === "invalid";
+  return (
+    <Field data-invalid={invalid || undefined} className="gap-2">
+      <FieldLabel htmlFor={SPEAKER_COUNT_ID} className="gap-1 text-[15px] font-semibold text-ink">
+        Antal talare <span className="font-normal text-ink-soft">(om du vet)</span>
+      </FieldLabel>
+      <Input
+        id={SPEAKER_COUNT_ID}
+        name={SPEAKER_COUNT_ID}
+        autoComplete="off"
+        // Text with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing, while this
+        // keeps what was typed for readSpeakerCount to call it no count.
+        type="text"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}
+        aria-invalid={invalid || undefined}
+        // Room for two digits: the field makes each child full width, so this caps it.
+        className={`${SINGLE_LINE} max-w-28`}
+      />
+      {/* One paragraph, the one the field names: its second sentence says where a filled-in number came from, since
+          "Lämna tomt" beside it would contradict it. */}
+      <FieldDescription id={helpId} className="text-[13px]">
+        Används som övre gräns.{" "}
+        {fromNames ? COUNT_FROM_NAMES : "Lämna tomt om du är osäker."}
+      </FieldDescription>
+      {invalid && (
+        <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>
+      )}
+    </Field>
   );
 }

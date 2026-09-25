@@ -75,6 +75,10 @@ test("Eneo's refusals say what happened in Swedish, and which ones reading the p
   });
   for (const code of ["flow_run_stale_version", "flow_transcript_corrections_invalid_occurrence", "flow_run_access_denied"]) {
     assert.equal(refused(400, code).reload, false, code);
+    // A flow that makes text is refused in the same words about the text.
+    const text = regenerationRefusal(new ApiError(400, "x", null, code), "texten").message;
+    assert.match(text, /texten/, code);
+    assert.doesNotMatch(text, /dokument/, code);
   }
 });
 

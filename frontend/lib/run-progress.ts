@@ -4,7 +4,16 @@
  * once it ended, the step results read once say which steps ever started.
  */
 
-import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep, type RunContract } from "./api";
+import {
+  isSpeakerMappingReviewStep,
+  type FlowGraph,
+  type FlowReviewStepContract,
+  type FlowRunError,
+  type FlowRunStep,
+  type FlowTranscriptionContract,
+  type RunContract,
+} from "./api";
+import { labelsSpeakers, speakerLabelsFor } from "./flow-session";
 import { formatDuration } from "./format";
 import { carriesTranscript } from "./speaker-review";
 
@@ -151,11 +160,29 @@ export function runElapsed(createdAt: string | null | undefined, now: number): s
   return minutes >= 1 ? `Har pågått i ${formatDuration(minutes * 60_000)}` : null;
 }
 
-/** One line for what happens now; truthful between steps, never a percentage. */
-export function runStage(steps: readonly StepView[], runStatus: string): string {
+/**
+ * Whether a run labels speakers: its own choice as Eneo keeps it, else (null: it took the flow's default) the
+ * default of the flow's version the contract describes. Unknown (an Eneo that does not say, another version) is
+ * no, since the plain line is true either way.
+ */
+export function runLabelsSpeakers(
+  choice: boolean | null | undefined,
+  option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
+  sameVersion: boolean,
+): boolean {
+  if (typeof choice === "boolean") return choice;
+  return choice === null && sameVersion && labelsSpeakers(option, speakerLabelsFor(option, null));
+}
+
+/**
+ * One line for what happens now; truthful between steps, never a percentage. The audio step's line holds however
+ * Eneo makes the text: transcribing the audio, using Strömma's text, or falling back from it.
+ */
+export function runStage(steps: readonly StepView[], runStatus: string, labels = false): string {
   if (runStatus.toLowerCase() === "queued") return "Väntar på att starta";
   const running = steps.find((step) => step.state === "running");
-  if (running) return running.transcribes ? "Transkriberar ljudet" : running.label;
+  if (running?.transcribes) return labels ? "Tar fram texten och märker upp talare" : "Tar fram texten";
+  if (running) return running.label;
   if (steps.length === 0) return "Körningen pågår";
   if (steps.every((step) => step.state === "done")) return "Slutför körningen";
   if (steps.some((step) => step.state === "done")) return "Väntar på nästa steg";

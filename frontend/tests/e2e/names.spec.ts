@@ -7,16 +7,17 @@ import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
 
-test("the input modes are named by their title and described by their line", async ({ page }) => {
+test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
-  for (const [id, name, description] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar."],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt."],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet."],
-  ]) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description });
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  for (const [id, name, description, checked] of [
+    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
+    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  ] as const) {
+    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
-  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ name: "Hur vill du ge ljudet?" });
+  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du ge ljudet?" });
 });
 
 test("a field is not an unnamed group", async ({ page }) => {
@@ -59,7 +60,8 @@ test("a run opened while it runs keeps the flow's page: the way back, and the de
 
 test("a step that will stop for the person says what it asks while it is ahead, and not once it is done", async ({ page }) => {
   await run(page, "run-before-review", "flow-2");
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  // flow-2 gives its result back in the run (delivery "payload"): it makes text, not a document.
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   const review = page.getByRole("listitem").filter({ hasText: "Talare" });
   await expect(review).toContainText("Väntar");
   await expect(review).toContainText("Här bekräftar du vem som är vem.");
@@ -75,7 +77,7 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
   await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
@@ -99,7 +101,7 @@ test("an approved pause whose resume did not go through shows the saved names re
     if (request.method() !== "GET" && request.url().includes("/review-checkpoints/")) writes.push(request.url().split("/").filter(Boolean).at(-1)!);
   });
   await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   expect(writes, "nothing saved or approved again").toEqual(["resume"]);
 });
 
@@ -323,4 +325,53 @@ test("with the access code, the warning renews the login by the code, on the pag
   await expect(warning).toBeHidden();
   expect(codes).toEqual(["test-access-code-1234"]);
   await expect(page).toHaveURL(/\/flows$/);
+});
+
+test("while a chosen file's length is read, the wait is said, not only written on the button", async ({ page }) => {
+  // A file whose header the browser takes its time with: its length never arrives, so the check holds.
+  await page.addInitScript(() => {
+    Object.defineProperty(HTMLMediaElement.prototype, "src", { configurable: true, set() {}, get: () => "" });
+  });
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(64) });
+  await expect(page.getByRole("button", { name: "Kontrollerar filen…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
+});
+
+test("a correction's save is said from its first word: the live region waits in the page before it", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
+  // The stub keeps no corrections: the save is answered here, as Eneo would, one revision on.
+  await page.route("**/steps/*/transcript-corrections/", async (route) => {
+    const body = route.request().postDataJSON();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return route.fulfill({
+      json: {
+        flow_run_id: "run-done", step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
+        segments_hash: body.segments_hash, occurrences: body.occurrences ?? [], speaker_edits: body.speaker_edits ?? [],
+        revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z",
+      },
+    });
+  });
+  await result(page);
+  // A live region added together with its text is often not read; one already there is.
+  await page.evaluate(() => {
+    (window as unknown as { regions: Set<Element> }).regions = new Set(document.querySelectorAll("[aria-live], [role=status], [role=alert]"));
+  });
+  await page.getByRole("button", { name: "Rätta repliken från 0:03" }).first().click();
+  await page.keyboard.type(" i dag");
+  await page.keyboard.press("Enter");
+  const said = page.getByRole("status").filter({ hasText: "Sparar…" });
+  await expect(said).toBeAttached();
+  expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element))).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Rättningar sparade" })).toBeAttached();
+});
+
+test("a passage's actions say which part they are in, as its play button does, so no two are named alike", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
+  await result(page);
+  // Two parts, each starting at 0:00: the part tells the two passages apart.
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 1", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 2", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Rätta repliken från 0:00", exact: true })).toHaveCount(0);
 });

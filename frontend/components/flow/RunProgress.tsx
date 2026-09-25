@@ -29,6 +29,7 @@ export function RunProgress({
   stage,
   startedAt,
   error = null,
+  makesText = false,
   onCancel,
 }: {
   flowName: string;
@@ -37,9 +38,11 @@ export function RunProgress({
   /** When Eneo created the run; unknown until its first status read. */
   startedAt?: string | null;
   error?: string | null;
+  /** The flow ends in text, not a file (lib/flow-session makesText). */
+  makesText?: boolean;
   onCancel: () => Promise<void>;
 }) {
-  const heading = usePhaseHeading(`Skapar dokument · ${flowName}`);
+  const heading = usePhaseHeading(`${makesText ? "Skapar text" : "Skapar dokument"} · ${flowName}`);
   const [cancelling, setCancelling] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -65,7 +68,7 @@ export function RunProgress({
           tabIndex={-1}
           className={STATE_HEADING}
         >
-          Dokumentet skapas
+          {makesText ? "Texten skapas" : "Dokumentet skapas"}
         </h1>
         <p role="status" className="flex items-center gap-2 text-base">
           <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
@@ -81,8 +84,11 @@ export function RunProgress({
           <StepList steps={steps} />
         </section>
       )}
+      {/* Reassurance for a page closed by mistake, not a request to close it. */}
       <p className="text-sm text-muted-foreground">
-        Du kan stänga sidan. Körningen fortsätter och resultatet finns kvar här.
+        {makesText
+          ? "Texten blir klar även om du stänger sidan. Du hittar den här sedan."
+          : "Dokumentet blir klart även om du stänger sidan. Du hittar det här sedan."}
       </p>
       {error && (
         <p role="alert" className="text-sm text-destructive">
@@ -99,7 +105,9 @@ export function RunProgress({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Avbryta körningen?</AlertDialogTitle>
-            <AlertDialogDescription>Flödet slutar arbeta och inget dokument skapas.</AlertDialogDescription>
+            <AlertDialogDescription>
+              Flödet slutar arbeta och {makesText ? "ingen text" : "inget dokument"} skapas.
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Kör vidare</AlertDialogCancel>

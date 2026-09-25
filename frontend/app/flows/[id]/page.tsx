@@ -45,13 +45,20 @@ import {
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
-import type { SubmitRequest } from "@/lib/flow-session";
+import { makesText, type SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
 import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
-import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
+import {
+  finishedRun,
+  ofContractVersion,
+  runOutcome,
+  runStage,
+  runSteps,
+  runLabelsSpeakers,
+} from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
@@ -128,19 +135,27 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [submission, setSubmission] = useState<SubmissionState>({
     kind: "idle",
   });
-  // The details a run was started with, shown beside its states: as sent, as the run Eneo returned carries
-  // them, or read once for a run opened while it runs (its polled status does not carry them).
-  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown }>({ runId: null, input: null });
+  // The details a run was started with, shown beside its states, and its own speaker-label choice for its progress
+  // line: as the run Eneo returned carries them, or read once for a run opened while it runs (its polled status does
+  // not carry them).
+  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown; speakerLabels?: boolean | null }>({
+    runId: null,
+    input: null,
+  });
   const runningRun = run.kind === "running" ? run.run : null;
   useEffect(() => {
     if (!runningRun || startedWith.runId === runningRun.id) return;
     if ("input_payload_json" in runningRun) {
-      setStartedWith({ runId: runningRun.id, input: (runningRun as FlowRunPublic).input_payload_json ?? null });
+      const full = runningRun as FlowRunPublic;
+      setStartedWith({ runId: full.id, input: full.input_payload_json ?? null, speakerLabels: full.speaker_labels });
       return;
     }
     let current = true;
     getRun(flowId, runningRun.id)
-      .then((full) => current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null }))
+      .then(
+        (full) =>
+          current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null, speakerLabels: full.speaker_labels }),
+      )
       .catch(() => undefined);
     return () => {
       current = false;
@@ -253,7 +268,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /** Uploads the input and starts the run; throws, with the page back in its input state, when it could not. */
-  async function sendInput({ input: runInput, payload, speakerLabels }: SubmitRequest) {
+  async function sendInput({ input: runInput, payload, speakerLabels, maxSpeakers }: SubmitRequest) {
     if (!contract) throw new Error("Flödet har inte laddats klart.");
     setRunError(null);
     setStartedWith({ runId: null, input: payload });
@@ -269,6 +284,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         stepId: selectRuntimeInputStep(contract)?.step_id ?? null,
         inputPayload: payload,
         speakerLabels,
+        maxSpeakers,
         online: onlineStatus,
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
@@ -288,7 +304,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setSubmission({ kind: "idle" });
 
       writeRunIdToUrl(initialRun.id);
-      setStartedWith({ runId: initialRun.id, input: initialRun.input_payload_json ?? payload });
+      setStartedWith({
+        runId: initialRun.id,
+        input: initialRun.input_payload_json ?? payload,
+        speakerLabels: initialRun.speaker_labels,
+      });
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
@@ -593,7 +613,13 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   if (run.kind === "submitting") {
     return withLeave(
-      flowPage(<SubmittingView submission={submission} onCancelSubmission={onCancelSubmission} />, {
+      flowPage(
+        <SubmittingView
+          submission={submission}
+          onCancelSubmission={onCancelSubmission}
+          makesText={makesText(contract.final_output)}
+        />,
+        {
         input: startedWith.input,
         // Sent just now, from this contract's form.
         version: contract.published_flow_version,
@@ -630,9 +656,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <RunProgress
         flowName={published.name}
         steps={steps}
-        stage={runStage(steps, run.run.status)}
+        stage={runStage(
+          steps,
+          run.run.status,
+          startedWith.runId === run.run.id &&
+            runLabelsSpeakers(startedWith.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
+        )}
         startedAt={run.run.created_at}
         error={runError}
+        // Today's contract speaks only for a run of its own version.
+        makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
         onCancel={() => onCancelRun(run.run.id)}
       />,
       { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },
@@ -655,6 +688,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           stepResults={run.steps}
           files={files}
           showTranscript={transcribed}
+          contract={contract}
           audio={inputStep?.input_format?.toLowerCase() === "audio"}
           onNewRecording={onRunAgain}
           onRegenerated={(regenerated) => {
@@ -683,6 +717,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       stepResults={run.steps}
       files={files}
       showTranscript={transcribed}
+      contract={contract}
       error={runError}
       refusal={retryRefusal}
       onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}

@@ -10,6 +10,7 @@ const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ ru
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { SubmittingView } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
@@ -39,22 +40,39 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
-  assert.match(words, /Du kan stänga sidan\. Körningen fortsätter och resultatet finns kvar här\./);
+  assert.match(words, /Dokumentet blir klart även om du stänger sidan\. Du hittar det här sedan\./);
+  assert.doesNotMatch(words, /Du kan stänga sidan/, "reassurance, not an instruction to close");
   assert.match(words, /Avbryt körningen/);
   // The step list is an ordered list, so a screen reader hears position and state.
   assert.match(html, /<ol[^>]*>(\s*<li)/);
 });
 
+test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
+  const words = text(
+    renderToStaticMarkup(
+      createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
+    ),
+  );
+  assert.match(words, /Texten blir klar även om du stänger sidan\. Du hittar den här sedan\./);
+  assert.doesNotMatch(words, /Dokumentet blir klart/);
+  assert.match(words, /^Texten skapas /, "the heading");
+  assert.doesNotMatch(words, /[Dd]okument/);
+  const sending = renderToStaticMarkup(
+    createElement(SubmittingView, { submission: { kind: "starting", wait: null }, onCancelSubmission: () => undefined, makesText: true }),
+  );
+  assert.match(sending, /<h1[^>]*>Texten skapas<\/h1>/, "the same heading while it is sent, so nothing changes when the run starts");
+});
+
 test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {
   const view = (startedAt?: string) =>
     renderToStaticMarkup(
-      createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Transkriberar ljudet", startedAt, onCancel: async () => undefined }),
+      createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", startedAt, onCancel: async () => undefined }),
     );
   const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
-  assert.match(text(html), /Transkriberar ljudet Har pågått i 12 min\. Det kan ta några minuter\./);
+  assert.match(text(html), /Tar fram texten Har pågått i 12 min\. Det kan ta några minuter\./);
   // The minutes count on without being read out on every change.
   assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
-  assert.match(text(view(undefined)), /Transkriberar ljudet Det kan ta några minuter\./, "before the start is known");
+  assert.match(text(view(undefined)), /Tar fram texten Det kan ta några minuter\./, "before the start is known");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -74,6 +92,7 @@ const report: ResultFileView = {
   meta: "PDF, 13,3\u00a0kB",
   available: true,
   previewable: true,
+  stepId: null,
 };
 
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
@@ -145,7 +164,8 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
     );
 
   const words = text(render(() => undefined));
-  assert.match(words, /Dokumentet kunde inte skapas/);
+  // Without the flow's contract nothing says what the run makes: the words stay neutral.
+  assert.match(words, /Resultatet kunde inte skapas/);
   assert.match(words, /Steg 2, Analysera mötesinnehållet/);
   assert.match(words, /Skriv sammanfattning Kördes inte/);
   assert.match(words, /Skapa rapport Kördes inte/);

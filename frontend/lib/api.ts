@@ -194,6 +194,8 @@ export interface FlowSparsePublic {
   space_name: string;
   /** How the flow takes its input: "audio", "document" or "file". */
   input_type?: FlowRuntimeInputFormat | string | null;
+  /** How a run gives its result, as the run contract's `final_output.delivery`. */
+  delivery?: "payload" | "artifact" | "outbound_http" | null;
 }
 
 export interface FormField {
@@ -257,6 +259,12 @@ export type LiveTranscriptionUnavailableReason =
 export interface FlowTranscriptionContract {
   live: { available: boolean; reason: LiveTranscriptionUnavailableReason | null };
   speaker_labels: { selectable: boolean; required: boolean; default: boolean };
+  /**
+   * Finns när en transkriptionstjänst märker upp talare: körningen får skicka `max_speakers`, ett heltal ≥ 1
+   * som övre gräns. `form_field` namnger flödets eget fält som redan frågar efter antalet; då frågar appen inte igen.
+   * `participants_field` namnger fältet med deltagarna som talar-kopplingssteget läser; null utan ett sådant steg.
+   */
+  max_speakers?: { form_field: string | null; participants_field?: string | null } | null;
 }
 
 /**
@@ -279,6 +287,14 @@ export interface RunContract {
   runtime_upload_policy?: FlowRuntimeUploadPolicy | null;
   /** Null när flödet inte transkriberar ljud. */
   transcription?: FlowTranscriptionContract | null;
+  /**
+   * Vad körningen slutar i. `delivery` säger hur resultatet lämnas: "payload" som text i körningen, "artifact" som
+   * en fil, "outbound_http" skickat vidare till en mottagare. Null för ett flöde utan steg.
+   */
+  final_output?: {
+    output_type: FlowOutputType | string;
+    delivery?: "payload" | "artifact" | "outbound_http" | null;
+  } | null;
   /** Null när spacet saknar klassning eller organisationen stängt av klassningar. */
   security_classification?: FlowSecurityClassification | null;
 }
@@ -357,6 +373,10 @@ export interface FlowRunPublic {
   cancelled_at?: string | null;
   input_payload_json?: Json | null;
   job_id?: string | null;
+  /** Körningens eget val av talaruppmärkning; null när den tog flödets standard. */
+  speaker_labels?: boolean | null;
+  /** Den övre gräns för antalet talare som körningen fick; null betyder automatiskt eller ingen. */
+  max_speakers?: number | null;
 }
 
 export interface FlowRunStep {

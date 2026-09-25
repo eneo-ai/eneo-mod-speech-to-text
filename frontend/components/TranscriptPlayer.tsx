@@ -527,6 +527,7 @@ export function TranscriptPlayer(
   }
   // Search works on any transcript; the speaker row only where the flow labelled speakers.
   const tools = !reviewEnabled && hasSegments;
+  const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
   const hitStatus = !query.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
 
@@ -638,6 +639,10 @@ export function TranscriptPlayer(
         </div>
       )}
 
+      {/* Always in the page, so the first save's Sparar… is heard: a live region added with its text often is not. */}
+      <p role="status" className="sr-only">
+        {saveText}
+      </p>
       {(audioPending ||
         audioUnavailable ||
         fileCount === 0 ||
@@ -688,13 +693,8 @@ export function TranscriptPlayer(
                 "shrink-0 text-[12px]",
                 saveState === "error" ? "text-destructive" : "text-ink-mute",
               )}
-              aria-live="polite"
             >
-              {saveState === "saving"
-                ? "Sparar…"
-                : saveState === "saved"
-                  ? "Rättningar sparade"
-                  : "Kunde inte spara"}
+              {saveText}
             </p>
           )}
         </div>
@@ -1022,7 +1022,7 @@ function TurnBlock({
                   locked={!canEdit}
                   initial={textForEdit(part.segmentIndex)}
                   corrected={corrected}
-                  label={`Rätta repliken från ${partClock}`}
+                  label={`Rätta repliken från ${partClock}${partLabel}`}
                   onCommit={(text) => onCommitLine(part.segmentIndex, text)}
                   onCancel={onCancelEdit}
                   onRevert={() => onRevertLine(part.segmentIndex)}
@@ -1042,7 +1042,7 @@ function TurnBlock({
                   {...(choosable && {
                     role: "button",
                     tabIndex: 0,
-                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}.`,
+                    "aria-label": `${shown.map((piece) => piece.text).join("").replace(/\s+/g, " ").trim()} Rätta meningen från ${partClock}${partLabel}.`,
                     onKeyDown: (e: React.KeyboardEvent) => {
                       if (e.key !== "Enter" && e.key !== " ") return;
                       e.preventDefault();
@@ -1143,7 +1143,8 @@ function TurnBlock({
             <button
               ref={correct}
               type="button"
-              aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
+              // With the part, as the play button: two parts both start at 0:00.
+              aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
               aria-expanded={several ? choosing : undefined}
               onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
               className="-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft"

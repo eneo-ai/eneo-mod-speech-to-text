@@ -11,12 +11,17 @@ Runs the page can open with ?run=<id>:
   run-review    paused for "who is who" (flow-2)
   run-review-text  paused for a text step's output to be checked
   run-corrected finished like run-done, its transcript corrected after the document
+  run-pdf       finished, the document only its PDF, previewed from the step's text
+  run-pdf-long  like run-pdf, a document long enough to fold
 The paused run-review has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like run-done.
 An upload whose file name starts with "langsam" is answered after 6 s.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
-republishing (409 on the contract); any unknown flow is gone (404). The live
+republishing (409 on the contract); any unknown flow is gone (404). flow-2
+ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
+and 3 ask it once Märk upp talare is on, filled from Deltagare, which their
+contract names as the participants field. The live
 relay on /api/live/ answers a word per four audio frames.
 """
 
@@ -46,7 +51,8 @@ AUDIO_STEP = {
     "max_file_size_bytes": 200 * 1024 * 1024,
     "accepted_mimetypes": ["audio/webm", "audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"],
 }
-LIVE_ON = {"live": {"available": True, "reason": None}, "speaker_labels": {"selectable": True, "required": False, "default": False}}
+LIVE_ON = {"live": {"available": True, "reason": None}, "speaker_labels": {"selectable": True, "required": False, "default": False},
+           "max_speakers": {"form_field": None, "participants_field": "deltagare"}}
 
 
 def flow(fid, name, description, version, space, fields, **contract):
@@ -62,6 +68,7 @@ PARTICIPANTS = {"name": "deltagare", "label": "Deltagare", "type": "list", "requ
 FLOWS = {f["published"]["id"]: f for f in [
     flow("flow-1", "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
          3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON,
+         final_output={"step_id": "s2", "step_order": 2, "output_type": "pdf", "output_mode": "pass_through", "delivery": "artifact"},
          security_classification={"name": "Öppen information", "security_level": 1,
                                   "description": "Använd bara information som får lämnas ut till vem som helst."}),
     flow("flow-2", "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,
@@ -69,7 +76,9 @@ FLOWS = {f["published"]["id"]: f for f in [
          [{"name": "intervjuperson", "label": "Intervjuperson", "type": "text", "required": True, "order": 1},
           {"name": "typ", "label": "Typ av intervju", "type": "select", "options": ["Medborgare", "Personal"], "required": False, "order": 2}],
          transcription={"live": {"available": False, "reason": "model_not_realtime"},
-                        "speaker_labels": {"selectable": False, "required": True, "default": True}},
+                        "speaker_labels": {"selectable": False, "required": True, "default": True},
+                        "max_speakers": {"form_field": None, "participants_field": None}},
+         final_output={"output_type": "text", "delivery": "payload"},
          steps_requiring_review=[{"step_id": REVIEW_STEP_ID, "step_order": 2, "review_mode": "edit", "output_type": "json",
                                   "output_contract": {"properties": {"speakers": {"items": {"properties": {
                                       "label": {"pattern": "^SPEAKER_\\d{2,}$"}}}}}}}]),
@@ -119,9 +128,12 @@ TRANSCRIBE_STEP = {
         "segments_hash": SEGMENTS_HASH}},
     "output_payload_json": {"text": "Transkript"},
 }
+REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
+          "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 REPORT_STEP = {"id": "result-2", "step_id": "s2", "step_order": 2, "status": "completed",
                "started_at": "2026-09-24T09:01:00Z", "finished_at": "2026-09-24T09:02:00Z",
-               "input_payload_json": {}, "output_payload_json": {"text": "Rapport"}}
+               "input_payload_json": {}, "output_payload_json": {"text": REPORT},
+               "model_parameters_json": {"model_id": "model-1", "model_name": "Modell"}}
 GRAPH = {
     "nodes": [
         {"id": AUDIO_STEP_ID, "label": "Transkribera", "type": "llm", "step_order": 1, "input_source": "flow_input",
@@ -134,15 +146,33 @@ GRAPH = {
 # flow-2 stops for the person after transcribing: its second step is the speaker review.
 GRAPH_WITH_REVIEW = {**GRAPH, "nodes": [GRAPH["nodes"][0], dict(GRAPH["nodes"][1], id=REVIEW_STEP_ID, label="Talare",
                                                                output_type="json")]}
-REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
-          "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 FILES = [
-    {"file_id": "art-pdf", "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF)},
+    {"file_id": "art-pdf", "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF),
+     "step_id": "s2"},
     {"file_id": "art-docx", "name": "Protokoll kommunstyrelsen 2026-09-24.docx",
-     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432},
+     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432, "step_id": "s2"},
 ]
-DONE = {"status": "completed", "result": {"kind": "inline_text", "text": REPORT}, "result_files": FILES,
+# The report step's PDF and Word file are the run's result, as Eneo projects a final step's files.
+DONE = {"status": "completed", "result": {"kind": "artifact", "files": FILES}, "result_files": FILES,
         "steps": [TRANSCRIBE_STEP, REPORT_STEP], "step_status": ["completed", "completed"]}
+LONG_REPORT = REPORT + "".join(
+    f"\n\n### {title}\n\n{body} Ärendet bereddes av förvaltningen och föredrogs av handläggaren. "
+    "Ledamöterna ställde frågor om kostnaderna och om hur invånarna berörs. Beslutet justeras vid nästa sammanträde."
+    for title, body in [("Budget 2027", "Ramen höjs med två procent."), ("Skolskjutsar", "Nya turer efter höstlovet."),
+                        ("Äldreomsorg", "Två nya platser öppnar i vår."), ("Bredband", "Utbyggnaden fortsätter norrut."),
+                        ("Övriga frågor", "Inga övriga frågor anmäldes.")])
+
+
+def only_pdf(text):
+    """A document that is only its PDF (Eneo's artifact result), made from the report step's text."""
+    pdf = dict(FILES[0], step_id="s2")
+    return {"status": "completed", "result": {"kind": "artifact", "files": [pdf]}, "result_files": [pdf],
+            # A model wrote the report: its parameters name the model, as Eneo records them.
+            "steps": [TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": text},
+                                            model_parameters_json={"model_id": "model-1", "model_name": "Modell"})],
+            "step_status": ["completed", "completed"]}
+
+
 RUNS = {
     "run-done": DONE,
     "run-plain": {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
@@ -159,6 +189,8 @@ RUNS = {
     "run-review-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-review-text-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     "run-corrected": DONE,
+    "run-pdf": only_pdf(REPORT),
+    "run-pdf-long": only_pdf(LONG_REPORT),
 }
 SPLIT = "Ramen höjs med två procent"
 CORRECTIONS = {
@@ -323,7 +355,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/eneo/flows/":
             return self.send(200, {"has_more": False, "count": len(FLOWS), "items": [
                 {**f["published"], "is_published": True, "space_id": f["space"][0], "space_name": f["space"][1],
-                 "input_type": "audio"} for f in FLOWS.values()]})
+                 "input_type": "audio", "delivery": (f["contract"].get("final_output") or {}).get("delivery")}
+                for f in FLOWS.values()]})
         parts = path.strip("/").split("/")
         if len(parts) < 5 or parts[:3] != ["api", "eneo", "flows"]:
             return self.send(404, {"detail": "stub: " + path})

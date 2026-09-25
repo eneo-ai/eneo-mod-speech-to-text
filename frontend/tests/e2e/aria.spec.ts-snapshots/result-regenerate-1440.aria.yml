@@ -9,21 +9,21 @@
     - paragraph: Den nya versionen görs från det rättade transkriptet.
     - button "Skapa dokumentet igen med rättningarna"
   - region "Dokumentet":
-    - button "Kopiera texten"
     - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=attachment
-    - article:
-      - heading "Protokoll" [level=2]
-      - paragraph:
-        - text: Kommunstyrelsen beslutade att
-        - strong: höja budgetramen
-        - text: med två procent.
-      - list:
-        - listitem: Förvaltningen återkommer i oktober.
-        - listitem: Nya skolskjutsturer gäller efter höstlovet.
-    - paragraph: /Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
-    - paragraph: /PDF, \d+ B/
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
+    - paragraph: /PDF, \d+ B/
+    - region "Förhandsvisning av texten i filen":
+      - paragraph: Förhandsvisning av texten i filen
+      - article:
+        - heading "Protokoll" [level=2]
+        - paragraph:
+          - text: Kommunstyrelsen beslutade att
+          - strong: höja budgetramen
+          - text: med två procent.
+        - list:
+          - listitem: Förvaltningen återkommer i oktober.
+          - listitem: Nya skolskjutsturer gäller efter höstlovet.
     - status
   - region "Fler filer":
     - heading "Fler filer" [level=2]
@@ -48,6 +48,8 @@
         - group
         - searchbox "Sök i transkriptet"
       - status
+      - link "Hoppa förbi transkriptet":
+        - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":
         - listitem /Talare 1, 0:\d+ i del 1/:

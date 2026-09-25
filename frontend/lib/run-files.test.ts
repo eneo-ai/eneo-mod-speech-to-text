@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { ResultFile } from "./api";
-import { resultFileViews, transcriptFileName } from "./run-files";
+import type { FlowRunStep, ResultFile } from "./api";
+import { fileText, resultFileViews, transcriptFileName } from "./run-files";
 
 const pdf: ResultFile = {
   file_id: "f1",
@@ -49,4 +49,48 @@ test("the module's own transcript export is named the way Eneo names documents",
   // Eneo dates a document by the run's day in UTC, so the export keeps that day too.
   assert.equal(transcriptFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-23 transkript.txt");
   assert.equal(transcriptFileName("", undefined), "transkript.txt");
+});
+
+test("a document's file says what its own step wrote: Eneo lays that text out in the file", () => {
+  const [file] = resultFileViews([{ ...pdf, step_id: "s2" }]);
+  assert.equal(file.stepId, "s2");
+  const transcribe: FlowRunStep = { id: "r1", step_id: "s1", status: "completed", output_payload_json: { text: "Transkript" } };
+  // A model step read the transcript and wrote the report (its parameters name the model); the report is what the file says.
+  const report: FlowRunStep = {
+    id: "r2", step_id: "s2", status: "completed",
+    input_payload_json: { runtime_input: { text: "Transkript" } },
+    model_parameters_json: { model_id: "model-1", model_name: "Modell", provider: "azure" },
+    output_payload_json: { text: "## Protokoll\n\nBeslut." },
+  };
+  assert.equal(fileText(file, [transcribe, report]), "## Protokoll\n\nBeslut.");
+
+  // No reliable text, no preview.
+  const other = (output: object, extra: object = {}) => fileText(file, [transcribe, { ...report, output_payload_json: output, ...extra }]);
+  assert.equal(other({ text: '{"beslut":"Ja"}', structured: { beslut: "Ja" } }), null, "laid out from fields, not from the text");
+  assert.equal(other({ text: "## Protokoll", text_overflow: { generated_file_ids: ["f9"] } }), null, "only the start of a longer text");
+  assert.equal(other({ text: "## beslut\n\nJa" }, { model_parameters_json: { mode: "template_fill" } }), null, "a filled template lists its fields");
+  assert.equal(other({ text: " \n" }), null, "nothing written");
+  assert.equal(fileText({ ...file, stepId: null }, [transcribe, report]), null, "no step named: no guess from another step");
+  // Eneo keeps a PDF step's text that is already a PDF (%PDF- after leading space) as the file itself.
+  assert.equal(other({ text: " \n%PDF-1.7\n1 0 obj" }), null, "the file's bytes, not its text");
+  // Only what Eneo lays out as prose: a step it does not say how it made the file, or one that makes none, gives nothing.
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: { mode: "a_later_mode" } }), null, "a mode not known to lay text out");
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: { mode: "transcribe_only" } }), null, "a transcript step renders no document");
+  assert.equal(other({ text: "## Protokoll" }, { model_parameters_json: null }), null, "no parameters: not known how the file was made");
+});
+
+test("a flow that writes a summary and renders it verbatim previews the summary, not the transcript", () => {
+  // Shaped like the demo flow "Talaridentifiering med namn" (a completed run's step results on the review stack).
+  const summary = "# Sammanfattning\n\nMötet handlade om Gunnars ansökan om hemtjänst.";
+  const transcript = "[00:00:00 - 00:00:07] SPEAKER_00: Hej Gunnar, tack för att jag fick komma hem till dig idag.";
+  const named = transcript.replace("SPEAKER_00", "Maria");
+  const steps: FlowRunStep[] = [
+    { id: "r1", step_id: "s1", step_order: 1, status: "completed", model_parameters_json: { mode: "transcribe_only" }, output_payload_json: { text: transcript } },
+    { id: "r2", step_id: "s2", step_order: 2, status: "completed", model_parameters_json: { mode: "speaker_mapping" }, output_payload_json: { text: named, structured: { speakers: [] } } },
+    { id: "r3", step_id: "s3", step_order: 3, status: "completed", output_payload_json: { text: summary } },
+    // Rendera PDF: render_verbatim lays its input out as it is, so its own output text is that input.
+    { id: "r4", step_id: "s4", step_order: 4, status: "completed", model_parameters_json: { mode: "render_verbatim" }, output_payload_json: { text: summary } },
+  ];
+  const [file] = resultFileViews([{ ...pdf, name: "Talaridentifiering med namn 2026-09-25.pdf", step_id: "s4", source: "declared_artifact" }]);
+  assert.equal(fileText(file, steps), summary);
 });
