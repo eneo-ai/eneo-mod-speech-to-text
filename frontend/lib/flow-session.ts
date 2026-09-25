@@ -289,8 +289,8 @@ export function readSpeakerCount(text: string | null): number | undefined | "inv
  * "payload"), which the result view shows. A file, a result sent on to a receiver, and an Eneo or flow that does not
  * say are a document, as they always were.
  */
-export function makesText(finalOutput: RunContract["final_output"]): boolean {
-  return finalOutput?.delivery === "payload";
+export function makesText(output: Pick<NonNullable<RunContract["final_output"]>, "delivery"> | null | undefined): boolean {
+  return output?.delivery === "payload";
 }
 
 /** The action that makes the run, by what the flow ends in (`makesText`). */

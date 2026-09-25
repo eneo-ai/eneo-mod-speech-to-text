@@ -5,6 +5,7 @@
  */
 
 import { listPublishedFlows, type AppConfig, type FlowSparsePublic } from "./api";
+import { createActionLabel, makesText } from "./flow-session";
 
 export const DISCOVERY_PAGE_SIZE = 200;
 // ponytail: 1 000 flows is far more than a person runs; the page says when it cuts, raise the cap if that ever shows.
@@ -53,6 +54,14 @@ export async function discoverFlows({
   list = listPublishedFlows,
 }: { spaceId?: string; list?: ListPage } = {}): Promise<FlowDiscovery> {
   return readAll(list, spaceId);
+}
+
+/**
+ * The action on a listed flow's unsent recording, by how the flow gives its result, as on the flow page. A flow the
+ * list does not hold, or a list that does not say (an older Eneo), keeps "Skapa dokument".
+ */
+export function listCreateLabel(groups: readonly FlowSpaceGroup[] | null, flowId: string): string {
+  return createActionLabel(makesText(groups?.flatMap((group) => group.flows).find((flow) => flow.id === flowId)));
 }
 
 export const FLOW_LIST_NOT_CONFIGURED =

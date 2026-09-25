@@ -330,7 +330,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/eneo/flows/":
             return self.send(200, {"has_more": False, "count": len(FLOWS), "items": [
                 {**f["published"], "is_published": True, "space_id": f["space"][0], "space_name": f["space"][1],
-                 "input_type": "audio"} for f in FLOWS.values()]})
+                 "input_type": "audio", "delivery": (f["contract"].get("final_output") or {}).get("delivery")}
+                for f in FLOWS.values()]})
         parts = path.strip("/").split("/")
         if len(parts) < 5 or parts[:3] != ["api", "eneo", "flows"]:
             return self.send(404, {"detail": "stub: " + path})

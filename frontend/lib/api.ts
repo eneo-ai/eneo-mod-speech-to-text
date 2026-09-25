@@ -194,6 +194,8 @@ export interface FlowSparsePublic {
   space_name: string;
   /** How the flow takes its input: "audio", "document" or "file". */
   input_type?: FlowRuntimeInputFormat | string | null;
+  /** How a run gives its result, as the run contract's `final_output.delivery`. */
+  delivery?: "payload" | "artifact" | "outbound_http" | null;
 }
 
 export interface FormField {
