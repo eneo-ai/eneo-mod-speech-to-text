@@ -61,7 +61,8 @@ for (const state of STATES) {
       expect.soft([...layout.beyond, ...layout.clipped], "content past the edge or cut off (WCAG 1.4.10)").toEqual([]);
     }
     if (spaced) {
-      expect.soft(spaced.clipped, "content cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);
+      expect.soft(spaced.horizontalScroll, "horizontal scroll with increased text spacing (WCAG 1.4.12)").toBe(false);
+      expect.soft([...spaced.beyond, ...spaced.clipped], "content past the edge or cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);
       // A heading cut short with an ellipsis loses words nothing else on the page says.
       expect.soft(spaced.truncated.filter((item) => /^h[1-6] /.test(item)), "a heading cut short with increased text spacing (WCAG 1.4.12)").toEqual([]);
     }
