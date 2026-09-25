@@ -107,7 +107,7 @@ export function RunFailure({
               {message}
             </p>
           ))}
-          {/* The page offers one of these at most, the card's one filled action; the way back sits beside the card. */}
+          {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
           <div className="flex flex-wrap gap-3">
             {offerChooseInput && (
               <Button type="button" onClick={onChooseInput}>
@@ -116,7 +116,13 @@ export function RunFailure({
               </Button>
             )}
             {offerRetry && (
-              <Button type="button" disabled={retrying} onClick={() => void retry()}>
+              // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
+              <Button
+                type="button"
+                variant={run.error?.retryable ? "default" : "outline"}
+                disabled={retrying}
+                onClick={() => void retry()}
+              >
                 {retrying ? <Spinner data-icon="inline-start" aria-hidden /> : <RotateCcw data-icon="inline-start" aria-hidden />}
                 Försök igen
               </Button>

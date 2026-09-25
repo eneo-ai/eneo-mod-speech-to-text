@@ -288,6 +288,13 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
 
   const offered = view({ onRetry: async () => undefined, onStartAgain: () => undefined });
   assert.match(offered, /Försök igen fortsätter där körningen stannade\. Det som redan blev klart görs inte om\./);
+  // Eneo marks this retry as not safe: the button stays secondary, as the advice to check first says.
+  const retryButton = (run: typeof failedRun) =>
+    renderToStaticMarkup(
+      createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run, failure, steps, stepResults: [], files: [], onRetry: async () => undefined }),
+    ).match(/<button[^>]*class="([^"]*)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
+  assert.doesNotMatch(retryButton(failedRun), /\bbg-primary\b/);
+  assert.match(retryButton({ ...failedRun, error: { ...failedRun.error, retryable: true } }), /\bbg-primary\b/);
   assert.doesNotMatch(offered, /Starta en ny körning/, "a new run is the fallback, not a second choice up front");
 
   const stale = view({
