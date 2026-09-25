@@ -40,8 +40,11 @@ export class SilenceWatch {
   }
 }
 
-/** The tab title, so a user in another tab still sees that recording runs. */
-export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string): string {
+/**
+ * The tab title, so a user in another tab still sees that recording runs. `sent`: Eneo turned out to have a
+ * run for the stopped recording already.
+ */
+export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string, sent = false): string {
   switch (phase) {
     case "recording":
       return `Spelar in ${formatClock(elapsedMs)} · ${APP}`;
@@ -50,7 +53,7 @@ export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: stri
       return `Pausad · ${APP}`;
     // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `Inte skickad · ${APP}`;
+      return `${sent ? "Redan skickad" : "Inte skickad"} · ${APP}`;
     default:
       return flowName ? `${flowName} · ${APP}` : APP;
   }

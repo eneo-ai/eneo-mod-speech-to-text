@@ -64,7 +64,7 @@ const isPhone = () => window.matchMedia(PHONE).matches;
 function TabTitle({ input, flowName }: { input: Session; flowName: string }) {
   const { phase } = input.snapshot;
   const elapsed = useElapsed(input.session.capture, phase === "recording");
-  useDocumentTitle(pageTitle(phase, elapsed, flowName));
+  useDocumentTitle(pageTitle(phase, elapsed, flowName, input.snapshot.problem?.sent === true));
   return null;
 }
 
