@@ -59,9 +59,12 @@ test("the result's own headings sit under the page's h1: its top heading is an h
     return headings;
   };
   assert.deepEqual(await outline("# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText."), ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
-  // A "#" line in a code block is no heading, so it does not set the top level.
+  // An underlined title is a heading like any other: here the top one.
+  assert.deepEqual(await outline("Protokoll\n=========\n\n## Beslut\n\nText."), ["H2 Protokoll", "H3 Beslut"]);
+  assert.deepEqual(await outline("Protokoll\n---------\n\nText."), ["H2 Protokoll"]);
+  // A code block holds no headings, whatever its fence and whatever it contains.
   assert.deepEqual(
-    await outline("## Protokoll\n\n### Beslut\n\n```sh\n# en kommentar\n```\n\nText."),
+    await outline("## Protokoll\n\n### Beslut\n\n````md\n```\n# inte en rubrik\n```\n````\n\nText."),
     ["H2 Protokoll", "H3 Beslut"],
   );
 });

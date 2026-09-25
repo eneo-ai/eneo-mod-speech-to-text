@@ -23,7 +23,7 @@ import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FRAME, ReadingMain } from "@/components/frame";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
-import { resultHeadings } from "@/components/flow/ResultDocument";
+import { remarkResultHeadings } from "@/components/flow/ResultDocument";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -589,7 +589,7 @@ export function ReviewView({
           ) : (
             <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
               {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={resultHeadings(decided ? initialText : text)}>{decided ? initialText : text}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{decided ? initialText : text}</ReactMarkdown>
             </article>
           )}
 

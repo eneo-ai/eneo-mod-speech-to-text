@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Copy, Download, ExternalLink, MoreHorizontal, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,21 +12,24 @@ import { cn } from "@/lib/utils";
 import { CopyStatus, useCopy } from "./CopyButton";
 import { FILE_ICONS, OpenFile } from "./ResultFiles";
 
+type MarkdownNode = { type: string; depth?: number; children?: MarkdownNode[] };
+
 /**
- * A result's own headings sit under the page's h1: its top heading is an h2 whatever its Markdown level, and
- * deeper ones keep their distance to it, down to h6. The top level is the smallest "#" run outside code fences;
- * without one, "#" is the top.
+ * A remark step that puts a result's headings under the page's h1: its top heading is an h2 whatever its Markdown
+ * level, and deeper ones keep their distance to it, down to h6. It reads the parsed document, so an underlined
+ * title counts and nothing in a code block does.
  */
-export function resultHeadings(markdown: string): Components {
-  let fenced = false;
-  let top = 7;
-  for (const line of markdown.split("\n")) {
-    if (/^ {0,3}(```|~~~)/.test(line)) fenced = !fenced;
-    else if (!fenced) top = Math.min(top, /^ {0,3}(#{1,6})(?:[ \t]|$)/.exec(line)?.[1].length ?? 7);
-  }
-  if (top === 7) top = 1;
-  // Every level is mapped, so a heading above the top (an underlined one) is never an h1 either.
-  return Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [`h${level}`, `h${Math.min(6, Math.max(2, level - top + 2))}`]));
+export function remarkResultHeadings() {
+  return (tree: MarkdownNode) => {
+    const headings: MarkdownNode[] = [];
+    const walk = (node: MarkdownNode) => {
+      if (node.type === "heading") headings.push(node);
+      node.children?.forEach(walk);
+    };
+    walk(tree);
+    const top = Math.min(...headings.map((heading) => heading.depth ?? 1));
+    for (const heading of headings) heading.depth = Math.min(6, Math.max(2, (heading.depth ?? 1) - top + 2));
+  };
 }
 
 export const RESULT_PROSE =
@@ -178,7 +181,7 @@ export function ResultDocument({
 
       {text && (
         <article className={cn(RESULT_PROSE, "px-5 py-6 md:px-10 md:py-9")}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={resultHeadings(text)}>{text}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{text}</ReactMarkdown>
         </article>
       )}
 
