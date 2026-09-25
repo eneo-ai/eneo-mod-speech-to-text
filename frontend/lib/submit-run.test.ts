@@ -1032,7 +1032,12 @@ test("a new run keeps the failed run's speaker choices where the flow still offe
   };
   const said = (sent: Json) => [sent.speaker_labels, sent.max_speakers];
 
-  assert.deepEqual(said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: null }))), [true, 3], "both come through");
+  // Eneo settles the run's labels at admission, so its public value is its own even where it took a default.
+  assert.deepEqual(
+    said(body({ speaker_labels: true, max_speakers: 3 }, offering(selectable, { form_field: null }))),
+    [true, 3],
+    "both come through: the run's settled true beats the flow's default, now off, and keeps its bound",
+  );
   assert.deepEqual(said(body({ speaker_labels: false, max_speakers: null }, offering(selectable, { form_field: null }))), [false, undefined], "labels off");
   assert.deepEqual(
     said(body({ speaker_labels: false, max_speakers: 3 }, offering(selectable, { form_field: null }))),
