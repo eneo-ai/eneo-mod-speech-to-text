@@ -68,7 +68,7 @@ PARTICIPANTS = {"name": "deltagare", "label": "Deltagare", "type": "list", "requ
 FLOWS = {f["published"]["id"]: f for f in [
     flow("flow-1", "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
          3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON,
-         final_output={"output_type": "pdf", "delivery": "artifact"},
+         final_output={"step_id": "s2", "step_order": 2, "output_type": "pdf", "output_mode": "pass_through", "delivery": "artifact"},
          security_classification={"name": "Öppen information", "security_level": 1,
                                   "description": "Använd bara information som får lämnas ut till vem som helst."}),
     flow("flow-2", "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,
@@ -128,9 +128,12 @@ TRANSCRIBE_STEP = {
         "segments_hash": SEGMENTS_HASH}},
     "output_payload_json": {"text": "Transkript"},
 }
+REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
+          "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 REPORT_STEP = {"id": "result-2", "step_id": "s2", "step_order": 2, "status": "completed",
                "started_at": "2026-09-24T09:01:00Z", "finished_at": "2026-09-24T09:02:00Z",
-               "input_payload_json": {}, "output_payload_json": {"text": "Rapport"}}
+               "input_payload_json": {}, "output_payload_json": {"text": REPORT},
+               "model_parameters_json": {"model_id": "model-1", "model_name": "Modell"}}
 GRAPH = {
     "nodes": [
         {"id": AUDIO_STEP_ID, "label": "Transkribera", "type": "llm", "step_order": 1, "input_source": "flow_input",
@@ -143,14 +146,14 @@ GRAPH = {
 # flow-2 stops for the person after transcribing: its second step is the speaker review.
 GRAPH_WITH_REVIEW = {**GRAPH, "nodes": [GRAPH["nodes"][0], dict(GRAPH["nodes"][1], id=REVIEW_STEP_ID, label="Talare",
                                                                output_type="json")]}
-REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
-          "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
 FILES = [
-    {"file_id": "art-pdf", "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF)},
+    {"file_id": "art-pdf", "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF),
+     "step_id": "s2"},
     {"file_id": "art-docx", "name": "Protokoll kommunstyrelsen 2026-09-24.docx",
-     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432},
+     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432, "step_id": "s2"},
 ]
-DONE = {"status": "completed", "result": {"kind": "inline_text", "text": REPORT}, "result_files": FILES,
+# The report step's PDF and Word file are the run's result, as Eneo projects a final step's files.
+DONE = {"status": "completed", "result": {"kind": "artifact", "files": FILES}, "result_files": FILES,
         "steps": [TRANSCRIBE_STEP, REPORT_STEP], "step_status": ["completed", "completed"]}
 LONG_REPORT = REPORT + "".join(
     f"\n\n### {title}\n\n{body} Ärendet bereddes av förvaltningen och föredrogs av handläggaren. "

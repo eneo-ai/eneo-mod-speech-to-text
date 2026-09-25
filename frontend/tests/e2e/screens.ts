@@ -557,7 +557,8 @@ export const STATES: State[] = [
     name: "result-without-transcript",
     go: async (page) => {
       await run(page, "run-plain");
-      await heading(page, "Dokumentet är klart");
+      // Its result is text, so the page says so.
+      await heading(page, "Texten är klar");
     },
   },
   {

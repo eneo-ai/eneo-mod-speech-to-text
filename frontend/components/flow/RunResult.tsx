@@ -11,7 +11,7 @@ import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
 import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
-import { runMakesText, runResultView } from "@/lib/run-result";
+import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
 import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
 import { regenerationOffer } from "@/lib/regenerate";
@@ -70,16 +70,18 @@ export function RunResult({
   onNewRecording: () => void;
   /** A new run was started from the reviewed transcript; the page follows it. */
   onRegenerated: (run: FlowRunPublic) => void;
-  /** The flow's run contract: a run of its version that ends in text speaks of the text, not a document. */
+  /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
   const delivered = run.result?.kind === "outbound_http";
-  const madeText = runMakesText(run, contract);
+  const words = outputWords(runOutput(run, contract));
   const heading = usePhaseHeading(`Klart · ${flowName}`);
   const { text, note } = runResultView(run.result);
   const finished = run.finished_at ?? run.created_at;
-  // The document's file is the first one that can be fetched; any others are listed under it.
-  const primary = files.find((file) => file.available) ?? null;
+  // The document's file is the result's own (Eneo's run.result, not any step's file) that can be fetched; any other
+  // run files are listed under it.
+  const resultIds = resultFileIds(run.result);
+  const primary = files.find((file) => file.available && resultIds.includes(file.fileId)) ?? null;
   const others = files.filter((file) => file !== primary);
   // A document that is only its file shows what the file says under it.
   const preview = !text && primary ? fileText(primary, stepResults) : null;
@@ -125,9 +127,9 @@ export function RunResult({
     <>
       {note && <p className="text-[15px] leading-relaxed">{note}</p>}
       {offer && (
-        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} madeText={madeText} />
+        <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} madeText={madeText} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} label={words.named} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
@@ -154,7 +156,7 @@ export function RunResult({
       <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <div className="flex min-w-0 flex-col gap-1">
           <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
-            {delivered ? "Resultatet är skickat" : madeText ? "Texten är klar" : "Dokumentet är klart"}
+            {delivered ? "Resultatet är skickat" : words.ready}
           </h1>
           {finished && (
             <p className="text-[14px] text-muted-foreground">
@@ -186,7 +188,7 @@ export function RunResult({
       >
         {tabs && (
           <TabsList ref={tabList} aria-label="Visa" className="self-start">
-            <TabsTrigger value="document">{madeText ? "Text" : "Dokument"}</TabsTrigger>
+            <TabsTrigger value="document">{words.tab}</TabsTrigger>
             <TabsTrigger value="transcript">Transkript</TabsTrigger>
           </TabsList>
         )}

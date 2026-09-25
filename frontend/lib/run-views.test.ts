@@ -164,7 +164,8 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
     );
 
   const words = text(render(() => undefined));
-  assert.match(words, /Dokumentet kunde inte skapas/);
+  // Without the flow's contract nothing says what the run makes: the words stay neutral.
+  assert.match(words, /Resultatet kunde inte skapas/);
   assert.match(words, /Steg 2, Analysera mötesinnehållet/);
   assert.match(words, /Skriv sammanfattning Kördes inte/);
   assert.match(words, /Skapa rapport Kördes inte/);

@@ -18,7 +18,7 @@ export function RegenerateNotice({
   saveState,
   onStarted,
   onReload,
-  madeText = false,
+  thing = "dokumentet",
 }: {
   offer: RegenerationRequest;
   /** The transcript's latest save: a new document waits while one runs, and after one failed. */
@@ -26,10 +26,9 @@ export function RegenerateNotice({
   onStarted: (run: FlowRunPublic) => void;
   /** Reads the transcript and its corrections again, after they changed elsewhere. */
   onReload: () => void;
-  /** The flow makes text, not a document (`runMakesText`): the notice speaks of the text. */
-  madeText?: boolean;
+  /** What the run makes, as the notice names it: "dokumentet", "texten" or "resultatet" (`outputWords`). */
+  thing?: string;
 }) {
-  const thing = madeText ? "texten" : "dokumentet";
   const [working, setWorking] = useState(false);
   const [refusal, setRefusal] = useState<{ message: string; reload: boolean } | null>(null);
   const saving = saveState === "saving";
@@ -48,7 +47,7 @@ export function RegenerateNotice({
     // A note, not an alarm: it is there when the page opens and needs no announcement.
     <Alert role="note">
       <Info aria-hidden />
-      <AlertTitle>{madeText ? "Texten" : "Dokumentet"} skapades före dina rättningar</AlertTitle>
+      <AlertTitle>{thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar</AlertTitle>
       <AlertDescription className="flex flex-col items-start gap-3">
         <p>Den nya versionen görs från det rättade transkriptet.</p>
         <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving || unsaved} onClick={() => void start()}>

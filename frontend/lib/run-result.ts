@@ -44,16 +44,46 @@ export function runResultView(
   }
 }
 
+/** What a run makes: text (JSON shown as text), a document, or null where neither can be said. */
+export type RunOutput = "text" | "document" | null;
+
 /**
- * Whether a run makes text rather than a document: its own version's contract delivers the final output as a
- * payload (Eneo's `final_output.delivery`, from flow_run_contract_service `_output_delivery`), which this view shows
- * as text (the setup's makesText). A run of an older version reads as a document: today's contract says nothing of it.
+ * What a run makes, for its page's words. A finished run says so in its own result, whatever version it ran:
+ * text (inline, file-backed or structured) or a file. A run without one (failed, cancelled) is read from the
+ * contract, only of its own version and only as it states the delivery (`makesText`). Null, neutral words, where
+ * neither says: an output sent on, another version, a delivery not stated.
  */
-export function runMakesText(
-  run: { flow_version?: number | null },
+export function runOutput(
+  run: { flow_version?: number | null; result?: FlowRunResult | null },
   contract: Pick<RunContract, "published_flow_version" | "final_output"> | null | undefined,
-): boolean {
-  return ofContractVersion(run, contract) && makesText(contract?.final_output);
+): RunOutput {
+  switch (run.result?.kind) {
+    case "inline_text":
+    case "file_backed_text":
+    case "structured":
+      return "text";
+    case "artifact":
+      return "document";
+    case "outbound_http":
+      return null;
+  }
+  if (!ofContractVersion(run, contract)) return null;
+  return makesText(contract?.final_output) ? "text" : contract?.final_output?.delivery === "artifact" ? "document" : null;
+}
+
+/** The words for what a run makes: "texten", "dokumentet" or, neutral, "resultatet"; its tab and its two headings. */
+export function outputWords(output: RunOutput) {
+  const [thing, tab, gender] =
+    output === "text" ? ["texten", "Text", "klar"] : output === "document" ? ["dokumentet", "Dokument", "klart"] : ["resultatet", "Resultat", "klart"];
+  const named = thing[0].toUpperCase() + thing.slice(1);
+  return { thing, named, tab, ready: `${named} är ${gender}`, failed: `${named} kunde inte skapas` };
+}
+
+/** The files Eneo names as the run's result (the final step's, or the whole text's), apart from every other run file. */
+export function resultFileIds(result: FlowRunResult | null | undefined): string[] {
+  if (result?.kind === "artifact") return result.files.map((file) => file.file_id);
+  if (result?.kind === "file_backed_text") return [result.file.file_id];
+  return [];
 }
 
 const CANCELLED = "Körningen avbröts innan den blev klar.";
