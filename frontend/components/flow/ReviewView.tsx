@@ -412,9 +412,9 @@ export function ReviewView({
       )}
       <Button type="button" onClick={() => void saveAndApprove()} disabled={busy || continueBlocked}>
         {working === "approve" ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
         ) : (
-          <CheckCircle2 className="h-4 w-4" strokeWidth={2} />
+          <CheckCircle2 aria-hidden className="h-4 w-4" strokeWidth={2} />
         )}
         {decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
       </Button>
@@ -615,7 +615,7 @@ export function ReviewView({
                     disabled={!dirty || busy}
                     className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 coarse:min-h-11"
                   >
-                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                    {saving ? <Loader2 aria-hidden className="h-3 w-3 animate-spin" /> : null}
                     Spara ändring
                   </button>
                 </>
