@@ -72,11 +72,18 @@ export function UploadPanel({
     />
   );
   const FileIcon = audio ? FileAudio : FileText;
+  // In the same place whichever view shows, so the choice is said once.
+  const chosenStatus = (
+    <p role="status" className="sr-only">
+      {file ? `Vald fil: ${file.filename}` : ""}
+    </p>
+  );
 
   if (file) {
     return (
       <>
         {chooser}
+        {chosenStatus}
         <div
           {...dropTarget}
           className={cn(
@@ -108,6 +115,7 @@ export function UploadPanel({
   return (
     <>
       {chooser}
+      {chosenStatus}
       <label
         htmlFor={inputId}
         data-drop-zone

@@ -84,6 +84,23 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
+test("a required detail says so to a screen reader before sending, and a number field opens a number keyboard", () => {
+  const fields: FormField[] = [
+    { name: "deltagare", label: "Deltagare", type: "list", required: true },
+    { name: "arende", label: "Ärende", type: "text", required: true },
+    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
+    { name: "talare", label: "Antal talare", type: "number", required: false },
+  ];
+  const html = renderToStaticMarkup(
+    createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop }),
+  );
+  const control = (id: string) => html.match(new RegExp(`<(?:input|button|textarea)[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+  for (const id of ["detalj-deltagare", "detalj-arende", "detalj-typ"]) assert.match(control(id), /aria-required="true"/, id);
+  assert.doesNotMatch(control("detalj-talare"), /aria-required/);
+  assert.match(control("detalj-talare"), /inputMode="numeric"|inputmode="numeric"/);
+  assert.doesNotMatch(control("detalj-arende"), /inputmode/i);
+});
+
 test("the information row is the flow's classification as Eneo sends it, and there is none without one", () => {
   const row = (classification: FlowSecurityClassification | null) =>
     renderToStaticMarkup(createElement(ClassificationNote, { classification }));

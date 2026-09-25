@@ -716,3 +716,37 @@ test("a second tap on Starta lands on Stoppa or Pausa, and neither ends or pause
     await view.unmount();
   }
 });
+
+test("with reduced motion, the level meter still shows the microphone's level, without moving between levels", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  let peak = 0.5;
+  class FakeAudioContext {
+    state = "running";
+    resume = async () => undefined;
+    close = async () => undefined;
+    createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak) });
+  }
+  const page = window as unknown as { AudioContext?: unknown; matchMedia: typeof window.matchMedia };
+  const browserAudio = page.AudioContext;
+  const browserMedia = page.matchMedia;
+  page.AudioContext = FakeAudioContext;
+  page.matchMedia = ((query: string) => ({ ...browserMedia(query), matches: query.includes("reduce") })) as typeof window.matchMedia;
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant: "steps" }));
+  const lit = () => view.container.querySelectorAll('[data-lit="true"]').length;
+  try {
+    await view.act(async () => t.mock.timers.tick(66));
+    assert.ok(lit() > 0, "speech lights the bars");
+    peak = 0;
+    for (let i = 0; i < 60; i += 1) await view.act(async () => t.mock.timers.tick(66));
+    assert.equal(lit(), 0, "and silence lets them go");
+    const bar = view.container.querySelector("span")!;
+    assert.match(bar.className, /motion-reduce:transition-none/);
+  } finally {
+    await view.unmount();
+    page.AudioContext = browserAudio;
+    page.matchMedia = browserMedia;
+  }
+});
