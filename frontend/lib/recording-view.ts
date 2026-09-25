@@ -136,15 +136,17 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
 export const UNSTORED_LEAVE = "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.";
 
 /**
- * What "Lämna sidan?" says. The recording is promised back among unsent
- * recordings only when the device keeps it; otherwise leaving loses it, and
- * the way to keep it is "Spara som fil" (after Stoppa, while recording).
+ * What "Lämna sidan?" says. A running recording stops: it does not go on in
+ * the background. The recording is promised back among unsent recordings
+ * only when the device keeps it; otherwise leaving loses it, and the way to
+ * keep it is "Spara som fil" (after Stoppa, while recording).
  */
 export function leaveWarning(persistent: boolean | null, phase: SessionPhase, sending = false): string {
   if (sending && phase === "setup") return "Sändningen avbryts, och filen behöver väljas igen.";
-  const stops = sending ? "Sändningen avbryts. " : "";
+  const capturing = phase === "recording" || phase === "paused" || phase === "interrupted";
+  const stops = sending ? "Sändningen avbryts. " : capturing ? "Inspelningen stoppas. " : "";
   if (persistent) return `${stops}Det som spelats in finns kvar bland osända inspelningar.`;
-  const lost = `${stops}Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan.`;
+  const lost = `${stops}${capturing ? "Den" : "Inspelningen"} finns bara i den här fliken och försvinner när du lämnar sidan.`;
   return phase === "ready"
     ? `${lost} Välj Spara som fil först om du vill behålla den.`
     : `${lost} Stoppa och välj Spara som fil först om du vill behålla den.`;

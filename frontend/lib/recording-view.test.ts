@@ -426,11 +426,17 @@ test("leaving an upload says it stops, and what is kept of a recording", () => {
 });
 
 test("leaving promises the recording back only when the device keeps it, and otherwise says how to keep it", () => {
-  assert.equal(leaveWarning(true, "recording"), "Det som spelats in finns kvar bland osända inspelningar.");
+  for (const phase of ["recording", "paused", "interrupted"] as const) {
+    assert.equal(
+      leaveWarning(true, phase),
+      "Inspelningen stoppas. Det som spelats in finns kvar bland osända inspelningar.",
+      "leaving stops the recording: it does not go on in the background",
+    );
+  }
   for (const persistent of [false, null]) {
     assert.equal(
       leaveWarning(persistent, "recording"),
-      "Inspelningen finns bara i den här fliken och försvinner när du lämnar sidan. Stoppa och välj Spara som fil först om du vill behålla den.",
+      "Inspelningen stoppas. Den finns bara i den här fliken och försvinner när du lämnar sidan. Stoppa och välj Spara som fil först om du vill behålla den.",
     );
     assert.equal(
       leaveWarning(persistent, "ready"),

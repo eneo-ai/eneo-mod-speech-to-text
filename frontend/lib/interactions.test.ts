@@ -451,6 +451,8 @@ test("Back during an upload asks first and says what leaving stops", async () =>
   });
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
+  assert.match(button(dialog()!, "Stanna kvar")!.className, /\bbg-primary\b/, "staying is the filled action");
+  assert.doesNotMatch(button(dialog()!, "Lämna sidan")!.className, /\bbg-primary\b/);
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
   assert.equal(dialog(), null);
   await view.unmount();
