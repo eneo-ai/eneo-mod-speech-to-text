@@ -107,7 +107,7 @@ test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 
   assert.deepEqual(waits, [1_000, 2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000]);
 });
 
-test("a server that keeps failing gets four tries, then the error shows and the recording stays", async (t) => {
+test("with a try limit, a server answering with errors gets that many tries and its last error ends the wait", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   let calls = 0;
   const waits: number[] = [];
@@ -116,7 +116,7 @@ test("a server that keeps failing gets four tries, then the error shows and the 
       calls += 1;
       throw apiError(calls % 2 ? 503 : 408);
     },
-    { online: params().online, onWait: (wait) => void (wait && waits.push(wait.retryAt - Date.now())) },
+    { online: params().online, maxServerErrorTries: 4, onWait: (wait) => void (wait && waits.push(wait.retryAt - Date.now())) },
   );
   // The fourth try (a 408) is the error the page shows.
   const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 408);
@@ -125,7 +125,7 @@ test("a server that keeps failing gets four tries, then the error shows and the 
     t.mock.timers.tick(waits[i]);
   }
   await failed;
-  assert.equal(calls, 4, "each try sends the whole recording again, so a broken server gets no more");
+  assert.equal(calls, 4);
 });
 
 test("any other 4xx stops at once with its typed error, and so does a cancelled upload", async () => {
@@ -224,6 +224,47 @@ test("'Försök nu' retries at once, and cancelling ends the wait", async (t) =>
     ),
   );
   assert.equal(calls, 0, "a cancelled send sends nothing");
+});
+
+test("an upload a server keeps failing stops after four tries and starts no run; a run request keeps waiting", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  let uploads = 0;
+  let starts = 0;
+  const failing = submitRun(params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }] }), {
+    upload: async () => {
+      uploads += 1;
+      throw apiError(502, "upstream_unreachable");
+    },
+    startRun: async () => {
+      starts += 1;
+      return queuedRun;
+    },
+  });
+  const failed = assert.rejects(failing, (error) => error instanceof ApiError && error.status === 502);
+  for (let i = 1; i < 4; i += 1) {
+    await until(() => uploads === i);
+    t.mock.timers.tick(60_000);
+  }
+  await failed;
+  assert.equal(uploads, 4, "each try sends the whole file again");
+  assert.equal(starts, 0);
+
+  // Giving up on a run request could leave a run Eneo made without the page knowing: it keeps waiting.
+  const keys: string[] = [];
+  const run = submitRun(params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }] }), {
+    upload: async () => ({ id: "file-1" }),
+    startRun: async (_flowId, _body, key) => {
+      keys.push(key);
+      if (keys.length < 7) throw apiError(503);
+      return queuedRun;
+    },
+  });
+  for (let i = 1; i < 7; i += 1) {
+    await until(() => keys.length === i);
+    t.mock.timers.tick(60_000);
+  }
+  assert.equal((await run).id, "run-1");
+  assert.equal(new Set(keys).size, 1, "one run request, repeated under its key");
 });
 
 test("run creation retries network failures with the same idempotency key", async (t) => {

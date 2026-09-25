@@ -254,8 +254,8 @@ fortfarande modulens tema.
 - **Kodlogin fungerar men Flow-anrop nekas:** Eneo-routen kräver sannolikt module-user-token; byt till `eneo_sso` när handoff-kontraktet är deployat.
 - **502 vid uppladdning:** Eneo-load-balancer-problem; kolla `docker compose logs backend` för exakt httpx-fel.
 - **504 vid uppladdning:** backendens upload-forwarding till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`.
-- **Uppladdningen når 100 % och faller:** svaret dröjde längre än Next-proxyns tystnadsgräns (`experimental.proxyTimeout` i `frontend/next.config.mjs`, 11 minuter).
-- **"Det gick inte att skicka" efter fyra försök:** Eneo svarade med serverfel fyra gånger i rad. Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Ett avbrott i nätet väntas däremot ut hur länge som helst.
+- **Uppladdningen når 100 % och faller:** svaret dröjde längre än Next-proxyns tystnadsgräns (`experimental.proxyTimeout` i `frontend/next.config.mjs`, 31 minuter). Håll den över `UPLOAD_PROXY_TIMEOUT_SECONDS` om du höjer den.
+- **"Det gick inte att skicka" under uppladdningen:** Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Ett avbrott i nätet väntas ut hur länge som helst, och själva körningsbegäran och uppföljningen av en körning ger aldrig upp på serverfel.
 - **Tom flödeslista:** användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space.
 
 ---

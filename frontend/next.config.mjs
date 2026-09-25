@@ -19,8 +19,9 @@ const nextConfig = {
     proxyClientMaxBodySize: "2gb",
     // Next:s rewrite-proxy släpper annars ett anrop som varit tyst i 30 s. Medan FastAPI
     // skickar en stor mötesfil vidare och Eneo sparar den får webbläsaren inget svar: då nådde
-    // uppladdningen 100 % och föll, fast Eneo hade sparat filen. 11 minuter tystnad räcker.
-    proxyTimeout: 660_000,
+    // uppladdningen 100 % och föll, fast Eneo hade sparat filen. Taket följer uppladdningens
+    // egen budget: backendens UPLOAD_PROXY_TIMEOUT_SECONDS (1800 s som standard) plus marginal.
+    proxyTimeout: 1_860_000,
   },
   async headers() {
     return [

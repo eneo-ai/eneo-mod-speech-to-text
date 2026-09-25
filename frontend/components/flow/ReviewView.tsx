@@ -486,10 +486,7 @@ export function ReviewView({
             </div>
           )}
           <div className="mt-4">{rejectSection}</div>
-          {/* Below laptop width the transcript is the page, so the decision stays in reach at the screen's bottom. */}
-          <div className="sticky bottom-0 z-10 -mx-4 mt-auto border-t border-border bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8 lg:static lg:mx-0 lg:border-0 lg:bg-transparent lg:px-0 lg:pb-0">
-            {actions}
-          </div>
+          {actions}
         </main>
       </>
     );
