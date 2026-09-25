@@ -527,6 +527,7 @@ export function TranscriptPlayer(
   }
   // Search works on any transcript; the speaker row only where the flow labelled speakers.
   const tools = !reviewEnabled && hasSegments;
+  const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
   const hitStatus = !query.trim() ? "" : hits.length === 0 ? "Inga träffar" : `${currentHit + 1} av ${hits.length}`;
 
@@ -638,6 +639,10 @@ export function TranscriptPlayer(
         </div>
       )}
 
+      {/* Always in the page, so the first save's Sparar… is heard: a live region added with its text often is not. */}
+      <p role="status" className="sr-only">
+        {saveText}
+      </p>
       {(audioPending ||
         audioUnavailable ||
         fileCount === 0 ||
@@ -688,13 +693,8 @@ export function TranscriptPlayer(
                 "shrink-0 text-[12px]",
                 saveState === "error" ? "text-destructive" : "text-ink-mute",
               )}
-              aria-live="polite"
             >
-              {saveState === "saving"
-                ? "Sparar…"
-                : saveState === "saved"
-                  ? "Rättningar sparade"
-                  : "Kunde inte spara"}
+              {saveText}
             </p>
           )}
         </div>

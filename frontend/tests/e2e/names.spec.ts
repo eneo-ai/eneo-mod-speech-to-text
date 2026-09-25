@@ -336,3 +336,31 @@ test("while a chosen file's length is read, the wait is said, not only written o
   await expect(page.getByRole("button", { name: "Kontrollerar filen…" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
 });
+
+test("a correction's save is said from its first word: the live region waits in the page before it", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
+  // The stub keeps no corrections: the save is answered here, as Eneo would, one revision on.
+  await page.route("**/steps/*/transcript-corrections/", async (route) => {
+    const body = route.request().postDataJSON();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return route.fulfill({
+      json: {
+        flow_run_id: "run-done", step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
+        segments_hash: body.segments_hash, occurrences: body.occurrences ?? [], speaker_edits: body.speaker_edits ?? [],
+        revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z",
+      },
+    });
+  });
+  await result(page);
+  // A live region added together with its text is often not read; one already there is.
+  await page.evaluate(() => {
+    (window as unknown as { regions: Set<Element> }).regions = new Set(document.querySelectorAll("[aria-live], [role=status], [role=alert]"));
+  });
+  await page.getByRole("button", { name: "Rätta repliken från 0:03" }).first().click();
+  await page.keyboard.type(" i dag");
+  await page.keyboard.press("Enter");
+  const said = page.getByRole("status").filter({ hasText: "Sparar…" });
+  await expect(said).toBeAttached();
+  expect(await said.evaluate((element) => (window as unknown as { regions: Set<Element> }).regions.has(element))).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Rättningar sparade" })).toBeAttached();
+});
