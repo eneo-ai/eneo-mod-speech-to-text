@@ -277,6 +277,27 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/);
 });
 
+test("Esc, Stäng or a click beside only close: the typed names are there when the dialog opens again; Avbryt ends them", async (t) => {
+  // JD-02: one click beside the dialog, to look at the transcript, lost every typed name.
+  t.after(() => window.sessionStorage.clear());
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-3" };
+  const { view, trigger, field } = await dialog({ draftKey });
+  const shut = () => !document.querySelector('[role="dialog"]');
+  const escape = (target: Element) => view.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await view.act(async () => type(field("Talare 2"), "Bertil Eklund"));
+  await view.act(async () => button(document.body, "Stäng")!.click());
+  assert.ok(shut(), "Stäng closes");
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Stäng");
+  await escape(field("Talare 2"));
+  assert.ok(shut(), "Esc closes");
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "Bertil Eklund", "kept through Esc");
+  await view.act(async () => button(document.body, "Avbryt")!.click());
+  await view.act(async () => trigger.click());
+  assert.equal(field("Talare 2").value, "", "Avbryt threw the typed name away");
+});
+
 test("names typed but not saved come back after a reload, in the open dialog; Spara or Avbryt ends them", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };

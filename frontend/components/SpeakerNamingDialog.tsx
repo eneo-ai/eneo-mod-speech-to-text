@@ -96,32 +96,33 @@ export function SpeakerNamingDialog({
   /** The button that opens the dialog; focus returns to it on close. */
   children: ReactNode;
 }) {
-  // Names typed before a reload, on the speakers there are now; saving them or Avbryt ends them.
-  const kept = () => {
-    const names = draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null;
-    return (
-      names &&
-      rows.map((row) => {
-        // A name taken away (null) stays taken away; only a speaker the draft has no row for keeps the review's.
-        const typed = names.find((kept) => kept.label === row.label);
-        return typed ? { ...row, name: typed.name } : row;
-      })
-    );
-  };
-  const [open, setOpen] = useState(() => kept() !== null);
-  const [typed, setDraft] = useState<SpeakerMappingRow[]>(() => kept() ?? [...rows]);
-  // Approved, what was saved is the decision: typed names are no longer the dialog's to show or keep.
-  const draft = decided ? [...rows] : typed;
+  // Names typed but not saved: kept through closing the dialog and through a reload (it opens again with them);
+  // saving them or Avbryt ends them.
+  const [typed, setTyped] = useState<SpeakerMappingRow[] | null>(() =>
+    draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null,
+  );
+  const [open, setOpen] = useState(() => typed !== null);
+  // On the speakers there are now. Approved, what was saved is the decision: typed names are no longer the
+  // dialog's to show or keep.
+  const draft =
+    decided || !typed
+      ? [...rows]
+      : rows.map((row) => {
+          // A name taken away (null) stays taken away; only a speaker the draft has no row for keeps the review's.
+          const kept = typed.find((name) => name.label === row.label);
+          return kept ? { ...row, name: kept.name } : row;
+        });
   useEffect(() => {
     if (decided && draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   }, [decided, draftKey?.ownerId, draftKey?.name]);
   const rename = (label: string, name: string | null) => {
-    const next = typed.map((row) => (row.label === label ? { ...row, name } : row));
-    setDraft(next);
+    const next = draft.map((row) => (row.label === label ? { ...row, name } : row));
+    setTyped(next);
     if (draftKey) writeDraft(browserDrafts(), draftKey.ownerId, draftKey.name, next);
   };
-  const close = () => {
+  const end = () => {
     setOpen(false);
+    setTyped(null);
     if (draftKey) clearDraft(browserDrafts(), draftKey.ownerId, draftKey.name);
   };
   const [problems, setProblems] = useState<Record<string, string>>({});
@@ -152,16 +153,16 @@ export function SpeakerNamingDialog({
     const refused = await (action === "save" ? onSave : onSaveAndContinue)(rows);
     setSaving(null);
     if (refused) setRefusal(refused);
-    else close();
+    else end();
   }
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        if (!next) return close();
-        setOpen(true);
-        setDraft([...rows]);
+        // Esc, Stäng or a click beside only close: what was typed is there when it opens again.
+        setOpen(next);
+        if (!next) return;
         setProblems({});
         setRefusal(null);
       }}
@@ -265,7 +266,7 @@ export function SpeakerNamingDialog({
         <div className="flex flex-wrap justify-end gap-2 border-t border-border px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
           {decided && <p className="mr-auto self-center text-[14px] text-ink-soft">Namnen är redan sparade.</p>}
           <DialogClose asChild>
-            <Button type="button" variant="ghost">
+            <Button type="button" variant="ghost" onClick={end}>
               Avbryt
             </Button>
           </DialogClose>
