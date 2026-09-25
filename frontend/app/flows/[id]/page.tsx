@@ -316,11 +316,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   // Browser Back and Forward between the flow page and a run opened from its list show what the address names.
-  const addressRun = useRef<string | null>(null);
-  addressRun.current =
+  const shownRun = useRef<string | null>(null);
+  shownRun.current =
     run.kind === "idle" || run.kind === "submitting" ? null : run.kind === "opening" || run.kind === "unread" ? run.runId : run.run.id;
   useEffect(
-    () => followRunAddress(window, () => addressRun.current, (runId) => (runId ? resumeRun(runId) : onRunAgain())),
+    () => followRunAddress(window, () => shownRun.current, (runId) => (runId ? resumeRun(runId) : onRunAgain())),
     // Once: the page's own handlers keep no state of their own between renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
