@@ -363,6 +363,16 @@ export class RecordingStore {
     }
   }
 
+  /** Eneo will not use the live transcript: it is forgotten, and the request without it is the one kept. */
+  dropLiveTranscript(id: string, request: RunRequest): Promise<void> {
+    return this.update(id, (recording) => ({
+      ...recording,
+      state: "uploaded",
+      submission: request,
+      liveTranscriptId: null,
+    }));
+  }
+
   /** Drops a run request that can never be answered; the uploads stay, and the recording sealed. */
   forgetSubmission(id: string): Promise<void> {
     return this.update(id, (recording) => ({ ...recording, state: "uploading", submission: null }));

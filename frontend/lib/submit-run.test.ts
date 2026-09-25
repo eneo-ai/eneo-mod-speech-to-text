@@ -14,7 +14,7 @@ import {
 } from "./api";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
-import { openRecordingStore, type NewRecording, type RecordingStore } from "./recording-store";
+import { openRecordingStore, type NewRecording, type RecordingStore, type StoredRecording } from "./recording-store";
 import {
   retryFailedRun,
   startAgain,
@@ -844,6 +844,96 @@ test("the run body carries speaker_labels only when the page passes the choice",
   await submitRun(params(), deps);
   assert.equal(bodies[0].speaker_labels, false);
   assert.equal("speaker_labels" in bodies[1], false);
+});
+
+test("a live transcript goes beside a recording's one file, in the request a lost answer repeats; never beside two files", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  await store.keepLiveTranscript(recording.id, "transcript-1");
+  const eneo = fakeEneo();
+  const bodies: Json[] = [];
+  const upload: SubmitDeps["upload"] = async () => ({ id: "file-1" });
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload,
+      startRun: async (flowId, body, key) => {
+        bodies.push(body);
+        await eneo.startRun(flowId, body, key); // Eneo makes the run,
+        throw fetchFailed(); // and its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort();
+  await assert.rejects(sending);
+  t.mock.timers.reset();
+  assert.deepEqual(bodies[0].step_inputs, { "step-audio": { file_ids: ["file-1"], live_transcript_id: "transcript-1" } });
+
+  const run = await submitRecording(store, recording.id, params(), {
+    upload,
+    startRun: async (flowId, body, key) => {
+      bodies.push(body);
+      return eneo.startRun(flowId, body, key);
+    },
+  });
+  assert.equal(run.id, "run-1", "the run the first request made");
+  assert.deepEqual(bodies[1], bodies[0]);
+
+  const twoFiles: Json[] = [];
+  await submitRun(
+    params({ files: ["1", "2"].map((n) => ({ blob: new Blob([n]), filename: `del-${n}.webm` })), liveTranscriptId: "transcript-2" }),
+    { upload: async (_flowId, _stepId, blob) => ({ id: await blob.text() }), startRun: async (_flowId, body) => (twoFiles.push(body), queuedRun) },
+  );
+  assert.deepEqual(twoFiles[0].step_inputs, { "step-audio": { file_ids: ["1", "2"] } });
+});
+
+test("a live transcript Eneo will not use is forgotten, and the run is asked once more without it, under the same key", async () => {
+  const refusals = [
+    apiError(404, "flow_run_live_transcript_not_found"),
+    apiError(409, "flow_run_live_transcript_already_bound"),
+    apiError(400, "flow_run_live_transcript_requires_one_audio_file"),
+  ];
+  const withTranscript = { "step-audio": { file_ids: ["file-1"], live_transcript_id: "transcript-1" } };
+  for (const [refusal, repeated] of refusals.flatMap((refusal) => [[refusal, false], [refusal, true]] as const)) {
+    const what = `${refusal.code}${repeated ? ", on a repeat" : ""}`;
+    const store = await openRecordingStore({});
+    const recording = await stoppedRecording(store, [["a"]]);
+    await store.keepLiveTranscript(recording.id, "transcript-1");
+    if (repeated) {
+      // An earlier send asked with the transcript and never heard back.
+      await store.setPartFileId(recording.id, 0, "file-1");
+      await store.startSubmission(recording.id, {
+        body: { expected_flow_version: 3, step_inputs: withTranscript },
+        idempotencyKey: `flow-run:recording:${recording.id}`,
+      });
+    }
+    const asked: Array<[Json, string | undefined]> = [];
+    let kept: StoredRecording | null = null;
+    const run = await submitRecording(store, recording.id, params(), {
+      upload: async () => ({ id: "file-1" }),
+      startRun: async (_flowId, body, key) => {
+        asked.push([body, key]);
+        if (asked.length === 1) throw refusal;
+        kept = await store.get(recording.id);
+        return queuedRun;
+      },
+    });
+    assert.equal(run.id, "run-1", what);
+    assert.deepEqual(
+      asked.map(([body]) => body.step_inputs),
+      [withTranscript, { "step-audio": { file_ids: ["file-1"] } }],
+      what,
+    );
+    assert.equal(asked[1][1], asked[0][1], `${what}: the same key`);
+    const stored = kept as StoredRecording | null;
+    assert.deepEqual([stored?.submission?.body, stored?.liveTranscriptId], [asked[1][0], null], `${what}: kept before it is asked`);
+  }
 });
 
 test("a new run with the failed run's audio and details has a key of its own, apart from Eneo's retry", async () => {
