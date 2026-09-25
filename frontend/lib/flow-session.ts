@@ -223,15 +223,13 @@ export function availableModes(
   return modes;
 }
 
-/** Live text is a draft, so speaker labels only add waiting there unless asked for. */
+/** The flow's own default in every mode, Strömma included, until the person chooses. */
 export function speakerLabelsFor(
   option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
-  mode: InputMode | null,
   explicit: boolean | null,
 ): boolean | null {
   if (!option?.selectable) return null;
-  if (explicit !== null) return explicit;
-  return mode === "stromma" ? false : option.default;
+  return explicit ?? option.default;
 }
 
 /** Whether the run labels speakers: the switch where the flow offers one, else whether the flow requires it. */
@@ -825,11 +823,7 @@ export class FlowSession {
             : "setup",
       details: this.details,
       invalid: this.invalid,
-      speakerLabels: speakerLabelsFor(
-        this.contract?.transcription?.speaker_labels,
-        this.mode,
-        this.explicitSpeakerLabels,
-      ),
+      speakerLabels: speakerLabelsFor(this.contract?.transcription?.speaker_labels, this.explicitSpeakerLabels),
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
       live: this.live,

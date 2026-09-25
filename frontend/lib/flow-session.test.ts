@@ -264,26 +264,23 @@ test("the mode is fixed while recording and paused", async () => {
   assert.equal(session.getSnapshot().mode, "spela-in");
 });
 
-test("speaker labels: off by default in Strömma, the flow's default otherwise, and an explicit choice survives mode changes", async () => {
+test("speaker labels: the flow's default in every mode, Strömma included, and an explicit choice survives mode changes", async () => {
   const option = { selectable: true, required: false, default: true };
-  assert.equal(speakerLabelsFor(option, "stromma", null), false);
-  assert.equal(speakerLabelsFor(option, "spela-in", null), true);
-  assert.equal(speakerLabelsFor(option, "ladda-upp", null), true);
-  assert.equal(speakerLabelsFor(option, "stromma", true), true);
-  assert.equal(speakerLabelsFor({ ...option, selectable: false }, "spela-in", true), null, "not offered: nothing is sent");
-  assert.equal(speakerLabelsFor(null, "spela-in", null), null);
+  assert.equal(speakerLabelsFor(option, null), true);
+  assert.equal(speakerLabelsFor({ ...option, default: false }, null), false);
+  assert.equal(speakerLabelsFor(option, false), false);
+  assert.equal(speakerLabelsFor({ ...option, selectable: false }, true), null, "not offered: nothing is sent");
+  assert.equal(speakerLabelsFor(null, null), null);
 
   const { session } = await setup();
   session.setContract(audioContract());
-  assert.equal(session.getSnapshot().speakerLabels, false, "Strömma is selected first");
-  session.selectMode("spela-in");
-  assert.equal(session.getSnapshot().speakerLabels, true);
+  assert.equal(session.getSnapshot().mode, "stromma", "Strömma is selected first");
+  assert.equal(session.getSnapshot().speakerLabels, true, "the flow promises speaker labels, so Strömma keeps them");
   session.setSpeakerLabels(false);
   session.selectMode("ladda-upp");
   assert.equal(session.getSnapshot().speakerLabels, false, "the explicit choice is kept");
-  session.selectMode("stromma");
   session.setSpeakerLabels(true);
-  session.selectMode("spela-in");
+  session.selectMode("stromma");
   assert.equal(session.getSnapshot().speakerLabels, true);
 });
 
