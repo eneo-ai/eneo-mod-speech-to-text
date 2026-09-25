@@ -211,3 +211,32 @@ test("the pause's view takes the focus on its heading, so a screen reader starts
     await view.unmount();
   }
 });
+
+test("a control that removes or disables itself hands the focus on, never to the page", async (t) => {
+  eneo(t);
+  const view = await review(pause, { saves: true });
+  const press = (name: string) =>
+    view.act(async () => {
+      const control = button(view.container, name)!;
+      control.focus();
+      control.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  const focused = () => document.activeElement;
+  await press("Avvisa");
+  assert.ok(focused()?.matches('textarea[placeholder="Skäl …"]'), `Avvisa: the reason, not ${focused()?.tagName}`);
+  await press("Avbryt");
+  assert.ok(focused() === button(view.container, "Avvisa"), `Avbryt: back on Avvisa, not ${focused()?.tagName}`);
+
+  const redigera = button(view.container, "Redigera")!;
+  await press("Redigera");
+  assert.equal(redigera.isConnected, false, "Redigera is not reused as Avbryt, which a second Enter would press");
+  assert.ok(focused() === view.container.querySelector("textarea"), `Redigera: the text, not ${focused()?.tagName}`);
+  await press("Avbryt");
+  assert.ok(focused() === button(view.container, "Redigera"), `Avbryt: back on Redigera, not ${focused()?.tagName}`);
+  await press("Redigera");
+  await view.act(async () => type(view.container.querySelector("textarea")!, "Utkast som granskats."));
+  await press("Spara ändring");
+  assert.equal(view.container.querySelector("textarea"), null, "saved");
+  assert.ok(focused() === button(view.container, "Redigera"), `Spara ändring: on Redigera, not ${focused()?.tagName}`);
+});

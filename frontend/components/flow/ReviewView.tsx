@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type RefObject,
 } from "react";
 import { Button } from "@/components/ui/button";
 import ReactMarkdown from "react-markdown";
@@ -129,6 +130,22 @@ export function ReviewView({
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
   const fieldId = useId();
+
+  // A control that removes or disables itself hands the focus on once the view has changed, never to the page
+  // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
+  // edit's Avbryt back to Redigera.
+  const handOff = useRef<RefObject<HTMLElement | null> | null>(null);
+  const rejectButton = useRef<HTMLButtonElement>(null);
+  const reasonField = useRef<HTMLTextAreaElement>(null);
+  const editButton = useRef<HTMLButtonElement>(null);
+  const textField = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const target = handOff.current?.current;
+    // Not there yet, or still disabled while a request ends: a later render hands it on.
+    if (!target || (target as HTMLButtonElement).disabled) return;
+    handOff.current = null;
+    target.focus();
+  });
 
   // A kept edit the approved pause holds is saved, so it is no draft any more (and no reason to ask before leaving).
   useEffect(() => {
@@ -318,6 +335,7 @@ export function ReviewView({
       const saved = await onSaveEdit(checkpoint, pendingEditedValue());
       // Refused (a lost login, a newer revision): the edit stays open, and the text kept, for Spara ändring again.
       if ("error" in saved) return;
+      handOff.current = editButton;
       setEditing(false);
       draft.drop(sent);
     }, undefined);
@@ -342,6 +360,7 @@ export function ReviewView({
         Ange en kort motivering. Körningen kommer att avbrytas.
       </p>
       <textarea
+        ref={reasonField}
         value={rejectReason}
         onChange={(e) => setRejectReason(e.target.value)}
         rows={3}
@@ -355,6 +374,7 @@ export function ReviewView({
           type="button"
           variant="ghost"
           onClick={() => {
+            handOff.current = rejectButton;
             setShowReject(false);
             setRejectReason("");
           }}
@@ -377,7 +397,16 @@ export function ReviewView({
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
         </p>
       ) : (
-        <Button type="button" variant="ghost" onClick={() => setShowReject(true)} disabled={busy || showReject}>
+        <Button
+          ref={rejectButton}
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            handOff.current = reasonField;
+            setShowReject(true);
+          }}
+          disabled={busy || showReject}
+        >
           Avvisa
         </Button>
       )}
@@ -538,6 +567,7 @@ export function ReviewView({
 
           {editable && editing ? (
             <textarea
+              ref={textField}
               value={text}
               readOnly={busy}
               onChange={(e) => editText(e.target.value)}
@@ -557,8 +587,10 @@ export function ReviewView({
               {editing ? (
                 <>
                   <button
+                    key="avbryt"
                     type="button"
                     onClick={() => {
+                      handOff.current = editButton;
                       setText(initialText);
                       setEditing(false);
                       draft.drop();
@@ -580,8 +612,13 @@ export function ReviewView({
                 </>
               ) : (
                 <button
+                  key="redigera"
+                  ref={editButton}
                   type="button"
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    handOff.current = textField;
+                    setEditing(true);
+                  }}
                   disabled={busy}
                   className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors coarse:min-h-11"
                 >

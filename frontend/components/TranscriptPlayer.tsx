@@ -915,6 +915,14 @@ function TurnBlock({
   const several = turn.parts.length > 1;
   const choosable = canEdit && several && choosing;
   const editingHere = turn.parts.some((part) => part.segmentIndex === editingIndex);
+  // Closed from inside (Enter, Esc, Spara, Avbryt), the editor leaves the focus nowhere: it goes back to the passage's
+  // Rätta. Left for another control, the focus stays there.
+  const correct = useRef<HTMLButtonElement>(null);
+  const wasEditing = useRef(false);
+  useEffect(() => {
+    if (wasEditing.current && !editingHere && (!document.activeElement || document.activeElement === document.body)) correct.current?.focus();
+    wasEditing.current = editingHere;
+  }, [editingHere]);
 
   const picker = (trigger: React.ReactNode) => (
     <SpeakerPicker
@@ -1115,6 +1123,7 @@ function TurnBlock({
             // After the passage, never mid-sentence, and on every passage for mouse and touch alike: an action
             // that appears only under the pointer is one a mouse user never learns exists.
             <button
+              ref={correct}
               type="button"
               aria-label={several ? (choosing ? `Klar med repliken från ${clock}` : `Rätta repliken från ${clock}: välj mening`) : `Rätta repliken från ${clock}`}
               aria-expanded={several ? choosing : undefined}

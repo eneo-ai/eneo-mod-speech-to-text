@@ -106,6 +106,31 @@ test("transcript: Tab to Spara and activate it saves once; leaving the editor sa
   outside.remove();
 });
 
+test("transcript: closing a line's editor from inside it gives the focus back to that passage's Rätta", async () => {
+  for (const close of ["Enter", "Escape", "Spara", "Avbryt"]) {
+    const { view, editor } = await mountEditableTranscript(() => undefined);
+    await view.act(async () => {
+      if (close === "Enter" || close === "Escape") editor.dispatchEvent(new window.KeyboardEvent("keydown", { key: close, bubbles: true }));
+      else {
+        button(view.container, close)!.focus();
+        button(view.container, close)!.click();
+      }
+    });
+    assert.equal(view.container.querySelector("textarea"), null, `${close} closes the editor`);
+    const focused = document.activeElement;
+    assert.ok(focused === button(view.container, "Rätta repliken från 0:00"), `${close}: focus on ${focused?.tagName} "${focused?.textContent}"`);
+    await view.unmount();
+  }
+  // Leaving the editor for another control keeps the focus there.
+  const outside = document.createElement("button");
+  document.body.append(outside);
+  const { view } = await mountEditableTranscript(() => undefined);
+  await view.act(async () => outside.focus());
+  assert.ok(document.activeElement === outside);
+  await view.unmount();
+  outside.remove();
+});
+
 test("a choice field keeps every option Eneo sends, also one that reads like 'no choice'", async () => {
   const { createElement } = await import("react");
   const { DetailsForm } = await import("../components/flow/DetailsForm");
