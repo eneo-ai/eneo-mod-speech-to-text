@@ -150,7 +150,8 @@ function oversized(maxBytes: number, inputFormat: string | undefined): Problem {
 /** Known only once the browser has read the file's length; Eneo refuses it too, but only after the upload. */
 function tooLong(maxSeconds: number): Problem {
   return {
-    title: `Filen är längre än flödet tar emot (högst ${formatDuration(maxSeconds * 1000)}).`,
+    // Kept on one line like a size: "5 h", never "5" and "h" apart.
+    title: `Filen är längre än flödet tar emot (högst ${formatDuration(maxSeconds * 1000).replace(/ /g, "\u00a0")}).`,
     detail: "Välj en kortare fil eller dela upp den.",
   };
 }

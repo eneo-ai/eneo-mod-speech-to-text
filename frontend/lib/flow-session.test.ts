@@ -978,7 +978,7 @@ test("Ladda upp refuses an empty file, and a file longer than the flow takes onc
   session.chooseFile(new File(["audio"], "heldag.mp3", { type: "audio/mpeg" }));
   await until(() => session.getSnapshot().problem !== null, "the refusal");
   assert.deepEqual(session.getSnapshot().problem, {
-    title: "Filen är längre än flödet tar emot (högst 5 h).",
+    title: "Filen är längre än flödet tar emot (högst 5\u00a0h).",
     detail: "Välj en kortare fil eller dela upp den.",
   });
   assert.equal(session.getSnapshot().file?.filename, "mote.mp3", "the earlier file stays");

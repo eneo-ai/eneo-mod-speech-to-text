@@ -34,7 +34,7 @@ export function UploadPanel({
   const formats = acceptedFormats(step?.accepted_mimetypes);
   const maxima = [
     step?.max_file_size_bytes ? formatBytes(step.max_file_size_bytes) : null,
-    step?.max_duration_seconds ? formatDuration(step.max_duration_seconds * 1000) : null,
+    step?.max_duration_seconds ? formatDuration(step.max_duration_seconds * 1000).replace(/ /g, "\u00a0") : null,
   ].filter(Boolean);
   const limit = maxima.length > 0 ? `högst ${maxima.join(" och ")}` : null;
   const takes = [formats, limit].filter(Boolean).join(", ");
