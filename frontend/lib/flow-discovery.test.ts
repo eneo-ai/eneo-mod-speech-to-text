@@ -9,7 +9,7 @@ import {
   discoverConfiguredFlows,
   discoverFlows,
   groupBySpace,
-  listCreateLabel,
+  listCreateLabels,
 } from "./flow-discovery";
 
 const flow = (id: string, spaceId: string, spaceName: string): FlowSparsePublic => ({
@@ -155,9 +155,11 @@ test("an unsent recording's action on the flow list follows how its flow gives t
     { ...flow("pdf", "space-a", "Nämnden"), delivery: "artifact" },
     flow("older", "space-a", "Nämnden"),
   ]);
-  assert.equal(listCreateLabel(groups, "text"), "Skapa text");
-  assert.equal(listCreateLabel(groups, "pdf"), "Skapa dokument");
-  assert.equal(listCreateLabel(groups, "older"), "Skapa dokument", "an Eneo whose list does not say: as before");
-  assert.equal(listCreateLabel(groups, "gone"), "Skapa dokument", "a flow no longer listed");
-  assert.equal(listCreateLabel(null, "text"), "Skapa dokument", "while the list is read");
+  // One lookup for the list, asked once per unsent recording.
+  const label = listCreateLabels(groups);
+  assert.equal(label("text"), "Skapa text");
+  assert.equal(label("pdf"), "Skapa dokument");
+  assert.equal(label("older"), "Skapa dokument", "an Eneo whose list does not say: as before");
+  assert.equal(label("gone"), "Skapa dokument", "a flow no longer listed");
+  assert.equal(listCreateLabels(null)("text"), "Skapa dokument", "while the list is read");
 });

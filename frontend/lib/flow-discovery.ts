@@ -57,11 +57,12 @@ export async function discoverFlows({
 }
 
 /**
- * The action on a listed flow's unsent recording, by how the flow gives its result, as on the flow page. A flow the
- * list does not hold, or a list that does not say (an older Eneo), keeps "Skapa dokument".
+ * The action on a listed flow's unsent recordings, by how the flow gives its result, as on the flow page: one lookup
+ * for the list. A flow the list does not hold, or a list that does not say (an older Eneo), keeps "Skapa dokument".
  */
-export function listCreateLabel(groups: readonly FlowSpaceGroup[] | null, flowId: string): string {
-  return createActionLabel(makesText(groups?.flatMap((group) => group.flows).find((flow) => flow.id === flowId)));
+export function listCreateLabels(groups: readonly FlowSpaceGroup[] | null): (flowId: string) => string {
+  const byFlow = new Map(groups?.flatMap((group) => group.flows.map((flow) => [flow.id, flow] as const)));
+  return (flowId) => createActionLabel(makesText(byFlow.get(flowId)));
 }
 
 export const FLOW_LIST_NOT_CONFIGURED =
