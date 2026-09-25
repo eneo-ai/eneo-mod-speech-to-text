@@ -53,6 +53,8 @@ export interface SubmitRequest {
   payload: Record<string, unknown>;
   /** Sent only when the contract lets the run choose. */
   speakerLabels: boolean | undefined;
+  /** The run's upper bound on the speakers, as max_speakers; only when the setup asks for it and one is given. */
+  maxSpeakers: number | undefined;
 }
 
 export interface SessionHandlers {
@@ -209,6 +211,8 @@ export interface SessionSnapshot {
   invalid: string[];
   /** The effective choice; null when the flow does not let the run choose. */
   speakerLabels: boolean | null;
+  /** "Antal talare" as typed; null when the setup does not ask (labels off, or the flow's form asks, or none can). */
+  speakerCount: string | null;
   /** The recording being captured, or the stopped one that is ready. */
   recording: StoredRecording | null;
   /** The file chosen in Ladda upp. */
@@ -259,6 +263,22 @@ export function storageLine(persistent: boolean | null): string {
   return persistent
     ? "Inspelningen sparas på enheten medan du spelar in."
     : "Låt sidan vara öppen under inspelningen.";
+}
+
+/** Whether the setup asks "Antal talare": the run labels speakers, and the flow's own form asks no count. */
+function asksSpeakerCount(transcription: FlowTranscriptionContract | null | undefined, choice: boolean | null): boolean {
+  return transcription?.max_speakers?.form_field === null && labelsSpeakers(transcription.speaker_labels, choice);
+}
+
+// ponytail: a sensible ceiling for a meeting, not Eneo's (which takes any count); raise it if a larger one is asked for.
+export const MAX_SPEAKER_COUNT = 20;
+
+/** "Antal talare" as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1 to 20. */
+export function readSpeakerCount(text: string | null): number | undefined | "invalid" {
+  const trimmed = text?.trim() ?? "";
+  if (trimmed === "") return undefined;
+  const count = Number(trimmed);
+  return /^\d+$/.test(trimmed) && count >= 1 && count <= MAX_SPEAKER_COUNT ? count : "invalid";
 }
 
 export function primaryActionLabel(mode: InputMode, hasFile: boolean): string {
@@ -445,6 +465,7 @@ export class FlowSession {
   private mode: InputMode | null = null;
   private details: Record<string, DetailValue> = {};
   private explicitSpeakerLabels: boolean | null = null;
+  private speakerCountText = "";
   private starting = false;
   private ready: StoredRecording | null = null;
   // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
@@ -538,6 +559,11 @@ export class FlowSession {
     this.emit();
   }
 
+  setSpeakerCount(text: string): void {
+    this.speakerCountText = text;
+    this.emit();
+  }
+
   setSpeakerLabels(on: boolean): void {
     this.explicitSpeakerLabels = on;
     this.emit();
@@ -546,7 +572,7 @@ export class FlowSession {
   /** "Starta inspelning" / "Starta strömning": the microphone is asked for here. */
   async start(): Promise<void> {
     const { phase, mode } = this.snapshot;
-    if (phase !== "setup" || (mode !== "spela-in" && mode !== "stromma")) return;
+    if (phase !== "setup" || (mode !== "spela-in" && mode !== "stromma") || this.countInvalid()) return;
     const step = this.inputStep();
     const mimeType = this.options.pickMimeType(step?.accepted_mimetypes);
     if (!step || !mimeType) {
@@ -652,7 +678,7 @@ export class FlowSession {
 
   /** An unsent recording from the list, made ready to become a document. */
   adopt(recording: StoredRecording): void {
-    if (this.snapshot.phase !== "setup" && this.snapshot.phase !== "ready") return;
+    if ((this.snapshot.phase !== "setup" && this.snapshot.phase !== "ready") || this.countInvalid()) return;
     this.ready = recording;
     this.problem = null;
     this.emit();
@@ -670,9 +696,11 @@ export class FlowSession {
       this.emit();
       return false;
     }
-    const { phase, mode, fileChecking } = this.snapshot;
+    const { phase, mode, fileChecking, speakerCount } = this.snapshot;
     // Ladda upp: a file whose length is still being read is not sent; the action says it is checking.
     if (phase === "setup" && mode === "ladda-upp" && fileChecking) return false;
+    const maxSpeakers = readSpeakerCount(speakerCount);
+    if (maxSpeakers === "invalid") return false;
     const input: SubmitRequest["input"] =
       phase === "ready" && this.ready
         ? { kind: "recording", recording: this.ready }
@@ -702,6 +730,7 @@ export class FlowSession {
         input,
         payload: detailsPayload(fields, this.details),
         speakerLabels: this.snapshot.speakerLabels ?? undefined,
+        maxSpeakers,
       });
     } catch (error) {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
@@ -733,7 +762,7 @@ export class FlowSession {
    * over and records on in a new part, so the meeting still becomes one run.
    */
   async continueCutOff(recording: StoredRecording): Promise<void> {
-    if (this.snapshot.phase !== "setup") return;
+    if (this.snapshot.phase !== "setup" || this.countInvalid()) return;
     await this.recordOn(recording, (id, limits) => this.capture.adopt(id, limits));
   }
 
@@ -776,6 +805,14 @@ export class FlowSession {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A count that is no count is put right in setup, next to its error: the setup's ways to a recording refuse it,
+   * since the field is gone once there is one, and it is never sent.
+   */
+  private countInvalid() {
+    return readSpeakerCount(this.snapshot.speakerCount) === "invalid";
   }
 
   private draftName() {
@@ -935,6 +972,8 @@ export class FlowSession {
     const capture = this.capture.getSnapshot();
     const capturing =
       capture.status === "recording" || capture.status === "paused" || capture.status === "interrupted";
+    const transcription = this.contract?.transcription;
+    const speakerLabels = speakerLabelsFor(transcription?.speaker_labels, this.explicitSpeakerLabels);
     return {
       modes: this.modes,
       mode: this.mode,
@@ -947,7 +986,8 @@ export class FlowSession {
             : "setup",
       details: this.details,
       invalid: this.invalid,
-      speakerLabels: speakerLabelsFor(this.contract?.transcription?.speaker_labels, this.explicitSpeakerLabels),
+      speakerLabels,
+      speakerCount: asksSpeakerCount(transcription, speakerLabels) ? this.speakerCountText : null,
       recording: capturing ? capture.recording : this.ready,
       file: this.file,
       // The latest pick while its length is read: the file shown is not yet the last one that fitted.

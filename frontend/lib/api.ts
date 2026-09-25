@@ -257,6 +257,11 @@ export type LiveTranscriptionUnavailableReason =
 export interface FlowTranscriptionContract {
   live: { available: boolean; reason: LiveTranscriptionUnavailableReason | null };
   speaker_labels: { selectable: boolean; required: boolean; default: boolean };
+  /**
+   * Finns när en transkriptionstjänst märker upp talare: körningen får skicka `max_speakers`, ett heltal ≥ 1
+   * som övre gräns. `form_field` namnger flödets eget fält som redan frågar efter antalet; då frågar appen inte igen.
+   */
+  max_speakers?: { form_field: string | null } | null;
 }
 
 /**

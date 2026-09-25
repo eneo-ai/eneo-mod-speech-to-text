@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import type { FormField } from "@/lib/api";
-import type { DetailValue, FlowSession } from "@/lib/flow-session";
+import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
 
 // Radix Select takes no empty value, so its items carry keys of their own:
 // "none" for no choice and "opt:<n>" for the flow's n-th option, which no
@@ -149,5 +149,45 @@ export function DetailsForm({
           );
         })}
     </FieldGroup>
+  );
+}
+
+/** The id "Antal talare" carries, so a refused start can move focus to it. */
+export const SPEAKER_COUNT_ID = "antal-talare";
+
+/** "Antal talare": an upper bound on the speakers the run tells apart; left empty, Eneo decides. */
+export function SpeakerCountField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const helpId = `${SPEAKER_COUNT_ID}-hjalp`;
+  const errorId = `${SPEAKER_COUNT_ID}-fel`;
+  const invalid = readSpeakerCount(value) === "invalid";
+  return (
+    <Field data-invalid={invalid || undefined} className="gap-2">
+      <FieldLabel htmlFor={SPEAKER_COUNT_ID} className="gap-1 text-[15px] font-semibold text-ink">
+        Antal talare <span className="font-normal text-ink-soft">(om du vet)</span>
+      </FieldLabel>
+      <Input
+        id={SPEAKER_COUNT_ID}
+        name={SPEAKER_COUNT_ID}
+        autoComplete="off"
+        type="number"
+        // A phone's number keyboard, not the one with letters and punctuation.
+        inputMode="numeric"
+        min={1}
+        max={MAX_SPEAKER_COUNT}
+        step={1}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}
+        aria-invalid={invalid || undefined}
+        // Room for two digits: the field makes each child full width, so this caps it.
+        className="max-w-28 rounded-xl text-[16px]"
+      />
+      <FieldDescription id={helpId} className="text-[13px]">
+        Används som övre gräns. Lämna tomt om du är osäker.
+      </FieldDescription>
+      {invalid && (
+        <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>
+      )}
+    </Field>
   );
 }

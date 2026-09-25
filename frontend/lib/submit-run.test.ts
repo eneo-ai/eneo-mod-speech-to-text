@@ -846,6 +846,58 @@ test("the run body carries speaker_labels only when the page passes the choice",
   assert.equal("speaker_labels" in bodies[1], false);
 });
 
+test("the run body carries max_speakers only when the page passes a count, and a file's key covers it", async () => {
+  const asked: Array<{ body: Json; key: string }> = [];
+  const deps: SubmitDeps = {
+    upload: async () => ({ id: "file-1" }),
+    startRun: async (_flowId, body, key) => {
+      asked.push({ body, key: key! });
+      return queuedRun;
+    },
+  };
+  const files = [{ blob: new Blob(["a"]), filename: "mote.webm" }];
+  await submitRun(params({ files, maxSpeakers: 3 }), deps);
+  await submitRun(params({ files, maxSpeakers: 3 }), deps);
+  await submitRun(params({ files }), deps);
+  assert.equal(asked[0].body.max_speakers, 3);
+  assert.equal("max_speakers" in asked[2].body, false, "no count: automatic, or the flow's own field");
+  assert.equal(asked[1].key, asked[0].key, "the same request is the same run");
+  assert.notEqual(asked[2].key, asked[0].key, "another count is another run");
+});
+
+test("a recording's count is kept in its stored request, and the repeat after a reload sends it exactly", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const eneo = fakeEneo();
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ maxSpeakers: 3, signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload: async () => ({ id: "file-1" }),
+      startRun: async (flowId, body, key) => {
+        await eneo.startRun(flowId, body, key); // Eneo makes the run,
+        throw fetchFailed(); // and its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort();
+  await assert.rejects(sending);
+  assert.equal((await store.get(recording.id))?.submission?.body.max_speakers, 3, "stored as it was asked");
+
+  // After a reload the field starts empty: the stored request goes again under the recording's key, count and all.
+  const run = await submitRecording(store, recording.id, params(), {
+    upload: async () => assert.fail("nothing is uploaded again"),
+    startRun: eneo.startRun,
+  });
+  assert.equal(run.id, "run-1", "Eneo's run for it, not an idempotency conflict");
+  assert.equal(eneo.runs.size, 1);
+});
+
 test("a live transcript goes beside a recording's one file, in the request a lost answer repeats; never beside two files", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const store = await openRecordingStore({});

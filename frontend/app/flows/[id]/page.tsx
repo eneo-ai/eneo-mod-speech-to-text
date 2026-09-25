@@ -253,7 +253,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /** Uploads the input and starts the run; throws, with the page back in its input state, when it could not. */
-  async function sendInput({ input: runInput, payload, speakerLabels }: SubmitRequest) {
+  async function sendInput({ input: runInput, payload, speakerLabels, maxSpeakers }: SubmitRequest) {
     if (!contract) throw new Error("Flödet har inte laddats klart.");
     setRunError(null);
     setStartedWith({ runId: null, input: payload });
@@ -269,6 +269,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         stepId: selectRuntimeInputStep(contract)?.step_id ?? null,
         inputPayload: payload,
         speakerLabels,
+        maxSpeakers,
         online: onlineStatus,
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>

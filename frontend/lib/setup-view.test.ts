@@ -4,7 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { ClassificationNote } from "../components/flow/ClassificationNote";
-import { DetailsForm } from "../components/flow/DetailsForm";
+import { DetailsForm, SpeakerCountField } from "../components/flow/DetailsForm";
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
 import type { FlowSecurityClassification, FormField } from "./api";
@@ -99,6 +99,24 @@ test("a required detail says so to a screen reader before sending, and a number 
   assert.doesNotMatch(control("detalj-talare"), /aria-required/);
   assert.match(control("detalj-talare"), /inputMode="numeric"|inputmode="numeric"/);
   assert.doesNotMatch(control("detalj-arende"), /inputmode/i);
+});
+
+test("Antal talare is a light number field with its help below, and a count that is no count says so at the field", () => {
+  const field = (value: string) => renderToStaticMarkup(createElement(SpeakerCountField, { value, onChange: noop }));
+  const empty = field("");
+  assert.match(empty, /<label[^>]*for="antal-talare"[^>]*>Antal talare <span[^>]*>\(om du vet\)<\/span><\/label>/);
+  const input = empty.match(/<input[^>]*id="antal-talare"[^>]*>/)?.[0] ?? "";
+  assert.match(input, /type="number"/);
+  assert.match(input, /inputmode="numeric"/i, "a phone's number keyboard");
+  assert.match(input, /min="1"/);
+  assert.match(input, /aria-describedby="antal-talare-hjalp"/);
+  assert.doesNotMatch(input, /aria-invalid/);
+  assert.match(empty, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
+  assert.doesNotMatch(empty, /role="alert"/);
+
+  const wrong = field("25");
+  assert.match(wrong, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-fel"[^>]*aria-invalid="true"/);
+  assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</);
 });
 
 test("the information row is the flow's classification as Eneo sends it, and there is none without one", () => {

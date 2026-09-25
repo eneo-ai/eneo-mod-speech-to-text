@@ -142,3 +142,10 @@ test("a request our own login's end refused is read after the new login, so it s
   assert.equal(advice.message, "Inloggningen hade gått ut och det här skickades inte. Försök igen.");
   assert.equal(advice.retry, true);
 });
+
+test("a speaker count the flow can no longer use says so calmly, with the way on", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const advice = errorAdvice(eneo(422, "flow_run_max_speakers_not_available", "max_speakers requires speaker labels."));
+  assert.equal(advice.message, "Flödet märker inte längre upp talare, så antalet talare kan inte användas. Ladda om sidan och försök igen.");
+  assert.deepEqual([advice.retry, advice.ownerMustFix], [false, false]);
+});

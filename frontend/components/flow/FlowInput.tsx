@@ -9,7 +9,7 @@ import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/
 import { Spinner } from "@/components/ui/spinner";
 import { Switch } from "@/components/ui/switch";
 import { FlowAside } from "@/components/flow/FlowAside";
-import { createDocument, DetailsForm } from "@/components/flow/DetailsForm";
+import { createDocument, DetailsForm, SPEAKER_COUNT_ID, SpeakerCountField } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { FlowTopBar } from "@/components/flow/FlowTopBar";
 import { FLOW_GRID, FRAME } from "@/components/frame";
@@ -26,7 +26,14 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
-import { browserStorage, labelsSpeakers, primaryActionLabel, storageLine, type SessionPhase } from "@/lib/flow-session";
+import {
+  browserStorage,
+  labelsSpeakers,
+  primaryActionLabel,
+  readSpeakerCount,
+  storageLine,
+  type SessionPhase,
+} from "@/lib/flow-session";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -318,7 +325,12 @@ function SetupWorkspace({
   const optionalFile = step?.required === false;
   const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
-  const onContinue = modes.includes("spela-in") ? (recording: StoredRecording) => void session.continueCutOff(recording) : undefined;
+  // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
+  const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
+  const focusCount = () => document.getElementById(SPEAKER_COUNT_ID)?.focus();
+  const onContinue = modes.includes("spela-in")
+    ? (recording: StoredRecording) => (countInvalid ? focusCount() : void session.continueCutOff(recording))
+    : undefined;
   // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
   const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
   const label =
@@ -329,16 +341,45 @@ function SetupWorkspace({
         : primaryActionLabel(mode, file != null);
 
   function primary() {
-    if (recordingMode) void session.start();
+    if (countInvalid) focusCount();
+    else if (recordingMode) void session.start();
     else if (mode === "ladda-upp" && !file && !optionalFile) fileInput.current?.click();
     else void createDocument(session);
   }
+
+  const speakerChoice =
+    speakerOption?.selectable && snapshot.speakerLabels !== null ? (
+      <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
+        <FieldContent className="gap-0.5">
+          <FieldLabel htmlFor="talare" className="text-[17px] font-semibold text-ink">
+            Märk upp talare
+          </FieldLabel>
+          <FieldDescription id="talare-hjalp" className="text-[15px]">
+            Tar längre tid efter inspelningen.
+          </FieldDescription>
+        </FieldContent>
+        <Switch
+          id="talare"
+          checked={snapshot.speakerLabels}
+          onCheckedChange={(on) => session.setSpeakerLabels(on)}
+          aria-describedby="talare-hjalp"
+          // A finger's hit area is 44 px tall: 12 px above and below the switch's padding box, over its own 10.
+          className="coarse:after:-inset-y-3"
+        />
+      </Field>
+    ) : speakerOption?.required || reviewsSpeakers ? (
+      <p className="text-[15px] text-ink-soft">
+        Flödet märker upp talare.
+        {reviewsSpeakers && " Efter transkriberingen bekräftar du vem som är vem."}
+      </p>
+    ) : null;
 
   return (
     <div className="flex w-full flex-col gap-6">
       <UnsentRecordings
         recordings={unsentRecordings}
         onSend={(recording) => {
+          if (countInvalid) return focusCount();
           session.adopt(recording);
           void createDocument(session);
         }}
@@ -354,31 +395,15 @@ function SetupWorkspace({
         </h2>
       )}
 
-      {speakerOption?.selectable && snapshot.speakerLabels !== null ? (
-        <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
-          <FieldContent className="gap-0.5">
-            <FieldLabel htmlFor="talare" className="text-[17px] font-semibold text-ink">
-              Märk upp talare
-            </FieldLabel>
-            <FieldDescription id="talare-hjalp" className="text-[15px]">
-              Tar längre tid efter inspelningen.
-            </FieldDescription>
-          </FieldContent>
-          <Switch
-            id="talare"
-            checked={snapshot.speakerLabels}
-            onCheckedChange={(on) => session.setSpeakerLabels(on)}
-            aria-describedby="talare-hjalp"
-            // A finger's hit area is 44 px tall: 12 px above and below the switch's padding box, over its own 10.
-            className="coarse:after:-inset-y-3"
-          />
-        </Field>
-      ) : speakerOption?.required || reviewsSpeakers ? (
-        <p className="text-[15px] text-ink-soft">
-          Flödet märker upp talare.
-          {reviewsSpeakers && " Efter transkriberingen bekräftar du vem som är vem."}
-        </p>
-      ) : null}
+      {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
+      {(speakerChoice || snapshot.speakerCount !== null) && (
+        <div className="flex flex-col gap-4">
+          {speakerChoice}
+          {snapshot.speakerCount !== null && (
+            <SpeakerCountField value={snapshot.speakerCount} onChange={(text) => session.setSpeakerCount(text)} />
+          )}
+        </div>
+      )}
 
       {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
 

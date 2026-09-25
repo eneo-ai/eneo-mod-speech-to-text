@@ -14,11 +14,13 @@ import {
   fileAccept,
   lastUsedFlow,
   primaryActionLabel,
+  readSpeakerCount,
   speakerLabelsFor,
   storageLine,
   withLastUsedFirst,
   type KeyValueStorage,
   type LiveClient,
+  type SubmitRequest,
 } from "./flow-session";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -306,6 +308,77 @@ test("speaker labels: the flow's default in every mode, Strömma included, and a
   session.setSpeakerLabels(true);
   session.selectMode("stromma");
   assert.equal(session.getSnapshot().speakerLabels, true);
+});
+
+/** A flow whose transcription service labels speakers, and whose form asks no count of its own. */
+const countContract = (transcription: Partial<NonNullable<RunContract["transcription"]>> = {}) =>
+  audioContract({
+    transcription: {
+      live: { available: true, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      max_speakers: { form_field: null },
+      ...transcription,
+    },
+  });
+
+test("Antal talare is asked only when the flow's form asks no count and the run labels speakers", async () => {
+  const { session } = await setup();
+  session.setContract(countContract());
+  assert.equal(session.getSnapshot().speakerCount, "", "labels on by the flow's default: asked, and empty");
+  session.setSpeakerLabels(false);
+  assert.equal(session.getSnapshot().speakerCount, null, "Märk upp talare off: not asked");
+  session.setSpeakerLabels(true);
+  session.setSpeakerCount("4");
+  assert.equal(session.getSnapshot().speakerCount, "4");
+  session.setContract(countContract({ max_speakers: { form_field: "antal_talare" } }));
+  assert.equal(session.getSnapshot().speakerCount, null, "the flow's own form asks for the count");
+  session.setContract(countContract({ max_speakers: null }));
+  assert.equal(session.getSnapshot().speakerCount, null, "no service labels speakers");
+  session.setContract(audioContract());
+  assert.equal(session.getSnapshot().speakerCount, null, "an Eneo that offers no max_speakers");
+  session.setContract(countContract({ speaker_labels: { selectable: false, required: true, default: true } }));
+  assert.equal(session.getSnapshot().speakerCount, "4", "a flow that requires labels asks too, with what was typed");
+});
+
+test("Antal talare takes a whole number from 1 to 20, or nothing", () => {
+  for (const [text, count] of [["", undefined], ["  ", undefined], ["1", 1], [" 4 ", 4], ["20", 20]] as const) {
+    assert.equal(readSpeakerCount(text), count, JSON.stringify(text));
+  }
+  for (const text of ["0", "21", "2.5", "-1", "1e1", "tre"]) assert.equal(readSpeakerCount(text), "invalid", text);
+  assert.equal(readSpeakerCount(null), undefined, "not asked: nothing");
+});
+
+test("a count goes with the run as maxSpeakers; empty or not asked sends none, and one that is no count starts and sends nothing", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(countContract());
+  session.selectMode("spela-in");
+  session.setSpeakerCount("25");
+  await session.start();
+  assert.equal(session.getSnapshot().phase, "setup", "never a recording whose count cannot be sent or put right");
+  session.setSpeakerCount("4");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[0].maxSpeakers, 4);
+
+  const upload = () => session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  session.selectMode("ladda-upp");
+  upload();
+  session.setSpeakerCount("0");
+  assert.equal(await session.createDocument(), false);
+  assert.equal(sent.length, 1, "a count that is no count is never sent");
+  session.setSpeakerCount("");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[1].maxSpeakers, undefined, "empty: automatic");
+  upload();
+  session.setSpeakerCount("3");
+  session.setSpeakerLabels(false);
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
 });
 
 test("details start from the flow's defaults, and a refreshed contract keeps the compatible ones", async () => {

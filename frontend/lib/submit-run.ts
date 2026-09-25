@@ -128,6 +128,8 @@ export interface SubmitParams extends RetryOptions {
   idempotencyKey?: string;
   /** The run's speaker-label choice; only when the contract makes it selectable. */
   speakerLabels?: boolean;
+  /** An upper bound on the speakers, as max_speakers; left out, Eneo uses the flow's own count field or decides. */
+  maxSpeakers?: number;
   /** Eneo's stored live transcript of the one file, used instead of transcribing it again; never beside more files. */
   liveTranscriptId?: string | null;
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
@@ -196,6 +198,7 @@ export async function submitRun(
   }
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
   if (params.speakerLabels !== undefined) body.speaker_labels = params.speakerLabels;
+  if (params.maxSpeakers !== undefined) body.max_speakers = params.maxSpeakers;
   const key =
     params.idempotencyKey ??
     (await deriveRunIdempotencyKey({
