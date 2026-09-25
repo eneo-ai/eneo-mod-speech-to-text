@@ -8,7 +8,7 @@
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
-import { backLink, isLaptop, open, run, setup, STATES } from "./screens";
+import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
   "signin-access-code",
@@ -247,4 +247,15 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
+});
+
+test("a wrong access code is said, and focus stays in the field to type it again", async ({ page }) => {
+  await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } }));
+  await signIn(page, "access_code");
+  const field = page.getByLabel("Åtkomstkod");
+  await field.fill("fel-kod");
+  await field.press("Enter");
+  await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
+  // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
+  await expect(field).toBeFocused();
 });

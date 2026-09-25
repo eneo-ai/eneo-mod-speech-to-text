@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -22,6 +22,7 @@ export default function LoginPage() {
   const [checking, setChecking] = useState(true);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [accessCode, setAccessCode] = useState("");
+  const codeField = useRef<HTMLInputElement>(null);
   // Once the check is done: the layout's own title arrives after the first render and would replace an earlier one.
   useDocumentTitle(checking ? "Tal till text" : "Logga in · Tal till text");
 
@@ -44,6 +45,11 @@ export default function LoginPage() {
         setChecking(false);
       });
   }, [router]);
+
+  // The field is locked while a code is checked, which drops focus: a refused code gives it back, to type again.
+  useEffect(() => {
+    if (authError && !submitting) codeField.current?.focus();
+  }, [authError, submitting]);
 
   function startLogin() {
     setSubmitting(true);
@@ -124,6 +130,7 @@ export default function LoginPage() {
                 <div className="space-y-2">
                   <Label htmlFor="access-code">Åtkomstkod</Label>
                   <Input
+                    ref={codeField}
                     id="access-code"
                     type="password"
                     value={accessCode}
