@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } from "./api";
-import { finishedRun, runElapsed, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel } from "./run-progress";
+import { finishedRun, runElapsed, runOutcome, runStage, runStatusLabel, runSteps, stepStateLabel, streamedRun } from "./run-progress";
 
 const node = (order: number, label: string, extra: Partial<FlowGraphNode> = {}): FlowGraphNode => ({
   id: `step-${order}`,
@@ -106,6 +106,26 @@ test("the stage line names what happens now, and waits truthfully between steps"
   assert.equal(
     runStage(runSteps(graph("completed", "completed", "completed", "completed"), { status: "running" }), "running"),
     "Slutför körningen",
+  );
+});
+
+test("a run on streamed text says it labels or prepares that text, never that it transcribes the audio", () => {
+  const selectable = { selectable: true, required: false, default: false };
+  const live = { "step-audio": { file_ids: ["file-1"], live_transcript_id: "transcript-1" } };
+  const labelling = streamedRun({ expected_flow_version: 3, step_inputs: live, speaker_labels: true }, selectable);
+  const plain = streamedRun({ expected_flow_version: 3, step_inputs: live, speaker_labels: false }, selectable);
+  const required = streamedRun({ expected_flow_version: 3, step_inputs: live }, { selectable: false, required: true, default: true });
+  const transcribed = streamedRun({ expected_flow_version: 3, step_inputs: { "step-audio": { file_ids: ["file-1"] } } }, selectable);
+  const audioRunning = runSteps(graph("running"), { status: "running" });
+  assert.equal(runStage(audioRunning, "running", labelling), "Märker upp talare i den strömmade texten");
+  assert.equal(runStage(audioRunning, "running", required), "Märker upp talare i den strömmade texten", "the flow labels by itself");
+  assert.equal(runStage(audioRunning, "running", plain), "Förbereder den strömmade texten");
+  assert.equal(runStage(audioRunning, "running", transcribed), "Transkriberar ljudet", "the request named no live transcript");
+  assert.equal(runStage(audioRunning, "running", null), "Transkriberar ljudet", "a run opened later: not known");
+  assert.equal(
+    runStage(runSteps(graph("completed", "running"), { status: "running" }), "running", labelling),
+    "Analysera mötesinnehållet",
+    "the steps after it keep their own names",
   );
 });
 

@@ -4,7 +4,17 @@
  * once it ended, the step results read once say which steps ever started.
  */
 
-import { isSpeakerMappingReviewStep, type FlowGraph, type FlowReviewStepContract, type FlowRunError, type FlowRunStep, type RunContract } from "./api";
+import {
+  isSpeakerMappingReviewStep,
+  type FlowGraph,
+  type FlowReviewStepContract,
+  type FlowRunError,
+  type FlowRunStep,
+  type FlowTranscriptionContract,
+  type Json,
+  type RunContract,
+} from "./api";
+import { labelsSpeakers } from "./flow-session";
 import { formatDuration } from "./format";
 import { carriesTranscript } from "./speaker-review";
 
@@ -151,10 +161,30 @@ export function runElapsed(createdAt: string | null | undefined, now: number): s
   return minutes >= 1 ? `Har pågått i ${formatDuration(minutes * 60_000)}` : null;
 }
 
+/** A run asked to use a streamed transcript, and whether it labels speakers in it; null for one that transcribes. */
+export type StreamedRun = { labels: boolean } | null;
+
+/**
+ * What the run request Eneo was asked says about the audio step: a live transcript it names is used instead of
+ * transcribing again (Eneo falls back to transcribing only when the text does not fit the file). Its labels are the
+ * request's choice, else the flow's own.
+ */
+export function streamedRun(
+  body: Json,
+  option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
+): StreamedRun {
+  const inputs = Object.values((body.step_inputs as Record<string, Json> | undefined) ?? {});
+  if (!inputs.some((input) => typeof input.live_transcript_id === "string")) return null;
+  return { labels: labelsSpeakers(option, typeof body.speaker_labels === "boolean" ? body.speaker_labels : null) };
+}
+
 /** One line for what happens now; truthful between steps, never a percentage. */
-export function runStage(steps: readonly StepView[], runStatus: string): string {
+export function runStage(steps: readonly StepView[], runStatus: string, streamed: StreamedRun = null): string {
   if (runStatus.toLowerCase() === "queued") return "Väntar på att starta";
   const running = steps.find((step) => step.state === "running");
+  if (running && running.transcribes && streamed) {
+    return streamed.labels ? "Märker upp talare i den strömmade texten" : "Förbereder den strömmade texten";
+  }
   if (running) return running.transcribes ? "Transkriberar ljudet" : running.label;
   if (steps.length === 0) return "Körningen pågår";
   if (steps.every((step) => step.state === "done")) return "Slutför körningen";

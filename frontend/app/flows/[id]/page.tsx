@@ -48,10 +48,10 @@ import { friendlyError } from "@/lib/errors";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
-import { recordingStore } from "@/lib/recording-store";
+import { recordingStore, type RunRequest } from "@/lib/recording-store";
 import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
-import { finishedRun, runOutcome, runStage, runSteps } from "@/lib/run-progress";
+import { finishedRun, runOutcome, runStage, runSteps, streamedRun, type StreamedRun } from "@/lib/run-progress";
 import { runErrorView } from "@/lib/run-result";
 import {
   retryFailedRun,
@@ -129,8 +129,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     kind: "idle",
   });
   // The details a run was started with, shown beside its states: as sent, as the run Eneo returned carries
-  // them, or read once for a run opened while it runs (its polled status does not carry them).
-  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown }>({ runId: null, input: null });
+  // them, or read once for a run opened while it runs (its polled status does not carry them). `streamed` is known
+  // only for a run sent from here: its request named Strömma's transcript.
+  const [startedWith, setStartedWith] = useState<{ runId: string | null; input: unknown; streamed?: StreamedRun }>({
+    runId: null,
+    input: null,
+  });
   const runningRun = run.kind === "running" ? run.run : null;
   useEffect(() => {
     if (!runningRun || startedWith.runId === runningRun.id) return;
@@ -261,6 +265,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setSubmission({ kind: "idle" });
     const abortController = new AbortController();
     submitAbortRef.current = abortController;
+    // The request Eneo was last asked, which a refused live transcript leaves out.
+    let streamed: StreamedRun = null;
 
     try {
       const params = {
@@ -274,7 +280,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
-        onStarting: () => setSubmission({ kind: "starting", wait: null }),
+        onStarting: (request: RunRequest) => {
+          streamed = streamedRun(request.body, contract.transcription?.speaker_labels);
+          setSubmission({ kind: "starting", wait: null });
+        },
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };
@@ -289,7 +298,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setSubmission({ kind: "idle" });
 
       writeRunIdToUrl(initialRun.id);
-      setStartedWith({ runId: initialRun.id, input: initialRun.input_payload_json ?? payload });
+      setStartedWith({ runId: initialRun.id, input: initialRun.input_payload_json ?? payload, streamed });
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
@@ -631,7 +640,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <RunProgress
         flowName={published.name}
         steps={steps}
-        stage={runStage(steps, run.run.status)}
+        stage={runStage(steps, run.run.status, startedWith.runId === run.run.id ? startedWith.streamed : null)}
         startedAt={run.run.created_at}
         error={runError}
         onCancel={() => onCancelRun(run.run.id)}
