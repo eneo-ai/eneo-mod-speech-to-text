@@ -676,3 +676,40 @@ test("the recorder hears a muted microphone after 15 s of zeros, never a quiet r
     page.AudioContext = browserAudio;
   }
 });
+
+test("a second tap on Starta lands on Stoppa or Pausa, and neither ends or pauses the recording it just started", async (t) => {
+  const { createElement } = await import("react");
+  const { RecordingBar } = await import("../components/flow/Recorder");
+  const { RecordingCapture } = await import("./recording-session");
+  const { openRecordingStore } = await import("./recording-store");
+  t.mock.timers.enable({ apis: ["setInterval", "Date"] });
+  const unused = async () => {
+    throw new Error("not used");
+  };
+  const capture = new RecordingCapture(() => openRecordingStore({}), { getStream: unused, createRecorder: () => unused() as never });
+  const calls: string[] = [];
+  const view = await mount(
+    createElement(RecordingBar, {
+      capture,
+      phase: "recording",
+      stream: null,
+      showStatus: false,
+      notices: [],
+      onPause: () => calls.push("pause"),
+      onStop: () => calls.push("stop"),
+    }),
+  );
+  try {
+    t.mock.timers.tick(300); // a double tap's second tap
+    await view.act(async () => {
+      button(view.container, "Stoppa")!.click();
+      button(view.container, "Pausa")!.click();
+    });
+    assert.deepEqual(calls, []);
+    t.mock.timers.tick(500);
+    await view.act(async () => button(view.container, "Pausa")!.click());
+    assert.deepEqual(calls, ["pause"], "a moment later, the controls work");
+  } finally {
+    await view.unmount();
+  }
+});

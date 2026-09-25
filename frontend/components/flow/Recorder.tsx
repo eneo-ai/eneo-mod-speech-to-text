@@ -1,7 +1,7 @@
 "use client";
 
 import { Pause, Play, Square } from "lucide-react";
-import { useContext } from "react";
+import { useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { SignedOutSlot } from "@/components/AuthGate";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,9 @@ import type { SessionPhase } from "@/lib/flow-session";
 import { formatClock } from "@/lib/format";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { cn } from "@/lib/utils";
+
+// Pausa and Stoppa appear under the finger that tapped Starta: a double tap's second tap must not end the meeting.
+const SETTLE_MS = 700;
 
 /** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
 export function RecordingStatus({ phase, className }: { phase: SessionPhase; className?: string }) {
@@ -108,6 +111,13 @@ export function RecordingBar({
   onStop: () => void;
 }) {
   const running = phase === "recording";
+  const shownAt = useRef<number | null>(null);
+  useEffect(() => {
+    shownAt.current = Date.now();
+  }, []);
+  const settled = (act: () => void) => () => {
+    if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
+  };
   return (
     <div
       className={cn(
@@ -137,7 +147,7 @@ export function RecordingBar({
               // Wide enough for "Fortsätt", so pausing moves nothing.
               showStatus ? "min-w-24 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
             )}
-            onClick={onPause}
+            onClick={settled(onPause)}
           >
             {running ? (
               <Pause data-icon="inline-start" aria-hidden className={cn(showStatus && "max-sm:hidden")} />
@@ -152,7 +162,7 @@ export function RecordingBar({
             className={cn(
               showStatus ? "sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
             )}
-            onClick={onStop}
+            onClick={settled(onStop)}
           >
             <Square data-icon="inline-start" aria-hidden className={cn("fill-current", showStatus && "max-sm:hidden")} />
             Stoppa

@@ -57,6 +57,31 @@ test("the ready state names the recording for people, never as a file or a type,
   assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
 });
 
+test("a recording of a moment says so, and makes Fortsätt spela in the one filled action", () => {
+  const variants = (html: string) =>
+    Object.fromEntries(
+      [...html.matchAll(/<button[^>]*class="([^"]*)"[^>]*>(?:<svg.*?<\/svg>)?([^<]+)<\/button>/g)].map(([, classes, label]) => [
+        label,
+        classes.includes("bg-primary") ? "filled" : "outline",
+      ]),
+    );
+  const ready = (durationMs: number, onContinue?: () => void) =>
+    renderToStaticMarkup(
+      createElement(ReadyPanel, { recording: { ...recording, durationMs }, persistent: true, problem: null, onCreate: noop, onContinue, onDiscard: noop }),
+    );
+  const note = /Inspelningen blev mycket kort\. Välj Fortsätt spela in om den stoppades av misstag\./;
+  const moment = ready(1_200, noop);
+  assert.match(moment, note);
+  assert.equal(variants(moment)["Fortsätt spela in"], "filled");
+  assert.equal(variants(moment)["Skapa dokument"], "outline");
+
+  const meeting = ready(32 * 60_000, noop);
+  assert.doesNotMatch(meeting, note);
+  assert.equal(variants(meeting)["Skapa dokument"], "filled");
+  assert.equal(variants(meeting)["Fortsätt spela in"], "outline");
+  assert.doesNotMatch(ready(1_200), note, "nothing to offer when the recorder cannot go on");
+});
+
 test("after Stoppa, Strömma's live text stays to read and copy, marked as preliminary", () => {
   const snapshot: LiveSnapshot = {
     status: "ended",

@@ -119,6 +119,8 @@ export function ReadyPanel({
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   const name = recordingName(recording.startedAt);
+  // Stopped a moment after it started, most likely by mistake: going on is the likely next step.
+  const moment = onContinue !== undefined && recording.durationMs < 2_000;
 
   async function save() {
     setSaveProblem(null);
@@ -159,13 +161,14 @@ export function ReadyPanel({
       {problem && <ProblemAlert problem={problem} />}
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
+      {moment && <p className="text-[15px] text-ink">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</p>}
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button type="button" size="xl" className="sm:flex-1" onClick={onCreate}>
+        <Button type="button" variant={moment ? "outline" : "default"} size="xl" className="sm:flex-1" onClick={onCreate}>
           <FileText data-icon="inline-start" aria-hidden />
           Skapa dokument
         </Button>
         {onContinue && (
-          <Button type="button" variant="outline" size="xl" className="sm:flex-1" onClick={onContinue}>
+          <Button type="button" variant={moment ? "default" : "outline"} size="xl" className="sm:flex-1" onClick={onContinue}>
             <Mic data-icon="inline-start" aria-hidden />
             Fortsätt spela in
           </Button>
