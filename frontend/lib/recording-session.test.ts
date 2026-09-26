@@ -868,6 +868,100 @@ test("a part hands over before Eneo's time per file, in recorded time without pa
   assert.equal(recorders[1].state, "recording");
 });
 
+// Eneo's longest recording (the admin's value), for the parts of one recording together, and the part length at
+// which its ten file slots hold it (recording_part_seconds).
+const ONE_RECORDING = { maxDurationMs: FIVE_HOURS, maxBytes: 10 ** 12, maxFiles: 10, partMs: 30 * 60_000, maxRecordingMs: FIVE_HOURS };
+
+test("parts turn over at Eneo's part length, and the recording stops before Eneo's longest recording, over all parts", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, ONE_RECORDING);
+  // The room: a minute, and a second for each handover's overlap.
+  assert.equal(capture.getSnapshot().remainingMs, FIVE_HOURS - 60_000, "the recording's end, not ten times five hours");
+  now = 30 * 60_000 - 1;
+  recorders.at(-1)!.emit("x");
+  assert.equal(recorders.length, 1);
+  now = 30 * 60_000;
+  recorders.at(-1)!.emit("x");
+  assert.equal(recorders.length, 2, "a new part at 30 minutes, long before the five hours a file may hold");
+  for (let part = 3; part <= 10; part += 1) {
+    now = (part - 1) * 30 * 60_000;
+    recorders.at(-1)!.emit("x");
+  }
+  assert.equal(recorders.length, 10, "ten parts of 30 minutes");
+  now = FIVE_HOURS - 60_000 - 9 * 1_000 - 1;
+  recorders.at(-1)!.emit("x");
+  assert.equal(capture.getSnapshot().status, "recording");
+  now += 1;
+  recorders.at(-1)!.emit("x");
+  await until(() => capture.getSnapshot().status === "stopped", "the stop before Eneo's longest recording");
+  assert.equal(recorders.length, 10, "no eleventh part");
+  assert.match(capture.getSnapshot().error ?? "", /^Inspelningen nådde maxlängden 5 h och stoppades/);
+});
+
+test("when the file slots run out before the time, the stop says so rather than a length", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, ONE_RECORDING);
+  now = 60_000;
+  recorders[0].emit("a");
+  const stopped = (await capture.stop())!; // stopped by mistake after a minute
+  await capture.continueStopped(stopped.id, ONE_RECORDING);
+  for (let part = 2; part <= 10; part += 1) {
+    now += 30 * 60_000;
+    recorders.at(-1)!.emit("x");
+  }
+  await until(() => capture.getSnapshot().status === "stopped", "the stop at the last file");
+  assert.equal(recorders.length, 10);
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen stoppades efter 4 h 31 min: flödet tar emot högst 10 filer. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+});
+
+test("the recording's time left counts every part so far", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, ONE_RECORDING);
+  now = 45 * 60_000;
+  recorders.at(-1)!.emit("x");
+  assert.equal(recorders.length, 2);
+  // 45 minutes recorded, one handover so far.
+  assert.equal(capture.getSnapshot().remainingMs, FIVE_HOURS - 45 * 60_000 - 60_000 - 1_000);
+});
+
+test("the stop comes by the recorded clock in the last part too, with its handover's room", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { capture, recorders, advance } = await clocked(t);
+  await capture.start(meeting, { ...ONE_RECORDING, partMs: FIVE_HOURS / 2 });
+  advance(FIVE_HOURS / 2);
+  assert.equal(recorders.length, 2);
+  // No chunk arrives (a locked phone): the timer alone must stop before the room of a minute and one handover.
+  advance(FIVE_HOURS / 2 - 60_000 - 1_000 - 1);
+  assert.equal(capture.getSnapshot().limitReached, false);
+  advance(1);
+  assert.equal(capture.getSnapshot().limitReached, true);
+});
+
+const OUT_OF_TIME =
+  "Inspelningen har nått flödets maxlängd 5 h. Skicka den, eller starta en ny inspelning för resten av mötet.";
+
+test("a recording with no time left is not continued, and no microphone is opened", async () => {
+  let now = 0;
+  const { capture, recorders, streams } = await setup({ now: () => now });
+  await capture.start(meeting, { ...ONE_RECORDING, partMs: FIVE_HOURS });
+  now = FIVE_HOURS - 60_000 - 500; // a page the browser suspended stopped it this late
+  recorders[0].emit("a");
+  const stopped = (await capture.stop())!;
+  assert.equal(streams.length, 1);
+
+  await capture.continueStopped(stopped.id, ONE_RECORDING);
+
+  assert.deepEqual([capture.getSnapshot().status, capture.getSnapshot().error], ["stopped", OUT_OF_TIME]);
+  assert.equal(streams.length, 1, "no microphone opened");
+  assert.equal(recorders.length, 1, "no new part");
+});
+
 test("a short limit keeps 5 % as room rather than a whole minute", async () => {
   let now = 0;
   const { capture, recorders } = await setup({ now: () => now });

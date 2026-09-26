@@ -105,12 +105,29 @@ export interface CaptureDeps {
   now?(): number;
 }
 
-/** The flow's limits for the audio step: bytes and recorded time per file, and files per run. */
+/** The flow's limits for the audio step, as Eneo's run contract gives them. */
 export interface CaptureLimits {
+  /** Bytes and recorded time per file, and files per run. */
   maxBytes?: number;
   maxDurationMs?: number;
   maxFiles?: number;
+  /** The part length at which the file slots hold the whole recording (recording_part_seconds). */
+  partMs?: number;
+  /** The longest recording, all parts together, when they go to Eneo as one recording (max_recording_seconds). */
+  maxRecordingMs?: number;
 }
+
+// Room per handover below the longest recording: the parts overlap, by up to about a second in a hidden tab.
+const HANDOVER_ROOM_MS = 1_000;
+
+/** Recorded time a recording of `parts` parts and `recordedMs` has left before the longest recording; Infinity without one. */
+function recordingLeftMs({ maxRecordingMs }: CaptureLimits, parts: number, recordedMs: number): number {
+  if (!maxRecordingMs) return Infinity;
+  return maxRecordingMs - durationHeadroom(maxRecordingMs) - Math.max(0, parts - 1) * HANDOVER_ROOM_MS - recordedMs;
+}
+
+const noMoreTime = (maxRecordingMs: number) =>
+  `Inspelningen har nått flödets maxlängd ${formatDuration(maxRecordingMs)}. Skicka den, eller starta en ny inspelning för resten av mötet.`;
 
 type EndReason = "stop" | "interrupt" | "leave";
 
@@ -270,6 +287,10 @@ export class RecordingCapture {
       this.set({ error: noMoreFiles(maxFiles) });
       return;
     }
+    if (recordingLeftMs(this.limits, this.partCount + 1, this.elapsedMs()) <= 0) {
+      this.set({ error: noMoreTime(this.limits.maxRecordingMs!) });
+      return;
+    }
     this.starting = true;
     this.set({ error: null });
     const generation = this.generation;
@@ -359,6 +380,10 @@ export class RecordingCapture {
         if (reason) throw new Refusal(reason);
         if (limits.maxFiles !== undefined && filesIn(found) >= limits.maxFiles) {
           throw new Refusal(noMoreFiles(limits.maxFiles));
+        }
+        // A new part must have time to record before the longest recording.
+        if (recordingLeftMs(limits, filesIn(found) + 1, found.durationMs) <= 0) {
+          throw new Refusal(noMoreTime(limits.maxRecordingMs!));
         }
         return found;
       };
@@ -487,8 +512,9 @@ export class RecordingCapture {
     recorder.start(CHUNK_MS);
     part.since = this.now();
     this.part = part;
-    this.scheduleHandover(part);
+    // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
+    this.scheduleHandover(part);
     this.set({ status: "recording", stream, partBytes: 0, remainingMs: this.remaining(part) });
     return part;
   }
@@ -497,9 +523,20 @@ export class RecordingCapture {
   private checkLimit(part: Part) {
     // Paused (Pausa), it waits: going on checks again (the next chunk, and a new deadline).
     if (part.since === null) return;
-    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
+    const { maxBytes, maxDurationMs, maxFiles, maxRecordingMs } = this.limits;
+    if (maxRecordingMs && this.recordingLeft() <= 0) {
+      this.set({
+        limitReached: true,
+        remainingMs: 0,
+        error:
+          `Inspelningen nådde maxlängden ${formatDuration(maxRecordingMs)} och stoppades efter ` +
+          `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`,
+      });
+      void this.stop();
+      return;
+    }
     const full = !!maxBytes && part.bytes + this.headroom() > maxBytes;
-    const long = !!maxDurationMs && this.partElapsed(part) + durationHeadroom(maxDurationMs) >= maxDurationMs;
+    const long = this.partElapsed(part) >= this.partLimit();
     if (!full && !long) return;
     if (maxFiles === undefined || this.partCount < maxFiles) {
       this.rotate(part);
@@ -509,6 +546,11 @@ export class RecordingCapture {
     if (full) {
       const limit = maxFiles === 1 ? formatBytes(maxBytes!) : `${maxFiles} filer om ${formatBytes(maxBytes!)}`;
       error = `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`;
+    } else if (this.limits.partMs) {
+      // Eneo's part length filled the file slots before the longest recording: the slots are the limit.
+      error =
+        `Inspelningen stoppades efter ${formatDuration(this.elapsedMs())}: flödet tar emot högst ${maxFiles} ` +
+        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
     } else {
       error =
         `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +
@@ -526,9 +568,9 @@ export class RecordingCapture {
    */
   private scheduleHandover(part: Part) {
     this.clearHandover();
-    const { maxDurationMs } = this.limits;
-    if (!maxDurationMs || part.since === null) return;
-    const due = maxDurationMs - durationHeadroom(maxDurationMs) - this.partElapsed(part);
+    if (part.since === null) return;
+    const due = Math.min(this.partLimit() - this.partElapsed(part), this.recordingLeft());
+    if (due === Infinity) return;
     // Whole milliseconds, rounded up: a browser cuts a fraction off, which would fire short of the deadline.
     this.handover = setTimeout(() => {
       this.handover = null;
@@ -547,6 +589,8 @@ export class RecordingCapture {
 
   /** A new part takes over on the same microphone; the full one stops once the two overlap. */
   private rotate(full: Part) {
+    // Counted first: the new part's deadline and time left include the full part's time.
+    this.countTime(full);
     try {
       this.beginPart(this.microphone!);
     } catch {
@@ -554,7 +598,6 @@ export class RecordingCapture {
       void this.endPart(full, "interrupt");
       return;
     }
-    this.countTime(full);
     void this.endOverlap();
     this.overlapping = {
       part: full,
@@ -576,19 +619,32 @@ export class RecordingCapture {
     return Math.max(TARGET_BYTES_PER_MS, this.largestChunk / CHUNK_MS);
   }
 
-  /** Recording time left before the flow's last allowed file is full or long enough; null without a file count. */
+  /** Recorded time a part holds: Eneo's part length, or its time per file less the room, whichever comes first. */
+  private partLimit(): number {
+    const { maxDurationMs, partMs } = this.limits;
+    return Math.min(partMs ?? Infinity, maxDurationMs ? maxDurationMs - durationHeadroom(maxDurationMs) : Infinity);
+  }
+
+  /** Recorded time left before the longest recording, all parts and their overlaps counted; Infinity without one. */
+  private recordingLeft(): number {
+    return recordingLeftMs(this.limits, this.partCount, this.elapsedMs());
+  }
+
+  /** Recording time left before the last allowed file is full or long enough, or the recording is; null without an end. */
   private remaining(part: Part | null): number | null {
-    const { maxBytes, maxDurationMs, maxFiles } = this.limits;
-    if (maxFiles === undefined || (!maxBytes && !maxDurationMs)) return null;
+    const { maxBytes, maxFiles } = this.limits;
+    const left = Math.max(0, this.recordingLeft());
+    const partLimit = this.partLimit();
+    if (maxFiles === undefined || (!maxBytes && partLimit === Infinity)) return left === Infinity ? null : Math.floor(left);
     // The time a part holds from here: until the first of its limits.
     const holds = (bytes: number, ms: number) =>
       Math.min(
         maxBytes ? Math.max(0, maxBytes - this.headroom() - bytes) / this.rate() : Infinity,
-        maxDurationMs ? Math.max(0, maxDurationMs - durationHeadroom(maxDurationMs) - ms) : Infinity,
+        Math.max(0, partLimit - ms),
       );
     const running = part ? holds(part.bytes, this.partElapsed(part)) : 0;
     const later = Math.max(0, maxFiles - this.partCount) * holds(0, 0);
-    return Math.floor(running + later);
+    return Math.floor(Math.min(running + later, left));
   }
 
   /** Ends the running parts, a full part still overlapping first; resolves once both have stopped. */

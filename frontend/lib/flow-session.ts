@@ -289,6 +289,32 @@ export function readSpeakerCount(text: string | null, ceiling = MAX_SPEAKER_COUN
 }
 
 /**
+ * The longest recording Eneo takes as the parts of one recording, in seconds: its `max_recording_seconds`, or, from
+ * an older Eneo without it, its time per file (the same decode budget there). None when Eneo takes the parts apart
+ * (no `single_recording`): then each part has only its own limits.
+ */
+export function oneRecordingLimitSeconds(contract: RunContract | null, step: RunContractStepInput | null | undefined) {
+  if (!step || contract?.transcription?.single_recording !== true) return undefined;
+  return step.max_recording_seconds ?? step.max_duration_seconds ?? undefined;
+}
+
+/**
+ * The audio step's limits for a recording, all from Eneo's run contract. Eneo's part length and longest recording
+ * hold for parts it takes as one recording; parts it takes apart run to their own per-file limits.
+ */
+export function captureLimits(contract: RunContract | null, step: RunContractStepInput | null | undefined): CaptureLimits {
+  const ms = (seconds: number | null | undefined) => (seconds ? seconds * 1000 : undefined);
+  const whole = oneRecordingLimitSeconds(contract, step);
+  return {
+    maxBytes: step?.max_file_size_bytes,
+    maxDurationMs: ms(step?.max_duration_seconds),
+    maxFiles: step?.max_files,
+    partMs: whole ? ms(step?.recording_part_seconds) : undefined,
+    maxRecordingMs: ms(whole),
+  };
+}
+
+/**
  * Whether the flow's result is text rather than a document: exactly when Eneo gives it back in the run (delivery
  * "payload"), which the result view shows. A file, a result sent on to a receiver, and an Eneo or flow that does not
  * say are a document, as they always were.
@@ -929,11 +955,8 @@ export class FlowSession {
     return selectRuntimeInputStep(this.contract);
   }
 
-  /** The flow's limits for the audio step: bytes and time per file, and files per run. */
   private limits(): CaptureLimits {
-    const step = this.inputStep();
-    const seconds = step?.max_duration_seconds;
-    return { maxBytes: step?.max_file_size_bytes, maxDurationMs: seconds ? seconds * 1000 : undefined, maxFiles: step?.max_files };
+    return captureLimits(this.contract, this.inputStep());
   }
 
   /**

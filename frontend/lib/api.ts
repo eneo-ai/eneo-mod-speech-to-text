@@ -218,8 +218,13 @@ export interface RunContractStepInput {
   input_format?: string;
   max_files?: number;
   max_file_size_bytes?: number;
-  /** The longest audio Eneo takes per file (flow_audio_max_duration_seconds), for an audio input; null otherwise. */
+  /** The longest audio Eneo takes per file, for an audio input; null otherwise. */
   max_duration_seconds?: number | null;
+  /** The longest recording, all parts together, when they go as one recording (`single_recording`). An Eneo admin
+   *  sets it; older Eneo versions do not send it. */
+  max_recording_seconds?: number | null;
+  /** The part length at which `max_files` parts hold a recording of `max_recording_seconds`. */
+  recording_part_seconds?: number | null;
   accepted_mimetypes?: string[];
 }
 

@@ -1365,3 +1365,36 @@ test("a new run keeps a recording's parts together where the step says so and th
   assert.deepEqual(input(parts(true), contract), { file_ids: ["file-a", "file-b"] }, "not offered now: dropped");
   assert.deepEqual(input(parts(false), offering), { file_ids: ["file-a", "file-b"] }, "separate files stay separate");
 });
+
+test("a recording sent as one is not sent past Eneo's longest recording, all parts together; parts sent apart are", async () => {
+  const HOUR = 3_600_000;
+  const store = await openRecordingStore({});
+  const recording = await store.create(meeting);
+  for (const hours of [3, 2.5]) {
+    const index = await store.startPart(recording.id);
+    await store.append(recording.id, index, new Blob(["a"]), hours * HOUR);
+  }
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  await settle();
+  const step = { ...contract.steps_requiring_input![0], max_duration_seconds: 5 * 3600, max_recording_seconds: 5 * 3600 };
+  const together: RunContract = { ...contract, steps_requiring_input: [step], transcription: { single_recording: true } as RunContract["transcription"] };
+
+  await assert.rejects(
+    submitRecording(store, recording.id, params({ contract: together }), {
+      upload: async () => assert.fail("nothing is uploaded"),
+      startRun: async () => assert.fail("no run"),
+    }),
+    /Inspelningen är längre än flödet tar emot \(5 h\)/,
+  );
+  assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, as it was");
+
+  // Without a speaker service the parts go as separate files: each is within its own limit.
+  const apart: RunContract = { ...contract, steps_requiring_input: [step] };
+  let sent = 0;
+  await submitRecording(store, recording.id, params({ contract: apart }), {
+    upload: async () => ({ id: `file-${(sent += 1)}` }),
+    startRun: async () => queuedRun,
+  });
+  assert.equal(sent, 2);
+});
