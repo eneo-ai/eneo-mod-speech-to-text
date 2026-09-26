@@ -546,6 +546,11 @@ export class RecordingCapture {
     if (full) {
       const limit = maxFiles === 1 ? formatBytes(maxBytes!) : `${maxFiles} filer om ${formatBytes(maxBytes!)}`;
       error = `Inspelningen stoppades vid flödets gräns på ${limit}. Det som spelats in är sparat.`;
+    } else if (this.limits.partMs) {
+      // Eneo's part length filled the file slots before the longest recording: the slots are the limit.
+      error =
+        `Inspelningen stoppades efter ${formatDuration(this.elapsedMs())}: flödet tar emot högst ${maxFiles} ` +
+        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
     } else {
       error =
         `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +

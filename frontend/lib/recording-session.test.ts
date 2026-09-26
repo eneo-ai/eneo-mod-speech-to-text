@@ -899,6 +899,26 @@ test("parts turn over at Eneo's part length, and the recording stops before Eneo
   assert.match(capture.getSnapshot().error ?? "", /^Inspelningen nådde maxlängden 5 h och stoppades/);
 });
 
+test("when the file slots run out before the time, the stop says so rather than a length", async () => {
+  let now = 0;
+  const { capture, recorders } = await setup({ now: () => now });
+  await capture.start(meeting, ONE_RECORDING);
+  now = 60_000;
+  recorders[0].emit("a");
+  const stopped = (await capture.stop())!; // stopped by mistake after a minute
+  await capture.continueStopped(stopped.id, ONE_RECORDING);
+  for (let part = 2; part <= 10; part += 1) {
+    now += 30 * 60_000;
+    recorders.at(-1)!.emit("x");
+  }
+  await until(() => capture.getSnapshot().status === "stopped", "the stop at the last file");
+  assert.equal(recorders.length, 10);
+  assert.equal(
+    capture.getSnapshot().error,
+    "Inspelningen stoppades efter 4 h 31 min: flödet tar emot högst 10 filer. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+  );
+});
+
 test("the recording's time left counts every part so far", async () => {
   let now = 0;
   const { capture, recorders } = await setup({ now: () => now });
