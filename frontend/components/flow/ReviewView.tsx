@@ -2,7 +2,7 @@
 
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
-import { CheckCircle2, Loader2, UsersRound } from "lucide-react";
+import { CheckCircle2, Loader2, TriangleAlert, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   use,
@@ -642,7 +642,8 @@ export function ReviewView({
 
         {draft.yours && decided && (
           // Kept to copy, never to continue with: the approved text above is the decision.
-          <Alert className="mb-3">
+          <Alert variant="warning" className="mb-3">
+            <TriangleAlert aria-hidden />
             <AlertTitle>Din ändring sparades inte</AlertTitle>
             <AlertDescription>
               <p>Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den.</p>
@@ -659,7 +660,8 @@ export function ReviewView({
           </Alert>
         )}
         {draft.yours && !decided && (
-          <Alert className="mb-3">
+          <Alert variant="warning" className="mb-3">
+            <TriangleAlert aria-hidden />
             <AlertTitle>Din ändring sparades inte</AlertTitle>
             <AlertDescription>
               <p>Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.</p>

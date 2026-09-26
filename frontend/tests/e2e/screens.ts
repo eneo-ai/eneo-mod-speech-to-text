@@ -50,7 +50,7 @@ export async function flows(page: Page) {
 
 export async function setup(page: Page, flow = "flow-1") {
   await open(page, `/flows/${flow}`);
-  await heading(page, "Hur vill du ge ljudet?");
+  await heading(page, "Hur vill du lägga till ljudet?");
 }
 
 export async function chooseMode(page: Page, mode: "Strömma" | "Spela in" | "Ladda upp") {
@@ -121,7 +121,7 @@ export async function leaveRecording(page: Page) {
   await stop(page);
   await backLink(page).click();
   await page.getByRole("alertdialog", { name: "Lämna sidan?" }).getByRole("button", { name: "Lämna sidan" }).click();
-  await expect(page.getByRole("heading", { name: "En inspelning är inte skickad" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
 }
 
 /** A short silent WAV file. */
@@ -297,7 +297,16 @@ export const STATES: State[] = [
       await chooseFile(page);
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      await expect(page.getByRole("alert").filter({ hasText: "Flödet har uppdaterats" })).toBeVisible();
+      const alert = page.getByRole("alert").filter({ hasText: "Flödet har uppdaterats" });
+      await expect(alert).toBeVisible();
+      // The answer to the docked button is brought into view, above the dock.
+      await expect(alert).toBeInViewport();
+      const dock = page.locator("[data-docked-action]");
+      if (await dock.isVisible()) {
+        await expect
+          .poll(async () => (await alert.boundingBox())!.y + (await alert.boundingBox())!.height <= (await dock.boundingBox())!.y)
+          .toBe(true);
+      }
     },
   },
   {
@@ -372,7 +381,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await leaveRecording(page);
       await setup(page);
-      await expect(page.getByRole("heading", { name: "En inspelning är inte skickad" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
     },
   },
   { name: "sending", go: sending },

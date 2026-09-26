@@ -23,6 +23,7 @@ const TabsList = React.forwardRef<
 ))
 TabsList.displayName = TabsPrimitive.List.displayName
 
+// The chosen tab has a ring in the brand colour, in both themes: the fills alone are too close to the track.
 const TabsTrigger = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.Trigger>,
   React.ComponentPropsWithoutRef<typeof TabsPrimitive.Trigger>
@@ -30,7 +31,7 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium coarse:h-11 ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow forced-colors:data-[state=active]:bg-[Highlight] forced-colors:data-[state=active]:text-[HighlightText] forced-colors:data-[state=active]:forced-color-adjust-none",
+      "inline-flex h-7 items-center justify-center whitespace-nowrap rounded-md px-3 py-1 text-sm font-medium coarse:h-11 ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow data-[state=active]:ring-1 data-[state=active]:ring-primary data-[state=active]:focus-visible:ring-2 dark:data-[state=active]:bg-primary-soft forced-colors:data-[state=active]:bg-[Highlight] forced-colors:data-[state=active]:text-[HighlightText] forced-colors:data-[state=active]:forced-color-adjust-none",
       className
     )}
     {...props}

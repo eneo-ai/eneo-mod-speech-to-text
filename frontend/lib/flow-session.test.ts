@@ -958,10 +958,10 @@ test("republished with a new required detail: the form asks for it before Eneo i
   const { id } = session.getSnapshot().recording!;
 
   assert.equal(await session.createDocument(), false);
-  assert.equal(
-    session.getSnapshot().problem?.title,
-    "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
-  );
+  assert.deepEqual(session.getSnapshot().problem, {
+    title: "Flödet har uppdaterats sedan sidan öppnades.",
+    detail: "Kontrollera uppgifterna och välj Skapa dokument igen.",
+  });
   assert.equal(await session.createDocument(), false, "the refreshed form asks for the new detail");
   assert.deepEqual(session.getSnapshot().invalid, ["datum"]);
   assert.equal(requests.length, 1, "Eneo is not asked meanwhile");
@@ -1568,7 +1568,8 @@ test("a stale version refreshes the flow in place and keeps the audio and the de
   assert.equal(reloads, 1);
   const after = session.getSnapshot();
   assert.deepEqual(after.problem, {
-    title: "Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj Skapa dokument igen.",
+    title: "Flödet har uppdaterats sedan sidan öppnades.",
+    detail: "Kontrollera uppgifterna och välj Skapa dokument igen.",
   });
   assert.equal(after.phase, "ready");
   assert.equal(after.recording?.id, id);

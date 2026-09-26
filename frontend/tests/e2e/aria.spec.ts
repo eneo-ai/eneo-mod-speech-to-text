@@ -14,7 +14,7 @@ const NOW = new Date("2026-09-24T12:00:00+02:00");
 const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean }[] = [
   { state: "signin-access-code", region: (page) => page.locator(".app-shell") },
   { state: "flow-list", region: (page) => page.locator(".app-shell"), fixedTime: true },
-  { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickad/ }) },
+  { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
   { state: "setup", region: (page) => page.locator(".app-shell"), fixedTime: true },
   { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "setup-required-detail", region: (page) => page.getByRole("main") },

@@ -15,7 +15,7 @@ test("the modes are one radio group of equal cards under the question, and only 
   const html = renderToStaticMarkup(
     createElement(ModeCards, { modes: ["stromma", "spela-in", "ladda-upp"], mode: "spela-in", onSelect: noop }),
   );
-  assert.match(html, /<fieldset[^>]*>.*<legend[^>]*><h2[^>]*>Hur vill du ge ljudet\?<\/h2><\/legend>/s);
+  assert.match(html, /<fieldset[^>]*>.*<legend[^>]*><h2[^>]*>Hur vill du lägga till ljudet\?<\/h2><\/legend>/s);
   assert.equal(html.match(/role="radiogroup"/g)?.length, 1);
   const radios = [...html.matchAll(/<button[^>]*role="radio"[^>]*aria-checked="(true|false)"[^>]*id="satt-([a-z-]+)"/g)];
   assert.deepEqual(

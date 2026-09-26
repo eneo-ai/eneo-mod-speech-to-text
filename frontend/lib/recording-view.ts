@@ -10,7 +10,7 @@ import type { DeviceRefusal } from "./recording-store";
 const APP = "Tal till text";
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
-  `Stoppa avslutar inspelningen. Du väljer sedan att skapa ${makesText ? "texten" : "dokumentet"}.`;
+  `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
 const MINUTE = 60_000;
 
 /**

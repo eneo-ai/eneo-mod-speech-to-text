@@ -95,11 +95,10 @@ export function RunFailure({
         {/* The heading takes focus when this view appears, so the callout need not interrupt. */}
         <Alert role="note" variant={cancelled ? "default" : "destructive"}>
           <Icon aria-hidden className="size-4" />
-          <AlertTitle className="leading-snug">
+          <AlertTitle>
             {failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
           </AlertTitle>
-          {/* The title carries the alarm; the explanation reads in the page's own text colour. */}
-          <AlertDescription className="text-ink-soft">
+          <AlertDescription>
             {failure?.summary ?? "Körningen kunde inte slutföras."}
           </AlertDescription>
         </Alert>

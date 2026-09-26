@@ -45,7 +45,7 @@ export function RegenerateNotice({
 
   return (
     // A note, not an alarm: it is there when the page opens and needs no announcement.
-    <Alert role="note">
+    <Alert role="note" variant="warning">
       <Info aria-hidden />
       <AlertTitle>{thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar</AlertTitle>
       <AlertDescription className="flex flex-col items-start gap-3">

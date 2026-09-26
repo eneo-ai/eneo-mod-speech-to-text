@@ -1,5 +1,5 @@
-- region "En inspelning är inte skickad":
-  - heading "En inspelning är inte skickad" [level=2]
+- region "En inspelning har inte skickats":
+  - heading "En inspelning har inte skickats" [level=2]
   - paragraph: Den finns kvar på den här enheten tills den har skickats.
   - list:
     - listitem:

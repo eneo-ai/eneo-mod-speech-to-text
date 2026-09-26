@@ -21,7 +21,7 @@ export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: Lu
 };
 
 /**
- * "Hur vill du ge ljudet?": the offered modes as one radio group of equal
+ * "Hur vill du lägga till ljudet?": the offered modes as one radio group of equal
  * cards. Selecting only selects; the arrow keys move between the cards.
  */
 export const ModeCards = forwardRef<
@@ -34,7 +34,7 @@ export const ModeCards = forwardRef<
       {/* A legend does not take part in the fieldset's gap, so it keeps its own margin. */}
       <FieldLegend className="mb-4">
         <h2 ref={heading} id={headingId} data-phase-heading tabIndex={-1} className="text-[20px] font-semibold tracking-[-0.01em] text-ink outline-none">
-          Hur vill du ge ljudet?
+          Hur vill du lägga till ljudet?
         </h2>
       </FieldLegend>
       <RadioGroup

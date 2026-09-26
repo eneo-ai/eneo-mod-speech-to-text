@@ -211,10 +211,13 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
   return createPortal(
     <div role="group" aria-label="Inspelningen" className="flex flex-wrap items-center gap-2">
       <RecordingStatus phase={phase} className="mr-auto text-[15px]" />
+      {/* The recording bar's buttons, a size smaller. */}
       <Button type="button" variant="outline" className="h-11" onClick={onPause}>
+        {phase === "recording" ? <Pause data-icon="inline-start" aria-hidden /> : <Play data-icon="inline-start" aria-hidden />}
         {phase === "recording" ? "Pausa" : "Fortsätt"}
       </Button>
-      <Button type="button" variant="outline" className="h-11" onClick={onStop}>
+      <Button type="button" className="h-11" onClick={onStop}>
+        <Square data-icon="inline-start" aria-hidden className="fill-current" />
         Stoppa
       </Button>
     </div>,
