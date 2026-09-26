@@ -82,9 +82,11 @@ FLOWS = {f["published"]["id"]: f for f in [
          steps_requiring_review=[{"step_id": REVIEW_STEP_ID, "step_order": 2, "review_mode": "edit", "output_type": "json",
                                   "output_contract": {"properties": {"speakers": {"items": {"properties": {
                                       "label": {"pattern": "^SPEAKER_\\d{2,}$"}}}}}}}]),
+    # The flow asks the speaker count itself, as a number detail.
     flow("flow-3", "Samråd till protokoll", "Gör ett protokoll av ett samrådsmöte.", 2, ("space-2", "Socialtjänsten"),
-         [PARTICIPANTS, {"name": "arende", "label": "Ärende", "type": "text", "required": True, "order": 2}],
-         transcription=LIVE_ON),
+         [PARTICIPANTS, {"name": "arende", "label": "Ärende", "type": "text", "required": True, "order": 2},
+          {"name": "antal_talare", "label": "Antal talare", "type": "number", "required": False, "order": 3}],
+         transcription={**LIVE_ON, "max_speakers": {"form_field": "antal_talare", "participants_field": "deltagare"}}),
     flow("flow-4", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor", "Behöver publiceras om.",
          5, ("space-2", "Socialtjänsten"), []),
 ]}

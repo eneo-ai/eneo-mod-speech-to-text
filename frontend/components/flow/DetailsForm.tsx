@@ -47,17 +47,20 @@ export function DetailsForm({
   suggestions,
   onNamesAdded,
   notes,
+  countField = null,
   makesText = false,
 }: {
   fields: FormField[];
   details: Record<string, DetailValue>;
-  /** Fields that must be filled before the document can be made. */
+  /** Details that block sending: a required one empty, or the flow's own speaker count holding no count. */
   invalid: readonly string[];
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
   onNamesAdded: (names: string[]) => void;
   /** A line under a field for now, by its name: where its value came from. */
   notes?: Record<string, string>;
+  /** The flow's own field that asks for the speaker count: a whole number, like Antal talare. */
+  countField?: string | null;
   /** The flow ends in text, not a file. */
   makesText?: boolean;
 }) {
@@ -83,6 +86,7 @@ export function DetailsForm({
             [help ? helpId : null, note ? noteId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
           // Said before sending too, not only once the send finds it missing.
           const required = field.required || undefined;
+          const isCount = field.name === countField;
           return (
             <Field key={field.name} data-invalid={isInvalid || undefined} className="gap-2">
               <FieldLabel htmlFor={id} className="gap-1 text-[15px] font-semibold text-ink">
@@ -143,15 +147,19 @@ export function DetailsForm({
                   id={id}
                   name={field.name}
                   autoComplete="off"
-                  type={field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
+                  // The count is text with a number keyboard, as Antal talare: a number field reads "e", "-"
+                  // or "2,5" as empty and says nothing.
+                  type={isCount ? "text" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
                   // A phone's number keyboard, not the one with letters and punctuation.
-                  inputMode={field.type === "number" ? "numeric" : undefined}
+                  inputMode={isCount || field.type === "number" ? "numeric" : undefined}
+                  pattern={isCount ? "[0-9]*" : undefined}
                   value={text}
                   onChange={(event) => onChange(field.name, event.target.value)}
                   aria-describedby={describedBy}
                   aria-invalid={isInvalid || undefined}
                   aria-required={required}
-                  className={SINGLE_LINE}
+                  // Room for two digits, as Antal talare.
+                  className={isCount ? `${SINGLE_LINE} max-w-28` : SINGLE_LINE}
                 />
               )}
               {help && (
@@ -164,7 +172,13 @@ export function DetailsForm({
                   {note}
                 </FieldDescription>
               )}
-              {isInvalid && <FieldError id={errorId}>Fyll i det här för att skapa {makesText ? "texten" : "dokumentet"}.</FieldError>}
+              {isInvalid && (
+                <FieldError id={errorId}>
+                  {isCount && text.trim()
+                    ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
+                    : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`}
+                </FieldError>
+              )}
             </Field>
           );
         })}

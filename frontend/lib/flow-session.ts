@@ -208,7 +208,7 @@ export interface SessionSnapshot {
   mode: InputMode | null;
   phase: SessionPhase;
   details: Record<string, DetailValue>;
-  /** Required details still missing when the document was asked for. */
+  /** Details that block sending, as found when the document was asked for: a required one empty, or no count. */
   invalid: string[];
   /** The effective choice; null when the flow does not let the run choose. */
   speakerLabels: boolean | null;
@@ -276,12 +276,16 @@ function asksSpeakerCount(transcription: FlowTranscriptionContract | null | unde
 // ponytail: a sensible ceiling for a meeting, not Eneo's (which takes any count); raise it if a larger one is asked for.
 export const MAX_SPEAKER_COUNT = 20;
 
-/** "Antal talare" as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1 to 20. */
-export function readSpeakerCount(text: string | null): number | undefined | "invalid" {
+/**
+ * A speaker count as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1
+ * to `ceiling` (this module's own Antal talare stops at 20; a flow's own field has no ceiling).
+ */
+export function readSpeakerCount(text: string | null, ceiling = MAX_SPEAKER_COUNT): number | undefined | "invalid" {
   const trimmed = text?.trim() ?? "";
   if (trimmed === "") return undefined;
   const count = Number(trimmed);
-  return /^\d+$/.test(trimmed) && count >= 1 && count <= MAX_SPEAKER_COUNT ? count : "invalid";
+  // At most 15 digits: the text Eneo gets stays short and the number exact.
+  return /^\d{1,15}$/.test(trimmed) && count >= 1 && count <= ceiling ? count : "invalid";
 }
 
 /**
@@ -595,7 +599,8 @@ export class FlowSession {
     else if (this.countFollowsNames && name === this.participantsField()) this.followNames();
     writeDraft(this.options.drafts, this.options.ownerId, this.draftName(), this.details);
     if (name === this.ownCountField() || name === this.participantsField()) this.keepChoices();
-    this.invalid = this.invalid.filter((field) => !filledValue(this.details[field]));
+    const required = (field: string) => this.contract?.form_fields?.find((f) => f.name === field)?.required;
+    this.invalid = this.invalid.filter((field) => this.detailWrong(field, required(field)));
     this.emit();
   }
 
@@ -728,7 +733,7 @@ export class FlowSession {
   }
 
   /**
-   * "Skapa dokument": the required details are checked here, where they matter.
+   * "Skapa dokument": the details are checked here, where they matter (a required one filled, a count a count).
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
@@ -763,7 +768,7 @@ export class FlowSession {
     if (generation !== this.generation) return false;
     this.invalid = repeated
       ? []
-      : fields.filter((field) => field.required && !filledValue(this.details[field.name])).map((field) => field.name);
+      : fields.filter((field) => this.detailWrong(field.name, field.required)).map((field) => field.name);
     this.problem = null;
     this.emit();
     if (this.invalid.length > 0 || !this.handlers) return false;
@@ -858,6 +863,16 @@ export class FlowSession {
    */
   private countInvalid() {
     return readSpeakerCount(this.snapshot.speakerCount) === "invalid";
+  }
+
+  /**
+   * A detail the run cannot go with: a required one left empty, or the flow's own speaker count holding anything but
+   * a whole number the run can bound the speakers with.
+   */
+  private detailWrong(name: string, required: boolean | undefined): boolean {
+    const value = this.details[name];
+    if (!filledValue(value)) return Boolean(required);
+    return name === this.ownCountField() && readSpeakerCount(String(value), Infinity) === "invalid";
   }
 
   /** The flow's own field that asks for the speaker count, when it has one. */

@@ -154,6 +154,7 @@ export function FlowInput({
       suggestions={suggestions}
       onNamesAdded={(names) => rememberNames(browserStorage(), ownerId, names)}
       notes={ownCountField && snapshot.speakerCountFromNames ? { [ownCountField]: COUNT_FROM_NAMES } : undefined}
+      countField={ownCountField}
     />
   );
 
