@@ -265,6 +265,11 @@ export interface FlowTranscriptionContract {
    * `participants_field` namnger fältet med deltagarna som talar-kopplingssteget läser; null utan ett sådant steg.
    */
   max_speakers?: { form_field: string | null; participants_field?: string | null } | null;
+  /**
+   * Sant när Eneo tar emot `single_recording` på ett ljudsteg: filerna är delar av samma inspelning, så talarna
+   * märks upp en gång över alla delar och en röst behåller sin etikett. Saknas i äldre Eneo; skicka det då inte.
+   */
+  single_recording?: boolean;
 }
 
 /**
@@ -391,6 +396,8 @@ export interface FlowRunStep {
   started_at?: string;
   completed_at?: string;
   finished_at?: string;
+  /** Sant när körningen skickade stegets filer som delar av samma inspelning. */
+  runtime_input_single_recording?: boolean;
   [k: string]: unknown;
 }
 

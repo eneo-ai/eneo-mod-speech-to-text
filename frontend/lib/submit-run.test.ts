@@ -1250,3 +1250,118 @@ test("the retry goes to Eneo's retry path as a POST carrying the key", async (t)
   assert.equal((seen[0].init.headers as Record<string, string>)["Idempotency-Key"], "flow-run-retry:run-1");
   assert.equal(outcome.kind === "started" && outcome.run.id, "run-2");
 });
+
+test("a recording's parts go as one recording where Eneo offers it, so a voice keeps one label", async () => {
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: false, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const sent = async (parts: string[][], now: RunContract) => {
+    const store = await openRecordingStore({});
+    const recording = await stoppedRecording(store, parts);
+    let body: Json = {};
+    let next = 0;
+    await submitRecording(store, recording.id, params({ contract: now }), {
+      upload: async () => ({ id: `file-${++next}` }),
+      startRun: async (_flowId, asked) => {
+        body = asked;
+        return queuedRun;
+      },
+    });
+    return (body.step_inputs as Record<string, Json>)["step-audio"];
+  };
+
+  assert.deepEqual(await sent([["a"], ["b"]], offering), { file_ids: ["file-1", "file-2"], single_recording: true });
+  assert.deepEqual(await sent([["a"], ["b"]], contract), { file_ids: ["file-1", "file-2"] }, "an Eneo that does not offer it");
+  const { single_recording: _, ...older } = offering.transcription!;
+  assert.deepEqual(
+    await sent([["a"], ["b"]], { ...contract, transcription: older }),
+    { file_ids: ["file-1", "file-2"] },
+    "an Eneo whose contract has transcription options but not this one",
+  );
+  assert.deepEqual(await sent([["a"]], offering), { file_ids: ["file-1"] }, "one file is one recording already");
+});
+
+test("a two-part request whose answer never came is repeated as it was, flag and key, whatever the contract says now", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: false, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"], ["b"]]);
+  const asked: Array<[Json, string]> = [];
+  let uploads = 0;
+  const upload: SubmitDeps["upload"] = async () => ({ id: `file-${++uploads}` });
+  const cancel = new AbortController();
+  let waiting = false;
+  const sending = submitRecording(
+    store,
+    recording.id,
+    params({ contract: offering, signal: cancel.signal, onWait: (wait) => (waiting = wait !== null) }),
+    {
+      upload,
+      startRun: async (_flowId, body, key) => {
+        asked.push([body, key!]);
+        throw fetchFailed(); // Eneo may have made the run; its answer is lost
+      },
+    },
+  );
+  await until(() => waiting);
+  cancel.abort();
+  await assert.rejects(sending);
+  t.mock.timers.reset();
+
+  await submitRecording(store, recording.id, params({ contract }), {
+    upload: async () => assert.fail("nothing is uploaded again"),
+    startRun: async (_flowId, body, key) => {
+      asked.push([body, key!]);
+      return queuedRun;
+    },
+  });
+
+  assert.deepEqual((asked[0][0].step_inputs as Record<string, Json>)["step-audio"], {
+    file_ids: ["file-1", "file-2"],
+    single_recording: true,
+  });
+  assert.deepEqual(asked.at(-1), asked[0], "the same body under the same key");
+});
+
+test("a new run keeps a recording's parts together where the step says so and the flow still offers it", () => {
+  const failed: FlowRunPublic = { id: "run-1", flow_id: "flow-1", status: "failed" };
+  const parts = (single: boolean): FlowRunStep[] => [
+    {
+      id: "result-1",
+      step_id: "step-audio",
+      step_order: 1,
+      status: "completed",
+      runtime_input_file_ids: ["file-a", "file-b"],
+      runtime_input_single_recording: single,
+    },
+  ];
+  const offering: RunContract = {
+    ...contract,
+    transcription: {
+      live: { available: false, reason: null },
+      speaker_labels: { selectable: true, required: false, default: true },
+      single_recording: true,
+    },
+  };
+  const input = (steps: FlowRunStep[], now: RunContract) => {
+    const request = startAgainRequest(failed, steps, now);
+    assert.ok(request && "body" in request);
+    return (request.body.step_inputs as Record<string, Json>)["step-audio"];
+  };
+
+  assert.deepEqual(input(parts(true), offering), { file_ids: ["file-a", "file-b"], single_recording: true });
+  assert.deepEqual(input(parts(true), contract), { file_ids: ["file-a", "file-b"] }, "not offered now: dropped");
+  assert.deepEqual(input(parts(false), offering), { file_ids: ["file-a", "file-b"] }, "separate files stay separate");
+});

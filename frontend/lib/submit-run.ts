@@ -132,6 +132,8 @@ export interface SubmitParams extends RetryOptions {
   maxSpeakers?: number;
   /** Eneo's stored live transcript of the one file, used instead of transcribing it again; never beside more files. */
   liveTranscriptId?: string | null;
+  /** The files are the parts of one recording; sent as such only where the contract offers it. */
+  singleRecording?: boolean;
   /** Every file is uploaded, and this is the run request Eneo is about to be asked. */
   onStarting?: (request: RunRequest) => void | Promise<void>;
 }
@@ -194,6 +196,9 @@ export async function submitRun(
   if (fileIds.length > 0) {
     const input: Json = { file_ids: fileIds };
     if (fileIds.length === 1 && params.liveTranscriptId) input.live_transcript_id = params.liveTranscriptId;
+    if (fileIds.length > 1 && params.singleRecording && contract.transcription?.single_recording) {
+      input.single_recording = true;
+    }
     body.step_inputs = { [stepId!]: input };
   }
   if (Object.keys(params.inputPayload).length > 0) body.input_payload_json = params.inputPayload;
@@ -315,6 +320,7 @@ async function sendLeased(
           ...params,
           idempotencyKey: `flow-run:recording:${id}`,
           liveTranscriptId: recording.liveTranscriptId,
+          singleRecording: true,
           files: files.map((file) => ({ ...file, fileId: recording.parts[file.index].fileId })),
           onUploaded: (index, fileId) => store.setPartFileId(id, files[index].index, fileId),
           onStarting: async (request) => {
@@ -439,9 +445,12 @@ export function startAgainRequest(
     fileIds.length <= (step.max_files ?? Infinity) &&
     (contract.form_fields ?? []).every((field) => !field.required || filledValue(payload[field.name]));
   if (!step || !fits) return { review: INPUT_CHANGED };
+  // Parts of one recording stay one recording where the flow still takes the flag.
+  const together =
+    fileIds.length > 1 && inputStep.runtime_input_single_recording === true && contract.transcription?.single_recording === true;
   const body: Json = {
     expected_flow_version: contract.published_flow_version,
-    step_inputs: { [step.step_id]: { file_ids: fileIds } },
+    step_inputs: { [step.step_id]: together ? { file_ids: fileIds, single_recording: true } : { file_ids: fileIds } },
   };
   if (Object.keys(payload).length > 0) body.input_payload_json = payload;
   // The run's own choices, where the flow still lets a run make them; a choice it no longer offers is dropped.
