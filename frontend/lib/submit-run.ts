@@ -20,7 +20,7 @@ import {
   type RunContract,
 } from "./api";
 import { friendlyError } from "./errors";
-import { filledValue, labelsSpeakers, speakerLabelsFor } from "./flow-session";
+import { filledValue, labelsSpeakers, oneRecordingLimitSeconds, speakerLabelsFor } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes, formatDuration } from "./format";
 import { ALREADY_SENT, IN_USE_ELSEWHERE, NOT_ON_DEVICE, type RecordingStore, type RunRequest } from "./recording-store";
@@ -305,10 +305,18 @@ async function sendLeased(
       // A part that ran past Eneo's time per file (a page the browser suspended past the handover) would be
       // refused only after Eneo took the run, and the device's copy with it: the recording as it is stored now
       // stays here, unsealed, where Spara som fil keeps it.
-      const limit = params.contract.steps_requiring_input?.find((step) => step.step_id === params.stepId)?.max_duration_seconds;
+      const step = params.contract.steps_requiring_input?.find((input) => input.step_id === params.stepId);
+      const limit = step?.max_duration_seconds;
       if (limit && recording.parts.some((part) => part.durationMs > limit * 1000)) {
         throw new Error(
           `Inspelningen är för lång för en fil: en del är längre än flödet tar emot (${formatDuration(limit * 1000)}). Välj Spara som fil för att behålla den.`,
+        );
+      }
+      // Parts that go as one recording take Eneo's longest recording together.
+      const whole = recording.parts.length > 1 ? oneRecordingLimitSeconds(params.contract, step) : undefined;
+      if (whole && recording.parts.reduce((sum, part) => sum + part.durationMs, 0) > whole * 1000) {
+        throw new Error(
+          `Inspelningen är längre än flödet tar emot (${formatDuration(whole * 1000)}). Välj Spara som fil för att behålla den.`,
         );
       }
       const files = await store.readParts(id);

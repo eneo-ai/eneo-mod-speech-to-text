@@ -18,6 +18,8 @@ import {
   makesText,
   primaryActionLabel,
   readSpeakerCount,
+  oneRecordingLimitSeconds,
+  captureLimits,
   speakerLabelsFor,
   storageLine,
   withLastUsedFirst,
@@ -1835,5 +1837,33 @@ test("a flow its owner must republish says so in Swedish, with a way back, and t
     title: "Flödet behöver publiceras om av den som ansvarar för det innan det kan användas.",
     detail: "Inspelningen finns kvar. Spara den som fil om du vill behålla den.",
     back: true,
+  });
+});
+
+test("the longest recording is Eneo's, for parts it takes as one recording; an older Eneo's time per file stands in", () => {
+  const step = { step_id: "s", input_format: "audio", max_duration_seconds: 18_000 };
+  const together = { flow_id: "f", published_flow_version: 1, transcription: { single_recording: true } } as RunContract;
+  assert.equal(oneRecordingLimitSeconds(together, { ...step, max_recording_seconds: 21_600 }), 21_600);
+  assert.equal(oneRecordingLimitSeconds(together, step), 18_000, "a contract without the field: the per-file time");
+  assert.equal(oneRecordingLimitSeconds({ ...together, transcription: null }, step), undefined, "parts sent apart");
+  assert.equal(oneRecordingLimitSeconds(together, null), undefined);
+});
+
+test("Eneo's part length applies only to parts it takes as one recording; parts sent apart run to their own limits", () => {
+  const step = { step_id: "s", input_format: "audio", max_files: 10, max_file_size_bytes: 10 ** 9, max_duration_seconds: 18_000, max_recording_seconds: 18_000, recording_part_seconds: 1_800 };
+  const together = { flow_id: "f", published_flow_version: 1, transcription: { single_recording: true } } as RunContract;
+  assert.deepEqual(captureLimits(together, step), {
+    maxBytes: 10 ** 9,
+    maxDurationMs: 18_000_000,
+    maxFiles: 10,
+    partMs: 1_800_000,
+    maxRecordingMs: 18_000_000,
+  });
+  assert.deepEqual(captureLimits({ ...together, transcription: null }, step), {
+    maxBytes: 10 ** 9,
+    maxDurationMs: 18_000_000,
+    maxFiles: 10,
+    partMs: undefined,
+    maxRecordingMs: undefined,
   });
 });
