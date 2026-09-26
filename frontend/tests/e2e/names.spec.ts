@@ -17,7 +17,7 @@ test("the input modes are named by their title, described by their line, and say
   ] as const) {
     expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
-  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du ge ljudet?" });
+  expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du lägga till ljudet?" });
 });
 
 test("a field is not an unnamed group", async ({ page }) => {

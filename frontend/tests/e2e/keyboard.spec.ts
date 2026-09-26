@@ -220,7 +220,7 @@ test("the microphone picker holds focus and gives it back", async ({ page }) => 
 test("the input modes change with the arrow keys", async ({ page }) => {
   await setup(page);
   const cards = page.getByRole("radio");
-  await page.getByRole("heading", { name: "Hur vill du ge ljudet?" }).focus();
+  await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
   // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
@@ -284,7 +284,7 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   const primary = page.getByRole("button", { name: new RegExp(`^(${ACTION.join("|")})$`) });
   // A chosen mode other than the first: Tab enters the group where the choice is, not at its top.
   await cards.nth(1).click();
-  await page.getByRole("heading", { name: "Hur vill du ge ljudet?" }).focus();
+  await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
   // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.

@@ -39,7 +39,7 @@ test("one unsent recording is spoken of in the singular", () => {
   const one = renderToStaticMarkup(
     createElement(UnsentRecordings, { recordings: [recording("a", 60_000, at(23, 10, 12))], onSend: () => {} }),
   );
-  assert.match(one, /En inspelning är inte skickad/);
+  assert.match(one, /En inspelning har inte skickats/);
   assert.match(one, /Den finns kvar på den här enheten tills den har skickats\./);
   const two = renderToStaticMarkup(
     createElement(UnsentRecordings, {
@@ -58,7 +58,7 @@ test("each unsent recording offers Skapa dokument, Spara som fil and Ta bort, de
       withFlowName: true,
     }),
   );
-  assert.match(html, /2 inspelningar är inte skickade/);
+  assert.match(html, /2 inspelningar har inte skickats/);
   const rows = html.split("<li ").slice(1);
   assert.equal(rows.length, 2);
   for (const row of rows) {
@@ -126,7 +126,7 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
 
   // The flow list has no recorder to continue in: its rows' actions are all outlined, beside the flows.
   const list = renderToStaticMarkup(createElement(UnsentRecordings, { recordings: [cutOff("a")], onSend: () => {}, withFlowName: true }));
-  assert.match(list, /<h2[^>]*>En inspelning är inte skickad<\/h2>/);
+  assert.match(list, /<h2[^>]*>En inspelning har inte skickats<\/h2>/);
   assert.deepEqual(filled(list), []);
   const stopped = renderToStaticMarkup(
     createElement(UnsentRecordings, { recordings: [recording("c", 60_000, at(23, 9, 0))], onSend: () => {}, onContinue: () => {} }),

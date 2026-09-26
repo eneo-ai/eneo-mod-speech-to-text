@@ -14,9 +14,9 @@
   - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - region "Ljudet":
     - status
-    - group "Hur vill du ge ljudet?":
-      - heading "Hur vill du ge ljudet?" [level=2]
-      - radiogroup "Hur vill du ge ljudet?":
+    - group "Hur vill du lägga till ljudet?":
+      - heading "Hur vill du lägga till ljudet?" [level=2]
+      - radiogroup "Hur vill du lägga till ljudet?":
         - text: Strömma
         - paragraph: Se texten medan du pratar.
         - radio "Strömma" [checked]:

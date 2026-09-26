@@ -307,7 +307,7 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
   const { createElement } = await import("react");
   const { FlowInput } = await import("../components/flow/FlowInput");
   const { useFlowSession } = await import("../components/flow/useFlowSession");
-  // One way to give the input (a document to upload), so there is no "Hur vill du ge ljudet?" to focus.
+  // One way to give the input (a document to upload), so there is no "Hur vill du lägga till ljudet?" to focus.
   const contract = { ...IBIC_CONTRACT, steps_requiring_input: [{ step_id: "step-doc", input_format: "document" }] } as unknown as import("./api").RunContract;
   function Setup({ afterRun }: { afterRun: boolean }) {
     const input = useFlowSession({ flowId: "flow-6", flowName: IBIC.name, ownerId: "user-1", contract });

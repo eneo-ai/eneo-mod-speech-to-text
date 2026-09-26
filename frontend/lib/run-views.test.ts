@@ -394,12 +394,12 @@ test("the transcript is not copied or downloaded while its saved corrections cou
       .filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
 
   const readable = render(null);
-  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner .txt, transkriptet", false]]);
+  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner som text, transkriptet", false]]);
   assert.doesNotMatch(readable, />Läs in igen</);
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
-  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner .txt, transkriptet", true]]);
+  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
 });

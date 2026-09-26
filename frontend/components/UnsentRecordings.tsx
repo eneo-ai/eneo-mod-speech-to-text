@@ -88,8 +88,8 @@ export function UnsentRecordings({
           {cutOff
             ? "Inspelningen avbröts"
             : recordings.length === 1
-              ? "En inspelning är inte skickad"
-              : `${recordings.length} inspelningar är inte skickade`}
+              ? "En inspelning har inte skickats"
+              : `${recordings.length} inspelningar har inte skickats`}
         </h2>
         <p className="text-[15px] leading-relaxed text-ink-soft">
           {cutOff

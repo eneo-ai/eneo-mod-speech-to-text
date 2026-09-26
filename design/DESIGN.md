@@ -75,7 +75,9 @@ godtyckliga hex i markup.
 - **Sektionsrubrik** (delad yta/space): `<h2>` i systemfont (20–24px, bold), med
   flödesantal som liten `eyebrow`-etikett till höger. Ev. beskrivning som
   `ink-soft`-paragraf under.
-- **Info-/varningsruta**: `ochre`-ton, `border-ochre/40 bg-ochre/10`, Info-ikon.
+- **Info-/varningsruta** → `Alert variant="warning"`: `ochre`-ton, `border-ochre/40 bg-ochre/10`, ikon (Info eller
+  TriangleAlert). För det som personen ska notera eller göra något åt nu. Stående information som alltid finns där
+  (flödets informationsklassning) är en neutral `Alert` (standardvarianten), så att ockra behåller sin betydelse.
 
 ## Ikonografi (Lucide)
 - Tjänsteikon väljs efter flödets **första input-steg**:

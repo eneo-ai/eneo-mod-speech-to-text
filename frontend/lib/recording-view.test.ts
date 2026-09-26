@@ -59,8 +59,8 @@ test("a quiet stretch of a meeting is never reported: a real microphone's room t
 });
 
 test("while recording for a flow that makes text, the bar's lines speak of the text", () => {
-  assert.equal(stopLine(false), "Stoppa avslutar inspelningen. Du väljer sedan att skapa dokumentet.");
-  assert.equal(stopLine(true), "Stoppa avslutar inspelningen. Du väljer sedan att skapa texten.");
+  assert.equal(stopLine(false), "Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.");
+  assert.equal(stopLine(true), "Stoppa avslutar inspelningen. Sedan kan du skapa texten.");
   const { notes } = recordingNotices({
     phase: "recording",
     silent: false,
@@ -331,7 +331,7 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   assert.match(bar("paused", true), />Pausad</);
   // The fixed line is not in the live region, so a change there does not read it again.
   assert.match(bar("recording", false), /<div role="status"[^>]*><p>Låt skärmen vara tänd under inspelningen\.<\/p><\/div>/);
-  assert.match(bar("recording", false), /<\/div><p[^>]*>Stoppa avslutar inspelningen\. Du väljer sedan att skapa dokumentet\.<\/p>/);
+  assert.match(bar("recording", false), /<\/div><p[^>]*>Stoppa avslutar inspelningen\. Sedan kan du skapa dokumentet\.<\/p>/);
   const warned = bar("recording", false, [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }]);
   const alert = warned.indexOf('role="alert"');
   assert.ok(alert >= 0 && alert < warned.indexOf(">Pausa<"), "a warning is an alert, above the controls");

@@ -12,11 +12,11 @@ export function ClassificationNote({ classification }: { classification?: FlowSe
   return (
     <Alert role="note">
       <ShieldCheck aria-hidden />
-      <AlertTitle className="break-words text-[15px] font-semibold leading-snug text-ink last:mb-0">
+      <AlertTitle>
         {classification.name}
       </AlertTitle>
       {classification.description && (
-        <AlertDescription className="break-words text-[15px] leading-relaxed text-ink-soft">
+        <AlertDescription>
           {classification.description}
         </AlertDescription>
       )}

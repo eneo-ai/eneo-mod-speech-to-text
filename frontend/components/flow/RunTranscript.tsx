@@ -140,7 +140,7 @@ export function RunTranscriptView({
           />
           <Button type="button" variant="ghost" size="sm" disabled={unread} onClick={() => downloadText(plain, fileName)}>
             <Download data-icon="inline-start" aria-hidden />
-            Ladda ner .txt<span className="sr-only">, transkriptet</span>
+            Ladda ner som text<span className="sr-only">, transkriptet</span>
           </Button>
         </div>
       </div>

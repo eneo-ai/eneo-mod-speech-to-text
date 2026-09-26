@@ -186,7 +186,7 @@ export function submitProblem(
   if (error instanceof Error && error.message === ALREADY_SENT) return { title: ALREADY_SENT, sent: true };
   if (error instanceof ApiError) {
     if (error.code === "flow_run_stale_version") {
-      return { title: `Flödet har uppdaterats sedan sidan öppnades. Kontrollera uppgifterna och välj ${createLabel} igen.` };
+      return { title: "Flödet har uppdaterats sedan sidan öppnades.", detail: `Kontrollera uppgifterna och välj ${createLabel} igen.` };
     }
     const kept =
       inputKind === "recording" ? "Inspelningen finns kvar. Spara den som fil om du vill behålla den." : "Välj ett annat flöde.";

@@ -3,14 +3,16 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+// The icon sits on the title's first line: 12 px padding plus half of (20.6 px line - 16 px icon).
 const alertVariants = cva(
-  "relative w-full rounded-lg border px-4 py-3 text-sm [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground [&>svg~*]:pl-7",
+  "relative w-full rounded-lg border px-4 py-3 text-[15px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-3.5 [&>svg]:size-4 [&>svg~*]:pl-7",
   {
     variants: {
       variant: {
-        default: "bg-background text-foreground",
-        destructive:
-          "border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive",
+        default: "bg-card text-ink [&>svg]:text-ink-soft",
+        // DESIGN.md: info and warning boxes are ochre.
+        warning: "border-ochre/40 bg-ochre/10 text-ink [&>svg]:text-ochre",
+        destructive: "border-destructive/50 bg-card text-destructive [&>svg]:text-destructive",
       },
     },
     defaultVariants: {
@@ -39,19 +41,20 @@ const AlertTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("mb-1 font-medium leading-none tracking-tight", className)}
+    className={cn("mb-1 break-words font-semibold leading-snug last:mb-0", className)}
     {...props}
   />
 ))
 AlertTitle.displayName = "AlertTitle"
 
+// The title carries the tone; the explanation reads in the page's own text colour.
 const AlertDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={cn("text-sm [&_p]:leading-relaxed", className)}
+    className={cn("break-words leading-relaxed text-ink-soft", className)}
     {...props}
   />
 ))

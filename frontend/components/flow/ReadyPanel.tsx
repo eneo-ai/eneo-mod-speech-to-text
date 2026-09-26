@@ -168,7 +168,7 @@ export function ReadyPanel({
       </div>
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
-      {problem && <ProblemAlert problem={problem} />}
+      {problem && <ProblemAlert problem={problem} reveal />}
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && <p className="text-[15px] text-ink">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</p>}

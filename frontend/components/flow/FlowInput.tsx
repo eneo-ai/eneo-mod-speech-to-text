@@ -444,7 +444,7 @@ function SetupWorkspace({
         />
       )}
 
-      {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} />}
+      {problem && <ProblemAlert problem={problem} onRetry={() => void session.start()} reveal />}
 
       {(mode || modes.length === 0) &&
         docked(

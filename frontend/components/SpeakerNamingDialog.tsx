@@ -176,7 +176,7 @@ export function SpeakerNamingDialog({
     >
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent
-        className="flex max-h-[min(90dvh,48rem)] max-w-2xl flex-col gap-0 p-0 max-sm:inset-x-0 max-sm:top-0 max-sm:h-[var(--visible-height,100dvh)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0"
+        className="flex max-h-[min(90dvh,48rem)] max-w-2xl flex-col gap-0 p-0 max-sm:inset-x-0 max-sm:top-0 max-sm:w-full max-sm:h-[var(--visible-height,100dvh)] max-sm:max-h-none max-sm:max-w-none max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none max-sm:border-0"
         style={height ? ({ "--visible-height": `${height}px` } as React.CSSProperties) : undefined}
       >
         <DialogHeader className="border-b border-border px-6 pb-4 pt-6 pr-14 text-left">
