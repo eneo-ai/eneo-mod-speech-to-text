@@ -366,6 +366,10 @@ test("Antal talare takes a whole number from 1 to 20, or nothing", () => {
   }
   for (const text of ["0", "21", "2.5", "-1", "1e1", "tre"]) assert.equal(readSpeakerCount(text), "invalid", text);
   assert.equal(readSpeakerCount(null), undefined, "not asked: nothing");
+  assert.equal(readSpeakerCount("21", Infinity), 21, "a flow's own field has no ceiling");
+  for (const text of ["9".repeat(400), `${"0".repeat(5000)}1`]) {
+    assert.equal(readSpeakerCount(text, Infinity), "invalid", "but no longer than 15 digits");
+  }
 });
 
 test("a count goes with the run as maxSpeakers; empty or not asked sends none, and one that is no count starts and sends nothing", async () => {
@@ -652,6 +656,58 @@ test("required details are checked when the document is made, not when recording
 
   session.setDetail("motesnamn", "Kommunstyrelsen");
   assert.deepEqual(session.getSnapshot().invalid, [], "filling the field clears its error");
+});
+
+test("the flow's own speaker count is a whole number from 1, or empty when optional; a required one is asked for", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const withCount = (required: boolean): RunContract => {
+    const own = countContract({ max_speakers: { form_field: "antal_talare" } });
+    return {
+      ...own,
+      form_fields: [...(own.form_fields ?? []), { name: "antal_talare", label: "Antal talare", type: "number", required }],
+    };
+  };
+  session.setContract(withCount(false));
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const count = () => sent.at(-1)?.payload.antal_talare;
+
+  for (const text of ["2.5", "0", "-1", "tre"]) {
+    session.setDetail("antal_talare", text);
+    assert.equal(await session.createDocument(), false, text);
+    assert.ok(session.getSnapshot().invalid.includes("antal_talare"), `${text} is no count`);
+  }
+  assert.equal(sent.length, 0);
+
+  session.setDetail("antal_talare", "");
+  assert.ok(!session.getSnapshot().invalid.includes("antal_talare"), "an optional count may be left empty");
+  assert.equal(await session.createDocument(), true);
+  assert.ok(!("antal_talare" in sent[0].payload), "sent without a count");
+
+  // The flow's field takes any whole count: the 20 of this module's own field is not the flow's rule.
+  await session.selectMode("spela-in");
+  await session.start();
+  recorders.at(-1)!.emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  session.setDetail("antal_talare", "21");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(String(count()), "21");
+
+  session.setContract(withCount(true));
+  await session.selectMode("spela-in");
+  await session.start();
+  recorders.at(-1)!.emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  session.setDetail("antal_talare", "");
+  assert.equal(await session.createDocument(), false, "a required count left empty");
+  assert.deepEqual(session.getSnapshot().invalid, ["antal_talare"]);
 });
 
 test("Skapa dokument sends the recording with the details and the speaker choice, then starts over with the details kept", async () => {

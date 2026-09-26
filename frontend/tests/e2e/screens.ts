@@ -280,6 +280,17 @@ export const STATES: State[] = [
     },
   },
   {
+    name: "setup-own-count-invalid",
+    go: async (page) => {
+      await setup(page, "flow-3");
+      await chooseFile(page);
+      await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
+      await page.getByRole("textbox", { name: "Antal talare" }).fill("2,5");
+      await page.getByRole("button", { name: "Skapa dokument" }).click();
+      await expect(page.getByText("Skriv ett heltal från 1, eller lämna fältet tomt.")).toBeVisible();
+    },
+  },
+  {
     name: "setup-republished",
     go: async (page) => {
       await setup(page, "flow-3");
