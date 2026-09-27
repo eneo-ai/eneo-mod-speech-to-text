@@ -36,16 +36,23 @@ export function useSilence(stream: MediaStream | null, recording: boolean): bool
   return silent;
 }
 
-/** Sets the tab title while mounted and gives the old one back afterwards. */
+/**
+ * Sets the tab title while mounted and gives the old one back afterwards, unless
+ * the tab says something else by then: a page navigated to has set its own.
+ */
 export function useDocumentTitle(title: string): void {
   const previous = useRef<string | null>(null);
+  const current = useRef(title);
   useEffect(() => {
     previous.current ??= document.title;
+    current.current = title;
     document.title = title;
   }, [title]);
   useEffect(
     () => () => {
-      if (previous.current !== null) document.title = previous.current;
+      if (previous.current !== null && document.title === current.current) {
+        document.title = previous.current;
+      }
     },
     [],
   );

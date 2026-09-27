@@ -180,6 +180,20 @@ for (const [state, title] of [
   });
 }
 
+test("going from the list to a flow, the page is titled the flow", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "flow-list")!.go(page, info);
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).first().click();
+  await expect(page).toHaveTitle(/Nämndmöte till rapport · Tal till text/);
+});
+
+test("going back from a flow to the list, the page is titled the list, not the flow", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "setup")!.go(page, info);
+  await expect(page).not.toHaveTitle("Välj ett flöde · Tal till text");
+  await backLink(page).click();
+  await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
+  await expect(page).toHaveTitle("Välj ett flöde · Tal till text");
+});
+
 test("the login's end is warned of five minutes ahead, and renewed in a new window without leaving the page", async ({ page, context }) => {
   let endsIn = 200;
   let refreshIn: number | undefined;

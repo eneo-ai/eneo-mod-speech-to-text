@@ -27,6 +27,9 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // One `next dev` serves every worker: more than four starve it on a shared host, and a page
+  // still loading then fails a check that is not about accessibility.
+  workers: 4,
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/a11y-report" }]],
   use: {
     baseURL: `http://127.0.0.1:${APP}`,
@@ -45,6 +48,9 @@ export default defineConfig({
     { name: "phone-390-dark", use: { ...touch(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
     { name: "tablet-landscape", use: { ...touch(1024, 768), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
+    // The small laptop: 1280 × 800.
+    { name: "laptop-1280-light", use: { ...wide(1280, 800), colorScheme: "light" }, testIgnore: noSnapshots },
+    { name: "laptop-1280-dark", use: { ...wide(1280, 800), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "laptop-1440-light", use: { ...laptop, colorScheme: "light" } },
     { name: "laptop-1440-dark", use: { ...laptop, colorScheme: "dark" }, testIgnore: scanOnly },
     // 200 % zoom of a 1280 × 800 window.

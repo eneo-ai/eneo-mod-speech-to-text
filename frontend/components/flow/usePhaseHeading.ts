@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { useDocumentTitle } from "./recording-hooks";
 
 /**
  * The heading a phase's view focuses so a screen reader starts there. It is not
@@ -17,12 +18,6 @@ export const PHASE_HEADING =
 export function usePhaseHeading(title: string) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
-  useEffect(() => {
-    const previous = document.title;
-    document.title = `${title} · Tal till text`;
-    return () => {
-      document.title = previous;
-    };
-  }, [title]);
+  useDocumentTitle(`${title} · Tal till text`);
   return heading;
 }

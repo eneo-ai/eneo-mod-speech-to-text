@@ -208,7 +208,9 @@ export function FlowInput({
           className={cn(
             "flex min-w-0 flex-col gap-4",
             group === "capture"
-              ? "mt-4 min-h-[22rem] flex-1 lg:mt-0 lg:min-h-0 short:min-h-0"
+              ? // Scrolls on its own when the bar's warnings or larger text spacing need more room than the
+                // window has; the side room keeps a focused control's outline inside the scroll box.
+                "mt-4 min-h-[22rem] flex-1 lg:-mx-2 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:px-2 short:min-h-0"
               : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
           )}
         >
