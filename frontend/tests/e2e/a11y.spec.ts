@@ -33,7 +33,8 @@ for (const state of STATES) {
     const touchTargets = coarse ? await targetSizes(page, 44, false) : [];
     const layout = edges ? await reflow(page) : null;
     let spaced = null;
-    // The narrowest phone is where added spacing runs out of room first.
+    // Added text spacing is checked on both phone widths, the 1280 laptop and the widest screens: a 1280 x 800
+    // laptop clipped the recording's warnings as surely as a phone.
     if (project === "phone-320-light" || project === "phone-390-light" || desktop) {
       const style = await page.addStyleTag({ content: TEXT_SPACING });
       spaced = await reflow(page);
