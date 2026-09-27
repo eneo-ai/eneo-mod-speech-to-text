@@ -19,6 +19,11 @@ const SEEK_HEAD = 0x114d9b74;
 const INFO = 0x1549a966;
 const TIMECODE_SCALE = 0x2ad7b1;
 const DURATION = 0x4489;
+/** A checksum over its parent's other children: a patch would break it. */
+const CRC_32 = 0xbf;
+/** Info comes before the first Cluster, a few hundred bytes in: only this much of a first chunk is read and copied. */
+const HEADER_BYTES = 16 * 1024;
+const HEADER_READ_MS = 2_000;
 const DEFAULT_TIMECODE_SCALE_NS = 1_000_000;
 
 interface Element {
@@ -78,7 +83,7 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
   let seekHead = false;
   for (let at = segment.dataStart; !info; ) {
     const child = readElement(bytes, at);
-    if (!child || child.size === null) return null;
+    if (!child || child.size === null || child.id === CRC_32) return null;
     if (child.id === INFO) info = { ...child, size: child.size };
     seekHead ||= child.id === SEEK_HEAD;
     at = child.dataStart + child.size;
@@ -89,7 +94,7 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
   let duration: Element | null = null;
   for (let at = info.dataStart; at < infoEnd; ) {
     const child = readElement(bytes, at, infoEnd);
-    if (!child || child.size === null) return null;
+    if (!child || child.size === null || child.id === CRC_32) return null;
     if (child.id === TIMECODE_SCALE) {
       scale = 0;
       for (let i = child.dataStart; i < child.dataStart + child.size; i++) scale = scale * 256 + bytes[i];
@@ -137,4 +142,33 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
     offset += piece.length;
   }
   return patched;
+}
+
+/**
+ * A WebM part's first chunk with its recorded duration written in, or as it was
+ * (not WebM, a header this does not recognise, or bytes that did not come in time).
+ * Reading and patching the header touches at most its first 16 KB; building the part's
+ * file afterwards copies its bytes as any Blob does.
+ */
+export async function withRecordedDuration(
+  first: Blob | ArrayBuffer | Uint8Array,
+  durationMs: number,
+  mimeType: string,
+): Promise<Blob | ArrayBuffer | Uint8Array> {
+  if (!/^(audio|video)\/webm\b/i.test(mimeType)) return first;
+  if (!(first instanceof Blob)) {
+    // Bytes in memory: the header is a view of their start; nothing is copied to read it.
+    const view = first instanceof Uint8Array ? first : new Uint8Array(first);
+    const patched = withWebmDuration(view.subarray(0, HEADER_BYTES), durationMs);
+    return patched ? new Blob([patched as BlobPart, view.subarray(HEADER_BYTES) as BlobPart]) : first;
+  }
+  const blob = first;
+  const head = blob.slice(0, HEADER_BYTES);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const bytes = await Promise.race([
+    head.arrayBuffer().then((buffer) => new Uint8Array(buffer), () => null),
+    new Promise<null>((resolve) => (timer = setTimeout(() => resolve(null), HEADER_READ_MS))),
+  ]).finally(() => clearTimeout(timer));
+  const patched = bytes && withWebmDuration(bytes, durationMs);
+  return patched ? new Blob([patched as BlobPart, blob.slice(head.size)]) : first;
 }

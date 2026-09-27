@@ -3,7 +3,7 @@ import test from "node:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 
 import { openRecordingStore, type NewRecording } from "./recording-store";
-import { withWebmDuration } from "./webm-duration";
+import { withRecordedDuration, withWebmDuration } from "./webm-duration";
 
 const hex = (text: string) => Uint8Array.from(text.match(/../g) ?? [], (byte) => parseInt(byte, 16));
 
@@ -177,4 +177,54 @@ test("an assembled WebM part reports its recorded duration; MP4 parts stay as re
     const [mp4File] = await store.readParts(mp4.id);
     assert.deepEqual(new Uint8Array(await mp4File.blob.arrayBuffer()), recorded);
   }
+});
+
+test("a header whose checksum the patch would break is left as it was", () => {
+  const crc = element("bf", "00000000");
+  const crcInSegment = hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + crc + CHROME_INFO + CLUSTER_START);
+  const crcInInfo = hex(EBML_HEADER + SEGMENT_UNKNOWN_SIZE + element("1549a966", crc + element("2ad7b1", "0f4240")) + CLUSTER_START);
+  assert.equal(withWebmDuration(crcInSegment, 1_000), null, "CRC-32 in the Segment");
+  assert.equal(withWebmDuration(crcInInfo, 1_000), null, "CRC-32 in Info");
+});
+
+test("a large first chunk has only its header read and patched; the rest stays as it was", async () => {
+  const audio = new Uint8Array(100_000).fill(7);
+  const chunk = new Blob([chromeWebm(), audio]);
+  const patched = new Uint8Array(await new Blob([await withRecordedDuration(chunk, 5_000, "audio/webm")]).arrayBuffer());
+  assert.equal(readDurationMs(patched), 5_000);
+  assert.ok(Buffer.from(patched.subarray(patched.length - audio.length)).equals(Buffer.from(audio)));
+});
+
+test("a first chunk held as bytes has its header patched in place of a copy, the rest as it was", async () => {
+  const audio = new Uint8Array(100_000).fill(7);
+  const chunk = new Uint8Array([...chromeWebm(), ...audio]);
+  const patched = new Uint8Array(await new Blob([await withRecordedDuration(chunk, 5_000, "audio/webm")]).arrayBuffer());
+  assert.equal(readDurationMs(patched), 5_000);
+  assert.ok(Buffer.from(patched.subarray(patched.length - audio.length)).equals(Buffer.from(audio)));
+  assert.equal(readDurationMs(chunk), null, "the stored bytes are not changed");
+});
+
+test("other formats are not read", async (t) => {
+  const read = t.mock.method(Blob.prototype, "arrayBuffer");
+  const chunk = new Blob([hex("0000001c6674797069736f6d")]);
+  assert.equal(await withRecordedDuration(chunk, 1_000, "audio/mp4"), chunk);
+  assert.equal(read.mock.callCount(), 0);
+});
+
+test("a header that does not come in time leaves the chunk as it was", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  t.mock.method(Blob.prototype, "arrayBuffer", () => new Promise(() => undefined));
+  const chunk = new Blob([chromeWebm()]);
+  const result = withRecordedDuration(chunk, 1_000, "audio/webm");
+  t.mock.timers.tick(2_000);
+  assert.equal(await result, chunk);
+});
+
+test("a header read in time leaves no timer behind, and the type is read case-insensitively", async (t) => {
+  const clear = t.mock.method(globalThis, "clearTimeout");
+  const patched = await withRecordedDuration(new Blob([chromeWebm()]), 1_000, "Audio/WebM");
+  const bytes = new Uint8Array(await new Blob([patched]).arrayBuffer());
+  assert.equal(readDurationMs(bytes), 1_000);
+  // The read's two-second bound is cleared once the header is in.
+  assert.equal(clear.mock.callCount(), 1);
 });
