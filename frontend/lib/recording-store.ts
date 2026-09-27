@@ -10,7 +10,7 @@
 
 import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
-import { withWebmDuration } from "./webm-duration";
+import { withRecordedDuration } from "./webm-duration";
 
 export type RecordingState =
   | "recording"
@@ -424,9 +424,7 @@ export class RecordingStore {
           ].map((chunk) => chunk.data);
           // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
           if (data.length > 0) {
-            const first = data[0];
-            const header = new Uint8Array(first instanceof Blob ? await first.arrayBuffer() : first);
-            data[0] = withWebmDuration(header, part.durationMs) ?? first;
+            data[0] = await withRecordedDuration(data[0], part.durationMs, type);
           }
           return {
             index: part.index,
