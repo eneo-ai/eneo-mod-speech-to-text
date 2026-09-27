@@ -27,6 +27,9 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
+  // One `next dev` serves every worker: more than four starve it on a shared host, and a page
+  // still loading then fails a check that is not about accessibility.
+  workers: 4,
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/a11y-report" }]],
   use: {
     baseURL: `http://127.0.0.1:${APP}`,
