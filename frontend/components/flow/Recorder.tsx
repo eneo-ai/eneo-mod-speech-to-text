@@ -131,11 +131,12 @@ export function RecordingBar({
   return (
     <div
       className={cn(
-        // Pinned to the bottom; in Strömma on a short screen in the page's flow, where it would cover the live text.
+        // Pinned to the bottom, of the page or of the recording's own scroll box on a laptop; in Strömma on a short
+        // screen in the page's flow, where it would cover the live text.
         "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3",
         showStatus && "short:static",
         "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8",
-        "lg:static lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
+        "lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
       )}
     >
       {warnings.length > 0 && (

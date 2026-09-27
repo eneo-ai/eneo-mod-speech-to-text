@@ -19,8 +19,9 @@ for (const state of STATES) {
   test(state.name, async ({ page }, info) => {
     test.skip(state.only ? !state.only(info) : false, "not on this width");
     const project = info.project.name;
-    // Content fits the narrowest widths and the widest screens alike.
-    const edges = project.startsWith("phone-320") || project === "zoom-200" || project.startsWith("ultrawide");
+    // Content fits the narrowest widths, a small laptop and the widest screens alike.
+    const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
+    const edges = project.startsWith("phone-320") || project === "zoom-200" || desktop;
     await state.go(page, info);
 
     const scan = await axe(page);
@@ -33,7 +34,7 @@ for (const state of STATES) {
     const layout = edges ? await reflow(page) : null;
     let spaced = null;
     // The narrowest phone is where added spacing runs out of room first.
-    if (project === "phone-320-light" || project === "phone-390-light" || project.startsWith("ultrawide")) {
+    if (project === "phone-320-light" || project === "phone-390-light" || desktop) {
       const style = await page.addStyleTag({ content: TEXT_SPACING });
       spaced = await reflow(page);
       await style.evaluate((element) => (element as Element).remove());

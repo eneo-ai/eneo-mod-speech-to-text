@@ -180,7 +180,7 @@ for (const [state, title] of [
   });
 }
 
-test("going from the list to a flow and back, each page is titled itself", async ({ page }, info) => {
+test("going from the list to a flow, the page is titled the flow", async ({ page }, info) => {
   await STATES.find((s) => s.name === "flow-list")!.go(page, info);
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).first().click();
   await expect(page).toHaveTitle(/Nämndmöte till rapport · Tal till text/);
