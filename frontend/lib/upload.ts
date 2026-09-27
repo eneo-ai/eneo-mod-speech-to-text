@@ -48,6 +48,20 @@ export function resolveRuntimeUploadIdleTimeoutMs(
   return idleSeconds * 1000;
 }
 
+/**
+ * How long to wait for the answer once every byte is sent: Eneo measures audio before it answers and says how long
+ * that may take. An Eneo that says nothing gets the longer of the start and idle waits, as before.
+ */
+export function resolveRuntimeUploadResponseTimeoutMs(
+  fileSizeBytes: number,
+  policy: FlowRuntimeUploadPolicy | null | undefined,
+): number {
+  const seconds = positiveFinite(policy?.response_timeout_seconds);
+  return seconds !== null
+    ? seconds * 1000
+    : Math.max(resolveRuntimeUploadInitialTimeoutMs(fileSizeBytes, policy), resolveRuntimeUploadIdleTimeoutMs(policy));
+}
+
 export function baseMimetype(mime: string): string {
   return mime.split(";")[0].trim().toLowerCase();
 }

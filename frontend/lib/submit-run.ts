@@ -238,6 +238,13 @@ export async function submitRecording(
   }
 }
 
+/**
+ * Eneo refused the parts as uploaded before it measured audio. It checks the request's key before the audio, so it
+ * made no run even when an earlier answer was lost: the uploads are forgotten and go once more.
+ */
+const lengthUnknown = (error: unknown) =>
+  error instanceof ApiError && error.code === "flow_run_audio_length_unknown";
+
 /** Eneo's own refusal of an attempt: it looked at the request and made no run for it. */
 const refusedByEneo = (error: unknown) =>
   error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 408;
@@ -268,6 +275,7 @@ async function sendLeased(
   id: string,
   params: Omit<SubmitParams, "files" | "onUploaded">,
   deps?: SubmitDeps,
+  uploadedAgain = false,
 ): Promise<FlowRunPublic> {
   const recording = await store.get(id);
   if (!recording) throw new Error(NOT_ON_DEVICE);
@@ -352,15 +360,19 @@ async function sendLeased(
       // at the current version under the same key, makes the run if there was none, and gets a
       // conflict (already sent) if there is one. The recording stays sealed.
       await store.forgetSubmission(id);
-    } else if (asked && !mayExist && refusedByEneo(error)) {
-      // Eneo refused every attempt of this request, so it made no run; its uploads may be what it
-      // refused. The next send uploads and asks anew; the recording stays sealed.
+    } else if (asked && (lengthUnknown(error) || (!mayExist && refusedByEneo(error)))) {
+      // Eneo refused every attempt of this request, or refused the audio's length (see lengthUnknown),
+      // so it made no run; its uploads may be what it refused. The next send uploads and asks anew;
+      // the recording stays sealed.
       await store.clearFileIds(id);
       await store.setState(id, "uploading");
     }
     // Otherwise the run may exist (a 401 or 403 says nothing about it): the recording stays
     // "uploaded" with its request, which the next send repeats. A send that ended before Eneo was
     // asked stays "uploading" with what it uploaded.
+    // Parts uploaded before Eneo measured audio: their uploads are forgotten above, so they go up
+    // once more by themselves and the run is asked again.
+    if (asked && lengthUnknown(error) && !uploadedAgain) return sendLeased(store, id, params, deps, true);
     throw error;
   }
   // Eneo has the run; tidying up the local copy must not turn it into a failure.

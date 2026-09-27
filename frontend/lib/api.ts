@@ -9,6 +9,7 @@ import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
   resolveRuntimeUploadInitialTimeoutMs,
+  resolveRuntimeUploadResponseTimeoutMs,
 } from "./upload";
 
 export type Json = Record<string, unknown>;
@@ -233,6 +234,8 @@ export interface FlowRuntimeUploadPolicy {
   seconds_per_mebibyte: number;
   max_timeout_seconds: number;
   idle_timeout_seconds: number;
+  /** How long to wait for the answer once every byte is sent (Eneo measures audio first); older Eneo says nothing. */
+  response_timeout_seconds?: number;
 }
 
 /**
@@ -679,6 +682,7 @@ function requestMultipartWithProgress<T>(
     opts.runtimeUploadPolicy,
   );
   const idleTimeoutMs = resolveRuntimeUploadIdleTimeoutMs(opts.runtimeUploadPolicy);
+  const responseTimeoutMs = resolveRuntimeUploadResponseTimeoutMs(opts.fileSizeBytes, opts.runtimeUploadPolicy);
 
   // Signed out, or someone else signed in here: the upload is the user's to send again once back.
   if (loginState.signedOut) return Promise.reject(sessionEnded());
@@ -723,7 +727,7 @@ function requestMultipartWithProgress<T>(
 
       const uploadComplete = total != null && event.loaded >= total;
       scheduleTimeout(
-        uploadComplete ? Math.max(initialTimeoutMs, idleTimeoutMs) : idleTimeoutMs,
+        uploadComplete ? responseTimeoutMs : idleTimeoutMs,
         uploadComplete ? "server_not_responding" : "stalled",
       );
     };
@@ -791,9 +795,10 @@ function requestMultipartWithProgress<T>(
     xhr.open("POST", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
+    // The module's proxy holds Eneo's answer this long: through the upload and Eneo's measuring after it.
     xhr.setRequestHeader(
       "X-Upload-Timeout-Seconds",
-      String(Math.ceil(initialTimeoutMs / 1000)),
+      String(Math.ceil(Math.max(initialTimeoutMs, responseTimeoutMs) / 1000)),
     );
     xhr.send(formData);
   });
