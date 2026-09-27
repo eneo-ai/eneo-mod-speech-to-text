@@ -358,6 +358,39 @@ test("an upload the server never answers times out, and the timeout is retried",
   }
 });
 
+test("once every byte is sent, the upload waits Eneo's published response time, past the idle wait", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  FakeXhr.made = [];
+  try {
+    const policy = {
+      min_timeout_seconds: 5,
+      seconds_per_mebibyte: 1,
+      max_timeout_seconds: 60,
+      idle_timeout_seconds: 5,
+      response_timeout_seconds: 600,
+    };
+    const run = submitRun(
+      params({
+        contract: { ...contract, runtime_upload_policy: policy },
+        files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }],
+      }),
+      { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
+    );
+    await until(() => FakeXhr.made.length === 1);
+    // Every byte sent: Eneo measures the audio before it answers.
+    FakeXhr.made[0].upload.onprogress?.({ loaded: 5, total: 5, lengthComputable: true } as ProgressEvent);
+    t.mock.timers.tick(300_000);
+    await settle();
+    FakeXhr.made[0].answer(201, { id: "file-1" });
+    assert.equal((await run).id, "run-1");
+    assert.equal(FakeXhr.made.length, 1, "no timeout, so no second upload");
+  } finally {
+    globalThis.XMLHttpRequest = browserXhr;
+  }
+});
+
 test("a send cancelled as its upload finishes starts no run, and cancelling stops a run request in flight", async () => {
   const cancel = new AbortController();
   let runs = 0;
@@ -605,6 +638,74 @@ test("a run Eneo refuses forgets the uploaded parts, so the next send uploads th
     step_inputs: { "step-audio": { file_ids: ["file-b"] } },
     input_payload_json: { motesnamn: "KS" },
   });
+});
+
+test("parts Eneo uploaded before it measured audio go up once more by themselves, and the run is asked again", async () => {
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const uploads: string[] = [];
+  const asked: Json[] = [];
+  const run = await submitRecording(store, recording.id, params(), {
+    upload: async () => {
+      const id = `file-${uploads.length + 1}`;
+      uploads.push(id);
+      return { id };
+    },
+    startRun: async (_flowId, body) => {
+      asked.push(body);
+      if (asked.length === 1) throw apiError(400, "flow_run_audio_length_unknown");
+      return queuedRun;
+    },
+  });
+  assert.equal(run.id, "run-1");
+  assert.deepEqual(uploads, ["file-1", "file-2"]);
+  assert.deepEqual(
+    asked.map((body) => (body.step_inputs as Record<string, { file_ids: string[] }>)["step-audio"].file_ids),
+    [["file-1"], ["file-2"]],
+  );
+});
+
+test("the parts go up once more even when an earlier answer to the run request was lost", async () => {
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  const uploads: string[] = [];
+  const asked: Json[] = [];
+  const answers = [fetchFailed(), apiError(400, "flow_run_audio_length_unknown")];
+  const run = await submitRecording(store, recording.id, params(), {
+    upload: async () => {
+      const id = `file-${uploads.length + 1}`;
+      uploads.push(id);
+      return { id };
+    },
+    startRun: async (_flowId, body) => {
+      asked.push(body);
+      const answer = answers.shift();
+      if (answer) throw answer;
+      return queuedRun;
+    },
+  });
+  assert.equal(run.id, "run-1");
+  // Eneo checks the key before the audio: this refusal says it made no run, so the uploads go again.
+  assert.deepEqual(uploads, ["file-1", "file-2"]);
+  assert.deepEqual(
+    (asked.at(-1)?.step_inputs as Record<string, { file_ids: string[] }>)["step-audio"].file_ids,
+    ["file-2"],
+  );
+});
+
+test("a second refusal of the parts' length is the user's to see, not another upload", async () => {
+  const store = await openRecordingStore({});
+  const recording = await stoppedRecording(store, [["a"]]);
+  let uploads = 0;
+  await assert.rejects(
+    submitRecording(store, recording.id, params(), {
+      upload: async () => ({ id: `file-${++uploads}` }),
+      startRun: async () => {
+        throw apiError(400, "flow_run_audio_length_unknown");
+      },
+    }),
+  );
+  assert.equal(uploads, 2);
 });
 
 test("a run request whose answer never came is kept through a cancel and repeated exactly on the next send", async (t) => {

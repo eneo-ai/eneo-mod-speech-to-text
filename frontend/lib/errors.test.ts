@@ -149,3 +149,15 @@ test("a speaker count the flow can no longer use says so calmly, with the way on
   assert.equal(advice.message, "Flödet märker inte längre upp talare, så antalet talare kan inte användas. Ladda om sidan och försök igen.");
   assert.deepEqual([advice.retry, advice.ownerMustFix], [false, false]);
 });
+
+test("audio Eneo cannot take says why in Swedish; a server busy measuring is one to try again", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  const long = errorAdvice(eneo(400, "flow_run_audio_exceeds_limit", "Audio exceeds the longest recording"));
+  assert.match(long.message, /längre än flödet tar emot/);
+  assert.equal(long.retry, false);
+  assert.match(friendlyError(eneo(400, "flow_run_audio_unreadable", "Cannot decode")), /kunde inte läsas/);
+  assert.match(friendlyError(eneo(400, "flow_run_audio_length_unknown", "Uploaded before")), /igen/);
+  const busy = errorAdvice(eneo(503, "flow_run_audio_measurement_busy", "No capacity"));
+  assert.match(busy.message, /mäta/);
+  assert.equal(busy.retry, true);
+});

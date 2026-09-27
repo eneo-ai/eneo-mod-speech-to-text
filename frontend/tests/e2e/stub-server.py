@@ -16,7 +16,8 @@ Runs the page can open with ?run=<id>:
 The paused run-review has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
 A run the page starts itself runs for two polls, then finishes like run-done.
-An upload whose file name starts with "langsam" is answered after 6 s.
+An upload whose file name starts with "langsam" is answered after 6 s; one
+starting with "for-lang" is refused as longer than the flow takes.
 flow-3 refuses a new run as a newer published version (409); flow-4 needs
 republishing (409 on the contract); any unknown flow is gone (404). flow-2
 ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
@@ -422,6 +423,9 @@ class Handler(BaseHTTPRequestHandler):
             if len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files":
                 if b'filename="langsam' in body:
                     time.sleep(6)  # holds the sending view on screen long enough to look at it
+                if b'filename="for-lang' in body:
+                    return self.send(400, {"code": "flow_run_audio_exceeds_limit", "eneo_error_code": 9000,
+                                           "message": "Audio exceeds the longest recording"})
                 return self.send(201, {"id": "file-%d" % len(body), "filename": "upload"})
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "steps" and rest[4] == "transcript-regenerations":
                 run_id = "run-new-%d" % next(NEW_RUN)

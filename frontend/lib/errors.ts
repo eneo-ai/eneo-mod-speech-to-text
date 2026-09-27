@@ -66,6 +66,12 @@ const CODES: Record<string, string> = {
   flow_runtime_file_empty: "Filen är tom. Välj en fil med innehåll.",
   flow_run_file_not_accessible: FILE_UNUSABLE,
   flow_run_file_not_bound_to_flow: FILE_UNUSABLE,
+  flow_run_audio_exceeds_limit:
+    "Ljudet är längre än flödet tar emot. Dela upp det i kortare delar, eller be den som ansvarar för flödet att höja gränsen.",
+  flow_run_audio_unreadable: "Ljudfilen kunde inte läsas. Spara ljudet igen i ett vanligt ljudformat och ladda upp det.",
+  flow_run_audio_length_unknown:
+    "Ljudet laddades upp innan dess längd kunde mätas. Ladda upp det igen.",
+  flow_run_audio_measurement_busy: "Eneo hinner inte mäta ljudfilen just nu. Försök igen om en stund.",
   flow_run_input_payload_too_large: "Underlaget är större än flödet tar emot. Skicka mindre text eller färre filer.",
   flow_run_input_exceeds_limit: "Underlaget är större än flödet tar emot. Skicka mindre text eller färre eller mindre filer.",
   flow_input_required_field_missing: REQUIRED_FIELD,
@@ -122,6 +128,7 @@ const CODES: Record<string, string> = {
 
 // Busy or briefly unreachable: the same request may go through a moment later.
 const RETRY_CODES = new Set([
+  "flow_run_audio_measurement_busy",
   "flow_run_concurrency_limit_reached",
   "flow_dispatch_failed",
   "upstream_unreachable",
