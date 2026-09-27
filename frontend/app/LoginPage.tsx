@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
-import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError, authStatus, loginWithAccessCode } from "@/lib/api";
 import type { AuthMode } from "@/lib/api";
 import { AppHeader } from "@/components/AppHeader";
@@ -23,8 +22,6 @@ export default function LoginPage() {
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [accessCode, setAccessCode] = useState("");
   const codeField = useRef<HTMLInputElement>(null);
-  // Once the check is done: the layout's own title arrives after the first render and would replace an earlier one.
-  useDocumentTitle(checking ? "Tal till text" : "Logga in · Tal till text");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
