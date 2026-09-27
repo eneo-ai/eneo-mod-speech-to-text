@@ -37,6 +37,13 @@ class UploadTimeoutTests(unittest.TestCase):
         self.assertEqual(timeout.connect, 10.0)
         self.assertEqual(timeout.pool, 30.0)
 
+    def test_upload_timeout_follows_the_page_budget_for_eneos_answer(self) -> None:
+        request = Request({"type": "http", "headers": [(b"x-upload-timeout-seconds", b"600")]})
+
+        timeout = main._upload_timeout(main._requested_upload_timeout_seconds(request))
+
+        self.assertEqual(timeout.read, 600.0)
+
     def test_upload_timeout_clamps_client_budget(self) -> None:
         too_low = main._upload_timeout(30.0)
         too_high = main._upload_timeout(99_999.0)

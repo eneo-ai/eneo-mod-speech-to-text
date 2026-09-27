@@ -311,13 +311,16 @@ class FakeXhr {
   onerror: (() => void) | null = null;
   onabort: (() => void) | null = null;
   withCredentials = false;
+  headers: Record<string, string> = {};
   status = 0;
   responseText = "";
   constructor() {
     FakeXhr.made.push(this);
   }
   open() {}
-  setRequestHeader() {}
+  setRequestHeader(name: string, value: string) {
+    this.headers[name] = value;
+  }
   send() {}
   getResponseHeader(name: string) {
     return name.toLowerCase() === "content-type" ? "application/json" : null;
@@ -379,6 +382,8 @@ test("once every byte is sent, the upload waits Eneo's published response time, 
       { upload: uploadStepRuntimeFile, startRun: async () => queuedRun },
     );
     await until(() => FakeXhr.made.length === 1);
+    // The module's proxy waits for Eneo's answer as long as the page does.
+    assert.equal(FakeXhr.made[0].headers["X-Upload-Timeout-Seconds"], "600");
     // Every byte sent: Eneo measures the audio before it answers.
     FakeXhr.made[0].upload.onprogress?.({ loaded: 5, total: 5, lengthComputable: true } as ProgressEvent);
     t.mock.timers.tick(300_000);

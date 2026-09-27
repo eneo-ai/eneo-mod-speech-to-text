@@ -795,9 +795,10 @@ function requestMultipartWithProgress<T>(
     xhr.open("POST", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
+    // The module's proxy holds Eneo's answer this long: through the upload and Eneo's measuring after it.
     xhr.setRequestHeader(
       "X-Upload-Timeout-Seconds",
-      String(Math.ceil(initialTimeoutMs / 1000)),
+      String(Math.ceil(Math.max(initialTimeoutMs, responseTimeoutMs) / 1000)),
     );
     xhr.send(formData);
   });
