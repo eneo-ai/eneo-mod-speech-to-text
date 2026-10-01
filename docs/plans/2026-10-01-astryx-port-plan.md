@@ -72,7 +72,7 @@ The hosted Astryx MCP server (`search`, `get`) may be used to discover component
 | `npm test` | 640 unit tests, including the list of files still on the old system | after every task |
 | `npm run test:a11y -- a11y.spec.ts -g "<state>" --project=phone-320-light --project=laptop-1440-dark` | One state, narrowest and dark | while porting it |
 | `npm run test:a11y -- -g "<state>"` | One state in all 19 projects, all specs | before finishing a task |
-| `npm run test:a11y` | The whole gate | before finishing a phase |
+| `npm run test:a11y` | The whole gate | once after Phase 1 is merged, and once after the last phase is merged (not at every phase exit) |
 | `npm run test:prod` | The production build in Chromium, WebKit and Firefox | before finishing a phase |
 | `npm run build` | The production build | before finishing a phase |
 
@@ -604,7 +604,7 @@ It must be ported in the same pull request as Task 1.4: opened after the sign-in
 ### Phase 1 exit
 
 - [ ] `npm run lint && npm test && npm run build`
-- [ ] `npm run test:a11y` — the whole gate.
+- [ ] The Phase 1 gate states in all 19 projects (the list in the Phase 1 header), then the whole gate once on the merged Phase 1 branch.
 - [ ] `npm run test:prod`
 - [ ] Screenshots of every Phase 1 state at `phone-320-light`, `phone-390-dark`, `laptop-1440-light`, `ultrawide-3440-light`, read and attached.
 - [ ] The pull request description lists: theme corrections made, tests whose expectation changed and why, accepted behaviour changes.
