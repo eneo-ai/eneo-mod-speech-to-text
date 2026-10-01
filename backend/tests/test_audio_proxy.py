@@ -54,8 +54,8 @@ class FakeAudioClient:
         self.signed_url_calls.append({"url": url, **kwargs})
         return FakeSignedUrlResponse()
 
-    def build_request(self, method, url, headers=None):
-        return httpx.Request(method, url, headers=headers)
+    def build_request(self, method, url, headers=None, extensions=None):
+        return httpx.Request(method, url, headers=headers, extensions=extensions)
 
     async def send(self, request, stream=False):
         self.stream_requests.append(request)

@@ -4,8 +4,9 @@ import path from "node:path";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
 
-import { liveClient } from "../components/flow/live-audio";
+import { browserLiveDeps, liveClient } from "../components/flow/live-audio";
 import type { LiveSocket } from "./live-transcriber";
+import { loginState } from "./login-state";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
@@ -286,4 +287,27 @@ test("live text not ready when the recorder starts misses its opening: the stop 
     deliver();
     assert.deepEqual(JSON.parse(sockets[0].sent.at(-1) as string), { type: "stop" }, late);
   }
+});
+
+test("the browser's live connection names the user the page was opened for, each time it connects", (t) => {
+  const opened: string[] = [];
+  class Recorder {
+    constructor(url: string) {
+      opened.push(url);
+    }
+  }
+  const page = globalThis as { window?: unknown; WebSocket?: unknown };
+  const { window: browserWindow, WebSocket: browserSocket } = page;
+  page.window = { location: { protocol: "https:", host: "taltilltext.sundsvall.se" } };
+  page.WebSocket = Recorder;
+  const end = loginState.begin({ id: "user-1", email: "anna@example.se" });
+  t.after(() => {
+    end();
+    page.window = browserWindow;
+    page.WebSocket = browserSocket;
+  });
+  const deps = browserLiveDeps("flow-1", "step-a", "rec-1");
+  deps.openSocket();
+  assert.equal(opened[0], "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?recording_id=rec-1&expected_user=user-1");
+  assert.equal(deps.login, loginState, "and follows the page's login");
 });

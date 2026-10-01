@@ -24,7 +24,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 | Compose | Att Compose-filen är giltig. | `docker compose --env-file .env.example config -q` (från roten) | snabb |
 | Imagen | Att produktionsimagen går att bygga. | `docker build -t eneo-mod-speech-to-text:test .` (från roten) | medel |
 
-CI kör en delmängd (typer, enhetstester, doctor, temat, audit, bygget, smoke i tre motorer, två av grindens projekt, Compose, imagen): se [Drift](operations.md#ci-och-publicering). Grinden i sin helhet körs lokalt före push.
+CI kör en delmängd (typer, enhetstester, doctor, temat, audit, bygget, smoke i tre motorer, två av grindens projekt och två av branding-tillstånden, Compose, imagen, och `pip-audit` på backends paket): se [Drift](operations.md#ci-och-publicering). Grinden i sin helhet körs lokalt före push.
 
 ## Före en push
 

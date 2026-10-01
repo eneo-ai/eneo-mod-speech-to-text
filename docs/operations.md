@@ -35,15 +35,18 @@ Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Bac
 | `APP_ACCESS_CODE` | backend | endast i `access_code`; en separat, slumpmässig Dokploy-secret | Aldrig incheckad. |
 | `COOKIE_SECURE` | backend | `true` | `false` bara för lokal `http://localhost`. `true` kräver HTTPS. |
 | `DEMO_SPACE_ID` | backend | krävs i `access_code` | Se [Backend](backend.md#inställningar). |
-| `UPLOAD_PROXY_TIMEOUT_SECONDS` | backend | valfri, standard `1800` | Höj aldrig över Nexts tystnadsgräns utan att höja den också (`frontend/next.config.mjs`, `experimental.proxyTimeout`, 31 minuter). |
+| `UPLOAD_PROXY_TIMEOUT_SECONDS` | backend | valfri, standard `1800` | Ett ändligt antal sekunder, över 0 och högst 86400. Tidsgräns för hela vidarebefordran av en uppladdning. Höj aldrig över Nexts tystnadsgräns utan att höja den också (`frontend/next.config.mjs`, `experimental.proxyTimeout`, 31 minuter). |
 | `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
-| `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för varje request-body utom uppladdningar, 413 över taket. Ett tomt värde nekas av `backend/app/config.py`; Compose använder det numeriska standardvärdet. Se [Backend](backend.md#på-gång-inte-på-main). |
-| `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för en uppladdad fil. Höj den om Eneos flöden tar emot större ljudfiler. |
+| `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. Heltal från 1 till 2^40, ett tomt värde nekas (Compose använder standardvärdet). Se [Backend](backend.md#gränser). |
+| `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | Tak för en uppladdad fil. Samma regel. Höj den om Eneos flöden tar emot större ljudfiler. |
+| `MAX_RESPONSE_BYTES` | backend | valfri, standard `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo; längre svar blir 502. Samma regel. En fil som strömmas till webbläsaren räknas inte. |
 | `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION`, `ORGANIZATION_ACCENT`, `ORGANIZATION_ACCENT_DARK` | backend | valfria | Namn, logga och accentfärg. Utan dem visas Sundsvalls kommun och modulens standardblå (`#004595`). En accentfärg som inte når 4,5:1 mot sidans ytor stoppar start. Variablerna, kraven och felmeddelandena: [Byt organisation](branding.md). |
 | `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED` | frontend, vid byggtid | `false` | Byggargument i Dockerfile och Compose. Se [Granska transkriptet](transcript-review.md). |
 | `INTERNAL_API_BASE` | frontend | `http://127.0.0.1:8000` i imagen, `http://speech-to-text-backend:8000` i Compose | Dit Nexts rewrite skickar `/api/*` och dit sidan hämtar branding. Rewrite-målet bränns in vid bygget (`frontend/playwright.prod.config.ts`), så bygge och körning ska ha samma värde (`frontend/lib/backend-base.mjs`). |
 | `PORT`, `HOSTNAME` | frontend (Next standalone) | `3001` och `0.0.0.0` i imagen | |
 | `FOUNDATION_CHECK` | frontend, vid byggtid | tom | Kompilerar in utvecklingssidan `/dev/foundation` för testerna. Sätts aldrig i en image: utan den finns ingen av sidans kod i bygget (`frontend/next.config.mjs`). |
+
+`MAX_BODY_BYTES`, `MAX_UPLOAD_BYTES`, `MAX_RESPONSE_BYTES`, `ORGANIZATION_ACCENT` och `ORGANIZATION_ACCENT_DARK` finns på `feat/astryx`, inte på `main` än: en image byggd från `main` läser dem inte.
 
 Äldre exempelvärden som `MODULE_ID` och `TAL_TILL_TEXT_API_KEY` läses medvetet inte av imagen.
 
@@ -143,9 +146,9 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 | Jobb | Vad |
 |---|---|
-| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). På gång (`fix/backend-lifespan`, väntar på PR): därefter `pip-audit` på de installerade paketen. |
+| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). Därefter `pip-audit` på de installerade paketen. |
 | `frontend` | `npm ci`, `npm test`, `npm run lint`, `npm run astryx -- doctor`, kontroll att det byggda temat är aktuellt (`npm run theme:build` och `git diff --exit-code -- kit/theme/built`), `npm audit --omit=dev --audit-level=high`, `npm run build` (Node 22). |
-| `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`. |
+| `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`, och branding-tillstånden (`STUB_BRANDING=custom`) i `laptop-1440-light` och `phone-390-dark`. |
 | `compose` | `docker compose --env-file .env.example config -q`. |
 | `image` | Bygger produktionsimagen. |
 
@@ -153,9 +156,9 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 ## Beroendesäkerhet
 
-GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid en hög eller kritisk sårbarhet i produktionsberoenden (`npm audit`, se ovan).
+GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends installerade Python-paket (alla kända sårbarheter).
 
-På gång (`fix/backend-lifespan`, väntar på PR): backendens FastAPI-stack höjs förbi 14 säkerhetsmeddelanden i `backend/requirements.txt`, och CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`). Se [Backend](backend.md#på-gång-inte-på-main).
+CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`), och FastAPI-stacken i `backend/requirements.txt` är höjd förbi 14 säkerhetsmeddelanden.
 
 ## Vid problem
 
@@ -164,12 +167,13 @@ På gång (`fix/backend-lifespan`, väntar på PR): backendens FastAPI-stack hö
 | Backend kraschar vid start | Kontrollera basvariablerna samt `ENEO_PUBLIC_URL` i SSO-läge eller `APP_ACCESS_CODE` i kodläge. `ENEO_API_KEY` krävs i båda. Felet säger vilken variabel. |
 | Login misslyckas efter callback | Kontrollera exakt registrerad callback-URL, module key, bunden servicenyckel och att `COOKIE_SECURE=true` endast används bakom HTTPS. Felkoderna står i [Inloggning och session](auth-and-session.md#om-callbacken-misslyckas). |
 | Kodlogin fungerar men Flow-anrop nekas | Eneo-routen kräver sannolikt modultoken. Byt till `eneo_sso` när handoff-kontraktet är deployat. |
-| 502 vid uppladdning | Eneo-lastbalanserarproblem. Kolla loggen för backend (`docker compose logs speech-to-text-backend`) efter det exakta httpx-felet. |
+| 502 vid uppladdning | Svaret säger varför: `upstream_unreachable` (Eneo nåddes inte, ofta ett lastbalanserarproblem: kolla `docker compose logs speech-to-text-backend` efter det exakta httpx-felet), `upstream_too_large` (Eneos svar var längre än `MAX_RESPONSE_BYTES` eller kodat) eller `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer). |
+| 502 `upstream_invalid` på en fil | Eneos svar på begäran om en signerad URL gick inte att använda. Loggen har vägen. |
 | 504 vid uppladdning | Backendens upload-vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. |
 | Uppladdningen når 100 % och faller | Svaret dröjde längre än Next-proxyns tystnadsgräns (`experimental.proxyTimeout` i `frontend/next.config.mjs`, 31 minuter). Håll den över `UPLOAD_PROXY_TIMEOUT_SECONDS` om du höjer den. |
 | "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Se [Inspelaren](recording.md#uppladdning-och-nya-försök). |
-| 413 | (på gång: `fix/backend-body-limits`, väntar på PR). Ett tak för body nåddes: `MAX_BODY_BYTES` (JSON-anrop) eller `MAX_UPLOAD_BYTES` (uppladdning). Höj rätt variabel om gränsen är för snäv. |
-| 411 vid uppladdning | (på gång: `fix/backend-body-limits`, väntar på PR). En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient eller en proxy som skickar bodyn i delar är orsaken. |
+| 413 | Ett tak för body nåddes. Svaret säger vilket: `max_body_bytes` (`MAX_BODY_BYTES`, JSON-anrop) eller `max_upload_bytes` (`MAX_UPLOAD_BYTES`, uppladdning). Höj rätt variabel om gränsen är för snäv. Ett 413 utan det namnet är Eneos egen gräns. |
+| 411 vid uppladdning | En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient, eller en proxy som skickar bodyn i delar, är orsaken. |
 | Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space. |
 | Flödeslistan säger att flödena inte kan visas | I `access_code` saknas `DEMO_SPACE_ID`; backend loggade ett fel vid start. |
 | Backend startar om i en slinga efter en ändrad accentfärg | `ORGANIZATION_ACCENT` eller `ORGANIZATION_ACCENT_DARK` är inte läsbar nog (under 4,5:1) eller har fel form, och backend vägrar starta. Felmeddelandet i loggen (`docker compose logs speech-to-text-backend`) säger vad som mättes och vad som ska göras: [Byt organisation](branding.md#felmeddelanden-vid-start). |

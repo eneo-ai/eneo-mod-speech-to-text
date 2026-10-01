@@ -106,10 +106,10 @@ Webbläsaren öppnar en WebSocket till `/api/live/{flowId}/{stepId}?recording_id
 
 Modulens backend (`live_transcription` i `backend/app/main.py`):
 
-1. släpper bara in en inloggad användare vars `Origin` är `MODULE_PUBLIC_URL` (handskakningen är en GET men kontrolleras som en mutation) och stänger annars med 1008 innan anslutningen accepteras;
+1. släpper bara in en inloggad användare vars `Origin` är `MODULE_PUBLIC_URL` (handskakningen är en GET men kontrolleras som en mutation) och stänger annars med 1008 innan anslutningen accepteras. Sidan namnger sin användare med `?expected_user=` (och `expected_tenant`); är den en annan än sessionens stängs socketen med 1008 `user_changed` innan någon ticket begärs ([Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik));
 2. begär en engångsticket med `POST /api/v1/flows/{flowId}/steps/{stepId}/live-transcription-sessions/` och samma dubbla credentials som övriga Flow-anrop, efter att ha förnyat modultoken om det är dags. Ett giltigt `recording_id` (`^[A-Za-z0-9_-]{8,64}$`) följer med i anropets body; saknas det eller är det ogiltigt blir sessionen bara en förhandsvisning;
 3. öppnar Eneos WebSocket server-side med ticketen som subprotokoll och utan webbläsarens `Origin`; ticketen når aldrig webbläsaren;
-4. skickar ramar och `stop` oförändrade till Eneo, och Eneos JSON-händelser (`ready`, `transcript.delta`, `transcript.done`, `error`) oförändrade tillbaka. Stänger ena sidan stänger backend den andra.
+4. skickar ramar och `stop` oförändrade till Eneo, och Eneos JSON-händelser (`ready`, `transcript.delta`, `transcript.done`, `error`) oförändrade tillbaka. Stänger ena sidan stänger backend den andra, och tar sessionen slut stänger backend båda med 1008 `session_ended`.
 
 Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`, får webbläsaren en enda `error`-händelse med Eneos `code` och sedan en normal stängning. Når backend inte Eneo blir koden `upstream_unreachable` med `retryable: true`.
 
@@ -119,7 +119,7 @@ Har `transcript.done` ett `transcript_id` sparas det med inspelningen på enhete
 
 ### Gränser och drift
 
-- Varje startsätt för backend tar emot högst 128 KiB per WebSocket-meddelande och 16 i kö, så en anslutning buffrar högst 2 MiB innan Eneo ser ramarna. Går en av sidorna inte att skriva till på 15 sekunder avslutar backend sessionen. Se [Backend](backend.md#live-reläet).
+- Gränserna för meddelandestorlek, kö och skrivtid, och hur socketen följer sessionen, står i [Backend](backend.md#live-reläet).
 - Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma `/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i produktionsimagen.
 - Traefik släpper igenom uppgraderingen utan extra konfiguration. Uppgiften är verifierad av tidigare dokumentation med Next 16.3.4 och Traefik 3.7, även med en anslutning utan ljud i 90 sekunder, och har inte verifierats om här.
 - Går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom WebSocket-uppgraderingar till Eneo.

@@ -138,38 +138,67 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   });
 }
 
-function idbBackend(db: IDBDatabase, keyRange: typeof IDBKeyRange): Backend {
+/** The browser closed the connection (it may, to free memory or clean a profile): the next transaction throws this. */
+function connectionClosed(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === "InvalidStateError";
+}
+
+/**
+ * The database, over a connection that is reopened when the browser has closed it. A call that finds it closed reopens it
+ * once (one reopening for every call that finds it at the same time) and tries again; every call here can be repeated,
+ * and a reopening that fails is the call's own failure, never an empty answer.
+ */
+function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: () => Promise<IDBDatabase>): Backend {
+  let db = initial;
+  let reopening: Promise<IDBDatabase> | null = null;
+  async function use<T>(work: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    try {
+      return await work(db);
+    } catch (error) {
+      if (!connectionClosed(error)) throw error;
+      reopening ??= reopen().finally(() => {
+        reopening = null;
+      });
+      db = await reopening;
+      return work(db);
+    }
+  }
   return {
     async put(recording, chunk) {
       // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere.
       const data = chunk?.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk?.data;
-      const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
-      const done = completion(tx);
-      try {
-        tx.objectStore(RECORDINGS).put(recording);
-        if (chunk) tx.objectStore(CHUNKS).put({ ...chunk, data });
-      } catch (error) {
-        done.catch(() => undefined);
-        tx.abort();
-        throw error;
-      }
-      await done;
+      await use(async (db) => {
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        const done = completion(tx);
+        try {
+          tx.objectStore(RECORDINGS).put(recording);
+          if (chunk) tx.objectStore(CHUNKS).put({ ...chunk, data });
+        } catch (error) {
+          done.catch(() => undefined);
+          tx.abort();
+          throw error;
+        }
+        await done;
+      });
     },
-    get: (id) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id)),
-    list: () => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll()),
+    get: (id) => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id))),
+    list: () => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll())),
     chunks: (id, part) =>
-      result(
-        db
-          .transaction(CHUNKS)
-          .objectStore(CHUNKS)
-          .getAll(keyRange.bound([id, part, 0], [id, part, Infinity])),
+      use(async (db) =>
+        result(
+          db
+            .transaction(CHUNKS)
+            .objectStore(CHUNKS)
+            .getAll(keyRange.bound([id, part, 0], [id, part, Infinity])),
+        ),
       ),
-    async delete(id) {
-      const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
-      tx.objectStore(CHUNKS).delete(keyRange.bound([id, 0, 0], [id, Infinity, Infinity]));
-      tx.objectStore(RECORDINGS).delete(id);
-      await completion(tx);
-    },
+    delete: (id) =>
+      use(async (db) => {
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        tx.objectStore(CHUNKS).delete(keyRange.bound([id, 0, 0], [id, Infinity, Infinity]));
+        tx.objectStore(RECORDINGS).delete(id);
+        await completion(tx);
+      }),
   };
 }
 
@@ -417,11 +446,16 @@ export class RecordingStore {
       const type = baseMimetype(recording.mimeType);
       const files = await Promise.all(
         recording.parts.map(async (part) => {
-          // Overflow is sticky, so its chunks always follow the database's.
-          const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = [
-            ...(await this.backend.chunks(id, part.index)),
-            ...(await this.overflow.chunks(id, part.index)),
-          ].map((chunk) => chunk.data);
+          // Overflow is sticky, so its chunks follow the database's. The database's are read first and an unreadable
+          // database is the read's failure: audio held in this tab is never taken for all there is, and both copies stay.
+          const stored = await this.backend.chunks(id, part.index);
+          const here = await this.overflow.chunks(id, part.index);
+          // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
+          const bySeq = new Map<number, Chunk>();
+          for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
+          const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = [...bySeq.values()]
+            .sort((a, b) => a.seq - b.seq)
+            .map((chunk) => chunk.data);
           // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
           if (data.length > 0) {
             data[0] = await withRecordedDuration(data[0], part.durationMs, type);
@@ -640,8 +674,9 @@ export class RecordingStore {
 export async function openRecordingStore(env: StoreEnv): Promise<RecordingStore> {
   if (env.indexedDB && env.keyRange) {
     try {
-      const db = await openDatabase(env.indexedDB);
-      const store = new RecordingStore(idbBackend(db, env.keyRange), true, env);
+      const factory = env.indexedDB;
+      const db = await openDatabase(factory);
+      const store = new RecordingStore(idbBackend(db, env.keyRange, () => openDatabase(factory)), true, env);
       await store.removeAccepted().catch(() => undefined);
       return store;
     } catch {
