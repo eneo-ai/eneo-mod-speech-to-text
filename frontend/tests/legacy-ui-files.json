@@ -1,6 +1,5 @@
 [
   "app/dev/foundation/FoundationCheck.tsx",
-  "app/dev/speaker-review/ReviewFixtures.tsx",
   "app/layout.tsx",
   "components/AuthGate.tsx",
   "components/TranscriptPlayer.tsx",
