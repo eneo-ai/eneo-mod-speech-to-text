@@ -4,7 +4,7 @@
  * groups around them, and the page titles.
  */
 import { expect, test, type Route } from "@playwright/test";
-import { axNode } from "./checks";
+import { axNode, endlessAnimations } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
@@ -35,25 +35,34 @@ test("the added names are a named list the field points to", async ({ page }) =>
   expect(field.description).toContain("2 namn tillagda");
 });
 
+// The names of flows are the organisation's: long, with compounds that have no place to break. (The narrow
+// projects do not run this file, so it sets the two narrowest windows itself.)
 for (const name of [
   "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor",
   "Överenskommelsedokumentationshandläggarutbildningsprogrammet",
 ]) {
   test(`a flow's long name wraps in full and never widens the page: ${name.slice(0, 24)}…`, async ({ page }, info) => {
-    test.skip(!["phone-320-light", "zoom-200"].includes(info.project.name), "the narrowest widths");
-    await page.route("**/api/flows/flow-1/published", async (route) => {
+    test.skip(info.project.name !== "phone-390-light", "one touch project; the windows are set below");
+    await page.route(/\/api\/eneo\/flows\/flow-1\/published\/?(\?.*)?$/, async (route) => {
       const published = await (await route.fetch()).json();
       await route.fulfill({ json: { ...published, name } });
     });
-    await setup(page);
-    const heading = page.getByRole("heading", { level: 1, name });
-    await expect(heading).toBeVisible();
-    const { scrollWidth, clientWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
-    expect(scrollWidth, "no horizontal scroll").toBeLessThanOrEqual(clientWidth);
-    const box = (await heading.boundingBox())!;
-    expect(box.x + box.width, "the whole heading is inside the window").toBeLessThanOrEqual(clientWidth);
-    // Every word: nothing clipped by an ellipsis or a box.
-    expect(await heading.evaluate((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    for (const size of [
+      { width: 320, height: 568 },
+      // 200 % zoom of a 1280 x 800 window.
+      { width: 640, height: 400 },
+    ]) {
+      await page.setViewportSize(size);
+      await setup(page);
+      const heading = page.getByRole("heading", { level: 1, name });
+      await expect(heading).toBeVisible();
+      const { scrollWidth, clientWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+      expect(scrollWidth, `${size.width} px: no horizontal scroll`).toBeLessThanOrEqual(clientWidth);
+      const box = (await heading.boundingBox())!;
+      expect(box.x + box.width, `${size.width} px: the whole heading is inside the window`).toBeLessThanOrEqual(clientWidth);
+      // Every word: nothing clipped by an ellipsis or a box.
+      expect(await heading.evaluate((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+    }
   });
 }
 
@@ -169,6 +178,18 @@ test("a page that is still loading says so, under the page's heading", async ({ 
     await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: "Tal till text" })).toBeAttached();
   }
+});
+
+test("the flow page that is still loading says so and is busy, and its placeholders stand still when less motion is asked for", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.route(/\/api\/eneo\/flows\/flow-1\/run-contract\/?(\?.*)?$/, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 4000));
+    await route.continue().catch(() => {});
+  });
+  await open(page, "/flows/flow-1");
+  await expect(page.getByRole("status").filter({ hasText: "Laddar flödet…" })).toBeAttached();
+  await expect(page.locator("[aria-busy=true]").first()).toBeAttached();
+  expect(await endlessAnimations(page), "endless animation despite reduced motion").toEqual([]);
 });
 
 test("while recording, the top bar names the mode and the folded details say what they are", async ({ page }, info) => {
