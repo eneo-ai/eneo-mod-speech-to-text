@@ -292,6 +292,9 @@ def _resolve_proxy_path(method: str, path: str) -> str | None:
     return None
 
 
+_UNSAFE_CHARACTER = re.compile(r"[\x00-\x1f\x7f\\]")
+
+
 def _leaves_route(path: str) -> bool:
     """True if ``path`` could reach another upstream route than the one authorized.
 
@@ -299,14 +302,35 @@ def _leaves_route(path: str) -> bool:
     segment such as ``%2E%2E`` still satisfies ``[^/]+`` and would let httpx
     resolve ``flows/../runs/`` to a different upstream path, and a decoded
     ``?`` or ``#`` would move the rest of the path into a query or fragment.
+    A control character or a backslash is no part of an Eneo id either.
     Reject these before matching so the allowlist keeps meaning exactly the
     routes it spells out.
     """
     return (
         "?" in path
         or "#" in path
+        or _UNSAFE_CHARACTER.search(path) is not None
         or any(unquote(segment) in {".", ".."} for segment in path.split("/"))
     )
+
+
+# No URL the module sends is as long as this; one that would be is a request for no route of Eneo's.
+_MAX_UPSTREAM_URL_LENGTH = 65_536
+
+
+def _upstream_url(path: str) -> str:
+    """``{ENEO_BACKEND_URL}/api/v1/{path}``, with each segment of ``path`` encoded as the one segment it is.
+
+    ``path`` is the path as the module authorised it, already decoded once: a ``%2F`` in it is the three characters of
+    an id, not a separator. httpx sends an escape it finds as it is, and Eneo decodes it once more, so
+    ``flows/a%2Fexport/`` would arrive as ``flows/a/export/``, a route the allowlist never saw. Every character of a
+    segment that is not a letter, a digit or one of ``_.-~`` is encoded here, ``%`` included. This is the one place
+    an outbound Eneo URL is made from a path: the proxy, the uploads and the signed-URL requests all come through it.
+    """
+    url = f"{settings.eneo_backend_url}/api/v1/" + "/".join(quote(segment, safe="") for segment in path.split("/"))
+    if len(url) > _MAX_UPSTREAM_URL_LENGTH:
+        raise HTTPException(status_code=414, detail="The path is too long")
+    return url
 
 
 def _has_control_character(value: str | None) -> bool:
@@ -316,8 +340,8 @@ def _has_control_character(value: str | None) -> bool:
 # Dedicated upload routes — bypass the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
-async def _forward_upload(request: Request, upstream_url: str) -> Response:
-    """Re-post the one file of the request's multipart body to ``upstream_url``.
+async def _forward_upload(request: Request, path: str) -> Response:
+    """Re-post the one file of the request's multipart body to Eneo's ``/api/v1/{path}``.
 
     Call it from a route that has no ``File(...)`` parameter: FastAPI reads a body before it runs a route's
     dependencies, and this reads it itself, so ``Depends(require_session)`` has run before a byte of it is read.
@@ -326,10 +350,11 @@ async def _forward_upload(request: Request, upstream_url: str) -> Response:
     (400: a line break in either would be written into the part headers sent to Eneo). Nothing is left behind if
     the upload is cut off or refused.
     """
-    # Upstream URLs are built from decoded path params; a "." / ".." segment or
+    # The path is built from decoded path params; a "." / ".." segment or
     # a "?" would resolve to a different Eneo route than the upload endpoints exposed.
-    if _leaves_route(upstream_url):
+    if _leaves_route(path):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
+    upstream_url = _upstream_url(path)
     declared = declared_length(request.headers)
     if declared is None:
         raise HTTPException(status_code=411, detail="Content-Length required")
@@ -415,8 +440,7 @@ async def _proxy_multipart_upload(
     ],
 )
 async def eneo_upload_file(flow_id: str, request: Request) -> Response:
-    upstream_url = f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/files/"
-    return await _forward_upload(request, upstream_url)
+    return await _forward_upload(request, f"flows/{flow_id}/files/")
 
 
 @app.post(
@@ -434,11 +458,7 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     ],
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
-    upstream_url = (
-        f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}"
-        f"/steps/{step_id}/runtime-files/"
-    )
-    return await _forward_upload(request, upstream_url)
+    return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
 
 
 @app.post(
@@ -456,10 +476,7 @@ async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Req
     ],
 )
 async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
-    upstream_url = (
-        f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/template-files/"
-    )
-    return await _forward_upload(request, upstream_url)
+    return await _forward_upload(request, f"flows/{flow_id}/template-files/")
 
 
 # ---------------------------------------------------------------------------
@@ -527,7 +544,7 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
     mint_path = key[1]
     try:
         upstream = await http_client.post(
-            f"{settings.eneo_backend_url}/api/v1/{mint_path}",
+            _upstream_url(mint_path),
             json={
                 "expires_in": _SIGNED_URL_TTL_SECONDS,
                 "content_disposition": "inline",
@@ -715,7 +732,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
     )
     if resolved_path is None:
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
-    upstream_url = f"{settings.eneo_backend_url}/api/v1/{resolved_path}"
+    upstream_url = _upstream_url(resolved_path)
     # Forward request headers, but replace browser-controlled credentials with
     # the credentials owned by the configured module-auth session.
     fwd_headers: dict[str, str] = {}
@@ -827,8 +844,7 @@ async def _open_live_session(
     recording_id = websocket.query_params.get("recording_id", "")
     try:
         response = await http_client.post(
-            f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/steps/{step_id}"
-            "/live-transcription-sessions/",
+            _upstream_url(f"flows/{flow_id}/steps/{step_id}/live-transcription-sessions/"),
             headers=module_auth.upstream_auth_headers(websocket),
             json=(
                 {"recording_id": recording_id}

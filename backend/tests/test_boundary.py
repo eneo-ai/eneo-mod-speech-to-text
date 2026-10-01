@@ -6,6 +6,7 @@ sent. The module's own shared ``main.http_client`` talks to it over a real socke
 """
 
 import asyncio
+import http.client
 import json
 import os
 import re
@@ -29,6 +30,7 @@ os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import uvicorn  # noqa: E402
 import httpx  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 from app import main  # noqa: E402
 from app.config import load_settings  # noqa: E402
@@ -180,10 +182,11 @@ class DoubleEncodingTests(BoundaryCase):
 
     def assert_eneo_sees(self, response, route: str) -> None:
         """Either nothing reached Eneo and the module refused, or what Eneo decodes is one route of its API."""
-        if not self.eneo.requests:
+        api = [seen for seen in self.eneo.requests if seen.path.startswith("/api/")]  # not the file a signed URL names
+        if not api:
             self.assertEqual(response.status_code, 403)
             return
-        for seen in self.eneo.requests:
+        for seen in api:
             self.assertRegex(seen.path, rf"^{route}$", f"sent as {seen.raw_path}, decoded by Eneo to {seen.path}")
 
     def test_an_encoded_slash_in_a_proxied_path_is_not_a_path_boundary_for_eneo(self) -> None:
@@ -235,6 +238,47 @@ class DoubleEncodingTests(BoundaryCase):
                 response = self.request("GET", path, self.session_a)
 
                 self.assert_eneo_sees(response, route)
+
+
+class UnsafePathTests(BoundaryCase):
+    """What cannot be one segment of an Eneo path is refused by the module, never sent and never a 500."""
+
+    PATHS = {
+        "a control character in a proxied path": ("GET", "/api/eneo/flows/a%0Ab/published/"),
+        "NUL in a proxied path": ("GET", "/api/eneo/flows/a%00b/published/"),
+        "a backslash in a proxied path": ("GET", "/api/eneo/flows/a%5Cb/published/"),
+        "a control character in an upload path": ("POST", "/api/eneo/flows/a%0Ab/files/"),
+        "a control character in a mint path": ("GET", "/api/eneo/flows/f/runs/r/input-files/a%0Ab/audio"),
+    }
+
+    def test_a_control_character_or_backslash_in_a_path_is_refused(self) -> None:
+        for label, (method, path) in self.PATHS.items():
+            with self.subTest(label):
+                self.eneo.requests.clear()
+                files = {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}} if method == "POST" else {}
+
+                response = self.request(method, path, self.session_a, **files)
+
+                # 404, not 403, where the router itself cannot match a line break in a path.
+                self.assertIn(response.status_code, (403, 404))
+                self.assertEqual(self.eneo.requests, [])
+
+    def test_a_path_too_long_for_a_url_is_refused_by_the_module_not_sent(self) -> None:
+        with self.assertRaises(HTTPException) as refused:
+            main._upstream_url("flows/" + "a" * 70_000 + "/")
+
+        self.assertEqual(refused.exception.status_code, 414)
+
+    def test_a_long_path_reaches_the_module_as_a_4xx_never_a_500(self) -> None:
+        # Raw, because httpx itself refuses to send a URL over 65,536 characters (InvalidURL: it would be a 500 here).
+        host, port = urlparse(MODULE_SERVER.url).netloc.split(":")
+        connection = http.client.HTTPConnection(host, int(port), timeout=30)
+        connection.request("GET", "/api/eneo/flows/" + "a" * 70_000 + "/published/", headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}"})
+        status = connection.getresponse().status
+        connection.close()
+
+        self.assertTrue(400 <= status < 500, status)
+        self.assertEqual(self.eneo.requests, [])
 
 
 class RedirectTests(BoundaryCase):
