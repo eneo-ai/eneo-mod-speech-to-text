@@ -95,6 +95,8 @@ GET|HEAD /health, /api/healthz      {"ok": true}, 200
                                     Cache-Control: no-cache (ETag, so a revalidation is a 304)
                                     missing: 404 JSON
 any path whose last segment has no dot  index.html: 200, Cache-Control: no-cache, ETag
+/index.html                         the same processed page (never the raw file with its empty marker)
+/<anything>.br, /<anything>.gz      404: precompressed files are served only by negotiation
 a path with NUL, a backslash, or that resolves outside dist/   404, never 500, never a file
 Accept-Encoding with br or gzip, and <file>.br / <file>.gz beside the file   serve that file with
                                     Content-Encoding and Vary: Accept-Encoding, the original Content-Type,
@@ -296,7 +298,7 @@ Precondition: `fix/backend-boundary` and `feat/branding-accent` are in the base 
 **Files:**
 - Modify: `backend/app/web.py` (`serve_web`), `backend/app/config.py` (`static_dir: Path | None` from `STATIC_DIR`), `backend/app/main.py` (call `serve_web` last when set), `backend/tests/test_web.py`
 
-- [ ] **Step 1: Write the failing tests first**, from the kit's `test_web.py` and the rules table: every route of the app (`/`, `/flows`, `/flows/abc`, `/flows/abc?run=r`, `/inloggad`, `/inloggad?fel=utgangen`, a trailing slash) is the page with `Cache-Control: no-cache` and an ETag; a second request with `If-None-Match` is a 304 with the headers; `/api`, `/api/`, `/api/nope`, `/api/auth/nope/deeper` are 404 JSON; `/assets/x.js` that exists is 200 with `immutable`; a missing `/assets/x.js`, `/logo.png`, `/a/b/style.css` is 404 with no `<title>`; `/live-pcm-worklet.js` is 200 `text/javascript`; every escape of the kit's list plus `/%00`, `/a%00.js`, `/a\\b.js`, `/..%5Csecret.txt` is 404 and never a 500 and never contains the secret; `HEAD` of the page and of `/health` is 200 with no body; the module's own routes win over the fallback; without `STATIC_DIR` the app serves no page and `GET /` is 404.
+- [ ] **Step 1: Write the failing tests first**, from the kit's `test_web.py` and the rules table: every route of the app (`/`, `/flows`, `/flows/abc`, `/flows/abc?run=r`, `/inloggad`, `/inloggad?fel=utgangen`, a trailing slash) is the page with `Cache-Control: no-cache` and an ETag; a second request with `If-None-Match` is a 304 with the headers; `/api`, `/api/`, `/api/nope`, `/api/auth/nope/deeper` are 404 JSON; `/assets/x.js` that exists is 200 with `immutable`; a missing `/assets/x.js`, `/logo.png`, `/a/b/style.css` is 404 with no `<title>`; `/live-pcm-worklet.js` is 200 `text/javascript`; `/index.html` is the processed page and `/assets/x.js.br`, `/assets/x.js.gz` are 404; every escape of the kit's list plus `/%00`, `/a%00.js`, `/a\\b.js`, `/..%5Csecret.txt` is 404 and never a 500 and never contains the secret; `HEAD` of the page and of `/health` is 200 with no body; the module's own routes win over the fallback; without `STATIC_DIR` the app serves no page and `GET /` is 404.
 - [ ] **Step 2: Run, see them fail.** Expected: the `%00` cases (500) and `HEAD` (405) fail first; the backslash cases already pass.
 - [ ] **Step 3: Implement** (kit's `serve_web` with the four changes in "Reuse from the kit"). Reuse `_etag_matches` from `main.py` (move it to `web.py`; `get_branding_theme` imports it).
 - [ ] **Step 4: Run** the backend tests. **Step 5: Commit.** `feat(backend): serve the built UI, with 404 and not HTML for a missing file or an unknown API path`
@@ -441,7 +443,7 @@ Replacements (the whole inventory; `rg "from \"next|next-themes"` must show only
 ```
 
 It sets nothing for `system` or no choice: verified in `node_modules/@astryxdesign/core/dist/theme/Theme.js:196-222` that `Theme` sets `data-theme` for `light` and `dark` and removes it for `system`, and that `reset.css` then defaults to `color-scheme: light dark`, so the browser's own preference paints `system` correctly with no script at all. The script exists for the stored explicit choice that differs from the system's.
-- [ ] **Step 3: `scripts/finish-build.mjs`** renames `dist/color-mode.js` to `dist/assets/color-mode.<8-hex content hash>.js`, rewrites the `<script src>` in `dist/index.html`, and removes the root copy. The name is then under `/assets/` and immutable. A check in the script fails the build if `dist/index.html` still names `/color-mode.js`.
+- [ ] **Step 3: `scripts/finish-build.mjs`** renames `dist/color-mode.js` to `dist/assets/color-mode.<8-hex content hash>.js`, rewrites the `<script src>` in `dist/index.html`, and removes the root copy. It also fails the build unless `dist/index.html` has exactly one `<meta name="eneo-branding" content="">` (Vite re-serialises the HTML; the backend refuses to start without the marker, so the build should fail first). The name is then under `/assets/` and immutable. A check in the script fails the build if `dist/index.html` still names `/color-mode.js`.
 - [ ] **Step 4: Providers.** `ModuleProviders` uses the copied `ColorModeProvider` and passes `mode` to Astryx's `<Theme mode>` as the kit does; the `useSyncExternalStore` observer of the `<html>` class and its comment are removed. `AccountMenu` reads `useColorMode()`; the `themeReady` workaround for hydration goes (no server render).
 - [ ] **Step 5: CSS.** In `styles/globals.css` delete the `html.dark … { color-scheme }` bridge and change the brand-logo selectors (`html.dark`, `html:not(.dark)`) to `:root[data-theme="dark"]` with a `@media (prefers-color-scheme: dark) { :root:not([data-theme]) … }` fallback, as the kit's `packages/ui/src/base.css` does at its end.
 - [ ] **Step 6: Run** `npm test`, `npm run lint`, the colour-mode specs. **Step 7: Commit.** `feat(frontend): the colour mode is a provider and one same-origin script, no inline script and no flash`
@@ -676,7 +678,7 @@ Owner and lead task. Nothing here is automatic.
 3. The new image has no `/_next/*`; a bookmarked `/_next/…` URL is a 404.
 4. The Compose file has one service, so the `frontend` service name and port 3000 are gone from the deployment (B6.1 Step 3).
 5. The build argument is `SPEAKER_REVIEW_ENABLED`; `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED` stops working.
-6. A stale tab that asks for a removed lazy chunk shows a message instead of Next's behaviour (which reloaded the page).
+6. A stale tab that asks for a removed lazy chunk shows a message and does not reload by itself (Next recovers from a failed chunk with a full reload, as far as its documentation says; not verified here), because a reload loses a recording in progress.
 
 ## Risks and stop conditions
 
