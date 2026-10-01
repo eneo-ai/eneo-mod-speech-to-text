@@ -114,7 +114,7 @@
 
   /* The page: full window width, so a header's band spans it. The content's width is the frame's
      (components/frame.tsx), never the shell's. */
-  .app-shell {
+  [data-app-shell] {
     min-height: 100vh;
     background: hsl(var(--bg));
     position: relative;

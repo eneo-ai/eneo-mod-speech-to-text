@@ -42,7 +42,7 @@ export default async function RootLayout({
         >
           <ModuleProviders>
             <BrandingProvider value={branding}>
-              <div className="app-shell">{children}</div>
+              <div data-app-shell>{children}</div>
             </BrandingProvider>
           </ModuleProviders>
         </ThemeProvider>
