@@ -3,6 +3,7 @@ import test, { afterEach } from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import {
+  NOT_ON_DEVICE,
   openRecordingStore,
   type NewRecording,
   type RecordingFile,
@@ -728,6 +729,33 @@ test("Stoppa lets the microphone go without waiting for the database, and the la
   const stopped = await stopping;
   assert.equal(stopped?.state, "stopped");
   assert.deepEqual(await texts(await store.readParts(stopped!.id)), ["a."], "the recorder's last data is kept");
+});
+
+test("Stoppa on a recording that has vanished from the device still ends: the microphone goes, and the page is not left recording", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  const { id } = capture.getSnapshot().recording!;
+  await store.discard(id); // another tab without Web Locks, a cleared store
+  const stopped = await capture.stop();
+  assert.equal(stopped, null);
+  assert.equal(streams[0].track.readyState, "ended");
+  const { status, stopping, error } = capture.getSnapshot();
+  assert.equal(status, "stopped", "not left recording");
+  assert.equal(stopping, false);
+  assert.equal(error, NOT_ON_DEVICE, "and it says why");
+});
+
+test("Stoppa when the device cannot say the recording is stopped ends too, and says so", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  store.setState = () => Promise.reject(new DOMException("The database connection is closing.", "InvalidStateError"));
+  assert.equal(await capture.stop(), null);
+  assert.equal(streams[0].track.readyState, "ended");
+  const { status, stopping, error } = capture.getSnapshot();
+  assert.deepEqual([status, stopping], ["stopped", false]);
+  assert.equal(error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
 });
 
 test("leaving a running recording lets the microphone go without waiting for the database, and keeps what was recorded", async () => {

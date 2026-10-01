@@ -33,9 +33,11 @@ export const CHUNK_MS = 2_000;
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
  * it and its own format otherwise (Safari: audio/mp4, see the recorder's
- * format choice). A 5-hour meeting is then about 72 MB (32 kbit/s for
- * 18,000 s), well under a flow's per-file limit, and speech stays clearly
- * intelligible.
+ * format choice). Where the browser follows it (Chrome), a 5-hour meeting is
+ * about 72 MB (32 kbit/s for 18,000 s) and speech stays clearly intelligible.
+ * WebKit 26.6 ignored mono and 32 kbit/s and gave stereo at about 50-54 kbit/s
+ * (110-120 MB), so the limits follow the rate the browser gives (largestChunk),
+ * not this one.
  */
 export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } as const;
 
@@ -133,6 +135,7 @@ type EndReason = "stop" | "interrupt" | "leave";
 
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
+const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
 
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
@@ -337,11 +340,22 @@ export class RecordingCapture {
     // data, which lands in the store as before.
     this.stopMicrophone();
     this.set({ stopping: true });
-    await ended;
-    await store.setState(recording.id, "stopped");
-    const stopped = await store.get(recording.id);
+    let stopped: StoredRecording | null = null;
+    let failure: string | null = null;
+    try {
+      await ended;
+      await store.setState(recording.id, "stopped");
+      stopped = await store.get(recording.id);
+    } catch (error) {
+      failure = error instanceof Error && error.message === NOT_ON_DEVICE ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
+    }
     this.finish();
-    this.set({ status: "stopped", recording: stopped, stream: null, stopping: false });
+    // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
+    this.set(
+      failure === null
+        ? { status: "stopped", recording: stopped, stream: null, stopping: false }
+        : { status: "stopped", stream: null, stopping: false, error: failure },
+    );
     return stopped;
   }
 

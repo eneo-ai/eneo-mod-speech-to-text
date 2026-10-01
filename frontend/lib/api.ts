@@ -67,7 +67,7 @@ function expectedUserHeader(): Record<string, string> {
   return user ? { "X-Expected-User": user } : {};
 }
 
-function userChanged(error: ApiError): boolean {
+function isUserChanged(error: ApiError): boolean {
   return error.status === 409 && (error.body as { detail?: unknown } | null)?.detail === "user_changed";
 }
 
@@ -105,16 +105,18 @@ async function request<T>(
   if (!res.ok) {
     const error = await parseError(res);
     // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
-    // say) is an error to show. A session that is now someone else's (user_changed) is the same to this page.
-    // The page stays, and asks for a new login in place (loginState): a request that is safe to send twice
-    // waits for it and goes again.
-    const ended = res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/");
-    if (ended || userChanged(error)) {
+    // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
+    // is safe to send twice waits for it and goes again.
+    if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
       loginState.ended();
       if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
         return request<T>(path, init, true);
       }
-      if (!ended) throw sessionEnded();
+    } else if (isUserChanged(error)) {
+      // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
+      // session end, and the user decides.
+      loginState.userChanged();
+      throw sessionEnded();
     }
     throw error;
   }
@@ -754,9 +756,9 @@ function requestMultipartWithProgress<T>(
       onlineStatus.reportReachable();
       // The login ended: the dialog asks for a new one, and the send is the user's to start again.
       if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended();
-      // The session is someone else's now: the same for this page, and the send is the user's to start again.
-      const changed = xhr.status === 409 && userChanged(parseXhrError(xhr));
-      if (changed) loginState.ended();
+      // The session is another person's: the upload is the user's to send again, as for a session end.
+      const changed = xhr.status === 409 && isUserChanged(parseXhrError(xhr));
+      if (changed) loginState.userChanged();
       if (settled) return;
       settled = true;
       clearScheduledTimeout();

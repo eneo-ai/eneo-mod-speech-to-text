@@ -204,9 +204,9 @@ const userChanged = () =>
     headers: { "content-type": "application/json" },
   });
 
-/** An XMLHttpRequest that answers `httpStatus` and `body`, and keeps the headers it was sent with. */
+/** An XMLHttpRequest that answers `httpStatus` and `body`, and keeps the headers it was sent with and how often it sent. */
 function answeringXhr(t: import("node:test").TestContext, httpStatus: number, body: unknown) {
-  const sent: Record<string, string> = {};
+  const sent = { headers: {} as Record<string, string>, count: 0 };
   class AnsweringXhr {
     upload = {};
     onload: (() => void) | null = null;
@@ -217,13 +217,14 @@ function answeringXhr(t: import("node:test").TestContext, httpStatus: number, bo
     responseText = JSON.stringify(body);
     open() {}
     setRequestHeader(name: string, value: string) {
-      sent[name.toLowerCase()] = value;
+      sent.headers[name.toLowerCase()] = value;
     }
     abort() {}
     getResponseHeader(name: string) {
       return name.toLowerCase() === "content-type" ? "application/json" : null;
     }
     send() {
+      sent.count += 1;
       queueMicrotask(() => this.onload?.());
     }
   }
@@ -265,30 +266,48 @@ test("an upload names the page's user", async (t) => {
   signedInPage(t, []);
   const sent = answeringXhr(t, 200, { id: "file-1" });
   await uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm");
-  assert.equal(sent["x-expected-user"], "user-1");
+  assert.equal(sent.headers["x-expected-user"], "user-1");
 });
 
-test("another user's login under this page covers it: what is safe to send again goes with the page's own user, the rest is refused as a session end", async (t) => {
-  const { calls } = signedInPage(t, [userChanged, () => ok({ id: "run-1", flow_id: "flow-1", status: "queued" }), userChanged]);
-  const starting = startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
-  await new Promise((resolve) => setImmediate(resolve));
+test("another user's login under this page covers it, and nothing is sent again by the page, not even what is safe to repeat", async (t) => {
+  const { calls } = signedInPage(t, [userChanged, () => ok({ id: "run-1", flow_id: "flow-1", status: "queued" })]);
+  await assert.rejects(
+    startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1"),
+    (error: ApiError) => error.status === 401 && error.code === undefined,
+  );
   assert.equal(loginState.signedOut, true, "the page is covered");
-  assert.equal(calls.length, 1, "and the run start waits");
-
-  loginState.observe(signedIn());
-  assert.equal((await starting).id, "run-1");
-  assert.equal(calls.length, 2);
-
-  await assert.rejects(cancelRun("flow-1", "run-1"), (error: ApiError) => error.status === 401 && error.code === undefined);
-  assert.equal(loginState.signedOut, true, "covered again, and the cancel is the user's to repeat");
-  assert.equal(calls.length, 3, "not sent again by itself");
+  loginState.observe(signedIn()); // the page's own user is back
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1, "the run start is not sent again");
 });
 
-test("an upload for another user's session covers the page and is the user's to send again", async (t) => {
+test("a user change reads the status again, which says who is signed in instead; the page's own user back uncovers it", async (t) => {
+  let reread = 0;
+  const end = loginState.begin(anna, () => (reread += 1));
+  t.after(end);
+  loginState.userChanged();
+  assert.equal(loginState.signedOut, true);
+  assert.equal(reread, 1);
+  loginState.observe(signedIn(8 * 3600, erik)); // what the status said
+  assert.deepEqual(loginState.otherUser, erik);
+  loginState.observe(signedIn());
+  assert.equal(loginState.signedOut, false);
+});
+
+test("a user change with no way to read the status again still covers the page", (t) => {
+  t.after(loginState.begin(anna));
+  loginState.userChanged();
+  assert.equal(loginState.signedOut, true);
+});
+
+test("an upload for another user's session covers the page and is not sent again, whoever signs in next", async (t) => {
   signedInPage(t, []);
-  answeringXhr(t, 409, { detail: "user_changed" });
+  const sent = answeringXhr(t, 409, { detail: "user_changed" });
   await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm"), (error: ApiError) => error.status === 401);
   assert.equal(loginState.signedOut, true);
+  loginState.observe(signedIn());
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(sent.count, 1);
 });
 
 test("any other 409 is an ordinary error and covers nothing", async (t) => {

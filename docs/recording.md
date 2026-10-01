@@ -9,7 +9,7 @@ Hör ihop med: [Eneo-integration](eneo-integration.md), [Frontend](frontend.md#v
 ## Format och buffring
 
 - Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus när flödet accepterar det, och ber `MediaRecorder` om korta chunks (2 sekunder, `CHUNK_MS`). Det minskar risken att långa möten bygger upp en enda stor intern recorder-buffer.
-- Tal spelas in i mono med 32 kbit/s (`SPEECH_RECORDING` i `frontend/lib/recording-session.ts`), med Opus när webbläsaren kan och annars webbläsarens eget format (Safari: `audio/mp4`). Ett möte på fem timmar blir ungefär 72 MB.
+- Tal spelas in i mono med 32 kbit/s (`SPEECH_RECORDING` i `frontend/lib/recording-session.ts`), med Opus när webbläsaren kan och annars webbläsarens eget format (Safari: `audio/mp4`). Där webbläsaren följer det (Chrome) blir ett möte på fem timmar ungefär 72 MB. WebKit 26.6 ignorerade både mono och 32 kbit/s och gav stereo med ungefär 50–54 kbit/s, så där blir samma möte ungefär 110–120 MB. Gränserna räknas därför från den bithastighet webbläsaren faktiskt ger, inte från den som begärdes (`largestChunk` i `frontend/lib/recording-session.ts`).
 - Chromes WebM-filer saknar längd i sitt huvud. När en del sätts ihop till en fil skrivs den inspelade längden dit (`frontend/lib/webm-duration.ts`), så att uppspelningen visar rätt längd och går att spola i.
 - Eneo-körningen startar fortfarande först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
 

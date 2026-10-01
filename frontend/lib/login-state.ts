@@ -22,12 +22,20 @@ export interface LoginState {
   /** Who is signed in instead of the page's user, while the page stays covered for them. */
   readonly otherUser: AuthenticatedUser | null;
   subscribe(listener: () => void): () => void;
-  /** A page signed in as `owner` from here on (AuthGate); the returned function ends it. */
-  begin(owner: AuthenticatedUser): () => void;
+  /**
+   * A page signed in as `owner` from here on (AuthGate); `reread` reads the status again (see userChanged); the
+   * returned function ends it.
+   */
+  begin(owner: AuthenticatedUser, reread?: () => void): () => void;
   /** What the module's backend says of the login: signed in and until when, or signed out. */
   observe(status: AuthStatus): void;
   /** A request found the login ended (401 with X-Auth-Required: session). */
   ended(): void;
+  /**
+   * The module found the session someone else's (409 user_changed, or the live relay's close of that name): the
+   * page is covered as for an end, and the status is read again, which says whose session it is.
+   */
+  userChanged(): void;
   /** True once signed in again; false at once where no signed-in page waits, or when `signal` ends the wait. */
   whenRenewed(signal?: AbortSignal | null): Promise<boolean>;
 }
@@ -35,6 +43,7 @@ export interface LoginState {
 export function createLoginState(): LoginState {
   let pages = 0;
   let owner: AuthenticatedUser | null = null;
+  let reread: (() => void) | undefined;
   let signedOut = false;
   let otherUser: AuthenticatedUser | null = null;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,8 +80,9 @@ export function createLoginState(): LoginState {
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
-    begin(user) {
+    begin(user, read) {
       owner = user;
+      reread = read;
       pages += 1;
       let open = true;
       return () => {
@@ -81,6 +91,7 @@ export function createLoginState(): LoginState {
         pages -= 1;
         if (pages > 0) return;
         owner = null;
+        reread = undefined;
         clearTimeout(endTimer);
         settle(false);
         setSignedOut(false);
@@ -97,6 +108,10 @@ export function createLoginState(): LoginState {
       if (status.session_ends_in !== undefined) endTimer = setTimeout(ended, status.session_ends_in * 1000);
     },
     ended,
+    userChanged() {
+      ended();
+      if (pages > 0) reread?.();
+    },
     whenRenewed(signal) {
       if (pages === 0 || signal?.aborted) return Promise.resolve(false);
       if (!signedOut) return Promise.resolve(true);

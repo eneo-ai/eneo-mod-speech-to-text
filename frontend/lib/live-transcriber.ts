@@ -14,7 +14,8 @@
  * then keeps the text of a session that heard all of it, as transcript_id.
  * It names the user the page was opened for (?expected_user=), as a browser
  * cannot set a header on a socket: for another user's session the relay
- * accepts the socket and closes it 1008 "user_changed".
+ * accepts the socket and closes it 1008 "user_changed"; a session that ends
+ * under an open socket closes it 1008 "session_ended".
  */
 
 import type { OnlineStatus } from "./online-status";
@@ -70,10 +71,15 @@ export interface LiveDeps {
   /**
    * The page's login (loginState): covered while signed out or someone else is signed in. The relay takes
    * whoever's cookie the browser has then, so live text sends nothing and connects to nothing until the page's
-   * own user is back; the recording goes on meanwhile. The relay's close for another user's session ends the
-   * page's login the way a request's refusal does (ended).
+   * own user is back; the recording goes on meanwhile. The relay's closes for a session that ended under an open
+   * socket (ended) and for another user's session (userChanged) cover the page the way a request's refusal does.
    */
-  login?: { readonly signedOut: boolean; subscribe(listener: () => void): () => void; ended(): void };
+  login?: {
+    readonly signedOut: boolean;
+    subscribe(listener: () => void): () => void;
+    ended(): void;
+    userChanged(): void;
+  };
   now?: () => number;
 }
 
@@ -352,11 +358,12 @@ export class LiveTranscriber {
     const wasReady = this.ready;
     this.ready = false;
     this.commit();
-    if (event.code === 1008 && event.reason === "user_changed") {
-      // The cookie is another person's now: the page is covered as for a login that ended, and live text goes on as
-      // after a break once the page's own user is back (connect() waits for it).
+    if (event.code === 1008 && (event.reason === "user_changed" || event.reason === "session_ended")) {
+      // The login is not the page's user's any more: the page is covered, and live text goes on as after a break
+      // once the page's own user is back (connect() waits for it); it opens nothing on its own meanwhile.
       this.failure = "retry";
-      this.deps.login?.ended();
+      if (event.reason === "user_changed") this.deps.login?.userChanged();
+      else this.deps.login?.ended();
     }
     if (this.stopping) {
       this.finish();

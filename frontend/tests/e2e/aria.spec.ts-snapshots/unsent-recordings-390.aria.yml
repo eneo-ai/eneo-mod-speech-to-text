@@ -1,6 +1,6 @@
 - region "En inspelning har inte skickats":
   - heading "En inspelning har inte skickats" [level=2]
-  - paragraph: Den finns kvar på den här enheten tills den har skickats.
+  - paragraph: Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge.
   - list:
     - listitem:
       - paragraph: /Inspelning \d+ [a-zåäö]+ \d+:\d+/
