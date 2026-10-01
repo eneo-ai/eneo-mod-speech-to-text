@@ -50,11 +50,12 @@
     --input: var(--rule);
     --ring: var(--primary);
     --radius: 0.5rem;
-    /* Motion on the transitions.dev scale: modals open in 250 ms, close in 150 ms. */
-    --duration-quick: 150ms;
-    --duration-fast: 250ms;
-    --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --scale-large: 0.96;
+    /* Motion on the transitions.dev scale: modals open in 250 ms, close in 150 ms. Namespaced: the design system declares
+       --duration-fast (175 ms) in a layer above this one, and an un-namespaced token here would be overridden by it. */
+    --module-duration-quick: 150ms;
+    --module-duration-fast: 250ms;
+    --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --module-scale-large: 0.96;
     color-scheme: light;
   }
 
@@ -220,12 +221,12 @@
 /* Dialog open and close (Radix waits for the closing animation before unmounting). */
 @keyframes t-fade-in { from { opacity: 0; } }
 @keyframes t-fade-out { to { opacity: 0; } }
-@keyframes t-modal-in { from { opacity: 0; scale: var(--scale-large); } }
-@keyframes t-modal-out { to { opacity: 0; scale: var(--scale-large); } }
-.t-overlay[data-state="open"] { animation: t-fade-in var(--duration-fast) var(--ease-smooth-out); }
-.t-overlay[data-state="closed"] { animation: t-fade-out var(--duration-quick) var(--ease-smooth-out); }
-.t-modal[data-state="open"] { animation: t-modal-in var(--duration-fast) var(--ease-smooth-out); }
-.t-modal[data-state="closed"] { animation: t-modal-out var(--duration-quick) var(--ease-smooth-out); }
+@keyframes t-modal-in { from { opacity: 0; scale: var(--module-scale-large); } }
+@keyframes t-modal-out { to { opacity: 0; scale: var(--module-scale-large); } }
+.t-overlay[data-state="open"] { animation: t-fade-in var(--module-duration-fast) var(--module-ease-smooth-out); }
+.t-overlay[data-state="closed"] { animation: t-fade-out var(--module-duration-quick) var(--module-ease-smooth-out); }
+.t-modal[data-state="open"] { animation: t-modal-in var(--module-duration-fast) var(--module-ease-smooth-out); }
+.t-modal[data-state="closed"] { animation: t-modal-out var(--module-duration-quick) var(--module-ease-smooth-out); }
 
 /* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
    focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
