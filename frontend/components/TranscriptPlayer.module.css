@@ -1,0 +1,37 @@
+/* A speaker's round mark (SpeakerMark). Decorative: the name is always beside it. An unlabelled passage is a quiet "?",
+   a speaker has one of six colours, the same everywhere on the page. */
+.mark {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  user-select: none;
+  border-radius: var(--radius-full);
+  font-weight: var(--font-weight-semibold);
+  background: var(--color-text-secondary);
+  color: var(--color-background-surface);
+}
+
+.mark[data-size="sm"] {
+  inline-size: var(--spacing-6);
+  block-size: var(--spacing-6);
+  font-size: var(--font-size-xs);
+}
+
+.mark[data-size="md"] {
+  inline-size: var(--spacing-7);
+  block-size: var(--spacing-7);
+  font-size: var(--font-size-sm);
+}
+
+.mark[data-size="lg"] {
+  inline-size: var(--spacing-9);
+  block-size: var(--spacing-9);
+  font-size: var(--font-size-sm);
+}
+
+.mark[data-speaker-color="0"] { background: var(--module-speaker-0); }
+.mark[data-speaker-color="1"] { background: var(--module-speaker-1); }
+.mark[data-speaker-color="2"] { background: var(--module-speaker-2); }
+.mark[data-speaker-color="3"] { background: var(--module-speaker-3); }
+.mark[data-speaker-color="4"] { background: var(--module-speaker-4); }
+.mark[data-speaker-color="5"] { background: var(--module-speaker-5); }

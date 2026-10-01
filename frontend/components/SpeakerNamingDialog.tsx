@@ -202,7 +202,7 @@ export function SpeakerNamingDialog({
             return (
               <li key={row.label} className="flex flex-col gap-3 border-b border-border py-4 last:border-0 sm:flex-row sm:items-start">
                 <div className="flex min-w-0 flex-1 gap-3">
-                  <SpeakerMark label={row.label} name={title(row.label)} className="size-9 text-[13px]" />
+                  <SpeakerMark label={row.label} name={title(row.label)} size="lg" />
                   <div className="flex min-w-0 flex-col gap-1">
                     <p className="text-[15px] font-medium text-ink">
                       {title(row.label)}
