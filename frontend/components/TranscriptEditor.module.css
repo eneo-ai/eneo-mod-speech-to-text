@@ -163,6 +163,14 @@
   cursor: pointer;
 }
 
+@media (pointer: coarse) {
+  .details summary {
+    display: flex;
+    align-items: center;
+    min-block-size: var(--spacing-11);
+  }
+}
+
 .details ul {
   margin: var(--spacing-2) 0 0;
   padding: 0;
@@ -342,6 +350,7 @@
   .clock,
   .speakerName {
     min-block-size: var(--spacing-11);
+    min-inline-size: var(--spacing-11);
   }
 }
 
@@ -391,6 +400,14 @@
 
 .span:focus-visible {
   border-radius: var(--radius-inner);
+}
+
+/* A passage is a target a finger can hit: its box grows to a control's height without taking more room in the line
+   (padding on an inline box does not move the lines), and so overlaps the lines beside it. */
+@media (pointer: coarse) {
+  .span {
+    padding-block: 0.8em;
+  }
 }
 
 .span[data-seekable]:hover {
