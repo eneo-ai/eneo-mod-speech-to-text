@@ -37,6 +37,14 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
+    // off with an ellipsis and fixes the height (WCAG 1.4.10 reflow at 320 px, 1.4.4 resize at 200 %). The block padding
+    // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.
+    button: {
+      base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', paddingBlock: 'var(--spacing-0-5)'},
+      'size:sm': {minHeight: 'var(--size-element-sm)'},
+      'size:lg': {minHeight: 'var(--size-element-lg)'},
+    },
   },
   adaptations: {
     rules: [

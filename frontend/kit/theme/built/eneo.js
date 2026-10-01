@@ -265,6 +265,20 @@ export const eneoTheme = {
       "base": {
         "overflowWrap": "anywhere"
       }
+    },
+    "button": {
+      "base": {
+        "whiteSpace": "normal",
+        "height": "auto",
+        "minHeight": "var(--size-element-md)",
+        "paddingBlock": "var(--spacing-0-5)"
+      },
+      "size:sm": {
+        "minHeight": "var(--size-element-sm)"
+      },
+      "size:lg": {
+        "minHeight": "var(--size-element-lg)"
+      }
     }
   },
   __onDark: {
