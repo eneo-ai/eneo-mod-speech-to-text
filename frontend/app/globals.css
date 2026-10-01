@@ -266,3 +266,7 @@ html.dark,
 html.dark [data-astryx-theme] { color-scheme: dark; }
 html.light,
 html.light [data-astryx-theme] { color-scheme: light; }
+
+/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
+   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
+dialog[open] { pointer-events: auto; }

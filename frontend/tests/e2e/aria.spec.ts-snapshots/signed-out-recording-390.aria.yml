@@ -5,4 +5,6 @@
     - text: Spelar in
     - button "Pausa"
     - button "Stoppa"
-  - button "Logga in igen"
+  - button "Logga in igen":
+    - text: ""
+    - status

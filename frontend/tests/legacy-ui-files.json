@@ -13,7 +13,6 @@
   "components/NameCombobox.tsx",
   "components/OfflineBanner.tsx",
   "components/RetryNotice.tsx",
-  "components/SessionEndWarning.tsx",
   "components/SpeakerNamingDialog.tsx",
   "components/TranscriptEditor.tsx",
   "components/TranscriptPlayer.tsx",
