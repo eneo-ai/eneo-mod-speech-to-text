@@ -239,6 +239,8 @@
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
   /* Loading spinners and skeletons stand still; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse { animation: none; }
+  /* The design system's spinner slows to 3 s for reduced motion but never stops, and its theme cannot reach the arc. */
+  .astryx-spinner circle { animation: none; }
 }
 
 @media (forced-colors: active) {
@@ -266,3 +268,25 @@ html.dark,
 html.dark [data-astryx-theme] { color-scheme: dark; }
 html.light,
 html.light [data-astryx-theme] { color-scheme: light; }
+
+/* The brand lockup's mark (components/Brand.tsx). Another organisation's logo keeps Sundsvall's height and a wide one
+   scales down inside a bounded width; a name without a logo wraps inside the same bounds. A logo made for one colour
+   mode stays out of the other, and Sundsvall's black mark turns white in the dark one. */
+[data-brand-logo]:not([data-brand-logo="default"]) {
+  display: block;
+  max-inline-size: 6.5rem;
+  overflow-wrap: anywhere;
+}
+img[data-brand-logo] {
+  block-size: var(--spacing-10);
+  inline-size: auto;
+  object-fit: contain;
+  object-position: left;
+}
+@media (min-width: 640px) {
+  [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
+  [data-brand-logo="name"] { max-inline-size: 12rem; }
+}
+html.dark [data-brand-logo="default"] { filter: invert(1); }
+html.dark [data-brand-logo="light"] { display: none; }
+html:not(.dark) [data-brand-logo="dark"] { display: none; }

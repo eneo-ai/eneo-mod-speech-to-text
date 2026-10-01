@@ -24,7 +24,7 @@ export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
   await open(page, path);
-  await expect(page.locator("main svg")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
 }
 
 /** The flow list five minutes before the login ends: the warning is open. */
@@ -225,6 +225,15 @@ export const STATES: State[] = [
     go: async (page) => {
       await signIn(page, "access_code", "?auth_error=1");
       await expect(page.getByRole("alert").filter({ hasText: "Inloggningen kunde inte" })).toBeVisible();
+    },
+  },
+  {
+    name: "signin-unreachable",
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) => route.abort());
+      await open(page, "/");
+      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
   // The sign-in page and a signed-in page while the session is still being asked for.

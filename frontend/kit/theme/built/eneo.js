@@ -298,6 +298,11 @@ export const eneoTheme = {
               "base": {
                 "minHeight": "44px"
               }
+            },
+            "top-nav-heading": {
+              "base": {
+                "minHeight": "44px"
+              }
             }
           }
         }

@@ -38,6 +38,7 @@ export const eneoTheme = defineTheme({
             'dropdown-menu-item': {base: {minHeight: TOUCH}},
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
+            'top-nav-heading': {base: {minHeight: TOUCH}},
           },
         },
       },

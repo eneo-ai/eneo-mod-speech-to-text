@@ -3,16 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Spinner } from "@/components/ui/spinner";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { ApiError, authStatus, loginWithAccessCode } from "@/lib/api";
 import type { AuthMode } from "@/lib/api";
-import { AppHeader } from "@/components/AppHeader";
-import { FRAME, READING } from "@/components/frame";
-import { cn } from "@/lib/utils";
+import { HeaderBrand } from "@/components/AppHeader";
+import { ModuleShell } from "@/kit/ModuleShell";
+
+// TextInput hands what it does not type on to its <input>: the browser stops an empty code before it is sent, and
+// the field takes no more than the backend does (256), as before.
+const CODE_FIELD_LIMITS = { required: true, maxLength: 256 };
 
 export default function LoginPage() {
   const router = useRouter();
@@ -73,98 +81,75 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <main className="min-h-screen grid place-items-center">
-        <h1 className="sr-only">Tal till text</h1>
-        <Spinner className="size-5 text-ink-mute" />
-      </main>
+      <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+        <VStack hAlign="center" paddingBlock={10}>
+          <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+          <Spinner aria-label="Laddar" />
+        </VStack>
+      </ModuleShell>
     );
   }
 
   return (
-    <>
-      <AppHeader account={false} />
-      <main
-        className={cn(
-          FRAME,
-          "flex flex-1 flex-col pb-16 pt-2 md:justify-center",
-        )}
-      >
-        <div className={READING}>
-          <div className="space-y-2 mb-8">
-            <h1 className="text-[30px] md:text-[36px] font-semibold tracking-[-0.025em] leading-[1.05]">
-              Gör samtal och filer till text och dokument.
-            </h1>
-            <p className="text-[14px] text-ink-soft leading-relaxed pt-1">
-              {authMode === "access_code"
-                ? "Ange åtkomstkoden för att fortsätta."
-                : "Logga in via Eneo för att fortsätta."}
-            </p>
-          </div>
+    <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+      <Layout height="auto" contentWidth={640} padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={6} paddingBlockStart={6}>
+            <VStack gap={2}>
+              <Heading level={1}>Gör samtal och filer till text och dokument.</Heading>
+              <Text as="p" color="secondary">
+                {authMode === "access_code"
+                  ? "Ange åtkomstkoden för att fortsätta."
+                  : "Logga in via Eneo för att fortsätta."}
+              </Text>
+            </VStack>
 
-          <div className="space-y-6 mt-2">
-            {authError && (
-              <p
-                id="login-error"
-                className="text-sm text-destructive"
-                role="alert"
-              >
-                {authError}
-              </p>
-            )}
+            {authError && <Banner status="error" title={authError} collapsible={false} />}
             {authMode === "eneo_sso" && (
-              <Button
-                type="button"
-                onClick={startLogin}
-                disabled={submitting}
-                className="w-full sm:w-auto"
-              >
-                {submitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
-                {submitting ? "Öppnar Eneo…" : "Logga in med Eneo"}
-              </Button>
+              <HStack>
+                <Button
+                  label={submitting ? "Öppnar Eneo…" : "Logga in med Eneo"}
+                  variant="primary"
+                  isLoading={submitting}
+                  onClick={startLogin}
+                />
+              </HStack>
             )}
             {authMode === "access_code" && (
-              <form className="space-y-4" onSubmit={submitAccessCode}>
-                <div className="space-y-2">
-                  <Label htmlFor="access-code">Åtkomstkod</Label>
-                  <Input
+              <form onSubmit={submitAccessCode}>
+                <VStack gap={4}>
+                  <TextInput
                     ref={codeField}
-                    id="access-code"
                     type="password"
+                    label="Åtkomstkod"
                     value={accessCode}
-                    onChange={(event) => setAccessCode(event.target.value)}
+                    onChange={setAccessCode}
                     // A password manager may keep and fill the code (WCAG 3.3.8); pasting works either way.
                     autoComplete="current-password"
-                    required
-                    maxLength={256}
-                    disabled={submitting}
-                    aria-invalid={authError ? true : undefined}
-                    aria-describedby={authError ? "login-error" : undefined}
-                    autoFocus
+                    {...CODE_FIELD_LIMITS}
+                    isDisabled={submitting}
+                    status={authError ? { type: "error" } : undefined}
+                    hasAutoFocus
                   />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full sm:w-auto"
-                >
-                  {submitting && <Loader2 aria-hidden className="h-4 w-4 animate-spin" />}
-                  {submitting ? "Loggar in…" : "Fortsätt"}
-                </Button>
+                  <HStack>
+                    <Button
+                      type="submit"
+                      label={submitting ? "Loggar in…" : "Fortsätt"}
+                      variant="primary"
+                      isLoading={submitting}
+                    />
+                  </HStack>
+                </VStack>
               </form>
             )}
             {authMode === null && (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => window.location.reload()}
-                className="w-full sm:w-auto"
-              >
-                Försök igen
-              </Button>
+              <HStack>
+                <Button label="Försök igen" onClick={() => window.location.reload()} />
+              </HStack>
             )}
-          </div>
-        </div>
-      </main>
-    </>
+          </VStack>
+        </LayoutContent>
+      </Layout>
+    </ModuleShell>
   );
 }

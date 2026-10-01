@@ -446,6 +446,10 @@
     .astryx-typeahead-item {
       min-height: 44px;
     }
+
+    .astryx-top-nav-heading {
+      min-height: 44px;
+    }
   }
 }
 }
