@@ -391,6 +391,11 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-dialog-header-title-block:has(:focus-visible) {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
+  }
+
   .astryx-button {
     white-space: normal;
     height: auto;

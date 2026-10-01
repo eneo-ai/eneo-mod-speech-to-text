@@ -37,6 +37,9 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // A dialog opens on its title (the title takes focus, which gives it no outline): where focus is on it, as on
+    // a keyboard's, its block shows the ring (WCAG 2.4.7).
+    'dialog-header-title-block': {base: {':has(:focus-visible)': focusRing}},
     // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
     // off with an ellipsis and fixes the height (WCAG 1.4.10 reflow at 320 px, 1.4.4 resize at 200 %). The block padding
     // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.
