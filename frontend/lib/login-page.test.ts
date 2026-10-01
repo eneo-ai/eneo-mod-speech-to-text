@@ -86,6 +86,7 @@ test("the access code field is a password field a password manager can fill, the
   assert.equal(code.getAttribute("autocomplete"), "current-password", "WCAG 3.3.8: a password manager may fill it");
   assert.equal(code.required, true, "an empty code is stopped by the browser");
   assert.equal(code.maxLength, 256, "the backend's limit");
+  assert.equal(code.hasAttribute("aria-errormessage"), false, "nothing to point at before there is an error");
   assert.equal(document.activeElement, code, "focus is in the field");
 });
 
@@ -106,6 +107,11 @@ test("a refused access code is said once, as an alert, the field is marked and h
   assert.deepEqual(requests, ["GET /api/auth/status", "POST /api/auth/login"]);
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("Felaktig åtkomstkod.")), ["Felaktig åtkomstkod."], "said once");
   assert.equal(code.getAttribute("aria-invalid"), "true", "the field in error is identified");
+  // The field points at the message: the one alert, not a second text that would be announced as well.
+  const message = document.getElementById(code.getAttribute("aria-errormessage") ?? "-");
+  assert.ok(message, "the field names its error message");
+  assert.equal(message.getAttribute("role"), "alert");
+  assert.equal(message.textContent, "Felaktig åtkomstkod.");
   assert.equal(code.disabled, false);
   assert.equal(document.activeElement, code, "focus is back in the field");
   assert.deepEqual(replaced, []);
@@ -143,6 +149,7 @@ test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", 
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("Inloggningen")), ["Inloggningen kunde inte slutföras. Försök igen."]);
   assert.equal(window.location.search, "");
   assert.ok(field(container, "Åtkomstkod"), "the way in is still there");
+  assert.equal(document.getElementById(field(container, "Åtkomstkod")!.getAttribute("aria-errormessage") ?? "-")?.getAttribute("role"), "alert");
 });
 
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
