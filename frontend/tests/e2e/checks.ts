@@ -64,7 +64,9 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
       const shown = (el: Element) => {
         const r = el.getBoundingClientRect();
         const s = getComputedStyle(el);
-        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert], [hidden]');
+        // An open modal dialog is in reach whatever its ancestors say: it leaves an inert ancestor's inertness.
+        const outOfReach = el.closest('[aria-hidden="true"], [hidden]') !== null || (el.closest("[inert]") !== null && el.closest("dialog:modal") === null);
+        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !outOfReach;
       };
       const parts = (el: HTMLElement): Box[] => {
         const own = box(el.getBoundingClientRect());
@@ -81,6 +83,11 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
             bottom: own.bottom - px(s.borderBottomWidth) - px(after.bottom),
           });
         }
+        // A field's box takes the click for the control inside it (the design system's inputs and pickers).
+        const fieldBox = el.matches('input, textarea, [role="combobox"]')
+          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
+          : null;
+        if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {

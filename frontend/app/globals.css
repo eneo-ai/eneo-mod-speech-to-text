@@ -1,4 +1,6 @@
-@tailwind base;
+@layer tw-preflight {
+  @tailwind base;
+}
 @tailwind components;
 @tailwind utilities;
 
@@ -257,3 +259,10 @@
 @media (forced-colors: active) {
   .transcript-editor-text:focus-visible [data-caret-paragraph="true"] { border-inline-start: 3px solid Highlight; }
 }
+
+/* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
+   sets its own colour scheme, so it follows that class here; unlayered, this wins over the system's layered styles. */
+html.dark,
+html.dark [data-astryx-theme] { color-scheme: dark; }
+html.light,
+html.light [data-astryx-theme] { color-scheme: light; }

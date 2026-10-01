@@ -40,6 +40,7 @@ export default defineConfig({
     permissions: ["microphone"],
     launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
     trace: "retain-on-failure",
+    screenshot: "only-on-failure",
   },
   projects: [
     { name: "phone-320-light", use: { ...touch(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },

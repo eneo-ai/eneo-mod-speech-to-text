@@ -43,6 +43,11 @@ export async function sessionWarning(page: Page) {
   await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
 }
 
+async function foundation(page: Page) {
+  await open(page, "/dev/foundation");
+  await heading(page, "Grundkontroll");
+}
+
 export async function flows(page: Page) {
   await open(page, "/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
@@ -179,6 +184,40 @@ export interface State {
 
 /** Every screen and state the gate visits. */
 export const STATES: State[] = [
+  // The design system's parts beside the old ones (app/dev/foundation).
+  { name: "foundation", go: (page) => foundation(page) },
+  {
+    name: "foundation-dialog",
+    go: async (page) => {
+      await foundation(page);
+      await page.getByRole("button", { name: "Primär" }).click();
+      await expect(page.getByRole("alertdialog", { name: "Du behöver logga in igen" })).toBeVisible();
+    },
+  },
+  {
+    name: "foundation-alert",
+    go: async (page) => {
+      await foundation(page);
+      await page.getByRole("button", { name: "Liten" }).click();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
+    name: "foundation-menu",
+    go: async (page) => {
+      await foundation(page);
+      await page.getByRole("button", { name: "Konto" }).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+    },
+  },
+  {
+    name: "foundation-selector",
+    go: async (page) => {
+      await foundation(page);
+      await page.getByRole("combobox", { name: "Talare" }).click();
+      await expect(page.getByRole("option", { name: "Erik Lund" })).toBeVisible();
+    },
+  },
   { name: "signin-sso", go: (page) => signIn(page, "eneo_sso") },
   { name: "signin-access-code", go: (page) => signIn(page, "access_code") },
   {

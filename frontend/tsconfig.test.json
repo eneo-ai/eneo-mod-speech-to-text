@@ -7,7 +7,18 @@
     "noEmit": false,
     "incremental": false,
     "outDir": ".test-build",
-    "rootDir": "."
+    "rootDir": ".",
+    "paths": {
+      "@/*": [
+        "./*"
+      ],
+      "@astryxdesign/core/locales/*": [
+        "./node_modules/@astryxdesign/core/locales/*"
+      ],
+      "@astryxdesign/core/*": [
+        "./node_modules/@astryxdesign/core/dist/*"
+      ]
+    }
   },
   "include": [
     "lib/*.test.ts"

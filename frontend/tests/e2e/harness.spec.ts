@@ -87,3 +87,41 @@ test("a hit area grown by a pseudo-element is measured from the padding box, whe
     <button aria-label="Liten"></button>`);
   expect(await targetSizes(page, 44, false)).toEqual(['button "Liten" 24×24']);
 });
+
+test("a field's box counts as its control's target only for the control it activates", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      .astryx-text-input, .plain { display: flex; align-items: center; height: 44px; width: 240px; border: 1px solid #767676; }
+      input { height: 20px; border: 0; }
+      button { width: 20px; height: 20px; padding: 0; margin-left: 40px; }
+    </style>
+    <div class="astryx-text-input"><input aria-label="I fältets ruta"><button aria-label="Rensa"></button></div>
+    <div class="plain" style="margin-top: 40px"><input aria-label="I en vanlig ruta"></div>`);
+  // The design system's field is credited with its box; a control of its own inside that box, and a field in any
+  // other box, are measured as they are.
+  expect(await targetSizes(page, 44, false)).toEqual(['button "Rensa" 20×20', expect.stringMatching(/^input "I en vanlig ruta" \d+×20$/)]);
+});
+
+test("the design system's field box does activate its control, so crediting it is true", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto(`${baseURL}/dev/foundation`);
+  for (const [name, selector] of [["Ärende", ".astryx-text-input"], ["Talare", ".astryx-selector"]] as const) {
+    const control = page.locator(`${selector} :is(input, [role="combobox"])`).first();
+    const box = (await page.locator(selector).first().boundingBox())!;
+    expect(box.height, `${name}: the box is a 44 px target on a touch screen`).toBeGreaterThanOrEqual(44);
+    // The box's own edge, outside the control inside it.
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + 2);
+    // A text field takes the focus; a picker opens.
+    if (selector === ".astryx-selector") await expect(control, `${name}: a tap on the box's edge opens the picker`).toHaveAttribute("aria-expanded", "true");
+    else await expect(control, `${name}: a tap on the box's edge reaches the field`).toBeFocused();
+    await page.keyboard.press("Escape");
+  }
+  await context.close();
+});
+
+test("a target in an open modal dialog is measured even under an inert ancestor", async ({ page }) => {
+  await page.setContent(`<div inert><dialog><button aria-label="Liten" style="width: 10px; height: 10px; padding: 0"></button></dialog></div>`);
+  await page.evaluate(() => document.querySelector("dialog")!.showModal());
+  expect(await targetSizes(page, 24, false)).toEqual(['button "Liten" 10×10']);
+});

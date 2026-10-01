@@ -23,6 +23,8 @@ for (const state of STATES) {
     const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
     const edges = project.startsWith("phone-320") || project === "zoom-200" || desktop;
     await state.go(page, info);
+    // SHOTS=1: a picture of every state, for review (test-results/shots/<project>/<state>.png).
+    if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
 
     const scan = await axe(page);
     const unnamed = await unnamedControls(page);

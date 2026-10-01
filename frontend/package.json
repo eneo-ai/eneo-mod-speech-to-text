@@ -8,9 +8,15 @@
     "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
     "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "tsc --noEmit",
-    "test:a11y": "playwright test"
+    "test:a11y": "playwright test",
+    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
+    "theme:build": "npm run astryx -- theme build kit/theme/eneo.theme.ts -o kit/theme/built/eneo.css",
+    "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py 8401 & trap \"kill $!\" EXIT; INTERNAL_API_BASE=http://127.0.0.1:8401 next dev -H 127.0.0.1 -p 3401'",
+    "state": "playwright test a11y.spec.ts --project=laptop-1440-light --headed -g",
+    "test:prod": "playwright test --config playwright.prod.config.ts"
   },
   "dependencies": {
+    "@astryxdesign/core": "0.6.3",
     "@radix-ui/react-alert-dialog": "^1.1.23",
     "@radix-ui/react-avatar": "^1.2.6",
     "@radix-ui/react-collapsible": "^1.1.20",
@@ -27,6 +33,7 @@
     "@radix-ui/react-tabs": "^1.1.21",
     "@radix-ui/react-toggle": "^1.1.18",
     "@radix-ui/react-toggle-group": "^1.1.19",
+    "@stylexjs/stylex": "0.19.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "0.451.0",
@@ -39,6 +46,7 @@
     "tailwind-merge": "^3.6.0"
   },
   "devDependencies": {
+    "@astryxdesign/cli": "0.6.3",
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "@tailwindcss/typography": "0.5.15",
@@ -53,5 +61,8 @@
     "postcss": "^8.5.26",
     "tailwindcss": "3.4.17",
     "typescript": "5.6.3"
+  },
+  "engines": {
+    "node": ">=22.13.0"
   }
 }
