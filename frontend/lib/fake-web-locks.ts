@@ -7,8 +7,8 @@ export function fakeWebLocks(): Pick<LockManager, "request" | "query"> {
   return {
     async request(
       name: string,
-      options: LockOptions | LockGrantedCallback,
-      callback?: LockGrantedCallback,
+      options: LockOptions | LockGrantedCallback<unknown>,
+      callback?: LockGrantedCallback<unknown>,
     ) {
       const granted = (callback ?? options) as (lock: Lock | null) => unknown;
       const { ifAvailable = false } = callback ? (options as LockOptions) : {};
