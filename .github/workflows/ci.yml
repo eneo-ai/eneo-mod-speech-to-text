@@ -46,10 +46,38 @@ jobs:
         run: npm test
       - name: Check frontend types
         run: npm run lint
+      - name: Check the design system setup
+        run: npm run astryx -- doctor
+      - name: Check the built theme is current
+        run: npm run theme:build && git diff --exit-code -- kit/theme/built
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
       - name: Build frontend
         run: npm run build
+
+  frontend-browser:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium webkit firefox
+      - name: Production build in three engines
+        run: npm run test:prod
+      - name: Accessibility gate, one phone and one laptop
+        run: npx playwright test --project=phone-390-light --project=laptop-1440-light --workers=2
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-browser-results
+          path: frontend/test-results
 
   compose:
     runs-on: ubuntu-latest
