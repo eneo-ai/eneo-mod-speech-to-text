@@ -283,6 +283,74 @@ test("the microphone test uses the device recording will use, and shows it, also
   localStorage.clear();
 });
 
+/** A microphone the browser has, by what it answers: devices (named once allowed) and what asking for one does. */
+function stubMicrophones(devices: [string, string][], getUserMedia: () => Promise<unknown>) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+      enumerateDevices: async () => devices.map(([deviceId, label]) => ({ kind: "audioinput", deviceId, label, groupId: deviceId })),
+      getUserMedia,
+    },
+  });
+}
+
+test("a microphone the browser refuses is said with what to do, and Försök igen asks again", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  let asked = 0;
+  stubMicrophones([], async () => {
+    asked += 1;
+    throw new DOMException("denied", "NotAllowedError");
+  });
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.match(view.container.textContent ?? "", /Appen fick inte använda mikrofonen\.Tillåt mikrofonen i webbläsarens inställningar/);
+  assert.equal(button(view.container, "Testa mikrofonen") !== null, true, "no test is running");
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.equal(asked, 2);
+  await view.unmount();
+});
+
+test("a remembered microphone that is gone falls back to Standard and says so", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  stubMicrophones(
+    [["default", "Standard – Inbyggd mikrofon"], ["mac", "Inbyggd mikrofon"]],
+    async () => ({ getTracks: () => [], getAudioTracks: () => [] }),
+  );
+  localStorage.setItem("tal-till-text:microphone", "gone");
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.match(view.container.textContent ?? "", /Den valda mikrofonen hittades inte\. Standard används\./);
+  await view.unmount();
+  localStorage.clear();
+});
+
+test("the microphone test lets go of the microphone when recording starts", async () => {
+  const { createElement, useState } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  let stopped = 0;
+  stubMicrophones([["default", "Standard"]], async () => ({ getTracks: () => [{ stop: () => (stopped += 1) }], getAudioTracks: () => [] }));
+  let setActive: (on: boolean) => void = () => {};
+  function Page() {
+    const [active, set] = useState(true);
+    setActive = set;
+    return createElement(MicrophoneCheck, { active });
+  }
+  const view = await mount(createElement(Page));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.ok(button(view.container, "Sluta testa"), "the test is running");
+  assert.equal(stopped, 0);
+  await view.act(async () => setActive(false));
+  assert.equal(stopped, 1, "the recording gets the microphone");
+  assert.ok(button(view.container, "Testa mikrofonen"));
+  await view.unmount();
+});
+
 test("upload: the whole drop zone opens the file chooser, the chooser knows the flow's extensions, and the zone is no extra Tab stop", async () => {
   const { createElement, createRef } = await import("react");
   const { UploadPanel } = await import("../components/flow/UploadPanel");

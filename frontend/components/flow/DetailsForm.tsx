@@ -133,7 +133,6 @@ export function DetailsForm({
                 key={field.name}
                 {...common}
                 htmlName={field.name}
-                presentation="adaptive"
                 // An optional choice can be taken back; a required one starts unchosen.
                 options={[
                   { value: NONE, label: field.required ? "Välj" : "Inget val" },

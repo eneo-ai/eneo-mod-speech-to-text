@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { backLink, open, record, run, setup, stop } from "./screens";
+import { backLink, chooseMode, open, record, run, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -85,6 +85,16 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => backLink(page).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // A popover of the setup page: the list of microphones (a bottom sheet on a touch screen, not counted here).
+  "microphone picker": {
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Spela in");
+    },
+    show: (page) => page.getByRole("combobox", { name: "Mikrofon" }).click(),
+    shown: (page) => page.getByRole("listbox"),
+    hide: (page) => page.keyboard.press("Escape"),
   },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {

@@ -236,10 +236,33 @@ test("the warning before the login ends takes focus, holds it, and gives it back
   await expect(link, "focus goes back to where it was").toBeFocused();
 });
 
-test("the microphone picker holds focus and gives it back", async ({ page }) => {
+// A combobox keeps the position in its list in aria-activedescendant: the focus stays on the combobox while the list
+// is open (a list that holds the focus itself is allowed too). The arrow keys move the active option, Enter chooses,
+// and Escape closes the list and gives the focus back to the combobox.
+test("the microphone picker is operated with the keyboard and gives the focus back", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  await holdsFocus(page, page.getByRole("combobox", { name: "Mikrofon" }), page.getByRole("listbox"), 0);
+  const picker = page.getByRole("combobox", { name: "Mikrofon" });
+  await picker.focus();
+  await page.keyboard.press("Enter");
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+  await settle(page);
+  expect.soft(await page.evaluate(() => document.activeElement?.tagName), "focus does not start in a frame").not.toBe("IFRAME");
+  const active = () =>
+    page.evaluate(() => {
+      const owner = document.activeElement as HTMLElement | null;
+      const id = owner?.getAttribute("aria-activedescendant");
+      return { owner: owner?.getAttribute("role"), option: id ? (document.getElementById(id)?.textContent ?? null) : null };
+    });
+  const first = await active();
+  expect(["combobox", "listbox"], "focus is on the combobox or its list").toContain(first.owner);
+  expect(first.option, "an option is active").toBeTruthy();
+  await page.keyboard.press("ArrowDown");
+  expect((await active()).option, "the arrow key moves the active option").not.toBe(first.option);
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(picker, "Escape gives focus back to the combobox").toBeFocused();
 });
 
 test("the input modes change with the arrow keys", async ({ page }) => {
