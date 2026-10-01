@@ -349,6 +349,26 @@ test("a run's tab title names its state and its flow, so tabs and history entrie
   await failed.unmount();
 });
 
+test("the folded steps open on their trigger, say so in its label, and fold again", async () => {
+  const { createElement } = await import("react");
+  const { StepDetails } = await import("../components/flow/StepDetails");
+  const steps = [
+    { order: 1, label: "Transkribera mötet", state: "done" as const, transcribes: true, note: null },
+    { order: 2, label: "Skapa rapport", state: "waiting" as const, transcribes: false, note: "Här granskar du resultatet." },
+  ];
+  const view = await mount(createElement(StepDetails, { steps, version: 3 }));
+  const trigger = () => view.container.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+  assert.equal(trigger().getAttribute("aria-expanded"), "false", "closed to begin with");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "true");
+  assert.equal(trigger().textContent, "Dölj hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "false");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");

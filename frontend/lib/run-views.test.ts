@@ -276,24 +276,30 @@ test("earlier runs ask Eneo for the user's own runs only, never a colleague's", 
   ]);
 });
 
-test("folded panels stay hidden: no display utility may override the closed content's hidden attribute", () => {
-  const html = [
-    renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 })),
-    renderToStaticMarkup(
-      createElement(RunFailure, {
-        flowId: "flow-1",
-        flowName: "Flöde",
-        run: { id: "run-1", status: "failed", error: { code: "x", message: "detail", retryable: false } },
-        failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "detail", inputMustChange: false },
-        steps,
-        stepResults: [],
-        files: [],
-      }),
-    ),
-  ].join("");
-  const closed = [...html.matchAll(/<div([^>]*\shidden=""[^>]*)>/g)].map((m) => m[1]);
-  assert.ok(closed.length >= 2, "both folded panels render closed");
-  for (const attributes of closed) assert.doesNotMatch(attributes, /class="[^"]*\b(flex|grid|block|inline-flex)\b/, attributes);
+test("folded panels start closed, and the steps' own lines say what is and is not there", () => {
+  const failed = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "detail", retryable: false } },
+      failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "detail", inputMustChange: false },
+      steps,
+      stepResults: [],
+      files: [],
+    }),
+  );
+  const details = renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 }));
+  // What a screen reader hears of a folded panel: its trigger, collapsed. (Whether the content is then out of sight is CSS: tests/e2e.)
+  const triggers = (html: string) => [...html.matchAll(/<button[^>]*aria-expanded="(\w+)"[^>]*>(.*?)<\/button>/g)].map(([, expanded, inner]) => [expanded, text(inner)]);
+  assert.deepEqual(triggers(details), [["false", "Hur resultatet togs fram 4 steg"]]);
+  assert.deepEqual(triggers(failed), [["false", "Visa teknisk information"]]);
+
+  // Nothing to fold: no steps, no panel; a step without a note has no note; no version, no version line.
+  assert.equal(renderToStaticMarkup(createElement(StepDetails, { steps: [], version: 4 })), "");
+  assert.doesNotMatch(text(renderToStaticMarkup(createElement(StepDetails, { steps }))), /Flödets version/);
+  assert.match(text(details), /Flödets version 4/);
+  const plain = renderToStaticMarkup(createElement(StepDetails, { steps: [{ order: 1, label: "Transkribera", state: "done", transcribes: true, note: null }] }));
+  assert.equal(plain.match(/data-type="supporting"/g)?.length, 2, "the step count and the step's state, no note");
 });
 
 test("Försök igen continues where the run stopped; a refusal says why and offers a new run only when that helps", () => {

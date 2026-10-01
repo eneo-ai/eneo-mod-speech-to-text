@@ -41,8 +41,6 @@
   "components/flow/RunResult.tsx",
   "components/flow/RunTranscript.tsx",
   "components/flow/StateCard.tsx",
-  "components/flow/StepDetails.tsx",
-  "components/flow/StepList.tsx",
   "components/flow/SubmittingView.tsx",
   "components/flow/UploadPanel.tsx",
   "components/flow/useLeaveQuestion.tsx",
