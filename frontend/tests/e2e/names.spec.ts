@@ -389,3 +389,31 @@ test("a passage's actions say which part they are in, as its play button does, s
   await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 2", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Rätta repliken från 0:00", exact: true })).toHaveCount(0);
 });
+
+test.describe("with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+  // The reduced-motion project ignores this spec, so the preference is set here.
+  for (const [state, meter] of [
+    ["recording", "the stage's waveform"],
+    ["stromma", "the bar's level"],
+  ] as const) {
+    test(`${meter} does not glide between levels`, async ({ page }, info) => {
+      test.skip(info.project.name !== "phone-390-light", "one width is enough: the rule is not width-bound");
+      await STATES.find((s) => s.name === state)!.go(page, info);
+      const bars = page.getByRole("region", { name: "Ljudet" }).locator("[data-lit]");
+      expect(await bars.count()).toBeGreaterThan(0);
+      const transitions = await bars.evaluateAll((all) => all.map((bar) => getComputedStyle(bar).transitionDuration));
+      expect(new Set(transitions)).toEqual(new Set(["0s"]));
+    });
+  }
+});
+
+test("one long word in the live text wraps inside the sheet instead of widening it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone's width");
+  await STATES.find((s) => s.name === "stromma")!.go(page, info);
+  const log = page.getByRole("log", { name: "Preliminär text" });
+  // Words as the live text brings them, in one of its paragraphs.
+  await log.evaluate((element) => element.querySelector("p")!.append(" " + "Sammanträdesprotokollsjusteringsförfarandeanteckningar".repeat(6)));
+  const { scrollWidth, clientWidth } = await log.evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+});

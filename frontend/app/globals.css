@@ -243,6 +243,16 @@ html.dark [data-astryx-theme] { color-scheme: dark; }
 html.light,
 html.light [data-astryx-theme] { color-scheme: light; }
 
+/* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring
+   on it would only look like one. */
+[data-phase-heading]:focus { outline: none; }
+
+/* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
+   gives it back, for every button the design system draws. */
+@media (forced-colors: active) {
+  .astryx-button { border: 1px solid ButtonText; }
+}
+
 /* The brand lockup's mark (components/Brand.tsx). Another organisation's logo keeps Sundsvall's height and a wide one
    scales down inside a bounded width; a name without a logo wraps inside the same bounds. A logo made for one colour
    mode stays out of the other, and Sundsvall's black mark turns white in the dark one. */

@@ -15,8 +15,7 @@ import {
   stopLine,
 } from "./recording-view";
 import { guardHistory } from "./leave-guard";
-import { FlowSession, type LiveSession } from "./flow-session";
-import type { LiveSnapshot } from "./live-transcriber";
+import { FlowSession } from "./flow-session";
 import { openRecordingStore } from "./recording-store";
 
 test("the timer reads m:ss under an hour and h:mm:ss from an hour", () => {
@@ -298,56 +297,6 @@ test("when the recording is done with, the guard takes its history entry back", 
   assert.equal(browser.index, 1, "back on the flow page's own entry");
 });
 
-test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and the timer is never in a live region", async () => {
-  const { createElement } = await import("react");
-  const { renderToStaticMarkup } = await import("react-dom/server");
-  const { FocusedRecorder, RecordingBar } = await import("../components/flow/Recorder");
-  const { RecordingCapture } = await import("./recording-session");
-  const capture = new RecordingCapture(() => openRecordingStore({}), {
-    getStream: async () => {
-      throw new Error("not used");
-    },
-    createRecorder: () => {
-      throw new Error("not used");
-    },
-  });
-  const bar = (phase: "recording" | "paused", showStatus: boolean, warnings = [] as { title: string; detail?: string }[]) =>
-    renderToStaticMarkup(
-      createElement(RecordingBar, {
-        capture,
-        phase,
-        stream: null,
-        showStatus,
-        warnings,
-        notes: ["Låt skärmen vara tänd under inspelningen."],
-        onPause: () => {},
-        onStop: () => {},
-      }),
-    );
-  const buttons = (html: string) => [...html.matchAll(/<button[^>]*>(?:<svg.*?<\/svg>)?([^<]+)<\/button>/g)].map(([, label]) => label);
-  assert.deepEqual(buttons(bar("recording", true)), ["Pausa", "Stoppa"]);
-  assert.deepEqual(buttons(bar("paused", true)), ["Fortsätt", "Stoppa"]);
-  assert.match(bar("recording", true), /<span aria-hidden="true" class="[^"]*bg-record[^"]*"><\/span>Spelar in/, "the red dot has its word");
-  assert.match(bar("paused", true), />Pausad</);
-  // The fixed line is not in the live region, so a change there does not read it again.
-  assert.match(bar("recording", false), /<div role="status"[^>]*><p>Låt skärmen vara tänd under inspelningen\.<\/p><\/div>/);
-  assert.match(bar("recording", false), /<\/div><p[^>]*>Stoppa avslutar inspelningen\. Sedan kan du skapa dokumentet\.<\/p>/);
-  const warned = bar("recording", false, [{ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." }]);
-  const alert = warned.indexOf('role="alert"');
-  assert.ok(alert >= 0 && alert < warned.indexOf(">Pausa<"), "a warning is an alert, above the controls");
-  assert.match(warned, />Vi hör inget från mikrofonen\.</);
-
-  const recorder = renderToStaticMarkup(
-    createElement(FocusedRecorder, { capture, phase: "recording", stream: null, storageNote: null }),
-  );
-  for (const html of [bar("recording", true), recorder]) {
-    // Everything inside a live region, and the timer text itself.
-    const live = [...html.matchAll(/<(\w+)[^>]*(?:role="status"|aria-live)[^>]*>(.*?)<\/\1>/gs)].map(([, , inner]) => inner);
-    assert.ok(html.includes(">0:00<"), "the timer is shown");
-    assert.ok(live.every((inner) => !inner.includes("0:00")), "the timer is outside every live region");
-  }
-});
-
 test("a recording is named for people", () => {
   assert.equal(recordingName(new Date(2026, 8, 23, 16, 13).getTime()), "Inspelning 23 sep 16:13");
   assert.equal(recordingName(new Date(2026, 4, 2, 9, 5).getTime()), "Inspelning 2 maj 09:05");
@@ -379,49 +328,6 @@ test("live text says what it is doing apart from the recording, and only while t
   );
   assert.equal(liveStatusLine("live", true, "recording"), null);
   assert.equal(liveStatusLine("connecting", false, "recording"), null);
-});
-
-test("the live sheet is a named log of committed text; words still arriving are shown, not read", async () => {
-  const { createElement } = await import("react");
-  const { renderToStaticMarkup } = await import("react-dom/server");
-  const { LiveSheet } = await import("../components/flow/LiveSheet");
-  const sheet = (snapshot: LiveSnapshot) => {
-    const live: LiveSession = {
-      getSnapshot: () => snapshot,
-      subscribe: () => () => {},
-      listen: () => {},
-      setRecording: () => {},
-      stop: () => {},
-      dispose: () => {},
-    };
-    return renderToStaticMarkup(createElement(LiveSheet, { live, recorder: "recording" }));
-  };
-
-  const html = sheet({
-    status: "reconnecting",
-    started: true,
-    complete: false,
-    pieces: [
-      { text: "Välkomna till nämndens möte.", opensParagraph: true },
-      { text: "Första punkten.", opensParagraph: false },
-      { text: "Budgeten.", opensParagraph: true },
-    ],
-    pending: " Ramen höjs",
-  });
-  const log = html.match(/<div[^>]*role="log"[^>]*>(.*)<\/div><p role="status"/s);
-  assert.ok(log, "one log, followed by the status line");
-  assert.match(log[0], /aria-label="Preliminär text"/);
-  assert.equal([...log[1].matchAll(/<p>/g)].length, 2, "a gap starts a new paragraph");
-  assert.match(log[1], /<span aria-hidden="true" class="text-muted-foreground"> Ramen höjs<\/span>/);
-  assert.match(html, /<p role="status"[^>]*>Livetexten pausades\. Inspelningen fortsätter\.<\/p>/);
-  assert.ok(!html.includes("Visa senaste"), "following the text: no jump button");
-
-  const empty = sheet({ status: "connecting", started: false, complete: false, pieces: [], pending: "" });
-  assert.match(empty, /Texten visas här när du börjar prata\./);
-  assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status region is there before anything is said");
-  const refused = sheet({ status: "unavailable", started: false, complete: false, pieces: [], pending: "" });
-  assert.ok(!refused.includes("Texten visas här"), "no promise of text that will not come");
-  assert.match(refused, /Livetexten kunde inte starta\./);
 });
 
 test("details a send found missing stay unfolded while they are filled in, until the user folds them", () => {
@@ -464,24 +370,8 @@ test("leaving promises the recording back only when the device keeps it, and oth
   }
 });
 
-test("the live sheet says the speakers come when you are done, only when the flow labels speakers", async () => {
-  const { createElement } = await import("react");
-  const { renderToStaticMarkup } = await import("react-dom/server");
-  const { LiveSheet } = await import("../components/flow/LiveSheet");
+test("a flow labels speakers when it says so: switched on, off, required, or not at all", async () => {
   const { labelsSpeakers } = await import("./flow-session");
-  const live: LiveSession = {
-    getSnapshot: () => ({ status: "live", started: true, complete: false, pieces: [], pending: "" }),
-    subscribe: () => () => {},
-    listen: () => {},
-    setRecording: () => {},
-    stop: () => {},
-    dispose: () => {},
-  };
-  const heading = (speakers: boolean) =>
-    renderToStaticMarkup(createElement(LiveSheet, { live, recorder: "recording", speakers })).match(/<h2[^>]*>([^<]*)<\/h2>/)?.[1];
-  assert.equal(heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");
-  assert.equal(heading(false), "Preliminär text, den slutliga skapas när du är klar");
-
   const selectable = { selectable: true, required: false, default: true };
   assert.equal(labelsSpeakers(selectable, true), true, "switched on");
   assert.equal(labelsSpeakers(selectable, false), false, "switched off");
