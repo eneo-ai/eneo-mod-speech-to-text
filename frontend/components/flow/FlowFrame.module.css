@@ -50,6 +50,9 @@
    do not both fit; from a laptop each column scrolls inside it and the bar of controls never moves. */
 .fill {
   height: 100%;
+  /* The page's column, as the other views have it: they stand in the shell's own gutter (16 px) inside it, a recording
+     owns its edges, so its box is that wider and the content starts where theirs does. */
+  max-width: calc(1180px + var(--spacing-8));
   padding-inline: var(--spacing-4);
   padding-block: var(--spacing-3) 0;
 }
