@@ -179,9 +179,9 @@ export async function result(page: Page) {
  * The speaker-review editor (README "Granska transkriptet"): the development page's fixtures, the "bulk" case with its
  * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
  */
-export async function reviewEditor(page: Page) {
+export async function reviewEditor(page: Page, testCase = "bulk") {
   await open(page, "/dev/speaker-review");
-  await pick(page.getByRole("combobox", { name: "Testfall" }), "bulk");
+  await pick(page.getByRole("combobox", { name: "Testfall" }), testCase);
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
 }
@@ -751,7 +751,7 @@ export const STATES: State[] = [
       await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
     },
   },
-  { name: "review-editor", go: reviewEditor },
+  { name: "review-editor", go: (page) => reviewEditor(page) },
   {
     // A passage marked, and the field for correcting it.
     name: "review-editor-selection",
@@ -771,6 +771,16 @@ export const STATES: State[] = [
       await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
       await page.getByRole("button", { name: "Detaljer" }).click();
       await expect(page.getByText("Om markeringen")).toBeVisible();
+      await readingTheText(page);
+    },
+  },
+  {
+    // The widest the editor gets: six speakers, a word with no break point, a passage chosen by its speaker's name.
+    name: "review-editor-speakers",
+    go: async (page) => {
+      await reviewEditor(page, "accessibility");
+      await page.getByRole("button", { name: /^Markera stycket: / }).first().click();
+      await expect(page.getByRole("group", { name: "Markerade ord" })).toBeVisible();
       await readingTheText(page);
     },
   },
