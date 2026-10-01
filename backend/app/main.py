@@ -7,6 +7,7 @@ import logging
 import re
 import time
 import unicodedata
+from collections.abc import AsyncIterator
 from email.message import Message
 from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
@@ -49,7 +50,13 @@ MIN_UPLOAD_PROXY_TIMEOUT_SECONDS = 60.0
 
 # ---------- App ----------
 
-app = FastAPI(title="Eneo Speech-to-Text Module Backend")
+@contextlib.asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    yield
+    await http_client.aclose()
+
+
+app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
 http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(60.0, connect=10.0),
     follow_redirects=False,
@@ -82,11 +89,6 @@ def _requested_upload_timeout_seconds(request: Request) -> float | None:
     except ValueError:
         return None
     return value if value > 0 else None
-
-
-@app.on_event("shutdown")
-async def _shutdown() -> None:
-    await http_client.aclose()
 
 
 @app.get("/api/healthz")
