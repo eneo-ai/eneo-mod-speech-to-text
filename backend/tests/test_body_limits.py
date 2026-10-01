@@ -142,6 +142,15 @@ class JsonBodyTests(Case):
         self.assertEqual(declared.taken, 0)
         self.assertLessEqual(chunked.taken, CAP // MiB + 2, "the rest of the body was never taken")
 
+    async def test_a_length_that_lies_buys_nothing(self) -> None:
+        # Declares 1 MiB, under the cap, and sends 64: the cap counts what arrives, not what was said.
+        body = Lazy(OVER)
+
+        response = await self.post("/api/auth/login", body, declare_length=False, headers={"Content-Length": str(MiB)})
+
+        self.assertEqual(response.status_code, 413)
+        self.assertLessEqual(body.taken, CAP // MiB + 2)
+
     async def test_the_cap_needs_no_session(self) -> None:
         for authenticated in (False, True):
             with self.subTest(authenticated=authenticated):
