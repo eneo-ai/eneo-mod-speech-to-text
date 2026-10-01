@@ -300,6 +300,10 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-heading:focus-visible {
+    outline: none;
+  }
+
   .astryx-text[data-type="body"] {
     font-family: var(--font-family-body);
     font-size: var(--text-body-size);
@@ -480,6 +484,10 @@
     }
 
     .astryx-top-nav-heading {
+      min-height: 44px;
+    }
+
+    .astryx-collapsible-trigger {
       min-height: 44px;
     }
   }

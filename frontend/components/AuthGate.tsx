@@ -21,6 +21,11 @@ export const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(
 /** While the page is covered for a new login: the place in the sign-in dialog for its recording controls. */
 export const SignedOutSlot = createContext<HTMLElement | null>(null);
 
+/** Whether the page's login has ended: a dialog of the page is closed meanwhile (SignedOutCover covers the page, not a native dialog). */
+export function useSignedOut(): boolean {
+  return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+}
+
 export function useAuthenticatedUser(): AuthenticatedUser {
   const user = useContext(AuthenticatedUserContext);
   if (!user) {
@@ -81,7 +86,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
   const recheckRef = useRef(() => {});
-  const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+  const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
