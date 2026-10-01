@@ -52,6 +52,7 @@ Första gången: `npx playwright install chromium` för grinden och `npx playwri
 - Ett CSS-modulimport i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`); stilarna är webbläsarens.
 - Testkompilatorn läser inte paketens `exports`. En ny Astryx-underväg som inte ligger under `dist/<Namn>` behöver en rad i `paths` i `frontend/tsconfig.test.json`.
 - IndexedDB i tester kommer från `fake-indexeddb`.
+- `frontend/lib/legacy-ui.test.ts` är en spärr som består: ingen modul importerar det första gränssnittssystemet (de kopierade shadcn-komponenterna, Radix, class-variance-authority, clsx, tailwind-merge, Tailwind) och ingen styr med en klasssträng som `className="…"`. Stilen kommer från designsystemets props eller en CSS-modul (`className={styles.x}`).
 
 ## Tillgänglighetsgrinden
 
@@ -215,6 +216,5 @@ Var resultaten finns:
 
 ## Migration (temporary, removed by bead .24)
 
-- `frontend/lib/legacy-ui.test.ts` med `frontend/tests/legacy-ui-files.json` är en spärr: den misslyckas när en fil som inte står på listan använder det gamla UI-systemet (shadcn, Radix, cva, tailwind-merge, strängliteral som `className`), och när en listad fil inte längre gör det. Listan krymper bara.
 - Viktbudgeten är tillfälligt högre medan båda systemen ligger i bygget. Mät före och efter en fas med `node docs/plans/page-cost.cjs <frontend-mapp> <bas-url> <etikett>` mot det byggda bygget som serveras med stubben.
 - Planens regler för grinden finns i `docs/plans/2026-10-01-astryx-port-plan.md`.
