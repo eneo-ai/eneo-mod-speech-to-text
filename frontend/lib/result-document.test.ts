@@ -93,6 +93,17 @@ test("a document's text is there as it was written until the code that formats i
   assert.doesNotMatch(article.textContent ?? "", /##/);
 });
 
+test("an address the page will not follow is shown as its words, not as a link that reloads the page", async () => {
+  const view = await document_({
+    text: "Se [klicka här](javascript:alert(1)), [kommunen](https://sundsvall.se) och ![en bild](javascript:alert(2)).",
+    file: null,
+  });
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual([...article.querySelectorAll("a")].map((a) => a.getAttribute("href")), ["https://sundsvall.se"], "the safe link only; no href=\"\"");
+  assert.equal(article.querySelector("img"), null, "no image with an empty source, which asks for the page itself");
+  assert.match(article.textContent ?? "", /Se klicka här, kommunen och en bild\./, "every word of it is still there");
+});
+
 test("the document's one filled action is its file's download; without a file it is copying the text", async () => {
   const withFile = await document_({ text, file: pdf });
   assert.deepEqual(filled(withFile.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"]);
