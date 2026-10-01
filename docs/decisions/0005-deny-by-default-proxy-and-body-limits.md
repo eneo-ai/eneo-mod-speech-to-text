@@ -32,5 +32,5 @@ Webbläsaren får aldrig själv välja vad den ber Eneo om, eller med vilka cred
 
 - Varje ny Eneo-rutt som webbläsaren ska nå kräver en rad på listan och ett test (en närliggande rutt ska nekas). Det är avsiktligt friktion.
 - Tak och timeouts måste hållas ihop: höjer du `UPLOAD_PROXY_TIMEOUT_SECONDS` höj `proxyTimeout` över den. Nexts klonade body hålls i minnet under uppladdningen, så 2 GB är också ett minnestak per upload i Next-processen.
-- BFF:en har inget eget tak för den allmänna proxyns request-body: den läses hel i minnet. Taket kommer från Next. Ett eget tak är inte infört.
+- BFF:en har inget eget tak för den allmänna proxyns request-body: den läses hel i minnet. Taket kommer från Next. Ett eget tak är inte infört på main. På gång: grenen `fix/backend-body-limits` (väntar på PR) lägger `MAX_BODY_BYTES` och `MAX_UPLOAD_BYTES` i `backend/app/limits.py`; när den är sammanslagen ersätts den här punkten av ett nytt beslut.
 - Om Next-servern tas bort ([0002](0002-fastapi-bff-kept.md)) försvinner det första och andra taket; då måste motsvarande gränser sättas i BFF:en.

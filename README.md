@@ -8,7 +8,9 @@ Hör ihop med: [Dokumentationsindex](docs/README.md), [Arkitektur](docs/architec
 
 Lyssna är en Eneo-modul som låter en inloggad användare spela in ett samtal i webbläsaren (eller ladda upp en ljudfil), skicka det till ett publicerat Eneo-flöde och få tillbaka transkript, sammanfattning och eventuellt genererade filer. Transkriptet kan granskas och talarna namnges. Modulen har ingen egen databas; allt som ska sparas ligger i Eneo.
 
-![Översikt: webbläsare, Next.js, FastAPI-BFF och Eneo](docs/images/arkitektur-oversikt.png)
+![Översiktsbild. Till vänster Webbläsare (en person vid en laptop och en telefon) som med en pil och en cookie når Modulen i mitten. Modulen har två kort: Gränssnitt (en mikrofon och en ljudvåg) och Säker backend (en sköld med hänglås och en nyckel). En pil med en nyckel och ett personmärke går från Modulen till Eneo till höger (ett flödesschema och ett dokument), och en tunnare pil med ett dokument går tillbaka. Ovanför Modulen sitter en list: Egen logga, namn och färg.](docs/images/arkitektur-oversikt.png)
+
+Bilden är illustrativ. Mermaid-diagrammen i [Arkitektur](docs/architecture.md) är den beskrivning som gäller.
 
 Eneos nycklar och användartoken stannar i backendprocessen. Webbläsarens HttpOnly-cookie innehåller bara ett slumpmässigt sessions-ID, och frontend pratar bara same-origin. Se [Arkitektur](docs/architecture.md) för diagram.
 

@@ -36,7 +36,9 @@ Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Bac
 | `COOKIE_SECURE` | backend | `true` | `false` bara för lokal `http://localhost`. `true` kräver HTTPS. |
 | `DEMO_SPACE_ID` | backend | krävs i `access_code` | Se [Backend](backend.md#inställningar). |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | backend | valfri, standard `1800` | Höj aldrig över Nexts tystnadsgräns utan att höja den också (`frontend/next.config.mjs`, `experimental.proxyTimeout`, 31 minuter). |
-| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. |
+| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
+| `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för varje request-body utom uppladdningar, 413 över taket. Ett tomt värde nekas av `backend/app/config.py`; Compose använder det numeriska standardvärdet. Se [Backend](backend.md#på-gång-inte-på-main). |
+| `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för en uppladdad fil. Höj den om Eneos flöden tar emot större ljudfiler. |
 | `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION` | backend | valfria | Utan dem visas Sundsvalls kommun. Se [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet). |
 | `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED` | frontend, vid byggtid | `false` | Byggargument i Dockerfile och Compose. Se [Granska transkriptet](transcript-review.md). |
 | `INTERNAL_API_BASE` | frontend | `http://127.0.0.1:8000` i imagen, `http://speech-to-text-backend:8000` i Compose | Dit Nexts rewrite skickar `/api/*` och dit sidan hämtar branding. Rewrite-målet bränns in vid bygget (`frontend/playwright.prod.config.ts`), så bygge och körning ska ha samma värde (`frontend/lib/backend-base.mjs`). |
@@ -147,7 +149,7 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 | Jobb | Vad |
 |---|---|
-| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). |
+| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). På gång (`fix/backend-lifespan`, väntar på PR): därefter `pip-audit` på de installerade paketen. |
 | `frontend` | `npm ci`, `npm test`, `npm run lint`, `npm run astryx -- doctor`, kontroll att det byggda temat är aktuellt (`npm run theme:build` och `git diff --exit-code -- kit/theme/built`), `npm audit --omit=dev --audit-level=high`, `npm run build` (Node 22). |
 | `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`. |
 | `compose` | `docker compose --env-file .env.example config -q`. |
@@ -158,6 +160,8 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 ## Beroendesäkerhet
 
 GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid en hög eller kritisk sårbarhet i produktionsberoenden (`npm audit`, se ovan).
+
+På gång (`fix/backend-lifespan`, väntar på PR): backendens FastAPI-stack höjs förbi 14 säkerhetsmeddelanden i `backend/requirements.txt`, och CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`). Se [Backend](backend.md#på-gång-inte-på-main).
 
 ## Vid problem
 
@@ -170,6 +174,17 @@ GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgif
 | 504 vid uppladdning | Backendens upload-vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. |
 | Uppladdningen når 100 % och faller | Svaret dröjde längre än Next-proxyns tystnadsgräns (`experimental.proxyTimeout` i `frontend/next.config.mjs`, 31 minuter). Håll den över `UPLOAD_PROXY_TIMEOUT_SECONDS` om du höjer den. |
 | "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Se [Inspelaren](recording.md#uppladdning-och-nya-försök). |
+| 413 | (på gång: `fix/backend-body-limits`, väntar på PR). Ett tak för body nåddes: `MAX_BODY_BYTES` (JSON-anrop) eller `MAX_UPLOAD_BYTES` (uppladdning). Höj rätt variabel om gränsen är för snäv. |
+| 411 vid uppladdning | (på gång: `fix/backend-body-limits`, väntar på PR). En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient eller en proxy som skickar bodyn i delar är orsaken. |
 | Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space. |
 | Flödeslistan säger att flödena inte kan visas | I `access_code` saknas `DEMO_SPACE_ID`; backend loggade ett fel vid start. |
 | Alla blir utloggade | Backend startade om: sessionslagret är processlokalt. |
+
+## Kända luckor
+
+Skillnader mellan vad som är dokumenterat eller möjligt och vad konfigurationen gör i dag. De är inte rättade här (de ligger i kod och konfiguration, inte i dokumentationen).
+
+| Lucka | Var | Följd |
+|---|---|---|
+| `SESSION_MAX_AGE_MINUTES` läses av backend och är dokumenterad, men `docker-compose.yml` skickar den aldrig vidare, och den står inte i `.env.example`. | `docker-compose.yml`, `backend/app/config.py` | Compose och en Dokploy-deploy av den filen kan inte ändra inloggningens längd: Compose för bara vidare de variabler som räknas upp, så en variabel i Dokploy-gränssnittet når inte containern. Standarden 480 minuter gäller. Produktionsimagen har ingen sådan spärr: där räcker det att miljön ger variabeln till processen. Rättelsen är en rad i `docker-compose.yml` (och en kommentar i `.env.example`). |
+| Kommentaren om organisationen i `docker-compose.yml` hänvisar till README ("se README"), men stegen står numera här. | `docker-compose.yml` | Läsaren hamnar i README, som pekar vidare hit: [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet). |

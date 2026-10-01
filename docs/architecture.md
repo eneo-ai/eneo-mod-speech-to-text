@@ -8,9 +8,9 @@ Hör ihop med: [Inloggning och session](auth-and-session.md), [Backend](backend.
 
 ## Översiktsbild
 
-Bilden ger överblicken. Mermaid-diagrammen längre ned är den text som gäller; om bilden och ett diagram skiljer sig åt är diagrammet rätt.
+![Översiktsbild. Till vänster Webbläsare (en person vid en laptop och en telefon) som med en pil och en cookie når Modulen i mitten. Modulen har två kort: Gränssnitt (en mikrofon och en ljudvåg) och Säker backend (en sköld med hänglås och en nyckel). En pil med en nyckel och ett personmärke går från Modulen till Eneo till höger (ett flödesschema och ett dokument), och en tunnare pil med ett dokument går tillbaka. Ovanför Modulen sitter en list: Egen logga, namn och färg.](images/arkitektur-oversikt.png)
 
-![Översikt: webbläsare, Next.js, FastAPI-BFF och Eneo](images/arkitektur-oversikt.png)
+Bilden är illustrativ och ger överblicken. Mermaid-diagrammen längre ned är den beskrivning som gäller; om bilden och ett diagram skiljer sig åt är diagrammet rätt.
 
 ## Delarna
 
@@ -91,7 +91,7 @@ flowchart TD
     up -->|"svar"| resp["Svaret tillbaka, utan hop-by-hop-headers"]
 ```
 
-Allowlisten, upload-rutterna och testerna beskrivs i [Backend](backend.md).
+Allowlisten, upload-rutterna och testerna beskrivs i [Backend](backend.md). Noden om bodyn beskriver main. På gång: grenen `fix/backend-body-limits` (väntar på PR) lägger ett tak, `MAX_BODY_BYTES`, i en middleware före rutten, se [Backend](backend.md#på-gång-inte-på-main).
 
 ## Uppladdning och signerade filer
 
