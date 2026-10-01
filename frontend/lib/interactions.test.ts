@@ -444,21 +444,24 @@ test("Back during an upload asks first and says what leaving stops", async () =>
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
   const view = await mount(await signedIn(createElement(Page), []));
-  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  // A native dialog stays in the tree while it is closed: open is its open attribute.
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   await view.act(async () => {
     window.history.back();
     await settle();
   });
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
-  assert.match(button(dialog()!, "Stanna kvar")!.className, /\bbg-primary\b/, "staying is the filled action");
-  assert.doesNotMatch(button(dialog()!, "Lämna sidan")!.className, /\bbg-primary\b/);
+  // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
+  assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
+  assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
+  assert.ok(document.activeElement === button(dialog()!, "Stanna kvar"), "staying has the focus");
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
-  assert.equal(dialog(), null);
+  assert.ok(!dialog(), "answered: closed");
   await view.unmount();
 });
 
-test("signed out, Back still asks in a dialog that is shown, focused and answerable, outside the covered page", async () => {
+test("signed out, Back still asks in a native dialog that is open, focused and answerable", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
@@ -472,13 +475,16 @@ test("signed out, Back still asks in a dialog that is shown, focused and answera
     window.history.back();
     await settle();
   });
-  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   assert.ok(dialog, "asked");
   // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
-  assert.ok(!dialog.closest("[inert]"), "not in the covered page");
+  // The question sits in the covered page's tree, and the browser lifts a modal dialog out of an inert ancestor:
+  // that, and its stacking above the sign-in dialog, are proved in tests/e2e/session-cover.spec.ts.
+  assert.equal(dialog.tagName, "DIALOG", "a native dialog");
+  assert.ok(dialog.hasAttribute("open"), "opened as a modal");
   assert.ok(dialog.contains(document.activeElement), "the focus is in the question");
   await view.act(async () => button(dialog, "Stanna kvar")!.click());
-  assert.equal(document.body.querySelector('[role="alertdialog"]'), null, "and it can be answered");
+  assert.ok(!document.body.querySelector('[role="alertdialog"][open]'), "and it can be answered");
   await view.unmount();
 });
 
@@ -508,7 +514,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
   }
   await settle(); // the history step the last test's guard took back
   const view = await mount(await signedIn(createElement(Review), navigated));
-  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
   await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
   assert.ok(asked(), "Alla flöden asks");

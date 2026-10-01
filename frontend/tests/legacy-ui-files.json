@@ -49,6 +49,5 @@
   "components/flow/StepList.tsx",
   "components/flow/SubmittingView.tsx",
   "components/flow/UploadPanel.tsx",
-  "components/flow/useLeaveQuestion.tsx",
   "components/frame.tsx"
 ]
