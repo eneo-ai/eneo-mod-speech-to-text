@@ -279,3 +279,40 @@ test("an approved pause is final: a reason typed before approving cannot reject 
   assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
   assert.deepEqual(rejected, []);
 });
+
+test("a pause whose payload holds no text shows what it holds, and one with no payload shows an empty page that works", async (t) => {
+  eneo(t);
+  const fenced = await review({ ...pause, current_payload_json: { summary: "Ett värde som inte är text." } });
+  assert.match(fenced.container.querySelector("article")?.textContent ?? "", /"summary": "Ett värde som inte är text\."/, "the JSON, so it can still be reviewed");
+  await fenced.unmount();
+  const none = await review({ ...pause, current_payload_json: null });
+  assert.ok(none.container.querySelector("h1"), "the page is there");
+  assert.equal(none.container.querySelector("article")?.textContent?.trim(), "", "an empty text, not an error");
+  assert.ok(button(none.container, "Godkänn och fortsätt"), "and the decision");
+});
+
+test("who is who with no speaker says so, and the decision is still shown", async (t) => {
+  eneo(t);
+  const view = await review({ ...speakers, current_payload_json: { speaker_mapping: { inventory: [] }, structured: { speakers: [] } } });
+  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriptet/);
+  assert.equal(button(view.container, "Namnge talarna"), null, "nobody to name");
+  assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"));
+});
+
+test("while the transcript is being read, or cannot be read, the flow cannot go on from who is who", async (t) => {
+  eneo(t);
+  const eneoFetch = globalThis.fetch;
+  // The transcript's own requests never answer: it is being read.
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
+    String(url).includes("review-checkpoints") ? eneoFetch(url, init) : new Promise<Response>(() => undefined)) as typeof fetch;
+  const reading = await review(speakers);
+  assert.equal(button(reading.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the transcript is read");
+  await reading.unmount();
+
+  // They answer with a failure: the flow still waits (the player has no passages to show the reason under).
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
+    String(url).includes("review-checkpoints") ? eneoFetch(url, init) : Promise.resolve(new Response("{}", { status: 500, headers: { "content-type": "application/json" } }))) as typeof fetch;
+  const failed = await review(speakers);
+  await failed.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  assert.equal(button(failed.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the corrections cannot be read");
+});

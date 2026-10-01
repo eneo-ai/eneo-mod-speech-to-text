@@ -449,3 +449,14 @@ test("the dialog follows the part of the screen the phone's keyboard leaves", as
   await view.act(async () => listeners.forEach((listener) => listener()));
   assert.match(dialogElement().getAttribute("style") ?? "", /calc\(420px/, "and keeps above the keyboard");
 });
+
+test("with no storage to keep drafts in (a private window), the dialog works and keeps nothing", async (t) => {
+  const real = Object.getOwnPropertyDescriptor(window, "sessionStorage")!;
+  Object.defineProperty(window, "sessionStorage", { get: () => { throw new Error("blocked"); }, configurable: true });
+  t.after(() => void Object.defineProperty(window, "sessionStorage", real));
+  const { view, field, saved } = await dialog({ draftKey: { ownerId: "user-1", name: "names:run-1:cp-9" } });
+  await view.act(async () => type(field("Talare 2"), "Erik Lund"));
+  assert.equal(field("Talare 2").value, "Erik Lund", "typing works");
+  await view.act(async () => button(document.body, "Spara")!.click());
+  assert.deepEqual(saved[0].map((r) => r.name), ["Anna Berg", "Erik Lund"]);
+});

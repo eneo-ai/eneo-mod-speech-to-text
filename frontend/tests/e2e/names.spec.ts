@@ -114,6 +114,18 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
 });
 
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
+  await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
+  await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
+  const picker = page.getByRole("dialog", { name: "Ändra talare" });
+  await picker.getByText("Erik Lund", { exact: true }).click();
+  await picker.getByRole("button", { name: "Spara" }).click();
+  await expect(page.getByRole("button", { name: "Försök spara igen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
