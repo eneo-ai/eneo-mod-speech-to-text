@@ -326,7 +326,8 @@ class ModuleAuth:
             ticket is None
             or state is None
             or pending is None
-            or not secrets.compare_digest(state, pending.state)
+            # Bytes, not str: compare_digest raises TypeError (a 500) for a str with a non-ASCII character.
+            or not secrets.compare_digest(state.encode(), pending.state.encode())
         ):
             return self._auth_error("invalid_state")
 

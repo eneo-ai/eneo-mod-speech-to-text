@@ -644,6 +644,23 @@ class RedirectTests(BoundaryCase):
                 self.assert_stays_on_the_module(self.sign_in(client, renew="1", next=unsafe))
 
 
+class CallbackStateTests(BoundaryCase):
+    """A state that is not the one the login handed out ends the login as invalid_state, whatever characters it has."""
+
+    def test_a_state_that_is_not_the_generated_one_never_exchanges_the_ticket(self) -> None:
+        for state in ("%C3%A9", "%C3%A9%C3%A9%C3%A9", "%FF%FE", "%00", "%20", "", "x" * 5000, "%E2%82%AC"):
+            with self.subTest(state=state[:20]):
+                self.eneo.requests.clear()
+                with self.browser() as client:
+                    client.get("/api/auth/login")  # the pending login's cookie, signed, with the state it holds
+
+                    callback = client.get(f"/api/auth/callback?ticket=one-time&state={state}")
+
+                self.assertEqual(callback.status_code, 303)
+                self.assertEqual(callback.headers["location"], "/?auth_error=invalid_state")
+                self.assertEqual(self.eneo.requests, [], "the ticket was exchanged")
+
+
 class CookieJarTests(BoundaryCase):
     """F3: the one shared client is every user's. What Eneo sets for one user is not that user's browser's, nor another's."""
 
