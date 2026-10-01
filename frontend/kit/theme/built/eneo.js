@@ -102,8 +102,8 @@ export const eneoTheme = {
     "--font-family-heading": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
     "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
     "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)",
-    "--color-error": "light-dark(#AA181D, #F47B7F)",
-    "--size-element-lg": "48px"
+    "--size-element-lg": "48px",
+    "--color-error": "light-dark(#AA181D, #F47B7F)"
   },
   components: {
     "heading": {
@@ -305,14 +305,14 @@ export const eneoTheme = {
         "minHeight": "var(--size-element-lg)"
       }
     },
-    "collapsible-trigger": {
-      "base": {
-        "minHeight": "24px"
-      }
-    },
     "avatar-fallback": {
       "base": {
         "color": "var(--color-text-primary)"
+      }
+    },
+    "collapsible-trigger": {
+      "base": {
+        "minHeight": "24px"
       }
     }
   },
