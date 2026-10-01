@@ -3,9 +3,11 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { computeAccessibleName } from "dom-accessibility-api";
 
 import { shortcut, TranscriptPlayer } from "../components/TranscriptPlayer";
 import { Playback, type MediaLike } from "./playback";
+import { parse } from "./test-dom";
 import { findActiveSegmentIndex, type TranscriptSegment } from "./transcript";
 
 const segments: TranscriptSegment[] = [
@@ -31,7 +33,8 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   const html = render(2);
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelningen"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
-  assert.match(html, /aria-label="Position i inspelningen"/);
+  // The design system's slider is named by its label (aria-labelledby), not by an aria-label of its own.
+  assert.equal(computeAccessibleName(parse(html).querySelector('[role="slider"]')!), "Position i inspelningen");
   assert.match(html, /aria-label="Bakåt 10 sekunder"/);
   assert.match(html, /aria-label="Framåt 10 sekunder"/);
   assert.match(html, /aria-label="Hastighet 1×"/);

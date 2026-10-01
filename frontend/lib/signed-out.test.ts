@@ -169,7 +169,7 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
 test("signed out, a dialog open on the page is hidden and out of reach with it, and keeps what was typed in it", async () => {
   const { createElement, useState } = await import("react");
   const { SignedOutCover } = await import("../components/AuthGate");
-  const { Dialog, DialogContent, DialogTitle } = await import("../components/ui/dialog");
+  const { Dialog } = await import("@astryxdesign/core/Dialog");
   const { type } = await import("./test-dom");
   let setSignedOut: (on: boolean) => void = () => {};
   function Page() {
@@ -177,11 +177,12 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
     setSignedOut = set;
     return createElement(SignedOutCover, {
       signedOut,
-      children: createElement(
-        Dialog,
-        { open: true },
-        createElement(DialogContent, { "aria-describedby": undefined }, createElement(DialogTitle, null, "Namnge talarna"), createElement("input", { "aria-label": "Vem är Talare 1?" })),
-      ),
+      children: createElement(Dialog, {
+        isOpen: true,
+        onOpenChange() {},
+        "aria-label": "Namnge talarna",
+        children: createElement("input", { "aria-label": "Vem är Talare 1?" }),
+      }),
     });
   }
   const { act } = await mount(createElement(Page));
@@ -189,10 +190,12 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
   await act(async () => type(field, "Anna Berg"));
 
   await act(async () => setSignedOut(true));
-  const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-  // A structural check of the cover only: this dialog is a Radix one, portalled into the page's own subtree. A native
-  // dialog (the design system's) escapes an inert ancestor in a browser, which jsdom cannot show: that a page
-  // dialog is neither visible, reachable nor in the accessibility tree is proved in tests/e2e/session-cover.spec.ts.
+  // A native dialog is an element of its own (it carries no role attribute).
+  const dialog = document.body.querySelector<HTMLElement>("dialog[open]")!;
+  // A structural check of the cover only: the design system's dialog sits in the page's own subtree. In a browser a
+  // native dialog escapes an inert ancestor, which jsdom cannot show: so a page's dialog closes while signed out
+  // (useSignedOut), and that it is neither visible, reachable nor in the accessibility tree is proved in
+  // tests/e2e/session-cover.spec.ts and, for the PDF preview, in result-document.test.ts.
   assert.ok(dialog.closest("[inert]"), "inside the inert cover");
   assert.match(dialog.closest("[inert]")!.className, /\binvisible\b/, "and not shown");
   assert.equal(document.body.querySelector('input[aria-label="Vem är Talare 1?"]'), field, "the same field, still mounted");

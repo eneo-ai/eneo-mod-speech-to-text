@@ -1,8 +1,6 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -16,37 +14,12 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
 import { CopyStatus, useCopy } from "./CopyButton";
+import { Markdown } from "./Markdown";
 import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 
-type MarkdownNode = { type: string; depth?: number; children?: MarkdownNode[] };
-
-/**
- * A remark step that puts a result's headings under the page's h1: its top heading is an h2 whatever its Markdown
- * level, and deeper ones keep their distance to it, down to h6. It reads the parsed document, so an underlined
- * title counts and nothing in a code block does.
- */
-export function remarkResultHeadings() {
-  return (tree: MarkdownNode) => {
-    const headings: MarkdownNode[] = [];
-    const walk = (node: MarkdownNode) => {
-      if (node.type === "heading") headings.push(node);
-      node.children?.forEach(walk);
-    };
-    walk(tree);
-    const top = Math.min(...headings.map((heading) => heading.depth ?? 1));
-    for (const heading of headings) heading.depth = Math.min(6, Math.max(2, (heading.depth ?? 1) - top + 2));
-  };
-}
-
-/**
- * What a result says, as a page: Markdown with its headings under the page's h1 and bare addresses as links. The
- * design system's Markdown does not read an underlined title as a heading, so the document keeps react-markdown and
- * takes the design system's text scale and tokens from a CSS Module.
- */
-export function ResultMarkdown({ children }: { children: string }) {
-  return <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{children}</ReactMarkdown>;
-}
+// A result's headings go under the page's h1; the review's text does the same (ReviewView).
+export { remarkResultHeadings } from "./Markdown";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -108,7 +81,7 @@ function FilePreview({ text }: { text: string }) {
         Förhandsvisning av texten i filen
       </Text>
       <article id={`${id}-text`} className={styles.prose}>
-        <ResultMarkdown>{whole || !first ? text : first}</ResultMarkdown>
+        <Markdown>{whole || !first ? text : first}</Markdown>
       </article>
       {first && (
         <HStack>
@@ -278,7 +251,7 @@ export function ResultDocument({
 
         {text && (
           <VStack as="article" padding={6} className={styles.prose}>
-            <ResultMarkdown>{text}</ResultMarkdown>
+            <Markdown>{text}</Markdown>
           </VStack>
         )}
 

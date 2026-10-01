@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
-import { HStack, Layout, LayoutContent, LayoutFooter, VStack } from "@astryxdesign/core/Layout";
+import { HStack, Layout, LayoutContent, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import styles from "@/components/SessionEndWarning.module.css";
@@ -118,12 +118,30 @@ export function SessionEndWarning({
   const action = ended ? "Logga in igen" : "Fortsätt arbeta";
   const shown = open || signedOut;
 
+  const focusTitle = () => {
+    const title = dialogRef.current?.getAttribute("aria-labelledby");
+    if (title) document.getElementById(title)?.focus();
+  };
   // The title names the dialog, and has the focus when it opens and when the login ends under an open warning (WCAG
   // 2.4.3), so that a screen reader says it. Chromium and WebKit take it first; Firefox takes the first button.
   useEffect(() => {
-    const title = dialogRef.current?.getAttribute("aria-labelledby");
-    if (shown && title) document.getElementById(title)?.focus();
+    if (shown) focusTitle();
   }, [shown, ended]);
+
+  // Signed out, the page is behind a modal. A second close request without a new user action (Android's back is one)
+  // cannot be kept from closing a native dialog, and the design system goes on showing it: an open box that is no
+  // modal. It is opened as a modal again, until the new login takes the listener away and the dialog with it.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || !signedOut) return;
+    const reopen = () => {
+      if (!dialog.isConnected || dialog.open) return;
+      dialog.showModal();
+      focusTitle();
+    };
+    dialog.addEventListener("close", reopen);
+    return () => dialog.removeEventListener("close", reopen);
+  }, [signedOut, shown]);
 
   // Closed, the warning gives the focus back to what had it. An ended login is different: the page under the dialog
   // was covered and may have changed, so after the new login the page decides where the focus goes.
@@ -154,14 +172,17 @@ export function SessionEndWarning({
       // Like the alert dialog it replaces, the warning does not close on a click beside it: it is the only notice.
       purpose={signedOut ? "required" : "form"}
       aria-describedby={descriptionId}
+      // The whole height of the screen but its gutters, as the width has: a short screen shows as much as it can.
+      maxHeight="calc(100dvh - 2 * var(--spacing-4))"
       className={signedOut ? styles.signedOut : undefined}
     >
+      {/* One region holds the title, the words and the action, so that what does not fit a short screen scrolls as a whole. */}
       <Layout
-        header={<DialogHeader title={ended ? "Du behöver logga in igen" : "Du loggas snart ut"} onOpenChange={ended ? undefined : setOpen} />}
         content={
-          <LayoutContent>
-            {/* The content scrolls, and clips what lies outside it: room below its last control for the focus ring. */}
-            <VStack gap={4} paddingBlockEnd={1.5}>
+          <LayoutContent padding={0}>
+            <DialogHeader title={ended ? "Du behöver logga in igen" : "Du loggas snart ut"} onOpenChange={ended ? undefined : setOpen} hasDivider={false} />
+            {/* The room under the last control is for its focus ring, which the scroller would clip. */}
+            <VStack gap={4} paddingInline={4} paddingBlockEnd={4}>
               <Text as="p" display="block" color="secondary" id={descriptionId}>
                 {other && owner
                   ? `Du är inloggad som ${userDisplayName(other)}. Logga in som ${userDisplayName(owner)} för att fortsätta. `
@@ -191,19 +212,15 @@ export function SessionEndWarning({
                 </form>
               )}
               {problem && <Banner status="error" title={problem} collapsible={false} />}
+              <HStack gap={2} hAlign="end">
+                {byCode ? (
+                  <Button type="submit" form={formId} label={action} variant="primary" size="lg" isLoading={sending} />
+                ) : (
+                  <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
+                )}
+              </HStack>
             </VStack>
           </LayoutContent>
-        }
-        footer={
-          <LayoutFooter>
-            <HStack gap={2} hAlign="end">
-              {byCode ? (
-                <Button type="submit" form={formId} label={action} variant="primary" size="lg" isLoading={sending} />
-              ) : (
-                <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
-              )}
-            </HStack>
-          </LayoutFooter>
         }
       />
     </Dialog>

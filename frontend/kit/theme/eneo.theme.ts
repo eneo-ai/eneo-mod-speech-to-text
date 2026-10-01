@@ -21,6 +21,9 @@ export const eneoTheme = defineTheme({
     '--color-on-accent': ['#FFFFFF', '#0B1118'],
     // Astryx's default white label on the dark-mode error fill is 3.76:1; a dark label is 5.4:1.
     '--color-on-error': ['#FFFFFF', '#1A0A0C'],
+    // The one action a screen exists for (Starta, Stoppa, Skapa dokument) is 48 px at every pointer; Astryx's
+    // large control is 36 px with a mouse.
+    '--size-element-lg': '48px',
     // Error text is 4.1:1 on the page's grey in Astryx's red, and that red is the recording dot's (1.0:1 and 1.25:1
     // apart): an error never looks like "recording". These are the module's own error colours from before the port.
     '--color-error': ['#AA181D', '#F47B7F'],
@@ -44,8 +47,11 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
-    // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
-    'collapsible-trigger': {base: {minHeight: '24px'}},
+    // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
+    // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
+    token: {base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'}},
+    // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
+    'slider-control': {base: {minBlockSize: '24px'}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
     'toggle-button-group': {base: {flexWrap: 'wrap'}},
     // A dialog opens on its title (the title takes focus, which gives it no outline): where focus is on it, as on
@@ -62,6 +68,8 @@ export const eneoTheme = defineTheme({
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.
     'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
+    // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
+    'collapsible-trigger': {base: {minHeight: '24px'}},
   },
   adaptations: {
     rules: [
@@ -74,6 +82,7 @@ export const eneoTheme = defineTheme({
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
             'top-nav-heading': {base: {minHeight: TOUCH}},
+            'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
           },
         },

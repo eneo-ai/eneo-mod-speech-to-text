@@ -1,39 +1,45 @@
-/* The editable transcript of the speaker review (TranscriptEditor): its sticky toolbar, the text with its per-word spans
-   and the colour of each speaker. The controls in the toolbar are the design system's; the text is a contentEditable
-   region, so its markup and data-* are the code's and are styled here. */
+/*
+ * The speaker-review editor: bespoke, because the text is content-editable and every word, passage and speaker change is
+ * a span the code reads back (data-text-span, data-word-start, data-turn-index, data-segment-index). Semantic HTML and
+ * design-system tokens only; the controls in the toolbar are the design system's own.
+ * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in app/globals.css), never an inline style.
+ */
 
 .editor {
   position: relative;
 }
+
+/* The keyboard ring, as the design system draws it. */
+.ring:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
+.editor [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
+.editor [data-speaker-color="1"] { --tint: var(--module-speaker-1); }
+.editor [data-speaker-color="2"] { --tint: var(--module-speaker-2); }
+.editor [data-speaker-color="3"] { --tint: var(--module-speaker-3); }
+.editor [data-speaker-color="4"] { --tint: var(--module-speaker-4); }
+.editor [data-speaker-color="5"] { --tint: var(--module-speaker-5); }
+
+/* ---- The tools ---- */
 
 .toolbar {
   position: sticky;
   inset-block-start: 0;
   z-index: 10;
   padding: var(--spacing-2) var(--spacing-4);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
   background: var(--color-background-surface);
   box-shadow: var(--shadow-low);
 }
 
-/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
-@media (max-width: 639px), (max-height: 600px) {
-  .toolbar {
-    position: static;
-  }
-}
-
-.toolbarRow {
+.row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-1);
-}
-
-.count {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-secondary);
 }
 
 .actions {
@@ -43,119 +49,184 @@
   gap: var(--spacing-1);
 }
 
-/* A label with no break point in it (a name with a slash) wraps instead of reaching past a narrow screen. */
-.actions > button {
-  max-inline-size: 100%;
-  overflow-wrap: anywhere;
-  text-align: start;
+.quiet {
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
+  color: var(--color-text-secondary);
 }
 
-.selection {
+.marked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin-block-start: var(--spacing-2);
   padding-block: var(--spacing-2) var(--spacing-1);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
 }
 
-.selectionHead {
+.selected {
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
+  font-size: var(--text-supporting-size);
 }
 
+/* The selected words, as far as they fit: the whole text is the title, and the correction field holds all of it. */
 .quote {
   flex: 1;
   min-inline-size: 0;
   overflow: hidden;
+  font-weight: var(--font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: var(--font-size-sm);
-  font-weight: var(--font-weight-medium);
 }
 
-.assign {
-  flex: 1 1 10rem;
-  max-inline-size: 12rem;
-  min-inline-size: 0;
+.count {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
 }
 
-.note {
-  padding-block: var(--spacing-1);
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
 }
 
-.form {
+.speakers {
+  max-inline-size: 100%;
+}
+
+.correction {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
   padding-block: var(--spacing-2);
 }
 
-.formActions {
-  margin-block-start: var(--spacing-2);
+.correction > * {
+  align-self: stretch;
 }
 
-.error {
-  margin: 0;
-  padding-block: var(--spacing-2);
-  font-size: var(--font-size-sm);
-  color: var(--color-error);
+.correction > .buttons {
+  align-self: flex-start;
 }
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-supporting-size);
+}
+
+/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
+@media (max-width: 639px), (max-height: 600px) {
+  .toolbar {
+    position: static;
+  }
+}
+
+/* ---- What the text says about itself ---- */
 
 .details {
   padding: var(--spacing-3) var(--spacing-5);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
   background: var(--color-background-muted);
-  font-size: var(--font-size-sm);
-  line-height: 1.6;
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
 }
 
-.detailsHeading {
+.details[hidden] {
+  display: none;
+}
+
+.details h2 {
   margin: 0;
-  font-size: var(--font-size-sm);
+  font-size: inherit;
   font-weight: var(--font-weight-semibold);
 }
 
-.overlaps {
-  margin-block-start: var(--spacing-2);
+.details p {
+  margin: 0;
 }
 
-.overlaps summary {
-  display: flex;
-  align-items: center;
+.details summary {
   min-block-size: var(--spacing-6);
   cursor: pointer;
 }
 
-.overlaps ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-1);
+@media (pointer: coarse) {
+  .details summary {
+    display: flex;
+    align-items: center;
+    min-block-size: var(--spacing-11);
+  }
+}
+
+.details ul {
   margin: var(--spacing-2) 0 0;
   padding: 0;
   list-style: none;
 }
 
-@media (pointer: coarse) {
-  .overlaps summary {
-    min-block-size: var(--spacing-11);
-  }
-}
-
-.help {
+.note {
+  margin: 0;
   padding: var(--spacing-4) var(--spacing-5) 0;
-  font-size: var(--font-size-sm);
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
   color: var(--color-text-secondary);
 }
 
-.focusLabel {
+.note .focusLabel {
   font-weight: var(--font-weight-medium);
 }
 
-/* Keyboard focus is shown on the word "Transkript" of the help line while the text has it. */
+/* The label of the text lights up, with the text's own focus, so that the page says where the keyboard is. */
 .editor:has(.text:focus-visible) .focusLabel {
-  border-radius: var(--radius-inner);
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
+  border-radius: 2px;
   color: var(--color-text-primary);
 }
 
+/* A control inside a sentence: a link in looks, a button in what it does. Its target is a finger's under a coarse
+   pointer without making the line any taller. */
+.inline {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inline:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .inline {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--size-element-md);
+    margin-block: calc((1lh - var(--size-element-md)) / 2);
+  }
+}
+
 .empty {
+  margin: 0;
   padding: var(--spacing-4) var(--spacing-5);
+  color: var(--color-text-secondary);
 }
 
 /* ---- The text ---- */
@@ -171,12 +242,19 @@
   }
 }
 
-/* Keyboard focus keeps clear of the sticky toolbar: its height is set on the editor by the code. */
-.text [data-turn-index] {
-  scroll-margin-block: var(--transcript-toolbar-height, 0px) var(--spacing-4);
+.text:focus,
+.text:focus-visible {
+  outline: none;
 }
 
-.text [data-text-span]:focus-visible,
+.text [data-turn-index] {
+  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
+}
+
+.text [data-text-span]:focus-visible {
+  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
+}
+
 .text button {
   scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
 }
@@ -186,7 +264,7 @@
   box-shadow: inset 3px 0 0 var(--color-accent);
 }
 
-.paragraph {
+.turn {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--spacing-1);
@@ -195,207 +273,187 @@
 }
 
 @media (min-width: 640px) {
-  .paragraph {
+  .turn {
     grid-template-columns: 6rem minmax(0, 1fr);
     gap: var(--spacing-4);
   }
 }
 
-.label {
+.side {
   display: flex;
   align-items: flex-start;
   gap: var(--spacing-2);
   min-inline-size: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--text-supporting-size);
 }
 
 @media (min-width: 640px) {
-  .label {
+  .side {
     display: block;
     padding-block-start: var(--spacing-1);
   }
 }
 
-/* A control in the text's margin: 24 px for a mouse, 44 px for a finger. */
-.inline {
-  display: inline-flex;
-  align-items: center;
+.clock {
+  composes: ring;
+}
+
+.speakerName {
+  composes: ring;
+}
+
+.clock,
+.speakerName {
   min-block-size: var(--spacing-6);
   min-inline-size: var(--spacing-6);
   padding: 0;
   border: 0;
-  border-radius: var(--radius-inner);
-  background: transparent;
+  background: none;
+  color: var(--color-text-secondary);
   font: inherit;
-  color: inherit;
-  text-align: start;
   cursor: pointer;
 }
 
-.inline:focus-visible {
-  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-  outline-offset: var(--focus-outline-offset);
+.clock {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock:hover {
+  color: var(--color-text-primary);
+}
+
+.speakerName {
+  display: block;
+  max-inline-size: 100%;
+  color: var(--tint, var(--color-text-secondary));
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+  text-align: start;
+  white-space: normal;
+}
+
+@media (min-width: 640px) {
+  .speakerName {
+    margin-block-start: var(--spacing-1);
+  }
+}
+
+.clock:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 @media (pointer: coarse) {
-  .inline {
+  .clock,
+  .speakerName {
     min-block-size: var(--spacing-11);
     min-inline-size: var(--spacing-11);
   }
 }
 
-.time {
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
-}
-
-.time:hover:not(:disabled) {
-  color: var(--color-text-primary);
-}
-
-.time:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.who {
-  display: block;
-  max-inline-size: 100%;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-medium);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  color: var(--color-text-secondary);
-}
-
-@media (min-width: 640px) {
-  .who {
-    margin-block-start: var(--spacing-1);
-  }
-}
-
-.words {
-  max-inline-size: 68ch;
+.paragraph {
   min-inline-size: 0;
+  max-inline-size: 68ch;
   margin: 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  font-size: var(--font-size-base);
+  font-size: var(--text-body-size);
   line-height: 1.95;
   color: var(--color-text-primary);
 }
 
-.words::selection,
-.words ::selection {
+.paragraph::selection,
+.paragraph *::selection {
   background: color-mix(in srgb, var(--color-accent) 30%, transparent);
 }
 
-/* The mark between two speakers inside a paragraph. */
-.changed {
+/* Who speaks from here on, at a change of speaker inside a paragraph. */
+.marker {
   display: inline-block;
   max-inline-size: 100%;
   margin-inline: var(--spacing-1);
   padding-inline: var(--spacing-1-5);
   border-radius: var(--radius-inner);
   background: var(--color-background-muted);
-  font-size: var(--font-size-sm);
+  color: var(--tint, var(--color-text-secondary));
+  font-size: var(--text-supporting-size);
   font-weight: var(--font-weight-medium);
-  line-height: 1.5rem;
-  white-space: normal;
+  line-height: 1.25rem;
   overflow-wrap: anywhere;
-  color: var(--color-text-secondary);
+  vertical-align: baseline;
+  white-space: normal;
 }
 
-/* A passage: a line under its words in its speaker's colour, a dotted one in the review colour while its speaker is to be
-   checked. */
+/* A passage: underlined in its speaker's colour, dotted when the speaker is still a suggestion. */
 .span {
+  composes: ring;
   padding-block: var(--spacing-1);
-  text-decoration: underline solid;
+  text-decoration-line: underline;
+  text-decoration-style: solid;
   text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--tint, var(--color-text-secondary));
   text-underline-offset: 6px;
 }
 
 .span:focus-visible {
   border-radius: var(--radius-inner);
-  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
 }
 
-/* A passage is a control: on a touch screen its box is 44 px tall, which an inline element's padding gives without
-   moving the lines. */
+/* A passage is a target a finger can hit: its box grows to a control's height without taking more room in the line
+   (padding on an inline box does not move the lines), and so overlaps the lines beside it. */
 @media (pointer: coarse) {
   .span {
-    padding-block: calc((var(--spacing-11) - 1em) / 2);
+    padding-block: 0.8em;
   }
 }
 
-.span[data-playable] {
+.span[data-seekable]:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   cursor: pointer;
 }
 
-.span[data-playable]:hover {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+.span[data-review] {
+  text-decoration-color: var(--module-color-review);
 }
 
-.span[data-speaker-color="0"] { text-decoration-color: var(--module-speaker-0); }
-.span[data-speaker-color="1"] { text-decoration-color: var(--module-speaker-1); }
-.span[data-speaker-color="2"] { text-decoration-color: var(--module-speaker-2); }
-.span[data-speaker-color="3"] { text-decoration-color: var(--module-speaker-3); }
-.span[data-speaker-color="4"] { text-decoration-color: var(--module-speaker-4); }
-.span[data-speaker-color="5"] { text-decoration-color: var(--module-speaker-5); }
-.span[data-tone="review"] { text-decoration-color: var(--module-color-review); }
-
-.span.uncertain {
+.span[data-uncertain] {
   text-decoration-style: dotted;
   cursor: pointer;
 }
 
-.span.uncertain:hover {
+.span[data-uncertain]:hover {
   background: color-mix(in srgb, var(--module-color-review) 10%, transparent);
 }
 
-.who[data-speaker-color="0"],
-.changed[data-speaker-color="0"] { color: var(--module-speaker-0); }
-.who[data-speaker-color="1"],
-.changed[data-speaker-color="1"] { color: var(--module-speaker-1); }
-.who[data-speaker-color="2"],
-.changed[data-speaker-color="2"] { color: var(--module-speaker-2); }
-.who[data-speaker-color="3"],
-.changed[data-speaker-color="3"] { color: var(--module-speaker-3); }
-.who[data-speaker-color="4"],
-.changed[data-speaker-color="4"] { color: var(--module-speaker-4); }
-.who[data-speaker-color="5"],
-.changed[data-speaker-color="5"] { color: var(--module-speaker-5); }
-
-/* A word: the one playing, the selection, a word still to be confirmed. */
+/* A word, in the order of what it is told about: unsure, played now, marked, being said. */
 .word {
-  border-radius: var(--radius-inner);
+  border-radius: 2px;
 }
 
-.selected {
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
-}
-
-.chosen {
-  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
-}
-
-.playing {
-  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
-}
-
-.doubtful {
+.word[data-doubt] {
   background: color-mix(in srgb, var(--module-color-review) 15%, transparent);
 }
 
-.now {
+.word[data-active] {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.word[data-selected] {
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.word[aria-current="true"] {
   background: var(--color-accent);
   color: var(--color-on-accent);
 }
 
-/* Forced colours drop backgrounds and tints: the line under a passage and the playing word are outlines. */
 @media (forced-colors: active) {
-  .span {
+  .span,
+  .span[data-review] {
     text-decoration-color: CanvasText !important;
   }
 
@@ -407,6 +465,7 @@
   }
 
   .text:focus-visible [data-caret-paragraph="true"] {
+    box-shadow: none;
     border-inline-start: 3px solid Highlight;
   }
 }

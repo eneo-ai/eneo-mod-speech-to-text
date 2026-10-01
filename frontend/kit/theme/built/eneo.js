@@ -102,6 +102,7 @@ export const eneoTheme = {
     "--font-family-heading": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
     "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
     "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)",
+    "--size-element-lg": "48px",
     "--color-error": "light-dark(#AA181D, #F47B7F)"
   },
   components: {
@@ -270,9 +271,16 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
-    "collapsible-trigger": {
+    "token": {
       "base": {
-        "minHeight": "24px"
+        "overflow": "visible",
+        "height": "auto",
+        "minHeight": "calc(var(--size-element-md) - 8px)"
+      }
+    },
+    "slider-control": {
+      "base": {
+        "minBlockSize": "24px"
       }
     },
     "toggle-button-group": {
@@ -305,6 +313,11 @@ export const eneoTheme = {
     "avatar-fallback": {
       "base": {
         "color": "var(--color-text-primary)"
+      }
+    },
+    "collapsible-trigger": {
+      "base": {
+        "minHeight": "24px"
       }
     }
   },
@@ -362,6 +375,11 @@ export const eneoTheme = {
             "top-nav-heading": {
               "base": {
                 "minHeight": "44px"
+              }
+            },
+            "slider-control": {
+              "base": {
+                "minBlockSize": "44px"
               }
             },
             "collapsible-trigger": {

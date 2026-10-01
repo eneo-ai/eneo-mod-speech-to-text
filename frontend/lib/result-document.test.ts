@@ -40,10 +40,15 @@ const pdf: ResultFileView = {
 };
 const text = "## Protokoll\n\nKommunstyrelsen godkänner förslaget.";
 
+/** Until the code that formats Markdown has arrived (Markdown.tsx): the page is read after it has. */
+const formatted = (view: { act: (callback: () => Promise<void>) => Promise<void> }) => view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, 20)));
+
 async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null }) {
   const { createElement } = await import("react");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
-  return inProviders(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
+  const view = await inProviders(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
+  await formatted(view);
+  return view;
 }
 
 /** What a screen reader hears from a control: the label the design system sets where the words say less, else the words. */
@@ -59,6 +64,23 @@ const filled = (within: ParentNode) => [
     [...within.querySelectorAll<HTMLElement>("a, button")].filter((el) => el.getAttribute("data-variant") === "primary").map(nameOf),
   ),
 ];
+
+test("a document's text is there as it was written until the code that formats it has arrived, and is formatted then", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { ResultDocument } = await import("../components/flow/ResultDocument");
+  const props = { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text, file: null };
+  // What the server renders, and the browser's first render, which must agree: the formatting code is not there yet.
+  const before = renderToStaticMarkup(createElement(ResultDocument, props));
+  assert.match(before, /## Protokoll\n\nKommunstyrelsen godkänner förslaget\./, "the text as written, nothing missing");
+  assert.doesNotMatch(before, /<h2/, "not formatted yet");
+
+  const view = await inProviders(createElement(ResultDocument, props));
+  await formatted(view);
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual([...article.querySelectorAll("h2")].map((h) => h.textContent), ["Protokoll"]);
+  assert.doesNotMatch(article.textContent ?? "", /##/);
+});
 
 test("the document's one filled action is its file's download; without a file it is copying the text", async () => {
   const withFile = await document_({ text, file: pdf });

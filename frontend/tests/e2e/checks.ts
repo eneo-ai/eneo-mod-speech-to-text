@@ -91,8 +91,10 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {
-          const track = el.parentElement?.closest("[data-orientation]");
-          if (track) out.push(box(track.getBoundingClientRect()));
+          // The thumb is small by design; a press anywhere on the slider's control moves it. The design system's control
+          // is the box (its rail is 4 px and hidden from the tree); Radix's root, still on the old widgets, is the other.
+          const control = el.parentElement?.closest(".astryx-slider-control, [data-orientation]");
+          if (control) out.push(box(control.getBoundingClientRect()));
         }
         return out;
       };
@@ -480,7 +482,8 @@ function probeFocus(page: Page) {
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,
-      inDialog: el.closest('[role="dialog"], [role="alertdialog"]') !== null,
+      // A native <dialog> (the design system's) carries no role attribute.
+      inDialog: el.closest('dialog, [role="dialog"], [role="alertdialog"]') !== null,
       container: el.parentElement?.closest<HTMLElement>("[data-a11y-stop]")?.dataset.a11yStop ?? null,
       top: Math.round(r.top + scrolled),
       bottom: Math.round(r.bottom + scrolled),

@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { endLogin, isLaptop, open, record, result, run, sessionWarning, setup } from "./screens";
+import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -400,3 +400,97 @@ test("the PDF preview open when the login ends is covered with the page, and is 
   await expect(preview).toBeVisible();
   await expect(preview.locator("iframe")).toHaveAttribute("src", /disposition=inline/);
 });
+
+test("the delete question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  await stop(page);
+  const trigger = page.getByRole("button", { name: "Ta bort", exact: true });
+  await trigger.click();
+  const question = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+  await expect(question).toBeVisible();
+
+  await endLogin(page);
+  await expect(question, "a native dialog would stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Ta bort inspelningen|Den går inte att få tillbaka/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(question, "still asked, as it was").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeHidden();
+  await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
+});
+
+test("the microphone list open when the login ends is covered with the page, and is not in the accessibility tree", async ({ page }) => {
+  await setup(page);
+  await chooseMode(page, "Spela in");
+  const picker = page.getByRole("combobox", { name: "Mikrofon" });
+  await picker.click();
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+
+  await endLogin(page);
+  await expect(list, "a list in the top layer must not stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Mikrofon|Fake Default Audio Input/);
+  await tabStaysInSignIn(page);
+});
+
+test("the sign-in dialog stays a modal when something closes it, and goes with the new login", async ({ page }) => {
+  await setup(page);
+  await endLogin(page);
+  const dialog = page.getByRole("alertdialog", signIn);
+  const modal = () => dialog.evaluate((element) => element.matches(":modal"));
+  // A second close request without a new user action (Android's back is one) closes a dialog that no handler can
+  // keep: what is left is an open box that is no modal. It is opened as a modal again, the focus in it.
+  for (let request = 1; request <= 2; request++) {
+    await dialog.evaluate((element) => (element as HTMLDialogElement).close());
+    await expect.poll(modal, `after close request ${request}`).toBe(true);
+    await expect(dialog).toBeVisible();
+    expect(await dialog.evaluate((element) => element.contains(document.activeElement)), "focus is in it").toBe(true);
+  }
+  expect(await page.evaluate(() => document.querySelector("main")?.closest("[inert]") !== null), "the page is out of reach").toBe(true);
+
+  // With the new login it goes, and stays gone.
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(dialog).toBeHidden();
+  await page.waitForTimeout(300);
+  expect(await page.locator("dialog[open]").count(), "nothing opens it again").toBe(0);
+});
+
+// A 400 % zoom of a 1280 x 800 window is 320 x 200 CSS pixels; 256 is a phone held sideways under its browser's bars.
+for (const height of [256, 200]) {
+  test(`at 320 x ${height} the sign-in dialog and the recording's controls are each usable, with no scrolling in two directions`, async ({ page }) => {
+    await setup(page);
+    await record(page, "Spela in");
+    await page.setViewportSize({ width: 320, height });
+    await endLogin(page);
+    const dialog = page.getByRole("alertdialog", signIn);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), "horizontal scroll (WCAG 1.4.10)").toBe(true);
+    const box = (await dialog.boundingBox())!;
+    expect(box.y >= 0 && box.y + box.height <= height && box.x >= 0 && box.x + box.width <= 320, "the dialog is within the screen").toBe(true);
+    // What does not fit scrolls, as a whole: not a strip of a few lines inside it.
+    const strips = await dialog.evaluate((element) =>
+      [element, ...element.querySelectorAll<HTMLElement>("*")]
+        .filter((e) => e.scrollHeight > e.clientHeight + 1 && /auto|scroll/.test(getComputedStyle(e).overflowY))
+        .map((e) => e.clientHeight),
+    );
+    for (const shown of strips) expect(shown, `a scroller that shows ${shown} px of a ${height} px screen`).toBeGreaterThanOrEqual(height * 0.6);
+    // Each part is whole in view once it has the focus, and the title and the first lines at the top.
+    await expect(dialog.getByRole("heading", signIn)).toBeInViewport({ ratio: 1 });
+    for (const name of ["Pausa", "Stoppa", "Logga in igen"]) {
+      const button = dialog.getByRole("button", { name });
+      await button.focus();
+      await expect(button, name).toBeInViewport({ ratio: 1 });
+      const rect = (await button.boundingBox())!;
+      expect(rect.height, `${name} is as high as ever`).toBeGreaterThanOrEqual(24);
+    }
+  });
+}

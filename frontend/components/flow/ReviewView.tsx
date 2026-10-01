@@ -28,7 +28,7 @@ import { useAuthenticatedUser } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
-import { ResultMarkdown } from "@/components/flow/ResultDocument";
+import { Markdown } from "@/components/flow/Markdown";
 import documentStyles from "@/components/flow/ResultDocument.module.css";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
@@ -595,7 +595,7 @@ export function ReviewView({
         ) : (
           <article className={documentStyles.prose}>
             {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
-            <ResultMarkdown>{decided ? initialText : text}</ResultMarkdown>
+            <Markdown>{decided ? initialText : text}</Markdown>
           </article>
         )}
 

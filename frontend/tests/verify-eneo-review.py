@@ -1,4 +1,4 @@
-"""Read synthetic Lyssna cases on stdin; validate with Eneo's actual API/domain."""
+"""Read synthetic Tal till text cases on stdin; validate with Eneo's actual API/domain."""
 import json
 import sys
 
@@ -22,4 +22,4 @@ for case in cases:
     words = {i: locate_words(segment["text"], segment["words"]) for i, segment in enumerate(case["segments"])}
     rendered = apply_to_rendered_transcript(case["raw"], case["segments"], occurrences, edits, words)
     assert rendered == case["expected"], (case["name"], rendered, case["expected"])
-print(f"{len(cases)} Lyssna v3 requests and exports match Eneo API validation and rendering.")
+print(f"{len(cases)} Tal till text v3 requests and exports match Eneo API validation and rendering.")
