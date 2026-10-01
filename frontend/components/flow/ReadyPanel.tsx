@@ -178,29 +178,36 @@ export function ReadyPanel({
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
       {moment && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
-      <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>
-        <Button
-          variant={moment ? "secondary" : "primary"}
-          size="lg"
-          width="100%"
-          label={finishing ? "Slutför texten…" : createActionLabel(makesText)}
-          icon={<Icon icon={FileText} size="md" />}
-          // Not disabled, so focus stays on it; a press does nothing until the text is in (the session ignores it).
-          isLoading={finishing}
-          isInterruptible
-          onClick={onCreate}
-        />
-        {onContinue && (
+      <VStack gap={0}>
+        <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>
           <Button
-            variant={moment ? "primary" : "secondary"}
+            variant={moment ? "secondary" : "primary"}
             size="lg"
             width="100%"
-            label="Fortsätt spela in"
-            icon={<Icon icon="microphone" size="md" />}
-            onClick={onContinue}
+            label={createActionLabel(makesText)}
+            icon={<Icon icon={FileText} size="md" />}
+            // Not disabled, so focus stays on it; a press does nothing until the text is in (the session ignores it). The
+            // name stays; the button shows a spinner meanwhile, and the line under it says why.
+            isLoading={finishing}
+            isInterruptible
+            onClick={onCreate}
           />
-        )}
-      </Grid>
+          {onContinue && (
+            <Button
+              variant={moment ? "primary" : "secondary"}
+              size="lg"
+              width="100%"
+              label="Fortsätt spela in"
+              icon={<Icon icon="microphone" size="md" />}
+              onClick={onContinue}
+            />
+          )}
+        </Grid>
+        {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
+        <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
+          {finishing ? "Slutför texten…" : ""}
+        </Text>
+      </VStack>
 
       <HStack hAlign="start">
         <Button
