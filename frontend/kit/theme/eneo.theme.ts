@@ -53,6 +53,9 @@ export const eneoTheme = defineTheme({
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.
     'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
+    // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour
+    // (ORGANIZATION_ACCENT), with the primary text colour on it, which keeps its contrast whatever the accent is.
+    token: {'color:blue': {backgroundColor: 'var(--color-accent-muted)', color: 'var(--color-text-primary)'}},
   },
   adaptations: {
     rules: [

@@ -419,6 +419,11 @@
     color: var(--color-text-primary);
   }
 
+  .astryx-token[data-color="blue"] {
+    background-color: var(--color-accent-muted);
+    color: var(--color-text-primary);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }

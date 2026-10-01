@@ -725,3 +725,26 @@ export const STATES: State[] = [
     },
   },
 ];
+
+/**
+ * A deployment with an organisation of its own and a green accent. The stub serves it when STUB_BRANDING is set, so
+ * these states exist only in `npm run test:a11y:branding`; they take the default states' steps. "custom": wide logos
+ * for both colour modes. "name": no logo, a long name as text.
+ */
+const BRANDED: Record<string, string[]> = {
+  custom: [
+    "signin-sso",
+    "signin-access-code",
+    "flow-list",
+    "account-menu",
+    "setup",
+    "setup-participants",
+    "setup-microphone-check",
+    "recording",
+    "result-transcript-tab",
+  ],
+  name: ["signin-access-code", "flow-list", "setup"],
+};
+for (const name of BRANDED[process.env.STUB_BRANDING ?? ""] ?? []) {
+  STATES.push({ ...STATES.find((state) => state.name === name)!, name: `branding-${process.env.STUB_BRANDING}-${name}` });
+}

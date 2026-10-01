@@ -295,6 +295,12 @@ export const eneoTheme = {
       "base": {
         "color": "var(--color-text-primary)"
       }
+    },
+    "token": {
+      "color:blue": {
+        "backgroundColor": "var(--color-accent-muted)",
+        "color": "var(--color-text-primary)"
+      }
     }
   },
   __onDark: {
