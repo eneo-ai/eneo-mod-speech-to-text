@@ -1,0 +1,21 @@
+/*
+ * A flow's row is one link. ListItem's anchor is only the text column; this stretches it over the whole row, so
+ * the icon, the chevron and the padding open the flow too. The focus ring stays the row's own.
+ *
+ * A row without a description is as tall as the theme's control (44 px under a coarse pointer), and its words sit in
+ * the middle of it, so a finger has a target of that height on the anchor itself.
+ */
+.row {
+  position: relative;
+}
+
+.row a {
+  min-height: var(--size-element-md);
+  justify-content: center;
+}
+
+.row a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
