@@ -2,7 +2,7 @@
 
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
-import { CheckCircle2, Loader2, TriangleAlert, UsersRound } from "lucide-react";
+import { CheckCircle2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
   use,
@@ -14,19 +14,24 @@ import {
   useSyncExternalStore,
   type RefObject,
 } from "react";
-import { Button } from "@/components/ui/button";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { usePlayback } from "@/components/flow/AudioPlayer";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FRAME, ReadingMain } from "@/components/frame";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
-import { remarkResultHeadings } from "@/components/flow/ResultDocument";
+import { Markdown } from "@/components/flow/Markdown";
+import documentStyles from "@/components/flow/ResultDocument.module.css";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   inputFileAudioUrl,
   isReviewCheckpointApproved,
@@ -37,7 +42,6 @@ import {
   type Json,
   type ReviewEditedValue,
 } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import {
   buildEditedMapping,
   buildSpeakerRows,
@@ -60,7 +64,7 @@ import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { formatDeadline } from "@/lib/format";
-
+import styles from "./ReviewView.module.css";
 
 type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
 
@@ -356,341 +360,318 @@ export function ReviewView({
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
   const rejectSection = showReject && !decided ? (
-    <section className={isSpeakerMapping ? undefined : "paper-card p-4 mb-5"}>
-      <div id={`${fieldId}-avvisa`} className="text-[13px] font-semibold text-ink mb-1">Avvisa körningen</div>
-      <p id={`${fieldId}-avvisa-hjalp`} className="text-[12px] text-ink-soft mb-3">
-        Ange en kort motivering. Körningen kommer att avbrytas.
-      </p>
-      <textarea
+    <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
+      <TextArea
         ref={reasonField}
-        value={rejectReason}
-        onChange={(e) => setRejectReason(e.target.value)}
-        rows={3}
+        label="Avvisa körningen"
+        description="Ange en kort motivering. Körningen kommer att avbrytas."
         placeholder="Skäl …"
-        aria-labelledby={`${fieldId}-avvisa`}
-        aria-describedby={`${fieldId}-avvisa-hjalp`}
-        className={cn(REVIEW_FIELD, "text-[13px] coarse:text-base p-3 mb-3")}
+        rows={3}
+        value={rejectReason}
+        onChange={setRejectReason}
       />
-      <div className="flex items-center justify-end gap-2">
+      <HStack gap={2} hAlign="end">
         <Button
-          type="button"
           variant="ghost"
+          label="Avbryt"
+          isDisabled={busy}
           onClick={() => {
             handOff.current = rejectButton;
             setShowReject(false);
             setRejectReason("");
           }}
-          disabled={busy}
-        >
-          Avbryt
-        </Button>
-        <Button type="button" onClick={submitReject} disabled={!rejectReason.trim() || busy}>
-          {working === "reject" ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin" /> : null}
-          Bekräfta avvisning
-        </Button>
-      </div>
-    </section>
+        />
+        <Button variant="primary" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+      </HStack>
+    </VStack>
   ) : null;
 
   const actions = (
-    <div className={cn("flex flex-wrap items-center justify-between gap-3", !isSpeakerMapping && "mt-auto pt-4")}>
+    <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
       {decided ? (
-        <p className="text-[13px] text-ink-soft">
+        <Text as="p" type="supporting">
           {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-        </p>
+        </Text>
       ) : (
         <Button
           ref={rejectButton}
-          type="button"
           variant="ghost"
+          label="Avvisa"
+          isDisabled={busy || showReject}
           onClick={() => {
             handOff.current = reasonField;
             setShowReject(true);
           }}
-          disabled={busy || showReject}
-        >
-          Avvisa
-        </Button>
+        />
       )}
-      <Button type="button" onClick={() => void saveAndApprove()} disabled={busy || continueBlocked}>
-        {working === "approve" ? (
-          <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
-        ) : (
-          <CheckCircle2 aria-hidden className="h-4 w-4" strokeWidth={2} />
-        )}
-        {decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
-      </Button>
-    </div>
+      <Button
+        variant="primary"
+        icon={<CheckCircle2 aria-hidden />}
+        label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
+        isLoading={working === "approve"}
+        isDisabled={busy || continueBlocked}
+        onClick={() => void saveAndApprove()}
+      />
+    </HStack>
   );
 
   // Who is who: the decision, and what stops it, directly under Namnge talarna at every width, never after the
   // whole transcript.
   const decision = (
-    <div className="mt-4 flex flex-col gap-4 border-t border-rule-soft pt-4">
-      {(runError || localError) && (
-        <p className="text-[13px] text-destructive" role="alert">
-          {runError ?? localError}
-        </p>
-      )}
+    <VStack gap={4} className={styles.decision}>
+      {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
       {saveState === "error" && (
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={retryCorrections}>Försök spara igen</Button>
-          <Button type="button" variant="outline" size="sm" onClick={downloadUnsavedCorrections}>Hämta osparade rättningar</Button>
-        </div>
+        <HStack gap={2} wrap="wrap">
+          <Button variant="secondary" size="sm" label="Försök spara igen" onClick={retryCorrections} />
+          <Button variant="secondary" size="sm" label="Hämta osparade rättningar" onClick={downloadUnsavedCorrections} />
+        </HStack>
       )}
       {rejectSection}
       {actions}
-    </div>
+    </VStack>
   );
 
-  const header = <FlowTopBar title={published.name} titleIsHeading={false} />;
-  const paused = <p className="mb-2 text-[13px] text-ink-mute">Pausat i steg {checkpoint.step_order}</p>;
+  const paused = (
+    <Text as="p" type="supporting">
+      Pausat i steg {checkpoint.step_order}
+    </Text>
+  );
 
   if (isSpeakerMapping) {
+    // Who is who at a glance; naming happens in "Namnge talarna".
+    const speakers =
+      speakerRows.length === 0 ? (
+        <Text as="p" type="supporting">
+          Inga talare kunde urskiljas i transkriptet. Du kan fortsätta utan att namnge någon.
+        </Text>
+      ) : (
+        <VStack gap={3}>
+          <ul className={styles.speakers}>
+            {namingRows.map((row) => (
+              <li key={row.label} className={styles.speaker}>
+                <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
+                <Text weight="medium" className={styles.speakerLabel}>{speakerDisplayLabel(row.label)}</Text>
+                <Text maxLines={1} hasTruncateTooltip={false} color={row.name ? undefined : "secondary"}>
+                  {row.name ?? "Inget namn"}
+                </Text>
+              </li>
+            ))}
+          </ul>
+          <SpeakerNamingDialog
+            rows={namingRows}
+            proposals={modelProposals}
+            participants={participants}
+            passages={(label) => passageCounts.get(label) ?? namingRows.find((row) => row.label === label)?.lineCount ?? 0}
+            quote={(label) =>
+              shownSegments.find((segment) => segment.speaker === label)?.text ??
+              namingRows.find((row) => row.label === label)?.samples[0] ??
+              null
+            }
+            disabled={busy}
+            onListen={hasAudio ? listenTo : undefined}
+            listening={listening}
+            onStopListening={stopListening}
+            listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
+            onSave={saveNames}
+            onSaveAndContinue={saveAndApprove}
+            continueDisabled={continueBlocked}
+            decided={decided}
+            draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
+          >
+            <Button variant="secondary" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.selfStart} />
+          </SpeakerNamingDialog>
+        </VStack>
+      );
+    const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
+      <Text as="p" type="supporting">
+        Talare utan namn behåller sin etikett i transkriptet.
+      </Text>
+    );
+
     return (
-      <>
-        {header}
-        <main className={cn(FRAME, "flex flex-1 flex-col pb-6 pt-2 lg:pt-8")}>
+      <VStack gap={0}>
+        <VStack gap={1} className={styles.intro}>
           {paused}
-          <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
+          <Heading level={1} ref={heading} tabIndex={-1}>
             {title}
-          </h1>
-          <p className="text-[13px] text-ink-soft leading-relaxed mb-5 max-w-prose">
+          </Heading>
+          <Text as="p" type="supporting" className={styles.description}>
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
             {deadline}
-          </p>
+          </Text>
+        </VStack>
 
-          {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
-          <div className={SPEAKER_REVIEW_ENABLED ? "grid grid-cols-[minmax(0,1fr)] gap-3" : "grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] xl:grid-cols-[minmax(0,5fr)_minmax(0,8fr)] lg:items-start"}>
-            <details open={SPEAKER_REVIEW_ENABLED ? undefined : true} className="paper-card p-4">
-              <summary className={SPEAKER_REVIEW_ENABLED ? "cursor-pointer text-[13px] font-medium" : "hidden"}>
-                Talare <span className="ml-2 font-normal text-ink-mute">{speakerRows.map((row) => row.name || speakerDisplayLabel(row.label)).join(", ")}</span>
-              </summary>
-              {SPEAKER_REVIEW_ENABLED && <p className="mt-3 mb-4 text-[12px] text-ink-mute">Namn gäller för talaren i hela transkriptet. För att byta vem som säger vissa ord, markera orden nedan.</p>}
-              {speakerRows.length === 0 ? (
-                <p className="text-[13px] text-ink-soft">
-                  Inga talare kunde urskiljas i transkriptet. Du kan fortsätta
-                  utan att namnge någon.
-                </p>
-              ) : (
-                // Who is who at a glance; naming happens in "Namnge talarna".
-                <div className="flex flex-col gap-3">
-                  <ul className="flex flex-col">
-                    {namingRows.map((row) => (
-                        <li key={row.label} className="flex items-center gap-3 border-b border-rule-soft py-2.5 first:pt-0 last:border-0">
-                          <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
-                          <span className="w-[4.5rem] shrink-0 text-[14px] font-medium text-ink">{speakerDisplayLabel(row.label)}</span>
-                          <span className={row.name ? "min-w-0 truncate text-[15px] text-ink" : "text-[14px] text-ink-mute"}>
-                            {row.name ?? "Inget namn"}
-                          </span>
-                        </li>
-                    ))}
-                  </ul>
-                  <SpeakerNamingDialog
-                    rows={namingRows}
-                    proposals={modelProposals}
-                    participants={participants}
-                    passages={(label) => passageCounts.get(label) ?? namingRows.find((row) => row.label === label)?.lineCount ?? 0}
-                    quote={(label) =>
-                      shownSegments.find((segment) => segment.speaker === label)?.text ??
-                      namingRows.find((row) => row.label === label)?.samples[0] ??
-                      null
-                    }
-                    disabled={busy}
-                    onListen={hasAudio ? listenTo : undefined}
-                    listening={listening}
-                    onStopListening={stopListening}
-                    listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
-                    onSave={saveNames}
-                    onSaveAndContinue={saveAndApprove}
-                    continueDisabled={continueBlocked}
-                    decided={decided}
-                    draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
-                  >
-                    <Button type="button" variant="outline" className="self-start" disabled={busy}>
-                      <UsersRound data-icon="inline-start" aria-hidden />
-                      Namnge talarna
-                    </Button>
-                  </SpeakerNamingDialog>
-                </div>
-              )}
-              {unmapped.length > 0 && speakerRows.length > 0 && (
-                <p className="mt-3 text-[12px] text-ink-mute leading-snug">
-                  Talare utan namn behåller sin etikett i transkriptet.
-                </p>
-              )}
-              {!SPEAKER_REVIEW_ENABLED && decision}
-            </details>
-            {/* There the card folds away, so the decision follows it instead. */}
-            {SPEAKER_REVIEW_ENABLED && decision}
+        {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
+        <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
+          {SPEAKER_REVIEW_ENABLED ? (
+            <Card padding={4}>
+              <Collapsible
+                defaultIsOpen={false}
+                trigger={
+                  <>
+                    <Text weight="medium">Talare</Text>{" "}
+                    <Text color="secondary">{speakerRows.map((row) => row.name || speakerDisplayLabel(row.label)).join(", ")}</Text>
+                  </>
+                }
+              >
+                <VStack gap={3} paddingBlockStart={3}>
+                  <Text as="p" type="supporting">Namn gäller för talaren i hela transkriptet. För att byta vem som säger vissa ord, markera orden nedan.</Text>
+                  {speakers}
+                  {unmappedNote}
+                </VStack>
+              </Collapsible>
+            </Card>
+          ) : (
+            <Card padding={4} role="group" aria-label="Talare">
+              <VStack gap={3}>
+                {speakers}
+                {unmappedNote}
+              </VStack>
+              {decision}
+            </Card>
+          )}
+          {/* There the card folds away, so the decision follows it instead. */}
+          {SPEAKER_REVIEW_ENABLED && decision}
 
-            {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
-            <h2 className="sr-only">Transkript</h2>
-            <TranscriptPlayer
-              className="paper-card lg:min-h-[28rem] lg:max-h-[calc(100vh-14rem)] lg:overflow-hidden"
-              segments={transcript.segments}
-              speakerReviews={transcript.speakerReviews}
-              correctionProblem={transcript.correctionProblem}
-              fileCount={transcript.fileIds.length}
-              audioSrcFor={(fileIndex) =>
-                inputFileAudioUrl(flowId, runId, transcript.fileIds[fileIndex] ?? "")
-              }
-              speakerNames={speakerNames}
-              textFallback={initialText}
-              audioPending={transcript.pending}
-              playback={playback}
-              corrections={corrections}
-              editable={canCorrect}
-              onCorrectionsChange={onCorrectionsChange}
-              speakerOptions={speakerLabels}
-              saveState={saveState}
-              confirmedWords={confirmedWords}
-              onToggleConfirmed={toggleConfirmed}
-            />
-          </div>
-        </main>
-      </>
+          {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
+          <VisuallyHidden as="h2">Transkript</VisuallyHidden>
+          <TranscriptPlayer
+            className={styles.transcriptCard}
+            segments={transcript.segments}
+            speakerReviews={transcript.speakerReviews}
+            correctionProblem={transcript.correctionProblem}
+            fileCount={transcript.fileIds.length}
+            audioSrcFor={(fileIndex) =>
+              inputFileAudioUrl(flowId, runId, transcript.fileIds[fileIndex] ?? "")
+            }
+            speakerNames={speakerNames}
+            textFallback={initialText}
+            audioPending={transcript.pending}
+            playback={playback}
+            corrections={corrections}
+            editable={canCorrect}
+            onCorrectionsChange={onCorrectionsChange}
+            speakerOptions={speakerLabels}
+            saveState={saveState}
+            confirmedWords={confirmedWords}
+            onToggleConfirmed={toggleConfirmed}
+          />
+        </div>
+      </VStack>
     );
   }
 
   return (
-    <>
-      {header}
-      <ReadingMain>
+    <VStack gap={0} className={styles.reading}>
+      <VStack gap={1} className={styles.intro}>
         {paused}
-        <h1 ref={heading} tabIndex={-1} className="text-[24px] md:text-[30px] font-semibold tracking-[-0.025em] leading-[1.15] mb-1 outline-none">
+        <Heading level={1} ref={heading} tabIndex={-1}>
           {title}
-        </h1>
-        <p className="text-[13px] text-ink-soft leading-relaxed mb-5">
+        </Heading>
+        <Text as="p" type="supporting">
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
           {deadline}
-        </p>
+        </Text>
+      </VStack>
 
-        <section className="paper-card p-4 mb-5">
-          <div className="flex items-center justify-between mb-3">
-            <div id={`${fieldId}-innehall`} className="text-[13px] font-semibold text-ink">Innehåll för granskning</div>
-            <div className="text-[11px] text-ink-mute">
-              {editable ? "Redigerbart" : "Skrivskyddat"}
-            </div>
-          </div>
+      <VStack as="section" gap={3} className={styles.card}>
+        <HStack hAlign="between" vAlign="center">
+          <Text weight="semibold">Innehåll för granskning</Text>
+          <Text type="supporting">{editable ? "Redigerbart" : "Skrivskyddat"}</Text>
+        </HStack>
 
-          {editable && editing ? (
-            <textarea
-              ref={textField}
-              value={text}
-              readOnly={busy}
-              onChange={(e) => editText(e.target.value)}
-              rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
-              aria-labelledby={`${fieldId}-innehall`}
-              className={cn(REVIEW_FIELD, "text-[14px] md:text-[15px] coarse:text-base leading-relaxed p-3 md:p-4 font-sans")}
-            />
-          ) : (
-            <article className="prose prose-sm md:prose-base max-w-none text-[14px] md:text-[15px] leading-relaxed">
-              {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
-              <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{decided ? initialText : text}</ReactMarkdown>
-            </article>
-          )}
+        {editable && editing ? (
+          <TextArea
+            ref={textField}
+            label="Innehåll för granskning"
+            isLabelHidden
+            value={text}
+            isReadOnly={busy}
+            onChange={editText}
+            rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
+          />
+        ) : (
+          <article className={documentStyles.prose}>
+            {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
+            <Markdown>{decided ? initialText : text}</Markdown>
+          </article>
+        )}
 
-          {editable && (
-            <div className="flex items-center justify-end gap-2 mt-3">
-              {editing ? (
-                <>
-                  <button
-                    key="avbryt"
-                    type="button"
-                    onClick={() => {
-                      handOff.current = editButton;
-                      setText(initialText);
-                      setEditing(false);
-                      draft.drop();
-                    }}
-                    disabled={busy}
-                    className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors disabled:opacity-50 coarse:min-h-11"
-                  >
-                    Avbryt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveOnly}
-                    disabled={!dirty || busy}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-paper border border-rule-soft text-ink px-3.5 py-1.5 text-[12px] font-medium disabled:opacity-50 coarse:min-h-11"
-                  >
-                    {saving ? <Loader2 aria-hidden className="h-3 w-3 animate-spin" /> : null}
-                    Spara ändring
-                  </button>
-                </>
-              ) : (
-                <button
-                  key="redigera"
-                  ref={editButton}
-                  type="button"
+        {editable && (
+          <HStack gap={2} hAlign="end">
+            {editing ? (
+              <>
+                <Button
+                  key="avbryt"
+                  variant="ghost"
+                  label="Avbryt"
+                  isDisabled={busy}
                   onClick={() => {
-                    handOff.current = textField;
-                    setEditing(true);
+                    handOff.current = editButton;
+                    setText(initialText);
+                    setEditing(false);
+                    draft.drop();
                   }}
-                  disabled={busy}
-                  className="text-[12px] text-ink-soft hover:text-ink px-3 py-1.5 transition-colors coarse:min-h-11"
-                >
-                  Redigera
-                </button>
-              )}
-            </div>
-          )}
-        </section>
+                />
+                <Button key="spara" variant="secondary" label="Spara ändring" isLoading={saving} isDisabled={!dirty || busy} onClick={saveOnly} />
+              </>
+            ) : (
+              <Button
+                key="redigera"
+                ref={editButton}
+                variant="ghost"
+                label="Redigera"
+                isDisabled={busy}
+                onClick={() => {
+                  handOff.current = textField;
+                  setEditing(true);
+                }}
+              />
+            )}
+          </HStack>
+        )}
+      </VStack>
 
+      <VStack gap={3} className={styles.notices}>
         {draft.yours && decided && (
           // Kept to copy, never to continue with: the approved text above is the decision.
-          <Alert variant="warning" className="mb-3">
-            <TriangleAlert aria-hidden />
-            <AlertTitle>Din ändring sparades inte</AlertTitle>
-            <AlertDescription>
-              <p>Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den.</p>
-              {draft.yours.text !== undefined && (
-                <p className="mt-2 whitespace-pre-wrap rounded-md bg-muted p-3 text-ink">{draft.yours.text}</p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
+          <Banner
+            status="warning"
+            title="Din ändring sparades inte"
+            description="Granskningen godkändes med texten ovan. Din version visas här om du vill kopiera den."
+            collapsible={false}
+          >
+            <VStack gap={2}>
+              {draft.yours.text !== undefined && <Text as="p" className={styles.yours}>{draft.yours.text}</Text>}
+              <HStack gap={2} wrap="wrap">
                 {draft.yours.text !== undefined && <CopyButton text={draft.yours.text} label="Kopiera din version" size="sm" />}
-                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => draft.dropYours()}>
-                  Ta bort din version
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
+                <Button size="sm" variant="ghost" label="Ta bort din version" isDisabled={busy} onClick={() => draft.dropYours()} />
+              </HStack>
+            </VStack>
+          </Banner>
         )}
         {draft.yours && !decided && (
-          <Alert variant="warning" className="mb-3">
-            <TriangleAlert aria-hidden />
-            <AlertTitle>Din ändring sparades inte</AlertTitle>
-            <AlertDescription>
-              <p>Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Button type="button" size="sm" disabled={busy} onClick={takeYours}>
-                  Använd din version
-                </Button>
-                <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={() => draft.dropYours()}>
-                  Behåll den senaste
-                </Button>
-              </div>
-            </AlertDescription>
-          </Alert>
+          <Banner
+            status="warning"
+            title="Din ändring sparades inte"
+            description="Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar."
+            collapsible={false}
+          >
+            <HStack gap={2} wrap="wrap">
+              <Button size="sm" variant="primary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
+              <Button size="sm" variant="ghost" label="Behåll den senaste" isDisabled={busy} onClick={() => draft.dropYours()} />
+            </HStack>
+          </Banner>
         )}
-        {runError && (
-          <p className="text-[13px] text-destructive mb-3" role="alert">
-            {runError}
-          </p>
-        )}
+        {runError && <Banner status="error" title={runError} collapsible={false} />}
         {rejectSection}
-        {actions}
-      </ReadingMain>
-    </>
+      </VStack>
+      {actions}
+    </VStack>
   );
 }
-
-// A review's text field: an edge that identifies it (3:1) and a ring on keyboard focus.
-const REVIEW_FIELD =
-  "w-full rounded-lg border border-input bg-bg-2/40 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function extractCheckpointText(payload: Json | null | undefined): string {
   if (!payload) return "";

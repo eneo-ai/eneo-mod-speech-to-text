@@ -28,14 +28,6 @@
     --module-color-record: light-dark(#dc2828, #dd2c2c);
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
-    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
-       aldrig varumärkets blå, så att ett namn inte läses som en länk. */
-    --speaker-0: 262 46% 48%;
-    --speaker-1: 152 48% 30%;
-    --speaker-2: 28 78% 34%;
-    --speaker-3: 330 52% 42%;
-    --speaker-4: 190 58% 33%;
-    --speaker-5: 70 45% 28%;
     /* shadcn's semantic layer over the module tokens. Declared once: .dark sits
        on the same element, so each reference resolves to the active theme. */
     --background: var(--bg);
@@ -81,12 +73,6 @@
     --record-foreground: 0 0% 100%;
     --ochre: 47 92% 58%;
     --ok: 152 50% 58%;
-    --speaker-0: 262 62% 74%;
-    --speaker-1: 152 52% 62%;
-    --speaker-2: 32 88% 66%;
-    --speaker-3: 330 62% 72%;
-    --speaker-4: 190 62% 62%;
-    --speaker-5: 70 45% 60%;
     color-scheme: dark;
   }
 
@@ -177,38 +163,6 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
-/* Keyboard focus stays local to the control, including native selects. */
-.transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-}
-/* The shortcut region is often taller than the screen and sits in a clipping card: its ring is drawn inside, and the
-   docked player, on screen whenever the transcript is, carries it too. Outlines, so forced colours keep them. */
-.transcript-player:focus-visible,
-.transcript-player:focus-visible [data-docked-player] {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: -2px;
-}
-.transcript-editor:has(.transcript-editor-text:focus-visible) .transcript-focus-label {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-  border-radius: 2px;
-  color: hsl(var(--ink));
-}
-.transcript-editor-text [data-turn-index] {
-  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
-}
-.transcript-editor-text [data-text-span]:focus-visible {
-  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
-}
-
-/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
-@media (max-width: 639px), (max-height: 600px) {
-  .transcript-toolbar { position: static; }
-  .transcript-player { max-height: none !important; }
-  .transcript-scrollport { max-height: none; overflow: visible; }
-}
-
 /* Dialog open and close (Radix waits for the closing animation before unmounting). */
 @keyframes t-fade-in { from { opacity: 0; } }
 @keyframes t-fade-out { to { opacity: 0; } }
@@ -230,25 +184,6 @@
   .t-overlay, .t-modal { animation: none !important; }
   /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
-}
-
-@media (forced-colors: active) {
-  .transcript-editor-text [data-text-span] { text-decoration-color: CanvasText !important; }
-  .transcript-editor-text [aria-current="true"] {
-    forced-color-adjust: none;
-    background: Highlight;
-    color: HighlightText;
-    outline: 2px solid Highlight;
-  }
-}
-
-/* A local paragraph marker shows the editing focus without outlining the full page. */
-.transcript-editor-text:focus-visible [data-caret-paragraph="true"] {
-  box-shadow: inset 3px 0 0 hsl(var(--primary));
-}
-.transcript-editor-text button { scroll-margin-block-start: var(--transcript-toolbar-height, 0px); }
-@media (forced-colors: active) {
-  .transcript-editor-text:focus-visible [data-caret-paragraph="true"] { border-inline-start: 3px solid Highlight; }
 }
 
 /* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root

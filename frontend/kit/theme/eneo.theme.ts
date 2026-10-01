@@ -57,6 +57,8 @@ export const eneoTheme = defineTheme({
     },
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: '24px'}},
+    // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
+    'toggle-button-group': {base: {flexWrap: 'wrap'}},
     // A dialog opens on its title (the title takes focus, which gives it no outline): where focus is on it, as on
     // a keyboard's, its block shows the ring (WCAG 2.4.7).
     'dialog-header-title-block': {base: {':has(:focus-visible)': focusRing}},

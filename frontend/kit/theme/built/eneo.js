@@ -287,6 +287,11 @@ export const eneoTheme = {
         "minBlockSize": "24px"
       }
     },
+    "toggle-button-group": {
+      "base": {
+        "flexWrap": "wrap"
+      }
+    },
     "dialog-header-title-block": {
       "base": {
         ":has(:focus-visible)": {

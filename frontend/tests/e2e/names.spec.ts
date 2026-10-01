@@ -107,6 +107,27 @@ test("the name list opens with its chevron and closes with it again; a press out
   await expect(field).toBeFocused();
 });
 
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+  await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  await page.unroute("**/input-files/*/audio");
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
+});
+
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
+  await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
+  await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
+  const picker = page.getByRole("dialog", { name: "Ändra talare" });
+  await picker.getByText("Erik Lund", { exact: true }).click();
+  await picker.getByRole("button", { name: "Spara" }).click();
+  await expect(page.getByRole("button", { name: "Försök spara igen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
@@ -154,14 +175,14 @@ test("an approved text review shows the saved decision; a draft from before it i
 
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toEqual({
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
     name: "Avvisa körningen",
     description: "Ange en kort motivering. Körningen kommer att avbrytas.",
   });
 
   await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
 });
 
 test("a page that is still loading says so, under the page's heading", async ({ page }) => {

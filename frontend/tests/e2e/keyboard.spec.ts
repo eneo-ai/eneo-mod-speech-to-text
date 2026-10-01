@@ -73,7 +73,11 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
       else problems.push(...stopProblems([stop]));
     }
-    if (keys[i]) await page.keyboard.press(keys[i]);
+    if (keys[i]) {
+      await page.keyboard.press(keys[i]);
+      // A control's tooltip (the close button's) is measured at rest, as the dialog is: not on its way in.
+      await settle(page);
+    }
   }
   expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
   await page.keyboard.press("Escape");

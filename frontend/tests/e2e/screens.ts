@@ -732,7 +732,7 @@ export const STATES: State[] = [
       await run(page, "run-review-text");
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
-      await expect(page.locator("main textarea")).toBeVisible();
+      await expect(page.getByRole("main").locator("textarea")).toBeVisible();
     },
   },
   {
@@ -741,7 +741,7 @@ export const STATES: State[] = [
       await run(page, "run-review-text");
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
-      await page.locator("main textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
       // Someone else saves the review meanwhile: the page opens on the newer revision, and the edit waits beside it.
       await page.route("**/review-checkpoints/active**", async (route) => {
         const checkpoint = await (await route.fetch()).json();

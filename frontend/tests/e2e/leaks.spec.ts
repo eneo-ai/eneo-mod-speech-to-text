@@ -87,6 +87,13 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("textbox", { name: "Rätta markerad text" }),
     hide: (page) => page.getByRole("button", { name: "Avbryt", exact: true }).click(),
   },
+  // "Ändra talare" on a passage of the transcript: a popover of the page, one per passage, opened from the passage's name.
+  "change-speaker popover": {
+    go: (page) => reviewPage(page),
+    show: (page) => page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click(),
+    shown: (page) => page.getByRole("dialog", { name: "Ändra talare" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
   "speaker list of the editor": {
     go: async (page) => {
       await reviewEditor(page);

@@ -114,7 +114,8 @@ async function mountEditableTranscript(onChange: (next: unknown) => void) {
     }),
   );
   await view.act(async () => button(view.container, "Rätta repliken från 0:00")!.click());
-  const editor = view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Rätta repliken från 0:00"]')!;
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const editor = [...view.container.querySelectorAll<HTMLTextAreaElement>("textarea")].find((area) => computeAccessibleName(area) === "Rätta repliken från 0:00")!;
   assert.ok(editor, "the line editor is open");
   await view.act(async () => type(editor, "Välkomna allihop."));
   return { view, editor };
