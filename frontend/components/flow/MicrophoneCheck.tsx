@@ -36,6 +36,9 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   const [problem, setProblem] = useState<Problem | null>(null);
   // A test granted after recording started, or after the page went, lets go at once.
   const allowed = useRef(active);
+  // The newest request for the microphone. A request that a later one, Sluta testa or the page has overtaken is stale:
+  // the microphone it is granted is let go at once, never turned on (RecordingCapture's generation, in a component).
+  const request = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,9 +56,13 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
   useEffect(() => () => stream?.getTracks().forEach((track) => track.stop()), [stream]);
   useEffect(() => {
     allowed.current = active;
-    if (!active) setStream(null);
+    if (!active) {
+      request.current += 1;
+      setStream(null);
+    }
     return () => {
       allowed.current = false;
+      request.current += 1;
     };
   }, [active]);
 
@@ -67,21 +74,29 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
 
   // The same choice recording makes: the remembered microphone, asked for as `ideal`.
   async function test(id = preferred ?? "") {
+    const mine = (request.current += 1);
     setProblem(null);
     setHeard(false);
     try {
       const next = await navigator.mediaDevices.getUserMedia({
         audio: audioConstraints(id || null, { channelCount: SPEECH_RECORDING.channelCount }),
       });
-      if (!allowed.current) {
+      if (!allowed.current || mine !== request.current) {
         next.getTracks().forEach((track) => track.stop());
         return;
       }
       setStream(next);
       setInputs(await listMicrophones());
     } catch (error) {
-      setProblem(microphoneProblem(error instanceof DOMException ? error.name : null));
+      // A test that was ended, or replaced, has no error to show.
+      if (mine === request.current) setProblem(microphoneProblem(error instanceof DOMException ? error.name : null));
     }
+  }
+
+  /** Sluta testa: the stream goes, and a request still waiting for the browser is overtaken. */
+  function stopTest() {
+    request.current += 1;
+    setStream(null);
   }
 
   function choose(id: string) {
@@ -108,7 +123,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           label={stream ? "Sluta testa" : "Testa mikrofonen"}
           variant="secondary"
           icon={<Icon icon="microphone" />}
-          onClick={() => (stream ? setStream(null) : void test())}
+          onClick={() => (stream ? stopTest() : void test())}
         />
       </HStack>
       {/* The bars take their height from the row they stand in. */}

@@ -32,14 +32,23 @@ export function browserLiveClient(flowId: string): LiveClient {
   return liveClient({
     audioContext: () => new AudioContext(),
     workletNode: (context, options) => new AudioWorkletNode(context, "live-pcm", options),
-    liveDeps: (stepId, recordingId) => ({
-      openSocket: () => openLiveSocket(WebSocket, liveSocketUrl(window.location, flowId, stepId, recordingId)),
-      setTimer: (fn, ms) => window.setTimeout(fn, ms),
-      clearTimer: (timer) => window.clearTimeout(timer as number),
-      online: onlineStatus,
-      login: loginState,
-    }),
+    liveDeps: (stepId, recordingId) => browserLiveDeps(flowId, stepId, recordingId),
   });
+}
+
+/** The relay on the page's own origin; each connection names the user the page was opened for, as it is then. */
+export function browserLiveDeps(flowId: string, stepId: string, recordingId?: string): LiveDeps {
+  return {
+    openSocket: () =>
+      openLiveSocket(
+        WebSocket,
+        liveSocketUrl(window.location, flowId, stepId, recordingId, loginState.expectedUser ?? undefined),
+      ),
+    setTimer: (fn, ms) => window.setTimeout(fn, ms),
+    clearTimer: (timer) => window.clearTimeout(timer as number),
+    online: onlineStatus,
+    login: loginState,
+  };
 }
 
 /** Starts loading the worklet; a failure, even a synchronous one, comes back through the promise. */

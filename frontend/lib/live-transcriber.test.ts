@@ -13,7 +13,7 @@ class FakeSocket implements LiveSocket {
   bufferedAmount = 0;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  onclose: ((event: { code: number }) => void) | null = null;
+  onclose: ((event: { code: number; reason?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   send(data: string | ArrayBuffer) {
     this.sent.push(data);
@@ -29,8 +29,8 @@ class FakeSocket implements LiveSocket {
   ready() {
     this.event({ type: "ready", sample_rate: 16_000, max_seconds: 18_000 });
   }
-  drop(code: number) {
-    this.onclose?.({ code });
+  drop(code: number, reason?: string) {
+    this.onclose?.({ code, reason });
   }
   frames() {
     return this.sent.filter((data): data is ArrayBuffer => data instanceof ArrayBuffer);
@@ -51,14 +51,23 @@ function fakeBrowser(onLine: boolean) {
 /** The page's login, as far as live text follows it: covered while signed out or someone else is signed in. */
 function fakeLogin() {
   const listeners = new Set<() => void>();
+  const cover = (on: boolean) => {
+    login.signedOut = on;
+    listeners.forEach((listener) => listener());
+  };
   const login = {
     signedOut: false,
+    ended: () => {
+      endedCalls.count += 1;
+      cover(true);
+    },
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
     },
   };
-  return { login, cover: (on: boolean) => ((login.signedOut = on), listeners.forEach((listener) => listener())) };
+  const endedCalls = { count: 0 };
+  return { login, cover, endedCalls };
 }
 
 function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
@@ -426,6 +435,64 @@ test("the recording's id rides on the relay's address, so Eneo can keep a clean 
     liveSocketUrl({ protocol: "https:", host: "taltilltext.sundsvall.se" }, "flow-1", "step-a", "rec_1234-abcd"),
     "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?recording_id=rec_1234-abcd",
   );
+});
+
+test("the page's user rides on the relay's address, so the relay can refuse a page whose login became someone else's", () => {
+  const location = { protocol: "https:", host: "taltilltext.sundsvall.se" };
+  assert.equal(
+    liveSocketUrl(location, "flow-1", "step-a", "rec_1234-abcd", "user-1"),
+    "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?recording_id=rec_1234-abcd&expected_user=user-1",
+  );
+  assert.equal(
+    liveSocketUrl(location, "flow-1", "step-a", undefined, "user/1 &x"),
+    "wss://taltilltext.sundsvall.se/api/live/flow-1/step-a?expected_user=user%2F1+%26x",
+  );
+});
+
+test("a close that names another user covers the page as a login that ended, and live text goes on with the page's own user, the audio kept", () => {
+  const { login, cover, endedCalls } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  sockets[0].ready();
+  live.pushFrame(new Uint8Array([1]).buffer);
+  sockets[0].drop(1008, "user_changed");
+  assert.equal(endedCalls.count, 1, "the page asks for its own user's login");
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  live.pushFrame(new Uint8Array([2]).buffer);
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no connection under the other user's login");
+
+  cover(false);
+  assert.equal(sockets.length, 2);
+  sockets[1].ready();
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [2], "what was recorded meanwhile goes now");
+});
+
+test("refused for another user before live text was ever ready, it waits for the page's own user instead of giving up", () => {
+  const { login, cover, endedCalls } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  live.pushFrame(new Uint8Array([7]).buffer);
+  sockets[0].drop(1008, "user_changed");
+  assert.equal(endedCalls.count, 1);
+  assert.equal(live.getSnapshot().status, "reconnecting", "not unavailable");
+  elapse(60_000);
+  assert.equal(sockets.length, 1);
+
+  cover(false);
+  assert.equal(sockets.length, 2);
+  sockets[1].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7]);
+});
+
+test("another policy close is not a change of user", () => {
+  const { login, endedCalls } = fakeLogin();
+  const { live, sockets } = setup({ login });
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1008, "session_ended");
+  assert.equal(endedCalls.count, 0);
 });
 
 test("the socket is the page's own origin, with no subprotocol", () => {
