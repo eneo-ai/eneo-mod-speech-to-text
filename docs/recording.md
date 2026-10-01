@@ -28,7 +28,7 @@ Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefo
 - Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida med **Fortsätt spela in**, som spelar in direkt i en ny del av samma inspelning, med tiden räknad från det som redan sparats.
 - Efter **Stoppa** finns **Fortsätt spela in** också bredvid **Skapa dokument**: det spelar in en ny del av samma inspelning, tills inspelningen har börjat skickas. Med Strömma kommer livetexten tillbaka för den nya delen.
 - En kort tystnad i mikrofonen (ett headset som byter väg) pausar inte: inspelningen fortsätter, säger det (`muted`) och är sig själv igen när samma spår tas upp igen.
-- En dold sida eller en flik som stängs skriver ut den pågående biten, så att en sida som systemet dödar förlorar så lite som möjligt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
+- En dold sida eller en flik som stängs sparar den pågående biten direkt, så att en sida som systemet dödar förlorar så lite som möjligt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
 
 ## Delar och filgränser
 
