@@ -395,6 +395,12 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-token {
+    overflow: visible;
+    height: auto;
+    min-height: calc(var(--size-element-md) - 8px);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }

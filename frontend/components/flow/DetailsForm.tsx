@@ -1,34 +1,46 @@
 "use client";
 
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import dynamic from "next/dynamic";
+import type { ComponentProps } from "react";
+import { FormLayout } from "@astryxdesign/core/FormLayout";
+import { Selector } from "@astryxdesign/core/Selector";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
+import styles from "@/components/flow/DetailsForm.module.css";
 import type { FormField } from "@/lib/api";
 import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
 
-// Radix Select takes no empty value, so its items carry keys of their own:
-// "none" for no choice and "opt:<n>" for the flow's n-th option, which no
-// option string can be mistaken for.
+// A calendar is rarely asked for and costs a popover: it loads when a flow has a date.
+const DateInput = dynamic(() => import("@astryxdesign/core/DateInput").then((module) => module.DateInput));
+type IsoDate = NonNullable<ComponentProps<typeof DateInput>["value"]>;
+// What the person typed is kept as it is; the calendar shows only a whole date.
+const isoDate = (text: string) => (/^\d{4}-\d{2}-\d{2}$/.test(text) ? (text as IsoDate) : undefined);
+
+// The selector's items carry keys of their own: "none" for no choice and "opt:<n>" for the flow's n-th option, which
+// no option string can be mistaken for.
 const NONE = "none";
 const optionKey = (index: number) => `opt:${index}`;
 
-// One height for every single-line detail on every pointer: 44 px inside a 1 px border, as the list field's row
-// (ParticipantsInput). The text is 16 px, so a phone does not zoom in on it.
-const SINGLE_LINE = "h-[46px] coarse:h-[46px] rounded-xl text-[16px]";
-// A text box keeps its lines; its first one starts where a single-line field's text does.
-const MULTI_LINE = "rounded-xl py-2.5 text-[16px]";
+// Astryx's types leave out the attributes of a phone's number keyboard, but its field passes them on to the input.
+const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, string>;
 
-/** The id a field's control carries, so a problem can move focus to it. */
-export const detailFieldId = (name: string) => `detalj-${name}`;
+/**
+ * The control of a detail by its name, so a problem can move focus to it. The design system's fields own their ids,
+ * so a field is found by the name it carries (`data-detail-field`), on the control or inside what holds it.
+ */
+export function detailControl(name: string): HTMLElement | null {
+  const marked = document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(name)}"]`);
+  const control = "input, textarea, button, [role=combobox]";
+  return marked?.matches(control) ? marked : (marked?.querySelector<HTMLElement>(control) ?? null);
+}
 
 /** "Skapa dokument"; when a required detail is missing, focus goes to it. */
 export async function createDocument(session: FlowSession): Promise<void> {
   if (await session.createDocument()) return;
   const [first] = session.getSnapshot().invalid;
   // After the next paint, so details folded into one line have opened.
-  if (first) requestAnimationFrame(() => document.getElementById(detailFieldId(first))?.focus());
+  if (first) requestAnimationFrame(() => detailControl(first)?.focus());
 }
 
 function options(field: FormField): string[] {
@@ -65,129 +77,120 @@ export function DetailsForm({
   makesText?: boolean;
 }) {
   if (fields.length === 0) return null;
+  // Required is the form's default: a field says only when it is optional ("Valfritt"), and every one of them still
+  // says "required" to a screen reader before sending, not only once the send finds it missing.
   return (
-    <FieldGroup className="gap-6">
+    <FormLayout defaultOptionality="required">
       {[...fields]
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
         .map((field) => {
-          const id = detailFieldId(field.name);
-          const helpId = `${id}-hjalp`;
-          const noteId = `${id}-not`;
-          const errorId = `${id}-fel`;
           const note = notes?.[field.name];
           const isInvalid = invalid.includes(field.name);
           const value = details[field.name];
           const text = typeof value === "string" ? value : "";
+          const label = field.label || field.name;
+          const isCount = field.name === countField;
           const help =
             field.type === "list"
               ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
               : field.description;
-          const describedBy =
-            [help ? helpId : null, note ? noteId : null, isInvalid ? errorId : null].filter(Boolean).join(" ") || undefined;
-          // Said before sending too, not only once the send finds it missing.
-          const required = field.required || undefined;
-          const isCount = field.name === countField;
+          const description = [help, note].filter(Boolean).join(" ") || undefined;
+          const error = isInvalid
+            ? isCount && text.trim()
+              ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
+              : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`
+            : undefined;
+          const common = {
+            label,
+            description,
+            isOptional: !field.required,
+            isRequired: !!field.required,
+            status: error ? ({ type: "error", message: error } as const) : undefined,
+            statusVariant: "detached",
+            "data-detail-field": field.name,
+          } as const;
+          const opts = options(field);
+          if (field.type === "list") {
+            return (
+              <ParticipantsInput
+                key={field.name}
+                label={label}
+                names={Array.isArray(value) ? value : []}
+                onChange={(names) => onChange(field.name, names)}
+                suggestions={suggestions}
+                onAdded={onNamesAdded}
+                description={help || undefined}
+                error={error}
+                isOptional={!field.required}
+                isRequired={!!field.required}
+                fieldName={field.name}
+              />
+            );
+          }
+          if (field.type === "select" && opts.length > 0) {
+            return (
+              <Selector
+                key={field.name}
+                {...common}
+                htmlName={field.name}
+                presentation="adaptive"
+                // An optional choice can be taken back; a required one starts unchosen.
+                options={[
+                  { value: NONE, label: field.required ? "Välj" : "Inget val" },
+                  ...opts.map((option, index) => ({ value: optionKey(index), label: option })),
+                ]}
+                value={text && opts.includes(text) ? optionKey(opts.indexOf(text)) : NONE}
+                onChange={(key) => onChange(field.name, key === NONE ? "" : opts[Number(key.slice(4))])}
+              />
+            );
+          }
+          if (field.type === "textarea" || field.type === "long_text") {
+            return (
+              <TextArea
+                key={field.name}
+                {...common}
+                htmlName={field.name}
+                autoComplete="off"
+                rows={4}
+                value={text}
+                onChange={(next) => onChange(field.name, next)}
+              />
+            );
+          }
+          if (field.type === "date") {
+            return (
+              <DateInput
+                key={field.name}
+                {...common}
+                value={isoDate(text)}
+                onChange={(next) => onChange(field.name, next ?? "")}
+              />
+            );
+          }
           return (
-            <Field key={field.name} data-invalid={isInvalid || undefined} className="gap-2">
-              <FieldLabel htmlFor={id} className="gap-1 text-[15px] font-semibold text-ink">
-                {field.label || field.name}{" "}
-                {!field.required && <span className="font-normal text-ink-soft">(valfritt)</span>}
-              </FieldLabel>
-              {field.type === "list" ? (
-                <ParticipantsInput
-                  id={id}
-                  names={Array.isArray(value) ? value : []}
-                  onChange={(names) => onChange(field.name, names)}
-                  suggestions={suggestions}
-                  onAdded={onNamesAdded}
-                  describedBy={describedBy}
-                  invalid={isInvalid}
-                  required={required}
-                />
-              ) : field.type === "select" && options(field).length > 0 ? (
-                <Select
-                  name={field.name}
-                  value={text && options(field).includes(text) ? optionKey(options(field).indexOf(text)) : NONE}
-                  onValueChange={(key) => onChange(field.name, key === NONE ? "" : options(field)[Number(key.slice(4))])}
-                >
-                  <SelectTrigger
-                    id={id}
-                    aria-describedby={describedBy}
-                    aria-invalid={isInvalid || undefined}
-                    aria-required={required}
-                    className={SINGLE_LINE}
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {/* An optional choice can be taken back; a required one starts unchosen. */}
-                    <SelectItem value={NONE}>{field.required ? "Välj" : "Inget val"}</SelectItem>
-                    {options(field).map((option, index) => (
-                      <SelectItem key={index} value={optionKey(index)}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : field.type === "textarea" || field.type === "long_text" ? (
-                <Textarea
-                  id={id}
-                  name={field.name}
-                  autoComplete="off"
-                  value={text}
-                  rows={4}
-                  onChange={(event) => onChange(field.name, event.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={isInvalid || undefined}
-                  aria-required={required}
-                  className={MULTI_LINE}
-                />
-              ) : (
-                <Input
-                  id={id}
-                  name={field.name}
-                  autoComplete="off"
-                  // The count is text with a number keyboard, as Antal talare: a number field reads "e", "-"
-                  // or "2,5" as empty and says nothing.
-                  type={isCount ? "text" : field.type === "date" ? "date" : field.type === "number" ? "number" : "text"}
-                  // A phone's number keyboard, not the one with letters and punctuation.
-                  inputMode={isCount || field.type === "number" ? "numeric" : undefined}
-                  pattern={isCount ? "[0-9]*" : undefined}
-                  value={text}
-                  onChange={(event) => onChange(field.name, event.target.value)}
-                  aria-describedby={describedBy}
-                  aria-invalid={isInvalid || undefined}
-                  aria-required={required}
-                  // Room for two digits, as Antal talare.
-                  className={isCount ? `${SINGLE_LINE} max-w-28` : SINGLE_LINE}
-                />
-              )}
-              {help && (
-                <FieldDescription id={helpId} className="text-[13px]">
-                  {help}
-                </FieldDescription>
-              )}
-              {note && (
-                <FieldDescription id={noteId} className="text-[13px]">
-                  {note}
-                </FieldDescription>
-              )}
-              {isInvalid && (
-                <FieldError id={errorId}>
-                  {isCount && text.trim()
-                    ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
-                    : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`}
-                </FieldError>
-              )}
-            </Field>
+            <TextInput
+              key={field.name}
+              {...common}
+              htmlName={field.name}
+              autoComplete="off"
+              // The count is text with a number keyboard, as Antal talare: a number field reads "e", "-" or "2,5" as
+              // empty and says nothing.
+              {...(isCount || field.type === "number" ? NUMERIC : {})}
+              value={text}
+              onChange={(next) => onChange(field.name, next)}
+              className={isCount ? styles.count : undefined}
+            />
           );
         })}
-    </FieldGroup>
+    </FormLayout>
   );
 }
 
-/** The id "Antal talare" carries, so a refused start can move focus to it. */
+/** What "Antal talare" is found by, so a refused start can move focus to it. */
 export const SPEAKER_COUNT_ID = "antal-talare";
+
+/** Moves focus to "Antal talare". The design system's field owns its id, so it is found by its name. */
+export const focusSpeakerCount = () => detailControl(SPEAKER_COUNT_ID)?.focus();
 
 /** Said of a speaker count the names filled in, until the person edits it: this module's field and the flow's own. */
 export const COUNT_FROM_NAMES = "Ifyllt från antalet deltagare, ändra om fler talar.";
@@ -203,39 +206,24 @@ export function SpeakerCountField({
   /** The value is the number of names, not yet edited. */
   fromNames?: boolean;
 }) {
-  const helpId = `${SPEAKER_COUNT_ID}-hjalp`;
-  const errorId = `${SPEAKER_COUNT_ID}-fel`;
   const invalid = readSpeakerCount(value) === "invalid";
   return (
-    <Field data-invalid={invalid || undefined} className="gap-2">
-      <FieldLabel htmlFor={SPEAKER_COUNT_ID} className="gap-1 text-[15px] font-semibold text-ink">
-        Antal talare <span className="font-normal text-ink-soft">(om du vet)</span>
-      </FieldLabel>
-      <Input
-        id={SPEAKER_COUNT_ID}
-        name={SPEAKER_COUNT_ID}
-        autoComplete="off"
-        // Text with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing, while this
-        // keeps what was typed for readSpeakerCount to call it no count.
-        type="text"
-        inputMode="numeric"
-        pattern="[0-9]*"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-describedby={invalid ? `${helpId} ${errorId}` : helpId}
-        aria-invalid={invalid || undefined}
-        // Room for two digits: the field makes each child full width, so this caps it.
-        className={`${SINGLE_LINE} max-w-28`}
-      />
-      {/* One paragraph, the one the field names: its second sentence says where a filled-in number came from, since
-          "Lämna tomt" beside it would contradict it. */}
-      <FieldDescription id={helpId} className="text-[13px]">
-        Används som övre gräns.{" "}
-        {fromNames ? COUNT_FROM_NAMES : "Lämna tomt om du är osäker."}
-      </FieldDescription>
-      {invalid && (
-        <FieldError id={errorId}>Skriv ett heltal från 1 till {MAX_SPEAKER_COUNT}, eller lämna fältet tomt.</FieldError>
-      )}
-    </Field>
+    <TextInput
+      label="Antal talare (om du vet)"
+      htmlName={SPEAKER_COUNT_ID}
+      autoComplete="off"
+      // Text with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing, while this
+      // keeps what was typed for readSpeakerCount to call it no count.
+      {...NUMERIC}
+      value={value}
+      onChange={onChange}
+      // One paragraph: its second sentence says where a filled-in number came from, since "Lämna tomt" beside it
+      // would contradict it.
+      description={`Används som övre gräns. ${fromNames ? COUNT_FROM_NAMES : "Lämna tomt om du är osäker."}`}
+      status={invalid ? { type: "error", message: `Skriv ett heltal från 1 till ${MAX_SPEAKER_COUNT}, eller lämna fältet tomt.` } : undefined}
+      statusVariant="detached"
+      data-detail-field={SPEAKER_COUNT_ID}
+      className={styles.count}
+    />
   );
 }

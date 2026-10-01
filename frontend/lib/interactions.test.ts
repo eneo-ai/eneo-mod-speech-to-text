@@ -12,9 +12,9 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
   const outside = document.createElement("button");
   document.body.append(outside);
   const view = await mount(
-    createElement(ParticipantsInput, { id: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
-  const field = view.container.querySelector<HTMLInputElement>("#namn")!;
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
@@ -34,9 +34,9 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
   const changes: string[][] = [];
   const view = await mount(
-    createElement(ParticipantsInput, { id: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
-  const field = view.container.querySelector<HTMLInputElement>("#namn2")!;
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn2"]')!;
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Erik Lund"));
   const add = button(view.container, "Lägg till")!;
@@ -44,6 +44,53 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
+  await view.unmount();
+});
+
+/** A participants field with a record of what it hands back, the browser's own typing and pasting done to its input. */
+async function mountParticipants(suggestions: string[] = []) {
+  const { createElement } = await import("react");
+  const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
+  const changes: string[][] = [];
+  const view = await mount(
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn3", names: [], onChange: (names: string[]) => changes.push(names), suggestions }),
+  );
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn3"]')!;
+  return { view, field, changes };
+}
+
+test("participants: a pasted list is split on commas, semicolons and line breaks, and one name without a separator is typed as usual", async () => {
+  const { view, field, changes } = await mountParticipants();
+  const paste = (text: string) => {
+    const event = new window.Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+    field.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  await view.act(async () => field.focus());
+  let prevented = true;
+  await view.act(async () => {
+    prevented = paste("Anna Berg");
+  });
+  assert.equal(prevented, false, "a single name is left for the field to take");
+  assert.deepEqual(changes, []);
+  await view.act(async () => void paste("Anna Berg, Erik Lund;Sara Holm\nanna berg"));
+  // Added once each: a name already there, in another case, is not added again.
+  assert.deepEqual(changes.at(-1), ["Anna Berg", "Erik Lund", "Sara Holm"]);
+  await view.unmount();
+});
+
+test("participants: a name picked from the browser's suggestions is added at once, a typed one waits for its comma", async () => {
+  const { view, field, changes } = await mountParticipants(["Sara Holm"]);
+  const typeAs = (value: string, inputType: string) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new window.InputEvent("input", { bubbles: true, inputType }));
+  };
+  await view.act(async () => typeAs("sara holm", "insertText"));
+  assert.deepEqual(changes, [], "typed in full, it is still only text");
+  await view.act(async () => typeAs("Sara Holm", "insertReplacementText"));
+  assert.deepEqual(changes.at(-1), ["Sara Holm"], "picked from the list: added, as typed in the list");
+  assert.equal(field.value, "");
   await view.unmount();
 });
 
@@ -147,16 +194,13 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
       }),
     );
   const open = async (view: Awaited<ReturnType<typeof mountWith>>) => {
-    const trigger = view.container.querySelector<HTMLButtonElement>("#detalj-svar")!;
-    await view.act(async () => {
-      trigger.focus();
-      trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    const trigger = view.container.querySelector<HTMLButtonElement>('[data-detail-field="svar"]')!;
+    await view.act(async () => trigger.click());
     return [...document.querySelectorAll<HTMLElement>('[role="option"]')];
   };
 
   const chosen = await mountWith("inget-val");
-  assert.equal(chosen.container.querySelector("#detalj-svar")?.textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
+  assert.equal(chosen.container.querySelector('[data-detail-field="svar"]')?.textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
   assert.deepEqual((await open(chosen)).map((option) => option.textContent?.trim()), ["Inget val", "inget-val", "Ja", "opt:0"]);
   await chosen.unmount();
 
@@ -169,13 +213,33 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
   ] as const) {
     const view = await mountWith(start);
     const option = (await open(view)).find((o) => o.textContent?.trim() === label)!;
-    await view.act(async () => {
-      option.focus();
-      option.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await view.act(async () => option.click());
     assert.deepEqual(changes.at(-1), ["svar", expected], label);
     await view.unmount();
   }
+});
+
+test("a refused start puts focus on the first detail that blocks it, whatever kind of field it is", async () => {
+  const { createElement } = await import("react");
+  const { DetailsForm, createDocument } = await import("../components/flow/DetailsForm");
+  const fields = [
+    { name: "arende", label: "Ärende", type: "text", required: true },
+    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
+    { name: "deltagare", label: "Deltagare", type: "list", required: true },
+  ] as import("./api").FormField[];
+  const view = await mount(
+    createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: () => {}, suggestions: [], onNamesAdded: () => {} }),
+  );
+  for (const [name, role] of [["arende", "INPUT"], ["typ", "BUTTON"], ["deltagare", "INPUT"]] as const) {
+    const session = { createDocument: async () => false, getSnapshot: () => ({ invalid: [name] }) } as unknown as import("./flow-session").FlowSession;
+    await view.act(async () => {
+      await createDocument(session);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    assert.equal(document.activeElement?.tagName, role, name);
+    assert.equal(document.activeElement?.closest("[data-detail-field], [role=group]")?.querySelector("[data-detail-field]")?.getAttribute("data-detail-field") ?? document.activeElement?.getAttribute("data-detail-field"), name);
+  }
+  await view.unmount();
 });
 
 test("the microphone test uses the device recording will use, and shows it, also before the names are known", async () => {

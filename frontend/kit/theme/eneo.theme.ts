@@ -39,6 +39,9 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
+    // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
+    token: {base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'}},
   },
   adaptations: {
     rules: [
