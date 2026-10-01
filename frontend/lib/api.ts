@@ -58,6 +58,19 @@ function replayable(init: RequestInit): boolean {
 /** What a request our login's end refused says; the same whether the backend or the page refused it. */
 const sessionEnded = () => new ApiError(401, "Session expired", { detail: "Session expired" });
 
+/**
+ * A browser has one cookie for every tab: another person's login in one tab puts their session under this page.
+ * The page names the user it was opened for, and the module answers 409 user_changed to a request for another.
+ */
+function expectedUserHeader(): Record<string, string> {
+  const user = loginState.expectedUser;
+  return user ? { "X-Expected-User": user } : {};
+}
+
+function userChanged(error: ApiError): boolean {
+  return error.status === 409 && (error.body as { detail?: unknown } | null)?.detail === "user_changed";
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -78,6 +91,7 @@ async function request<T>(
         ...(init.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
+        ...(path.startsWith("/api/eneo/") ? expectedUserHeader() : {}),
         ...init.headers,
       },
     });
@@ -89,16 +103,20 @@ async function request<T>(
   onlineStatus.reportReachable();
 
   if (!res.ok) {
+    const error = await parseError(res);
     // Only the backend's own mark says OUR login ended (X-Auth-Required: session); Eneo's 401 (a wrong API key,
-    // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
-    // is safe to send twice waits for it and goes again.
-    if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
+    // say) is an error to show. A session that is now someone else's (user_changed) is the same to this page.
+    // The page stays, and asks for a new login in place (loginState): a request that is safe to send twice
+    // waits for it and goes again.
+    const ended = res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/");
+    if (ended || userChanged(error)) {
       loginState.ended();
       if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
         return request<T>(path, init, true);
       }
+      if (!ended) throw sessionEnded();
     }
-    throw await parseError(res);
+    throw error;
   }
 
   if (res.status === 204) return undefined as T;
@@ -736,6 +754,9 @@ function requestMultipartWithProgress<T>(
       onlineStatus.reportReachable();
       // The login ended: the dialog asks for a new one, and the send is the user's to start again.
       if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended();
+      // The session is someone else's now: the same for this page, and the send is the user's to start again.
+      const changed = xhr.status === 409 && userChanged(parseXhrError(xhr));
+      if (changed) loginState.ended();
       if (settled) return;
       settled = true;
       clearScheduledTimeout();
@@ -763,7 +784,7 @@ function requestMultipartWithProgress<T>(
         }
         return;
       }
-      reject(parseXhrError(xhr));
+      reject(changed ? sessionEnded() : parseXhrError(xhr));
     };
 
     xhr.onerror = () => {
@@ -795,6 +816,7 @@ function requestMultipartWithProgress<T>(
     xhr.open("POST", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
+    for (const [name, value] of Object.entries(expectedUserHeader())) xhr.setRequestHeader(name, value);
     // The module's proxy holds Eneo's answer this long: through the upload and Eneo's measuring after it.
     xhr.setRequestHeader(
       "X-Upload-Timeout-Seconds",

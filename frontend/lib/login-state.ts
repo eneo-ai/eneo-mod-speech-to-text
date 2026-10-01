@@ -9,10 +9,16 @@
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";
-import { sessionUser } from "./user-identity";
+import { ACCESS_CODE_USER, sessionUser } from "./user-identity";
 
 export interface LoginState {
   readonly signedOut: boolean;
+  /**
+   * The user the page was opened for, which the page names in what it sends to Eneo (api.ts) and to the live relay:
+   * the module refuses a request whose session is someone else's. Null where no page is open, and for the access
+   * code, which has no user.
+   */
+  readonly expectedUser: string | null;
   /** Who is signed in instead of the page's user, while the page stays covered for them. */
   readonly otherUser: AuthenticatedUser | null;
   subscribe(listener: () => void): () => void;
@@ -58,6 +64,9 @@ export function createLoginState(): LoginState {
     get otherUser() {
       return otherUser;
     },
+    get expectedUser() {
+      return owner && owner.id !== ACCESS_CODE_USER.id ? owner.id : null;
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -71,6 +80,7 @@ export function createLoginState(): LoginState {
         open = false;
         pages -= 1;
         if (pages > 0) return;
+        owner = null;
         clearTimeout(endTimer);
         settle(false);
         setSignedOut(false);

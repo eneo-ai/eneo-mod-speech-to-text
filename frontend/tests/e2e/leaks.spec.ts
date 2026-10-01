@@ -99,9 +99,16 @@ const OVERLAYS: Record<string, Overlay> = {
     hide: (page) => page.getByRole("button", { name: "Avbryt", exact: true }).click(),
   },
   // "Ändra talare" on a passage of the transcript: a popover of the page, one per passage, opened from the passage's name.
+  // The design system's focus handling (useFocusTrap) keeps the last element focused inside a popover, and with it that
+  // popover's closed form (88 nodes, 12 listeners), until the popover is opened again: one form per popover, never one per
+  // opening. It exists only if focus got inside before the popover was closed, so the opening waits for focus: else a
+  // warm-up that closed it too soon would be measured without that form and the 40 openings with it, as 88 nodes.
   "change-speaker popover": {
     go: (page) => reviewPage(page),
-    show: (page) => page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click(),
+    show: async (page) => {
+      await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
+      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("radio").first()).toBeFocused();
+    },
     shown: (page) => page.getByRole("dialog", { name: "Ändra talare" }),
     hide: (page) => page.keyboard.press("Escape"),
   },

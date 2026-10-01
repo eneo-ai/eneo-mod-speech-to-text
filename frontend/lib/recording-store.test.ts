@@ -486,6 +486,104 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal(store.refused(other.id), "failed", "a refusal that is not a full device");
 });
 
+/**
+ * A device whose open connections a test can close for real, as a browser does when it drops one, and whose next opens it
+ * can refuse. The database underneath is fake-indexeddb's: a closed connection throws InvalidStateError on its next
+ * transaction, as a browser's does.
+ */
+function closable() {
+  const underneath = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const state = { refuse: false };
+  const factory = {
+    open(name: string, version?: number) {
+      if (state.refuse) throw new DOMException("The browser will not open the database.", "UnknownError");
+      const request = underneath.open(name, version);
+      request.addEventListener("success", () => connections.push(request.result));
+      return request;
+    },
+  } as unknown as IDBFactory;
+  return {
+    env: device({ indexedDB: factory }),
+    state,
+    /** Every connection the store has open is closed now. */
+    closeConnections: () => connections.splice(0).forEach((connection) => connection.close()),
+  };
+}
+
+test("a database connection the browser closed is reopened: what was kept is read, and recording goes on being kept", async () => {
+  const { env, closeConnections } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+
+  closeConnections();
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"], "playback, upload and Spara som fil read it");
+  assert.equal((await store.get(recording.id))?.parts[0].chunks, 2);
+
+  closeConnections();
+  await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+  assert.equal(store.persistent, true, "a connection that can be reopened is no reason to keep the audio in this tab");
+  assert.equal(store.refused(recording.id), null);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+  closeConnections();
+  assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [], "this tab's own, still leased");
+});
+
+test("audio the device refused and audio it kept are read together, in order, also after the connection was closed", async () => {
+  const { env, closeConnections } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    await store.append(recording.id, 0, new Blob(["d"]), 4_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  assert.equal(store.refused(recording.id), "full");
+
+  closeConnections(); // and then the connection the earlier chunks are on goes too
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abcd"], "kept chunks first, then the ones only this tab has");
+});
+
+test("audio only this tab has is never read as if it were all there is: an unreadable stored prefix is an error, and both copies stay", async () => {
+  const { env, closeConnections, state } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+
+  closeConnections();
+  state.refuse = true; // the browser will not give the connection back
+  await assert.rejects(store.readParts(recording.id), "not 'c' alone, as if 'ab' had never been recorded");
+  await assert.rejects(store.readParts(recording.id), "and not on a second try either");
+
+  state.refuse = false; // it does, later: nothing was lost on the way
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+});
+
 test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);
