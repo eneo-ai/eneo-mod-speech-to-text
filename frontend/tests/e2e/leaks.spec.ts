@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { open } from "./screens";
+import { open, record, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -18,7 +18,13 @@ const WARM_UP = 5;
 // What the 40 openings together may leave. Never raised to make a test pass: a number above it is a leak to find.
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
-type Overlay = { show: (page: Page) => Promise<unknown>; shown: (page: Page) => Locator; hide: (page: Page) => Promise<unknown> };
+type Overlay = {
+  /** Where the overlay is opened, once; the foundation page when there is none. */
+  go?: (page: Page) => Promise<unknown>;
+  show: (page: Page) => Promise<unknown>;
+  shown: (page: Page) => Locator;
+  hide: (page: Page) => Promise<unknown>;
+};
 
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
@@ -41,6 +47,17 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => page.getByRole("button", { name: "Liten" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // The recording's own question, on the ready state that owns it: it adds the part sources and the player's listeners.
+  "delete question": {
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+    },
+    show: (page) => page.getByRole("button", { name: "Ta bort", exact: true }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort inspelningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Avbryt" }).click(),
   },
 };
 
@@ -75,8 +92,11 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
   test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
-    await open(page, "/dev/foundation");
-    await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    if (overlay.go) await overlay.go(page);
+    else {
+      await open(page, "/dev/foundation");
+      await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    }
     const cdp = await page.context().newCDPSession(page);
 
     for (let i = 0; i < WARM_UP; i++) await cycle(page, overlay);
