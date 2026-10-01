@@ -117,7 +117,8 @@ export async function mount(element: import("react").ReactElement) {
     container.remove();
   };
   mounted.add(unmount);
-  return { container, act, unmount };
+  const rerender = (next: import("react").ReactElement) => root.render(next);
+  return { container, act, unmount, rerender };
 }
 
 /** Takes down whatever a test left mounted, also when an assertion stopped it early (use with afterEach). */

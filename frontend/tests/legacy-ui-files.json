@@ -24,7 +24,6 @@
   "components/flow/FlowPageStates.tsx",
   "components/flow/FlowRunPage.tsx",
   "components/flow/FlowTopBar.tsx",
-  "components/flow/LevelMeter.tsx",
   "components/flow/LiveSheet.tsx",
   "components/flow/MicrophoneCheck.tsx",
   "components/flow/ModeCards.tsx",
