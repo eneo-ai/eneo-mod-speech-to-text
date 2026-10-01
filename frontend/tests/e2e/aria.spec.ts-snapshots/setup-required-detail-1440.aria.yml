@@ -24,8 +24,7 @@
         - radio "Spela in"
         - text: Ladda upp
         - paragraph: Välj en ljudfil från din enhet.
-        - radio "Ladda upp" [checked]:
-          - img
+        - radio "Ladda upp" [checked]
     - text: Märk upp talare
     - paragraph: Tar längre tid efter inspelningen.
     - switch "Märk upp talare"

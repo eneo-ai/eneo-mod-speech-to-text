@@ -23,8 +23,7 @@
       - radiogroup "Hur vill du lägga till ljudet?":
         - text: Strömma
         - paragraph: Se texten medan du pratar.
-        - radio "Strömma" [checked]:
-          - img
+        - radio "Strömma" [checked]
         - text: Spela in
         - paragraph: Spela in nu och transkribera efteråt.
         - radio "Spela in"
