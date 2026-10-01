@@ -52,7 +52,7 @@ Alla rutter ligger under `/api`. "Session" betyder giltig modulsession (annars 4
 | `/api/live/{flow_id}/{step_id}` | WebSocket | ja | ja | Live-relä, se [Live-reläet](#live-reläet). |
 
 - Specifika rutter registreras före den allmänna `/api/eneo/{path}`.
-- Uppladdningarna och `/api/eneo/{path}` kontrollerar dessutom att sidan är för sessionens användare, liksom live-socketen; GET av ljud och genererade filer gör det inte. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
+- Allt som ändrar något under `/api/eneo/` (uppladdningarna inräknade) och live-socketen kräver dessutom att sidan namnger sessionens användare; en GET under `/api/eneo/` får sakna namn, och GET av ljud och genererade filer kontrollerar inte alls. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
 - Varje HTTP-rutt har ett tak för request-body, se [Gränser](#gränser).
 
 ## Tillåtelselistan för Eneo-anrop
@@ -238,7 +238,7 @@ Testfilerna ligger i `backend/tests/`; `test_boundary.py` är gränsen mot Eneo 
 | Deny by default | Bara uppräknade metoder och sökvägar når Eneo. | `test_eneo_proxy_auth.py` |
 | Ingen sökvägsförflyttning | `.`/`..`, kodade varianter, `?`, `#`, kontrolltecken och bakstreck avvisas före matchning, och varje segment kodas om på vägen ut så att ett `%2F` förblir ett id. | `test_eneo_proxy_auth.py`, `test_boundary.py` (`DoubleEncodingTests`, `UnsafePathTests`), `test_audio_proxy.py`, `test_artifact_proxy.py` |
 | Same-origin för mutationer och WebSocket | `Origin` måste vara `MODULE_PUBLIC_URL`. Webbläsarens egen origin skickas aldrig till Eneo. | `test_eneo_proxy_auth.py`, `test_live_relay.py` |
-| Rätt användare i en gammal flik | En sida som hör till en annan användare än sessionens nekas med 409 `user_changed`, eller stängs med 1008, innan något når Eneo. | `test_boundary.py` (`ExpectedUserTests`, `LiveExpectedUserTests`) |
+| Rätt användare i en gammal flik | En sida som hör till en annan användare än sessionens, eller som inte namnger någon när den ändrar något, nekas med 409 `user_changed`, eller stängs med 1008, innan något når Eneo. | `test_boundary.py` (`ExpectedUserTests`, `LiveExpectedUserTests`) |
 | Inloggningens state och återvändande | Slumpmässigt, signerat, förbrukas vid callbacken och jämförs som bytes (ett icke-ASCII-tecken ger inget 500); en förnyelse binds till samma användare och tenant; en inloggning återvänder bara till en sökväg på modulens egen origin. | `test_module_auth.py`, `test_boundary.py` (`CallbackStateTests`, `RedirectTests`) |
 | Fel läge, fel session | En session från det andra läget godtas inte; rutter för det andra läget ger 404. | `test_module_auth.py` |
 | Sessionen avslutar det som hänger på den | En ny inloggning tar bort den gamla sessionen, och live-sockets stängs med 1008 `session_ended` när sessionen tar slut. | `test_boundary.py` (`LiveSessionEndTests`) |
@@ -258,7 +258,6 @@ Testfilerna ligger i `backend/tests/`; `test_boundary.py` är gränsen mot Eneo 
 ## Kända begränsningar
 
 - JSON-anropen läses hela i minnet, upp till `MAX_BODY_BYTES` (10 MiB som standard) per request.
-- Sidans användare är inte ett krav: en request eller socket som inte namnger någon godtas tills vidare, och frontend skickar ingen tenant. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
-- GET av ljud och genererade filer kontrollerar inte sidans användare: ett `<audio src>` och en PDF-ram kan inte sätta headers, och Eneo auktoriserar själv körningen.
+- Sidans användare kontrolleras inte på en GET utan namn, och inte alls på GET av ljud och genererade filer: ett `<audio src>` och en PDF-ram kan inte sätta headers, och Eneo auktoriserar själv körningen. Frontend skickar ingen tenant. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
 - BFF:en har ingen egen rate limiting. Skydda publika testmiljöer i ingressen.
 - Sessionslagret och cachen med signerade URL:er är process-lokala: en backendreplik.
