@@ -258,7 +258,7 @@ Testfilerna ligger i `backend/tests/`; `test_boundary.py` är gränsen mot Eneo 
 ## Kända begränsningar
 
 - JSON-anropen läses hela i minnet, upp till `MAX_BODY_BYTES` (10 MiB som standard) per request.
-- Sidans användare är ännu inte ett krav: en request eller socket som inte namnger någon godtas, och frontend skickar inget namn än. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
-- GET av ljud och genererade filer kontrollerar inte sidans användare.
+- Sidans användare är inte ett krav: en request eller socket som inte namnger någon godtas tills vidare, och frontend skickar ingen tenant. Se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
+- GET av ljud och genererade filer kontrollerar inte sidans användare: ett `<audio src>` och en PDF-ram kan inte sätta headers, och Eneo auktoriserar själv körningen.
 - BFF:en har ingen egen rate limiting. Skydda publika testmiljöer i ingressen.
 - Sessionslagret och cachen med signerade URL:er är process-lokala: en backendreplik.

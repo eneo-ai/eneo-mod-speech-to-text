@@ -41,7 +41,7 @@ Importriktningen visas i [diagrammet](architecture.md#frontendens-lager).
 
 | Tillstånd | Ägare | Anmärkning |
 |---|---|---|
-| Inloggningens giltighet | `lib/login-state.ts` (`loginState`), matas av `AuthGate` | Sidan ligger kvar när inloggningen slutar. Se [Inloggning och session](auth-and-session.md#när-inloggningen-har-gått-ut). |
+| Inloggningens giltighet, och vilken användare sidan öppnades för | `lib/login-state.ts` (`loginState`, `expectedUser`), matas av `AuthGate` | Sidan ligger kvar när inloggningen slutar eller en annan person loggat in. Se [Inloggning och session](auth-and-session.md#när-inloggningen-har-gått-ut). |
 | Sessionsstatus från backend | `authStatus()` i `lib/api.ts`, hållen vid liv av `lib/session-keepalive.ts` | `refresh_in` och `session_ends_in` styr nästa fråga och varningen. |
 | Färgläge | next-themes (klass på `<html>`, `localStorage`) | `kit/ModuleProviders.tsx` läser det, skriver aldrig. |
 | Organisationens märke | Läses i `app/layout.tsx` per request, ligger i `BrandingProvider` (`components/Brand.tsx`) | Accentfärgen är inget tillstånd: den kommer som en stilmall, `/api/branding/theme.css`, länkad i `<head>`. Se [Byt organisation](branding.md). |

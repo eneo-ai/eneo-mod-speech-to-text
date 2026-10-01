@@ -107,9 +107,11 @@ Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts
 | Uppladdningarna och `/api/eneo/{path}` | Headrarna `X-Expected-User` och `X-Expected-Tenant` | `409` med `{"detail": "user_changed"}`, innan bodyn läses. Ingenting når Eneo. |
 | Live-socketen | Frågeparametrarna `?expected_user=` och `expected_tenant` (en webbläsare kan inte sätta en header på en WebSocket) | Stängs med `1008` och skälet `user_changed`, innan någon biljett begärs hos Eneo. |
 
-- En sida som inte namnger någon godtas tills vidare, och frontend skickar ännu inget namn.
+- Frontend namnger användaren på varje anrop under `/api/eneo/` (headern `X-Expected-User`, uppladdningen inräknad) och på varje ny live-anslutning (`?expected_user=`), ur den identitet sidan öppnades med (`expectedUser` i `frontend/lib/login-state.ts`, `frontend/lib/api.ts`, `frontend/lib/live-transcriber.ts`). Den skickar ingen tenant.
+- Får sidan 409 eller 1008 `user_changed` visar den täckskiktet som när en inloggning gått ut ([ovan](#när-inloggningen-har-gått-ut)): förfrågningar som tål att skickas två gånger väntar på sidans egen användare, en uppladdning misslyckas som en utgången session, och inspelningen ligger kvar på enheten. Live-texten fortsätter som efter ett avbrott när sidans egen användare är tillbaka.
+- En request eller socket som inte namnger någon godtas tills vidare.
 - En åtkomstkodssession har ingen användare att jämföra med och godtas alltid.
-- GET av ljud och genererade filer kontrollerar inte sidans användare.
+- GET av ljud och genererade filer kontrollerar inte sidans användare: ett `<audio src>` och en PDF-ram kan inte sätta headers, och Eneo auktoriserar själv körningen.
 - Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
 
 Tester: `ExpectedUserTests` och `LiveExpectedUserTests` i `backend/tests/test_boundary.py`.
