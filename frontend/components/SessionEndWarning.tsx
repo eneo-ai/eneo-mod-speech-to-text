@@ -58,6 +58,7 @@ export function SessionEndWarning({
   const [sending, setSending] = useState(false);
   const formId = useId();
   const descriptionId = useId();
+  const problemId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Where the focus was when the warning opened: the page's, once the dialog has covered an ended login.
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -208,10 +209,12 @@ export function SessionEndWarning({
                     onChange={(value) => setCode(value.slice(0, ACCESS_CODE_MAX))}
                     // The words are the alert below: the design system's own announcements sit outside a modal dialog.
                     status={problem ? { type: "error" } : undefined}
+                    // Named by aria-errormessage: TextInput computes aria-describedby itself and would overwrite one given here.
+                    aria-errormessage={problem ? problemId : undefined}
                   />
                 </form>
               )}
-              {problem && <Banner status="error" title={problem} collapsible={false} />}
+              {problem && <Banner id={problemId} status="error" title={problem} collapsible={false} />}
               <HStack gap={2} hAlign="end">
                 {byCode ? (
                   <Button type="submit" form={formId} label={action} variant="primary" size="lg" isLoading={sending} />
