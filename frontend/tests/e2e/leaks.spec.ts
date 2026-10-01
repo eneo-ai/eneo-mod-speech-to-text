@@ -18,7 +18,13 @@ const WARM_UP = 5;
 // What the 40 openings together may leave. Never raised to make a test pass: a number above it is a leak to find.
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
-type Overlay = { show: (page: Page) => Promise<unknown>; shown: (page: Page) => Locator; hide: (page: Page) => Promise<unknown> };
+type Overlay = {
+  /** Where the overlay is opened, once; the foundation page when there is none. */
+  go?: (page: Page) => Promise<unknown>;
+  show: (page: Page) => Promise<unknown>;
+  shown: (page: Page) => Locator;
+  hide: (page: Page) => Promise<unknown>;
+};
 
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
@@ -75,8 +81,11 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
   test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
-    await open(page, "/dev/foundation");
-    await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    if (overlay.go) await overlay.go(page);
+    else {
+      await open(page, "/dev/foundation");
+      await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    }
     const cdp = await page.context().newCDPSession(page);
 
     for (let i = 0; i < WARM_UP; i++) await cycle(page, overlay);

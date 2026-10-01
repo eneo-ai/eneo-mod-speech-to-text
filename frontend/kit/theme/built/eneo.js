@@ -157,7 +157,10 @@ export const eneoTheme = {
         "lineHeight": "var(--text-display-3-leading)"
       },
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        ":focus-visible": {
+          "outline": "none"
+        }
       }
     },
     "text": {
@@ -319,6 +322,11 @@ export const eneoTheme = {
               }
             },
             "top-nav-heading": {
+              "base": {
+                "minHeight": "44px"
+              }
+            },
+            "collapsible-trigger": {
               "base": {
                 "minHeight": "44px"
               }

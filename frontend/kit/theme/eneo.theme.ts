@@ -25,7 +25,9 @@ export const eneoTheme = defineTheme({
   components: {
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
     // 320 px screen: Astryx breaks words only when it truncates.
-    heading: {base: {overflowWrap: 'anywhere'}},
+    // A phase's heading takes focus when its view appears (usePhaseHeading) but is no control: the browser counts that
+    // focus call as keyboard focus and would frame the headline on every visit.
+    heading: {base: {overflowWrap: 'anywhere', ':focus-visible': {outline: 'none'}}},
     text: {base: {overflowWrap: 'anywhere'}},
     'text-input': {base: {':focus-within': focusRing}},
     'text-area': {base: {':focus-within': focusRing}},
@@ -49,6 +51,7 @@ export const eneoTheme = defineTheme({
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
             'top-nav-heading': {base: {minHeight: TOUCH}},
+            'collapsible-trigger': {base: {minHeight: TOUCH}},
           },
         },
       },

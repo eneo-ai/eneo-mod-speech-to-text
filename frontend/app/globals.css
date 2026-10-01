@@ -238,8 +238,8 @@
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle { animation: none; }
+  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 @media (forced-colors: active) {
