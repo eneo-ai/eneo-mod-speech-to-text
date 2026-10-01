@@ -33,9 +33,11 @@ export const CHUNK_MS = 2_000;
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
  * it and its own format otherwise (Safari: audio/mp4, see the recorder's
- * format choice). A 5-hour meeting is then about 72 MB (32 kbit/s for
- * 18,000 s), well under a flow's per-file limit, and speech stays clearly
- * intelligible.
+ * format choice). Where the browser follows it (Chrome), a 5-hour meeting is
+ * about 72 MB (32 kbit/s for 18,000 s) and speech stays clearly intelligible.
+ * WebKit 26.6 ignored mono and 32 kbit/s and gave stereo at about 50-54 kbit/s
+ * (110-120 MB), so the limits follow the rate the browser gives (largestChunk),
+ * not this one.
  */
 export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } as const;
 
