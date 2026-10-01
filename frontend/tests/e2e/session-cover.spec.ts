@@ -18,6 +18,14 @@ const signIn = { name: "Du behöver logga in igen" };
 const notBehind = (page: Page) =>
   page.evaluate(() => !document.hasFocus() || document.activeElement?.closest('[role="alertdialog"]') != null);
 
+/** Focus never reaches the page, however far Tab goes: it stays in the sign-in dialog or goes to the browser's controls. */
+async function tabStaysInSignIn(page: Page) {
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    expect(await notBehind(page), `Tab ${i + 1}`).toBe(true);
+  }
+}
+
 test("a page dialog open when the login ends is covered with the page, and is back with its edit after the new login", async ({ page }) => {
   await run(page, "run-review", "flow-2");
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
@@ -33,11 +41,7 @@ test("a page dialog open when the login ends is covered with the page, and is ba
   expect(tree).toContain('heading "Du behöver logga in igen"');
   expect(tree).toContain('button "Logga in igen"');
   expect(tree).not.toMatch(/Namnge talarna|Vem är vem|Zara Testsson/);
-  // Focus never reaches the page, however far Tab goes: it stays in the sign-in dialog or goes to the browser's controls.
-  for (let i = 0; i < 12; i++) {
-    await page.keyboard.press("Tab");
-    expect(await notBehind(page), `Tab ${i + 1}`).toBe(true);
-  }
+  await tabStaysInSignIn(page);
 
   // The same person signs in again (here: the session answers again, and the page asks when it becomes visible).
   await page.unroute("**/api/auth/status");
@@ -311,4 +315,27 @@ test("the sign-in button answers a mouse while a dialog of the old design system
   // Pressing outside it closes a dialog of the old design system (its own rule): opened again, the edit is there.
   if (!(await naming.isVisible())) await page.getByRole("button", { name: "Namnge talarna" }).click();
   await expect(name).toHaveValue("Zara Testsson");
+});
+
+test("the cancel question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
+  await run(page, "run-running");
+  const trigger = page.getByRole("button", { name: "Avbryt körningen" });
+  await trigger.click();
+  const question = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
+  await expect(question).toBeVisible();
+
+  await endLogin(page);
+  await expect(question, "a native dialog would stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Avbryta körningen|Dokumentet skapas/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(question, "still asked, as it was").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeHidden();
+  await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
 });
