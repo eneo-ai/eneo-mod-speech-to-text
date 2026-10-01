@@ -478,6 +478,7 @@ async def _proxy_multipart_upload(
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 @app.post(
@@ -485,6 +486,7 @@ async def _proxy_multipart_upload(
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 async def eneo_upload_file(flow_id: str, request: Request) -> Response:
@@ -496,6 +498,7 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 @app.post(
@@ -503,6 +506,7 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
@@ -514,6 +518,7 @@ async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Req
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 @app.post(
@@ -521,6 +526,7 @@ async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Req
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
@@ -845,6 +851,7 @@ async def eneo_run_artifact_content(
     dependencies=[
         Depends(module_auth.require_session),
         Depends(module_auth.require_same_origin),
+        Depends(module_auth.require_expected_user),
     ],
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
@@ -1148,6 +1155,16 @@ async def _close_browser_socket(
 )
 async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID) -> None:
     await websocket.accept()
+    # A browser cannot set a header on a WebSocket: the page's user is the query parameter expected_user (and
+    # expected_tenant). Checked before anything is asked of Eneo, so no ticket is made for another person's page.
+    if module_auth.is_another_user(
+        module_auth.session_from_request(websocket),
+        websocket.query_params.get("expected_user"),
+        websocket.query_params.get("expected_tenant"),
+    ):
+        logger.info("A live socket was refused: its page is for another user than the session's")
+        await _close_browser_socket(websocket, code=1008, reason="user_changed")
+        return
     try:
         eneo = await _open_live_session(websocket, flow_id, step_id)
     except _LiveRefused as refused:

@@ -844,8 +844,8 @@ class EneoLive:
                 await send({"type": "websocket.send", "bytes": message["bytes"]})
 
 
-class LiveSessionEndTests(BoundaryCase):
-    """An open live socket is the session's: it ends, both sockets closed, when the session does."""
+class LiveCase(BoundaryCase):
+    """A browser's live socket through the module to a real Eneo that says ``ready``."""
 
     FLOW = STEP = "00000000-0000-4000-8000-000000000001"
 
@@ -889,6 +889,10 @@ class LiveSessionEndTests(BoundaryCase):
         await asyncio.wait_for(browser.wait_closed(), within)
         self.assertEqual((browser.close_code, browser.close_reason), (1008, "session_ended"))
         self.assertTrue(await asyncio.to_thread(self.live.closed.wait, within), "Eneo's socket was left open")
+
+
+class LiveSessionEndTests(LiveCase):
+    """An open live socket is the session's: it ends, both sockets closed, when the session does."""
 
     def test_a_logout_after_ready_closes_both_sockets(self) -> None:
         async def scenario(browser):
@@ -955,6 +959,77 @@ class LiveSessionEndTests(BoundaryCase):
             self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x02" * 8)
 
         self.through(session, scenario)
+
+
+class ExpectedUserTests(BoundaryCase):
+    """An old tab must not send audio under another person's session: a media request names the user its page is for."""
+
+    MEDIA = {
+        "an upload": ("POST", "/api/eneo/flows/f/files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
+        "an upload without the slash": ("POST", "/api/eneo/flows/f/files", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
+        "a step's runtime file": ("POST", "/api/eneo/flows/f/steps/s/runtime-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
+        "a template file": ("POST", "/api/eneo/flows/f/template-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
+        "the start of a run": ("POST", "/api/eneo/flows/f/runs/", {"content": b'{"input_values": []}'}),
+    }
+
+    def test_a_request_for_another_user_is_a_409_and_reaches_nobody(self) -> None:
+        for label, (method, path, body) in self.MEDIA.items():
+            for header in ({"X-Expected-User": "someone-else"}, {"X-Expected-User": "user-token-of-a", "X-Expected-Tenant": "another-tenant"}):
+                with self.subTest(label, header=header):
+                    self.eneo.requests.clear()
+
+                    response = self.request(method, path, self.session_a, headers=header, **body)
+
+                    self.assertEqual((response.status_code, response.json()), (409, {"detail": "user_changed"}))
+                    self.assertEqual(self.eneo.requests, [])
+
+    def test_a_request_for_the_session_s_user_goes_through_and_so_does_one_that_names_nobody(self) -> None:
+        for label, (method, path, body) in self.MEDIA.items():
+            for header in ({"X-Expected-User": "user-token-of-a"}, {"X-Expected-User": "user-token-of-a", "X-Expected-Tenant": "tenant-id"}, {}):
+                with self.subTest(label, header=header):
+                    self.eneo.requests.clear()
+
+                    response = self.request(method, path, self.session_a, headers=header, **body)
+
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(len(self.eneo.requests), 1)
+                    self.assertNotIn("x-expected-user", self.eneo.requests[0].headers, "the page's claim is the module's to check, not Eneo's")
+
+    def test_a_page_whose_session_was_replaced_by_another_login_is_refused(self) -> None:
+        # The same cookie jar, a different person: tab one's page still names the first user.
+        second = a_session("token-of-b")
+
+        refused = self.request("POST", "/api/eneo/flows/f/files/", second, headers={"X-Expected-User": "user-token-of-a"}, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
+
+        self.assertEqual((refused.status_code, refused.json()), (409, {"detail": "user_changed"}))
+        self.assertEqual(self.eneo.requests, [])
+
+
+class LiveExpectedUserTests(LiveCase):
+    """The same for the live socket, which a browser cannot give a header: the page's user is a query parameter."""
+
+    def test_a_socket_for_another_user_is_closed_before_a_ticket_is_asked_for(self) -> None:
+        async def run():
+            async with websockets.asyncio.client.connect(
+                MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}?expected_user=someone-else",
+                additional_headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN},
+                open_timeout=10,
+            ) as browser:
+                await asyncio.wait_for(browser.wait_closed(), 5)
+                return browser.close_code, browser.close_reason
+
+        self.assertEqual(asyncio.run(run()), (1008, "user_changed"))
+        self.assertEqual(self.eneo.requests, [], "a ticket was asked for under the wrong user")
+
+    def test_a_socket_for_the_sessions_user_opens_and_so_does_one_that_names_nobody(self) -> None:
+        async def scenario(browser):
+            return None
+
+        for query in ("?expected_user=user-token-of-a", "?expected_user=user-token-of-a&expected_tenant=tenant-id", ""):
+            with self.subTest(query=query):
+                self.through(self.session_a, scenario, query=query)  # waits for `ready`
+                self.assertTrue(any(seen.path.endswith("/live-transcription-sessions/") for seen in self.eneo.requests))
+                self.eneo.requests.clear()
 
 
 class CallbackStateTests(BoundaryCase):

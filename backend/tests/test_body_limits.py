@@ -330,6 +330,16 @@ class UploadTests(Case):
                 self.assertEqual(self.eneo.calls, [])
                 self.assertEqual(os.listdir(self.temporary), [])
 
+    async def test_an_upload_for_another_user_is_a_409_before_a_byte_of_it_is_read(self) -> None:
+        body = multipart_of(6)  # within the upload cap, so it is the page's user that decides
+
+        response = await self.upload(body, headers={**MULTIPART, "X-Expected-User": "someone-else"})
+
+        self.assertEqual((response.status_code, response.json()), (409, {"detail": "user_changed"}))
+        self.assertEqual(body.taken, 0)
+        self.assertEqual(self.eneo.calls, [])
+        self.assertEqual(os.listdir(self.temporary), [])
+
     async def test_an_upload_from_another_origin_is_refused_before_it_is_read(self) -> None:
         body = multipart_of(6)
 

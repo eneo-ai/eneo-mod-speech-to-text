@@ -659,6 +659,39 @@ class ModuleAuth:
             )
 
     @staticmethod
+    def is_another_user(
+        session: ModuleSession, expected_user: str | None, expected_tenant: str | None = None
+    ) -> bool:
+        """True if the page that made a media request is for another person than the session's.
+
+        A browser has one cookie for every tab: a login in one tab replaces the session of an old one, and the old
+        page would go on sending audio under the new person's session. The page names the user (and the tenant, if it
+        knows it) it was opened for, and the module compares: ids, not secrets. A page that names nobody is accepted,
+        for now: the frontend sends the name from the release that carries this check, and it becomes required in the
+        release after it, when a request without one is refused as well. A session without a user (the access code)
+        has nobody to compare.
+        """
+        if not isinstance(session, EneoSsoSession):
+            return False
+        return (expected_user is not None and expected_user != session.user.id) or (
+            expected_tenant is not None and expected_tenant != session.tenant_id
+        )
+
+    def require_expected_user(self, request: Request) -> None:
+        """A dependency of the routes that take media: 409 user_changed, before the body is read, for another user's page.
+
+        The page names its user in ``X-Expected-User`` (and the tenant in ``X-Expected-Tenant``). Run it after
+        ``require_session``.
+        """
+        if self.is_another_user(
+            self.session_from_request(request),
+            request.headers.get("x-expected-user"),
+            request.headers.get("x-expected-tenant"),
+        ):
+            logger.info("A media request was refused: its page is for another user than the session's")
+            raise HTTPException(status_code=409, detail="user_changed")
+
+    @staticmethod
     def session_from_request(connection: HTTPConnection) -> ModuleSession:
         session = getattr(connection.state, "module_session", None)
         if not isinstance(session, (EneoSsoSession, AccessCodeSession)):
