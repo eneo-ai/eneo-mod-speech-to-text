@@ -1,10 +1,8 @@
 [
   "app/dev/foundation/FoundationCheck.tsx",
   "app/dev/speaker-review/ReviewFixtures.tsx",
-  "app/flows/FlowsPage.tsx",
   "app/layout.tsx",
   "components/AuthGate.tsx",
-  "components/FlowList.tsx",
   "components/NameCombobox.tsx",
   "components/OfflineBanner.tsx",
   "components/RetryNotice.tsx",
