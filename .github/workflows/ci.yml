@@ -73,6 +73,8 @@ jobs:
         run: npm run test:prod
       - name: Accessibility gate, one phone and one laptop
         run: npx playwright test --project=phone-390-light --project=laptop-1440-light --workers=2
+      - name: Branding gate, a deployment with its own organisation and accent
+        run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
