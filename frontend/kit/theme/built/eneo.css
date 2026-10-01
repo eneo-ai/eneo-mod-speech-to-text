@@ -415,6 +415,10 @@
     min-height: var(--size-element-lg);
   }
 
+  .astryx-avatar-fallback {
+    color: var(--color-text-primary);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
