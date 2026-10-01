@@ -251,7 +251,7 @@ test("a control that removes or disables itself hands the focus on, never to the
 test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card under Namnge talarna, before the transcript", async (t) => {
   eneo(t);
   const view = await review(speakers);
-  const card = button(view.container, "Namnge talarna")!.closest("details")!;
+  const card = button(view.container, "Namnge talarna")!.closest('[role="group"][aria-label="Talare"]')!;
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");

@@ -161,14 +161,14 @@ test("an approved text review shows the saved decision; a draft from before it i
 
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toEqual({
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
     name: "Avvisa körningen",
     description: "Ange en kort motivering. Körningen kommer att avbrytas.",
   });
 
   await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
 });
 
 test("a page that is still loading says so, under the page's heading", async ({ page }) => {

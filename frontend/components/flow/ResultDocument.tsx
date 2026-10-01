@@ -44,7 +44,7 @@ export function remarkResultHeadings() {
  * design system's Markdown does not read an underlined title as a heading, so the document keeps react-markdown and
  * takes the design system's text scale and tokens from a CSS Module.
  */
-function ResultMarkdown({ children }: { children: string }) {
+export function ResultMarkdown({ children }: { children: string }) {
   return <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{children}</ReactMarkdown>;
 }
 

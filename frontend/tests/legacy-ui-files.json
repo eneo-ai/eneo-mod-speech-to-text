@@ -13,7 +13,6 @@
   "components/flow/ParticipantsInput.tsx",
   "components/flow/ReadyPanel.tsx",
   "components/flow/Recorder.tsx",
-  "components/flow/ReviewView.tsx",
   "components/flow/UploadPanel.tsx",
   "components/frame.tsx"
 ]
