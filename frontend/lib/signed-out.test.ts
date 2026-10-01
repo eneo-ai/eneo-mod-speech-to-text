@@ -393,11 +393,18 @@ test("with the access code the dialog takes the code, sends it once, and says a 
   const field = dialog.querySelector<HTMLInputElement>('input[type="password"]')!;
   assert.equal(field.autocomplete, "current-password", "a password manager can fill it in");
   const send = () => button(dialog, "Logga in igen")!;
+  assert.equal(field.getAttribute("aria-errormessage"), null, "nothing to point at before there is a problem");
 
   await view.act(async () => send().click());
   assert.equal(sent.length, 0, "an empty code is not sent");
   assert.match(dialog.textContent ?? "", /Felaktig åtkomstkod\./);
   assert.equal(field.getAttribute("aria-invalid"), "true");
+  // The field in error names its message: the alert, which says it once when it appears (aria-describedby is the
+  // field's own, the design system overwrites a given one).
+  const message = document.getElementById(field.getAttribute("aria-errormessage") ?? "");
+  assert.ok(message, "the field in error points at an element");
+  assert.equal(message.getAttribute("role"), "alert");
+  assert.match(message.textContent ?? "", /Felaktig åtkomstkod\./);
 
   await view.act(async () => type(field, "k".repeat(300)));
   assert.equal(field.value.length, 256, "the backend takes no more than 256 characters");
