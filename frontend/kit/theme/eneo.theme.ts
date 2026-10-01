@@ -21,6 +21,9 @@ export const eneoTheme = defineTheme({
     '--color-on-accent': ['#FFFFFF', '#0B1118'],
     // Astryx's default white label on the dark-mode error fill is 3.76:1; a dark label is 5.4:1.
     '--color-on-error': ['#FFFFFF', '#1A0A0C'],
+    // The one action a screen exists for (Starta, Stoppa, Skapa dokument) is 48 px at every pointer; Astryx's
+    // large control is 36 px with a mouse.
+    '--size-element-lg': '48px',
   },
   components: {
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
@@ -37,6 +40,8 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
+    'slider-control': {base: {minBlockSize: '24px'}},
   },
   adaptations: {
     rules: [
@@ -49,6 +54,7 @@ export const eneoTheme = defineTheme({
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
             'top-nav-heading': {base: {minHeight: TOUCH}},
+            'slider-control': {base: {minBlockSize: TOUCH}},
           },
         },
       },

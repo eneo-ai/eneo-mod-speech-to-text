@@ -230,6 +230,7 @@
     --font-family-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     --font-family-code: ui-monospace, "SFMono-Regular", Consolas, monospace;
     --color-on-error: light-dark(#FFFFFF, #1A0A0C);
+    --size-element-lg: 48px;
   }
 
   :scope {
@@ -391,6 +392,10 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-slider-control {
+    min-block-size: 24px;
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
@@ -466,6 +471,10 @@
 
     .astryx-top-nav-heading {
       min-height: 44px;
+    }
+
+    .astryx-slider-control {
+      min-block-size: 44px;
     }
   }
 }

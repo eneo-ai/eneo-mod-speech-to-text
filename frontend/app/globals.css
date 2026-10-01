@@ -22,6 +22,8 @@
     --destructive-foreground: 0 0% 100%;
     --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
     --record-foreground: 0 0% 100%;
+    /* The recording dot for CSS Modules, from --record in both modes (3:1 on the card and the muted surface). */
+    --module-color-record: light-dark(#dc2828, #dd2c2c);
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
     /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
@@ -157,32 +159,6 @@
   .rule-divider-soft {
     border-bottom: 1px solid hsl(var(--rule-soft));
   }
-
-  /* ----- Recording animations ----- */
-  @keyframes lyssna-pulse-ring {
-    0% {
-      inset: 0;
-      opacity: 0.6;
-    }
-    100% {
-      inset: -22px;
-      opacity: 0;
-    }
-  }
-
-  .lyssna-pulse-ring {
-    animation: lyssna-pulse-ring 2.4s ease-out infinite;
-  }
-
-  @keyframes lyssna-blink {
-    50% {
-      opacity: 0;
-    }
-  }
-
-  .lyssna-blink {
-    animation: lyssna-blink 1s steps(2) infinite;
-  }
 }
 
 
@@ -237,7 +213,6 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
-  .lyssna-pulse-ring, .lyssna-blink { animation: none; }
   /* Loading spinners and skeletons stand still, and the design system's spinner arc; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse, .astryx-spinner circle { animation: none; }
 }
