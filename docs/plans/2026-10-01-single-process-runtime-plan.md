@@ -158,7 +158,7 @@ Conditions the tests do not all exercise and that are most likely to hurt a user
 | `npm run test:a11y` | The gate, dev target (Vite dev server, stub) | before finishing a phase |
 | `npm run test:a11y:built` | The gate, built target (production bundle, production headers, stub) | Task B3.2, CI subset, phase exit |
 | `npm run test:prod` | The built app served by the real backend, Chromium, WebKit, Firefox | before finishing a phase from B3 |
-| `npm run test:image` (repository root script `deploy/acceptance.sh`) | The production image, from "Production image acceptance" | Phase B4 exit and the cut-over |
+| `npm run test:image` (a script of `frontend/package.json` that runs `../deploy/acceptance.sh`) | The production image, from the table of Task B4.2 | Phase B4 exit and the cut-over |
 | `docker build -t eneo-mod-speech-to-text:test .` | The image builds | before finishing B4 |
 
 ### Commands that exist after Phase B2/B3
@@ -180,7 +180,7 @@ Stop, leave the branch as it is, and report to the owner if any of these happens
 - `react-router` cannot be loaded by the unit tests' CommonJS build and the ESM build of the tests is not a one-task change.
 - A gate threshold would have to be lowered, a state removed, or an ARIA snapshot changes beyond the removal of Next's announcer and the new route announcer.
 - A missing file or an unknown `/api/*` path answers HTML anywhere.
-- The production image uses more resident memory at idle than today's two processes together (B0.1 measures today's), or its first-load transfer is more than 5 % above today's compressed JS and CSS on the same pages, with no reason that the owner accepts.
+- The production image uses more resident memory at idle than today's two processes together (B0.1 measures today's), or its first-load transfer is more than 5 % above today's compressed JS and CSS on the same pages, or the live relay's p95 under static load is more than twice its idle p95 (B4.2 check 15), with no reason that the owner accepts.
 - The owner has not repointed the domain (Task B6.1): do not delete the old deployment's rollback path.
 
 ---
@@ -607,7 +607,7 @@ There is no `apt-get` and no `libstdc++6`. After the build, `docker run --rm <im
 
 ### Task B4.2: Production image acceptance
 
-**Files:** Create `deploy/acceptance.sh`, `deploy/acceptance/fake_eneo.py` (built from `FakeEneoApi`, `FakeEneoSocket` of `backend/tests/test_live_relay.py` and the fakes of `test_artifact_proxy.py` and `test_audio_proxy.py`), `deploy/acceptance/checks.py`. Modify `frontend/playwright.prod.config.ts` (`PROD_EXTERNAL_URL`: test an already running URL instead of starting the backend, as the kit's `E2E_EXTERNAL_URL` does).
+**Files:** Create `deploy/acceptance.sh`, `deploy/acceptance/fake_eneo.py` (built from `FakeEneoApi`, `FakeEneoSocket` of `backend/tests/test_live_relay.py` and the fakes of `test_artifact_proxy.py` and `test_audio_proxy.py`), `deploy/acceptance/checks.py`. Modify `frontend/package.json` (`test:image`), `frontend/playwright.prod.config.ts` (`PROD_EXTERNAL_URL`: test an already running URL instead of starting the backend, as the kit's `E2E_EXTERNAL_URL` does).
 
 `deploy/acceptance.sh` builds the image, starts it with `docker run` beside the fake Eneo (access-code mode), waits for `healthy`, runs the checks, runs `npm run test:prod -- --project=chromium` against `PROD_EXTERNAL_URL`, and removes only the containers it started.
 
@@ -627,14 +627,15 @@ There is no `apt-get` and no `libstdc++6`. After the build, `docker run --rm <im
 | 12 | `docker run` with `SPEAKER_REVIEW_ENABLED=true` as a build arg yields a `dist/` that contains the speaker-review marker string and the default image does not | the flag is lost or leaks |
 | 13 | The default image's `dist/` contains no `Grundkontroll` and no `/dev/` route | a dev page shipped |
 | 14 | Image size, start to `healthy`, idle and loaded resident memory, CPU under the B0.1 polling load, and `docs/plans/page-cost.cjs` (transfer, LCP, total blocking time, layout shift on the throttled profile) for `/flows` and `/flows/flow-1`, against B0.1's numbers. The layout shift of the header is the evidence for decision D4 (the mark is in the first frame). | the module got heavier or slower |
+| 15 | The live relay under static load. Static files, uploads and the WebSocket relay now share one event loop (Next used to serve the files in another process). With one live session streaming 20 frames a second, measure the frame-to-event round trip idle, then while 200 concurrent clients fetch the page and its assets (cold cache) for 30 s | the loaded p95 is more than twice the idle p95 (stop condition: serve the assets from a faster path, or cache them at the edge, before the cut-over) |
 
 - [ ] **Step 1: Write the checks first**, run them against today's image (`stt-before` from B0.1) where they apply (1, 2, 4, 7, 8, 9, 10, 14) and record which fail there: that is the proof that they can fail (4 should, on `/_next/static/missing.js`'s HTML).
-- [ ] **Step 2: Run on the new image.** Expected: all pass. Put the table of check 14 in the pull request.
+- [ ] **Step 2: Run on the new image.** Expected: all pass. Put the tables of checks 14 and 15 in the pull request.
 - [ ] **Step 3: Commit.** `test(deploy): acceptance of the production image`
 
 ### Phase B4 exit
 
-`docker build` and `deploy/acceptance.sh` pass; check 14 shows no regression (stop condition otherwise); `docker compose --env-file .env.example config -q` passes.
+`docker build` and `deploy/acceptance.sh` pass; checks 14 and 15 show no regression (stop condition otherwise); `docker compose --env-file .env.example config -q` passes.
 
 ---
 
