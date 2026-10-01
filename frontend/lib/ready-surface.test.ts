@@ -46,16 +46,33 @@ async function ready(props: Record<string, unknown> = {}) {
 
 const question = () => document.querySelector<HTMLDialogElement>('[role="alertdialog"]');
 
-test("while Strömma's final text is on its way, Skapa dokument says so and waits, keeping its focus", async () => {
-  const view = await ready({ finishing: true });
-  const create = named(view.container, "Slutför texten…")!;
-  assert.ok(create, "the button says what it waits for");
+test("while Strömma's final text is on its way, Skapa dokument keeps its name and its focus, and a line says why it waits", async () => {
+  const { ReadyPanel } = await import("../components/flow/ReadyPanel");
+  const calls = { create: 0 };
+  const panel = (finishing: boolean) =>
+    createElement(ReadyPanel, { recording, persistent: true, problem: null, finishing, onCreate: () => void (calls.create += 1), onDiscard() {} });
+  const view = await mount(panel(false));
+  const create = named(view.container, "Skapa dokument")!;
+  // The region that says it is there before it has anything to say, so that what it later holds is announced.
+  const why = () => [...view.container.querySelectorAll("p")].find((p) => p.getAttribute("role") === "status");
+  const region = why();
+  assert.ok(region, "a status region is there from the start");
+  assert.equal(region.textContent, "", "and says nothing while the text is not on its way");
+  await view.act(async () => create.focus());
+
+  await view.act(async () => view.rerender(panel(true)));
+  assert.equal(why(), region, "the same region, so the change in it is announced");
+  assert.equal(region.textContent, "Slutför texten…", "it says why the button waits");
+  assert.equal(named(view.container, "Skapa dokument"), create, "the same button, under the same name");
   assert.equal(create.disabled, false, "not disabled: focus stays on it");
   assert.equal(create.getAttribute("aria-busy"), "true", "and says that it is busy");
-  await view.act(async () => create.focus());
   await view.act(async () => create.click());
   assert.equal(document.activeElement, create, "a press leaves the focus where it was");
-  assert.equal(named(view.container, "Skapa dokument"), null, "it is not offered while it waits");
+
+  await view.act(async () => view.rerender(panel(false)));
+  assert.equal(region.textContent, "", "the line goes when the text is in");
+  assert.equal(create.hasAttribute("aria-busy"), false);
+  assert.equal(document.activeElement, create, "with the focus still on the button");
 });
 
 test("a press on Skapa dokument creates, once the text is in", async () => {
