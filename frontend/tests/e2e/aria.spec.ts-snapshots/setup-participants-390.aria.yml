@@ -1,4 +1,5 @@
 - main:
+  - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma. 2 namn tillagda.
@@ -14,6 +15,7 @@
       - text: Erik Lund
       - button "Ta bort Erik Lund"
   - status: Erik Lund har lagts till.
+  - status
   - region "Ljudet":
     - status
     - heading "Hur vill du lägga till ljudet?" [level=2]
@@ -25,8 +27,7 @@
       - text: Spela in Spela in nu och transkribera efteråt.
       - radio "Ladda upp"
       - text: Ladda upp Välj en ljudfil från din enhet.
-    - text: Märk upp talare
-    - paragraph: Tar längre tid efter inspelningen.
+    - text: Märk upp talare Tar längre tid efter inspelningen.
     - switch "Märk upp talare"
     - text: Mikrofon
     - combobox "Mikrofon": Standard (Fake Default Audio Input)
@@ -47,6 +48,8 @@
           - button /Öppna, körningen \d+ sep \d+:\d+/:
             - text: ""
             - status
-  - button "Starta strömning"
+  - button "Starta strömning":
+    - text: ""
+    - status
   - status
   - paragraph: Inspelningen sparas på enheten medan du spelar in.
