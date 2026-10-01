@@ -1,6 +1,8 @@
 # Agent instructions: eneo-mod-speech-to-text
 
 The frontend is being ported from shadcn/Radix/Tailwind to Astryx.
+This file, `CLAUDE.md`, `.beads/` and `docs/plans/` exist only for the port. They are removed when it is done
+(bead `stt-plan-a-astryx-port-57a.24`); do not build anything permanent on them.
 Plan: `docs/plans/2026-10-01-astryx-port-plan.md`. Design: `docs/plans/2026-10-01-module-platform-design.md`.
 
 ## UI rules (these override the generated block in `frontend/AGENTS.md` where they differ)
