@@ -402,6 +402,12 @@ async def _forward_upload(request: Request, path: str) -> Response:
             raise HTTPException(
                 status_code=400, detail="The file name and content type must not contain control characters"
             )
+        # Policy: once the file is whole here, forwarding it finishes, whether or not the browser is still there.
+        # A browser that leaves midway leaves no complete file, so nothing is forwarded (the parse above raises
+        # ClientDisconnect). One that leaves after the last byte does not stop this call: cancelling it midway could
+        # leave Eneo with a part of the file, a write the module cannot know about and cannot undo. The cost is
+        # bounded: the file is at most max_upload_bytes, the call at most upload_proxy_timeout_seconds, and the
+        # spooled file is closed when this block ends, however the call does.
         return await _proxy_multipart_upload(
             upstream_url, upload_file, request, _requested_upload_timeout_seconds(request)
         )

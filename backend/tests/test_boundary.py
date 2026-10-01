@@ -12,6 +12,7 @@ import json
 import os
 import re
 import socket
+import tempfile
 import threading
 import time
 import unittest
@@ -40,6 +41,7 @@ from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: 
 
 ORIGIN = main.settings.module_origin
 FAR_FUTURE = 4102444800  # 2100-01-01
+BOUNDARY = "boundaryboundary"
 MiB = 1 << 20
 CAP = 4 * MiB  # max_response_bytes in the tests of how much of an answer is read
 
@@ -642,6 +644,59 @@ class RedirectTests(BoundaryCase):
                 self.signed_in_as = "someone-else"
 
                 self.assert_stays_on_the_module(self.sign_in(client, renew="1", next=unsafe))
+
+
+class AbandonedUploadTests(BoundaryCase):
+    """Policy: once the browser's file has been fully received, forwarding it to Eneo finishes, whoever is still there."""
+
+    def test_an_upload_the_browser_walks_away_from_is_still_forwarded_whole_and_its_file_closed(self) -> None:
+        payload = os.urandom(3 * MiB)  # more than a spooled file keeps in memory, so it is on disk while it is forwarded
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.addCleanup(setattr, tempfile, "tempdir", tempfile.tempdir)
+        tempfile.tempdir = folder.name
+        stalled, release, completed = threading.Event(), threading.Event(), []
+
+        def stall(seen: Seen):
+            stalled.set()
+            release.wait(15)
+            return 200, [("content-type", "application/json")], b'{"id": "file-1"}'
+
+        self.respond_with(stall)
+        original = main._proxy_multipart_upload
+
+        async def watched(*args, **kwargs):
+            response = await original(*args, **kwargs)
+            completed.append(response.status_code)
+            return response
+
+        with patch.object(main, "_proxy_multipart_upload", watched):
+            fds_before = len(os.listdir("/dev/fd"))
+            head = f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="upload_file"; filename="a.webm"\r\nContent-Type: audio/webm\r\n\r\n'.encode()
+            body = head + payload + f"\r\n--{BOUNDARY}--\r\n".encode()
+            host, port = urlparse(MODULE_SERVER.url).netloc.split(":")
+            browser = socket.create_connection((host, int(port)))
+            browser.sendall(
+                (
+                    f"POST /api/eneo/flows/f/files/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\nCookie: {SESSION_COOKIE}={self.session_a}\r\n"
+                    f"Content-Type: multipart/form-data; boundary={BOUNDARY}\r\nContent-Length: {len(body)}\r\n\r\n"
+                ).encode() + body
+            )
+            self.assertTrue(stalled.wait(15), "the upload never reached Eneo")
+            browser.close()  # the file is whole at the module and Eneo is still working: the browser walks away
+            time.sleep(0.3)
+            self.assertEqual(completed, [], "forwarding was cut short by the browser leaving")
+            release.set()
+            deadline = time.time() + 10
+            while not completed and time.time() < deadline:
+                time.sleep(0.02)
+            while len(os.listdir("/dev/fd")) > fds_before and time.time() < deadline:
+                time.sleep(0.02)
+
+        self.assertEqual(completed, [200], "forwarding did not finish after the browser left")
+        self.assertIn(payload, self.eneo.requests[-1].body, "Eneo did not get the whole file")
+        self.assertLessEqual(len(os.listdir("/dev/fd")), fds_before, "the file of the abandoned upload was left open")
+        self.assertEqual(os.listdir(folder.name), [])
 
 
 class CallbackStateTests(BoundaryCase):
