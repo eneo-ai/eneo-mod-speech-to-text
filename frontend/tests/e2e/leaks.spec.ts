@@ -44,9 +44,20 @@ async function reviewPage(page: Page) {
 }
 
 const OVERLAYS: Record<string, Overlay> = {
-  "account menu": {
+  // The foundation page's own single-item menu: the design system's DropdownMenu, not the module's.
+  "foundation menu": {
     show: (page) => page.getByRole("button", { name: "Konto" }).click(),
     shown: (page) => page.getByRole("menu"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The module's account menu, as every page has it: the avatar, the colour mode and Logga ut (only it has that item).
+  "account menu": {
+    go: async (page) => {
+      await open(page, "/flows");
+      await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
+    },
+    show: (page) => page.getByRole("button", { name: /^Öppna konto för/ }).click(),
+    shown: (page) => page.getByRole("menuitem", { name: "Logga ut" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
   "speaker picker": {
