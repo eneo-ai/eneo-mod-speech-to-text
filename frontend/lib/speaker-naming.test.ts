@@ -3,6 +3,7 @@ import test, { afterEach } from "node:test";
 
 import { ApiError } from "./api";
 import { buildEditedMapping, namingRefusal, withSplitLabels, type SpeakerMappingRow } from "./speaker-mapping";
+import { computeAccessibleName } from "dom-accessibility-api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
 
 installDom();
@@ -13,13 +14,21 @@ const row = (label: string, name: string | null, lineCount = 3): SpeakerMappingR
 });
 const rows = [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", null, 9)];
 
+/** Mounts what the page mounts it in: the design system's words are Swedish (Stäng) only inside the providers. */
+async function mountInProviders(element: import("react").ReactElement) {
+  const { createElement } = await import("react");
+  const { ThemeProvider } = await import("next-themes");
+  const { ModuleProviders } = await import("../kit/ModuleProviders");
+  return mount(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: element }) }));
+}
+
 async function dialog(props: Record<string, unknown> = {}) {
   const { createElement } = await import("react");
   const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
   const saved: SpeakerMappingRow[][] = [];
   const continued: SpeakerMappingRow[][] = [];
   const listened: string[] = [];
-  const view = await mount(
+  const view = await mountInProviders(
     createElement(SpeakerNamingDialog, {
       rows,
       participants: ["Anna Berg", "Erik Lund", "Sara Holm"],
@@ -40,13 +49,20 @@ async function dialog(props: Record<string, unknown> = {}) {
   );
   const trigger = button(view.container, "Namnge talarna")!;
   await view.act(async () => trigger.click());
-  const field = (label: string) => document.querySelector<HTMLInputElement>(`[role="dialog"] input[aria-label="Vem är ${label}?"]`)!;
-  return { view, trigger, field, saved, continued, listened };
+  return { view, trigger, field: nameFieldOf, saved, continued, listened };
+}
+
+/** The name field of a speaker, found as a screen reader names it, in the dialog that is open. */
+function nameFieldOf(label: string): HTMLInputElement {
+  return fieldNamed(`Vem är ${label}?`)!;
+}
+function fieldNamed(name: string): HTMLInputElement | null {
+  return [...document.querySelectorAll<HTMLInputElement>("dialog[open] input")].find((input) => computeAccessibleName(input) === name) ?? null;
 }
 
 test("each speaker is a row: the mark, how many passages, what they say first, a sample and a name", async () => {
   const { view, field, listened } = await dialog();
-  const content = document.querySelector('[role="dialog"]')!;
+  const content = document.querySelector("dialog[open]")!;
   assert.match(content.textContent ?? "", /Namnge talarna/);
   assert.match(content.textContent ?? "", /Talare 1 · 12 inlägg”Välkomna till mötet\.”/);
   assert.match(content.textContent ?? "", /Talare 2 · 9 inlägg”Första punkten gäller budgeten\.”/);
@@ -97,7 +113,7 @@ async function nameField(value: string | null, options: string[]) {
   const { NameCombobox } = await import("../components/NameCombobox");
   function Field() {
     const [name, setName] = useState<string | null>(value);
-    return createElement(NameCombobox, { value: name, options, onChange: setName, "aria-label": "Vem är Talare 2?" });
+    return createElement(NameCombobox, { value: name, options, onChange: setName, label: "Vem är Talare 2?" });
   }
   const view = await mount(createElement(Field));
   const input = view.container.querySelector("input")!;
@@ -217,8 +233,8 @@ test("a refused Spara och fortsätt stays open, with the names kept and the reas
   const { view, field } = await dialog({ onSaveAndContinue: async () => "Flödet kunde inte fortsätta. Försök igen." });
   await view.act(async () => type(field("Talare 2"), "Erik Lund"));
   await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
-  assert.ok(document.querySelector('[role="dialog"]'), "still open");
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Flödet kunde inte fortsätta/);
+  assert.ok(document.querySelector("dialog[open]"), "still open");
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /Flödet kunde inte fortsätta/);
   assert.equal(field("Talare 2").value, "Erik Lund");
 });
 
@@ -228,8 +244,8 @@ test("Spara, for someone who stops here, saves trimmed names, closes and gives t
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.equal(continued.length, 0);
   assert.deepEqual(saved[0].map((r) => [r.label, r.name]), [["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]);
-  assert.ok(!document.querySelector('[role="dialog"]'), "closed");
-  // Radix hands the focus back after closing; wait a turn. Compare as a boolean: a failed
+  assert.ok(!document.querySelector("dialog[open]"), "closed");
+  // The focus goes back in an effect after closing; wait a turn. Compare as a boolean: a failed
   // comparison of two DOM nodes makes node print them, which takes minutes under jsdom.
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
   assert.ok(document.activeElement === trigger, "focus back on the button that opened it");
@@ -240,15 +256,16 @@ test("a name with a line break or a tab is not saved, and says why", async () =>
   await view.act(async () => type(field("Talare 2"), "Erik\tLund"));
   await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
   assert.equal(saved.length + continued.length, 0);
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Ett namn är en rad/);
+  assert.match(document.querySelector("dialog[open]")?.textContent ?? "", /Ett namn är en rad/);
+  assert.equal(field("Talare 2").getAttribute("aria-invalid"), "true", "the field says it is refused");
 });
 
 test("a refused save stays open with Eneo's reason", async () => {
   const { view, field } = await dialog({ onSave: async () => "Granskningen har ändrats sedan du laddade sidan." });
   await view.act(async () => type(field("Talare 2"), "Erik Lund"));
   await view.act(async () => button(document.body, "Spara")!.click());
-  assert.ok(document.querySelector('[role="dialog"]'), "still open");
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /Granskningen har ändrats/);
+  assert.ok(document.querySelector("dialog[open]"), "still open");
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /Granskningen har ändrats/);
 });
 
 test("a speaker split off in the review can be named; it is sent only with a name", () => {
@@ -267,14 +284,14 @@ test("speaker names with spaces and punctuation produce valid unique option IDs,
   const { NameCombobox } = await import("../components/NameCombobox");
   const view = await mount(
     createElement(NameCombobox, {
-      value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => undefined, "aria-label": "Namn för Talare 1",
+      value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => undefined, label: "Namn för Talare 1",
     }),
   );
   const input = view.container.querySelector("input")!;
   await view.act(async () => input.dispatchEvent(new window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
   const list = document.querySelector('[role="listbox"][aria-label="Förslag: Namn för Talare 1"]');
   assert.ok(list, "the list opens");
-  assert.ok(!view.container.contains(list), "outside the field's box, so no scrolling body cuts it off");
+  assert.ok(list!.closest("[popover]"), "a popover of the top layer, so no scrolling body cuts it off");
   const ids = [...list!.querySelectorAll('[role="option"]')].map((option) => option.id);
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(ids.every((id) => !/\s/.test(id)));
@@ -290,8 +307,10 @@ test("the flow's unsure proposal says so, and its evidence is one Varför? away"
   const rowOf = (label: string) => field(label).closest("li")!;
   assert.match(rowOf("Talare 1").textContent ?? "", /Osäkert förslag/, "medium confidence is marked");
   assert.doesNotMatch(rowOf("Talare 2").textContent ?? "", /Osäkert förslag/, "a sure proposal is not");
-  assert.doesNotMatch(rowOf("Talare 1").textContent ?? "", /du är på plats/, "the evidence waits behind Varför?");
-  await view.act(async () => button(rowOf("Talare 1"), "Varför?")!.click());
+  const why = button(rowOf("Talare 1"), "Varför?")!;
+  assert.equal(why.getAttribute("aria-expanded"), "false", "the evidence waits behind Varför?");
+  await view.act(async () => why.click());
+  assert.equal(why.getAttribute("aria-expanded"), "true");
   assert.match(rowOf("Talare 1").textContent ?? "", /Anna, du är på plats/);
   assert.ok(!button(rowOf("Talare 2"), "Varför?"), "no Varför? without evidence");
   // Once someone types another name, it is no longer the flow's guess.
@@ -304,7 +323,7 @@ test("Esc, Stäng or a click beside only close: the typed names are there when t
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-3" };
   const { view, trigger, field } = await dialog({ draftKey });
-  const shut = () => !document.querySelector('[role="dialog"]');
+  const shut = () => !document.querySelector("dialog[open]");
   const escape = (target: Element) => view.act(async () => target.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
   await view.act(async () => type(field("Talare 2"), "Bertil Eklund"));
   await view.act(async () => button(document.body, "Stäng")!.click());
@@ -330,7 +349,7 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
   const reloaded = async () => {
     const { createElement } = await import("react");
     const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
-    return mount(
+    return mountInProviders(
       createElement(SpeakerNamingDialog, {
         rows,
         participants: [],
@@ -343,7 +362,7 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
       }),
     );
   };
-  const field = (label: string) => document.querySelector<HTMLInputElement>(`[role="dialog"] input[aria-label="Vem är ${label}?"]`);
+  const field = (label: string) => fieldNamed(`Vem är ${label}?`);
   const again = await reloaded();
   assert.equal(field("Talare 2")?.value, "Erik Lund", "open again, with the name typed before");
   assert.equal(field("Talare 1")?.value, "Anna Berg");
@@ -370,7 +389,7 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
   await first.view.unmount();
   const { createElement } = await import("react");
   const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
-  const again = await mount(
+  const again = await mountInProviders(
     createElement(SpeakerNamingDialog, {
       rows,
       participants: [],
@@ -382,14 +401,14 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
       children: createElement("button", { type: "button" }, "Namnge talarna"),
     }),
   );
-  const field = document.querySelector<HTMLInputElement>('[role="dialog"] input[aria-label="Vem är Talare 1?"]');
+  const field = fieldNamed("Vem är Talare 1?");
   assert.equal(field?.value, "", "not the name the review had");
   await again.unmount();
 });
 
 test("once the pause is approved the dialog shows the saved names read-only, and its one action is Fortsätt", async () => {
   const { view, field, saved, continued } = await dialog({ decided: true });
-  const content = document.querySelector('[role="dialog"]')!;
+  const content = document.querySelector("dialog[open]")!;
   assert.match(content.textContent ?? "", /Namnen är redan sparade\./);
   assert.equal(field("Talare 1").value, "Anna Berg");
   assert.ok(field("Talare 1").disabled && field("Talare 2").disabled, "nothing to change any more");
@@ -398,4 +417,35 @@ test("once the pause is approved the dialog shows the saved names read-only, and
   await view.act(async () => button(document.body, "Fortsätt")!.click());
   assert.deepEqual(continued.map((next) => next.map((r) => [r.label, r.name])), [[["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", null]]]);
   assert.equal(saved.length, 0);
+});
+
+test("while the login has ended the dialog is closed, and it is back with its typed names after the new login", async (t) => {
+  // A native dialog stays above the page's cover (a modal's inertness is its own), so the dialog follows the login.
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
+  const end = loginState.begin(anna);
+  t.after(end);
+  const { view, trigger, field, listened } = await dialog();
+  await view.act(async () => type(field("Talare 2"), "Erik Lund"));
+  await view.act(async () => loginState.ended());
+  assert.ok(!document.querySelector("dialog[open]"), "closed while the login is ended");
+  assert.equal(document.querySelector("dialog[open] input"), null, "its fields leave with it");
+  assert.deepEqual(listened, [], "nothing plays because of it");
+  await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+  assert.ok(document.querySelector("dialog[open]"), "back after the new login");
+  assert.equal(field("Talare 2").value, "Erik Lund", "with the typed name");
+  assert.ok(trigger.isConnected);
+});
+
+test("the dialog follows the part of the screen the phone's keyboard leaves", async (t) => {
+  const listeners = new Set<() => void>();
+  const viewport = { height: 800, addEventListener: (_: string, listener: () => void) => listeners.add(listener), removeEventListener: (_: string, listener: () => void) => listeners.delete(listener) };
+  Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
+  t.after(() => void Reflect.deleteProperty(window, "visualViewport"));
+  const { view } = await dialog();
+  const dialogElement = () => document.querySelector<HTMLDialogElement>("dialog[open]")!;
+  assert.match(dialogElement().getAttribute("style") ?? "", /calc\(800px/, "the dialog starts at the screen's height");
+  viewport.height = 420; // the keyboard opens
+  await view.act(async () => listeners.forEach((listener) => listener()));
+  assert.match(dialogElement().getAttribute("style") ?? "", /calc\(420px/, "and keeps above the keyboard");
 });

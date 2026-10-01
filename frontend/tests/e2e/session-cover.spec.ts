@@ -38,6 +38,26 @@ test("a page dialog open when the login ends is covered with the page, and is ba
   await expect(name).toHaveValue("Zara Testsson");
 });
 
+test("a name list open when the login ends goes with its dialog, and the focus is inside the dialog again after the new login", async ({ page }) => {
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  const naming = page.getByRole("dialog", { name: "Namnge talarna" });
+  await naming.getByLabel(/^Vem är Talare 1/).click();
+  const list = page.getByRole("listbox", { name: /^Förslag: Vem är Talare 1/ });
+  await expect(list).toBeVisible();
+
+  await endLogin(page);
+  await expect(naming).toBeHidden();
+  await expect(list, "a list of the page is covered with its dialog").toBeHidden();
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(naming).toBeVisible();
+  await expect(list, "the list does not come back by itself").toBeHidden();
+  expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null), "focus is in the dialog").toBe(true);
+});
+
 test("the warning already open when the login ends becomes the sign-in dialog, which nothing but a new login closes", async ({ page }) => {
   await sessionWarning(page);
   await endLogin(page);

@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { open } from "./screens";
+import { open, run } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -18,7 +18,19 @@ const WARM_UP = 5;
 // What the 40 openings together may leave. Never raised to make a test pass: a number above it is a leak to find.
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
-type Overlay = { show: (page: Page) => Promise<unknown>; shown: (page: Page) => Locator; hide: (page: Page) => Promise<unknown> };
+type Overlay = {
+  /** Where the overlay is opened, once; the foundation page when there is none. */
+  go?: (page: Page) => Promise<unknown>;
+  show: (page: Page) => Promise<unknown>;
+  shown: (page: Page) => Locator;
+  hide: (page: Page) => Promise<unknown>;
+};
+
+/** A run paused for review, its transcript read: where the naming dialog opens. */
+async function reviewPage(page: Page) {
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+}
 
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
@@ -29,6 +41,22 @@ const OVERLAYS: Record<string, Overlay> = {
   "speaker picker": {
     show: (page) => page.getByRole("combobox", { name: "Talare" }).click(),
     shown: (page) => page.getByRole("option", { name: "Erik Lund" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The review page's own overlays: the naming dialog, and the name list inside it (a popover of the top layer).
+  "naming dialog": {
+    go: (page) => reviewPage(page),
+    show: (page) => page.getByRole("button", { name: "Namnge talarna" }).click(),
+    shown: (page) => page.getByRole("dialog", { name: "Namnge talarna" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  "name list": {
+    go: async (page) => {
+      await reviewPage(page);
+      await page.getByRole("button", { name: "Namnge talarna" }).click();
+    },
+    show: (page) => page.getByRole("combobox", { name: "Vem är Talare 2?" }).click(),
+    shown: (page) => page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
   // A required dialog stays on Escape: it is closed with its own button.
@@ -75,8 +103,11 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
   test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
-    await open(page, "/dev/foundation");
-    await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    if (overlay.go) await overlay.go(page);
+    else {
+      await open(page, "/dev/foundation");
+      await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    }
     const cdp = await page.context().newCDPSession(page);
 
     for (let i = 0; i < WARM_UP; i++) await cycle(page, overlay);

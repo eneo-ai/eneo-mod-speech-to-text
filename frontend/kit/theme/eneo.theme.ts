@@ -42,6 +42,8 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
+    'collapsible-trigger': {base: {minHeight: '24px'}},
   },
   adaptations: {
     rules: [
@@ -54,6 +56,7 @@ export const eneoTheme = defineTheme({
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
             'top-nav-heading': {base: {minHeight: TOUCH}},
+            'collapsible-trigger': {base: {minHeight: TOUCH}},
           },
         },
       },

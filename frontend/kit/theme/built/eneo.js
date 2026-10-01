@@ -266,6 +266,11 @@ export const eneoTheme = {
       "base": {
         "overflowWrap": "anywhere"
       }
+    },
+    "collapsible-trigger": {
+      "base": {
+        "minHeight": "24px"
+      }
     }
   },
   __onDark: {
@@ -320,6 +325,11 @@ export const eneoTheme = {
               }
             },
             "top-nav-heading": {
+              "base": {
+                "minHeight": "44px"
+              }
+            },
+            "collapsible-trigger": {
               "base": {
                 "minHeight": "44px"
               }
