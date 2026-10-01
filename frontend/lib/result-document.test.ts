@@ -49,6 +49,10 @@ async function document_(props: { text: string | null; file: ResultFileView | nu
 /** What a screen reader hears from a control: the label the design system sets where the words say less, else the words. */
 const nameOf = (el: Element) => el.getAttribute("aria-label") ?? el.textContent?.trim();
 
+/** The words of a tab. The design system draws a tab's label twice, the second one hidden (it keeps the tab's width when chosen). */
+const tabLabel = (tab: Element) => tab.querySelector("span > span:not([aria-hidden])")?.textContent;
+const tabsIn = (within: ParentNode) => [...within.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+
 /** The distinct filled actions: the primary variant, on a button or a link. */
 const filled = (within: ParentNode) => [
   ...new Set(
@@ -255,19 +259,24 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
     }),
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-  const tab = (name: string) => [...view.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
   assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
-  const panels = view.container.querySelectorAll('[role="tabpanel"]');
+  const panels = [...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
   assert.equal(panels.length, 2, "both views stay mounted");
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
-  assert.deepEqual([...panels].map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
+  assert.deepEqual(panels.map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
+  // Each panel is named by its tab and its tab points at it; only the chosen one is shown.
+  assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkript"]);
+  assert.deepEqual(tabsIn(view.container).map((t) => t.getAttribute("aria-controls")), panels.map((p) => p.id));
+  assert.deepEqual(panels.map((p) => p.hidden), [false, true]);
 
   const search = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
-  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  await view.act(async () => tab("Transkript").click());
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
-  await view.act(async () => tab("Dokument").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  await view.act(async () => tab("Dokument").click());
+  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hidden), [false, true], "the document is back");
+  await view.act(async () => tab("Transkript").click());
   assert.equal(view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!.value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
   // Nothing has played: no pause beside the document yet.
@@ -545,7 +554,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
   assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
-  assert.deepEqual([...view.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent), ["Text", "Transkript"]);
+  assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkript"]);
   assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
   assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);
 });

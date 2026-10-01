@@ -157,7 +157,10 @@ export const eneoTheme = {
         "lineHeight": "var(--text-display-3-leading)"
       },
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        ":focus-visible": {
+          "outline": "none"
+        }
       }
     },
     "text": {

@@ -150,6 +150,31 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
+const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
+  renderToStaticMarkup(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", ...run } as never,
+      steps: [],
+      stepResults: [],
+      files,
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+
+test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
+  const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });
+  assert.match(sent, /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  assert.doesNotMatch(sent, /aria-label="Dokumentet"/, "nothing to show but the note that it was sent");
+  assert.match(text(sent), /Skapad (i dag|i går|\d+ \w+) 16:02/, "finished_at is missing: the start is the time");
+
+  const undated = resultOf({ result: { kind: "outbound_http" } });
+  assert.doesNotMatch(text(undated), /Skapad/, "no time at all: none said");
+});
+
 test("a failure names the step, says Kördes inte for the rest, keeps the run id copyable and retries only with the same audio", () => {
   const failed = {
     id: "3f1c2a9e-0000-4000-8000-000000000001",

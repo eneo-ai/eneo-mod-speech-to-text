@@ -1,43 +1,37 @@
 "use client";
 
-import { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Tab, TabList } from "@astryxdesign/core/TabList";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
-import { FRAME, READING } from "@/components/frame";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
 import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
 import type { StepView } from "@/lib/run-progress";
 import { outputWords, resultFileIds, runOutput, runResultView } from "@/lib/run-result";
-import { cn } from "@/lib/utils";
 import { ResultDocument } from "./ResultDocument";
 import { regenerationOffer } from "@/lib/regenerate";
 import { RegenerateNotice } from "./RegenerateNotice";
-import { ResultFiles } from "./ResultFiles";
+import { LAPTOP, ResultFiles, useMediaMatch } from "./ResultFiles";
 import { RunTranscriptView, useRunTranscript } from "./RunTranscript";
 import { StepDetails } from "./StepDetails";
 import { usePlayback, usePlaybackState } from "./AudioPlayer";
-import { PHASE_HEADING, usePhaseHeading } from "./usePhaseHeading";
-
-// From a laptop's width the document and the transcript sit side by side; narrower, they are two tabs.
-const WIDE = "(min-width: 1024px)";
-const subscribeWide = (onChange: () => void) => {
-  const query = window.matchMedia(WIDE);
-  query.addEventListener("change", onChange);
-  return () => query.removeEventListener("change", onChange);
-};
-const isWide = () => window.matchMedia(WIDE).matches;
+import styles from "./RunResult.module.css";
+import { usePhaseHeading } from "./usePhaseHeading";
 
 type View = "document" | "transcript";
-/**
- * No panel is a tab stop of its own (Radix makes each one): a panel is taller than the screen, so its focus could not
- * be seen, and each starts with its own controls. Side by side a panel is a plain column, without the role and name.
- */
-const PANEL = { tabIndex: undefined } as const;
-const COLUMN = { ...PANEL, role: undefined, "aria-labelledby": undefined } as const;
+const PANELS: Record<View, { tab: string; panel: string }> = {
+  document: { tab: "result-tab-document", panel: "result-panel-document" },
+  transcript: { tab: "result-tab-transcript", panel: "result-panel-transcript" },
+};
 
 /**
  * A finished run: what the flow produced comes first, as a readable page with
@@ -100,7 +94,7 @@ export function RunResult({
       : null;
   // A document Eneo made again from a reviewed transcript says so; it is not a sign that anyone checked it.
   const fromReviewed = Boolean((run.input_payload_json as { transcript_regeneration?: unknown } | null | undefined)?.transcript_regeneration);
-  const wide = useSyncExternalStore(subscribeWide, isWide, () => true);
+  const wide = useMediaMatch(LAPTOP);
   // One playback for the page: the transcript's player, and the pause beside the document on a phone.
   const sources = useMemo(
     () => transcript.fileIds.map((id) => ({ url: inputFileAudioUrl(flowId, run.id, id), durationMs: null })),
@@ -109,7 +103,7 @@ export function RunResult({
   const playback = usePlayback(sources);
   const tabs = !wide && showTranscript;
   const [view, setView] = useState<View>("document");
-  const tabList = useRef<HTMLDivElement | null>(null);
+  const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
   const positions = useRef<Partial<Record<View, number>>>({});
   const switchView = (next: View) => {
@@ -125,7 +119,7 @@ export function RunResult({
 
   const documentColumn = (
     <>
-      {note && <p className="text-[15px] leading-relaxed">{note}</p>}
+      {note && <Text as="p">{note}</Text>}
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
@@ -148,73 +142,74 @@ export function RunResult({
       playback={playback}
     />
   );
+  // Both panels stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by side
+  // they are plain columns, not tab panels. A panel is a plain element, not a stack: a stack's display would beat the
+  // hidden attribute that hides the panel of the tab not chosen.
+  const panel = (view_: View, isChosen: boolean, content: ReactNode, className?: string) => (
+    <section
+      id={PANELS[view_].panel}
+      role={tabs ? "tabpanel" : undefined}
+      aria-labelledby={tabs ? PANELS[view_].tab : undefined}
+      hidden={tabs && !isChosen}
+      className={className}
+    >
+      {content}
+    </section>
+  );
 
   return (
-    // The frame owns the width: the workspace for the document and its transcript, a reading column for a document alone.
-    <main id="innehall" className={cn(FRAME, "flex flex-1 flex-col pb-12 pt-2 lg:pt-8")}>
-      <div className={cn("flex flex-col gap-6", !showTranscript && READING)}>
-      <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        <div className="flex min-w-0 flex-col gap-1">
-          <h1 ref={heading} tabIndex={-1} className={PHASE_HEADING}>
-            {delivered ? "Resultatet är skickat" : words.ready}
-          </h1>
-          {finished && (
-            <p className="text-[14px] text-muted-foreground">
-              {/* On a phone the top bar already names the flow. */}
-              <span className="hidden lg:inline">{flowName} · </span>
-              Skapad {formatRelativeDate(finished)}
-              {fromReviewed && " från det rättade transkriptet"}
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <Button type="button" variant="outline" onClick={onNewRecording}>
-            {audio ? <Mic data-icon="inline-start" aria-hidden /> : <Plus data-icon="inline-start" aria-hidden />}
-            {audio ? "Ny inspelning" : "Ny körning"}
-          </Button>
-          <BackToFlows size="default" className="hidden lg:inline-flex" />
-        </div>
-      </header>
+    // The page's own width: the workspace for the document and its transcript, a reading column for a document alone.
+    // Its place on the page is the frame's.
+    <main id="innehall">
+      <Layout height="auto" contentWidth={showTranscript ? 1180 : 672} padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={6} paddingBlockStart={2}>
+            <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
+              <VStack gap={1}>
+                <Heading level={1} ref={heading} tabIndex={-1}>
+                  {delivered ? "Resultatet är skickat" : words.ready}
+                </Heading>
+                {finished && (
+                  <Text as="p" type="supporting">
+                    {/* On a phone the top bar already names the flow. */}
+                    {wide && `${flowName} · `}
+                    Skapad {formatRelativeDate(finished)}
+                    {fromReviewed && " från det rättade transkriptet"}
+                  </Text>
+                )}
+              </VStack>
+              <HStack vAlign="center" gap={2}>
+                <Button
+                  icon={<Icon icon={audio ? Mic : Plus} />}
+                  label={audio ? "Ny inspelning" : "Ny körning"}
+                  onClick={onNewRecording}
+                />
+                {wide && <BackToFlows />}
+              </HStack>
+            </HStack>
 
-      {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
-          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
-      <Tabs
-        value={view}
-        onValueChange={(next) => switchView(next as View)}
-        className={cn(
-          "flex flex-col gap-4",
-          showTranscript && "lg:grid lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start lg:gap-x-8",
-        )}
-      >
-        {tabs && (
-          <TabsList ref={tabList} aria-label="Visa" className="self-start">
-            <TabsTrigger value="document">{words.tab}</TabsTrigger>
-            <TabsTrigger value="transcript">Transkript</TabsTrigger>
-          </TabsList>
-        )}
-        {/* Both stay mounted: switching keeps the playback, the search, the filter and each tab's place. Side by
-            side they are plain columns, not tab panels. */}
-        <TabsContent
-          value="document"
-          forceMount
-          {...(tabs ? PANEL : COLUMN)}
-          className={cn("mt-0 flex min-w-0 flex-col gap-6", tabs && "data-[state=inactive]:hidden")}
-        >
-          {documentColumn}
-          {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
-        </TabsContent>
-        {transcriptColumn && (
-          <TabsContent
-            value="transcript"
-            forceMount
-            {...(tabs ? PANEL : COLUMN)}
-            className={cn("mt-0 min-w-0", tabs ? "data-[state=inactive]:hidden" : "lg:sticky lg:top-6")}
-          >
-            {transcriptColumn}
-          </TabsContent>
-        )}
-      </Tabs>
-      </div>
+            {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when
+                the window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
+            <VStack gap={4} className={showTranscript && wide ? styles.sideBySide : undefined}>
+              {tabs && (
+                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
+                  <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
+                  <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
+                </TabList>
+              )}
+              {panel(
+                "document",
+                view === "document",
+                <VStack gap={6}>
+                  {documentColumn}
+                  {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
+                </VStack>,
+              )}
+              {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+            </VStack>
+          </VStack>
+        </LayoutContent>
+      </Layout>
     </main>
   );
 }
@@ -228,26 +223,17 @@ function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () =>
   if (!state.started) return null;
   const pauses = state.playing || state.starting;
   return (
-    <div
-      data-docked-player
-      className="sticky bottom-0 z-10 -mx-4 flex items-center gap-3 border-t border-border bg-card px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8 short:static"
-    >
+    <HStack data-docked-player className={styles.docked} vAlign="center" gap={3}>
       <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="shrink-0 rounded-full"
-        aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        isIconOnly
+        icon={<Icon icon={pauses ? Pause : Play} />}
+        label={pauses ? "Pausa uppspelningen" : "Spela upp"}
         onClick={() => playback.toggle()}
-      >
-        {pauses ? <Pause aria-hidden /> : <Play aria-hidden className="translate-x-px" />}
-      </Button>
-      <span className="text-[14px] tabular-nums text-ink-soft">
+      />
+      <Text type="supporting" hasTabularNumbers>
         {formatClock(state.atMs)} / {formatClock(state.totalMs)}
-      </span>
-      <Button type="button" variant="link" className="ml-auto px-0" onClick={onShow}>
-        Visa i transkriptet
-      </Button>
-    </div>
+      </Text>
+      <Button variant="ghost" label="Visa i transkriptet" onClick={onShow} />
+    </HStack>
   );
 }
