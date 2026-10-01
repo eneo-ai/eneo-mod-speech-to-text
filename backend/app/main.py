@@ -708,7 +708,14 @@ async def _stream_signed(
     if upstream.status_code >= 400:
         # A rejected token is not worth keeping around; the next request mints anew.
         _signed_urls.pop(key, None)
-        body = await _read_small(upstream)
+        try:
+            body = await _read_small(upstream)
+        except httpx.RequestError:  # the error's own body broke off, or stalled
+            logger.exception("File stream error body failed: path=%s", mint_path)
+            return JSONResponse(
+                status_code=502,
+                content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
+            )
         detail: object = unavailable
         if upstream.headers.get("content-type", "").startswith("application/json"):
             try:

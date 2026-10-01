@@ -919,6 +919,22 @@ class UpstreamAnswerTests(BoundaryCase):
         self.assertLessEqual(self.eneo.sent, MiB + self.SLACK)
         self.assertEqual(self.eneo.outcomes, ["dropped"])
 
+    def test_a_failed_file_answer_whose_body_breaks_off_is_the_upstream_failure_response(self) -> None:
+        async def broken():
+            yield b"x" * 10  # fewer bytes than it declares: the server drops the connection
+
+        self.respond_with(
+            lambda seen: (200, [self.JSON], json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode())
+            if seen.path.endswith("/signed-url/")
+            else (500, [self.JSON, ("content-length", "1000")], broken)
+        )
+
+        response = self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a)
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"], "upstream_unreachable")
+        self.assertEqual(main._signed_urls, {}, "a URL that failed is not kept")
+
     def test_a_file_that_streams_is_not_counted(self) -> None:
         self.serve(200, [("content-type", "audio/webm")], lazy(3 * CAP))
 
