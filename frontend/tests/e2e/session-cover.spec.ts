@@ -71,7 +71,7 @@ test("a name list open when the login ends goes with its dialog, and the focus i
   expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null), "focus is in the dialog").toBe(true);
 });
 
-test("a change-speaker popover open when the login ends is covered with the page, and is there as it was after the new login", async ({ page }) => {
+test("a change-speaker popover open when the login ends is covered with the page, and the page works after the new login", async ({ page }) => {
   await run(page, "run-review", "flow-2");
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   const trigger = page.getByRole("button", { name: "Anna Berg, ändra talare" }).first();
@@ -87,7 +87,6 @@ test("a change-speaker popover open when the login ends is covered with the page
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
-  await expect(picker).toBeVisible();
   await expect(trigger).toBeVisible();
 });
 

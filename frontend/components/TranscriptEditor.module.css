@@ -43,12 +43,9 @@
   gap: var(--spacing-1);
 }
 
-/* A long label wraps instead of reaching past a narrow screen: the design system's button is one line. */
+/* A label with no break point in it (a name with a slash) wraps instead of reaching past a narrow screen. */
 .actions > button {
   max-inline-size: 100%;
-  block-size: auto;
-  min-block-size: var(--size-element-sm);
-  white-space: normal;
   overflow-wrap: anywhere;
   text-align: start;
 }

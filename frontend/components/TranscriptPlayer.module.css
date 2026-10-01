@@ -168,12 +168,6 @@
   /* The focus ring is drawn outside the button: the card around the transcript may clip what is nearer than that. */
   margin: var(--spacing-2) var(--spacing-2) 0;
   max-inline-size: calc(100% - 2 * var(--spacing-2));
-  /* A long label wraps instead of reaching past a narrow screen: the design system's button is one line. */
-  block-size: auto;
-  min-block-size: var(--size-element-sm);
-  white-space: normal;
-  overflow-wrap: anywhere;
-  text-align: start;
 }
 
 /* ---- The text and its player ---- */
