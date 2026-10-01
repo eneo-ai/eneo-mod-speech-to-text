@@ -252,6 +252,55 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   // The page's own way back is beside the card; the card holds the next step only.
   assert.doesNotMatch(words, /Alla flöden/);
   assert.doesNotMatch(text(render(undefined)), /Försök igen/);
+  assert.match(words, /Startad .*16:02/);
+  // The callout is a note the heading's focus has already announced, not an alert that interrupts it.
+  assert.match(render(undefined), /role="note"/);
+  assert.doesNotMatch(render(undefined), /role="alert"/);
+});
+
+test("a failure Eneo said nothing about still says what happened, and shows no start time it was not given", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", error: null }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  const words = text(html);
+  assert.match(words, /Körningen kunde inte slutföras Körningen kunde inte slutföras\./, "the callout's title, then its sentence");
+  assert.doesNotMatch(words, /Startad/);
+  assert.doesNotMatch(words, /Visa teknisk information|Stegen/, "no folded detail without Eneo's, no empty step list");
+  assert.match(words, /Kontakta support Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
+});
+
+test("an Eneo detail with nothing in it offers no folded technical information", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "", retryable: false } },
+      failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "", inputMustChange: false },
+      steps,
+      stepResults: [],
+      files: [],
+    }),
+  );
+  assert.doesNotMatch(html, /teknisk information/);
+});
+
+test("the same sentence from a refusal and from a failed new run is said once, not twice", () => {
+  const message = "Det gick inte att starta en ny körning just nu.";
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "x", retryable: false } },
+      failure: null,
+      steps,
+      stepResults: [],
+      files: [],
+      refusal: { message, startAgain: true },
+      error: message,
+    }),
+  );
+  assert.equal(text(html).split(message).length - 1, 1);
+  assert.equal(html.match(/role="alert"/g)?.length, 1);
 });
 
 test("a failure the same input cannot pass offers another file as its one filled action, with Eneo's words calm, not red", () => {
@@ -271,9 +320,11 @@ test("a failure the same input cannot pass offers another file as its one filled
   assert.match(words, /Steg 1, Transkribera ljud/);
   assert.match(words, /Välj en annan fil/);
   assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
-  const buttons = [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map(([, classes]) => classes);
-  assert.equal(buttons.filter((classes) => /\bbg-primary\b/.test(classes)).length, 1, "one filled action");
-  assert.match(html, /class="[^"]*text-ink-soft[^"]*"[^>]*>Inspelningen eller filen är längre/, "the description reads in the page's own text colour");
+  assert.equal([...html.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1, "one filled action");
+  // Eneo's words come as a note, not an alert: the heading's focus has announced the view already.
+  assert.match(html, /role="note"(?:(?!<button).)*Inspelningen eller filen är längre/);
+  assert.doesNotMatch(html, /role="alert"/);
+  assert.match(html, /data-status="warning"/, "a file to change is a warning, not an error");
 });
 
 test("earlier runs list this flow's runs by when and status, each one tap from its result", () => {
@@ -394,9 +445,9 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   const retryButton = (run: typeof failedRun) =>
     renderToStaticMarkup(
       createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run, failure, steps, stepResults: [], files: [], onRetry: async () => undefined }),
-    ).match(/<button[^>]*class="([^"]*)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
-  assert.doesNotMatch(retryButton(failedRun), /\bbg-primary\b/);
-  assert.match(retryButton({ ...failedRun, error: { ...failedRun.error, retryable: true } }), /\bbg-primary\b/);
+    ).match(/<button[^>]*data-variant="(\w+)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
+  assert.equal(retryButton(failedRun), "secondary");
+  assert.equal(retryButton({ ...failedRun, error: { ...failedRun.error, retryable: true } }), "primary");
   assert.doesNotMatch(offered, /Starta en ny körning/, "a new run is the fallback, not a second choice up front");
 
   const stale = view({
@@ -433,6 +484,14 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelled, /Starta en ny körning/);
   assert.match(cancelled, /En ny körning använder samma ljud och uppgifter och gör om alla steg\./);
   assert.doesNotMatch(cancelled, /Försök igen/);
+  // A cancellation is not an error: its callout is information, and the one filled action is the new run.
+  const cancelledHtml = renderToStaticMarkup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined }),
+  );
+  assert.match(cancelledHtml, /role="note"[^>]*>(?:(?!<button).)*Körningen stoppades/);
+  assert.match(cancelledHtml, /data-status="info"/);
+  assert.doesNotMatch(cancelledHtml, /data-status="error"/);
+  assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
 });
 
 test("the transcript is not copied or downloaded while its saved corrections could not be read", () => {

@@ -1,11 +1,17 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, CircleAlert, MinusCircle, Plus, RotateCcw, Upload } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Spinner } from "@/components/ui/spinner";
+import { Plus, RotateCcw, Upload } from "lucide-react";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Code } from "@astryxdesign/core/Code";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { Divider } from "@astryxdesign/core/Divider";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Section } from "@astryxdesign/core/Section";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -15,7 +21,7 @@ import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
 import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
-import { STATE_HEADING, StateCard } from "./StateCard";
+import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
 
 /**
@@ -66,7 +72,6 @@ export function RunFailure({
   const offerChooseInput = Boolean(onChooseInput) && Boolean(failure?.inputMustChange);
   const heading = usePhaseHeading(`${cancelled ? "Avbruten" : "Misslyckades"} · ${flowName}`);
   const [retrying, setRetrying] = useState(false);
-  const Icon = cancelled ? MinusCircle : CircleAlert;
 
   async function retry() {
     setRetrying(true);
@@ -81,83 +86,75 @@ export function RunFailure({
     <>
       {/* What happened and what can be done, in the card; what the run left behind follows it. */}
       <StateCard>
-        <header className="flex flex-col gap-1">
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            className={STATE_HEADING}
-          >
-            {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
-          </h1>
-          {run.created_at && <p className="text-sm text-muted-foreground">Startad {formatRelativeDate(run.created_at)}</p>}
-        </header>
-
-        {/* The heading takes focus when this view appears, so the callout need not interrupt. */}
-        <Alert role="note" variant={cancelled ? "default" : "destructive"}>
-          <Icon aria-hidden className="size-4" />
-          <AlertTitle>
-            {failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
-          </AlertTitle>
-          <AlertDescription>
-            {failure?.summary ?? "Körningen kunde inte slutföras."}
-          </AlertDescription>
-        </Alert>
-
-        <div className="flex flex-col gap-3">
-          {[refusal?.message, error].filter(Boolean).map((message) => (
-            <p key={message} role="alert" className="text-sm text-destructive">
-              {message}
-            </p>
-          ))}
-          {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
-          <div className="flex flex-wrap gap-3">
-            {offerChooseInput && (
-              <Button type="button" onClick={onChooseInput}>
-                <Upload data-icon="inline-start" aria-hidden />
-                Välj en annan fil
-              </Button>
+        <VStack gap={6}>
+          <VStack as="header" gap={1}>
+            <Heading level={1} ref={heading} tabIndex={-1}>
+              {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
+            </Heading>
+            {run.created_at && (
+              <Text as="p" type="supporting">
+                Startad {formatRelativeDate(run.created_at)}
+              </Text>
             )}
+          </VStack>
+
+          {/* The heading takes focus when this view appears, so the callout need not interrupt: a note, not an alert.
+              A recording or file the flow cannot take is for the person to change, not an error to be red about. */}
+          <Banner
+            role="note"
+            status={cancelled ? "info" : failure?.inputMustChange ? "warning" : "error"}
+            title={failure?.step ?? (cancelled ? "Körningen stoppades" : "Körningen kunde inte slutföras")}
+            description={failure?.summary ?? "Körningen kunde inte slutföras."}
+            collapsible={false}
+          />
+
+          <VStack gap={3}>
+            {/* One alert for each sentence, however many ways of saying it there are. */}
+            {[...new Set([refusal?.message, error].filter(Boolean))].map((message) => (
+              <Banner key={message} status="error" title={message} collapsible={false} />
+            ))}
+            {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
+            <HStack gap={3} wrap="wrap">
+              {offerChooseInput && (
+                <Button label="Välj en annan fil" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={onChooseInput} />
+              )}
+              {offerRetry && (
+                // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
+                <Button
+                  label="Försök igen"
+                  variant={run.error?.retryable ? "primary" : "secondary"}
+                  isLoading={retrying}
+                  icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
+                  onClick={() => void retry()}
+                />
+              )}
+              {offerStartAgain && (
+                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => void onStartAgain?.()} />
+              )}
+            </HStack>
             {offerRetry && (
-              // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
-              <Button
-                type="button"
-                variant={run.error?.retryable ? "default" : "outline"}
-                disabled={retrying}
-                onClick={() => void retry()}
-              >
-                {retrying ? <Spinner data-icon="inline-start" aria-hidden /> : <RotateCcw data-icon="inline-start" aria-hidden />}
-                Försök igen
-              </Button>
+              <Text as="p" type="supporting">
+                Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
+              </Text>
             )}
             {offerStartAgain && (
-              <Button type="button" onClick={() => void onStartAgain?.()}>
-                <Plus data-icon="inline-start" aria-hidden />
-                Starta en ny körning
-              </Button>
+              <Text as="p" type="supporting">
+                En ny körning använder samma ljud och uppgifter och gör om alla steg.
+              </Text>
             )}
-          </div>
-          {offerRetry && (
-            <p className="text-sm text-muted-foreground">
-              Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
-            </p>
-          )}
-          {offerStartAgain && (
-            <p className="text-sm text-muted-foreground">
-              En ny körning använder samma ljud och uppgifter och gör om alla steg.
-            </p>
-          )}
-        </div>
+          </VStack>
+        </VStack>
       </StateCard>
 
       {steps.length > 0 && (
-        <section aria-labelledby="run-steps" className="flex flex-col gap-3">
-          <h2 id="run-steps" className="text-lg font-semibold tracking-tight">
+        <VStack as="section" aria-labelledby="run-steps" gap={3}>
+          <Heading level={2} id="run-steps">
             Stegen
-          </h2>
-          <div className="rounded-xl border bg-card p-4 md:p-6">
+          </Heading>
+          <Section>
             <StepList steps={steps} />
-          </div>
-        </section>
+          </Section>
+        </VStack>
       )}
 
       {files.length > 0 && <ResultFiles flowId={flowId} runId={run.id} files={files} />}
@@ -180,40 +177,36 @@ export function RunFailure({
 function SupportDetails({ runId, failure, code }: { runId: string; failure: RunErrorView | null; code?: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <section aria-labelledby="run-support" className="flex flex-col gap-3 border-t pt-6">
-      <h2 id="run-support" className="text-base font-semibold">
-        Kontakta support
-      </h2>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <span className="text-sm text-muted-foreground">Körnings-ID</span>
-        <code translate="no" className="rounded-md bg-muted px-2 py-1 font-mono text-sm [overflow-wrap:anywhere]">
-          {runId}
-        </code>
-        <CopyButton text={runId} label="Kopiera körnings-ID" />
-      </div>
-      {failure?.detail && (
-        <Collapsible open={open} onOpenChange={setOpen}>
-          <CollapsibleTrigger asChild>
-            <Button variant="ghost" className="group -ml-3">
-              <ChevronDown
-                data-icon="inline-start"
-                aria-hidden
-                className="transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
-              />
-              {open ? "Dölj teknisk information" : "Visa teknisk information"}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent>
-            <div className="flex flex-col gap-1 pt-2 text-sm text-muted-foreground">
+    <VStack gap={6}>
+      <Divider />
+      <VStack as="section" aria-labelledby="run-support" gap={3}>
+        <Heading level={2} id="run-support">
+          Kontakta support
+        </Heading>
+        <HStack gap={3} wrap="wrap" align="center">
+          <Text type="supporting">Körnings-ID</Text>
+          {/* Astryx's types leave out `lang` and `translate`, so the language of a part (WCAG 3.1.2) goes on an inline element. */}
+          <span translate="no">
+            <Code>{runId}</Code>
+          </span>
+          <CopyButton text={runId} label="Kopiera körnings-ID" />
+        </HStack>
+        {failure?.detail && (
+          <Collapsible isOpen={open} onOpenChange={setOpen} trigger={open ? "Dölj teknisk information" : "Visa teknisk information"}>
+            <VStack gap={1}>
               {/* Eneo's own words, in English. */}
-              <p lang="en" className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {failure.detail}
-              </p>
-              {code && <p className="font-mono">{code}</p>}
-            </div>
-          </CollapsibleContent>
-        </Collapsible>
-      )}
-    </section>
+              <Text as="p" type="supporting">
+                <span lang="en">{failure.detail}</span>
+              </Text>
+              {code && (
+                <Text as="p" type="code">
+                  {code}
+                </Text>
+              )}
+            </VStack>
+          </Collapsible>
+        )}
+      </VStack>
+    </VStack>
   );
 }

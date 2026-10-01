@@ -445,6 +445,39 @@ test("the cancel question is closed while the login has ended and asked again af
   }
 });
 
+test("Försök igen on a failed run is busy and off while Eneo answers, so a second press cannot start it twice", async () => {
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  let retries = 0;
+  const view = await mount(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte",
+      run: { id: "run-1", status: "failed", error: { code: "flow_provider_unavailable", message: "x", retryable: true } },
+      failure: null,
+      steps: [],
+      stepResults: [],
+      files: [],
+      onRetry: () => {
+        retries += 1;
+        return pending;
+      },
+    }),
+  );
+  const retry = () => button(view.container, "Försök igen")!;
+  assert.equal(retry().disabled, false);
+  await view.act(async () => retry().click());
+  await view.act(async () => retry().click());
+  assert.equal(retries, 1);
+  assert.equal(retry().disabled, true);
+  assert.equal(retry().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(retry().disabled, false, "free again once Eneo has answered");
+  await view.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");

@@ -36,7 +36,6 @@
   "components/flow/ResultDocument.tsx",
   "components/flow/ResultFiles.tsx",
   "components/flow/ReviewView.tsx",
-  "components/flow/RunFailure.tsx",
   "components/flow/RunResult.tsx",
   "components/flow/RunTranscript.tsx",
   "components/flow/StateCard.tsx",
