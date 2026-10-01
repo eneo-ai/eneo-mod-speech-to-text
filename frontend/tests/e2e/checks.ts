@@ -58,7 +58,7 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
   return page.evaluate(
     ([min, spacing]) => {
       const SELECTOR =
-        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"]';
+        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], .astryx-radio-list-item';
       type Box = { left: number; top: number; right: number; bottom: number };
       const box = (r: DOMRect | Box): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
       const shown = (el: Element) => {

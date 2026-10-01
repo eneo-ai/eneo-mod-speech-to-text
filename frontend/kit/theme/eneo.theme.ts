@@ -89,6 +89,7 @@ export const eneoTheme = defineTheme({
             'top-nav-heading': {base: {minHeight: TOUCH}},
             'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
+            'radio-list-item': {base: {minHeight: TOUCH}},
           },
         },
       },

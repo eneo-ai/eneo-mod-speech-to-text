@@ -719,6 +719,15 @@ export const STATES: State[] = [
     },
   },
   {
+    // "Ändra talare" on a passage: the popover's rows, whose touch targets the gate measures where it is open.
+    name: "review-change-speaker",
+    go: async (page) => {
+      await run(page, "run-review", "flow-2");
+      await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
+      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("radio").first()).toBeFocused();
+    },
+  },
+  {
     name: "review-reject",
     go: async (page) => {
       await run(page, "run-review", "flow-2");
