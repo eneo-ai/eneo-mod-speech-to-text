@@ -23,6 +23,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
 import { cn } from "@/lib/utils";
+import styles from "@/components/TranscriptPlayer.module.css";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
 import {
   computeTurns,
@@ -98,23 +99,10 @@ function rateLabel(rate: number): string {
   return `${String(rate).replace(".", ",")}×`;
 }
 
-export function speakerColor(label: string | null): string {
-  const index = label ? speakerColorIndex(label) : 0;
-  return `hsl(var(--speaker-${index}))`;
-}
-
 /** A speaker's round mark: the initial on the speaker's colour, the same everywhere on the page. */
-export function SpeakerMark({ label, name, className }: { label: string | null; name: string; className?: string }) {
+export function SpeakerMark({ label, name, size = "md" }: { label: string | null; name: string; size?: "sm" | "md" | "lg" }) {
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid size-7 shrink-0 select-none place-items-center rounded-full text-[12px] font-semibold text-paper",
-        !label && "bg-ink-mute",
-        className,
-      )}
-      style={label ? { background: speakerColor(label) } : undefined}
-    >
+    <span aria-hidden className={styles.mark} data-size={size} data-speaker-color={label ? speakerColorIndex(label) : undefined}>
       {label ? speakerInitial(name) : "?"}
     </span>
   );
@@ -560,7 +548,7 @@ export function TranscriptPlayer(
             </ToggleGroupItem>
             {speakers.map((speaker) => (
               <ToggleGroupItem key={speaker.label} value={speaker.label} className="shrink-0 gap-1.5 pl-1 pr-3">
-                <SpeakerMark label={speaker.label} name={displayName(speaker.label)} className="size-6 text-[11px]" />
+                <SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />
                 {displayName(speaker.label)}
               </ToggleGroupItem>
             ))}
@@ -969,7 +957,7 @@ function TurnBlock({
         isActive && "bg-primary-soft/60",
       )}
     >
-      {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} className="mt-px" />}
+      {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} />}
       <div className="min-w-0 flex-1">
         {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -1287,7 +1275,7 @@ function PickerOption({ value, label, name, markName = name, note }: { value: st
   return (
     <label className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[14px] text-ink hover:bg-accent coarse:min-h-11">
       <RadioGroupItem value={value} />
-      <SpeakerMark label={label} name={markName} className="size-6 text-[11px]" />
+      <SpeakerMark label={label} name={markName} size="sm" />
       <span className="min-w-0 flex-1 truncate">{name}</span>
       {note && <span className="shrink-0 text-[12px] text-ink-mute">{note}</span>}
     </label>

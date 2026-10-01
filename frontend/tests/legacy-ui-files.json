@@ -3,8 +3,6 @@
   "app/dev/speaker-review/ReviewFixtures.tsx",
   "app/layout.tsx",
   "components/AuthGate.tsx",
-  "components/NameCombobox.tsx",
-  "components/SpeakerNamingDialog.tsx",
   "components/TranscriptEditor.tsx",
   "components/TranscriptPlayer.tsx",
   "components/flow/AudioPlayer.tsx",

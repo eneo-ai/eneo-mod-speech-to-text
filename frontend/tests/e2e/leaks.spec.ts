@@ -29,6 +29,12 @@ type Overlay = {
 /** The warning opens once for each end of the login, so each opening is an answer that ends more than a minute from the last. */
 let loginEndsIn = 200;
 
+/** A run paused for review, its transcript read: where the naming dialog opens. */
+async function reviewPage(page: Page) {
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+}
+
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
     show: (page) => page.getByRole("button", { name: "Konto" }).click(),
@@ -38,6 +44,22 @@ const OVERLAYS: Record<string, Overlay> = {
   "speaker picker": {
     show: (page) => page.getByRole("combobox", { name: "Talare" }).click(),
     shown: (page) => page.getByRole("option", { name: "Erik Lund" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The review page's own overlays: the naming dialog, and the name list inside it (a popover of the top layer).
+  "naming dialog": {
+    go: (page) => reviewPage(page),
+    show: (page) => page.getByRole("button", { name: "Namnge talarna" }).click(),
+    shown: (page) => page.getByRole("dialog", { name: "Namnge talarna" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  "name list": {
+    go: async (page) => {
+      await reviewPage(page);
+      await page.getByRole("button", { name: "Namnge talarna" }).click();
+    },
+    show: (page) => page.getByRole("combobox", { name: "Vem är Talare 2?" }).click(),
+    shown: (page) => page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
   // A required dialog stays on Escape: it is closed with its own button.
