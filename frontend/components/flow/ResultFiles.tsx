@@ -133,49 +133,51 @@ export function OpenFile({
   // While the login has ended the page is covered and the dialog, which a cover does not reach, is closed; it is
   // back when the login is, with its viewer and where it was.
   const covered = useSignedOut();
+  // What opens the preview, a button or, on a narrow window, a link to a tab of its own (either way an element to give focus).
   const trigger = useRef<HTMLButtonElement | null>(null);
   const wasOpen = useRef(false);
 
   // The dialog gives focus back to what had it when it opened. Safari and Firefox on a Mac do not focus a button
-  // that is clicked, so what had focus was the page: the trigger gets it once the dialog is closed.
+  // that is clicked, and a window resized while it is open changes what opens it: the opener there is now gets focus.
   useEffect(() => {
     if (wasOpen.current && !open) trigger.current?.focus();
     wasOpen.current = open;
   }, [open]);
 
   const newTab = { href: url, target: "_blank", rel: "noopener noreferrer" } as const;
-  if (!roomy) {
-    return name ? (
-      <Button {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
+  const opener = !roomy ? (
+    name ? (
+      <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
         {file.name}
       </Button>
     ) : (
-      <Button {...newTab} icon={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
+      <Button ref={trigger} {...newTab} icon={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
         Öppna
       </Button>
-    );
-  }
+    )
+  ) : name ? (
+    <Button
+      ref={trigger}
+      variant="ghost"
+      className={styles.name}
+      aria-haspopup="dialog"
+      endContent={<Icon icon={Eye} />}
+      label={`Öppna ${file.name}`}
+      onClick={() => setOpen(true)}
+    >
+      {file.name}
+    </Button>
+  ) : (
+    <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={() => setOpen(true)}>
+      Öppna
+    </Button>
+  );
 
   return (
     <>
-      {name ? (
-        <Button
-          ref={trigger}
-          variant="ghost"
-          className={styles.name}
-          aria-haspopup="dialog"
-          endContent={<Icon icon={Eye} />}
-          label={`Öppna ${file.name}`}
-          onClick={() => setOpen(true)}
-        >
-          {file.name}
-        </Button>
-      ) : (
-        <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={() => setOpen(true)}>
-          Öppna
-        </Button>
-      )}
-      {/* Mounted while it is closed, for the focus it gives back; the file is fetched only once it is open. */}
+      {opener}
+      {/* One dialog at every width, mounted while it is closed (for the focus it gives back): a window resized while it is
+          open keeps it, and its viewer, as it is. The file is fetched only once it is open. */}
       <Dialog isOpen={open && !covered} onOpenChange={setOpen} width={1024} maxHeight="85dvh">
         <Layout
           header={
