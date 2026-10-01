@@ -107,7 +107,7 @@ test("a native dialog the page had open when the login ends is hidden behind the
     probe.setAttribute("aria-label", "Sidans dialog");
     probe.style.cssText = "background: rgb(255, 0, 255); border: 0; padding: 0; width: 70vw; height: 60vh;";
     probe.innerHTML = '<button type="button" id="page-dialog-button">Sidans knapp</button>';
-    document.querySelector("main")!.append(probe);
+    document.querySelector('[role="main"]')!.append(probe);
     probe.showModal();
   });
   expect(await pixelsOf(page, MAGENTA), "the probe shows while the login lasts").toBeGreaterThan(1_000);
