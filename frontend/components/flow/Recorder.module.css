@@ -102,7 +102,9 @@
 /*
  * Pinned to the bottom of the page, or of the recording's own scroll box on a laptop; in Strömma on a short screen in
  * the page's flow, where it would cover the live text. Below a laptop's width it bleeds over the page's side gutter to
- * the window's edges, and from there it is an inset card.
+ * the window's edges, and from there it is an inset card. The gutter is the frame's own for a recording (FlowFrame.module.css,
+ * `.fill`: 16 px, 32 px from 768 px), and the bar sits in the workspace section, a flex column inside the region that
+ * scrolls: `margin-block-start: auto` needs the first, `position: sticky` the second.
  */
 .bar {
   --bar-gutter: var(--spacing-4);
