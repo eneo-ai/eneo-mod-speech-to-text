@@ -422,3 +422,75 @@ test("the microphone list open when the login ends is covered with the page, and
   expect(tree).not.toMatch(/Mikrofon|Fake Default Audio Input/);
   await tabStaysInSignIn(page);
 });
+
+// Every dialog of the page that exists today, with what must be as it was when it comes back: the login ends under it,
+// the person clicks the sign-in dialog and presses Escape (which a required dialog ignores, and the dialog under it
+// must not hear), signs in again, and the page's dialog is there with what was in it.
+const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (page: Page) => Promise<{ dialog: ReturnType<Page["locator"]>; kept: () => Promise<unknown> }> }[] = [
+  {
+    name: "the speaker naming dialog, with an edit in it",
+    open: async (page) => {
+      await run(page, "run-review", "flow-2");
+      await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
+      await page.getByRole("button", { name: "Namnge talarna" }).click();
+      const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+      const field = dialog.getByLabel(/^Vem är Talare 1/);
+      await field.fill("Zara Testsson");
+      return { dialog, kept: () => expect(field).toHaveValue("Zara Testsson") };
+    },
+  },
+  {
+    name: "the delete question",
+    open: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+      await page.getByRole("button", { name: "Ta bort", exact: true }).click();
+      const dialog = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+      await expect(dialog).toBeVisible();
+      return { dialog, kept: () => expect(dialog.getByRole("button", { name: "Behåll" }).or(dialog.getByRole("button", { name: "Avbryt" })).first()).toBeVisible() };
+    },
+  },
+  {
+    name: "the cancel question",
+    open: async (page) => {
+      await run(page, "run-running");
+      await page.getByRole("button", { name: "Avbryt körningen" }).click();
+      const dialog = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
+      await expect(dialog).toBeVisible();
+      return { dialog, kept: () => expect(dialog.getByRole("button", { name: "Kör vidare" })).toBeVisible() };
+    },
+  },
+  {
+    name: "the PDF preview, with its viewer",
+    only: (laptop) => laptop,
+    open: async (page) => {
+      await result(page);
+      await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+      const dialog = page.getByRole("dialog", { name: /^Protokoll .*\.pdf$/ });
+      await expect(dialog.locator("iframe")).toBeVisible();
+      return { dialog, kept: () => expect(dialog.locator("iframe")).toHaveAttribute("src", /disposition=inline/) };
+    },
+  },
+];
+
+for (const { name, only, open: openDialog } of PAGE_DIALOGS) {
+  test(`${name} coexists with the sign-in dialog: a click and Escape on it change nothing, and it is back as it was after the new login`, async ({ page }, info) => {
+    test.skip(!(only?.(isLaptop(info)) ?? true), "below a laptop's width this is a tab of its own");
+    const { dialog, kept } = await openDialog(page);
+
+    await endLogin(page);
+    const signInDialog = page.getByRole("alertdialog", signIn);
+    await expect(dialog).toBeHidden();
+    await signInDialog.getByRole("heading", signIn).click();
+    await page.keyboard.press("Escape");
+    await expect(signInDialog, "Escape does not close the sign-in dialog").toBeVisible();
+    await expect(dialog, "and what is under it stays out of reach").toBeHidden();
+
+    await page.unroute("**/api/auth/status");
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(signInDialog).toBeHidden();
+    await expect(dialog, "the page's dialog is back: the Escape pressed on the sign-in dialog did not close it").toBeVisible();
+    await kept();
+  });
+}
