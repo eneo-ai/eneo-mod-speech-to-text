@@ -440,7 +440,7 @@ Replacements (the whole inventory; `rg "from \"next|next-themes"` must show only
 })();
 ```
 
-It sets nothing for `system` or no choice (Astryx's `Theme` writes none for `system`; the browser's preference decides).
+It sets nothing for `system` or no choice: verified in `node_modules/@astryxdesign/core/dist/theme/Theme.js:196-222` that `Theme` sets `data-theme` for `light` and `dark` and removes it for `system`, and that `reset.css` then defaults to `color-scheme: light dark`, so the browser's own preference paints `system` correctly with no script at all. The script exists for the stored explicit choice that differs from the system's.
 - [ ] **Step 3: `scripts/finish-build.mjs`** renames `dist/color-mode.js` to `dist/assets/color-mode.<8-hex content hash>.js`, rewrites the `<script src>` in `dist/index.html`, and removes the root copy. The name is then under `/assets/` and immutable. A check in the script fails the build if `dist/index.html` still names `/color-mode.js`.
 - [ ] **Step 4: Providers.** `ModuleProviders` uses the copied `ColorModeProvider` and passes `mode` to Astryx's `<Theme mode>` as the kit does; the `useSyncExternalStore` observer of the `<html>` class and its comment are removed. `AccountMenu` reads `useColorMode()`; the `themeReady` workaround for hydration goes (no server render).
 - [ ] **Step 5: CSS.** In `styles/globals.css` delete the `html.dark … { color-scheme }` bridge and change the brand-logo selectors (`html.dark`, `html:not(.dark)`) to `:root[data-theme="dark"]` with a `@media (prefers-color-scheme: dark) { :root:not([data-theme]) … }` fallback, as the kit's `packages/ui/src/base.css` does at its end.
