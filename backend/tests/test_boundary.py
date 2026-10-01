@@ -495,6 +495,18 @@ class ApiKeyHeaderNameTests(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "ENEO_API_KEY_HEADER_NAME"):
                     load_settings()
 
+    def test_the_api_key_header_cannot_be_a_framing_or_credential_header(self) -> None:
+        names = ("Content-Length", "Transfer-Encoding", "Host", "Connection", "Content-Type", "Cookie", "Origin", "Proxy-Authorization", "Upgrade", "TE")
+        for name in names:
+            with self.subTest(name), patch.dict(os.environ, self.ENVIRONMENT | {"ENEO_API_KEY_HEADER_NAME": name.lower()}, clear=True):
+                with self.assertRaisesRegex(RuntimeError, "ENEO_API_KEY_HEADER_NAME"):
+                    load_settings()
+
+    def test_an_ordinary_header_name_is_still_accepted(self) -> None:
+        for name in ("X-API-Key", "x-eneo-key", "Api-Key"):
+            with self.subTest(name), patch.dict(os.environ, self.ENVIRONMENT | {"ENEO_API_KEY_HEADER_NAME": name}, clear=True):
+                self.assertEqual(load_settings().eneo_api_key_header_name, name)
+
 
 if __name__ == "__main__":
     unittest.main()

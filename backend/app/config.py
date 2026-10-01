@@ -97,6 +97,28 @@ def _parse_bool(raw: str | None, *, default: bool, name: str) -> bool:
     raise RuntimeError(f"{name} must be a boolean")
 
 
+# Headers the module sets from the session or the request itself: the bearer token owns Authorization, and the key
+# in any of these would replace it or break the request's framing.
+_RESERVED_HEADER_NAMES = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "origin",
+        "referer",
+        "host",
+        "content-length",
+        "content-type",
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "te",
+        "trailer",
+        "upgrade",
+    }
+)
+
+
 def _positive_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     if raw is None:
@@ -203,6 +225,11 @@ def load_settings() -> Settings:
     api_key_header_name = os.environ.get("ENEO_API_KEY_HEADER_NAME", "X-API-Key")
     if re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", api_key_header_name) is None:
         raise RuntimeError("ENEO_API_KEY_HEADER_NAME must be a valid HTTP header name")
+    if api_key_header_name.lower() in _RESERVED_HEADER_NAMES:
+        raise RuntimeError(
+            "ENEO_API_KEY_HEADER_NAME cannot be a credential or framing header "
+            f"({', '.join(sorted(_RESERVED_HEADER_NAMES))}): the module sets those itself"
+        )
 
     upload_timeout = float(os.environ.get("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800"))
     if upload_timeout <= 0:
