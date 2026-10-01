@@ -14,7 +14,14 @@ import {DropdownMenu} from "@astryxdesign/core/DropdownMenu";
 import {VStack} from "@astryxdesign/core/VStack";
 import {Heading, Text} from "@astryxdesign/core/Text";
 import {Card} from "@astryxdesign/core/Card";
+import {useTheme} from "@astryxdesign/core/theme";
 import {Button as LegacyButton} from "@/components/ui/button";
+
+/** What the design system's JavaScript theme says, for the colour-mode test: it must agree with what is painted. */
+function ThemeProbe() {
+  const {mode, tokens} = useTheme();
+  return <output hidden data-astryx-mode={mode} data-astryx-accent={String(tokens["--color-accent"])} />;
+}
 
 /**
  * One page of the design system's parts beside the old ones, for the checks that a broken foundation fails on every
@@ -41,6 +48,7 @@ export function FoundationCheck() {
           />
         }>
         <div data-foundation-check>
+              <ThemeProbe />
           <VStack gap={4}>
             <Heading level={1}>Grundkontroll</Heading>
             <Banner status="warning" title="Flödet har uppdaterats" description="Läs in sidan igen." collapsible={false} />

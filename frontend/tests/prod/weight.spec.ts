@@ -2,6 +2,10 @@
  * What a page costs to load, on the production build: the compressed JS and CSS it transfers against
  * weight-budget.json, and that the built theme is used instead of being generated in the browser.
  * Chromium only: it is the engine that reports each request's transfer size.
+ *
+ * This build carries app/dev/foundation (FOUNDATION_CHECK=1, for the smoke tests), and that page moves shared chunks:
+ * about 6.5 KB more than the image, which is built without it (2026-10-01: /flows 291.7 KB, /flows/flow-1 424.1 KB
+ * there, 298.1 and 430.7 here). The budgets follow this build. They go back to the baseline in Phase 8.
  */
 import { expect, test, type Page } from "@playwright/test";
 import budget from "./weight-budget.json";

@@ -37,3 +37,38 @@ for (const [stored, system] of [["dark", "light"], ["light", "dark"], ["system",
     await context.close();
   });
 }
+
+// What reads the design system's JavaScript theme (`useTheme()`: chart colours, canvas) must agree with what is
+// painted. The foundation page publishes that view in `[data-astryx-mode]` and `[data-astryx-accent]`.
+const ACCENT = { light: "#004595", dark: "#52b1ff" } as const;
+
+for (const [stored, system, expected] of [
+  ["dark", "light", "dark"],
+  ["light", "dark", "light"],
+  ["system", "dark", "dark"],
+  [null, "light", "light"],
+] as const) {
+  test(`useTheme() says ${expected} for stored ${stored ?? "nothing"} and system ${system}`, async ({ browser, baseURL }) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: system });
+    const page = await context.newPage();
+    await page.addInitScript((stored) => (stored ? localStorage.setItem("theme", stored) : localStorage.removeItem("theme")), stored);
+    await page.goto(`${baseURL}/dev/foundation`);
+    const probe = page.locator("[data-astryx-mode]");
+    await expect(probe).toHaveAttribute("data-astryx-mode", expected);
+    await expect(probe).toHaveAttribute("data-astryx-accent", new RegExp(`^${ACCENT[expected]}$`, "i"));
+    await context.close();
+  });
+}
+
+test("useTheme() follows a change of the system's mode while the choice is the system's", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: "light" });
+  const page = await context.newPage();
+  await page.addInitScript(() => localStorage.setItem("theme", "system"));
+  await page.goto(`${baseURL}/dev/foundation`);
+  const probe = page.locator("[data-astryx-mode]");
+  await expect(probe).toHaveAttribute("data-astryx-mode", "light");
+  await page.emulateMedia({ colorScheme: "dark" });
+  await expect(probe).toHaveAttribute("data-astryx-mode", "dark");
+  await expect(probe).toHaveAttribute("data-astryx-accent", new RegExp(`^${ACCENT.dark}$`, "i"));
+  await context.close();
+});
