@@ -68,6 +68,8 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
   const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
   for (let i = 0; i <= keys.length; i++) {
     if (!(await inBrowser(page))) {
+      // At rest: the tooltip of the control that has the focus enters over a few frames, and in them overlaps it.
+      await settle(page);
       const stop = await focusStop(page);
       const inside = await popup.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);

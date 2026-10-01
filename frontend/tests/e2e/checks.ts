@@ -311,7 +311,11 @@ async function seenChange(page: Page, box: Rect): Promise<number> {
   const withFocus = await shot(page, clip);
   await page.evaluate(() => (window as unknown as { a11yRest: () => Promise<void> }).a11yRest());
   const without = await shot(page, clip);
-  await page.evaluate(() => (document.querySelector("[data-a11y-current]") as HTMLElement | null)?.focus({ preventScroll: true }));
+  await page.evaluate(() => {
+    const current = document.querySelector("[data-a11y-current]") as HTMLElement | null;
+    current?.style.removeProperty("outline");
+    current?.focus({ preventScroll: true });
+  });
   return changedArea(page, withFocus, without, clip.width);
 }
 
@@ -397,6 +401,9 @@ function probeFocus(page: Page) {
     // How to take focus off the element without closing what it is in: a menu or picker closes when its
     // item loses focus, so its item gives focus to the list itself, or to an item two or more rows away.
     const restOf = async (target: HTMLElement) => {
+      // A list that holds the focus itself (a combobox's list in a bottom sheet, its option shown by
+      // aria-activedescendant) cannot hand it on without closing: what rests is its own focus ring.
+      if (target.matches('[role="menu"], [role="listbox"]')) return async () => target.style.setProperty("outline", "none", "important");
       const list = target.closest<HTMLElement>('[role="menu"], [role="listbox"]');
       if (!list) return async () => target.blur();
       const items = Array.from(list.querySelectorAll<HTMLElement>(`[role="${target.getAttribute("role")}"]`));
@@ -434,6 +441,7 @@ function probeFocus(page: Page) {
     (window as unknown as { a11yRest: () => Promise<void> }).a11yRest = await restOf(el);
     await (window as unknown as { a11yRest: () => Promise<void> }).a11yRest();
     const resting = await look(el);
+    el.style.removeProperty("outline");
     el.focus({ preventScroll: true });
     // The indicator's owner: the outermost of the element and its near ancestors whose look changes with
     // focus (a card's ring for its radio, a field group's edge for its input). The screenshots measure it.

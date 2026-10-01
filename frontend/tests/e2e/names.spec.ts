@@ -128,6 +128,22 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
 });
 
+test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  // Looking for a word stops the transcript following the playback: Följ is offered.
+  await page.getByRole("textbox", { name: "Sök i transkriptet" }).fill("punkten");
+  await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
+  const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
+    const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
+    return track.getBoundingClientRect().width;
+  });
+  expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
+  const player = await page.getByRole("region", { name: "Inspelning och transkript" }).boundingBox();
+  const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
+  expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();

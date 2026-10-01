@@ -65,6 +65,15 @@
   padding: var(--spacing-4);
 }
 
+/* Where the editor will be, until its code has arrived: as tall as the review's card is at least, so nothing moves under it. */
+.editorPending {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-3);
+  min-block-size: 28rem;
+  padding: var(--spacing-4);
+}
+
 .skeletonLines {
   flex: 1;
   min-inline-size: 0;
@@ -295,14 +304,28 @@
   }
 }
 
-.follow {
+.dockTools {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: var(--spacing-1);
+}
+
+/* Speed: in the player's row from 640 px, above it below. */
+.rateBelow {
+  display: none;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 639px) {
-  .skip {
+  .skip,
+  .rate {
     display: none;
+  }
+
+  .rateBelow {
+    display: inline-flex;
   }
 }
 
