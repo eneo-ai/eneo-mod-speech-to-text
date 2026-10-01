@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -121,16 +122,36 @@ _RESERVED_HEADER_NAMES = frozenset(
 )
 
 
-def _positive_int(name: str, default: int) -> int:
+# No limit of the module is meant to be larger than this: a value past it is a typo, and one that is huge enough
+# is no limit at all.
+_MAX_BYTES = 2**40  # 1 TiB
+_MAX_SECONDS = 24 * 60 * 60
+
+
+def _positive_int(name: str, default: int, *, maximum: int = _MAX_BYTES) -> int:
     raw = os.environ.get(name)
     if raw is None:
         return default
     try:
         value = int(raw)
-    except ValueError:
+    except ValueError:  # not a number, or one of more digits than int() takes
         value = 0
-    if value <= 0:
-        raise RuntimeError(f"{name} must be an integer greater than zero")
+    if not 0 < value <= maximum:
+        raise RuntimeError(f"{name} must be an integer between 1 and {maximum}")
+    return value
+
+
+def _positive_seconds(name: str, default: float) -> float:
+    """A finite number of seconds greater than zero, at most a day: ``inf`` or ``nan`` would be no deadline at all."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not (math.isfinite(value) and 0 < value <= _MAX_SECONDS):
+        raise RuntimeError(f"{name} must be a number of seconds greater than zero and at most {_MAX_SECONDS}")
     return value
 
 
@@ -233,9 +254,7 @@ def load_settings() -> Settings:
             f"({', '.join(sorted(_RESERVED_HEADER_NAMES))}): the module sets those itself"
         )
 
-    upload_timeout = float(os.environ.get("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800"))
-    if upload_timeout <= 0:
-        raise RuntimeError("UPLOAD_PROXY_TIMEOUT_SECONDS must be greater than zero")
+    upload_timeout = _positive_seconds("UPLOAD_PROXY_TIMEOUT_SECONDS", 1800.0)
 
     raw_session_minutes = os.environ.get("SESSION_MAX_AGE_MINUTES", "480")
     try:
