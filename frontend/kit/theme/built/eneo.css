@@ -230,6 +230,7 @@
     --font-family-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     --font-family-code: ui-monospace, "SFMono-Regular", Consolas, monospace;
     --color-on-error: light-dark(#FFFFFF, #1A0A0C);
+    --size-element-lg: 48px;
   }
 
   :scope {
@@ -401,6 +402,34 @@
     min-height: calc(var(--size-element-md) - 8px);
   }
 
+  .astryx-slider-control {
+    min-block-size: 24px;
+  }
+
+  .astryx-dialog-header-title-block:has(:focus-visible) {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  .astryx-button {
+    white-space: normal;
+    height: auto;
+    min-height: var(--size-element-md);
+    padding-block: var(--spacing-0-5);
+  }
+
+  .astryx-button[data-size="sm"] {
+    min-height: var(--size-element-sm);
+  }
+
+  .astryx-button[data-size="lg"] {
+    min-height: var(--size-element-lg);
+  }
+
+  .astryx-avatar-fallback {
+    color: var(--color-text-primary);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
@@ -476,6 +505,10 @@
 
     .astryx-top-nav-heading {
       min-height: 44px;
+    }
+
+    .astryx-slider-control {
+      min-block-size: 44px;
     }
 
     .astryx-collapsible-trigger {

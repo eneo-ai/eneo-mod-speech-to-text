@@ -1,0 +1,54 @@
+/*
+ * Strömma's document sheet: a card that fills the column, a log that scrolls inside it, a button that floats over the
+ * log, and a status line under it. Colours, spacing and radii are the design system's tokens.
+ */
+
+.sheet {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+.heading {
+  padding: var(--spacing-4) var(--spacing-5) 0;
+  font-size: var(--font-size-sm);
+}
+
+/* The log is the scroll area: its ring is drawn inside it, the sheet clips an outside one. */
+.log {
+  padding: var(--spacing-3) var(--spacing-5) var(--spacing-8);
+}
+
+.log:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: calc(var(--focus-outline-width) * -1);
+}
+
+.text {
+  line-height: 1.6;
+}
+
+/* An overlay: in the flow it would shrink the log, move its scroll position and flip "following" back and forth. */
+.latest {
+  position: absolute;
+  inset-block-end: calc(var(--spacing-12) + var(--spacing-4));
+  inset-inline-start: 50%;
+  translate: -50% 0;
+  border-radius: var(--radius-full);
+}
+
+.statusLine {
+  padding: var(--spacing-3) var(--spacing-5);
+  border-block-start: 1px solid var(--color-border);
+}
+
+@media (min-width: 768px) {
+  .heading,
+  .log,
+  .statusLine {
+    padding-inline: var(--spacing-7);
+  }
+}

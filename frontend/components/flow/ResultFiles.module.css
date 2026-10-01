@@ -1,0 +1,23 @@
+/* The files as rows under one border: a file's name and size, and its actions, which drop under them when the line is too
+   short for both. */
+.files > li + li {
+  border-block-start: var(--border-width) solid var(--color-border);
+}
+
+.file {
+  flex: 1 1 12rem;
+  min-inline-size: 0;
+}
+
+/* A file's name as a button: its words line up with the size under it, not with the button's padding. */
+.name {
+  margin-inline-start: calc(var(--spacing-3) * -1);
+}
+
+/* The PDF viewer fills the dialog, which is as tall as the window allows less its header. */
+.viewer {
+  display: block;
+  inline-size: 100%;
+  block-size: calc(85dvh - 7rem);
+  border: 0;
+}

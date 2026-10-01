@@ -1,0 +1,4 @@
+/* The heading takes focus when its state appears; it is not a control, so it shows no ring. */
+.heading {
+  outline: none;
+}

@@ -128,7 +128,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
         const clip = await screenClip(page, box);
         if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
       }
-    } else {
+    } else if (!(await inBrowser(page))) {
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
@@ -307,6 +307,13 @@ test("a wrong access code is said, and focus stays in the field to type it again
   await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
   // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
   await expect(field).toBeFocused();
+  // The field in error names its message, which is the one alert that said it.
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  const message = await field.getAttribute("aria-errormessage");
+  expect(message, "the field names its error message").toBeTruthy();
+  const alert = page.locator(`[id="${message}"]`);
+  await expect(alert).toHaveAttribute("role", "alert");
+  await expect(alert).toHaveText("Felaktig åtkomstkod.");
 });
 
 test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {

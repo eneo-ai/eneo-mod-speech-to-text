@@ -1,15 +1,19 @@
+- link "Hoppa till innehåll":
+  - /url: "#astryx-app-shell-main"
 - banner:
-  - link "Tal till text – Sundsvalls kommun":
-    - /url: /flows
-    - img "Sundsvalls kommun"
-    - text: ""
-  - button "Öppna konto för Erik Lund":
-    - img "Erik Lund": EL
-    - status
-- status
+  - navigation "Tal till text":
+    - link "Tal till text – Sundsvalls kommun":
+      - /url: /flows
+      - img "Sundsvalls kommun"
+      - text: ""
+    - button "Öppna konto för Erik Lund":
+      - img "Erik Lund": EL
+      - status
 - main:
   - link "Alla flöden":
     - /url: /flows
+    - text: ""
+    - status
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
@@ -18,6 +22,7 @@
     - text: Lägg till namn
     - textbox "Deltagare Valfritt Lägg till namn":
       - /placeholder: Lägg till namn
+  - status
   - status
   - region "Ljudet":
     - status

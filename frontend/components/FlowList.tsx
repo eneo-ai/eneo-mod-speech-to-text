@@ -1,11 +1,15 @@
-import { ChevronRight, FileText, Mic, Paperclip, PenLine, type LucideIcon } from "lucide-react";
-import Link from "next/link";
+import { FileText, Mic, Paperclip, PenLine, type LucideIcon } from "lucide-react";
 import { useId } from "react";
-import { Item, ItemActions, ItemContent, ItemDescription, ItemGroup, ItemMedia, ItemTitle } from "@/components/ui/item";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Icon } from "@astryxdesign/core/Icon";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { FlowSparsePublic } from "@/lib/api";
 import type { FlowSpaceGroup } from "@/lib/flow-discovery";
 import { withLastUsedFirst } from "@/lib/flow-session";
+import styles from "./FlowList.module.css";
 
 /** How the flow takes its input (Eneo's `input_type`); a flow with no file or audio asks only for details. */
 export function inputIcon(inputType: FlowSparsePublic["input_type"]): LucideIcon {
@@ -21,9 +25,6 @@ export function inputIcon(inputType: FlowSparsePublic["input_type"]): LucideIcon
   }
 }
 
-// One column on a phone and tablet; two on a laptop, as rows, not tiles.
-const LIST = "grid gap-3 lg:grid-cols-2";
-
 /**
  * The flows the user can run, one heading per space (none when there is only
  * one), each flow a full row: the name whole, however long, and the
@@ -31,7 +32,7 @@ const LIST = "grid gap-3 lg:grid-cols-2";
  */
 export function FlowList({ groups, lastFlowId }: { groups: FlowSpaceGroup[]; lastFlowId: string | null }) {
   return (
-    <div className="flex flex-col gap-10">
+    <VStack gap={10}>
       {groups.map((group) =>
         groups.length > 1 ? (
           <SpaceSection key={group.spaceId} group={group} lastFlowId={lastFlowId} />
@@ -39,67 +40,61 @@ export function FlowList({ groups, lastFlowId }: { groups: FlowSpaceGroup[]; las
           <FlowRows key={group.spaceId} flows={group.flows} lastFlowId={lastFlowId} />
         ),
       )}
-    </div>
+    </VStack>
   );
 }
 
 function SpaceSection({ group, lastFlowId }: { group: FlowSpaceGroup; lastFlowId: string | null }) {
   const headingId = useId();
+  // A named region, as the screen reader's list of landmarks has it. (Section is no help: it bleeds past its
+  // parent's padding and is no landmark.)
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <h2 id={headingId} className="text-[19px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+    <VStack role="region" aria-labelledby={headingId} gap={3}>
+      <Heading level={2} id={headingId}>
         {group.spaceName}
-      </h2>
+      </Heading>
       <FlowRows flows={group.flows} lastFlowId={lastFlowId} />
-    </section>
+    </VStack>
   );
 }
 
 function FlowRows({ flows, lastFlowId }: { flows: FlowSparsePublic[]; lastFlowId: string | null }) {
   return (
-    <ItemGroup className={LIST}>
-      {withLastUsedFirst(flows, lastFlowId).map((flow) => {
-        const Icon = inputIcon(flow.input_type);
-        return (
-          <div role="listitem" key={flow.id} className="flex">
-            <Item asChild variant="outline" className="w-full flex-nowrap items-start rounded-xl bg-card hover:bg-accent">
-              <Link href={`/flows/${flow.id}`}>
-                <ItemMedia className="size-10 self-start rounded-lg bg-primary-soft text-primary [&_svg]:size-5">
-                  <Icon aria-hidden strokeWidth={1.75} />
-                </ItemMedia>
-                <ItemContent className="min-w-0">
-                  <ItemTitle className="w-auto text-[17px] font-semibold leading-snug text-foreground [overflow-wrap:anywhere]">
-                    {flow.name}
-                  </ItemTitle>
-                  {flow.description && (
-                    <ItemDescription className="text-[15px] leading-snug text-ink-soft text-pretty">{flow.description}</ItemDescription>
-                  )}
-                </ItemContent>
-                <ItemActions className="self-center">
-                  <ChevronRight aria-hidden className="size-5 text-muted-foreground" />
-                </ItemActions>
-              </Link>
-            </Item>
-          </div>
-        );
-      })}
-    </ItemGroup>
+    <List hasDividers>
+      {withLastUsedFirst(flows, lastFlowId).map((flow) => (
+        <ListItem
+          key={flow.id}
+          className={styles.row}
+          href={`/flows/${flow.id}`}
+          startContent={<Icon icon={inputIcon(flow.input_type)} color="accent" />}
+          // Nodes, not strings: a string is cut to one line with an ellipsis, and a name is never cut.
+          label={<Text weight="semibold">{flow.name}</Text>}
+          description={
+            flow.description ? (
+              <Text type="supporting" maxLines={2} hasTruncateTooltip={false}>
+                {flow.description}
+              </Text>
+            ) : undefined
+          }
+          endContent={<Icon icon="chevronRight" color="secondary" />}
+        />
+      ))}
+    </List>
   );
 }
 
 /** The list's shape while it loads, so nothing moves when it arrives. */
 export function FlowListSkeleton() {
   return (
-    <div className={LIST} aria-hidden>
+    <List hasDividers aria-hidden>
       {[0, 1, 2, 3].map((row) => (
-        <div key={row} className="flex items-start gap-4 rounded-xl border border-border bg-card p-4">
-          <Skeleton className="size-10 rounded-lg" />
-          <div className="flex flex-1 flex-col gap-2 pt-1">
-            <Skeleton className="h-4 w-3/5" />
-            <Skeleton className="h-3.5 w-4/5" />
-          </div>
-        </div>
+        <ListItem
+          key={row}
+          startContent={<Skeleton width={24} height={24} index={row} />}
+          label={<Skeleton width="60%" height={16} index={row} />}
+          description={<Skeleton width="80%" height={14} index={row} />}
+        />
       ))}
-    </div>
+    </List>
   );
 }

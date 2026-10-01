@@ -265,7 +265,8 @@ export const STATES: State[] = [
     },
   },
   {
-    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, nothing is cut off.
+    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, and Logga ut, the
+    // last row, is still in view inside the menu with nothing to scroll to (the identity may end in an ellipsis).
     name: "account-menu-long-name",
     go: async (page) => {
       await page.route("**/api/auth/status", (route) =>
@@ -283,10 +284,32 @@ export const STATES: State[] = [
       );
       await flows(page);
       await page.getByRole("button", { name: /^Öppna konto för/ }).click();
-      await expect(page.getByRole("menu")).toBeVisible();
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeVisible();
+      await expect
+        .poll(() =>
+          menu.evaluate((element) => {
+            const row = [...element.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!.getBoundingClientRect();
+            const box = element.getBoundingClientRect();
+            return {
+              scrolls: element.scrollHeight > element.clientHeight + 1,
+              insideMenu: row.top >= box.top - 0.5 && row.bottom <= box.bottom + 0.5,
+              inView: row.top >= 0 && row.bottom <= window.innerHeight,
+            };
+          }),
+        )
+        .toEqual({ scrolls: false, insideMenu: true, inView: true });
     },
   },
   { name: "unsent-recordings", go: leaveRecording },
+  {
+    name: "unsent-recording-delete-question",
+    go: async (page) => {
+      await leaveRecording(page);
+      await page.getByRole("button", { name: "Ta bort" }).click();
+      await expect(page.getByRole("button", { name: "Avbryt" })).toBeFocused();
+    },
+  },
   {
     name: "setup",
     go: async (page) => {

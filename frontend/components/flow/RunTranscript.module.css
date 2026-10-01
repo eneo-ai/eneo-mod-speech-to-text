@@ -1,0 +1,20 @@
+/* The transcript's card and the player in it: Astryx has no prop for a card that keeps to the window. */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.player {
+  flex: 1;
+  min-height: 0;
+}
+
+/* From a laptop's width the card keeps to the window (the column is sticky, one gutter from its top) and its text
+   scrolls inside it, the player docked below. */
+@media (min-width: 1024px) {
+  .card {
+    max-height: calc(100dvh - 2 * var(--spacing-6));
+    overflow: hidden;
+  }
+}

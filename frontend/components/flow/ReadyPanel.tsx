@@ -1,32 +1,30 @@
 "use client";
 
-import { Download, FileText, Mic, Trash2 } from "lucide-react";
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Spinner } from "@/components/ui/spinner";
+import { Download, FileText, Trash2 } from "lucide-react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { AlertDialog } from "@astryxdesign/core/AlertDialog";
+import { Button } from "@astryxdesign/core/Button";
+import { Grid } from "@astryxdesign/core/Grid";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { StackItem } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
+import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { StateCard } from "@/components/flow/StateCard";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { createActionLabel, type LiveSession, type Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
 import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
-import { STATE_HEADING, StateCard } from "@/components/flow/StateCard";
+import styles from "./ReadyPanel.module.css";
 
 /** Each part of the recording as something the player can play, over its known length. */
 function usePartSources(recording: StoredRecording): PlayerSource[] {
@@ -59,30 +57,27 @@ function LiveDraft({ live, makesText }: { live: LiveSession; makesText: boolean 
   const texts = paragraphs(pieces).map((group) => group.map((piece) => piece.text).join(" "));
   if (texts.length === 0) return null;
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <div className="flex flex-col gap-0.5">
-          <h3 id={headingId} className="text-[15px] font-semibold text-ink">
+    <VStack gap={2}>
+      <HStack gap={4} wrap="wrap" align="center" justify="between">
+        <VStack gap={0.5}>
+          <Heading level={3} id={headingId}>
             Preliminär text
-          </h3>
-          <p className="text-[13px] text-ink-soft">
+          </Heading>
+          <Text as="p" type="supporting">
             {makesText ? "Den slutliga texten skapas när du väljer Skapa text." : "Den slutliga texten skapas med dokumentet."}
-          </p>
-        </div>
+          </Text>
+        </VStack>
         <CopyButton text={texts.join("\n\n")} label="Kopiera" />
-      </div>
+      </HStack>
       {/* Scrolls on its own, by keyboard too, so a long meeting's draft keeps the actions in reach. */}
-      <div
-        role="region"
-        aria-labelledby={headingId}
-        tabIndex={0}
-        className="flex max-h-60 flex-col gap-3 overflow-y-auto rounded-lg border border-rule-soft bg-paper px-4 py-3 text-[15px] leading-relaxed text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
+      <VStack role="region" aria-labelledby={headingId} tabIndex={0} isScrollable gap={3} className={styles.draft}>
         {texts.map((text, index) => (
-          <p key={index}>{text}</p>
+          <Text as="p" key={index}>
+            {text}
+          </Text>
         ))}
-      </div>
-    </div>
+      </VStack>
+    </VStack>
   );
 }
 
@@ -127,6 +122,18 @@ export function ReadyPanel({
   const sources = usePartSources(recording);
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
+  // The question is the page's: it is closed while the login has ended, and back with the same state after the new one.
+  const [confirming, setConfirming] = useState(false);
+  const signedOut = useSignedOut();
+  // Answered, or closed with Escape: the focus is back on the button that asked. The dialog gives it back itself, but not
+  // when a press did not focus the button (Safari, Firefox on macOS), nor after a new login, when it was asked again with
+  // nothing of the page focused.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasConfirming = useRef(false);
+  useEffect(() => {
+    if (!confirming && wasConfirming.current) trigger.current?.focus();
+    wasConfirming.current = confirming;
+  }, [confirming]);
   const name = recordingName(recording.startedAt);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
   // Stopped a moment after it started, most likely by mistake: going on is the likely next step.
@@ -143,84 +150,79 @@ export function ReadyPanel({
 
   return (
     <StateCard>
-      <div className="flex flex-col gap-1">
-        <h2 data-phase-heading tabIndex={-1} className={STATE_HEADING}>
+      <VStack gap={1}>
+        <Heading level={2} data-phase-heading tabIndex={-1}>
           Inspelningen är klar
-        </h2>
-        <p className="text-[15px] text-ink-soft">
+        </Heading>
+        <Text as="p" color="secondary">
           {name} · {formatDuration(recording.durationMs)}
-        </p>
-      </div>
+        </Text>
+      </VStack>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
       {live && <LiveDraft live={live} makesText={makesText} />}
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <Button type="button" variant="outline" onClick={() => void save()}>
-          <Download data-icon="inline-start" aria-hidden />
-          Spara som fil
-        </Button>
-        <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-mute">
-          {persistent
-            ? `Inspelningen finns kvar på enheten tills ${made}.`
-            : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
-        </p>
-      </div>
+      <HStack gap={4} wrap="wrap" align="center">
+        <Button label="Spara som fil" variant="secondary" icon={<Icon icon={Download} size="sm" />} onClick={() => void save()} />
+        <StackItem size="fill">
+          <Text as="p" type="supporting">
+            {persistent
+              ? `Inspelningen finns kvar på enheten tills ${made}.`
+              : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}
+          </Text>
+        </StackItem>
+      </HStack>
 
       {saveProblem && <ProblemAlert problem={saveProblem} />}
       {problem && <ProblemAlert problem={problem} reveal />}
       {sent && earlierRuns && onOpenRun && <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} />}
 
-      {moment && <p className="text-[15px] text-ink">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</p>}
-      <div className="flex flex-col gap-3 sm:flex-row">
+      {moment && <Text as="p">Inspelningen blev mycket kort. Välj Fortsätt spela in om den stoppades av misstag.</Text>}
+      <Grid columns={{ minWidth: 220, repeat: "fit" }} gap={3}>
         <Button
-          type="button"
-          variant={moment ? "outline" : "default"}
-          size="xl"
-          className="sm:flex-1"
-          // Not disabled, so focus stays on it; a press does nothing until the text is in.
-          aria-disabled={finishing || undefined}
+          variant={moment ? "secondary" : "primary"}
+          size="lg"
+          width="100%"
+          label={finishing ? "Slutför texten…" : createActionLabel(makesText)}
+          icon={<Icon icon={FileText} size="md" />}
+          // Not disabled, so focus stays on it; a press does nothing until the text is in (the session ignores it).
+          isLoading={finishing}
+          isInterruptible
           onClick={onCreate}
-        >
-          {finishing ? (
-            <Spinner data-icon="inline-start" aria-hidden />
-          ) : (
-            <FileText data-icon="inline-start" aria-hidden />
-          )}
-          {finishing ? "Slutför texten…" : createActionLabel(makesText)}
-        </Button>
+        />
         {onContinue && (
-          <Button type="button" variant={moment ? "default" : "outline"} size="xl" className="sm:flex-1" onClick={onContinue}>
-            <Mic data-icon="inline-start" aria-hidden />
-            Fortsätt spela in
-          </Button>
-        )}
-      </div>
-
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
           <Button
-            type="button"
-            variant={sent ? "outline" : "ghost"}
-            className={sent ? "w-fit" : "w-fit self-center text-ink-soft sm:self-start"}
-          >
-            <Trash2 data-icon="inline-start" aria-hidden />
-            {sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Ta bort inspelningen?</AlertDialogTitle>
-            <AlertDialogDescription>Den går inte att få tillbaka.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Avbryt</AlertDialogCancel>
-            <AlertDialogAction className={buttonVariants({ variant: "destructive" })} onClick={onDiscard}>
-              Ta bort
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            variant={moment ? "primary" : "secondary"}
+            size="lg"
+            width="100%"
+            label="Fortsätt spela in"
+            icon={<Icon icon="microphone" size="md" />}
+            onClick={onContinue}
+          />
+        )}
+      </Grid>
+
+      <HStack hAlign="start">
+        <Button
+          ref={trigger}
+          label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
+          variant={sent ? "secondary" : "ghost"}
+          icon={<Icon icon={Trash2} size="sm" />}
+          onClick={() => setConfirming(true)}
+        />
+      </HStack>
+      <AlertDialog
+        isOpen={confirming && !signedOut}
+        onOpenChange={setConfirming}
+        title="Ta bort inspelningen?"
+        description="Den går inte att få tillbaka."
+        cancelLabel="Avbryt"
+        actionLabel="Ta bort"
+        onAction={() => {
+          setConfirming(false);
+          onDiscard();
+        }}
+      />
     </StateCard>
   );
 }

@@ -1,12 +1,18 @@
 "use client";
 
-import { ArrowDown } from "lucide-react";
 import { memo, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Icon } from "@astryxdesign/core/Icon";
+import { StackItem } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
+import styles from "./LiveSheet.module.css";
 
 export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   const out: LivePiece[][] = [];
@@ -48,7 +54,7 @@ export function LiveSheet({
 }) {
   const snapshot = useSyncExternalStore(live.subscribe, live.getSnapshot, live.getSnapshot);
   const headingId = useId();
-  const scroller = useRef<HTMLDivElement>(null);
+  const scroller = useRef<HTMLElement>(null);
   const [following, setFollowing] = useState(true);
   const status = liveStatusLine(snapshot.status, snapshot.started, recorder);
   const groups = paragraphs(snapshot.pieces);
@@ -71,58 +77,60 @@ export function LiveSheet({
   }
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card"
-    >
-      <h2 id={headingId} data-phase-heading tabIndex={-1} className="px-5 pt-4 text-[13px] text-muted-foreground outline-none md:px-7">
+    <Card padding={0} role="region" aria-labelledby={headingId} className={styles.sheet}>
+      <Heading level={2} color="secondary" weight="normal" id={headingId} data-phase-heading tabIndex={-1} className={styles.heading}>
         {speakers
           ? "Preliminär text. Talare och den slutliga texten kommer när du är klar."
           : "Preliminär text, den slutliga skapas när du är klar"}
-      </h2>
+      </Heading>
       {/* The log is the scroll area: named, focusable for keyboard scrolling, heard once per piece. */}
-      <div
+      <StackItem
+        size="fill"
+        isScrollable
         ref={scroller}
         role="log"
         aria-label="Preliminär text"
         tabIndex={0}
         onScroll={(event) => setFollowing(atBottom(event.currentTarget))}
-        className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-3 focus-visible:outline-none focus-visible:[outline-offset:-2px] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring md:px-7"
+        className={styles.log}
       >
-        {empty && <p className="text-[17px] text-muted-foreground">Texten visas här när du börjar prata.</p>}
-        <div className="flex max-w-[68ch] flex-col gap-4 text-[18px] leading-[1.6] text-foreground md:text-[19px]">
+        {empty && (
+          <Text as="p" color="secondary" size="lg">
+            Texten visas här när du börjar prata.
+          </Text>
+        )}
+        <VStack gap={4} maxWidth="68ch" className={styles.text}>
           {groups.map((group, index) => (
-            <p key={index}>
+            <Text as="p" size="lg" key={index}>
               <Pieces pieces={group} />
               {index === groups.length - 1 && snapshot.pending && (
-                <span aria-hidden className="text-muted-foreground">
+                <Text type="inherit" color="secondary" aria-hidden>
                   {" " + snapshot.pending.trim()}
-                </span>
+                </Text>
               )}
-            </p>
+            </Text>
           ))}
           {groups.length === 0 && snapshot.pending && (
-            <p aria-hidden className="text-muted-foreground">
+            <Text as="p" size="lg" color="secondary" aria-hidden>
               {snapshot.pending.trim()}
-            </p>
+            </Text>
           )}
-        </div>
-      </div>
+        </VStack>
+      </StackItem>
       {!following && (
         <Button
-          type="button"
-          variant="outline"
-          className="absolute bottom-16 left-1/2 -translate-x-1/2 rounded-full bg-card shadow-md"
+          label="Visa senaste"
+          variant="secondary"
+          elevation="med"
+          icon={<Icon icon="arrowDown" size="sm" />}
           onClick={showLatest}
-        >
-          <ArrowDown data-icon="inline-start" aria-hidden />
-          Visa senaste
-        </Button>
+          className={styles.latest}
+        />
       )}
-      {/* Always rendered, so a change is said once; empty while live text is fine. */}
-      <p role="status" className={status ? "border-t border-border px-5 py-3 text-[14px] text-ink-soft md:px-7" : "sr-only"}>
+      {/* Always rendered, so a change is said once; empty (and so no taller than nothing) while live text is fine. */}
+      <Text as="p" type="supporting" role="status" className={status ? styles.statusLine : undefined}>
         {status ?? ""}
-      </p>
-    </section>
+      </Text>
+    </Card>
   );
 }

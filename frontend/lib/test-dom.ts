@@ -117,12 +117,18 @@ export async function mount(element: import("react").ReactElement) {
     container.remove();
   };
   mounted.add(unmount);
-  return { container, act, unmount };
+  const rerender = (next: import("react").ReactElement) => root.render(next);
+  return { container, act, unmount, rerender };
 }
 
 /** Takes down whatever a test left mounted, also when an assertion stopped it early (use with afterEach). */
 export async function cleanup(): Promise<void> {
   for (const unmount of [...mounted]) await unmount();
+}
+
+/** Static markup as a document of its own (no globals installed), for assertions on structure, names and attributes. */
+export function parse(html: string): Document {
+  return new JSDOM(html).window.document;
 }
 
 /** A button by its visible words or its accessible name, anywhere under `within`. */
