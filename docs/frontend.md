@@ -8,7 +8,7 @@ Hör ihop med: [Arkitektur](architecture.md#frontendens-lager), [Designsystem](d
 
 ## Stack
 
-Next.js (App Router, byggd med webpack: `npm run build`), React, TypeScript, Astryx för gränssnittet och next-themes för färgläget. Versionerna står i `frontend/package.json`; Astryx är fastlåst till en exakt version. All text som användaren läser är svenska.
+Next.js 16 (App Router, byggd med webpack: `npm run build`) är frontend-servern i dag; ett byte till statiska filer är planerat men inte påbörjat. React, TypeScript, Astryx för gränssnittet och next-themes för färgläget. Versionerna står i `frontend/package.json`; Astryx är fastlåst till en exakt version. All text som användaren läser är svenska.
 
 ## Lager
 
