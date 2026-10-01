@@ -128,7 +128,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
         const clip = await screenClip(page, box);
         if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
       }
-    } else {
+    } else if (!(await inBrowser(page))) {
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);

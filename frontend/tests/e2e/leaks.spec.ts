@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { backLink, open, record, run, setup, stop } from "./screens";
+import { backLink, open, record, result, run, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -50,6 +50,27 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => page.getByRole("button", { name: "Liten" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // The result's own overlays, on the page that owns them. A PDF opens in a dialog on a laptop's width; Escape closes it
+  // from its title, where focus starts.
+  "pdf preview": {
+    go: (page) => result(page),
+    show: (page) => page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click(),
+    shown: (page) => page.getByRole("dialog"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // Fler alternativ is under a laptop's width, and holds Dela where the browser can share (headless Chromium has no
+  // share sheet, so a stand-in is defined before the page loads).
+  "more options": {
+    go: async (page) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
+      await run(page, "run-plain");
+      await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
+    },
+    show: (page) => page.getByRole("button", { name: "Fler alternativ" }).click(),
+    shown: (page) => page.getByRole("menu"),
+    hide: (page) => page.keyboard.press("Escape"),
   },
   // The module's own overlays, on the pages that own them.
   "session warning": {

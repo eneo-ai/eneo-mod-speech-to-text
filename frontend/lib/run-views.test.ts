@@ -171,6 +171,12 @@ const report: ResultFileView = {
   stepId: null,
 };
 
+/** The attributes of every tag with this name in some markup, as the browser would read them. */
+const tagsOf = (html: string, tag: string) =>
+  [...html.matchAll(new RegExp(`<${tag}\\b([^>]*)>`, "g"))].map(([, attrs]) =>
+    Object.fromEntries([...attrs.matchAll(/([\w-]+)(?:="([^"]*)")?/g)].map(([, name, value]) => [name, value ?? ""])),
+  );
+
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
   const html = renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
   const words = text(html);
@@ -180,11 +186,14 @@ test("a generated file is a row with Eneo's name and its size, opened and downlo
   // The module's route names the file from Eneo's response; the page passes no name.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const attachment = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
-  // Phones open the PDF in a new tab; wider screens get a titled dialog (its trigger here).
-  assert.ok(html.includes(`href="${inline}" target="_blank"`), html);
-  assert.match(html, /aria-haspopup="dialog"[^>]*>(?:<[^>]+>)*Öppna/);
-  assert.ok(html.includes(`href="${attachment}" download=""`), html);
+  // Before the window is read it is taken to be a laptop's: the PDF opens in a titled dialog (its trigger here, and its
+  // own link to a tab); the phone's link comes with a narrower window (result-document.test.ts).
+  const links = tagsOf(html, "a");
+  assert.ok(links.some((a) => a.href === inline && a.target === "_blank"), "the dialog's way to a tab of its own");
+  assert.ok(links.some((a) => a.href === attachment && "download" in a), "the download saves the file");
+  assert.ok(tagsOf(html, "button").some((b) => b["aria-haspopup"] === "dialog" && b["aria-label"] === `Öppna ${report.name}`));
   assert.doesNotMatch(html, /filename=/);
+  assert.ok(!html.includes("<iframe"), "the file is fetched only once the dialog is open");
 });
 
 test("a Word file downloads; only a PDF offers Öppna", () => {
@@ -215,6 +224,31 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Ny inspelning/);
   assert.match(words, /Alla flöden/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
+});
+
+const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
+  renderToStaticMarkup(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", ...run } as never,
+      steps: [],
+      stepResults: [],
+      files,
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+
+test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
+  const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });
+  assert.match(sent, /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  assert.doesNotMatch(sent, /aria-label="Dokumentet"/, "nothing to show but the note that it was sent");
+  assert.match(text(sent), /Skapad (i dag|i går|\d+ \w+) 16:02/, "finished_at is missing: the start is the time");
+
+  const undated = resultOf({ result: { kind: "outbound_http" } });
+  assert.doesNotMatch(text(undated), /Skapad/, "no time at all: none said");
 });
 
 test("a failure names the step, says Kördes inte for the rest, keeps the run id copyable and retries only with the same audio", () => {
@@ -494,6 +528,18 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
 });
 
+/**
+ * Every button of the markup by what a screen reader hears, and whether it is off. The design system names a button by
+ * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriptet").
+ */
+const buttonsIn = (html: string) =>
+  [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)].map(
+    ([, attrs, inner]) =>
+      [/\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const,
+  );
+const exportButtons = (html: string) => buttonsIn(html).filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
+const names = (html: string) => buttonsIn(html).map(([name]) => name);
+
 test("the transcript is not copied or downloaded while its saved corrections could not be read", () => {
   const transcript = {
     pending: false,
@@ -528,21 +574,16 @@ test("the transcript is not copied or downloaded while its saved corrections cou
         onReload: () => undefined,
       }),
     );
-  // Each export button by what a screen reader hears (visible words and hidden ones), and whether it is off.
-  const exportButtons = (html: string) =>
-    [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)]
-      .map(([, attrs, inner]) => [inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const)
-      .filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
 
   const readable = render(null);
   assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner som text, transkriptet", false]]);
-  assert.doesNotMatch(readable, />Läs in igen</);
+  assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
-  assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+  assert.ok(names(unread).includes("Läs in igen"));
 });
 
 test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {
@@ -594,14 +635,20 @@ function transcriptView(overrides: Record<string, unknown>) {
 test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
   const html = transcriptView({ textPreview: true });
   assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Kopiera<span class="sr-only"> transkriptet/);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Ladda ner/);
-  assert.match(html, />Läs in igen</);
+  assert.deepEqual(exportButtons(html), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.ok(names(html).includes("Läs in igen"));
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
   const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriptets underlag/);
-  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+  assert.deepEqual(names(html), ["Läs in igen"]);
   assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
+});
+
+test("a transcript still being read shows only skeletons the screen reader skips", () => {
+  const html = transcriptView({ pending: true, segments: [] });
+  assert.match(html, /^<div[^>]*aria-hidden="true"/, "hidden from the start");
+  assert.deepEqual(names(html), []);
+  assert.equal(html.replace(/<[^>]*>/g, ""), "", "no words, no heading");
 });

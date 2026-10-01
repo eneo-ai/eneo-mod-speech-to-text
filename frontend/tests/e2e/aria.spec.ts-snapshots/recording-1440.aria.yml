@@ -1,12 +1,17 @@
+- link "Hoppa till innehåll":
+  - /url: "#astryx-app-shell-main"
 - banner:
-  - link "Tal till text – Sundsvalls kommun":
-    - /url: /flows
-    - img "Sundsvalls kommun"
-    - text: ""
-- status: Spelar in.
+  - navigation "Tal till text":
+    - link "Tal till text – Sundsvalls kommun":
+      - /url: /flows
+      - img "Sundsvalls kommun"
+      - text: ""
+    - text: "Läge: Spela in"
 - main:
   - link "Alla flöden":
     - /url: /flows
+    - text: ""
+    - status
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
@@ -19,6 +24,7 @@
     - /placeholder: Lägg till namn
   - status
   - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
+  - status: Spelar in.
   - region "Ljudet":
     - status
     - heading "Inspelning" [level=2]

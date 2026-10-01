@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { endLogin, open, record, run, sessionWarning, setup, stop } from "./screens";
+import { endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -338,6 +338,28 @@ test("the cancel question open when the login ends is covered with the page, and
   await page.keyboard.press("Escape");
   await expect(question).toBeHidden();
   await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
+});
+
+// The PDF preview is a page dialog like the naming dialog, with a viewer in it that must not be reloaded by the cover.
+test("the PDF preview open when the login ends is covered with the page, and is back with its viewer after the new login", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a tab of its own");
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const preview = page.getByRole("dialog", { name: /^Protokoll .*\.pdf$/ });
+  await expect(preview.locator("iframe")).toBeVisible();
+
+  await endLogin(page);
+  await expect(preview, "the preview is not shown, nor in the accessibility tree").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Protokoll kommunstyrelsen|Öppna i ny flik|Ladda ner/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("iframe")).toHaveAttribute("src", /disposition=inline/);
 });
 
 test("the delete question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {

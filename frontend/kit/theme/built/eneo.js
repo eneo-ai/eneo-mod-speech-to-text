@@ -275,6 +275,14 @@ export const eneoTheme = {
         "minBlockSize": "24px"
       }
     },
+    "dialog-header-title-block": {
+      "base": {
+        ":has(:focus-visible)": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "var(--focus-outline-offset)"
+        }
+      }
+    },
     "button": {
       "base": {
         "whiteSpace": "normal",
@@ -287,6 +295,11 @@ export const eneoTheme = {
       },
       "size:lg": {
         "minHeight": "var(--size-element-lg)"
+      }
+    },
+    "avatar-fallback": {
+      "base": {
+        "color": "var(--color-text-primary)"
       }
     }
   },

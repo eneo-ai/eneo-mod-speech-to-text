@@ -290,3 +290,8 @@ html:not(.dark) [data-brand-logo="dark"] { display: none; }
 /* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
    dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
 dialog[open] { pointer-events: auto; }
+
+/* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
+   tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half
+   answers) and sit where the transcript's own sticky toolbar is meant to. Unlayered, so it wins over the system's. */
+.astryx-app-shell-header { position: static; }

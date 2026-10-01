@@ -400,6 +400,11 @@
     min-block-size: 24px;
   }
 
+  .astryx-dialog-header-title-block:has(:focus-visible) {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
+  }
+
   .astryx-button {
     white-space: normal;
     height: auto;
@@ -413,6 +418,10 @@
 
   .astryx-button[data-size="lg"] {
     min-height: var(--size-element-lg);
+  }
+
+  .astryx-avatar-fallback {
+    color: var(--color-text-primary);
   }
 
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
