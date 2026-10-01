@@ -1,6 +1,5 @@
 [
   "app/dev/foundation/FoundationCheck.tsx",
-  "app/dev/speaker-review/ReviewFixtures.tsx",
   "app/flows/FlowsPage.tsx",
   "app/layout.tsx",
   "components/AuthGate.tsx",
@@ -8,7 +7,6 @@
   "components/OfflineBanner.tsx",
   "components/RetryNotice.tsx",
   "components/SessionEndWarning.tsx",
-  "components/TranscriptEditor.tsx",
   "components/UnsentRecordings.tsx",
   "components/flow/AudioPlayer.tsx",
   "components/flow/BackToFlows.tsx",

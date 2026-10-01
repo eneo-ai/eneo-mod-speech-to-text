@@ -779,6 +779,12 @@ export function TranscriptPlayer(
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
         <div id={pastId} tabIndex={-1} data-docked-player className={styles.dock}>
+          {/* On its own line: in the player's row it would squeeze the position slider to nothing on a narrow screen. */}
+          {!follow && (
+            <div className={styles.follow}>
+              <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />
+            </div>
+          )}
           <AudioPlayer playback={playback} label="Inspelningen">
             <IconButton
               variant="ghost"
@@ -799,9 +805,6 @@ export function TranscriptPlayer(
             <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
               {rateLabel(rate)}
             </Button>
-            {!follow && (
-              <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />
-            )}
           </AudioPlayer>
         </div>
       ) : (

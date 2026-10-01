@@ -165,7 +165,15 @@
 .download {
   flex-shrink: 0;
   align-self: flex-start;
-  margin: var(--spacing-1) var(--spacing-1) 0;
+  /* The focus ring is drawn outside the button: the card around the transcript may clip what is nearer than that. */
+  margin: var(--spacing-2) var(--spacing-2) 0;
+  max-inline-size: calc(100% - 2 * var(--spacing-2));
+  /* A long label wraps instead of reaching past a narrow screen: the design system's button is one line. */
+  block-size: auto;
+  min-block-size: var(--size-element-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
 }
 
 /* ---- The text and its player ---- */
@@ -291,6 +299,11 @@
     position: static;
     padding-block-end: var(--spacing-2);
   }
+}
+
+.follow {
+  display: flex;
+  justify-content: flex-end;
 }
 
 @media (max-width: 639px) {

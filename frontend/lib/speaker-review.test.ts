@@ -22,7 +22,8 @@ for (const example of fixtures.cases) {
     const html = render(example.result);
     for (const segment of segments) assert.ok(html.replace(/<[^>]*>/g, "").includes(segment.text));
     assert.equal(html.includes("Överlappningsanalys saknas"), example.name === "unavailable");
-    assert.equal(html.includes("decoration-dotted"), ["overlap", "three-voices", "wordless-unknown"].includes(example.name));
+    // A passage to check is marked as one: it is chosen whole by the name that says so.
+    assert.equal(html.includes("Markera hela passagen"), ["overlap", "three-voices", "wordless-unknown"].includes(example.name));
     if (example.name === "overlap") {
       assert.equal(computeTurns(segments).length, 3);
       assert.ok(html.includes("Förslag: Anna"));

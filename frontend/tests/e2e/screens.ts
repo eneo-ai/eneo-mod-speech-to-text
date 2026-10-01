@@ -48,6 +48,21 @@ async function foundation(page: Page) {
   await heading(page, "Grundkontroll");
 }
 
+/**
+ * The speaker review with its editable transcript, which the flag keeps out of the module's own pages: the development
+ * page's test cases (app/dev/speaker-review), the test audio ticked, so every control can act.
+ */
+export async function speakerReview(page: Page, testCase = "operator") {
+  await open(page, "/dev/speaker-review");
+  await heading(page, "Talargranskning – testfall");
+  if (testCase !== "overlap") {
+    await page.getByRole("combobox", { name: "Testfall" }).click();
+    await page.getByRole("option", { name: testCase, exact: true }).click();
+  }
+  await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
+  await expect(page.getByRole("textbox", { name: /^Transkript, markera ord/ })).toBeVisible();
+}
+
 export async function flows(page: Page) {
   await open(page, "/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
@@ -700,6 +715,23 @@ export const STATES: State[] = [
       });
       await page.reload();
       await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
+    },
+  },
+  {
+    name: "speaker-review",
+    go: async (page) => {
+      await speakerReview(page);
+      await expect(page.getByRole("group", { name: "Transkriptverktyg" })).toBeVisible();
+    },
+  },
+  {
+    name: "speaker-review-selection",
+    go: async (page) => {
+      // Six speakers, a long word and twenty participants: the widest the editor gets. A passage is chosen by its name.
+      await speakerReview(page, "accessibility");
+      await page.getByRole("button", { name: /^Markera stycket: / }).first().click();
+      await page.getByRole("button", { name: "Detaljer" }).click();
+      await expect(page.getByRole("group", { name: "Markerade ord" })).toBeVisible();
     },
   },
   {

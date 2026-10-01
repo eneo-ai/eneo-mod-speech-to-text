@@ -2,16 +2,23 @@
 
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, CheckCheck, ChevronDown, Play, Undo2, X } from "lucide-react";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import styles from "@/components/TranscriptEditor.module.css";
 import { wordKey } from "@/lib/confirmed-words";
-import { cn } from "@/lib/utils";
 import { formatClock } from "@/lib/format";
 import { playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
 import { confirmSpeakerSuggestions, pendingSpeakerSuggestions, displayedSourceOffset, replaceTranscriptText, anchorTextSelection, selectionSpeakerSuggestion, wholePassageSelection, assignTextSelection, displayedSelectionBounds, selectedTranscriptText, transcriptParagraphs, type DisplaySelectionSpan, type TextSelectionSpan } from "@/lib/transcript-selection";
 
-const tint = (speaker: string | null) => speaker ? `hsl(var(--speaker-${speakerColorIndex(speaker)}))` : "hsl(var(--ink-mute))";
-const action = "inline-flex min-w-6 max-w-full whitespace-normal [overflow-wrap:anywhere] min-h-9 coarse:min-h-11 items-center justify-center gap-1.5 rounded-md px-2.5 text-[12px] font-medium hover:bg-bg-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary disabled:opacity-40 disabled:cursor-default";
+/** The class names that apply, joined. */
+const join = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
 
 export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, reviews, editable, textEditable, onChange, displayName, speakerOptions, audioAvailable, currentFile, currentTime, playing, onSeek, onInteract, confirmedWords, onToggleConfirmed, labelled = true }: {
   confirmedWords: ReadonlySet<string>; onToggleConfirmed?: (key: string) => void;
@@ -246,10 +253,14 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     const uncertain = needsSpeakerReview(segment) && !segment.decision;
     const label = !labelled ? "" : segment.decision === "unresolved" ? "Talare går inte att avgöra" : uncertain ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)} · Inte granskat` : displayName(segment.speaker);
     const said = label ? ` ${label}` : "";
+    // The line under the words is the speaker's colour; a passage still to check, or one that cannot be told, has the review colour.
+    const review = uncertain || segment.decision === "unresolved";
     return <span key={index} data-text-span={index} data-segment-index={index}
       role="button" tabIndex={0} aria-disabled={!uncertain && !audioAvailable ? true : undefined}
       aria-label={uncertain ? `Markera hela passagen: ${segment.text.trim()}.${said}` : `Flytta uppspelningen till: ${segment.text.trim()}.${said}`}
       title={uncertain ? `Välj för att markera hela passagen.${said}` : audioAvailable ? `Välj ett ord för att flytta uppspelningen hit.${said}` : `Ljudet är inte tillgängligt.${said}`}
+      data-tone={review ? "review" : undefined} data-speaker-color={review || !segment.speaker ? undefined : speakerColorIndex(segment.speaker)}
+      data-playable={!uncertain && audioAvailable ? "" : undefined}
       onClick={(e) => {
         // Leave native drag selection intact, including selections across passages.
         if (e.detail > 1 || !window.getSelection()?.isCollapsed) return;
@@ -273,68 +284,72 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
           onSeek(segment.fileIndex, segment.start, playing); onInteract();
         }
       }}
-      className={cn("py-1 decoration-[1.5px] underline-offset-[6px]", uncertain ? "cursor-pointer underline decoration-dotted hover:bg-ochre/10 focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" : cn("underline decoration-solid focus-visible:rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary", audioAvailable && "cursor-pointer hover:bg-primary/10"))}
-      style={{ textDecorationColor: uncertain || segment.decision === "unresolved" ? "hsl(var(--ochre))" : tint(segment.speaker) }}>
+      className={join(styles.span, uncertain && styles.uncertain)}>
       {cuts.slice(0, -1).map((start, i) => {
         const end = cuts[i + 1];
         const word = words.find((w) => w.charStart <= start && w.charEnd >= end);
         const selected = bounds.some((b) => start < b.end && end > b.start);
         const active = segment.fileIndex === currentFile && (word ? currentTime >= word.start && currentTime < word.end : !words.length && currentTime >= segment.start && currentTime < segment.end);
         const currentWord = Boolean(word && highlightedWords.has(word));
+        const doubtful = Boolean(word?.uncertain) && !confirmedWords.has(wordKey(segment.sourceSegmentIndex ?? index, word!));
         return <span key={start} data-word-start={word?.start} aria-current={currentWord ? "true" : undefined}
-          className={cn("rounded-[2px]", selected && "ring-1 ring-primary/40", currentWord ? "bg-primary text-primary-foreground" : selected ? "bg-primary/25" : active ? "bg-primary/10" : word?.uncertain && !confirmedWords.has(wordKey(segment.sourceSegmentIndex ?? index, word)) ? "bg-ochre/15" : undefined)}>{segment.text.slice(start, end)}</span>;
+          className={join(styles.word, selected && styles.selected, currentWord ? styles.now : selected ? styles.chosen : active ? styles.playing : doubtful && styles.doubtful)}>{segment.text.slice(start, end)}</span>;
       })}
     </span>;
   }
-  return <div ref={editorRoot} className="transcript-editor relative">
-    <div ref={toolbar} className="transcript-toolbar sticky top-0 z-10 border-b border-rule-soft bg-paper px-4 py-2 shadow-sm" role="group" aria-label="Transkriptverktyg">
-      <div className="flex flex-wrap items-center justify-between gap-1 text-[12px]">
-        <span aria-live="polite" className="text-ink-mute">{pending.length ? `${pending.length} ${pending.length === 1 ? "ställe" : "ställen"} att granska` : "Inga väntande talarbeslut"}</span>
-        <div className="flex flex-wrap items-center gap-1">
-          <button type="button" className={cn(action, "text-primary")} disabled={!editable || !audioAvailable || !allSuggestions.length}
-            title="Bekräfta återstående talarförslag i hela transkriptet. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras."
-            onClick={() => confirmSuggestions(allSuggestions)}><CheckCheck className="h-3.5 w-3.5" /> Bekräfta alla förslag{allSuggestions.length > 0 ? ` (${allSuggestions.length})` : ""}</button>
-          <button type="button" className={action} disabled={!pending.length} onClick={() => navigate(-1)} aria-label="Föregående passage som behöver talarbeslut">Föregående</button>
-          <button type="button" className={cn(action, "text-primary")} disabled={!pending.length} onClick={() => navigate(1)} aria-label="Nästa passage som behöver talarbeslut">Nästa</button>
-          <button type="button" className={action} aria-expanded={details} aria-controls={detailsId} onClick={() => setDetails(!details)}>Detaljer <ChevronDown className="h-3 w-3" /></button>
+  const quiet = (text: string) => <Text as="p" type="supporting" className={styles.note}>{text}</Text>;
+  return <div ref={editorRoot} className={styles.editor}>
+    <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Transkriptverktyg">
+      <div className={styles.toolbarRow}>
+        <span aria-live="polite" className={styles.count}>{pending.length ? `${pending.length} ${pending.length === 1 ? "ställe" : "ställen"} att granska` : "Inga väntande talarbeslut"}</span>
+        <div className={styles.actions}>
+          <Button size="sm" variant="secondary" icon={<CheckCheck aria-hidden />} label={`Bekräfta alla förslag${allSuggestions.length > 0 ? ` (${allSuggestions.length})` : ""}`}
+            isDisabled={!editable || !audioAvailable || !allSuggestions.length} aria-describedby={`${helpId}-all`}
+            onClick={() => confirmSuggestions(allSuggestions)} />
+          <VisuallyHidden id={`${helpId}-all`}>Bekräfta återstående talarförslag i hela transkriptet. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
+          <Button size="sm" variant="ghost" label="Föregående passage som behöver talarbeslut" isDisabled={!pending.length} onClick={() => navigate(-1)}>Föregående</Button>
+          <Button size="sm" variant="ghost" label="Nästa passage som behöver talarbeslut" isDisabled={!pending.length} onClick={() => navigate(1)}>Nästa</Button>
+          <Button size="sm" variant="ghost" label="Detaljer" endContent={<ChevronDown aria-hidden />} aria-expanded={details} aria-controls={detailsId} onClick={() => setDetails(!details)} />
         </div>
       </div>
-      {selection.length > 0 && <div className="border-t border-rule-soft pt-2 pb-1" role="group" aria-label="Markerade ord">
-        <div className="flex items-center gap-2 text-[12px]"><span className="min-w-0 flex-1 truncate font-medium" title={selectedText}>“{selectedText}”</span><span className="shrink-0 text-ink-mute">{wordCount} ord</span>
-          <button type="button" className={action} aria-label="Avmarkera" onClick={() => { setSelection([]); setEditing(false); window.getSelection()?.removeAllRanges(); body.current?.focus({ preventScroll: true }); }}><X className="h-3.5 w-3.5" /></button></div>
-        <div className="flex flex-wrap items-center gap-1">
-          <button type="button" className={action} disabled={!audioAvailable} onClick={replay}><Play className="h-3.5 w-3.5" /> Lyssna</button>
-          {suggestion && <button type="button" className={cn(action, "bg-primary/10 text-primary hover:bg-primary/20")}
-            disabled={!editable || !audioAvailable || suggestionConfirmed}
-            onClick={() => assign(suggestion)}>
-            <Check className="h-3.5 w-3.5" /> {suggestionConfirmed ? "Bekräftad:" : "Bekräfta"} {displayName(suggestion)}
-          </button>}
-          {!suggestion && selectedSuggestions.length > 0 && <button type="button" className={cn(action, "bg-primary/10 text-primary hover:bg-primary/20")}
-            disabled={!editable || !audioAvailable} title="Bekräfta talarförslagen i markeringen, var och en med sin föreslagna talare."
-            onClick={() => confirmSuggestions(selectedSuggestions)}><CheckCheck className="h-3.5 w-3.5" /> Bekräfta förslagen i markeringen ({selectedSuggestions.length})</button>}
-          <label className={cn(action, "bg-bg-2")}><span className="sr-only">Tilldela talare</span><select aria-label="Tilldela talare" className="min-h-6 max-w-full sm:max-w-[12rem] bg-transparent py-1" value="" disabled={!editable} onChange={(e) => { if (e.target.value) assign(e.target.value === "unresolved" ? null : e.target.value); }}>
-            <option value="" disabled>Tilldela talare…</option>
-            {speakerOptions.map((speaker) => <option key={speaker} value={speaker} disabled={!audioAvailable}>{displayName(speaker)}{selectedSpans.length && selectedSpans.every((s) => s.speaker === speaker) ? " – bekräfta" : ""}</option>)}
-            <option value="unresolved">Går inte att avgöra</option>
-          </select></label>
-          <button type="button" className={action} disabled={!textEditable} onClick={() => { setDraft(selectedText); setEditing(true); onInteract(); }}>Rätta text</button>
-          <button type="button" className={action} disabled={!editable || !hasDecision} onClick={() => assign(null, true)}>Återställ talare</button>
+      {selection.length > 0 && <div className={styles.selection} role="group" aria-label="Markerade ord">
+        <div className={styles.selectionHead}><span className={styles.quote} title={selectedText}>“{selectedText}”</span><span className={styles.count}>{wordCount} ord</span>
+          <IconButton variant="ghost" size="sm" label="Avmarkera" icon={<X aria-hidden />} onClick={() => { setSelection([]); setEditing(false); window.getSelection()?.removeAllRanges(); body.current?.focus({ preventScroll: true }); }} /></div>
+        <div className={styles.actions}>
+          <Button size="sm" variant="ghost" icon={<Play aria-hidden />} label="Lyssna" isDisabled={!audioAvailable} onClick={replay} />
+          {suggestion && <Button size="sm" variant="secondary" icon={<Check aria-hidden />} label={`${suggestionConfirmed ? "Bekräftad:" : "Bekräfta"} ${displayName(suggestion)}`}
+            isDisabled={!editable || !audioAvailable || suggestionConfirmed}
+            onClick={() => assign(suggestion)} />}
+          {!suggestion && selectedSuggestions.length > 0 && <Button size="sm" variant="secondary" icon={<CheckCheck aria-hidden />} label={`Bekräfta förslagen i markeringen (${selectedSuggestions.length})`}
+            isDisabled={!editable || !audioAvailable} aria-describedby={`${helpId}-chosen`}
+            onClick={() => confirmSuggestions(selectedSuggestions)} />}
+          {!suggestion && selectedSuggestions.length > 0 && <VisuallyHidden id={`${helpId}-chosen`}>Bekräfta talarförslagen i markeringen, var och en med sin föreslagna talare.</VisuallyHidden>}
+          <div className={styles.assign}>
+            <Selector label="Tilldela talare" isLabelHidden size="sm" value="" placeholder="Tilldela talare…" isDisabled={!editable}
+              onChange={(value) => { if (value) assign(value === "unresolved" ? null : value); }}
+              options={[
+                ...speakerOptions.map((speaker) => ({ value: speaker, label: `${displayName(speaker)}${selectedSpans.length && selectedSpans.every((s) => s.speaker === speaker) ? " – bekräfta" : ""}`, disabled: !audioAvailable })),
+                { value: "unresolved", label: "Går inte att avgöra" },
+              ]} />
+          </div>
+          <Button size="sm" variant="ghost" label="Rätta text" isDisabled={!textEditable} onClick={() => { setDraft(selectedText); setEditing(true); onInteract(); }} />
+          <Button size="sm" variant="ghost" label="Återställ talare" isDisabled={!editable || !hasDecision} onClick={() => assign(null, true)} />
         </div>
-        {!audioAvailable && <p className="py-1 text-[12px] text-ink-mute">Ljudet saknas. Talarbeslut kan återställas eller lämnas oavgjorda.</p>}
-        {!editable && <p className="py-1 text-[12px] text-ink-mute">Talargranskningen är skrivskyddad.</p>}
-        {editing && <form onSubmit={(e) => { e.preventDefault(); saveText(); }} className="py-2">
-          <label className="text-[12px] font-medium">Rätta markerad text<textarea autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} className="mt-2 block min-h-24 w-full rounded-md border border-rule bg-paper p-3 text-[15px] leading-relaxed outline-primary" /></label>
-          <div className="mt-2 flex gap-2"><button type="submit" className={cn(action, "bg-primary text-primary-foreground")}><Check className="h-3.5 w-3.5" /> Spara text</button><button type="button" className={action} onClick={() => { setEditing(false); requestAnimationFrame(focusTools); }}>Avbryt</button></div>
+        {!audioAvailable && quiet("Ljudet saknas. Talarbeslut kan återställas eller lämnas oavgjorda.")}
+        {!editable && quiet("Talargranskningen är skrivskyddad.")}
+        {editing && <form onSubmit={(e) => { e.preventDefault(); saveText(); }} className={styles.form}>
+          <TextArea label="Rätta markerad text" hasAutoFocus rows={4} value={draft} onChange={setDraft} />
+          <HStack gap={2} className={styles.formActions}><Button type="submit" size="sm" variant="primary" icon={<Check aria-hidden />} label="Spara text" /><Button size="sm" variant="ghost" label="Avbryt" onClick={() => { setEditing(false); requestAnimationFrame(focusTools); }} /></HStack>
         </form>}
       </div>}
-      <div className="flex flex-wrap items-center gap-2 text-[12px]"><span role="status" aria-atomic="true" className="text-ink-mute">{notice}</span>{undoAvailable && <button type="button" data-undo className={action} disabled={!textEditable} onClick={() => {
+      <div className={styles.toolbarRow}><span role="status" aria-atomic="true" className={styles.count}>{notice}</span>{undoAvailable && <Button size="sm" variant="ghost" data-undo icon={<Undo2 aria-hidden />} label="Ångra" isDisabled={!textEditable} onClick={() => {
         onChange?.({ ...corrections, occurrences: undo!.before.occurrences, speaker_edits: undo!.before.speaker_edits }); setUndo(null); setNotice("Ändringen är ångrad."); body.current?.focus({ preventScroll: true });
-      }}><Undo2 className="h-3.5 w-3.5" /> Ångra</button>}</div>
-      {error && <p role="alert" className="py-2 text-[12px] text-destructive">{error}</p>}
+      }} />}</div>
+      {error && <p role="alert" className={styles.error}>{error}</p>}
     </div>
-    <section id={detailsId} hidden={!details} aria-label="Talargranskning" className="border-b border-rule-soft bg-bg-2/40 px-5 py-3 text-[12px] leading-relaxed">
-      <h2 className="font-semibold">Om markeringen</h2>
-      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className="underline" disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
+    <section id={detailsId} hidden={!details} aria-label="Talargranskning" className={styles.details}>
+      <h2 className={styles.detailsHeading}>Om markeringen</h2>
+      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <Button size="sm" variant="ghost" label="Lyssna på intervallet" isDisabled={!audioAvailable} onClick={replay} /></p>}
       {new Set(selectedSources.map((s) => s.fileIndex)).size > 1 && <p>Markeringen omfattar flera ljudfiler. Lyssna spelar den första delen.</p>}
       {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(s.modelSpeaker === undefined ? s.speaker : s.modelSpeaker)))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
       {selectedSpans.some(needsSpeakerReview) && <p>Överlappande tal har markerats här. {selectedSpans.some((s) => !s.decision) ? "Talaren behöver granskas." : "Talarbeslutet ändrar inte den ursprungliga överlappsmarkeringen."}</p>}
@@ -344,15 +359,15 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       {selection.flatMap((span) => (raw[span.segmentIndex].words ?? []).filter((w) => w.uncertain && w.charStart < span.end && w.charEnd > span.start &&
         !corrections.occurrences.some((o) => o.segment_index === span.segmentIndex && w.charStart < o.char_end && w.charEnd > o.char_start)).map((w) => {
           const key = wordKey(span.segmentIndex, w);
-          return <p key={key}>Ordet “{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <button type="button" className="underline" onClick={() => onToggleConfirmed(key)}>{confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"}</button>}</p>;
+          return <p key={key}>Ordet “{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <Button size="sm" variant="ghost" label={confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"} onClick={() => onToggleConfirmed(key)} />}</p>;
         }))}
-      <details className="mt-2"><summary className="min-h-6 coarse:min-h-11 cursor-pointer">Överlapp i inspelningen</summary><ul className="mt-2 space-y-1">{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className="underline" disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start * 1_000)}–{formatClock(o.end * 1_000)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
+      <details className={styles.overlaps}><summary>Överlapp i inspelningen</summary><ul>{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><Button size="sm" variant="ghost" label={`Del ${o.fileIndex + 1}, ${formatClock(o.start * 1_000)}–${formatClock(o.end * 1_000)}`} isDisabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }} /> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
     </section>
-    <p className="px-5 pt-4 text-[12px] text-ink-mute" id={helpId}><span className="transcript-focus-label font-medium">Transkript</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<span className="sr-only"> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</span></p>
-    {!shown.length && <p className="px-5 py-4 text-[13px] text-ink-mute">Inga transkriptord finns. Använd Nästa för att lyssna på markerade överlapp.</p>}
-    {reviews.some((r) => r.overlapDetection === "unavailable") && <p className="px-5 pt-2 text-[12px] text-ink-mute">Överlappningsanalys saknas. Se Detaljer.</p>}
-    {reviews.some((r) => r.detailsOmitted) && <p className="px-5 pt-2 text-[12px] text-ink-mute">Överlappsdetaljer har utelämnats eftersom underlaget är för stort.</p>}
-    <div ref={body} className="transcript-editor-text px-5 py-5 sm:px-7 outline-none focus:outline-none" onMouseUp={captureSelection} onTouchEnd={captureSelection} onKeyUp={captureSelection}
+    <p className={styles.help} id={helpId}><span className={styles.focusLabel}>Transkript</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<VisuallyHidden> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</VisuallyHidden></p>
+    {!shown.length && <Text as="p" className={styles.empty}>Inga transkriptord finns. Använd Nästa för att lyssna på markerade överlapp.</Text>}
+    {reviews.some((r) => r.overlapDetection === "unavailable") && <Text as="p" type="supporting" className={styles.help}>Överlappningsanalys saknas. Se Detaljer.</Text>}
+    {reviews.some((r) => r.detailsOmitted) && <Text as="p" type="supporting" className={styles.help}>Överlappsdetaljer har utelämnats eftersom underlaget är för stort.</Text>}
+    <div ref={body} className={styles.text} onMouseUp={captureSelection} onTouchEnd={captureSelection} onKeyUp={captureSelection}
       onFocusCapture={(e) => { if (e.target !== body.current) { const target = e.target; requestAnimationFrame(() => target.scrollIntoView({ block: "nearest", behavior: "instant" })); } }}
       contentEditable suppressContentEditableWarning role="textbox" aria-label="Transkript, markera ord för att redigera" aria-multiline="true" aria-readonly={!textEditable} aria-describedby={helpId} aria-keyshortcuts="Alt+T" tabIndex={0}
       onCopy={(e) => { if (selection.length && window.getSelection()?.isCollapsed) { e.preventDefault(); e.clipboardData.setData("text/plain", selectedText); } }}
@@ -374,18 +389,18 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const same = textIndices.every((i) => shown[i].speaker === first.speaker && shown[i].decision !== "unresolved");
         const certain = same && textIndices.every((i) => !needsSpeakerReview(shown[i]) || shown[i].decision === "confirmed");
         const name = certain ? displayName(first.speaker) : same && suggested ? `Förslag: ${displayName(suggested)}` : [...new Set(textIndices.map((i) => shown[i].decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(shown[i]) && !shown[i].decision ? `Förslag: ${displayName(shown[i].speaker)}` : displayName(shown[i].speaker)))].join(", ");
-        return <div key={paragraphIndex} data-turn-index={paragraphIndex} data-caret-paragraph={paragraphIndex === caretParagraph ? "true" : undefined} className="mb-6 pl-2 grid grid-cols-1 gap-1 sm:grid-cols-[6rem_minmax(0,1fr)] sm:gap-4">
-          <div contentEditable={false} className="flex min-w-0 items-start gap-2 text-[11px] sm:block sm:pt-1">
-            <button type="button" disabled={!audioAvailable} className="inline-flex min-h-6 coarse:min-h-11 min-w-6 shrink-0 items-center text-ink-mute hover:text-ink tabular-nums disabled:opacity-40" onClick={() => { onSeek(first.fileIndex, first.start, false); onInteract(); }} aria-label={`Flytta uppspelningen till ${formatClock(first.start * 1_000)}`}>{raw.some((s) => s.fileIndex > 0) ? `Del ${first.fileIndex + 1} · ` : ""}{formatClock(first.start * 1_000)}</button>
-            {labelled && <button type="button" className="block min-h-6 coarse:min-h-11 min-w-6 max-w-full whitespace-normal text-left font-medium [overflow-wrap:anywhere] sm:mt-1" style={{ color: tint(certain ? first.speaker : null) }} aria-label={`Markera stycket: ${name}`} onClick={() => choose(anchorTextSelection(indices.map((i) => ({ index: i, start: 0, end: shown[i].text.length })), shown, corrections))}>{name}</button>}
+        return <div key={paragraphIndex} data-turn-index={paragraphIndex} data-caret-paragraph={paragraphIndex === caretParagraph ? "true" : undefined} className={styles.paragraph}>
+          <div contentEditable={false} className={styles.label}>
+            <button type="button" disabled={!audioAvailable} className={join(styles.inline, styles.time)} onClick={() => { onSeek(first.fileIndex, first.start, false); onInteract(); }} aria-label={`Flytta uppspelningen till ${formatClock(first.start * 1_000)}`}>{raw.some((s) => s.fileIndex > 0) ? `Del ${first.fileIndex + 1} · ` : ""}{formatClock(first.start * 1_000)}</button>
+            {labelled && <button type="button" className={join(styles.inline, styles.who)} data-speaker-color={certain && first.speaker ? speakerColorIndex(first.speaker) : undefined} aria-label={`Markera stycket: ${name}`} onClick={() => choose(anchorTextSelection(indices.map((i) => ({ index: i, start: 0, end: shown[i].text.length })), shown, corrections))}>{name}</button>}
           </div>
-          <p className="min-w-0 max-w-[68ch] [overflow-wrap:anywhere] whitespace-pre-wrap text-[16px] leading-[1.95] text-ink selection:bg-primary/30">{indices.map((index, i) => {
+          <p className={styles.words}>{indices.map((index, i) => {
             const segment = shown[index], previous = i > 0 ? shown[indices[i - 1]] : null;
             const sameSource = previous && segment.sourceSegmentIndex !== undefined && segment.sourceSegmentIndex === previous.sourceSegmentIndex;
             const precedingTextIndex = indices.slice(0, i).reverse().find((n) => shown[n].text.trim());
             const precedingText = precedingTextIndex === undefined ? null : shown[precedingTextIndex];
             const changed = segment.text.trim() && precedingText && (precedingText.speaker !== segment.speaker || precedingText.decision !== segment.decision && segment.decision === "unresolved");
-            return <span key={index}>{previous && !sameSource ? " " : ""}{changed && <span contentEditable={false} className="mx-1 inline-block max-w-full whitespace-normal rounded bg-bg-2 px-1.5 align-baseline text-[12px] font-medium leading-5 [overflow-wrap:anywhere]" style={{ color: tint(segment.decision === "unresolved" ? null : segment.speaker) }}>{segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)}` : displayName(segment.speaker)}</span>}{textSpan(segment, index)}</span>;
+            return <span key={index}>{previous && !sameSource ? " " : ""}{changed && <span contentEditable={false} className={styles.changed} data-speaker-color={segment.decision !== "unresolved" && segment.speaker ? speakerColorIndex(segment.speaker) : undefined}>{segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)}` : displayName(segment.speaker)}</span>}{textSpan(segment, index)}</span>;
           })}</p>
         </div>;
       })}

@@ -1,0 +1,415 @@
+/* The editable transcript of the speaker review (TranscriptEditor): its sticky toolbar, the text with its per-word spans
+   and the colour of each speaker. The controls in the toolbar are the design system's; the text is a contentEditable
+   region, so its markup and data-* are the code's and are styled here. */
+
+.editor {
+  position: relative;
+}
+
+.toolbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+  padding: var(--spacing-2) var(--spacing-4);
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-low);
+}
+
+/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
+@media (max-width: 639px), (max-height: 600px) {
+  .toolbar {
+    position: static;
+  }
+}
+
+.toolbarRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-1);
+}
+
+.count {
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+/* A long label wraps instead of reaching past a narrow screen: the design system's button is one line. */
+.actions > button {
+  max-inline-size: 100%;
+  block-size: auto;
+  min-block-size: var(--size-element-sm);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+
+.selection {
+  padding-block: var(--spacing-2) var(--spacing-1);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.selectionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.quote {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.assign {
+  flex: 1 1 10rem;
+  max-inline-size: 12rem;
+  min-inline-size: 0;
+}
+
+.note {
+  padding-block: var(--spacing-1);
+}
+
+.form {
+  padding-block: var(--spacing-2);
+}
+
+.formActions {
+  margin-block-start: var(--spacing-2);
+}
+
+.error {
+  margin: 0;
+  padding-block: var(--spacing-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-error);
+}
+
+.details {
+  padding: var(--spacing-3) var(--spacing-5);
+  border-block-end: 1px solid var(--color-border);
+  background: var(--color-background-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.6;
+}
+
+.detailsHeading {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+}
+
+.overlaps {
+  margin-block-start: var(--spacing-2);
+}
+
+.overlaps summary {
+  display: flex;
+  align-items: center;
+  min-block-size: var(--spacing-6);
+  cursor: pointer;
+}
+
+.overlaps ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin: var(--spacing-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (pointer: coarse) {
+  .overlaps summary {
+    min-block-size: var(--spacing-11);
+  }
+}
+
+.help {
+  padding: var(--spacing-4) var(--spacing-5) 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.focusLabel {
+  font-weight: var(--font-weight-medium);
+}
+
+/* Keyboard focus is shown on the word "Transkript" of the help line while the text has it. */
+.editor:has(.text:focus-visible) .focusLabel {
+  border-radius: var(--radius-inner);
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+  color: var(--color-text-primary);
+}
+
+.empty {
+  padding: var(--spacing-4) var(--spacing-5);
+}
+
+/* ---- The text ---- */
+
+.text {
+  padding: var(--spacing-5);
+  outline: none;
+}
+
+@media (min-width: 640px) {
+  .text {
+    padding-inline: var(--spacing-7);
+  }
+}
+
+/* Keyboard focus keeps clear of the sticky toolbar: its height is set on the editor by the code. */
+.text [data-turn-index] {
+  scroll-margin-block: var(--transcript-toolbar-height, 0px) var(--spacing-4);
+}
+
+.text [data-text-span]:focus-visible,
+.text button {
+  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
+}
+
+/* A local paragraph marker shows the editing focus without outlining the full page. */
+.text:focus-visible [data-caret-paragraph="true"] {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.paragraph {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-1);
+  margin-block-end: var(--spacing-6);
+  padding-inline-start: var(--spacing-2);
+}
+
+@media (min-width: 640px) {
+  .paragraph {
+    grid-template-columns: 6rem minmax(0, 1fr);
+    gap: var(--spacing-4);
+  }
+}
+
+.label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  min-inline-size: 0;
+  font-size: var(--font-size-xs);
+}
+
+@media (min-width: 640px) {
+  .label {
+    display: block;
+    padding-block-start: var(--spacing-1);
+  }
+}
+
+/* A control in the text's margin: 24 px for a mouse, 44 px for a finger. */
+.inline {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--spacing-6);
+  min-inline-size: var(--spacing-6);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-inner);
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.inline:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
+@media (pointer: coarse) {
+  .inline {
+    min-block-size: var(--spacing-11);
+    min-inline-size: var(--spacing-11);
+  }
+}
+
+.time {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.time:hover:not(:disabled) {
+  color: var(--color-text-primary);
+}
+
+.time:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.who {
+  display: block;
+  max-inline-size: 100%;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+}
+
+@media (min-width: 640px) {
+  .who {
+    margin-block-start: var(--spacing-1);
+  }
+}
+
+.words {
+  max-inline-size: 68ch;
+  min-inline-size: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: var(--font-size-base);
+  line-height: 1.95;
+  color: var(--color-text-primary);
+}
+
+.words::selection,
+.words ::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* The mark between two speakers inside a paragraph. */
+.changed {
+  display: inline-block;
+  max-inline-size: 100%;
+  margin-inline: var(--spacing-1);
+  padding-inline: var(--spacing-1-5);
+  border-radius: var(--radius-inner);
+  background: var(--color-background-muted);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.5rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--color-text-secondary);
+}
+
+/* A passage: a line under its words in its speaker's colour, a dotted one in the review colour while its speaker is to be
+   checked. */
+.span {
+  padding-block: var(--spacing-1);
+  text-decoration: underline solid;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 6px;
+}
+
+.span:focus-visible {
+  border-radius: var(--radius-inner);
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+}
+
+/* A passage is a control: on a touch screen its box is 44 px tall, which an inline element's padding gives without
+   moving the lines. */
+@media (pointer: coarse) {
+  .span {
+    padding-block: calc((var(--spacing-11) - 1em) / 2);
+  }
+}
+
+.span[data-playable] {
+  cursor: pointer;
+}
+
+.span[data-playable]:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.span[data-speaker-color="0"] { text-decoration-color: var(--module-speaker-0); }
+.span[data-speaker-color="1"] { text-decoration-color: var(--module-speaker-1); }
+.span[data-speaker-color="2"] { text-decoration-color: var(--module-speaker-2); }
+.span[data-speaker-color="3"] { text-decoration-color: var(--module-speaker-3); }
+.span[data-speaker-color="4"] { text-decoration-color: var(--module-speaker-4); }
+.span[data-speaker-color="5"] { text-decoration-color: var(--module-speaker-5); }
+.span[data-tone="review"] { text-decoration-color: var(--module-color-review); }
+
+.span.uncertain {
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.span.uncertain:hover {
+  background: color-mix(in srgb, var(--module-color-review) 10%, transparent);
+}
+
+.who[data-speaker-color="0"],
+.changed[data-speaker-color="0"] { color: var(--module-speaker-0); }
+.who[data-speaker-color="1"],
+.changed[data-speaker-color="1"] { color: var(--module-speaker-1); }
+.who[data-speaker-color="2"],
+.changed[data-speaker-color="2"] { color: var(--module-speaker-2); }
+.who[data-speaker-color="3"],
+.changed[data-speaker-color="3"] { color: var(--module-speaker-3); }
+.who[data-speaker-color="4"],
+.changed[data-speaker-color="4"] { color: var(--module-speaker-4); }
+.who[data-speaker-color="5"],
+.changed[data-speaker-color="5"] { color: var(--module-speaker-5); }
+
+/* A word: the one playing, the selection, a word still to be confirmed. */
+.word {
+  border-radius: var(--radius-inner);
+}
+
+.selected {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.chosen {
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+}
+
+.playing {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.doubtful {
+  background: color-mix(in srgb, var(--module-color-review) 15%, transparent);
+}
+
+.now {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+/* Forced colours drop backgrounds and tints: the line under a passage and the playing word are outlines. */
+@media (forced-colors: active) {
+  .span {
+    text-decoration-color: CanvasText !important;
+  }
+
+  .word[aria-current="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    outline: 2px solid Highlight;
+  }
+
+  .text:focus-visible [data-caret-paragraph="true"] {
+    border-inline-start: 3px solid Highlight;
+  }
+}
