@@ -11,3 +11,8 @@
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
 }
+
+/* The line under the buttons says why the wait is; empty, it takes no room, so the card's rhythm does not change. */
+.finishing {
+  padding-block-start: var(--spacing-2);
+}
