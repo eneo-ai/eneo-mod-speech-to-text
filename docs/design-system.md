@@ -4,7 +4,7 @@ Syfte: Beskriva Astryx och Eneo-temat, hur en brist i designsystemet rättas en 
 
 Läs detta när: Du bygger eller ändrar något visuellt, ser att en kontroll bryter mot grinden, ska ändra färger, storlekar eller fokusring, eller ska uppgradera Astryx.
 
-Hör ihop med: [Frontend](frontend.md), [Kvalitetsgrindar](quality-gates.md), [Arkitektur](architecture.md#frontendens-lager), [Beslut: Astryx i stället för shadcn](decisions/0001-astryx-over-shadcn.md), [Branding](branding.md)
+Hör ihop med: [Frontend](frontend.md), [Kvalitetsgrindar](quality-gates.md), [Arkitektur](architecture.md#frontendens-lager), [Beslut: Astryx i stället för shadcn](decisions/0001-astryx-over-shadcn.md)
 
 ## Astryx i korthet
 
@@ -72,7 +72,7 @@ Det finns inget runtime- eller byggberoende till `@sk-web-gui`; färgtokens och 
 
 Färgläget ägs av next-themes, inte av temat. Se [beslutet](decisions/0003-next-themes-owns-the-colour-mode.md).
 
-Sundsvalls domänfärger (inspelningsröd, de sex talarfärgerna) ligger kvar som CSS-variabler i modulen (`frontend/app/globals.css`) tills en andra modul behöver dem. Hur organisationens märke ritas: [Arkitektur](architecture.md#var-organisationens-märke-kommer-in) och [Branding](branding.md).
+Sundsvalls domänfärger (inspelningsröd, de sex talarfärgerna) ligger kvar som CSS-variabler i modulen (`frontend/app/globals.css`) tills en andra modul behöver dem. Hur organisationens märke ritas: [Arkitektur](architecture.md#var-organisationens-märke-kommer-in).
 
 ## Rätta en brist i designsystemet
 
