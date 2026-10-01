@@ -106,6 +106,48 @@ class SettingsTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "SESSION_MAX_AGE_MINUTES"):
                         load_settings()
 
+    def test_body_limits_default_to_10_mib_and_1_gib(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (10 * 1024 * 1024, 1024**3))
+        self.assertEqual(settings.max_response_bytes, 32 * 1024 * 1024)
+
+    def test_body_limits_are_configurable(self) -> None:
+        environment = valid_environment() | {"MAX_BODY_BYTES": "2048", "MAX_UPLOAD_BYTES": "5000000", "MAX_RESPONSE_BYTES": "4096"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes, settings.max_response_bytes), (2048, 5_000_000, 4096))
+
+    def test_rejects_invalid_body_limits(self) -> None:
+        # An empty value is refused too: docker-compose.yml gives the defaults itself, so it never passes one.
+        for name in ("MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_RESPONSE_BYTES"):
+            for raw in ("0", "-5", "ten", "", "1.5", "inf", "nan", "9" * 5000, "9" * 30):
+                with self.subTest(name=name, raw=raw):
+                    with patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, name):
+                            load_settings()
+
+    def test_the_upload_budget_is_a_finite_number_greater_than_zero(self) -> None:
+        # An infinite budget would defeat the total deadline on the forward of an upload.
+        for raw in ("inf", "-inf", "Infinity", "nan", "1e999", "1e308", "0", "-1", "abc", "", "86401"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, valid_environment() | {"UPLOAD_PROXY_TIMEOUT_SECONDS": raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, "UPLOAD_PROXY_TIMEOUT_SECONDS"):
+                        load_settings()
+
+    def test_the_upload_budget_takes_a_number_of_seconds(self) -> None:
+        for raw, seconds in (("1800", 1800.0), ("0.5", 0.5), ("86400", 86400.0)):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, valid_environment() | {"UPLOAD_PROXY_TIMEOUT_SECONDS": raw}, clear=True):
+                    self.assertEqual(load_settings().upload_proxy_timeout_seconds, seconds)
+
+    def test_the_default_upload_budget_is_30_minutes(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            self.assertEqual(load_settings().upload_proxy_timeout_seconds, 1800.0)
+
     def test_rejects_unknown_auth_mode(self) -> None:
         environment = valid_environment()
         environment["AUTH_MODE"] = "automatic"

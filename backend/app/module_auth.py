@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import secrets
@@ -27,6 +28,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import AuthMode, Settings
+from app.upstream import SMALL_ANSWER
 
 logger = logging.getLogger("eneo_module_auth")
 
@@ -138,6 +140,8 @@ class ModuleSessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, ModuleSession] = {}
         self._lock = threading.Lock()
+        # Who is waiting for a session to end (a live socket), by session id: the loop to wake and its event.
+        self._watchers: dict[str, list[tuple[asyncio.AbstractEventLoop, asyncio.Event]]] = {}
 
     def create(self, session: ModuleSession) -> str:
         session_id = secrets.token_urlsafe(32)
@@ -154,7 +158,8 @@ class ModuleSessionStore:
             self._delete_expired_locked(now)
             session = self._sessions.get(session_id)
             if session is None or session.expires_at <= now:
-                self._sessions.pop(session_id, None)
+                if self._sessions.pop(session_id, None) is not None:
+                    self._notify_locked(session_id)
                 return None
             return session
 
@@ -168,10 +173,13 @@ class ModuleSessionStore:
         if session_id is None:
             return
         with self._lock:
-            self._sessions.pop(session_id, None)
+            if self._sessions.pop(session_id, None) is not None:
+                self._notify_locked(session_id)
 
     def clear(self) -> None:
         with self._lock:
+            for session_id in list(self._sessions):
+                self._notify_locked(session_id)
             self._sessions.clear()
 
     def _delete_expired_locked(self, now: float) -> None:
@@ -182,6 +190,40 @@ class ModuleSessionStore:
         ]
         for session_id in expired:
             del self._sessions[session_id]
+            self._notify_locked(session_id)
+
+    def _notify_locked(self, session_id: str) -> None:
+        for loop, event in self._watchers.get(session_id, ()):
+            with contextlib.suppress(RuntimeError):  # the watcher's loop has closed
+                loop.call_soon_threadsafe(event.set)
+
+    async def ended(self, session_id: str | None) -> None:
+        """Returns when the session is gone: logged out, replaced by a new login, refused a refresh, or expired.
+
+        The one signal a long-lived connection (the live socket) subscribes to, so that it ends with the session even
+        when nothing is sent over it. An expiry is noticed at the session's own time, and a session that is refreshed
+        meanwhile (its ``expires_at`` moves) is waited for again until its new end.
+        """
+        if session_id is None:
+            return
+        event = asyncio.Event()
+        watcher = (asyncio.get_running_loop(), event)
+        with self._lock:
+            self._watchers.setdefault(session_id, []).append(watcher)
+        try:
+            while (session := self.get(session_id)) is not None:
+                try:
+                    await asyncio.wait_for(event.wait(), max(0.0, session.expires_at - time.time()) + 0.05)
+                    return
+                except TimeoutError:
+                    continue
+        finally:
+            with self._lock:
+                watchers = self._watchers.get(session_id, [])
+                if watcher in watchers:
+                    watchers.remove(watcher)
+                if not watchers:
+                    self._watchers.pop(session_id, None)
 
 
 def eneo_is_unavailable(status_code: int) -> bool:
@@ -288,6 +330,7 @@ class ModuleAuth:
         payload: AccessCodeLoginRequest,
         request: Request,
         response: Response,
+        replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> dict[str, bool]:
         self._require_auth_mode("access_code")
         self.require_same_origin(request)
@@ -307,6 +350,7 @@ class ModuleAuth:
         max_age = self.settings.session_max_age_seconds
         session = AccessCodeSession(expires_at=int(time.time()) + max_age)
         self._set_session_cookie(response, session=session, max_age=max_age)
+        self.sessions.delete(replaced_session_id)  # the one the browser had is over
         response.headers["Cache-Control"] = "no-store"
         return {"ok": True}
 
@@ -318,6 +362,7 @@ class ModuleAuth:
             str | None,
             Cookie(alias=STATE_COOKIE),
         ] = None,
+        replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
         self._require_auth_mode("eneo_sso")
         pending = self._load_pending_login(pending_cookie)
@@ -325,7 +370,8 @@ class ModuleAuth:
             ticket is None
             or state is None
             or pending is None
-            or not secrets.compare_digest(state, pending.state)
+            # Bytes, not str: compare_digest raises TypeError (a 500) for a str with a non-ASCII character.
+            or not secrets.compare_digest(state.encode(), pending.state.encode())
         ):
             return self._auth_error("invalid_state")
 
@@ -337,6 +383,7 @@ class ModuleAuth:
                 },
                 json={"ticket": ticket},
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.exception("Module ticket exchange could not reach Eneo")
@@ -352,7 +399,9 @@ class ModuleAuth:
         try:
             token = ModuleTokenResponse.model_validate(upstream.json())
         except (ValueError, ValidationError):
-            logger.exception("Module ticket exchange returned an invalid response")
+            # Not the exception, here and in the two like it below: a validation error quotes the input it refused,
+            # and that is an access token.
+            logger.error("Module ticket exchange returned an invalid response")
             return self._auth_error("exchange_invalid")
 
         now = int(time.time())
@@ -379,6 +428,7 @@ class ModuleAuth:
                     "Authorization": f"Bearer {token.access_token}",
                 },
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.exception("Module session validation could not reach Eneo")
@@ -393,7 +443,7 @@ class ModuleAuth:
         try:
             validated = ModuleResourceSessionResponse.model_validate(validation.json())
         except (ValueError, ValidationError):
-            logger.exception("Module session validation returned an invalid response")
+            logger.error("Module session validation returned an invalid response")
             return self._auth_error("validation_invalid")
         if (
             validated.module_key != token.module_key
@@ -425,6 +475,8 @@ class ModuleAuth:
         self._set_session_cookie(
             response, session=session, max_age=session_expires_at - now
         )
+        # The browser has the new session now: the one it had is over, with whatever is open under it.
+        self.sessions.delete(replaced_session_id)
         self._delete_state_cookie(response)
         self._secure_callback_response(response)
         return response
@@ -551,6 +603,7 @@ class ModuleAuth:
                     "Authorization": f"Bearer {session.access_token}",
                 },
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.warning("Module token refresh could not reach Eneo", exc_info=True)
@@ -569,7 +622,7 @@ class ModuleAuth:
         try:
             token = ModuleTokenResponse.model_validate(upstream.json())
         except (ValueError, ValidationError):
-            logger.exception("Module token refresh returned an invalid response")
+            logger.error("Module token refresh returned an invalid response")
             return None
         if (
             token.module_key != session.module_key
@@ -604,6 +657,39 @@ class ModuleAuth:
             raise _refusal(
                 connection, HTTPException(status_code=403, detail="Invalid request origin")
             )
+
+    @staticmethod
+    def is_another_user(
+        session: ModuleSession, expected_user: str | None, expected_tenant: str | None = None
+    ) -> bool:
+        """True if the page that made a media request is for another person than the session's.
+
+        A browser has one cookie for every tab: a login in one tab replaces the session of an old one, and the old
+        page would go on sending audio under the new person's session. The page names the user (and the tenant, if it
+        knows it) it was opened for, and the module compares: ids, not secrets. A page that names nobody is accepted,
+        for now: the frontend sends the name from the release that carries this check, and it becomes required in the
+        release after it, when a request without one is refused as well. A session without a user (the access code)
+        has nobody to compare.
+        """
+        if not isinstance(session, EneoSsoSession):
+            return False
+        return (expected_user is not None and expected_user != session.user.id) or (
+            expected_tenant is not None and expected_tenant != session.tenant_id
+        )
+
+    def require_expected_user(self, request: Request) -> None:
+        """A dependency of the routes that take media: 409 user_changed, before the body is read, for another user's page.
+
+        The page names its user in ``X-Expected-User`` (and the tenant in ``X-Expected-Tenant``). Run it after
+        ``require_session``.
+        """
+        if self.is_another_user(
+            self.session_from_request(request),
+            request.headers.get("x-expected-user"),
+            request.headers.get("x-expected-tenant"),
+        ):
+            logger.info("A media request was refused: its page is for another user than the session's")
+            raise HTTPException(status_code=409, detail="user_changed")
 
     @staticmethod
     def session_from_request(connection: HTTPConnection) -> ModuleSession:
