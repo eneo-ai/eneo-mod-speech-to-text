@@ -89,10 +89,9 @@ Adressparametrar på flödessidan: `?run=<id>` öppnar en körning, `?recording=
 
 ## Migration (temporary, removed by bead .24)
 
-Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx, en ytgrupp åt gången. Under tiden:
+Gränssnittet har porterats från shadcn/Radix/Tailwind till Astryx, en ytgrupp åt gången. Nu gäller:
 
-- Filer som ännu använder det gamla systemet står i `frontend/tests/legacy-ui-files.json`. Ta bort en fil ur listan när den är portad; lägg aldrig till en.
-- `frontend/components/ui/` (kopierade shadcn-filer), `frontend/components.json`, `frontend/tailwind.config.ts`, `frontend/postcss.config.mjs`, `frontend/lib/utils.ts` och Tailwind-delarna av `frontend/app/globals.css` är det gamla systemet och får inte användas för nytt arbete. De tas bort i portningens sista fas.
+- Det gamla systemet (`frontend/components/ui/`, `frontend/components.json`, `frontend/tailwind.config.ts`, `frontend/postcss.config.mjs`, `frontend/lib/utils.ts`, Radix och Tailwind) är borttaget och får inte komma tillbaka: `frontend/lib/legacy-ui.test.ts` misslyckas på en import av det och på en klasssträng.
 - Använd inte shadcn-färdigheten eller shadcn-MCP för nytt arbete.
 - Vilka filer som ännu ligger på det gamla systemet ser du i listan ovan; den krymper för varje ytgrupp som portas.
 - Planen och dess status: `docs/plans/2026-10-01-astryx-port-plan.md`.

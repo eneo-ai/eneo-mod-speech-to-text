@@ -209,9 +209,8 @@ Hur en annan organisation ställer in det: [Byt organisation](branding.md). Besl
 
 ## Migration (temporary, removed by bead .24)
 
-Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx. Under portningen samexisterar de två systemen:
+Gränssnittet har porterats från shadcn/Radix/Tailwind till Astryx; de två systemen samexisterar inte längre:
 
 - Läget och planen: `docs/plans/2026-10-01-astryx-port-plan.md`; beslutsunderlaget: `docs/plans/2026-10-01-module-platform-design.md`.
-- Filer som ännu ligger på det gamla systemet listas i `frontend/tests/legacy-ui-files.json`. Listan krymper bara.
-- Det gamla systemets kod ligger i `frontend/components/ui/`, `frontend/tailwind.config.ts` och Tailwind-delarna av `frontend/app/globals.css`. Allt detta tas bort i portningens sista fas.
+- Det gamla systemet (`frontend/components/ui/`, Tailwind och dess konfiguration, `frontend/lib/utils.ts`, Radix) är borttaget. `frontend/lib/legacy-ui.test.ts` misslyckas om en import av det eller en klasssträng kommer tillbaka.
 - Plan A (portningen) går före Plan B och C ovan; de två senare beslutas separat.

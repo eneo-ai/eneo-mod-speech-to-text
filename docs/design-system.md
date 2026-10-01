@@ -58,7 +58,7 @@ Temat är källan till allt som skiljer modulen från Astryx standard.
 | `frontend/kit/theme/built/eneo.{css,js,d.ts}` | Genereras av `npm run theme:build`, är incheckade och redigeras aldrig för hand. De ligger i en egen mapp: bredvid källan skulle bundlern hitta `.ts`-filen och tyst använda stilar som byggs i webbläsaren. |
 | `frontend/kit/ModuleProviders.tsx` | Tema, svenska texter och Nexts länk för alla sidor. |
 | `frontend/kit/ModuleShell.tsx` | Sidans ram: toppfält, hoppa-länk, huvudregion. |
-| `frontend/app/layers.css` | Skiktordningen `reset, tw-preflight, astryx-base, astryx-theme`. Importeras först, i en egen fil, eftersom webpack lyfter importer. |
+| `frontend/app/layers.css` | Skiktordningen `reset, astryx-base, astryx-theme`. Importeras först, i en egen fil, eftersom webpack lyfter importer. |
 
 Vad temat bestämmer:
 
@@ -114,6 +114,6 @@ Astryx är fastlåst exakt och uppgraderas aldrig i en funktionsändring. En upp
 
 ## Migration (temporary, removed by bead .24)
 
-- Under portningen ligger det gamla systemet kvar bredvid Astryx: `@layer tw-preflight` i `frontend/app/globals.css` gör att Tailwinds återställning inte plattar till Astryx, och `app/layers.css` bestämmer skiktordningen. Tailwind och Radix tas bort i portningens sista fas.
+- Skiktordningen är `app/layers.css`. Det som dokumentet vilar på (typografin på `html` och `body`, sidans bakgrund, omslaget `[data-app-shell]`) ligger i `@layer reset` i `frontend/app/globals.css`, efter designsystemets egen återställning och under dess övriga skikt. Tailwind och Radix är borttagna.
 - Det äldre designunderlaget `design/DESIGN.md` och prototypen `design/prototyp.html` beskriver shadcn/Tailwind-stacken. De gäller inte för ny kod.
 - Plan och beslutsunderlag: `docs/plans/2026-10-01-astryx-port-plan.md`, `docs/plans/2026-10-01-module-platform-design.md`.

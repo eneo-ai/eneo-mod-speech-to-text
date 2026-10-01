@@ -1,89 +1,23 @@
-@layer tw-preflight {
-  @tailwind base;
+/* The module's own tokens (the transcript's speaker colours and the review marks follow below). Motion is on the
+   transitions.dev scale, namespaced: the design system declares --duration-fast (175 ms) in a layer above this one, and
+   an un-namespaced token here would be overridden by it. The recording dot, for CSS Modules, 3:1 on the card and the
+   muted surface in both colour modes. */
+:root {
+  --module-duration-quick: 150ms;
+  --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --module-color-record: light-dark(#dc2828, #dd2c2c);
 }
-@tailwind components;
-@tailwind utilities;
 
-@layer base {
-  :root {
-    /* Modulens lokala färgtokens. */
-    --bg: 0 0% 98%; /* gray-50  #FAFAFA – sidbakgrund */
-    --bg-2: 0 0% 94%; /* gray-100 #F0F0F0 – sekundär yta/chip */
-    --paper: 0 0% 100%; /* vit     #FFFFFF – kort */
-    --ink: 240 9% 13%; /* gray-900 #1F1F25 – primärtext */
-    --ink-soft: 240 8% 29%; /* gray-700 #444450 – sekundärtext */
-    --ink-mute: 240 2% 42%; /* gray-500 #68686D – mute */
-    --rule: 240 3% 52%; /* Control edges: >=3:1 on paper and secondary surfaces. */
-    --rule-soft: 0 0% 90%; /* gray-200 #E5E5E5 – mjuk kant */
-    /* The default accent #004595 – brand, action, selection. A deployment's ORGANIZATION_ACCENT overrides this and the
-       two tokens below (GET /api/branding/theme.css, unlayered), as it does the design system's accent. */
-    --primary: 212 100% 29%;
-    --primary-foreground: 0 0% 100%;
-    --primary-soft: 205 43% 87%; /* light blue #CFE0EC – the selected tint */
-    --destructive: 358 75% 38%; /* errors and discarding actions, darker than the recording red */
-    --destructive-foreground: 0 0% 100%;
-    --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
-    --record-foreground: 0 0% 100%;
-    /* The recording dot for CSS Modules, from --record in both modes (3:1 on the card and the muted surface). */
-    --module-color-record: light-dark(#dc2828, #dd2c2c);
-    --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
-    --ok: 152 55% 32%; /* grön – bekräftat/klart */
-    /* shadcn's semantic layer over the module tokens. Declared once: .dark sits
-       on the same element, so each reference resolves to the active theme. */
-    --background: var(--bg);
-    --foreground: var(--ink);
-    --card: var(--paper);
-    --card-foreground: var(--ink);
-    --popover: var(--paper);
-    --popover-foreground: var(--ink);
-    --secondary: var(--bg-2);
-    --secondary-foreground: var(--ink);
-    --muted: var(--bg-2);
-    --muted-foreground: var(--ink-mute);
-    --accent: var(--bg-2); /* a quiet hover surface, not the brand */
-    --accent-foreground: var(--ink);
-    --border: var(--rule-soft);
-    --input: var(--rule);
-    --ring: var(--primary);
-    --radius: 0.5rem;
-    /* Motion on the transitions.dev scale: modals open in 250 ms, close in 150 ms. Namespaced: the design system declares
-       --duration-fast (175 ms) in a layer above this one, and an un-namespaced token here would be overridden by it. */
-    --module-duration-quick: 150ms;
-    --module-duration-fast: 250ms;
-    --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --module-scale-large: 0.96;
-    color-scheme: light;
-  }
-
-  .dark {
-    --bg: 240 10% 7%;
-    --bg-2: 240 8% 14%;
-    --paper: 240 9% 10%;
-    --ink: 0 0% 96%;
-    --ink-soft: 240 5% 75%;
-    --ink-mute: 240 4% 62%;
-    --rule: 240 5% 48%;
-    --rule-soft: 240 6% 22%;
-    --primary: 207 100% 66%;
-    --primary-foreground: 240 10% 7%;
-    --primary-soft: 209 45% 22%;
-    --destructive: 358 85% 72%;
-    --destructive-foreground: 240 10% 7%;
-    --record: 0 72% 52%; /* the dot keeps 3:1 on the secondary surface */
-    --record-foreground: 0 0% 100%;
-    --ochre: 47 92% 58%;
-    --ok: 152 50% 58%;
-    color-scheme: dark;
-  }
-
-  * {
-    @apply border-border;
-  }
-
+/* What the page rests on, in the layer of the design system's reset (after it, so these win over it, and below the
+   system's own layers). */
+@layer reset {
   html,
   body {
-    background: hsl(var(--bg));
-    color: hsl(var(--ink));
+    /* The design system's page colours, as it declares them for the document (its default theme; the module's own
+       theme root, which the wrapper below sits in, refines them): what shows beyond the wrapper, such as a phone's
+       overscroll, is the page's colour, not the browser's. */
+    background: var(--color-background-body);
+    color: var(--color-text-primary);
     /* Systemfont-stack: inga tredjepartsanrop eller font-cookieytor. */
     font-family:
       -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
@@ -96,15 +30,6 @@
     min-height: 100vh;
   }
 
-  h1,
-  h2,
-  h3,
-  h4,
-  h5,
-  h6 {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
-  }
-
   /* A phone's docked primary action never covers the control that has focus. */
   @media (max-width: 767px) {
     html:has([data-docked-action]) {
@@ -112,40 +37,15 @@
     }
   }
 
-  /* The page: full window width, so a header's band spans it. The content's width is the frame's
-     (components/frame.tsx), never the shell's. */
+  /* The page: full window width, so a bar's band spans it, on the design system's own page colours (the wrapper is
+     inside its theme root, where they are defined). */
   [data-app-shell] {
     min-height: 100vh;
-    background: hsl(var(--bg));
+    background: var(--color-background-body);
+    color: var(--color-text-primary);
     position: relative;
     display: flex;
     flex-direction: column;
-  }
-}
-
-@layer components {
-  .font-mono {
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  }
-
-  .quiet-em {
-    font-style: normal;
-    font-weight: 400;
-    color: hsl(var(--ink-mute));
-  }
-
-  .paper-card {
-    background: hsl(var(--paper));
-    border: 1px solid hsl(var(--rule-soft));
-    border-radius: 16px;
-  }
-
-  .rule-divider {
-    border-bottom: 1px solid hsl(var(--rule));
-  }
-
-  .rule-divider-soft {
-    border-bottom: 1px solid hsl(var(--rule-soft));
   }
 }
 
@@ -163,16 +63,6 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
-/* Dialog open and close (Radix waits for the closing animation before unmounting). */
-@keyframes t-fade-in { from { opacity: 0; } }
-@keyframes t-fade-out { to { opacity: 0; } }
-@keyframes t-modal-in { from { opacity: 0; scale: var(--module-scale-large); } }
-@keyframes t-modal-out { to { opacity: 0; scale: var(--module-scale-large); } }
-.t-overlay[data-state="open"] { animation: t-fade-in var(--module-duration-fast) var(--module-ease-smooth-out); }
-.t-overlay[data-state="closed"] { animation: t-fade-out var(--module-duration-quick) var(--module-ease-smooth-out); }
-.t-modal[data-state="open"] { animation: t-modal-in var(--module-duration-fast) var(--module-ease-smooth-out); }
-.t-modal[data-state="closed"] { animation: t-modal-out var(--module-duration-quick) var(--module-ease-smooth-out); }
-
 /* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
    focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
 @media (max-width: 1023px) {
@@ -181,9 +71,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
-  .t-overlay, .t-modal { animation: none !important; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
+  /* Loading spinners stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 /* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
@@ -241,10 +130,6 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
-
-/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
-   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
-dialog[open] { pointer-events: auto; }
 
 /* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
    tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half

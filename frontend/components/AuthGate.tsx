@@ -7,7 +7,6 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/Brand";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
-import { PortalContainer } from "@/components/portal-container";
 import styles from "@/components/AuthGate.module.css";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
@@ -54,7 +53,7 @@ export function SignedOutCover({
   focusBack?: { current: ((before: HTMLElement | null) => void) | null };
   children: React.ReactNode;
 }) {
-  // The page's overlays open in here too, so a dialog with names or quotes is covered with the page.
+  // The page's own element, which the focus is kept to and given back into.
   const [container, setContainer] = useState<HTMLElement | null>(null);
   // Where on the page the focus was when the login ended, taken before the cover's inert moves it away.
   const lost = useRef<{ from: HTMLElement | null } | null>(null);
@@ -80,7 +79,7 @@ export function SignedOutCover({
   }
   return (
     <div ref={setContainer} className={signedOut ? styles.pageSignedOut : styles.page} inert={signedOut}>
-      <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
+      {children}
     </div>
   );
 }
