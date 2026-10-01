@@ -862,6 +862,7 @@ class LiveCase(BoundaryCase):
         super().setUp()
         self.live = EneoLive()
         self.eneo.websocket = self.live
+        self.token_expires_in = 900  # what Eneo says a token it renews lives for
 
         def respond(seen: Seen):
             ceiling = datetime.fromtimestamp(time.time() + 4 * 3600, tz=timezone.utc).isoformat()
@@ -869,7 +870,7 @@ class LiveCase(BoundaryCase):
             if seen.path.endswith("/live-transcription-sessions/"):
                 body = {"ticket": "tkt", "websocket_path": "/ws/live"}
             elif seen.path.endswith("/token/refresh/") or seen.path.endswith("/module-auth/token/"):
-                body = {"access_token": "token-of-" + seen.path.rsplit("/", 2)[-2], "token_type": "bearer", "expires_in": 900, "session_expires_at": ceiling,
+                body = {"access_token": "token-of-" + seen.path.rsplit("/", 2)[-2], "token_type": "bearer", "expires_in": self.token_expires_in, "session_expires_at": ceiling,
                         "module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
             elif seen.path.endswith("/session/"):
                 body = {"module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
@@ -962,15 +963,24 @@ class LiveSessionEndTests(LiveCase):
             self.assertEqual(client.get("/api/auth/status").status_code, 200)
             self.assertEqual(self.request("GET", "/api/config", first, names_user=False).status_code, 401, "the replaced session still lives")
 
-    def test_a_session_that_is_refreshed_is_not_cut_off_at_its_first_expiry(self) -> None:
-        session = a_session("token-short", lifetime=3, refresh_in=0, user_id="user-id")  # Eneo's fake renews user-id's token
+    def test_a_session_that_is_refreshed_after_the_socket_opened_ends_the_socket_at_its_new_expiry(self) -> None:
+        # Times are whole seconds in a session, so each step has a margin of a second. Not due when the socket opens
+        # (the upgrade does not refresh it); due about 2 s later; its first end is 4 to 5 s from the start.
+        session = a_session("token-short", lifetime=5, refresh_in=2, user_id="user-id")  # user-id: whom Eneo's fake renews
+        self.token_expires_in = 8  # the renewal gives it 8 s more, from when it happens: a new end 9 to 10 s from the start
 
         async def scenario(browser):
-            # An ordinary request refreshes it (it is due), as the page's status polling does while it records.
-            await asyncio.to_thread(self.request, "GET", "/api/auth/status", session)
-            await asyncio.sleep(4)  # past the 3 s the session had
-            await browser.send(b"\x02" * 8)
-            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x02" * 8)
+            started = time.monotonic()
+            await asyncio.sleep(2.3)  # the refresh is due now, and the socket is open
+            await asyncio.to_thread(self.request, "GET", "/api/auth/status", session)  # the page's polling renews it
+            self.assertGreater(main.module_auth.sessions.get(session).expires_at - time.time(), 6, "the renewal did not move the expiry")
+            # Past the ORIGINAL end (5 s at the latest), audio still flows.
+            await asyncio.sleep(max(0, 5.4 - (time.monotonic() - started)))
+            await browser.send(b"\x03" * 8)
+            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x03" * 8)
+            # And the socket ends at the REVISED end: not before it, not never.
+            await self.assert_ended(browser, 8)
+            self.assertGreater(time.monotonic() - started, 8.5, "it ended before the revised expiry")
 
         self.through(session, scenario)
 
