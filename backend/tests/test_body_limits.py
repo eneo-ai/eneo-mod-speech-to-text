@@ -117,12 +117,14 @@ class Case(unittest.IsolatedAsyncioTestCase):
         main.module_auth.sessions.clear()
         self.session_id = a_session()
 
-    async def post(self, path: str, body: Lazy, *, authenticated: bool = True, declare_length: bool = True, headers: dict | None = None):
+    async def post(self, path: str, body: Lazy, *, authenticated: bool = True, declare_length: bool = True, headers: dict | None = None, names_user: bool = True):
         sent = {"Content-Type": "application/json", **(headers or {})}
         if declare_length:
             sent["Content-Length"] = str(body.length)
         if authenticated:
             sent["Cookie"] = f"{SESSION_COOKIE}={self.session_id}"
+            if names_user:
+                sent.setdefault("X-Expected-User", "user-id")  # the page names the user it was opened for
         # raise_app_exceptions=False: a crash in the app is a 500 to assert on, not an exception in the test.
         transport = httpx.ASGITransport(app=main.app, raise_app_exceptions=False)
         async with httpx.AsyncClient(transport=transport, base_url=ORIGIN) as client:
@@ -329,6 +331,16 @@ class UploadTests(Case):
                 self.assertEqual(body.taken, 0)
                 self.assertEqual(self.eneo.calls, [])
                 self.assertEqual(os.listdir(self.temporary), [])
+
+    async def test_an_upload_that_names_no_user_is_a_409_before_a_byte_of_it_is_read(self) -> None:
+        body = multipart_of(6)
+
+        response = await self.post(self.PATH, body, headers=MULTIPART, names_user=False)
+
+        self.assertEqual((response.status_code, response.json()), (409, {"detail": "user_changed"}))
+        self.assertEqual(body.taken, 0)
+        self.assertEqual(self.eneo.calls, [])
+        self.assertEqual(os.listdir(self.temporary), [])
 
     async def test_an_upload_for_another_user_is_a_409_before_a_byte_of_it_is_read(self) -> None:
         body = multipart_of(6)  # within the upload cap, so it is the page's user that decides

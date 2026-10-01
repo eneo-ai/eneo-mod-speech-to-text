@@ -247,6 +247,8 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 
     def connect(self, origin: str | None = MODULE_ORIGIN, query: str = ""):
         headers = {} if origin is None else {"Origin": origin}
+        # The page names the user it was opened for, as the frontend does: a socket that names nobody is refused.
+        query += ("&" if "?" in query else "?") + "expected_user=user-id"
         return self.client.websocket_connect(LIVE_PATH + query, headers=headers)
 
     def assert_closed(self, browser, code: int = 1000) -> None:
@@ -592,7 +594,7 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
 
         async def stream(port: int) -> int:
             async with websocket_connect(
-                f"ws://127.0.0.1:{port}{LIVE_PATH}",
+                f"ws://127.0.0.1:{port}{LIVE_PATH}?expected_user=user-id",
                 origin=MODULE_ORIGIN,
                 additional_headers={"Cookie": f"{SESSION_COOKIE}={session_id}"},
             ) as browser:

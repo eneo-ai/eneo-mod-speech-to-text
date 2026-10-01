@@ -84,6 +84,7 @@ class ArtifactProxyTests(unittest.TestCase):
         main.http_client = self.fake
         main._signed_urls.clear()
         self.client = TestClient(main.app)
+        self.client.headers["X-Expected-User"] = "user-id"  # the page names the user it was opened for
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,

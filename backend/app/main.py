@@ -1180,13 +1180,15 @@ async def _close_browser_socket(
 async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID) -> None:
     await websocket.accept()
     # A browser cannot set a header on a WebSocket: the page's user is the query parameter expected_user (and
-    # expected_tenant). Checked before anything is asked of Eneo, so no ticket is made for another person's page.
+    # expected_tenant), and a socket without it is refused: it carries a recording. Checked before anything is
+    # asked of Eneo, so no ticket is made for another person's page, or for one that names nobody.
     if module_auth.is_another_user(
         module_auth.session_from_request(websocket),
         websocket.query_params.get("expected_user"),
         websocket.query_params.get("expected_tenant"),
+        required=True,
     ):
-        logger.info("A live socket was refused: its page is for another user than the session's")
+        logger.info("A live socket was refused: its page is for another user than the session's, or for none")
         await _close_browser_socket(websocket, code=1008, reason="user_changed")
         return
     try:
