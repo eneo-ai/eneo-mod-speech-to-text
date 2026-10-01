@@ -1,5 +1,9 @@
 - alertdialog "Lämna sidan?":
   - heading "Lämna sidan?" [level=2]
-  - paragraph: Inspelningen stoppas. Det som spelats in finns kvar bland osända inspelningar.
-  - button "Stanna kvar"
-  - button "Lämna sidan"
+  - text: Inspelningen stoppas. Det som spelats in finns kvar bland osända inspelningar.
+  - button "Lämna sidan":
+    - text: ""
+    - status
+  - button "Stanna kvar":
+    - text: ""
+    - status

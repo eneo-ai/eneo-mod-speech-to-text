@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { open, run } from "./screens";
+import { backLink, open, record, result, run, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -31,6 +31,9 @@ async function reviewPage(page: Page) {
   await run(page, "run-review", "flow-2");
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
 }
+
+/** The warning opens once for each end of the login, so each opening is an answer that ends more than a minute from the last. */
+let loginEndsIn = 200;
 
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
@@ -76,6 +79,69 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => page.getByRole("button", { name: "Liten" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // The result's own overlays, on the page that owns them. A PDF opens in a dialog on a laptop's width; Escape closes it
+  // from its title, where focus starts.
+  "pdf preview": {
+    go: (page) => result(page),
+    show: (page) => page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click(),
+    shown: (page) => page.getByRole("dialog"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // Fler alternativ is under a laptop's width, and holds Dela where the browser can share (headless Chromium has no
+  // share sheet, so a stand-in is defined before the page loads).
+  "more options": {
+    go: async (page) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
+      await run(page, "run-plain");
+      await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
+    },
+    show: (page) => page.getByRole("button", { name: "Fler alternativ" }).click(),
+    shown: (page) => page.getByRole("menu"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The module's own overlays, on the pages that own them.
+  "session warning": {
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) =>
+        route.fulfill({
+          json: {
+            authenticated: true,
+            auth_mode: "eneo_sso",
+            user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
+            session_ends_in: loginEndsIn,
+          },
+        }),
+      );
+      await open(page, "/flows");
+      await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
+      await page.keyboard.press("Escape");
+    },
+    show: (page) => {
+      loginEndsIn = loginEndsIn === 200 ? 290 : 200;
+      return page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    },
+    shown: (page) => page.getByRole("alertdialog", { name: "Du loggas snart ut" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // A finished recording is audio the page holds, so leaving asks first; nothing on the page moves while it waits.
+  "leave question": {
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+    },
+    show: (page) => backLink(page).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
+    hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // A page dialog on the page that owns it: the run's own view while it runs.
+  "cancel question": {
+    go: (page) => run(page, "run-running"),
+    show: (page) => page.getByRole("button", { name: "Avbryt körningen" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),
   },
 };
 

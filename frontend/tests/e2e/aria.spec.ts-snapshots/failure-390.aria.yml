@@ -15,7 +15,7 @@
     - heading "Transkript" [level=2]
     - button "Kopiera transkriptet"
     - status
-    - button "Ladda ner som text , transkriptet"
+    - button "Ladda ner som text, transkriptet"
     - region "Inspelning och transkript":
       - group "Visa talare":
         - button "Alla" [pressed]:

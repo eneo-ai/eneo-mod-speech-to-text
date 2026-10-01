@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
+import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
 import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
@@ -50,6 +50,12 @@ for (const name of WALKS) {
   });
 }
 
+/**
+ * Tab has left the page for the browser's own controls (the document has no focus). A native modal dialog lets Tab
+ * do that, as a trap would break WCAG 2.1.2; it never lets Tab reach the page behind it.
+ */
+const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
@@ -61,10 +67,12 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
   const problems: string[] = [];
   const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
   for (let i = 0; i <= keys.length; i++) {
-    const stop = await focusStop(page);
-    const inside = await popup.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
-    else problems.push(...stopProblems([stop]));
+    if (!(await inBrowser(page))) {
+      const stop = await focusStop(page);
+      const inside = await popup.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
+      else problems.push(...stopProblems([stop]));
+    }
     if (keys[i]) await page.keyboard.press(keys[i]);
   }
   expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
@@ -120,7 +128,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
         const clip = await screenClip(page, box);
         if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
       }
-    } else {
+    } else if (!(await inBrowser(page))) {
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
@@ -162,12 +170,16 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
   const problems: string[] = [];
   const reached = new Set<string>();
   for (let i = 0; i < 8; i++) {
-    const stop = await focusStop(page);
-    const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
-    else {
-      problems.push(...stopProblems([stop]));
-      reached.add(stop.label);
+    if (!(await inBrowser(page))) {
+      const stop = await focusStop(page);
+      const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
+      else {
+        problems.push(...stopProblems([stop]));
+        const clipped = await clippedFocus(page);
+        if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+        reached.add(stop.label);
+      }
     }
     await page.keyboard.press("Tab");
   }
@@ -231,14 +243,27 @@ test("the warning before the login ends takes focus, holds it, and gives it back
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible({ timeout: 15_000 });
   await settle(page);
+  // The dialog takes focus on its title, which names it (it is no Tab stop, so it needs no ring); Tab then walks
+  // the close button and the action.
+  await expect(warning.getByRole("heading", { name: "Du loggas snart ut" })).toBeFocused();
   const problems: string[] = [];
-  for (const key of ["Tab", "Tab", "Shift+Tab"]) {
+  // Down to the close button, the action, back up, and down again: the walk ends on the action.
+  for (const key of ["Tab", "Tab", "Shift+Tab", "Tab"]) {
+    await page.keyboard.press(key);
+    if (await inBrowser(page)) continue;
+    // A tooltip is measured at rest, as a dialog is: not on its way in.
+    await settle(page);
     const stop = await focusStop(page);
     if (!stop || !(await warning.evaluate((element) => element.contains(document.activeElement)))) problems.push("focus left the warning");
-    else problems.push(...stopProblems([stop]));
-    await page.keyboard.press(key);
+    else {
+      problems.push(...stopProblems([stop]));
+      const clipped = await clippedFocus(page);
+      if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+    }
   }
   expect.soft(problems).toEqual([]);
+  // The close button's tooltip leaves a moment after focus does, and takes the first Escape if it is still there.
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(warning).toBeHidden();
   await expect(link, "focus goes back to where it was").toBeFocused();
@@ -291,6 +316,13 @@ test("a wrong access code is said, and focus stays in the field to type it again
   await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
   // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
   await expect(field).toBeFocused();
+  // The field in error names its message, which is the one alert that said it.
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  const message = await field.getAttribute("aria-errormessage");
+  expect(message, "the field names its error message").toBeTruthy();
+  const alert = page.locator(`[id="${message}"]`);
+  await expect(alert).toHaveAttribute("role", "alert");
+  await expect(alert).toHaveText("Felaktig åtkomstkod.");
 });
 
 test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {

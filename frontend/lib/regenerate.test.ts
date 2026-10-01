@@ -109,6 +109,9 @@ test("the notice starts the new run only when asked, and shows a refusal with th
     /^Dokumentet skapades före dina rättningarDen nya versionen görs från det rättade transkriptet\.Skapa dokumentet igen med rättningarna$/,
     "a title, one short line and the button",
   );
+  // The design system's warning is an alert; this one is there when the page opens and is not announced.
+  assert.ok(view.container.querySelector('[role="note"]'), "a note");
+  assert.equal(view.container.querySelector('[role="alert"]'), null, "nothing is announced before a refusal");
 
   await view.act(async () => button(view.container, "Skapa dokumentet igen med rättningarna")!.click());
   assert.equal(started.length, 0);

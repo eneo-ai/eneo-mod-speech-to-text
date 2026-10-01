@@ -1,0 +1,37 @@
+/* From a laptop's width the document and the transcript sit side by side, the document the wider. Astryx's grid takes
+   equal columns or a minimum width, not a ratio. */
+.sideBySide {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 6fr);
+  column-gap: var(--spacing-8);
+  align-items: start;
+}
+
+/* The transcript keeps in view while the document scrolls past it. */
+.sticky {
+  position: sticky;
+  inset-block-start: var(--spacing-6);
+}
+
+/* On a phone's Dokument tab, once the recording has played: its pause and time docked at the bottom, edge to edge
+   of the page's gutters, and back in the page on a short screen (a phone on its side, 200 % zoom). */
+.docked {
+  position: sticky;
+  inset-block-end: 0;
+  z-index: 10;
+  margin-inline: calc(var(--spacing-4) * -1);
+  padding-block: var(--spacing-2) max(var(--spacing-2), env(safe-area-inset-bottom));
+  padding-inline: var(--spacing-4);
+  border-block-start: var(--border-width) solid var(--color-border);
+  background: var(--color-background-card);
+}
+
+.docked > :last-child {
+  margin-inline-start: auto;
+}
+
+@media (max-height: 480px) {
+  .docked {
+    position: static;
+  }
+}

@@ -128,7 +128,7 @@ test("after Stoppa, Strömma's live text stays to read and copy, marked as preli
   assert.match(html, /Den slutliga texten skapas med dokumentet\./);
   assert.match(html, /<p>Välkomna till nämndens möte\. Första punkten\.<\/p><p>Budgeten\.<\/p>/);
   assert.match(html, /role="region"[^>]*tabindex="0"|tabindex="0"[^>]*role="region"/, "a long draft scrolls by keyboard too");
-  assert.match(html, />Kopiera<\/button>/);
+  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*>Kopiera<\/span>/, "Kopiera, as the copy button's label");
   for (const nothing of [null, live([])]) {
     const none = renderToStaticMarkup(
       createElement(ReadyPanel, { recording, persistent: true, problem: null, live: nothing, onCreate: noop, onDiscard: noop }),

@@ -1,9 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Info, Loader2, RotateCcw } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { RotateCcw } from "lucide-react";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { CorrectionsSaveState } from "@/components/TranscriptPlayer";
 import type { FlowRunPublic } from "@/lib/api";
 import { regenerate, type RegenerationRequest } from "@/lib/regenerate";
@@ -44,32 +49,35 @@ export function RegenerateNotice({
   }
 
   return (
-    // A note, not an alarm: it is there when the page opens and needs no announcement.
-    <Alert role="note" variant="warning">
-      <Info aria-hidden />
-      <AlertTitle>{thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar</AlertTitle>
-      <AlertDescription className="flex flex-col items-start gap-3">
-        <p>Den nya versionen görs från det rättade transkriptet.</p>
-        <Button type="button" variant="outline" className="h-auto min-h-9 whitespace-normal py-2 text-left coarse:min-h-11" disabled={working || saving || unsaved} onClick={() => void start()}>
-          {working ? <Loader2 data-icon="inline-start" aria-hidden className="animate-spin motion-reduce:animate-none" /> : <RotateCcw data-icon="inline-start" aria-hidden />}
-          {working ? `Skapar ${thing} igen…` : saving ? "Sparar rättningarna…" : `Skapa ${thing} igen med rättningarna`}
-        </Button>
+    // A note, not an alarm: it is there when the page opens and needs no announcement (the design system's warning
+    // is an alert).
+    <Banner
+      status="warning"
+      role="note"
+      collapsible={false}
+      title={`${thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar`}
+      description="Den nya versionen görs från det rättade transkriptet."
+    >
+      <VStack gap={3} hAlign="start">
+        <Button
+          icon={working ? <Spinner size="sm" aria-hidden /> : <Icon icon={RotateCcw} />}
+          isDisabled={working || saving || unsaved}
+          label={working ? `Skapar ${thing} igen…` : saving ? "Sparar rättningarna…" : `Skapa ${thing} igen med rättningarna`}
+          onClick={() => void start()}
+        />
         {unsaved && (
-          <p className="text-muted-foreground">
+          <Text as="p" color="secondary">
             Den senaste rättningen är inte sparad. Spara den igen i transkriptet innan {thing} skapas på nytt.
-          </p>
+          </Text>
         )}
         {refusal && (
-          <div role="alert" className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <p className="text-destructive">{refusal.message}</p>
-            {refusal.reload && (
-              <Button type="button" variant="ghost" size="sm" onClick={onReload}>
-                Läs in igen
-              </Button>
-            )}
-          </div>
+          <HStack role="alert" wrap="wrap" vAlign="center" gap={3}>
+            <Icon icon="error" color="error" />
+            <Text>{refusal.message}</Text>
+            {refusal.reload && <Button variant="ghost" size="sm" label="Läs in igen" onClick={onReload} />}
+          </HStack>
         )}
-      </AlertDescription>
-    </Alert>
+      </VStack>
+    </Banner>
   );
 }

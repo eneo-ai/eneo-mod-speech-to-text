@@ -5,10 +5,10 @@
   - link "Alla flöden":
     - /url: /flows
   - region "Dokumentet":
-    - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+    - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=attachment
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
-    - paragraph: /PDF, \d+ B/
+    - text: /PDF, \d+ B/
     - region "Förhandsvisning av texten i filen":
       - paragraph: Förhandsvisning av texten i filen
       - article:
@@ -25,8 +25,7 @@
     - heading "Fler filer" [level=2]
     - list:
       - listitem:
-        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/
-        - paragraph: /Word, \d+ kB/
+        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx Word, \d+ kB/
         - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
           - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-docx/content?disposition=attachment
   - button "Hur resultatet togs fram 2 steg"
@@ -34,7 +33,7 @@
     - heading "Transkript" [level=2]
     - button "Kopiera transkriptet"
     - status
-    - button "Ladda ner som text , transkriptet"
+    - button "Ladda ner som text, transkriptet"
     - region "Inspelning och transkript":
       - group "Visa talare":
         - button "Alla" [pressed]:

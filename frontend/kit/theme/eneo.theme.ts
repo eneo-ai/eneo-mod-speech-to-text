@@ -30,7 +30,9 @@ export const eneoTheme = defineTheme({
   components: {
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
     // 320 px screen: Astryx breaks words only when it truncates.
-    heading: {base: {overflowWrap: 'anywhere'}},
+    // A phase's heading takes focus when its view appears (usePhaseHeading) but is no control: the browser counts that
+    // focus call as keyboard focus and would frame the headline on every visit.
+    heading: {base: {overflowWrap: 'anywhere', ':focus-visible': {outline: 'none'}}},
     text: {base: {overflowWrap: 'anywhere'}},
     'text-input': {base: {':focus-within': focusRing}},
     'text-area': {base: {':focus-within': focusRing}},
@@ -46,6 +48,20 @@ export const eneoTheme = defineTheme({
     'collapsible-trigger': {base: {minHeight: '24px'}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
     'toggle-button-group': {base: {flexWrap: 'wrap'}},
+    // A dialog opens on its title (the title takes focus, which gives it no outline): where focus is on it, as on
+    // a keyboard's, its block shows the ring (WCAG 2.4.7).
+    'dialog-header-title-block': {base: {':has(:focus-visible)': focusRing}},
+    // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
+    // off with an ellipsis and fixes the height (WCAG 1.4.10 reflow at 320 px, 1.4.4 resize at 200 %). The block padding
+    // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.
+    button: {
+      base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', paddingBlock: 'var(--spacing-0-5)'},
+      'size:sm': {minHeight: 'var(--size-element-sm)'},
+      'size:lg': {minHeight: 'var(--size-element-lg)'},
+    },
+    // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
+    // 4.28:1 in dark mode, the primary one 8.5:1.
+    'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
   },
   adaptations: {
     rules: [

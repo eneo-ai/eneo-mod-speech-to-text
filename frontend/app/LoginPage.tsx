@@ -22,6 +22,11 @@ import { ModuleShell } from "@/kit/ModuleShell";
 // the field takes no more than the backend does (256), as before.
 const CODE_FIELD_LIMITS = { required: true, maxLength: 256 };
 
+// The error's own element, which the field in error points at. TextInput computes aria-describedby itself and
+// would overwrite one given here, so the pointer is aria-errormessage: it names the message without a second
+// announcement (the banner's role="alert" says it once, when it appears).
+const ERROR_ID = "login-error";
+
 export default function LoginPage() {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
@@ -104,7 +109,7 @@ export default function LoginPage() {
               </Text>
             </VStack>
 
-            {authError && <Banner status="error" title={authError} collapsible={false} />}
+            {authError && <Banner id={ERROR_ID} status="error" title={authError} collapsible={false} />}
             {authMode === "eneo_sso" && (
               <HStack>
                 <Button
@@ -129,6 +134,7 @@ export default function LoginPage() {
                     {...CODE_FIELD_LIMITS}
                     isDisabled={submitting}
                     status={authError ? { type: "error" } : undefined}
+                    aria-errormessage={authError ? ERROR_ID : undefined}
                     hasAutoFocus
                   />
                   <HStack>

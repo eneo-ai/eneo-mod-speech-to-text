@@ -205,8 +205,8 @@
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle { animation: none; }
+  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 /* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
@@ -230,6 +230,11 @@ img[data-brand-logo] {
   object-fit: contain;
   object-position: left;
 }
+/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller to leave the account
+   button room, also with the text spacing WCAG 1.4.12 lets a reader set (tests/e2e/header-fit.spec.ts). */
+@media (max-width: 359px) {
+  img[data-brand-logo] { block-size: var(--spacing-8); }
+}
 @media (min-width: 640px) {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
   [data-brand-logo="name"] { max-inline-size: 12rem; }
@@ -237,3 +242,12 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
+
+/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
+   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
+dialog[open] { pointer-events: auto; }
+
+/* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
+   tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half
+   answers) and sit where the transcript's own sticky toolbar is meant to. Unlayered, so it wins over the system's. */
+.astryx-app-shell-header { position: static; }

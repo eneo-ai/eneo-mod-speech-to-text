@@ -158,7 +158,10 @@ export const eneoTheme = {
         "lineHeight": "var(--text-display-3-leading)"
       },
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        ":focus-visible": {
+          "outline": "none"
+        }
       }
     },
     "text": {
@@ -275,6 +278,33 @@ export const eneoTheme = {
     "toggle-button-group": {
       "base": {
         "flexWrap": "wrap"
+      }
+    },
+    "dialog-header-title-block": {
+      "base": {
+        ":has(:focus-visible)": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "var(--focus-outline-offset)"
+        }
+      }
+    },
+    "button": {
+      "base": {
+        "whiteSpace": "normal",
+        "height": "auto",
+        "minHeight": "var(--size-element-md)",
+        "paddingBlock": "var(--spacing-0-5)"
+      },
+      "size:sm": {
+        "minHeight": "var(--size-element-sm)"
+      },
+      "size:lg": {
+        "minHeight": "var(--size-element-lg)"
+      }
+    },
+    "avatar-fallback": {
+      "base": {
+        "color": "var(--color-text-primary)"
       }
     }
   },

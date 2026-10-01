@@ -292,7 +292,8 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
       [],
     ),
   );
-  const main = view.container.querySelector("main")!;
+  // The shell's one main region: a div with the role, not a <main> element.
+  const main = view.container.querySelector('[role="main"]')!;
   assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
   assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
   assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
@@ -350,6 +351,135 @@ test("a run's tab title names its state and its flow, so tabs and history entrie
   await failed.unmount();
 });
 
+test("the folded steps open on their trigger, say so in its label, and fold again", async () => {
+  const { createElement } = await import("react");
+  const { StepDetails } = await import("../components/flow/StepDetails");
+  const steps = [
+    { order: 1, label: "Transkribera mötet", state: "done" as const, transcribes: true, note: null },
+    { order: 2, label: "Skapa rapport", state: "waiting" as const, transcribes: false, note: "Här granskar du resultatet." },
+  ];
+  const view = await mount(createElement(StepDetails, { steps, version: 3 }));
+  const trigger = () => view.container.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+  assert.equal(trigger().getAttribute("aria-expanded"), "false", "closed to begin with");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "true");
+  assert.equal(trigger().textContent, "Dölj hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "false");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.unmount();
+});
+
+/** A running view with its cancel question, and the question's dialog as the page has it. */
+async function mountRunning(onCancel: () => Promise<void>, extra: Record<string, unknown> = {}) {
+  const { createElement } = await import("react");
+  const { RunProgress } = await import("../components/flow/RunProgress");
+  const view = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel, ...extra }));
+  const question = () => document.body.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+  const ask = () => view.act(async () => button(view.container, "Avbryt körningen")!.click());
+  return { view, question, ask };
+}
+
+test("the cancel question: Kör vidare leaves the run alone, Avbryt körningen cancels it once and closes the question", async () => {
+  let cancelled = 0;
+  const { view, question, ask } = await mountRunning(async () => void (cancelled += 1));
+  assert.equal(question().hasAttribute("open"), false, "not asked until the button is pressed");
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.match(question().textContent ?? "", /Avbryta körningen\?.*Flödet slutar arbeta och inget dokument skapas\./);
+
+  await view.act(async () => button(question(), "Kör vidare")!.click());
+  assert.equal(question().hasAttribute("open"), false);
+  assert.equal(cancelled, 0);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(question().hasAttribute("open"), false, "answered, so closed");
+  assert.equal(cancelled, 1);
+  await view.unmount();
+});
+
+test("a cancel that is on its way keeps its button off until Eneo has answered, and a refusal shows once as an alert", async () => {
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  const { view, question, ask } = await mountRunning(() => pending, { error: "Körningen kunde inte avbrytas just nu." });
+  const trigger = () => button(view.container, "Avbryt körningen")!;
+  assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
+  assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
+  assert.equal(trigger().disabled, false);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(trigger().disabled, true, "pressed twice, cancelled once");
+  assert.equal(trigger().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(trigger().disabled, false, "free again once it is settled");
+  await view.unmount();
+});
+
+test("a run that ends while its cancel question is open takes the question and the page's lock with it", async () => {
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.equal(document.body.style.position, "fixed", "the page is held still while it is asked");
+  await view.unmount();
+  assert.equal(document.body.querySelector("dialog[open]"), null, "no question left open");
+  assert.equal(document.body.style.position, "", "the page scrolls again");
+  assert.equal(document.body.style.overflow, "");
+});
+
+test("the cancel question is closed while the login has ended and asked again after the new one", async () => {
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna" };
+  const end = loginState.begin(anna);
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  try {
+    await ask();
+    assert.equal(question().hasAttribute("open"), true);
+    await view.act(async () => loginState.ended());
+    assert.equal(question().hasAttribute("open"), false, "a native dialog would stay above the covered page");
+    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    assert.equal(question().hasAttribute("open"), true, "back, as it was asked");
+  } finally {
+    end();
+    await view.unmount();
+  }
+});
+
+test("Försök igen on a failed run is busy and off while Eneo answers, so a second press cannot start it twice", async () => {
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  let retries = 0;
+  const view = await mount(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte",
+      run: { id: "run-1", status: "failed", error: { code: "flow_provider_unavailable", message: "x", retryable: true } },
+      failure: null,
+      steps: [],
+      stepResults: [],
+      files: [],
+      onRetry: () => {
+        retries += 1;
+        return pending;
+      },
+    }),
+  );
+  const retry = () => button(view.container, "Försök igen")!;
+  assert.equal(retry().disabled, false);
+  await view.act(async () => retry().click());
+  await view.act(async () => retry().click());
+  assert.equal(retries, 1);
+  assert.equal(retry().disabled, true);
+  assert.equal(retry().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(retry().disabled, false, "free again once Eneo has answered");
+  await view.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
@@ -393,9 +523,9 @@ test("upload under way: the header offers no way off the page, which would abort
 
 test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
   const { createElement } = await import("react");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
-  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte", trailing: "Spelar in" }), []));
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay, asked through onLeave");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const view = await mount(await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }), []));
+  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it), asked through onLeave");
   await view.unmount();
 });
 
@@ -428,10 +558,11 @@ test("the way back: a link to the flow list named Alla flöden, and a leave guar
 
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
-  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte" }), []));
-  const chevron = view.container.querySelector('header a[aria-label]');
-  assert.equal(chevron?.getAttribute("aria-label"), "Alla flöden");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const view = await mount(await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }), []));
+  const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
+  assert.ok(chevron, "the arrow in the bar is named like every other way back");
+  assert.equal(chevron.getAttribute("href"), "/flows");
   await view.unmount();
 });
 
@@ -445,21 +576,24 @@ test("Back during an upload asks first and says what leaving stops", async () =>
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
   const view = await mount(await signedIn(createElement(Page), []));
-  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  // A native dialog stays in the tree while it is closed: open is its open attribute.
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   await view.act(async () => {
     window.history.back();
     await settle();
   });
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
-  assert.match(button(dialog()!, "Stanna kvar")!.className, /\bbg-primary\b/, "staying is the filled action");
-  assert.doesNotMatch(button(dialog()!, "Lämna sidan")!.className, /\bbg-primary\b/);
+  // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
+  assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
+  assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
+  assert.ok(document.activeElement === button(dialog()!, "Stanna kvar"), "staying has the focus");
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
-  assert.equal(dialog(), null);
+  assert.ok(!dialog(), "answered: closed");
   await view.unmount();
 });
 
-test("signed out, Back still asks in a dialog that is shown, focused and answerable, outside the covered page", async () => {
+test("signed out, Back still asks in a native dialog that is open, focused and answerable", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
@@ -473,20 +607,23 @@ test("signed out, Back still asks in a dialog that is shown, focused and answera
     window.history.back();
     await settle();
   });
-  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   assert.ok(dialog, "asked");
   // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
-  assert.ok(!dialog.closest("[inert]"), "not in the covered page");
+  // The question sits in the covered page's tree, and the browser lifts a modal dialog out of an inert ancestor:
+  // that, and its stacking above the sign-in dialog, are proved in tests/e2e/session-cover.spec.ts.
+  assert.equal(dialog.tagName, "DIALOG", "a native dialog");
+  assert.ok(dialog.hasAttribute("open"), "opened as a modal");
   assert.ok(dialog.contains(document.activeElement), "the focus is in the question");
   await view.act(async () => button(dialog, "Stanna kvar")!.click());
-  assert.equal(document.body.querySelector('[role="alertdialog"]'), null, "and it can be answered");
+  assert.ok(!document.body.querySelector('[role="alertdialog"][open]'), "and it can be answered");
   await view.unmount();
 });
 
 test("while leaving would lose typed work, the top bar's links and Logga ut ask first", async (t) => {
   const { createElement } = await import("react");
   const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   const navigated: string[] = [];
   let loggedOut = 0;
@@ -503,13 +640,13 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     return createElement(
       LeaveContext.Provider,
       { value: leaving },
-      createElement(FlowTopBar, { title: "Sammanfattning", titleIsHeading: false }),
+      createElement(FlowFrame, { title: "Sammanfattning", titleIsHeading: false, children: null }),
       leaving.question,
     );
   }
   await settle(); // the history step the last test's guard took back
   const view = await mount(await signedIn(createElement(Review), navigated));
-  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
   await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
   assert.ok(asked(), "Alla flöden asks");
