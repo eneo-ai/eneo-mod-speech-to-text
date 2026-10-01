@@ -270,6 +270,13 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "token": {
+      "base": {
+        "overflow": "visible",
+        "height": "auto",
+        "minHeight": "calc(var(--size-element-md) - 8px)"
+      }
+    },
     "slider-control": {
       "base": {
         "minBlockSize": "24px"

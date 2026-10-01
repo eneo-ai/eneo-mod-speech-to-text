@@ -396,6 +396,12 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-token {
+    overflow: visible;
+    height: auto;
+    min-height: calc(var(--size-element-md) - 8px);
+  }
+
   .astryx-slider-control {
     min-block-size: 24px;
   }

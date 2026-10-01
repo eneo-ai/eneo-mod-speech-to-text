@@ -42,6 +42,9 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
+    // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
+    token: {base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'}},
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: '24px'}},
     // A dialog opens on its title (the title takes focus, which gives it no outline): where focus is on it, as on

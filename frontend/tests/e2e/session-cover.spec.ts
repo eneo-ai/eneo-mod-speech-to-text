@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
+import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -385,4 +385,20 @@ test("the delete question open when the login ends is covered with the page, and
   await page.keyboard.press("Escape");
   await expect(question).toBeHidden();
   await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
+});
+
+test("the microphone list open when the login ends is covered with the page, and is not in the accessibility tree", async ({ page }) => {
+  await setup(page);
+  await chooseMode(page, "Spela in");
+  const picker = page.getByRole("combobox", { name: "Mikrofon" });
+  await picker.click();
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+
+  await endLogin(page);
+  await expect(list, "a list in the top layer must not stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Mikrofon|Fake Default Audio Input/);
+  await tabStaysInSignIn(page);
 });
