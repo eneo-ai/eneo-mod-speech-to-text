@@ -152,7 +152,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setUser(sessionIdentity);
         // Someone else's unsent details and edits are not this person's to see.
         keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
-        endPage = loginState.begin(sessionIdentity);
+        endPage = loginState.begin(sessionIdentity, recheck);
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.
         channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);

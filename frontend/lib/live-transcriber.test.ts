@@ -58,7 +58,11 @@ function fakeLogin() {
   const login = {
     signedOut: false,
     ended: () => {
-      endedCalls.count += 1;
+      calls.ended += 1;
+      cover(true);
+    },
+    userChanged: () => {
+      calls.userChanged += 1;
       cover(true);
     },
     subscribe(listener: () => void) {
@@ -66,8 +70,8 @@ function fakeLogin() {
       return () => void listeners.delete(listener);
     },
   };
-  const endedCalls = { count: 0 };
-  return { login, cover, endedCalls };
+  const calls = { ended: 0, userChanged: 0 };
+  return { login, cover, calls };
 }
 
 function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
@@ -450,13 +454,13 @@ test("the page's user rides on the relay's address, so the relay can refuse a pa
 });
 
 test("a close that names another user covers the page as a login that ended, and live text goes on with the page's own user, the audio kept", () => {
-  const { login, cover, endedCalls } = fakeLogin();
+  const { login, cover, calls } = fakeLogin();
   const { live, sockets, elapse } = setup({ login });
   live.start();
   sockets[0].ready();
   live.pushFrame(new Uint8Array([1]).buffer);
   sockets[0].drop(1008, "user_changed");
-  assert.equal(endedCalls.count, 1, "the page asks for its own user's login");
+  assert.deepEqual(calls, { ended: 0, userChanged: 1 }, "the page asks whose login it is");
   assert.equal(live.getSnapshot().status, "reconnecting");
   live.pushFrame(new Uint8Array([2]).buffer);
   elapse(60_000);
@@ -469,12 +473,12 @@ test("a close that names another user covers the page as a login that ended, and
 });
 
 test("refused for another user before live text was ever ready, it waits for the page's own user instead of giving up", () => {
-  const { login, cover, endedCalls } = fakeLogin();
+  const { login, cover, calls } = fakeLogin();
   const { live, sockets, elapse } = setup({ login });
   live.start();
   live.pushFrame(new Uint8Array([7]).buffer);
   sockets[0].drop(1008, "user_changed");
-  assert.equal(endedCalls.count, 1);
+  assert.equal(calls.userChanged, 1);
   assert.equal(live.getSnapshot().status, "reconnecting", "not unavailable");
   elapse(60_000);
   assert.equal(sockets.length, 1);
@@ -486,13 +490,31 @@ test("refused for another user before live text was ever ready, it waits for the
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7]);
 });
 
-test("another policy close is not a change of user", () => {
-  const { login, endedCalls } = fakeLogin();
-  const { live, sockets } = setup({ login });
+test("a session that ended under the open socket covers the page too, and live text opens nothing until the page's own user is back", () => {
+  const { login, cover, calls } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
   live.start();
   sockets[0].ready();
   sockets[0].drop(1008, "session_ended");
-  assert.equal(endedCalls.count, 0);
+  assert.deepEqual(calls, { ended: 1, userChanged: 0 });
+  assert.equal(live.getSnapshot().status, "reconnecting");
+  live.pushFrame(new Uint8Array([3]).buffer);
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "no reconnecting on its own");
+
+  cover(false);
+  assert.equal(sockets.length, 2);
+  sockets[1].ready();
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [3]);
+});
+
+test("another policy close covers nothing", () => {
+  const { login, calls } = fakeLogin();
+  const { live, sockets } = setup({ login });
+  live.start();
+  sockets[0].ready();
+  sockets[0].drop(1008, "something_else");
+  assert.deepEqual(calls, { ended: 0, userChanged: 0 });
 });
 
 test("the socket is the page's own origin, with no subprotocol", () => {
