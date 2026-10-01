@@ -288,7 +288,8 @@ export const STATES: State[] = [
     },
   },
   {
-    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, nothing is cut off.
+    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, and Logga ut, the
+    // last row, is still in view inside the menu with nothing to scroll to (the identity may end in an ellipsis).
     name: "account-menu-long-name",
     go: async (page) => {
       await page.route("**/api/auth/status", (route) =>
@@ -306,7 +307,21 @@ export const STATES: State[] = [
       );
       await flows(page);
       await page.getByRole("button", { name: /^Öppna konto för/ }).click();
-      await expect(page.getByRole("menu")).toBeVisible();
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeVisible();
+      await expect
+        .poll(() =>
+          menu.evaluate((element) => {
+            const row = [...element.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!.getBoundingClientRect();
+            const box = element.getBoundingClientRect();
+            return {
+              scrolls: element.scrollHeight > element.clientHeight + 1,
+              insideMenu: row.top >= box.top - 0.5 && row.bottom <= box.bottom + 0.5,
+              inView: row.top >= 0 && row.bottom <= window.innerHeight,
+            };
+          }),
+        )
+        .toEqual({ scrolls: false, insideMenu: true, inView: true });
     },
   },
   { name: "unsent-recordings", go: leaveRecording },
@@ -361,7 +376,8 @@ export const STATES: State[] = [
       await page.getByRole("switch", { name: "Märk upp talare" }).click();
       await page.getByRole("textbox", { name: /^Antal talare/ }).fill("e");
       await page.getByRole("button", { name: "Starta inspelning" }).click();
-      await expect(page.getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.")).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.")).toBeVisible();
     },
   },
   {
@@ -377,7 +393,8 @@ export const STATES: State[] = [
       await setup(page, "flow-3");
       await chooseFile(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      await expect(page.getByText("Fyll i det här för att skapa dokumentet.")).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Fyll i det här för att skapa dokumentet.")).toBeVisible();
     },
   },
   {
@@ -388,7 +405,8 @@ export const STATES: State[] = [
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("textbox", { name: "Antal talare" }).fill("2,5");
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      await expect(page.getByText("Skriv ett heltal från 1, eller lämna fältet tomt.")).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Skriv ett heltal från 1, eller lämna fältet tomt.")).toBeVisible();
     },
   },
   {

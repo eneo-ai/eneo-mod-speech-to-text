@@ -19,7 +19,10 @@ Module._resolveFilename = function (request, parent, ...rest) {
   return resolve.call(this, request, ...args);
 };
 
-// A stylesheet a component imports (a CSS Module) is its class names as written; the styles are the browser's.
-require.extensions[".css"] = (module) => {
-  module.exports = new Proxy({}, { get: (_, name) => (name === "__esModule" ? false : String(name)) });
+// A stylesheet a component imports (a CSS Module) is its class names as written; the styles are the browser's. tsc
+// does not emit the file, so it is answered before it is resolved.
+const stylesheet = new Proxy({}, { get: (_, name) => (name === "__esModule" ? false : String(name)) });
+const load = Module._load;
+Module._load = function (request, ...args) {
+  return request.endsWith(".css") ? stylesheet : load.call(this, request, ...args);
 };

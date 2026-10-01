@@ -1,0 +1,16 @@
+/* A drop zone: a dashed edge, and the whole of it opens the file chooser. */
+.zone {
+  border-style: dashed;
+  cursor: pointer;
+  text-align: center;
+}
+
+/* The invitation to drag a file is only for a screen wide enough to have the file manager beside it, and a mouse. */
+.fineOnly {
+  display: none;
+}
+@media (min-width: 768px) and (pointer: fine) {
+  .fineOnly {
+    display: block;
+  }
+}

@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { endLogin, open, record, run, sessionWarning, setup } from "./screens";
+import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -127,7 +127,7 @@ test("a native dialog the page had open when the login ends is hidden behind the
     probe.setAttribute("aria-label", "Sidans dialog");
     probe.style.cssText = "background: rgb(255, 0, 255); border: 0; padding: 0; width: 70vw; height: 60vh;";
     probe.innerHTML = '<button type="button" id="page-dialog-button">Sidans knapp</button>';
-    document.querySelector("main")!.append(probe);
+    document.querySelector('[role="main"]')!.append(probe);
     probe.showModal();
   });
   expect(await pixelsOf(page, MAGENTA), "the probe shows while the login lasts").toBeGreaterThan(1_000);
@@ -358,4 +358,67 @@ test("the cancel question open when the login ends is covered with the page, and
   await page.keyboard.press("Escape");
   await expect(question).toBeHidden();
   await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
+});
+
+// The PDF preview is a page dialog like the naming dialog, with a viewer in it that must not be reloaded by the cover.
+test("the PDF preview open when the login ends is covered with the page, and is back with its viewer after the new login", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a tab of its own");
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const preview = page.getByRole("dialog", { name: /^Protokoll .*\.pdf$/ });
+  await expect(preview.locator("iframe")).toBeVisible();
+
+  await endLogin(page);
+  await expect(preview, "the preview is not shown, nor in the accessibility tree").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Protokoll kommunstyrelsen|Öppna i ny flik|Ladda ner/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("iframe")).toHaveAttribute("src", /disposition=inline/);
+});
+
+test("the delete question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  await stop(page);
+  const trigger = page.getByRole("button", { name: "Ta bort", exact: true });
+  await trigger.click();
+  const question = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+  await expect(question).toBeVisible();
+
+  await endLogin(page);
+  await expect(question, "a native dialog would stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Ta bort inspelningen|Den går inte att få tillbaka/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(question, "still asked, as it was").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeHidden();
+  await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
+});
+
+test("the microphone list open when the login ends is covered with the page, and is not in the accessibility tree", async ({ page }) => {
+  await setup(page);
+  await chooseMode(page, "Spela in");
+  const picker = page.getByRole("combobox", { name: "Mikrofon" });
+  await picker.click();
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+
+  await endLogin(page);
+  await expect(list, "a list in the top layer must not stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Mikrofon|Fake Default Audio Input/);
+  await tabStaysInSignIn(page);
 });

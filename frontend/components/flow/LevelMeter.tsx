@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { cn } from "@/lib/utils";
+import styles from "./LevelMeter.module.css";
 
 /** 0 at −60 dBFS and below, 1 at −10 dBFS and above: speech lands in the middle. */
 export function levelFromRms(rms: number): number {
@@ -102,7 +102,7 @@ export function LevelMeter({
   });
 
   return (
-    <div aria-hidden className={cn("flex items-center", variant === "steps" ? "gap-1" : "gap-[5px]", className)}>
+    <div aria-hidden className={[styles.meter, styles[variant], className].filter(Boolean).join(" ")}>
       {Array.from({ length: bars }, (_, index) => (
         <span
           key={index}
@@ -110,12 +110,7 @@ export function LevelMeter({
             elements.current[index] = element;
           }}
           data-lit="false"
-          className={cn(
-            "block w-[3px] shrink-0 rounded-full",
-            variant === "steps"
-              ? "bg-rule-soft transition-colors duration-100 data-[lit=true]:bg-primary motion-reduce:transition-none"
-              : "h-full origin-center scale-y-[0.12] bg-primary transition-transform duration-75 motion-reduce:transition-none",
-          )}
+          className={styles.bar}
           style={variant === "steps" ? { height: `${40 + (60 * (index + 1)) / bars}%` } : undefined}
         />
       ))}

@@ -231,6 +231,7 @@
     --font-family-code: ui-monospace, "SFMono-Regular", Consolas, monospace;
     --color-on-error: light-dark(#FFFFFF, #1A0A0C);
     --color-error: light-dark(#AA181D, #F47B7F);
+    --size-element-lg: 48px;
   }
 
   :scope {
@@ -396,6 +397,21 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-token {
+    overflow: visible;
+    height: auto;
+    min-height: calc(var(--size-element-md) - 8px);
+  }
+
+  .astryx-slider-control {
+    min-block-size: 24px;
+  }
+
+  .astryx-dialog-header-title-block:has(:focus-visible) {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
+  }
+
   .astryx-button {
     white-space: normal;
     height: auto;
@@ -413,6 +429,10 @@
 
   .astryx-collapsible-trigger {
     min-height: 24px;
+  }
+
+  .astryx-avatar-fallback {
+    color: var(--color-text-primary);
   }
 
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
@@ -490,6 +510,10 @@
 
     .astryx-top-nav-heading {
       min-height: 44px;
+    }
+
+    .astryx-slider-control {
+      min-block-size: 44px;
     }
 
     .astryx-collapsible-trigger {

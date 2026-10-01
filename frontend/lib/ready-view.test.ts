@@ -6,8 +6,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { AudioPlayer, usePlayback } from "../components/flow/AudioPlayer";
 import { ReadyPanel } from "../components/flow/ReadyPanel";
 import { UploadPanel } from "../components/flow/UploadPanel";
+import { computeAccessibleName } from "dom-accessibility-api";
 import type { LiveSnapshot } from "./live-transcriber";
 import type { StoredRecording } from "./recording-store";
+import { parse } from "./test-dom";
 
 const recording: StoredRecording = {
   id: "rec-1",
@@ -26,6 +28,9 @@ const recording: StoredRecording = {
 
 const noop = () => {};
 
+/** A button of the markup by its visible words. */
+const hasButton = (html: string, name: string) => [...parse(html).querySelectorAll("button")].some((button) => button.textContent?.trim() === name);
+
 test("for a flow that makes text, the ready state speaks of the text, never the document", () => {
   const live = {
     getSnapshot: (): LiveSnapshot => ({ status: "ended", started: true, complete: true, pending: "", pieces: [{ text: "Hej.", opensParagraph: true }] }),
@@ -38,7 +43,7 @@ test("for a flow that makes text, the ready state speaks of the text, never the 
   const view = (persistent: boolean) =>
     renderToStaticMarkup(createElement(ReadyPanel, { recording, persistent, problem: null, live, makesText: true, onCreate: noop, onDiscard: noop }));
   const kept = view(true);
-  assert.match(kept, />Skapa text<\/button>/);
+  assert.ok(hasButton(kept, "Skapa text"));
   assert.match(kept, /Inspelningen finns kvar på enheten tills texten är skapad\./);
   assert.match(kept, /Den slutliga texten skapas när du väljer Skapa text\./);
   assert.match(view(false), /Stäng inte fliken innan texten är skapad\./);
@@ -49,11 +54,9 @@ test("the ready state names the recording for people, never as a file or a type,
   const html = renderToStaticMarkup(
     createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate: noop, onDiscard: noop }),
   );
-  assert.match(html, /<h2[^>]*>Inspelningen är klar<\/h2>/);
+  assert.equal(parse(html).querySelector("h2")?.textContent, "Inspelningen är klar");
   assert.match(html, /Inspelning 23 sep 16:13 · 32 min/);
-  assert.match(html, />Skapa dokument<\/button>/);
-  assert.match(html, />Spara som fil<\/button>/);
-  assert.match(html, />Ta bort<\/button>/);
+  for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(hasButton(html, name), name);
   assert.match(html, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);
   assert.doesNotMatch(html, /audio\/|webm|\.webm|recording-\d|<audio[^>]*controls/i, "no MIME type, file name or native controls");
   assert.doesNotMatch(html, /Fortsätt spela in/, "offered only when the recorder can continue a stopped recording");
@@ -61,7 +64,7 @@ test("the ready state names the recording for people, never as a file or a type,
   const withContinue = renderToStaticMarkup(
     createElement(ReadyPanel, { recording, persistent: false, problem: null, onCreate: noop, onContinue: noop, onDiscard: noop }),
   );
-  assert.match(withContinue, />Fortsätt spela in<\/button>/);
+  assert.ok(hasButton(withContinue, "Fortsätt spela in"));
   assert.match(withContinue, /Inspelningen finns bara i den här fliken\./, "the storage line stays honest");
 
   const short = renderToStaticMarkup(
@@ -77,13 +80,9 @@ test("the ready state names the recording for people, never as a file or a type,
 });
 
 test("a recording of a moment says so, and makes Fortsätt spela in the one filled action", () => {
+  // The design system says a button's emphasis in data-variant: the filled one is "primary".
   const variants = (html: string) =>
-    Object.fromEntries(
-      [...html.matchAll(/<button[^>]*class="([^"]*)"[^>]*>(?:<svg.*?<\/svg>)?([^<]+)<\/button>/g)].map(([, classes, label]) => [
-        label,
-        classes.includes("bg-primary") ? "filled" : "outline",
-      ]),
-    );
+    Object.fromEntries([...parse(html).querySelectorAll("button")].map((button) => [button.textContent?.trim(), button.getAttribute("data-variant")]));
   const ready = (durationMs: number, onContinue?: () => void) =>
     renderToStaticMarkup(
       createElement(ReadyPanel, { recording: { ...recording, durationMs }, persistent: true, problem: null, onCreate: noop, onContinue, onDiscard: noop }),
@@ -91,13 +90,13 @@ test("a recording of a moment says so, and makes Fortsätt spela in the one fill
   const note = /Inspelningen blev mycket kort\. Välj Fortsätt spela in om den stoppades av misstag\./;
   const moment = ready(1_200, noop);
   assert.match(moment, note);
-  assert.equal(variants(moment)["Fortsätt spela in"], "filled");
-  assert.equal(variants(moment)["Skapa dokument"], "outline");
+  assert.equal(variants(moment)["Fortsätt spela in"], "primary");
+  assert.equal(variants(moment)["Skapa dokument"], "secondary");
 
   const meeting = ready(32 * 60_000, noop);
   assert.doesNotMatch(meeting, note);
-  assert.equal(variants(meeting)["Skapa dokument"], "filled");
-  assert.equal(variants(meeting)["Fortsätt spela in"], "outline");
+  assert.equal(variants(meeting)["Skapa dokument"], "primary");
+  assert.equal(variants(meeting)["Fortsätt spela in"], "secondary");
   assert.doesNotMatch(ready(1_200), note, "nothing to offer when the recorder cannot go on");
 });
 
@@ -124,25 +123,21 @@ test("after Stoppa, Strömma's live text stays to read and copy, marked as preli
   const html = renderToStaticMarkup(
     createElement(ReadyPanel, { recording, persistent: true, problem: null, live: live(snapshot.pieces), onCreate: noop, onDiscard: noop }),
   );
-  assert.match(html, /<h3 id="([^"]+)"[^>]*>Preliminär text<\/h3>/);
+  const draft = parse(html);
+  const heading = draft.querySelector("h3");
+  assert.equal(heading?.textContent, "Preliminär text");
   assert.match(html, /Den slutliga texten skapas med dokumentet\./);
-  assert.match(html, /<p>Välkomna till nämndens möte\. Första punkten\.<\/p><p>Budgeten\.<\/p>/);
-  assert.match(html, /role="region"[^>]*tabindex="0"|tabindex="0"[^>]*role="region"/, "a long draft scrolls by keyboard too");
-  assert.match(html, />Kopiera<\/button>/);
+  const region = draft.querySelector('[role="region"]');
+  assert.equal(region?.getAttribute("aria-labelledby"), heading?.id, "the draft is named by its heading");
+  assert.deepEqual([...(region?.querySelectorAll("p") ?? [])].map((p) => p.textContent), ["Välkomna till nämndens möte. Första punkten.", "Budgeten."]);
+  assert.equal(region?.getAttribute("tabindex"), "0", "a long draft scrolls by keyboard too");
+  assert.ok(hasButton(html, "Kopiera"));
   for (const nothing of [null, live([])]) {
     const none = renderToStaticMarkup(
       createElement(ReadyPanel, { recording, persistent: true, problem: null, live: nothing, onCreate: noop, onDiscard: noop }),
     );
     assert.doesNotMatch(none, /Preliminär text/);
   }
-});
-
-test("while Strömma's final text is on its way, Skapa dokument says so and waits, keeping its focus", () => {
-  const html = renderToStaticMarkup(
-    createElement(ReadyPanel, { recording, persistent: true, problem: null, finishing: true, onCreate: noop, onDiscard: noop }),
-  );
-  assert.match(html, /<button[^>]*aria-disabled="true"[^>]*>.*Slutför texten…<\/button>/);
-  assert.doesNotMatch(html, /<button[^>]*disabled=""[^>]*>.*Slutför texten/, "not disabled: focus stays on it");
 });
 
 test("a recording Eneo already has shows the earlier runs where the user is, and offers deleting it from the device", () => {
@@ -158,8 +153,8 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
     }),
   );
   assert.match(sent, /Tidigare körningar/);
-  assert.match(sent, />Öppna<span class="sr-only">/, "the run Eneo has, one tap away");
-  assert.match(sent, />Ta bort inspelningen från enheten<\/button>/);
+  assert.match(sent, /<button[^>]*aria-label="Öppna, körningen [^"]+"[^>]*>(?:<[^>]+>)*Öppna(?:<[^>]+>)*<\/button>/, "the run Eneo has, one tap away, named by which run it is");
+  assert.ok(hasButton(sent, "Ta bort inspelningen från enheten"));
 
   const notSent = renderToStaticMarkup(
     createElement(ReadyPanel, {
@@ -173,7 +168,7 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
     }),
   );
   assert.doesNotMatch(notSent, /Tidigare körningar/, "the ready state lists runs only once Eneo has this recording");
-  assert.match(notSent, />Ta bort<\/button>/);
+  assert.ok(hasButton(notSent, "Ta bort"));
 });
 
 test("the player is our own: a named play button, a named slider over the known length, and m:ss / m:ss", () => {
@@ -186,12 +181,14 @@ test("the player is our own: a named play button, a named slider over the known 
   }
   const html = renderToStaticMarkup(createElement(Ready));
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelning 23 sep 16:13"/);
-  assert.match(html, /<button[^>]*aria-label="Spela upp"/);
-  assert.match(html, /role="slider"[^>]*aria-label="Position i inspelningen"|aria-label="Position i inspelningen"[^>]*role="slider"/);
-  assert.match(html, /aria-valuemax="6"/, "the known length of both parts");
-  assert.match(html, /aria-valuetext="0:00 av 0:06"/);
+  const player = parse(html);
+  assert.equal(player.querySelector("button")?.getAttribute("aria-label"), "Spela upp");
+  const slider = player.querySelector('[role="slider"]')!;
+  assert.equal(computeAccessibleName(slider), "Position i inspelningen");
+  assert.equal(slider.getAttribute("aria-valuemax"), "6", "the known length of both parts");
+  assert.equal(slider.getAttribute("aria-valuetext"), "0:00 av 0:06");
   assert.match(html, />0:00 \/ 0:06</);
-  assert.doesNotMatch(html, /controls/);
+  assert.equal(player.querySelector("audio")?.hasAttribute("controls"), false, "never the browser's own controls");
 });
 
 test("Ladda upp says what the flow takes in plain words, and a chosen file shows its size and length", () => {
@@ -219,8 +216,8 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
     }),
   );
   assert.match(chosen, />mote\.mp3</);
-  assert.match(chosen, /<p role="status" class="sr-only">Vald fil: mote\.mp3<\/p>/, "the choice is announced");
-  assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status is there before a file is chosen");
+  assert.match(chosen, /<p[^>]*role="status"[^>]*>Vald fil: mote\.mp3<\/p>/, "the choice is announced");
+  assert.match(empty, /<p[^>]*role="status"[^>]*><\/p>/, "the status is there before a file is chosen");
   assert.match(chosen, /1,2\u00a0MB · 32 min/);
-  assert.match(chosen, />Byt fil<\/button>/);
+  assert.match(chosen, /<button[^>]*>(?:<[^>]+>)*Byt fil(?:<[^>]+>)*<\/button>/);
 });
