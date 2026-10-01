@@ -152,11 +152,15 @@ grep -ohE '"[A-Z][A-Z_]+"' backend/app/config.py | tr -d '"' | sort -u
 | `COOKIE_SECURE` | nej | `true` | `true`, `false`, `1`, `0`, `yes`, `no`, `on` eller `off`; annat stoppar start. `false` bara för lokal `http://localhost`. |
 | `DEMO_SPACE_ID` | i `access_code` för flödeslistan | | Modulnyckeln listar bara flöden i detta space. Utan den loggar backend ett fel vid start och sidan säger att flödena inte kan visas. Används inte i `eneo_sso`, där listan omfattar alla användarens spaces. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | nej | `1800` | Större än noll. Tak för upload-vidarebefordran till Eneo. |
+| `MAX_BODY_BYTES` | nej | `10485760` (10 MiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Heltal större än noll; ett tomt värde nekas. Tak för varje request-body utom uppladdningar; större ger 413. Finns i `backend/app/config.py` och `backend/app/limits.py` på grenen, inte på main. |
+| `MAX_UPLOAD_BYTES` | nej | `1073741824` (1 GiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Samma regel. Tak för en uppladdad fil. |
 | `SESSION_MAX_AGE_MINUTES` | nej | `480` | Heltal större än noll. Övre gräns för en inloggning; i `eneo_sso` gäller det tidigaste av detta och Eneos sessionstak. |
 | `SHOW_ORGANIZATION` | nej | `true` | Boolean som `COOKIE_SECURE`. `false` visar bara "Tal till text". |
 | `ORGANIZATION_NAME` | nej | tomt | Högst 100 tecken. Tomt ger Sundsvalls kommun med dess medföljande logotyp. Är också logons alternativtext. |
 | `ORGANIZATION_LOGO` | nej | tomt | Sökväg till en SVG- eller PNG-fil, högst 1 MiB. Kräver `ORGANIZATION_NAME`. |
 | `ORGANIZATION_LOGO_DARK` | nej | tomt | Valfri logotyp för mörkt tema. Utan den används den vanliga. |
+
+Raderna märkta "på gång" finns inte i `backend/app/config.py` på main; se [På gång](#på-gång-inte-på-main).
 
 Äldre exempelvärden som `MODULE_ID` och `TAL_TILL_TEXT_API_KEY` läses medvetet inte av imagen. Frontend har egna variabler, se [Drift](operations.md#miljövariabler).
 
@@ -176,8 +180,33 @@ grep -ohE '"[A-Z][A-Z_]+"' backend/app/config.py | tr -d '"' | sort -u
 | Giltig konfiguration | Se tabellen ovan: fel stoppar start. | `test_config.py` |
 | Logotyper utan körbart innehåll | Bara SVG och PNG, kontrollerade på namn och innehåll, isolerade med en egen CSP. | `test_config.py`, `test_branding.py` |
 
+## På gång (inte på main)
+
+Det här står i grenar som är pushade men ännu inte sammanslagna. Det beskriver grenarnas kod, inte main. När en gren är sammanslagen flyttas texten in i avsnitten ovan och märkningen tas bort.
+
+### Tak för request-body (på gång: `fix/backend-body-limits`, väntar på PR)
+
+En ren ASGI-middleware, `BodyLimitMiddleware` i `backend/app/limits.py`, håller gränserna för hela appen.
+
+| Egenskap | Hur |
+|---|---|
+| Varje request-body har ett tak | `MAX_BODY_BYTES` (10 MiB). 413 direkt om den deklarerade längden är över taket, och 413 så snart strömmen passerar det. Gäller alla HTTP-rutter oavsett innehållstyp (en innehållstyp är klientens påstående), och därför också publika `POST /api/auth/login`. WebSocket berörs inte. |
+| Ogiltig `Content-Length` | 400, innan någon rutt ser den. |
+| Uppladdningar får vara större | En `multipart/form-data` får deklarera upp till `MAX_UPLOAD_BYTES` (1 GiB). Taket höjs för just den requesten först efter rutten kontrollerat session och origin och sina egna längdkontroller, och räknar de bytes som faktiskt kommer: en `Content-Length` som ljuger, eller en body i delar, kommer inte längre. |
+| Uppladdningsrutterna läser bodyn efter sessionskontrollen | De tre rutterna (`files`, `steps/{step_id}/runtime-files`, `template-files`) använder `_forward_upload` i `backend/app/main.py` i stället för `File(...)`: FastAPI läser annars en body innan en rutts beroenden körs. |
+| Svar på en dålig uppladdning | 411 utan `Content-Length` (webbläsare skickar alltid en), 413 över `MAX_UPLOAD_BYTES`, 400 om bodyn inte är exakt en filpart med namnet `upload_file` (inga andra fält), eller om filnamn eller innehållstyp har ett kontrolltecken (en radbrytning skulle skrivas in i partens headers mot Eneo). Inget blir kvar om uppladdningen avbryts eller nekas. |
+
+Tester på grenen: `backend/tests/test_body_limits.py`, och rader i `backend/tests/test_config.py` och `backend/tests/test_deployment_compose.py` (Compose skickar numeriska standardvärden, och ett tomt värde i Compose blir standardvärdet). `docker-compose.yml` och `.env.example` på grenen har de två variablerna.
+
+Samspel med Next: Nexts tak för en body genom rewriten är 2 GB (se [Next.js ligger före BFF:en](#nextjs-ligger-före-bffen)), och BFF:ens tak för en uppladdning blir då lägre: 1 GiB.
+
+### Lifespan och beroenden (`fix/backend-lifespan`, väntar på PR)
+
+- `backend/app/main.py` stänger HTTP-klienten i en `lifespan`-hook i stället för den föråldrade `on_event`-kroken; `backend/tests/test_lifespan.py`.
+- FastAPI-stacken (`fastapi`, `starlette`, `uvicorn`, `httpx`, `python-multipart`) höjs i `backend/requirements.txt` förbi 14 säkerhetsmeddelanden, och CI granskar backendens installerade paket med `pip-audit` (`.github/workflows/ci.yml`). Grenen med taken ovan bygger på den här.
+
 ## Kända begränsningar
 
-- Den allmänna proxyn läser hela request-bodyn i minnet (`await request.body()`) och BFF:en sätter inget eget tak för den. Taket kommer från Next (2 GB, se ovan). Det gäller JSON-anropen; uppladdningarna går genom `UploadFile`.
+- På main läser den allmänna proxyn hela request-bodyn i minnet (`await request.body()`) och BFF:en sätter inget eget tak för den. Taket kommer från Next (2 GB, se ovan). Det gäller JSON-anropen; uppladdningarna går genom `UploadFile`. Ett tak i BFF:en är på gång, se [På gång](#på-gång-inte-på-main).
 - BFF:en har ingen egen rate limiting. Skydda publika testmiljöer i ingressen.
 - Sessionslagret och cachen med signerade URL:er är process-lokala: en backendreplik.
