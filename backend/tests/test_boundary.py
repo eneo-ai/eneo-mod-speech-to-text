@@ -882,6 +882,11 @@ class MintAnswerTests(BoundaryCase):
             "a JSON list": b"[]",
             "expires_at is text": json.dumps({"url": url, "expires_at": "soon"}).encode(),
             "expires_at is true": json.dumps({"url": url, "expires_at": True}).encode(),
+            "expires_at is false": json.dumps({"url": url, "expires_at": False}).encode(),
+            "expires_at is an empty string": json.dumps({"url": url, "expires_at": ""}).encode(),
+            "expires_at is an empty list": json.dumps({"url": url, "expires_at": []}).encode(),
+            "expires_at is an empty object": json.dumps({"url": url, "expires_at": {}}).encode(),
+            "expires_at is numeric text": json.dumps({"url": url, "expires_at": "4102444800"}).encode(),
             "the URL is not http(s)": json.dumps({"url": "ftp://eneo.example.test/files/x", "expires_at": FAR_FUTURE}).encode(),
             "the URL has no host": json.dumps({"url": "/files/x?sig=1", "expires_at": FAR_FUTURE}).encode(),
             "a redirect": b"",
@@ -897,6 +902,18 @@ class MintAnswerTests(BoundaryCase):
                 self.assertEqual(response.json()["error"], "upstream_invalid")
                 self.assertNotIn("location", response.headers)
                 self.assertEqual(main._signed_urls, {}, "an answer that was refused must not be kept")
+
+    def test_a_mint_answer_without_an_expiry_gets_the_default_one(self) -> None:
+        for label, answer in {"missing": {}, "null": {"expires_at": None}}.items():
+            with self.subTest(label):
+                main._signed_urls.clear()
+                self.answer(json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", **answer}).encode())
+
+                response = self.request("GET", self.AUDIO, self.session_a)
+
+                self.assertEqual(response.status_code, 200)
+                (kept,) = main._signed_urls.values()
+                self.assertAlmostEqual(kept.expires_at, time.time() + main._SIGNED_URL_TTL_SECONDS, delta=30)
 
     def test_a_usable_mint_answer_is_streamed_and_kept_for_its_lifetime(self) -> None:
         self.answer(json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode())

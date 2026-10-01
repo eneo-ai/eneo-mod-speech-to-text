@@ -583,8 +583,11 @@ def _read_mint_answer(upstream: httpx.Response, base_url: str, now: float) -> tu
     try:
         payload = upstream.json()
         url = payload["url"]
-        expires_at = payload.get("expires_at") or now + _SIGNED_URL_TTL_SECONDS
-        if isinstance(expires_at, bool):
+        # The default only for an expiry that is missing or null; what was sent, false and "" and [] included, is checked.
+        expires_at = payload.get("expires_at")
+        if expires_at is None:
+            expires_at = now + _SIGNED_URL_TTL_SECONDS
+        if isinstance(expires_at, bool) or not isinstance(expires_at, (int, float)):
             raise ValueError("expires_at is not a number")
         expires_at = float(expires_at)
         # Only the path and the signed query of the URL are used, on the host the module reaches Eneo on; but a URL
