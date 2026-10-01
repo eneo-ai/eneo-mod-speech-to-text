@@ -264,6 +264,28 @@ export const STATES: State[] = [
       await expect(page.getByRole("menu")).toBeVisible();
     },
   },
+  {
+    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, nothing is cut off.
+    name: "account-menu-long-name",
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) =>
+        route.fulfill({
+          json: {
+            authenticated: true,
+            auth_mode: "eneo_sso",
+            user: {
+              id: "user-1",
+              email: "gunnar.bostadsforvaltningsnamndsordforande.langefternamnsson@sundsvallskommunsstjansteorganisation.se",
+              username: "Gunnar Bostadsförvaltningsnämndsordförande Långefternamnsson-Östergren",
+            },
+          },
+        }),
+      );
+      await flows(page);
+      await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+    },
+  },
   { name: "unsent-recordings", go: leaveRecording },
   {
     name: "setup",

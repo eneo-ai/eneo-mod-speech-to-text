@@ -4,6 +4,8 @@ const focusRing = {
   outline: 'var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)',
   outlineOffset: 'var(--focus-outline-offset)',
 };
+// A menu's rows sit edge to edge in a clipping box: their ring is drawn inside them.
+const rowFocusRing = {...focusRing, outlineOffset: 'calc(var(--focus-outline-width) * -1)'};
 const TOUCH = '44px';
 
 export const eneoTheme = defineTheme({
@@ -27,6 +29,10 @@ export const eneoTheme = defineTheme({
     selector: {base: {':focus-within': focusRing}},
     typeahead: {base: {':focus-within': focusRing}},
     tokenizer: {base: {':focus-within': focusRing}},
+    // The radio rows of a menu show no focus at all (a plain row tints, a radio row does not).
+    'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
+    // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
+    item: {base: {overflowWrap: 'anywhere'}},
   },
   adaptations: {
     rules: [

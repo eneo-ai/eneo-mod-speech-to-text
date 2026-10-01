@@ -4,7 +4,6 @@
   "app/flows/FlowsPage.tsx",
   "app/inloggad/SignedInAgain.tsx",
   "app/layout.tsx",
-  "components/AccountMenu.tsx",
   "components/AuthGate.tsx",
   "components/FlowList.tsx",
   "components/NameCombobox.tsx",
