@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import enum
 import logging
+import math
 import re
 import time
 import unicodedata
@@ -577,6 +578,36 @@ def _prune_signed_urls(now: float) -> None:
             _signed_urls.pop(key, None)
 
 
+class _InvalidMintAnswer(Exception):
+    """Eneo answered the mint request with something the module cannot use."""
+
+
+def _read_mint_answer(upstream: httpx.Response, base_url: str, now: float) -> tuple[str, float]:
+    """The signed URL (on the host the module reaches Eneo on) and when it expires, from Eneo's answer.
+
+    Nothing is cached before this has passed: the URL must be one the HTTP client can parse, and the expiry a finite
+    number, or the cache would hold an entry that fails every request until it ends (or never ends).
+    """
+    try:
+        payload = upstream.json()
+        url = payload["url"]
+        expires_at = payload.get("expires_at") or now + _SIGNED_URL_TTL_SECONDS
+        if isinstance(expires_at, bool):
+            raise ValueError("expires_at is not a number")
+        expires_at = float(expires_at)
+        # Only the path and the signed query of the URL are used, on the host the module reaches Eneo on; but a URL
+        # of another kind (ftp, file, javascript, a relative one) is not what Eneo's signed-URL route returns.
+        parsed = urlsplit(url) if isinstance(url, str) else None
+        if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc or not math.isfinite(expires_at):
+            raise ValueError("not a signed URL")
+        rebased = _rebase_signed_url(url, base_url)
+        httpx.URL(rebased)  # raises InvalidURL for what the client would refuse to send (NUL, other control characters)
+    except (ValueError, TypeError, KeyError, AttributeError, OverflowError, httpx.InvalidURL):
+        # Not JSON, not an object, no url, an expires_at that is not a number (or too big for one), or a bad URL.
+        raise _InvalidMintAnswer from None
+    return rebased, expires_at
+
+
 async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) -> str:
     now = time.time()
     cached = _signed_urls.get(key)
@@ -603,9 +634,13 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
             detail = {"detail": unavailable}
         raise HTTPException(status_code=upstream.status_code, detail=detail)
 
-    payload = upstream.json()
-    url = _rebase_signed_url(str(payload["url"]), settings.eneo_backend_url)
-    expires_at = float(payload.get("expires_at") or now + _SIGNED_URL_TTL_SECONDS)
+    try:
+        if upstream.status_code in _REDIRECT_STATUSES:
+            raise _InvalidMintAnswer
+        url, expires_at = _read_mint_answer(upstream, settings.eneo_backend_url, now)
+    except _InvalidMintAnswer:
+        logger.error("Signed URL answer is not usable: path=%s status=%s", mint_path, upstream.status_code)
+        raise
     _prune_signed_urls(now)
     _signed_urls[key] = _SignedUrl(url=url, expires_at=expires_at)
     return url
@@ -619,7 +654,13 @@ async def _stream_signed(
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
 
     key = (request.cookies.get(SESSION_COOKIE) or "", mint_path)
-    url = await _signed_url(request, key, unavailable)
+    try:
+        url = await _signed_url(request, key, unavailable)
+    except _InvalidMintAnswer:
+        return JSONResponse(
+            status_code=502,
+            content={"error": "upstream_invalid", "detail": "Eneo answered with something the module cannot use."},
+        )
 
     fwd_headers = {
         name: value

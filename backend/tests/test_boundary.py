@@ -430,10 +430,10 @@ class MintAnswerTests(BoundaryCase):
 
     AUDIO = "/api/eneo/flows/f/runs/r/input-files/x/audio"
 
-    def answer(self, body: bytes):
+    def answer(self, body: bytes, status: int = 200):
         def mint(seen: Seen):
             if seen.path.endswith("/signed-url/"):
-                return 200, [("content-type", "application/json")], body
+                return status, [("content-type", "application/json"), ("location", "http://backend:8000/elsewhere/")], body
             return 200, [("content-type", "audio/webm")], b"audio"
 
         self.respond_with(mint)
@@ -447,16 +447,34 @@ class MintAnswerTests(BoundaryCase):
             "no url": json.dumps({"expires_at": FAR_FUTURE}).encode(),
             "url is null": json.dumps({"url": None, "expires_at": FAR_FUTURE}).encode(),
             "not JSON": b"<html>bad gateway</html>",
+            "a JSON list": b"[]",
+            "expires_at is text": json.dumps({"url": url, "expires_at": "soon"}).encode(),
+            "expires_at is true": json.dumps({"url": url, "expires_at": True}).encode(),
+            "the URL is not http(s)": json.dumps({"url": "ftp://eneo.example.test/files/x", "expires_at": FAR_FUTURE}).encode(),
+            "the URL has no host": json.dumps({"url": "/files/x?sig=1", "expires_at": FAR_FUTURE}).encode(),
+            "a redirect": b"",
         }
         for label, body in cases.items():
             with self.subTest(label):
                 main._signed_urls.clear()
-                self.answer(body)
+                self.answer(body, status=307 if label == "a redirect" else 200)
 
                 response = self.request("GET", self.AUDIO, self.session_a)
 
                 self.assertEqual(response.status_code, 502)
+                self.assertEqual(response.json()["error"], "upstream_invalid")
+                self.assertNotIn("location", response.headers)
                 self.assertEqual(main._signed_urls, {}, "an answer that was refused must not be kept")
+
+    def test_a_usable_mint_answer_is_streamed_and_kept_for_its_lifetime(self) -> None:
+        self.answer(json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode())
+
+        first = self.request("GET", self.AUDIO, self.session_a)
+        second = self.request("GET", self.AUDIO, self.session_a)
+
+        self.assertEqual((first.status_code, first.content, second.status_code), (200, b"audio", 200))
+        self.assertEqual(len([seen for seen in self.eneo.requests if seen.path.endswith("/signed-url/")]), 1)
+        self.assertEqual(len(main._signed_urls), 1)
 
 
 class ApiKeyHeaderNameTests(unittest.TestCase):
