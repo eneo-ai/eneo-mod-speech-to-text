@@ -6,7 +6,6 @@ import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
-import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -158,59 +157,48 @@ export function RunResult({
   );
 
   return (
-    // The page's own width: the workspace for the document and its transcript, a reading column for a document alone.
-    // Its place on the page is the frame's.
-    <main id="innehall">
-      <Layout height="auto" contentWidth={showTranscript ? 1180 : 672} padding={4}>
-        <LayoutContent isScrollable={false}>
-          <VStack gap={6} paddingBlockStart={2}>
-            <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
-              <VStack gap={1}>
-                <Heading level={1} ref={heading} tabIndex={-1}>
-                  {delivered ? "Resultatet är skickat" : words.ready}
-                </Heading>
-                {finished && (
-                  <Text as="p" type="supporting">
-                    {/* On a phone the top bar already names the flow. */}
-                    {wide && `${flowName} · `}
-                    Skapad {formatRelativeDate(finished)}
-                    {fromReviewed && " från det rättade transkriptet"}
-                  </Text>
-                )}
-              </VStack>
-              <HStack vAlign="center" gap={2}>
-                <Button
-                  icon={<Icon icon={audio ? Mic : Plus} />}
-                  label={audio ? "Ny inspelning" : "Ny körning"}
-                  onClick={onNewRecording}
-                />
-                {wide && <BackToFlows />}
-              </HStack>
-            </HStack>
+    // The frame gives the page its width and edges; a document alone is a reading column on its left edge.
+    <VStack gap={6} paddingBlockStart={2} maxWidth={showTranscript ? undefined : 672}>
+      <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
+        <VStack gap={1}>
+          <Heading level={1} ref={heading} tabIndex={-1}>
+            {delivered ? "Resultatet är skickat" : words.ready}
+          </Heading>
+          {finished && (
+            <Text as="p" type="supporting">
+              {/* On a phone the top bar already names the flow. */}
+              {wide && `${flowName} · `}
+              Skapad {formatRelativeDate(finished)}
+              {fromReviewed && " från det rättade transkriptet"}
+            </Text>
+          )}
+        </VStack>
+        <HStack vAlign="center" gap={2}>
+          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={onNewRecording} />
+          {wide && <BackToFlows size="default" />}
+        </HStack>
+      </HStack>
 
-            {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when
-                the window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
-            <VStack gap={4} className={showTranscript && wide ? styles.sideBySide : undefined}>
-              {tabs && (
-                <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
-                  <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
-                  <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
-                </TabList>
-              )}
-              {panel(
-                "document",
-                view === "document",
-                <VStack gap={6}>
-                  {documentColumn}
-                  {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
-                </VStack>,
-              )}
-              {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
-            </VStack>
-          </VStack>
-        </LayoutContent>
-      </Layout>
-    </main>
+      {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
+          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
+      <VStack gap={4} className={showTranscript && wide ? styles.sideBySide : undefined}>
+        {tabs && (
+          <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
+            <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
+            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
+          </TabList>
+        )}
+        {panel(
+          "document",
+          view === "document",
+          <VStack gap={6}>
+            {documentColumn}
+            {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
+          </VStack>,
+        )}
+        {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+      </VStack>
+    </VStack>
   );
 }
 

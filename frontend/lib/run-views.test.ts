@@ -224,6 +224,8 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Ny inspelning/);
   assert.match(words, /Alla flöden/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
+  // The page's frame supplies the one main region and its width; the result is what goes in it.
+  assert.doesNotMatch(html, /<main|role="main"/);
 });
 
 const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
