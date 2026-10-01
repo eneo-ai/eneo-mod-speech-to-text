@@ -6,6 +6,11 @@
   list-style: none;
 }
 
+/* Focus brings a control into view at the edge of the dialog's scrolling body, which would clip its ring: room for it. */
+.rows :is(button, input) {
+  scroll-margin-block: var(--spacing-3);
+}
+
 .row {
   display: flex;
   flex-wrap: wrap;
