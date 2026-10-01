@@ -19,9 +19,10 @@ export default defineConfig({
   webServer: [
     { command: `python3 tests/e2e/stub-server.py ${STUB}`, url: `http://127.0.0.1:${STUB}/api/auth/status`, reuseExistingServer: false },
     {
-      command: `npm run build && npx next start -H 127.0.0.1 -p ${APP}`,
+      // Build and server share one environment: the rewrite target INTERNAL_API_BASE is baked in at build time.
+      command: "npm run build && node tests/prod/serve.mjs",
       url: `http://127.0.0.1:${APP}/`,
-      env: { INTERNAL_API_BASE: `http://127.0.0.1:${STUB}`, FOUNDATION_CHECK: "1", NEXT_TELEMETRY_DISABLED: "1" },
+      env: { INTERNAL_API_BASE: `http://127.0.0.1:${STUB}`, FOUNDATION_CHECK: "1", NEXT_TELEMETRY_DISABLED: "1", PORT: String(APP), HOSTNAME: "127.0.0.1" },
       timeout: 300_000,
       reuseExistingServer: false,
     },
