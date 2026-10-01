@@ -19,7 +19,7 @@ const WARM_UP = 5;
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
 type Overlay = {
-  /** The overlay is meant to leak: the spec must fail on it, which is what shows that it can. */
+  /** The overlay is meant to leak: the spec must see it leak (its counts above the thresholds), which is what shows that it can. */
   leaks?: true;
   /** Where the overlay is opened, once; the foundation page when there is none. */
   go?: (page: Page) => Promise<unknown>;
@@ -44,9 +44,20 @@ async function reviewPage(page: Page) {
 }
 
 const OVERLAYS: Record<string, Overlay> = {
-  "account menu": {
+  // The foundation page's own single-item menu: the design system's DropdownMenu, not the module's.
+  "foundation menu": {
     show: (page) => page.getByRole("button", { name: "Konto" }).click(),
     shown: (page) => page.getByRole("menu"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The module's account menu, as every page has it: the avatar, the colour mode and Logga ut (only it has that item).
+  "account menu": {
+    go: async (page) => {
+      await open(page, "/flows");
+      await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
+    },
+    show: (page) => page.getByRole("button", { name: /^Öppna konto för/ }).click(),
+    shown: (page) => page.getByRole("menuitem", { name: "Logga ut" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
   "speaker picker": {
@@ -251,10 +262,9 @@ async function cycle(page: Page, overlay: Overlay) {
 }
 
 for (const [name, overlay] of Object.entries(OVERLAYS)) {
-  test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
+  test(overlay.leaks ? `the guard sees the ${name} leave something behind after ${CYCLES} openings` : `the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
-    if (overlay.leaks) test.fail(true, "an overlay that keeps what it mounted must fail this spec, or the spec proves nothing");
     if (overlay.go) await overlay.go(page);
     else {
       await open(page, "/dev/foundation");
@@ -269,6 +279,13 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
 
     const grew = { nodes: after.nodes - warm.nodes, listeners: after.listeners - warm.listeners, heapMB: after.heapMB - warm.heapMB };
     info.annotations.push({ type: "leak", description: `warm ${JSON.stringify(warm)}, after ${CYCLES} openings ${JSON.stringify(after)}, grew ${JSON.stringify(grew)}` });
+    if (overlay.leaks) {
+      // The control: its fixture keeps what it mounted. It passes only by finishing every opening and seeing the nodes and the
+      // listeners grow past the thresholds the other overlays must stay under, so a fixture that never shows cannot satisfy it.
+      expect(grew.nodes, `${CYCLES} openings of the ${name} left ${grew.nodes} DOM nodes: the guard must see more than ${SLACK.nodes}`).toBeGreaterThan(SLACK.nodes);
+      expect(grew.listeners, `${CYCLES} openings of the ${name} left ${grew.listeners} event listeners: the guard must see more than ${SLACK.listeners}`).toBeGreaterThan(SLACK.listeners);
+      return;
+    }
     expect.soft(grew.nodes, `${CYCLES} openings of the ${name} left ${grew.nodes} DOM nodes (the most allowed is ${SLACK.nodes})`).toBeLessThanOrEqual(SLACK.nodes);
     expect.soft(grew.listeners, `${CYCLES} openings of the ${name} left ${grew.listeners} event listeners (the most allowed is ${SLACK.listeners})`).toBeLessThanOrEqual(SLACK.listeners);
     expect.soft(grew.heapMB, `${CYCLES} openings of the ${name} grew the JS heap by ${grew.heapMB.toFixed(2)} MB (the most allowed is ${SLACK.heapMB} MB)`).toBeLessThanOrEqual(SLACK.heapMB);
