@@ -14,6 +14,7 @@
     "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py ${A11Y_STUB_PORT:-8401} & trap \"kill $!\" EXIT; INTERNAL_API_BASE=http://127.0.0.1:${A11Y_STUB_PORT:-8401} next dev -H 127.0.0.1 -p ${A11Y_APP_PORT:-3401}'",
     "state": "playwright test a11y.spec.ts --project=laptop-1440-light --headed -g",
     "test:a11y:branding": "STUB_BRANDING=custom playwright test --config playwright.branding.config.ts && STUB_BRANDING=name playwright test --config playwright.branding.config.ts",
+    "test:a11y:review": "NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
     "test:prod": "playwright test --config playwright.prod.config.ts"
   },
   "dependencies": {

@@ -58,7 +58,7 @@ import {
 } from "@/lib/speaker-mapping";
 import { computeTurns, firstSegmentForSpeaker, speakerDisplayLabel, speakerSummaries } from "@/lib/transcript";
 import { applyCorrections } from "@/lib/transcript-corrections";
-import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
+import { hasNamesDraft, SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
 import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
@@ -123,6 +123,7 @@ export function ReviewView({
   const user = useAuthenticatedUser();
   const draftName = `review:${runState.run.id}:${checkpoint.id}`;
   const draft = useReviewDraft<ReviewEdit>(user.id, draftName, checkpoint.revision);
+  const namesDraftKey = { ownerId: user.id, name: `names:${draftName}` };
 
   const initialText = extractCheckpointText(payload);
   const [text, setText] = useState<string>(() => draft.initial?.text ?? initialText);
@@ -476,7 +477,7 @@ export function ReviewView({
             onSaveAndContinue={saveAndApprove}
             continueDisabled={continueBlocked}
             decided={decided}
-            draftKey={{ ownerId: user.id, name: `names:${draftName}` }}
+            draftKey={namesDraftKey}
           >
             <Button variant="secondary" icon={<UsersRound aria-hidden />} label="Namnge talarna" isDisabled={busy} className={styles.selfStart} />
           </SpeakerNamingDialog>
@@ -505,8 +506,9 @@ export function ReviewView({
         <div className={SPEAKER_REVIEW_ENABLED ? styles.review : styles.reviewSplit}>
           {SPEAKER_REVIEW_ENABLED ? (
             <Card padding={4}>
+              {/* Folded, unless names typed earlier bring the dialog back: it is in this card, and opens by itself. */}
               <Collapsible
-                defaultIsOpen={false}
+                defaultIsOpen={hasNamesDraft(namesDraftKey)}
                 trigger={
                   <>
                     <Text weight="medium">Talare</Text>{" "}

@@ -49,6 +49,9 @@ function useVisibleHeight(active: boolean): number | null {
 /** The button that opens the dialog, whatever it is: it keeps its own props and gets the dialog's. */
 type Trigger = ReactElement<{ onClick?: (event: MouseEvent<HTMLElement>) => void } & Record<string, unknown>>;
 
+/** Names typed earlier, and kept for this person, wait to be shown: the dialog opens with them as it mounts. */
+export const hasNamesDraft = (draftKey: { ownerId: string; name: string }) => readDraft(browserDrafts(), draftKey.ownerId, draftKey.name) !== null;
+
 /**
  * "Namnge talarna" at the review pause: one row per speaker with a sample to
  * listen to, the first thing they say, how many passages they have, and a name
