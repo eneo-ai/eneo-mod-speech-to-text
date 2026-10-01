@@ -27,6 +27,13 @@ jobs:
       - name: Run backend tests
         working-directory: backend
         run: python -m unittest discover -s tests
+      # Freeze before pip-audit is installed: the audit covers what the image
+      # ships, not pip-audit's own dependencies or the runner's pip.
+      - name: Audit production dependencies
+        run: |
+          python -m pip freeze > "$RUNNER_TEMP/backend-installed.txt"
+          python -m pip install pip-audit
+          pip-audit --requirement "$RUNNER_TEMP/backend-installed.txt" --no-deps --disable-pip
 
   frontend:
     runs-on: ubuntu-latest

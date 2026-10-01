@@ -262,7 +262,7 @@ fortfarande modulens tema.
 
 ## Dependency security
 
-GitHubs dependency graph och Dependabot alerts är aktiverade för repot. Kända sårbarheter visas under **Security → Dependabot alerts** och hanteras manuellt.
+GitHubs dependency graph och Dependabot alerts är aktiverade för repot. Kända sårbarheter visas under **Security → Dependabot alerts** och hanteras manuellt. CI granskar dessutom produktionsberoendena och misslyckas vid fynd: `npm audit` för frontend (från nivån high) och `pip-audit` för backends installerade Python-paket (alla kända sårbarheter).
 
 Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation.
 
