@@ -10,18 +10,18 @@ Hör ihop med: [Frontend](frontend.md), [Designsystem](design-system.md), [Drift
 
 Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 
-| Kontroll | Bevisar | Kommando | Tid |
+| Kontroll | Bevisar | Kommando | Hur lång |
 |---|---|---|---|
-| Typer | Att koden kompilerar. | `npm run lint` | sekunder |
-| Enhets- och komponenttester | Logik och komponenter i jsdom. | `npm test` | minuter |
-| Backendtester | Inloggning, proxy, uppladdning, filer, live-relä, config. | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | sekunder |
+| Typer | Att koden kompilerar. | `npm run lint` | snabb |
+| Enhets- och komponenttester | Logik och komponenter i jsdom. | `npm test` | snabb |
+| Backendtester | Inloggning, proxy, uppladdning, filer, live-relä, config. | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | snabb |
 | Tillgänglighetsgrinden | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. | `npm run test:a11y` | lång |
-| Produktionssmoke och viktbudget | Det byggda bygget i tre motorer, sidvikt, att det byggda temat används. | `npm run test:prod` | några minuter |
-| Bygget | Att produktionsbygget går att göra. | `npm run build` | minuter |
-| Designsystemets hälsa | Att Astryx är rätt uppsatt. | `npm run astryx -- doctor` | sekunder |
-| Temat är aktuellt | Att de byggda temafilerna motsvarar temakällan. | `npm run theme:build && git diff --exit-code -- kit/theme/built` | sekunder |
-| Compose | Att Compose-filen är giltig. | `docker compose --env-file .env.example config -q` (från roten) | sekunder |
-| Imagen | Att produktionsimagen går att bygga. | `docker build -t eneo-mod-speech-to-text:test .` (från roten) | minuter |
+| Produktionssmoke och viktbudget | Det byggda bygget i tre motorer, sidvikt, att det byggda temat används. | `npm run test:prod` | medel |
+| Bygget | Att produktionsbygget går att göra. | `npm run build` | medel |
+| Designsystemets hälsa | Att Astryx är rätt uppsatt. | `npm run astryx -- doctor` | snabb |
+| Temat är aktuellt | Att de byggda temafilerna motsvarar temakällan. | `npm run theme:build && git diff --exit-code -- kit/theme/built` | snabb |
+| Compose | Att Compose-filen är giltig. | `docker compose --env-file .env.example config -q` (från roten) | snabb |
+| Imagen | Att produktionsimagen går att bygga. | `docker build -t eneo-mod-speech-to-text:test .` (från roten) | medel |
 
 CI kör en delmängd (typer, enhetstester, doctor, temat, audit, bygget, smoke i tre motorer, två av grindens projekt, Compose, imagen): se [Drift](operations.md#ci-och-publicering). Grinden i sin helhet körs lokalt före push.
 
