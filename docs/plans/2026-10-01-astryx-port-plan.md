@@ -78,6 +78,8 @@ The hosted Astryx MCP server (`search`, `get`) may be used to discover component
 
 Stop your own `npm run dev` before the gate: Next allows one dev server per checkout.
 
+**Running phases in parallel (added 2026-10-01).** Each phase works in its own git worktree (`git worktree add -b feat/astryx-phase-N ../eneo-mod-stt-phase-N feat/astryx`) and runs the gate on its own pair of ports: `A11Y_APP_PORT=34N1 A11Y_STUB_PORT=84N1 npm run test:a11y -- ...` (phase 2 → 3421/8421, phase 3 → 3431/8431, and so on; `npm run test:prod` uses 3411/8411, give it a pair of its own with the same two variables once its config reads them). While porting, run only the phase's own states; the whole gate runs once at the phase exit. Never kill a process you did not start, and never use `pkill -f`: stop by the PID you saved or by your own port. The lead merges phase branches into `feat/astryx` one at a time; `tests/legacy-ui-files.json` and ARIA snapshots are the only files two phases can both touch, and the merge of those is mechanical.
+
 ### Looking at a screen
 
 - `npm run dev:stub` starts the stub backend and the app on `http://127.0.0.1:3401` with no Eneo needed.

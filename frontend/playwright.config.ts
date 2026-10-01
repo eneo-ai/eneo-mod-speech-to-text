@@ -3,8 +3,10 @@ import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 // The accessibility gate: `npm run test:a11y`. The app runs in `next dev` against
 // the stub backend in tests/e2e, so no Eneo is needed. Next allows one dev
 // server per checkout: stop your own `npm run dev` here first.
-const APP = 3401;
-const STUB = 8401;
+// One pair of ports per checkout, so several worktrees can run the gate at the same time: set A11Y_APP_PORT and
+// A11Y_STUB_PORT to a pair no other run uses. The defaults are for a single checkout.
+const APP = Number(process.env.A11Y_APP_PORT ?? 3401);
+const STUB = Number(process.env.A11Y_STUB_PORT ?? 8401);
 
 type Use = NonNullable<PlaywrightTestConfig["use"]>;
 // A touch screen: Chromium then matches (pointer: coarse) and (hover: none).

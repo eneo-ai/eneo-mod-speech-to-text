@@ -30,4 +30,5 @@ Plan: `docs/plans/2026-10-01-astryx-port-plan.md`. Design: `docs/plans/2026-10-0
 
 From `frontend/`: `npm run lint`, `npm test`, `npm run test:a11y`, `npm run test:prod`, `npm run build`.
 From `backend/`: `.venv/bin/python -m unittest discover -s tests`.
+Several worktrees can run the gate at once on their own ports: `A11Y_APP_PORT` and `A11Y_STUB_PORT` (defaults 3401 and 8401). Never `pkill -f`; stop only what you started.
 Work order and status live in Beads: `br ready --json`. The plan's checkboxes are a working aid, not the board.
