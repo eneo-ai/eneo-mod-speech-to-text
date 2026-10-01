@@ -5,6 +5,8 @@ const isDev = process.env.NODE_ENV === "development";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Read at build time, so an image built without FOUNDATION_CHECK=1 carries none of app/dev/foundation's code.
+  env: { FOUNDATION_CHECK: process.env.FOUNDATION_CHECK ?? "" },
   poweredByHeader: false,
   // `next dev` skriver annars ospårade AGENTS.md och CLAUDE.md i frontend/ vid varje start.
   agentRules: false,
