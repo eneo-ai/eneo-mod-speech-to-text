@@ -239,8 +239,6 @@
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
   /* Loading spinners and skeletons stand still; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse { animation: none; }
-  /* The design system's spinner slows to 3 s for reduced motion but never stops, and its theme cannot reach the arc. */
-  .astryx-spinner circle { animation: none; }
 }
 
 @media (forced-colors: active) {
