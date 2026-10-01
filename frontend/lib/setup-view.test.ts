@@ -11,30 +11,35 @@ import type { FlowSecurityClassification, FormField } from "./api";
 
 const noop = () => {};
 
-test("the modes are one radio group of equal cards under the question, and only the chosen one is checked", () => {
+/** The words of the element with this id (the first text of it), as a screen reader takes a name or a description. */
+const wordsOf = (html: string, id: string) => new RegExp(`id="${id}"[^>]*>(?:<[^>]+>)*([^<]+)`).exec(html)?.[1];
+/** The words of what a control names itself by (`aria-labelledby`) or is described by (`aria-describedby`). */
+const referenced = (html: string, control: string, attribute: "aria-labelledby" | "aria-describedby") =>
+  new RegExp(`${attribute}="([^"]+)"`).exec(control)?.[1].split(" ").map((id) => wordsOf(html, id)).join(" ");
+
+test("the modes are one radio group under the question, named by it, and only the chosen one is checked", () => {
   const html = renderToStaticMarkup(
     createElement(ModeCards, { modes: ["stromma", "spela-in", "ladda-upp"], mode: "spela-in", onSelect: noop }),
   );
-  assert.match(html, /<fieldset[^>]*>.*<legend[^>]*><h2[^>]*>Hur vill du lägga till ljudet\?<\/h2><\/legend>/s);
+  // The heading takes the focus when the setup appears; the group carries the same words.
+  assert.match(html, /<h2[^>]*data-phase-heading[^>]*tabindex="-1"[^>]*>Hur vill du lägga till ljudet\?<\/h2>/);
+  const group = /<[^>]*role="radiogroup"[^>]*>/.exec(html)?.[0] ?? "";
   assert.equal(html.match(/role="radiogroup"/g)?.length, 1);
-  const radios = [...html.matchAll(/<button[^>]*role="radio"[^>]*aria-checked="(true|false)"[^>]*id="satt-([a-z-]+)"/g)];
-  assert.deepEqual(
-    radios.map(([, checked, id]) => [id, checked]),
-    [
-      ["stromma", "false"],
-      ["spela-in", "true"],
-      ["ladda-upp", "false"],
-    ],
-  );
-  for (const [name, line] of [
-    ["Strömma", "Se texten medan du pratar."],
-    ["Spela in", "Spela in nu och transkribera efteråt."],
-    ["Ladda upp", "Välj en ljudfil från din enhet."],
-  ]) {
-    assert.ok(html.includes(`>${name}</div>`) && html.includes(`>${line}</p>`), name);
-  }
-  // Each card is the radio's label, so the whole card selects it.
-  assert.equal(html.match(/<label[^>]*for="satt-/g)?.length, 3);
+  assert.equal(referenced(html, group, "aria-labelledby"), "Hur vill du lägga till ljudet?");
+  const radios = [...html.matchAll(/<input[^>]*type="radio"[^>]*>/g)].map(([control]) => ({
+    value: /value="([^"]+)"/.exec(control)?.[1],
+    checked: /\schecked=""/.test(control),
+    name: referenced(html, control, "aria-labelledby"),
+    line: referenced(html, control, "aria-describedby"),
+  }));
+  // Each is named by its title and described by its line, in the order the page offers them.
+  assert.deepEqual(radios, [
+    { value: "stromma", checked: false, name: "Strömma", line: "Se texten medan du pratar." },
+    { value: "spela-in", checked: true, name: "Spela in", line: "Spela in nu och transkribera efteråt." },
+    { value: "ladda-upp", checked: false, name: "Ladda upp", line: "Välj en ljudfil från din enhet." },
+  ]);
+  // Native radios of one group: the arrow keys and the one Tab stop are the browser's.
+  assert.equal(new Set([...html.matchAll(/<input[^>]*type="radio"[^>]*name="([^"]+)"/g)].map(([, name]) => name)).size, 1);
 });
 
 test("each participant chip has its own remove button named after the person", () => {

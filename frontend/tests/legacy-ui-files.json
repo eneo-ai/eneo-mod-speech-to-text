@@ -26,7 +26,6 @@
   "components/flow/LevelMeter.tsx",
   "components/flow/LiveSheet.tsx",
   "components/flow/MicrophoneCheck.tsx",
-  "components/flow/ModeCards.tsx",
   "components/flow/ParticipantsInput.tsx",
   "components/flow/ProblemAlert.tsx",
   "components/flow/ReadyPanel.tsx",

@@ -10,12 +10,12 @@ import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sen
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  for (const [id, name, description, checked] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  for (const [name, description, checked] of [
+    ["Strömma", "Se texten medan du pratar.", false],
+    ["Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
+    expect(await axNode(page.getByRole("radio", { name: new RegExp(`^${name}`) }))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
   expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du lägga till ljudet?" });
 });
