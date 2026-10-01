@@ -1,6 +1,5 @@
 [
   "app/dev/foundation/FoundationCheck.tsx",
-  "app/layout.tsx",
   "components/AuthGate.tsx",
   "components/TranscriptPlayer.tsx",
   "components/flow/FlowInput.tsx",
