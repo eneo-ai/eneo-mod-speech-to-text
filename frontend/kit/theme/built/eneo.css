@@ -296,6 +296,10 @@
     line-height: var(--text-display-3-leading);
   }
 
+  .astryx-heading {
+    overflow-wrap: anywhere;
+  }
+
   .astryx-text[data-type="body"] {
     font-family: var(--font-family-body);
     font-size: var(--text-body-size);
@@ -342,6 +346,10 @@
     font-family: var(--font-family-heading);
     font-size: var(--text-display-3-size);
     line-height: var(--text-display-3-leading);
+  }
+
+  .astryx-text {
+    overflow-wrap: anywhere;
   }
 
   .astryx-text-input:focus-within {

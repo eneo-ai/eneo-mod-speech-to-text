@@ -21,6 +21,10 @@ export const eneoTheme = defineTheme({
     '--color-on-error': ['#FFFFFF', '#1A0A0C'],
   },
   components: {
+    // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
+    // 320 px screen: Astryx breaks words only when it truncates.
+    heading: {base: {overflowWrap: 'anywhere'}},
+    text: {base: {overflowWrap: 'anywhere'}},
     'text-input': {base: {':focus-within': focusRing}},
     'text-area': {base: {':focus-within': focusRing}},
     'number-input': {base: {':focus-within': focusRing}},
