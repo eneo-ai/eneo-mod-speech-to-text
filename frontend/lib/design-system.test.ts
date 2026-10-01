@@ -33,3 +33,20 @@ test("the providers render a page in the Swedish catalog and the Eneo theme", as
   assert.ok(view.container.querySelector('[data-astryx-theme="eneo"]'), "themed");
   assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
 });
+
+test("the shell gives a page its skip link, its navigation landmark and one main region", async () => {
+  const { ModuleShell } = await import("@/kit/ModuleShell");
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  const { ThemeProvider } = await import("next-themes");
+  const view = await mount(
+    createElement(ThemeProvider, {
+      attribute: "class",
+      children: createElement(ModuleProviders, {
+        children: createElement(ModuleShell, { label: "Tal till text", heading: "Tal till text", end: "Konto", children: "Sidan" }),
+      }),
+    }),
+  );
+  assert.equal(view.container.querySelectorAll('[role="main"], main').length, 1, "one main region");
+  assert.ok(view.container.querySelector('nav[aria-label="Tal till text"]'), "a named navigation landmark");
+  assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
+});
