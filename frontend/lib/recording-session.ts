@@ -133,6 +133,7 @@ type EndReason = "stop" | "interrupt" | "leave";
 
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
+const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
 
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
@@ -337,11 +338,22 @@ export class RecordingCapture {
     // data, which lands in the store as before.
     this.stopMicrophone();
     this.set({ stopping: true });
-    await ended;
-    await store.setState(recording.id, "stopped");
-    const stopped = await store.get(recording.id);
+    let stopped: StoredRecording | null = null;
+    let failure: string | null = null;
+    try {
+      await ended;
+      await store.setState(recording.id, "stopped");
+      stopped = await store.get(recording.id);
+    } catch (error) {
+      failure = error instanceof Error && error.message === NOT_ON_DEVICE ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
+    }
     this.finish();
-    this.set({ status: "stopped", recording: stopped, stream: null, stopping: false });
+    // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
+    this.set(
+      failure === null
+        ? { status: "stopped", recording: stopped, stream: null, stopping: false }
+        : { status: "stopped", stream: null, stopping: false, error: failure },
+    );
     return stopped;
   }
 
