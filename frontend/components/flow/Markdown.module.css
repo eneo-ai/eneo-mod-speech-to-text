@@ -1,0 +1,4 @@
+/* The text as it was written while its formatting loads: its lines and its blank lines are kept. */
+.plain {
+  white-space: pre-wrap;
+}
