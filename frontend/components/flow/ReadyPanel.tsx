@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, FileText, Trash2 } from "lucide-react";
-import { useEffect, useId, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid } from "@astryxdesign/core/Grid";
@@ -11,6 +11,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
@@ -21,7 +22,6 @@ import { saveRecordingAsFiles } from "@/components/save-recording";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { createActionLabel, type LiveSession, type Problem } from "@/lib/flow-session";
 import { formatDuration, recordingName } from "@/lib/format";
-import { loginState } from "@/lib/login-state";
 import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
@@ -124,7 +124,16 @@ export function ReadyPanel({
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   // The question is the page's: it is closed while the login has ended, and back with the same state after the new one.
   const [confirming, setConfirming] = useState(false);
-  const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+  const signedOut = useSignedOut();
+  // Answered, or closed with Escape: the focus is back on the button that asked. The dialog gives it back itself, but not
+  // when a press did not focus the button (Safari, Firefox on macOS), nor after a new login, when it was asked again with
+  // nothing of the page focused.
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasConfirming = useRef(false);
+  useEffect(() => {
+    if (!confirming && wasConfirming.current) trigger.current?.focus();
+    wasConfirming.current = confirming;
+  }, [confirming]);
   const name = recordingName(recording.startedAt);
   const made = makesText ? "texten är skapad" : "dokumentet är skapat";
   // Stopped a moment after it started, most likely by mistake: going on is the likely next step.
@@ -195,14 +204,11 @@ export function ReadyPanel({
 
       <HStack hAlign="start">
         <Button
+          ref={trigger}
           label={sent ? "Ta bort inspelningen från enheten" : "Ta bort"}
           variant={sent ? "secondary" : "ghost"}
           icon={<Icon icon={Trash2} size="sm" />}
-          onClick={(event) => {
-            // The focus is the question's way back: a click does not focus a button in every browser.
-            event.currentTarget.focus();
-            setConfirming(true);
-          }}
+          onClick={() => setConfirming(true)}
         />
       </HStack>
       <AlertDialog
