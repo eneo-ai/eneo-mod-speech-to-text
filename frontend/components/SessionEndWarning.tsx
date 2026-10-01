@@ -1,18 +1,13 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import {
-  AlertDialog,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
+import { HStack, Layout, LayoutContent, LayoutFooter, VStack } from "@astryxdesign/core/Layout";
+import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import styles from "@/components/SessionEndWarning.module.css";
 import { ApiError, loginWithAccessCode, type AuthMode, type AuthenticatedUser } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
@@ -21,6 +16,8 @@ export const SESSION_CHANNEL = "tal-till-text:session";
 
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
+// What the backend takes of an access code.
+const ACCESS_CODE_MAX = 256;
 
 /**
  * The login ends at a fixed time, which only a new login can move. Five
@@ -59,11 +56,11 @@ export function SessionEndWarning({
   const [problem, setProblem] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [sending, setSending] = useState(false);
-  const codeId = useId();
-  const problemId = useId();
-  // The dialog has no button of its own on the page: focus goes back to where it was.
+  const formId = useId();
+  const descriptionId = useId();
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  // Where the focus was when the warning opened: the page's, once the dialog has covered an ended login.
   const returnFocus = useRef<HTMLElement | null>(null);
-  const heading = useRef<HTMLHeadingElement | null>(null);
 
   // A later end (a renewed login) takes the warning away and sets it again for the new end.
   useEffect(() => {
@@ -88,6 +85,9 @@ export function SessionEndWarning({
 
   async function renewWithCode(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    // The field cannot refuse an empty code itself, and the backend would answer it with something other than
+    // "wrong": an empty code is a wrong one.
+    if (code === "") return setProblem("Felaktig åtkomstkod.");
     setSending(true);
     setProblem(null);
     try {
@@ -116,79 +116,96 @@ export function SessionEndWarning({
   const [other, setOther] = useState(otherUser);
   if (signedOut && other?.id !== otherUser?.id) setOther(otherUser);
   const action = ended ? "Logga in igen" : "Fortsätt arbeta";
-  // Signed out, nothing but the new login closes it.
+  const shown = open || signedOut;
+
+  // The title names the dialog, and has the focus when it opens and when the login ends under an open warning (WCAG
+  // 2.4.3), so that a screen reader says it. Chromium and WebKit take it first; Firefox takes the first button.
+  useEffect(() => {
+    const title = dialogRef.current?.getAttribute("aria-labelledby");
+    if (shown && title) document.getElementById(title)?.focus();
+  }, [shown, ended]);
+
+  // Closed, the warning gives the focus back to what had it. An ended login is different: the page under the dialog
+  // was covered and may have changed, so after the new login the page decides where the focus goes.
+  const wasShown = useRef(false);
+  useEffect(() => {
+    if (wasShown.current && !shown) {
+      const before = returnFocus.current;
+      returnFocus.current = null;
+      if (!coveredEnd.current) before?.focus();
+      else {
+        coveredEnd.current = false;
+        onFocusBack?.(before);
+      }
+    }
+    wasShown.current = shown;
+  }, [shown, onFocusBack]);
+
+  // In the tree only while it is shown: a modal dialog of the page that is open when it appears has hidden what was
+  // in the document by then from assistive technology (aria-hidden), and a dialog that was already there with it.
+  // Signed out, nothing but the new login closes it, and nothing of the page shows through (the stylesheet).
+  if (!shown) return null;
   return (
-    <AlertDialog open={open || signedOut} onOpenChange={setOpen}>
-      <AlertDialogContent
-        // The login ended: the page under the focus is covered, so the focus moves into the dialog, onto its heading,
-        // and a screen reader says it (WCAG 2.4.3). The warning keeps Stäng as its first stop.
-        onOpenAutoFocus={(event) => {
-          if (!signedOut) return;
-          event.preventDefault();
-          heading.current?.focus();
-        }}
-        onCloseAutoFocus={(event) => {
-          event.preventDefault();
-          const before = returnFocus.current;
-          returnFocus.current = null;
-          if (!coveredEnd.current) return before?.focus();
-          coveredEnd.current = false;
-          onFocusBack?.(before);
-        }}
-      >
-        <AlertDialogHeader>
-          <AlertDialogTitle ref={heading} tabIndex={-1} className="outline-none">
-            {ended ? "Du behöver logga in igen" : "Du loggas snart ut"}
-          </AlertDialogTitle>
-          <AlertDialogDescription>
-            {other && owner
-              ? `Du är inloggad som ${userDisplayName(other)}. Logga in som ${userDisplayName(owner)} för att fortsätta. `
-              : ended
-                ? "Inloggningen har upphört. "
-                : `Inloggningen upphör kl. ${time}. `}
-            {byCode
-              ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
-              : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
-            {ended
-              ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
-              : "Allt på den här sidan finns kvar."}
-          </AlertDialogDescription>
-        </AlertDialogHeader>
-        {signedOut && <div ref={controlsRef} />}
-        {byCode && (
-          <form id={`${codeId}-form`} className="flex flex-col gap-2" onSubmit={(event) => void renewWithCode(event)}>
-            <Label htmlFor={codeId}>Åtkomstkod</Label>
-            <Input
-              id={codeId}
-              type="password"
-              autoComplete="current-password"
-              required
-              maxLength={256}
-              value={code}
-              onChange={(event) => setCode(event.target.value)}
-              aria-invalid={problem ? true : undefined}
-              aria-describedby={problem ? problemId : undefined}
-            />
-          </form>
-        )}
-        {problem && (
-          <p id={problemId} role="alert" className="text-sm text-destructive">
-            {problem}
-          </p>
-        )}
-        <AlertDialogFooter>
-          {!ended && <AlertDialogCancel className="h-11">Stäng</AlertDialogCancel>}
-          {byCode ? (
-            <Button type="submit" form={`${codeId}-form`} className="h-11" disabled={sending}>
-              {action}
-            </Button>
-          ) : (
-            <Button type="button" className="h-11" onClick={renewInWindow}>
-              {action}
-            </Button>
-          )}
-        </AlertDialogFooter>
-      </AlertDialogContent>
-    </AlertDialog>
+    <Dialog
+      ref={dialogRef}
+      isOpen={shown}
+      onOpenChange={setOpen}
+      role="alertdialog"
+      // Like the alert dialog it replaces, the warning does not close on a click beside it: it is the only notice.
+      purpose={signedOut ? "required" : "form"}
+      aria-describedby={descriptionId}
+      className={signedOut ? styles.signedOut : undefined}
+    >
+      <Layout
+        header={<DialogHeader title={ended ? "Du behöver logga in igen" : "Du loggas snart ut"} onOpenChange={ended ? undefined : setOpen} />}
+        content={
+          <LayoutContent>
+            {/* The content scrolls, and clips what lies outside it: room below its last control for the focus ring. */}
+            <VStack gap={4} paddingBlockEnd={1.5}>
+              <Text as="p" display="block" color="secondary" id={descriptionId}>
+                {other && owner
+                  ? `Du är inloggad som ${userDisplayName(other)}. Logga in som ${userDisplayName(owner)} för att fortsätta. `
+                  : ended
+                    ? "Inloggningen har upphört. "
+                    : `Inloggningen upphör kl. ${time}. `}
+                {byCode
+                  ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
+                  : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
+                {ended
+                  ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
+                  : "Allt på den här sidan finns kvar."}
+              </Text>
+              {signedOut && <div ref={controlsRef} />}
+              {byCode && (
+                <form id={formId} onSubmit={(event) => void renewWithCode(event)}>
+                  <TextInput
+                    label="Åtkomstkod"
+                    type="password"
+                    autoComplete="current-password"
+                    isRequired
+                    value={code}
+                    onChange={(value) => setCode(value.slice(0, ACCESS_CODE_MAX))}
+                    // The words are the alert below: the design system's own announcements sit outside a modal dialog.
+                    status={problem ? { type: "error" } : undefined}
+                  />
+                </form>
+              )}
+              {problem && <Banner status="error" title={problem} collapsible={false} />}
+            </VStack>
+          </LayoutContent>
+        }
+        footer={
+          <LayoutFooter>
+            <HStack gap={2} hAlign="end">
+              {byCode ? (
+                <Button type="submit" form={formId} label={action} variant="primary" size="lg" isLoading={sending} />
+              ) : (
+                <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
+              )}
+            </HStack>
+          </LayoutFooter>
+        }
+      />
+    </Dialog>
   );
 }
