@@ -160,7 +160,7 @@ export function ReadyPanel({
           <Download data-icon="inline-start" aria-hidden />
           Spara som fil
         </Button>
-        <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-mute">
+        <p className="min-w-0 flex-1 text-[13px] leading-snug text-ink-mute [overflow-wrap:anywhere]">
           {persistent
             ? `Inspelningen finns kvar på enheten tills ${made}.`
             : `Inspelningen finns bara i den här fliken. Stäng inte fliken innan ${made}.`}

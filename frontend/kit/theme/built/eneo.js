@@ -265,6 +265,11 @@ export const eneoTheme = {
       "base": {
         "overflowWrap": "anywhere"
       }
+    },
+    "avatar-fallback": {
+      "base": {
+        "color": "var(--color-text-primary)"
+      }
     }
   },
   __onDark: {
@@ -319,6 +324,11 @@ export const eneoTheme = {
               }
             },
             "top-nav-heading": {
+              "base": {
+                "minHeight": "44px"
+              }
+            },
+            "collapsible-trigger": {
               "base": {
                 "minHeight": "44px"
               }

@@ -170,14 +170,14 @@ test("the information row is the flow's classification as Eneo sends it, and the
     description: "Ladda inte upp personuppgifter eller uppgifter som omfattas av sekretess.",
     security_level: 0,
   });
-  assert.match(full, /^<div role="note"/, "a note, not an alert");
-  assert.match(full, />Öppen information<\/div>/);
-  assert.match(full, />Ladda inte upp personuppgifter eller uppgifter som omfattas av sekretess\.<\/div>/);
+  assert.match(full, /^<div [^>]*role="note"/, "a note, not an alert or a status");
+  assert.match(full, />Öppen information<\/span>/);
+  assert.match(full, />Ladda inte upp personuppgifter eller uppgifter som omfattas av sekretess\.<\/span>/);
   assert.doesNotMatch(full, /truncate|line-clamp/, "a long description wraps");
 
   const nameOnly = row({ name: "Intern information", description: null, security_level: 1 });
-  assert.match(nameOnly, />Intern information<\/div>/);
-  assert.equal(nameOnly.match(/<div/g)?.length, 2, "the row and its name, no empty description");
+  assert.match(nameOnly, />Intern information<\/span>/);
+  assert.equal(nameOnly.match(/<span/g)?.length, 1, "the name alone, no empty description");
 
   assert.equal(row(null), "", "no classification: no row, and no invented rule");
 });

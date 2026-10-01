@@ -37,6 +37,9 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
+    // 4.28:1 in dark mode, the primary one 8.5:1.
+    'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
   },
   adaptations: {
     rules: [
@@ -49,6 +52,7 @@ export const eneoTheme = defineTheme({
             'selector-option-row': {base: {minHeight: TOUCH}},
             'typeahead-item': {base: {minHeight: TOUCH}},
             'top-nav-heading': {base: {minHeight: TOUCH}},
+            'collapsible-trigger': {base: {minHeight: TOUCH}},
           },
         },
       },

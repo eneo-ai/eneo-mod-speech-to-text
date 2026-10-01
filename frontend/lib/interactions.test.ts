@@ -291,7 +291,8 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
       [],
     ),
   );
-  const main = view.container.querySelector("main")!;
+  // The shell's one main region: a div with the role, not a <main> element.
+  const main = view.container.querySelector('[role="main"]')!;
   assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
   assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
   assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
@@ -392,9 +393,9 @@ test("upload under way: the header offers no way off the page, which would abort
 
 test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
   const { createElement } = await import("react");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
-  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte", trailing: "Spelar in" }), []));
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay, asked through onLeave");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const view = await mount(await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }), []));
+  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it), asked through onLeave");
   await view.unmount();
 });
 
@@ -427,10 +428,11 @@ test("the way back: a link to the flow list named Alla flöden, and a leave guar
 
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
-  const view = await mount(await signedIn(createElement(FlowTopBar, { title: "Nämndmöte" }), []));
-  const chevron = view.container.querySelector('header a[aria-label]');
-  assert.equal(chevron?.getAttribute("aria-label"), "Alla flöden");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
+  const view = await mount(await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }), []));
+  const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
+  assert.ok(chevron, "the arrow in the bar is named like every other way back");
+  assert.equal(chevron.getAttribute("href"), "/flows");
   await view.unmount();
 });
 
@@ -485,7 +487,7 @@ test("signed out, Back still asks in a dialog that is shown, focused and answera
 test("while leaving would lose typed work, the top bar's links and Logga ut ask first", async (t) => {
   const { createElement } = await import("react");
   const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
-  const { FlowTopBar } = await import("../components/flow/FlowTopBar");
+  const { FlowFrame } = await import("../components/flow/FlowFrame");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   const navigated: string[] = [];
   let loggedOut = 0;
@@ -502,7 +504,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     return createElement(
       LeaveContext.Provider,
       { value: leaving },
-      createElement(FlowTopBar, { title: "Sammanfattning", titleIsHeading: false }),
+      createElement(FlowFrame, { title: "Sammanfattning", titleIsHeading: false, children: null }),
       leaving.question,
     );
   }
