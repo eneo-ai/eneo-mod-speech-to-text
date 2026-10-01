@@ -82,7 +82,7 @@ export interface RecordingFile {
 export interface StoreEnv {
   indexedDB?: IDBFactory;
   keyRange?: typeof IDBKeyRange;
-  storage?: Pick<StorageManager, "estimate" | "persist">;
+  storage?: Pick<StorageManager, "estimate" | "persist"> & Partial<Pick<StorageManager, "persisted">>;
   locks?: Pick<LockManager, "request" | "query">;
   now?: () => number;
 }
@@ -279,6 +279,8 @@ export class RecordingStore {
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, or it refused the write.
   private overflowed = new Map<string, DeviceRefusal>();
+  // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
+  private kept: boolean | null = null;
 
   constructor(
     private backend: Backend,
@@ -289,6 +291,14 @@ export class RecordingStore {
   /** False when the audio (or part of it) lives only in this tab. */
   get persistent(): boolean {
     return this.durable && this.overflowed.size === 0;
+  }
+
+  /**
+   * True when the browser says it may delete this device's recordings (its storage is not persistent): Safari clears
+   * a site's storage after a week without a visit, and any browser may under pressure. False while it has not said.
+   */
+  get evictable(): boolean {
+    return this.durable && this.kept === false;
   }
 
   /** Why the device stopped keeping this recording partway, or null while it keeps it. */
@@ -564,9 +574,22 @@ export class RecordingStore {
     this.notify();
   }
 
-  async requestPersistence(): Promise<void> {
+  /** What the browser already says of keeping this device's storage; nothing is asked of the user. */
+  async readPersisted(): Promise<void> {
     try {
-      await this.env.storage?.persist();
+      this.kept = (await this.env.storage?.persisted?.()) ?? this.kept;
+    } catch {
+      // Not said: not claimed.
+    }
+  }
+
+  async requestPersistence(): Promise<void> {
+    if (this.kept) return;
+    try {
+      const granted = await this.env.storage?.persist();
+      if (granted === undefined || granted === this.kept) return;
+      this.kept = granted;
+      this.notify();
     } catch {
       // The browser may refuse; the recording is still stored.
     }
@@ -678,6 +701,7 @@ export async function openRecordingStore(env: StoreEnv): Promise<RecordingStore>
       const db = await openDatabase(factory);
       const store = new RecordingStore(idbBackend(db, env.keyRange, () => openDatabase(factory)), true, env);
       await store.removeAccepted().catch(() => undefined);
+      await store.readPersisted();
       return store;
     } catch {
       // Private mode or blocked storage: fall through to memory.

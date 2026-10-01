@@ -13,7 +13,7 @@ import { HeaderBrand } from "@/components/AppHeader";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { UnsentRecordings, useUnsentRecordings } from "@/components/UnsentRecordings";
+import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { getConfig } from "@/lib/api";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
@@ -38,6 +38,7 @@ function FlowsListPage() {
   const router = useRouter();
   const user = useAuthenticatedUser();
   const unsent = useUnsentRecordings(user.id);
+  const evictable = useEvictable();
   const [lastFlowId, setLastFlowId] = useState<string | null>(null);
   useEffect(() => setLastFlowId(lastUsedFlow(browserStorage(), user.id)), [user.id]);
   const [groups, setGroups] = useState<FlowSpaceGroup[] | null>(null);
@@ -82,6 +83,7 @@ function FlowsListPage() {
               <UnsentRecordings
                 recordings={unsent}
                 withFlowName
+                evictable={evictable}
                 sendLabel={(recording) => createLabel(recording.flowId)}
                 onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
               />

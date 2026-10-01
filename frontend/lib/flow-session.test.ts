@@ -570,6 +570,12 @@ test("the storage line says the recording is kept on the device only when the de
   assert.equal(storageLine(true), "Inspelningen sparas på enheten medan du spelar in.");
   assert.equal(storageLine(false), "Låt sidan vara öppen under inspelningen.");
   assert.equal(storageLine(null), "Låt sidan vara öppen under inspelningen.", "unknown is never claimed");
+  assert.equal(
+    storageLine(true, true),
+    "Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.",
+    "a browser that may delete it says so",
+  );
+  assert.equal(storageLine(false, true), "Låt sidan vara öppen under inspelningen.", "a recording only in this tab says that");
 });
 
 test("each mode has its own primary action", () => {

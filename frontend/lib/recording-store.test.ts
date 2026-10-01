@@ -624,6 +624,43 @@ test("audio only this tab has keeps the recording from other tabs after Stoppa, 
   assert.equal(await otherTab.lease(recording.id), true, "sent: nothing is held any more");
 });
 
+test("the store learns from the browser whether it may delete the device's recordings: at open without asking, and from the answer to the ask", async () => {
+  const calls = { persisted: 0, persist: 0 };
+  const browser = (persistent: boolean, grants: boolean): NonNullable<StoreEnv["storage"]> => ({
+    estimate: async () => ({ usage: 0, quota: 1_000 * MB }),
+    persisted: async () => {
+      calls.persisted += 1;
+      return persistent;
+    },
+    persist: async () => {
+      calls.persist += 1;
+      return grants;
+    },
+  });
+
+  const kept = await openRecordingStore(device({ storage: browser(true, false) }));
+  assert.equal(kept.evictable, false);
+  await kept.requestPersistence();
+  assert.equal(calls.persist, 0, "nothing is asked of a browser that already keeps it");
+
+  const refused = await openRecordingStore(device({ storage: browser(false, false) }));
+  assert.equal(refused.evictable, true, "known at open");
+  assert.equal(calls.persist, 0, "opening asks for nothing");
+  await refused.requestPersistence();
+  assert.equal(refused.evictable, true, "and still, once refused");
+
+  const granted = await openRecordingStore(device({ storage: browser(false, true) }));
+  let heard = 0;
+  granted.subscribe(() => (heard += 1));
+  assert.equal(granted.evictable, true);
+  await granted.requestPersistence();
+  assert.equal(granted.evictable, false, "the answer to the ask is kept");
+  assert.equal(heard, 1, "and said to those who follow the store");
+
+  assert.equal((await openRecordingStore({ storage: browser(false, false) })).evictable, false, "a store in memory says so with persistent, not this");
+  assert.equal((await openRecordingStore(device())).evictable, false, "a browser that says nothing is not claimed");
+});
+
 test("recording asks for persistent storage and warns when little space is left", async () => {
   let persistCalls = 0;
   const storage = (usage: number): NonNullable<StoreEnv["storage"]> => ({

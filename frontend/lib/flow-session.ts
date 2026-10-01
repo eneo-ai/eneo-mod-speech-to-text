@@ -261,11 +261,12 @@ export function labelsSpeakers(
   return choice ?? Boolean(option?.required);
 }
 
-/** Claims the recording is kept on the device only when the device store keeps it. */
-export function storageLine(persistent: boolean | null): string {
-  return persistent
-    ? "Inspelningen sparas på enheten medan du spelar in."
-    : "Låt sidan vara öppen under inspelningen.";
+/** Claims the recording is kept on the device only when the device store keeps it, and says when the browser may clear it. */
+export function storageLine(persistent: boolean | null, evictable = false): string {
+  if (!persistent) return "Låt sidan vara öppen under inspelningen.";
+  return evictable
+    ? "Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+    : "Inspelningen sparas på enheten medan du spelar in.";
 }
 
 /** Whether the setup asks "Antal talare": the run labels speakers, and the flow's own form asks no count. */

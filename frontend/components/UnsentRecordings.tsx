@@ -53,6 +53,25 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRec
   return recordings;
 }
 
+/** Whether the browser may delete this device's recordings (its storage is not persistent); false until it has said. */
+export function useEvictable(): boolean {
+  const [evictable, setEvictable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe = () => {};
+    void recordingStore().then((store) => {
+      if (cancelled) return;
+      setEvictable(store.evictable);
+      unsubscribe = store.subscribe(() => setEvictable(store.evictable));
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+  return evictable;
+}
+
 /** "Nämndmöte till rapport · 42 min": under the name the recording had when it was made. */
 export function recordingDetails(
   recording: StoredRecording,
@@ -76,6 +95,7 @@ export function UnsentRecordings({
   onContinue,
   withFlowName = false,
   sendLabel = () => "Skapa dokument",
+  evictable = false,
 }: {
   recordings: UnsentRecording[];
   onSend: (recording: StoredRecording) => void;
@@ -83,6 +103,8 @@ export function UnsentRecordings({
   withFlowName?: boolean;
   /** What a recording's send says: what its flow makes (lib/flow-session createActionLabel). */
   sendLabel?: (recording: StoredRecording) => string;
+  /** The browser may delete the recordings (useEvictable): the list then does not promise they stay. */
+  evictable?: boolean;
 }) {
   const headingId = useId();
   if (recordings.length === 0) return null;
@@ -103,8 +125,12 @@ export function UnsentRecordings({
           {cutOff
             ? "Välj Fortsätt spela in så fortsätter den i samma inspelning."
             : recordings.length === 1
-              ? "Den finns kvar på den här enheten tills den har skickats."
-              : "De finns kvar på den här enheten tills de har skickats."}
+              ? evictable
+                ? "Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+                : "Den finns kvar på den här enheten tills den har skickats."
+              : evictable
+                ? "De finns på den här enheten, men webbläsaren kan rensa dem om de ligger kvar osända för länge."
+                : "De finns kvar på den här enheten tills de har skickats."}
         </Text>
       </VStack>
       <List hasDividers>

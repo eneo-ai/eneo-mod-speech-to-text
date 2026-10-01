@@ -247,7 +247,7 @@ export function FlowInput({
 
 /** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
 function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
-  const { session, snapshot, capture, persistent } = input;
+  const { session, snapshot, capture, persistent, evictable } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
@@ -274,7 +274,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
           capture={session.capture}
           phase={phase}
           stream={capture.stream}
-          storageNote={persistent ? storageLine(true) : null}
+          storageNote={persistent ? storageLine(true, evictable) : null}
         />
       )}
       <SignedOutControls
@@ -380,6 +380,7 @@ function SetupWorkspace({
       <UnsentRecordings
         recordings={unsentRecordings}
         sendLabel={() => create}
+        evictable={input.evictable}
         onSend={(recording) => {
           if (countInvalid) return focusCount();
           session.adopt(recording);
@@ -449,7 +450,7 @@ function SetupWorkspace({
             </VisuallyHidden>
             {recordingMode && (
               <Text as="p" type="supporting" justify="center">
-                {storageLine(persistent)}
+                {storageLine(persistent, input.evictable)}
               </Text>
             )}
           </VStack>,

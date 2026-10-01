@@ -52,4 +52,4 @@
     - text: ""
     - status
   - status
-  - paragraph: Inspelningen sparas på enheten medan du spelar in.
+  - paragraph: Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.
