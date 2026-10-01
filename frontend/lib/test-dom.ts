@@ -126,6 +126,11 @@ export async function cleanup(): Promise<void> {
   for (const unmount of [...mounted]) await unmount();
 }
 
+/** Static markup as a document of its own (no globals installed), for assertions on structure, names and attributes. */
+export function parse(html: string): Document {
+  return new JSDOM(html).window.document;
+}
+
 /** A button by its visible words or its accessible name, anywhere under `within`. */
 export function button(within: ParentNode, name: string): HTMLButtonElement | null {
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;

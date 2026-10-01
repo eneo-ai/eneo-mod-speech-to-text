@@ -4,6 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { axe, blocking, focusStop, tabWalk, targetSizes } from "./checks";
+import { STATES } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the checks' own tests run once"));
 
@@ -124,4 +125,28 @@ test("a target in an open modal dialog is measured even under an inert ancestor"
   await page.setContent(`<div inert><dialog><button aria-label="Liten" style="width: 10px; height: 10px; padding: 0"></button></dialog></div>`);
   await page.evaluate(() => document.querySelector("dialog")!.showModal());
   expect(await targetSizes(page, 24, false)).toEqual(['button "Liten" 10×10']);
+});
+
+test("a slider's control is its target, and a control too thin for a finger is reported", async ({ page }) => {
+  // The design system's slider: a 20 px thumb inside a control, which takes the press and is the box that counts.
+  const slider = (height: number) => `
+    <div class="astryx-slider-control" data-orientation="horizontal" style="height: ${height}px; width: 240px">
+      <div role="slider" aria-label="Läge" tabindex="0" style="width: 20px; height: 20px"></div>
+    </div>`;
+  await page.setContent(slider(44));
+  expect(await targetSizes(page, 44, false), "44 px tall: the control is the target").toEqual([]);
+  await page.setContent(slider(20));
+  expect(await targetSizes(page, 44, false), "20 px tall: as the design system draws it").toEqual(['slider "Läge" 20×20']);
+});
+
+test("the design system's slider control does take a press beside its thumb, so crediting its box is true", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "ready")!.go(page, info);
+  const thumb = page.getByRole("slider", { name: "Position i inspelningen" });
+  const control = page.locator(".astryx-slider-control");
+  const box = (await control.boundingBox())!;
+  expect(box.height, "the control is a 24 px target with a mouse").toBeGreaterThanOrEqual(24);
+  expect(Number(await thumb.getAttribute("aria-valuenow"))).toBe(0);
+  // The control's own top edge, above the 4 px rail and the thumb's 20 px.
+  await page.mouse.click(box.x + box.width * 0.9, box.y + 1);
+  expect(Number(await thumb.getAttribute("aria-valuenow")), "a press on the control's edge moves the playhead").toBeGreaterThan(0);
 });
