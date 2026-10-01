@@ -109,18 +109,19 @@ class SettingsTests(unittest.TestCase):
             settings = load_settings()
 
         self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (10 * 1024 * 1024, 1024**3))
+        self.assertEqual(settings.max_response_bytes, 32 * 1024 * 1024)
 
     def test_body_limits_are_configurable(self) -> None:
-        environment = valid_environment() | {"MAX_BODY_BYTES": "2048", "MAX_UPLOAD_BYTES": "5000000"}
+        environment = valid_environment() | {"MAX_BODY_BYTES": "2048", "MAX_UPLOAD_BYTES": "5000000", "MAX_RESPONSE_BYTES": "4096"}
 
         with patch.dict(os.environ, environment, clear=True):
             settings = load_settings()
 
-        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (2048, 5_000_000))
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes, settings.max_response_bytes), (2048, 5_000_000, 4096))
 
     def test_rejects_invalid_body_limits(self) -> None:
         # An empty value is refused too: docker-compose.yml gives the defaults itself, so it never passes one.
-        for name in ("MAX_BODY_BYTES", "MAX_UPLOAD_BYTES"):
+        for name in ("MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_RESPONSE_BYTES"):
             for raw in ("0", "-5", "ten", ""):
                 with self.subTest(name=name, raw=raw):
                     with patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):

@@ -59,6 +59,8 @@ class Settings(BaseModel):
     # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
     max_body_bytes: int = 10 * 1024 * 1024
     max_upload_bytes: int = 1024 * 1024 * 1024
+    # The most the module reads of one answer from Eneo (app/upstream.py); a file that streams to the browser is not counted.
+    max_response_bytes: int = 32 * 1024 * 1024
     # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
@@ -273,6 +275,7 @@ def load_settings() -> Settings:
         upload_proxy_timeout_seconds=upload_timeout,
         max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
         max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
+        max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", 32 * 1024 * 1024),
         session_max_age_seconds=session_minutes * 60,
         organization=organization,
         organization_logo=organization_logo,
