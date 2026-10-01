@@ -157,34 +157,17 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
 
 # ---------- Eneo proxy ----------
 
-# Headers we should not forward from incoming request to upstream.
-_HOP_BY_HOP_REQUEST_HEADERS = {
-    "host",
-    "connection",
-    "content-length",
-    "accept-encoding",
-    "authorization",
-    "cookie",
-    "x-api-key",
-    # Intern routing-header — Eneo ska inte se den.
-    "x-space-id",
-    # Intern proxy-budget för stora uploads.
-    "x-upload-timeout-seconds",
-    # The module checks the browser's origin itself; Eneo refuses any origin it does not list,
-    # so the module's own hostname passed on would fail every write in production.
-    "origin",
-    "referer",
-    # The headers that frame a request or ask for another protocol are the module's own business: the body is read
-    # whole (or counted) here and sent with a Content-Length, so a browser's "Transfer-Encoding: chunked" beside it
-    # makes Eneo refuse the request.
-    "transfer-encoding",
-    "te",
-    "trailer",
-    "upgrade",
-    "keep-alive",
-    "proxy-authorization",
-}
-_HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
+# The request headers that reach Eneo; every other header of the browser's request is dropped (deny by default,
+# for headers as for paths). Eneo serves every user on one connection pool and every call carries the service key,
+# so a browser's Transfer-Encoding, Forwarded, X-Forwarded-For or X-Real-IP must not arrive: a header a browser, a
+# proxy or a script adds is not Eneo's to receive. The credentials are set by the module from the session, never
+# taken from the browser. The frontend sends Accept, Content-Type (a JSON body) and Idempotency-Key through
+# /api/eneo/*; the rest is the kit's list (Accept-Language, If-Match, If-None-Match). X-Upload-Timeout-Seconds is
+# read by the upload routes and never forwarded; the signed-file routes forward Range, If-Range and Accept on their
+# own (_STREAM_FORWARD_REQUEST_HEADERS).
+_FORWARDED_REQUEST_HEADERS = frozenset(
+    {"accept", "accept-language", "content-type", "idempotency-key", "if-match", "if-none-match"}
+)
 
 def _ascii_only(headers: dict[str, str]) -> dict[str, str]:
     """``headers`` if httpx can encode them (as ASCII); a byte above 127 in a browser's header would raise, a 500."""
@@ -843,12 +826,15 @@ async def eneo_proxy(path: str, request: Request) -> Response:
     upstream_url = _upstream_url(resolved_path)
     # Forward request headers, but replace browser-controlled credentials with
     # the credentials owned by the configured module-auth session.
-    fwd_headers: dict[str, str] = {}
-    for name, value in request.headers.items():
-        if name.lower() in _HOP_BY_HOP_REQUEST_HEADERS:
-            continue
-        fwd_headers[name] = value
-    _ascii_only(fwd_headers)
+    # The header that carries the service key is configured, so it is excluded here by its name.
+    key_header = settings.eneo_api_key_header_name.lower()
+    fwd_headers = _ascii_only(
+        {
+            name: value
+            for name, value in request.headers.items()
+            if name.lower() in _FORWARDED_REQUEST_HEADERS and name.lower() != key_header
+        }
+    )
     fwd_headers.update(module_auth.upstream_auth_headers(request))
 
     body = await request.body()

@@ -49,6 +49,7 @@ class Seen:
     path: str
     headers: dict[str, str]
     body: bytes
+    header_list: list[tuple[str, str]]  # every header as sent, so a repeated one can be seen
 
 
 class FakeEneo:
@@ -73,6 +74,7 @@ class FakeEneo:
             path=scope["path"],
             headers={name.decode().lower(): value.decode("latin-1") for name, value in scope["headers"]},
             body=body,
+            header_list=[(name.decode().lower(), value.decode("latin-1")) for name, value in scope["headers"]],
         )
         self.requests.append(seen)
         status, headers, payload = self.respond(seen)
@@ -296,7 +298,8 @@ class BrowserHeaderTests(BoundaryCase):
 
     def test_a_header_value_httpx_cannot_encode_is_a_400_not_a_500(self) -> None:
         cases = {
-            "the proxy": ("GET", "/api/eneo/flows/", {"X-Note": "caf\u00e9"}),
+            "the proxy, Accept-Language": ("GET", "/api/eneo/flows/", {"Accept-Language": "sv-caf\u00e9"}),
+            "the proxy, Idempotency-Key": ("GET", "/api/eneo/flows/", {"Idempotency-Key": "caf\u00e9"}),
             "the signed file's Accept": ("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", {"Accept": "audio/\u00e9"}),
             "the signed file's Range": ("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", {"Range": "bytes=0-\u00e9"}),
         }
@@ -309,6 +312,12 @@ class BrowserHeaderTests(BoundaryCase):
 
                 self.assertEqual(status, 400)
                 self.assertEqual(self.eneo.requests, [])
+
+    def test_a_header_that_is_not_forwarded_is_not_checked_for_encoding(self) -> None:
+        status, _ = self.raw("GET", "/api/eneo/flows/", {"X-Note": "caf\u00e9"})
+
+        self.assertEqual(status, 200)
+        self.assertNotIn("x-note", self.eneo.requests[-1].headers)
 
     def test_a_chunked_post_is_forwarded_whole_without_its_framing_headers(self) -> None:
         payload = b'{"input": "text"}'
@@ -329,14 +338,82 @@ class BrowserHeaderTests(BoundaryCase):
         self.assertEqual(seen.body, payload)
         self.assertNotIn("transfer-encoding", seen.headers)
 
-    def test_the_headers_that_frame_a_request_are_not_passed_on(self) -> None:
-        sent = {"TE": "trailers", "Upgrade": "h2c", "Keep-Alive": "timeout=5", "Trailer": "X-Late", "Proxy-Authorization": "Basic Zm9vOmJhcg=="}
+    LISTED = {
+        "Accept": "application/json",
+        "Accept-Language": "sv-SE",
+        "Content-Type": "application/json",
+        "Idempotency-Key": "flow-run:1",
+        "If-Match": '"v1"',
+        "If-None-Match": '"v2"',
+    }
+    UNLISTED = {
+        "Forwarded": "for=6.6.6.6",
+        "X-Forwarded-For": "6.6.6.6",
+        "X-Forwarded-Host": "evil.example",
+        "X-Forwarded-Proto": "http",
+        "X-Real-IP": "6.6.6.6",
+        "Via": "1.1 evil",
+        "X-Request-Id": "abc",
+        "X-Custom": "1",
+        "X-Space-Id": "someone-elses-space",
+        "X-Upload-Timeout-Seconds": "900",
+        "Accept-Charset": "utf-8",
+        "Range": "bytes=0-1",
+        "TE": "trailers",
+        "Upgrade": "h2c",
+        "Keep-Alive": "timeout=5",
+        "Trailer": "X-Late",
+        "Proxy-Authorization": "Basic Zm9vOmJhcg==",
+        "Authorization": "Bearer browser-controlled-token",
+        "X-API-Key": "browser-controlled-key",
+        "Referer": "https://module.example.test/flows",
+    }
 
-        status, _ = self.raw("GET", "/api/eneo/flows/", sent)
+    def test_only_the_listed_request_headers_reach_eneo(self) -> None:
+        # Deny by default: a header a browser, a proxy or a script adds is not Eneo's to receive.
+        status, _ = self.raw("GET", "/api/eneo/flows/", {**self.LISTED, **self.UNLISTED, "User-Agent": "browser/1.0"})
 
         self.assertEqual(status, 200)
         received = self.eneo.requests[-1].headers
-        self.assertEqual({name for name in map(str.lower, sent) if name in received}, set())
+        for name, value in self.LISTED.items():
+            self.assertEqual(received.get(name.lower()), value, name)
+        for name in self.UNLISTED:
+            self.assertNotEqual(received.get(name.lower()), self.UNLISTED[name], name)
+        self.assertEqual(received["authorization"], "Bearer token-of-a")
+        self.assertEqual(received["x-api-key"], "test-key")
+        self.assertNotIn("browser/1.0", received.get("user-agent", ""))
+        self.assertEqual(
+            set(received) - {"host", "accept-encoding", "connection", "user-agent", "content-length"},
+            {name.lower() for name in self.LISTED} | {"authorization", "x-api-key"},
+        )
+
+    def test_the_signed_file_request_carries_range_if_range_and_accept_and_nothing_else(self) -> None:
+        self.respond_with(
+            lambda seen: (200, [("content-type", "application/json")], json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode())
+            if seen.path.endswith("/signed-url/")
+            else (206, [("content-type", "audio/webm")], b"au")
+        )
+
+        status, _ = self.raw(
+            "GET", "/api/eneo/flows/f/runs/r/input-files/x/audio",
+            {**self.UNLISTED, "Range": "bytes=0-1", "If-Range": '"v1"', "Accept": "audio/webm"},
+        )
+
+        self.assertEqual(status, 206)
+        file_request = next(seen for seen in self.eneo.requests if seen.path == "/files/x")
+        self.assertEqual((file_request.headers["range"], file_request.headers["if-range"], file_request.headers["accept"]), ("bytes=0-1", '"v1"', "audio/webm"))
+        for name in self.UNLISTED:
+            if name != "Range":
+                self.assertNotEqual(file_request.headers.get(name.lower()), self.UNLISTED[name], name)
+
+    def test_a_header_named_like_the_key_header_is_the_modules_never_the_browsers(self) -> None:
+        self.addCleanup(setattr, main.settings, "eneo_api_key_header_name", main.settings.eneo_api_key_header_name)
+        main.settings.eneo_api_key_header_name = "Idempotency-Key"
+
+        status, _ = self.raw("GET", "/api/eneo/flows/", {"Idempotency-Key": "browser-chosen"})
+
+        self.assertEqual(status, 200)
+        self.assertEqual([value for name, value in self.eneo.requests[-1].header_list if name == "idempotency-key"], ["test-key"])
 
 
 class RedirectTests(BoundaryCase):
