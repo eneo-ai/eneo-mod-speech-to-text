@@ -8,7 +8,11 @@ from app.accent import (
     LIGHT,
     NO_ACCENT_CSS,
     Accent,
+    _blend,
     _hex,
+    _legacy,
+    _legacy_holds,
+    _on_accent,
     _problem,
     _swedish,
     contrast,
@@ -158,7 +162,7 @@ class ThemeCssTests(unittest.TestCase):
             "  --color-on-accent: light-dark(#FFFFFF, #0B1118);\n"
             "}\n"
             ":root {\n"
-            "  --primary: 134 60.8% 30.0%;\n"
+            "  --primary: 134 60.3% 27.6%;\n"
             "  --primary-foreground: 0 0.0% 100.0%;\n"
             "  --primary-soft: 134 45% 83.3%;\n"
             "}\n"
@@ -198,6 +202,23 @@ class ThemeCssTests(unittest.TestCase):
             self.assertLess(tint_luminance(light_soft), light_goal * 1.03, light)
             self.assertLessEqual(tint_luminance(dark_soft), dark_goal * 1.005, light)
             self.assertGreater(tint_luminance(dark_soft), dark_goal * 0.9, light)
+
+    def test_the_old_components_hover_states_stay_readable(self) -> None:
+        # The default accent is already readable there: it is left as it is.
+        self.assertEqual(_legacy(_hex("#004595"), LIGHT), _hex("#004595"))
+        self.assertEqual(_legacy(_hex("#52B1FF"), DARK), _hex("#52B1FF"))
+        # An accent whose bg-primary/90 under white text falls to 4.41:1 is darkened until it holds (the gate's finding).
+        green = _hex("#1E7B34")
+        self.assertFalse(_legacy_holds(green, LIGHT))
+        shade = _legacy(green, LIGHT)
+        self.assertTrue(_legacy_holds(shade, LIGHT))
+        self.assertGreater(contrast(_on_accent(shade), _blend(shade, _hex(LIGHT.behind), 0.9)), 4.5)
+        self.assertLess(luminance(shade), luminance(green))
+        for light in ("#1E7B34", "#B3261E", "#6B1EFD", "#00695C", "#5E6B00", "#0000FF", "#000000"):
+            accent = resolve_accent(light, None)
+            assert accent is not None
+            self.assertTrue(_legacy_holds(_legacy(_hex(accent.light), LIGHT), LIGHT), light)
+            self.assertTrue(_legacy_holds(_legacy(_hex(accent.dark), DARK), DARK), light)
 
     def test_the_etag_follows_the_content(self) -> None:
         self.assertRegex(etag(theme_css(GREEN)), r'\A"[0-9a-f]{16}"\Z')
