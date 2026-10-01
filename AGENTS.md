@@ -1,6 +1,6 @@
 # Agent instructions: eneo-mod-speech-to-text
 
-Tal till text ("Lyssna"): an Eneo module. A Next.js frontend and a FastAPI backend-for-frontend (BFF) in one image.
+Tal till text: an Eneo module. A Next.js frontend and a FastAPI backend-for-frontend (BFF) in one image.
 Documentation for people is Swedish and lives in `docs/` (start at `docs/README.md`). This file, `CLAUDE.md` and code
 comments are English. Everything above the last section is permanent. The last section is migration-only and is cut
 out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).

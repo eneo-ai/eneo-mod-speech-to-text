@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright');
 const AxeBuilder = require('@axe-core/playwright').default;
-const output = process.env.A11Y_REPORT || '/tmp/lyssna-accessibility-report.json';
+const output = process.env.A11Y_REPORT || '/tmp/tal-till-text-accessibility-report.json';
 const results = [];
 (async () => {
   const browser = await chromium.launch({ headless: true });
@@ -66,7 +66,7 @@ const results = [];
           const toolbarBottom = getComputedStyle(tools).position === 'sticky' ? tools.getBoundingClientRect().bottom : 0;
           return Math.min(rect.bottom, innerHeight) > Math.max(rect.top, toolbarBottom, 0);
         });
-        await page.screenshot({ path: `/tmp/lyssna-a11y-${colorScheme}-${width}.png`, fullPage: true });
+        await page.screenshot({ path: `/tmp/tal-till-text-a11y-${colorScheme}-${width}.png`, fullPage: true });
         await fixture.selectOption('clear');
         await page.emulateMedia({ forcedColors: 'active' });
         await scan('forced-colors');

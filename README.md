@@ -1,12 +1,12 @@
-# Eneo Speech-to-Text Module
+# Tal till text
 
-Syfte: Presentera Tal till text (kodnamn Lyssna), en Eneo-modul som spelar in samtal och skickar dem till ett publicerat Eneo-flöde, och visa vägen in i dokumentationen.
+Syfte: Presentera Tal till text, en Eneo-modul som spelar in samtal och skickar dem till ett publicerat Eneo-flöde, och visa vägen in i dokumentationen.
 
 Läs detta när: Du är ny i repot, vill starta modulen lokalt eller söker rätt sida i `docs/`.
 
 Hör ihop med: [Dokumentationsindex](docs/README.md), [Arkitektur](docs/architecture.md), [Drift](docs/operations.md), [Lokal utveckling](docs/development.md)
 
-Lyssna är en Eneo-modul som låter en inloggad användare spela in ett samtal i webbläsaren (eller ladda upp en ljudfil), skicka det till ett publicerat Eneo-flöde och få tillbaka transkript, sammanfattning och eventuellt genererade filer. Transkriptet kan granskas och talarna namnges. Modulen har ingen egen databas; allt som ska sparas ligger i Eneo.
+Tal till text är en Eneo-modul (repot heter `eneo-mod-speech-to-text`) som låter en inloggad användare spela in ett samtal i webbläsaren (eller ladda upp en ljudfil), skicka det till ett publicerat Eneo-flöde och få tillbaka transkript, sammanfattning och eventuellt genererade filer. Transkriptet kan granskas och talarna namnges. Modulen har ingen egen databas; allt som ska sparas ligger i Eneo.
 
 ![Översiktsbild. Till vänster Webbläsare (en person vid en laptop och en telefon) som med en pil och en cookie når Modulen i mitten. Modulen har två kort: Gränssnitt (en mikrofon och en ljudvåg) och Säker backend (en sköld med hänglås och en nyckel). En pil med en nyckel och ett personmärke går från Modulen till Eneo till höger (ett flödesschema och ett dokument), och en tunnare pil med ett dokument går tillbaka. Ovanför Modulen sitter en list: Egen logga, namn och färg.](docs/images/arkitektur-oversikt.png)
 

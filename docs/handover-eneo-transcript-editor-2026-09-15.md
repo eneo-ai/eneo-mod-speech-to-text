@@ -1,4 +1,4 @@
-# Handover to Eneo: Lyssna transcript review and operator editing
+# Handover to Eneo: Tal till text transcript review and operator editing
 
 Date: 2026-09-15
 Source repository: `/Users/alexander/code/eneo-mod-speech-to-text`
@@ -7,8 +7,8 @@ Eneo repository: `/Users/alexander/code/eneo` (devcontainer: `/workspace`)
 
 ## Purpose and delivery state
 
-Continue from the initial Vemsa/Lyssna speaker-review handover, using the current
-Lyssna implementation and the interaction decisions below. The work now includes
+Continue from the initial Vemsa/Tal till text speaker-review handover, using the current
+Tal till text implementation and the interaction decisions below. The work now includes
 Eneo v3 correction integration and a transcript-first editor refined against
 operator feedback on real screenshots.
 
@@ -27,7 +27,7 @@ Do not overwrite either repository's existing local changes.
 
 ### Durable v3 decisions
 
-Lyssna moved from displaying overlap evidence to saving actual human speaker
+Tal till text moved from displaying overlap evidence to saving actual human speaker
 decisions through Eneo's existing correction API. It supports:
 
 - Confirmation of the existing model speaker, even when the label is unchanged.
@@ -138,7 +138,7 @@ Whitespace-only remnants must not create phantom outstanding review tasks.
 
 ### Existing module-facing routes
 
-These are the Lyssna browser/BFF paths, not a request to add duplicate Eneo routes:
+These are the Tal till text browser/BFF paths, not a request to add duplicate Eneo routes:
 
 ```text
 GET   /api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/
@@ -179,12 +179,12 @@ can itself be null and must remain anchored to the source.
 
 1. **Original source is immutable.** Preserve the model speaker, attribution,
    overlap IDs, source order and raw text independently of human corrections.
-2. **Original hash is authoritative.** Lyssna obtains it from transcription metadata
+2. **Original hash is authoritative.** Tal till text obtains it from transcription metadata
    or a compatible non-stale correction response. It does not hash normalized UI text.
 3. **Wire offsets are Unicode code points.** DOM/JavaScript offsets are UTF-16.
-   Lyssna converts in both directions. Preserve this distinction for emoji and other
+   Tal till text converts in both directions. Preserve this distinction for emoji and other
    non-BMP characters.
-4. **Selections can cross source segments.** Lyssna creates the corresponding edits
+4. **Selections can cross source segments.** Tal till text creates the corresponding edits
    for each affected source segment and sends one complete replacement set.
 5. **Human decisions are durable overlays.** Same-label confirmation is meaningful;
    it must not be discarded as a no-op. Explicit unresolved is different from no review.
@@ -212,11 +212,11 @@ only. They are not server-persisted speaker decisions.
 ### Regeneration after editing a completed run
 
 At the last Eneo inspection in this task, the local checkout had **no usable
-per-step rerun or summary-regeneration endpoint**. Lyssna's older `rerunStep` helper
+per-step rerun or summary-regeneration endpoint**. Tal till text's older `rerunStep` helper
 references a route that was absent, so the editor does not invoke it.
 
 Completed-run edits therefore do not automatically update an existing summary or
-generated files. Lyssna displays this limitation and offers a reviewed transcript
+generated files. Tal till text displays this limitation and offers a reviewed transcript
 download. The notice survives reload by comparing correction and run timestamps.
 
 For Eneo follow-up:
@@ -332,8 +332,8 @@ docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/fronten
 After `npm test`, reproduce cross-consumer checks:
 
 ```bash
-docker exec blissful_boyd cat /workspaces/eneo-mod-speech-to-text/frontend/tests/verify-eneo-review.py | docker exec -i eneo_devcontainer-eneo-1 sh -c 'cat > /tmp/verify-lyssna-review.py'
-docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/frontend && node tests/eneo-review-cases.cjs' | docker exec -i eneo_devcontainer-eneo-1 sh -lc 'cd /workspace/backend && .venv/bin/python /tmp/verify-lyssna-review.py'
+docker exec blissful_boyd cat /workspaces/eneo-mod-speech-to-text/frontend/tests/verify-eneo-review.py | docker exec -i eneo_devcontainer-eneo-1 sh -c 'cat > /tmp/verify-tal-till-text-review.py'
+docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/frontend && node tests/eneo-review-cases.cjs' | docker exec -i eneo_devcontainer-eneo-1 sh -lc 'cd /workspace/backend && .venv/bin/python /tmp/verify-tal-till-text-review.py'
 ```
 
 ### Eneo acceptance checklist
