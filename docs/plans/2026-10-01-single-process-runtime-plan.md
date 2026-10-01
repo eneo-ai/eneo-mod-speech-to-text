@@ -253,11 +253,11 @@ Result: today's numbers, so "not heavier, not slower, nothing lost" can be judge
 
 **Files:** none changed. Output goes in a comment on the bead and in the pull request text of B4.2.
 
-- [ ] **Step 1: Build and run today's image** from `main`: `docker build -t stt-before .`, run it with the stub as its Eneo or with a throw-away `.env` (it needs no Eneo to start). Record `docker image ls stt-before` (size), the time to `healthy`, and resident memory of both processes at idle and after `/flows` was loaded 20 times (`docker stats --no-stream`, and `docker top`).
+- [ ] **Step 1: Build and run today's image** from the commit this plan starts from (Plan A merged into `main`): `docker build -t stt-before .`, run it with the stub as its Eneo or with a throw-away `.env` (it needs no Eneo to start). Record `docker image ls stt-before` (size), the time to `healthy`, and resident memory of both processes at idle and after `/flows` was loaded 20 times (`docker stats --no-stream`, and `docker top`).
 - [ ] **Step 2: Response headers** (`curl -sI` and `curl -s -D- -o /dev/null`) for: `/`, `/flows`, `/flows/x`, `/inloggad?fel=utgangen`, `/_next/static/<one chunk>`, `/live-pcm-worklet.js`, `/health`, `/api/nope`, `/not-a-page`, `/_next/static/missing.js`, and `HEAD /`. Record status, `content-type`, `cache-control`, `content-encoding`, `etag`, and whether the body is HTML. These are the "today" column of the cache and 404 rows.
 - [ ] **Step 3: Compression.** `curl -s -H 'Accept-Encoding: gzip' -D- -o /dev/null` on a proxied JSON answer (a large one: the stub's `transcript-words`, or any 50 KB+ JSON the stub serves) and on a JS chunk. Record whether Next compresses proxied API JSON. This decides item 18's API half.
 - [ ] **Step 4: Page weight.** `node docs/plans/page-cost.cjs <frontend dir> <base url> before` on `/flows` and `/flows/flow-1` (Plan A Task 0.6; the production build served with the stub). Record compressed transfer, LCP and total blocking time on the throttled profile.
-- [ ] **Step 5: What a first-time visitor's CPU and RAM cost.** Record the Node process's `ps -o rss,pcpu` while 10 browsers poll an open flow run (`?run=`) for a minute. It is the number Plan B should lower.
+- [ ] **Step 5: What a first-time visitor's CPU and RAM cost.** Record the Node and the uvicorn processes' `ps -o rss,pcpu` while 10 browsers poll an open flow run (`?run=`) for a minute. It is the number Plan B should lower.
 - [ ] **Step 6: Comment the table on the bead.** No file is changed, so no commit.
 
 **Acceptance:** the table exists with the values above and its source commands. If Step 1 cannot run (no Docker), say so; later "not heavier than today" claims then rest on `page-cost.cjs` alone.
