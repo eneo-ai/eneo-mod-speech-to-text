@@ -15,7 +15,7 @@ Hör ihop med: [Dokumentationsindex](../README.md), [Arkitektur](../architecture
 | [0003](0003-next-themes-owns-the-colour-mode.md) | next-themes äger färgläget | Accepterat, infört | 2026-10-01 |
 | [0004](0004-native-dialogs-and-the-session-cover.md) | Native dialoger och täckskiktet vid utgången inloggning | Accepterat, infört | 2026-10-01 |
 | [0005](0005-deny-by-default-proxy-and-body-limits.md) | Proxy som nekar som standard, och gränser för storlek | Accepterat, infört | 2026-08-18 (proxyn), 2026-09-11 och 2026-09-23 (gränserna) |
-| [0006](0006-white-label-branding.md) | Organisationens märke är en driftsinställning | Accepterat, infört | 2026-09-23 |
+| [0006](0006-white-label-branding.md) | Organisationens märke och accent är driftsinställningar | Accepterat, infört | 2026-09-23 (märket), 2026-10-01 (accenten) |
 | [0007](0007-weight-budget.md) | Viktbudget för sidor | Accepterat, infört | 2026-10-01 |
 
 ## Så skriver du ett beslut

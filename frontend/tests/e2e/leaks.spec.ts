@@ -70,6 +70,23 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  // The speaker-review editor, on the development page that carries it: a passage marked and let go, the list of
+  // speakers for the marked words, and the field that corrects their text.
+  "marked words": {
+    go: reviewEditor,
+    show: (page) => page.getByRole("button", { name: "Markera stycket: Förslag: Agne" }).click(),
+    shown: (page) => page.getByRole("group", { name: "Markerade ord" }),
+    hide: (page) => page.getByRole("button", { name: "Avmarkera" }).click(),
+  },
+  "text correction": {
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+    },
+    show: (page) => page.getByRole("button", { name: "Rätta text", exact: true }).click(),
+    shown: (page) => page.getByRole("textbox", { name: "Rätta markerad text" }),
+    hide: (page) => page.getByRole("button", { name: "Avbryt", exact: true }).click(),
+  },
   // "Ändra talare" on a passage of the transcript: a popover of the page, one per passage, opened from the passage's name.
   "change-speaker popover": {
     go: (page) => reviewPage(page),
@@ -77,7 +94,6 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("dialog", { name: "Ändra talare" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
-  // The speaker-review editor, on the development page that carries it: the list of speakers for the marked words.
   "speaker list of the editor": {
     go: async (page) => {
       await reviewEditor(page);

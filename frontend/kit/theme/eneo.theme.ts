@@ -49,7 +49,12 @@ export const eneoTheme = defineTheme({
     item: {base: {overflowWrap: 'anywhere'}},
     // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
     // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
-    token: {base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'}},
+    // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour
+    // (ORGANIZATION_ACCENT), with the primary text colour on it, which keeps its contrast whatever the accent is.
+    token: {
+      base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'},
+      'color:blue': {backgroundColor: 'var(--color-accent-muted)', color: 'var(--color-text-primary)'},
+    },
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
     'slider-control': {base: {minBlockSize: '24px'}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.

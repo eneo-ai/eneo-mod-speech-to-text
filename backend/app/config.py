@@ -9,6 +9,8 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr
 
+from app.accent import Accent, resolve_accent
+
 
 AuthMode = Literal["eneo_sso", "access_code"]
 
@@ -64,6 +66,8 @@ class Settings(BaseModel):
     organization: Organization | None = DEFAULT_ORGANIZATION
     organization_logo: LogoFile | None = None
     organization_logo_dark: LogoFile | None = None
+    # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
+    accent: Accent | None = None
 
     @property
     def flow_list_scope(self) -> FlowListScope | None:
@@ -143,6 +147,12 @@ def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | No
     return Organization(name=name, logo="custom", dark_logo=dark is not None), logo, dark
 
 
+def _accent() -> Accent | None:
+    """The accent from ORGANIZATION_ACCENT and ORGANIZATION_ACCENT_DARK, apart from the organisation's name and logo."""
+    light, dark = (os.environ.get(name, "").strip() for name in ("ORGANIZATION_ACCENT", "ORGANIZATION_ACCENT_DARK"))
+    return resolve_accent(light, dark)
+
+
 def _required_url(name: str) -> str:
     value = os.environ[name].rstrip("/")
     parsed = urlsplit(value)
@@ -201,6 +211,7 @@ def load_settings() -> Settings:
         raise RuntimeError("SESSION_MAX_AGE_MINUTES must be greater than zero")
 
     organization, organization_logo, organization_logo_dark = _organization()
+    accent = _accent()
 
     raw_access_code = os.environ.get("APP_ACCESS_CODE")
     if auth_mode == "eneo_sso" and raw_access_code:
@@ -232,6 +243,7 @@ def load_settings() -> Settings:
         organization=organization,
         organization_logo=organization_logo,
         organization_logo_dark=organization_logo_dark,
+        accent=accent,
     )
     if settings.flow_list_scope is None:
         logger.error(

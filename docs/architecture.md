@@ -171,21 +171,24 @@ flowchart TD
 
 Konventionerna per lager står i [Frontend](frontend.md) och [Designsystem](design-system.md).
 
-## Var organisationens märke kommer in
+## Var organisationens märke och accent kommer in
 
-Märket är en driftsinställning, inte en byggparameter: det läses av backend vid start och renderas in i första HTML:en för varje sida. Färgerna följer modulens tema.
+Märket och accentfärgen är driftsinställningar, inte byggparametrar. Namn och logga läses av backend och renderas in i första HTML:en för varje sida; accentfärgen kontrolleras vid start och når sidan som en stilmall som ersätter temats blå. Allt annat i utseendet följer modulens tema.
 
 ```mermaid
 flowchart LR
     env["ORGANIZATION_NAME, ORGANIZATION_LOGO, SHOW_ORGANIZATION"] --> cfg["backend/app/config.py: läses vid start"]
+    envA["ORGANIZATION_ACCENT och ORGANIZATION_ACCENT_DARK"] --> acc["backend/app/accent.py: kontrast minst 4,5:1, annars stoppas start"]
     cfg --> api["/api/branding och /api/branding/logo/light eller dark"]
-    api --> layout["frontend/app/layout.tsx: läser per request, 2 s tidsgräns"]
+    acc --> css["/api/branding/theme.css"]
+    api --> layout["frontend/app/layout.tsx: läser märket per request, 2 s tidsgräns"]
     layout --> ctx["BrandingProvider"]
     ctx --> mark["Brand: logotyp, eller namnet som text"]
-    theme["kit/theme: accent och färger"] --> mark
+    css --> head["layout.tsx: länk i head, ersätter temats accent"]
+    theme["kit/theme: standardaccenten #004595"] --> head
 ```
 
-Driftstegen för en annan organisation står i [Drift](operations.md#egen-organisation-i-sidhuvudet).
+Hur en annan organisation ställer in det: [Byt organisation](branding.md). Beslutet och skälen: [0006](decisions/0006-white-label-branding.md).
 
 ## Gränser som inte flyttas
 

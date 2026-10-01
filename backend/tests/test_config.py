@@ -1,9 +1,11 @@
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from app.accent import Accent
 from app.config import FlowListScope, Organization, load_settings
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
@@ -280,6 +282,26 @@ class OrganizationTests(unittest.TestCase):
     def test_rejects_an_ambiguous_show_organization(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "SHOW_ORGANIZATION must be a boolean"):
             self.load(SHOW_ORGANIZATION="kanske")
+
+    def test_the_accent_is_set_apart_from_the_organisation_and_applies_hidden_or_shown(self) -> None:
+        green = Accent(light="#1E7B34", dark="#2AAE4A", on_light="#FFFFFF", on_dark="#0B1118")
+        self.assertIsNone(self.load().accent)
+        # Whitespace around an environment value (a compose file's, a pasted line) is not part of the colour.
+        self.assertEqual(self.load(ORGANIZATION_ACCENT=" #1e7b34\n").accent, green)
+        self.assertEqual(self.load(SHOW_ORGANIZATION="false", ORGANIZATION_ACCENT="#1E7B34").accent, green)
+        self.assertEqual(self.load(ORGANIZATION_ACCENT="#1E7B34", ORGANIZATION_ACCENT_DARK="#52B1FF").accent, replace(green, dark="#52B1FF"))
+
+    def test_an_accent_that_cannot_be_used_refuses_to_start_with_one_swedish_error(self) -> None:
+        for overrides, message in (
+            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,23:1 i ljust läge"),
+            ({"ORGANIZATION_ACCENT": "grön"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
+            ({"ORGANIZATION_ACCENT": "#1E7B34;}body{display:none"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
+            ({"ORGANIZATION_ACCENT_DARK": "#52B1FF"}, "ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT"),
+            ({"ORGANIZATION_ACCENT": "#1E7B34", "ORGANIZATION_ACCENT_DARK": "#1E7B34"}, "ORGANIZATION_ACCENT_DARK=#1E7B34: accentfärgen mot sidans ytor når"),
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(RuntimeError) as raised:
+                self.load(**overrides)
+            self.assertIn(message, str(raised.exception))
 
 
 if __name__ == "__main__":

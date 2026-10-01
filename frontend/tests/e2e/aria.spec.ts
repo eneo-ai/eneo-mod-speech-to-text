@@ -12,13 +12,13 @@ import { STATES } from "./screens";
 const NOW = new Date("2026-09-24T12:00:00+02:00");
 
 const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean }[] = [
-  { state: "signin-access-code", region: (page) => page.locator(".app-shell") },
-  { state: "flow-list", region: (page) => page.locator(".app-shell"), fixedTime: true },
+  { state: "signin-access-code", region: (page) => page.locator("[data-app-shell]") },
+  { state: "flow-list", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
-  { state: "setup", region: (page) => page.locator(".app-shell"), fixedTime: true },
+  { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "setup-required-detail", region: (page) => page.getByRole("main") },
-  { state: "recording", region: (page) => page.locator(".app-shell") },
+  { state: "recording", region: (page) => page.locator("[data-app-shell]") },
   { state: "stromma", region: (page) => page.getByRole("region", { name: "Ljudet" }) },
   { state: "leave-dialog", region: (page) => page.getByRole("alertdialog") },
   { state: "ready", region: (page) => page.getByRole("region", { name: "Ljudet" }) },
@@ -31,7 +31,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "naming-dialog", region: (page) => page.getByRole("dialog") },
   { state: "signed-out-recording", region: (page) => page.getByRole("alertdialog") },
   { state: "review-din-version", region: (page) => page.getByRole("main") },
-  { state: "flow-republish-required", region: (page) => page.locator(".app-shell") },
+  { state: "flow-republish-required", region: (page) => page.locator("[data-app-shell]") },
 ];
 
 for (const { state, region, fixedTime } of SNAPSHOTS) {

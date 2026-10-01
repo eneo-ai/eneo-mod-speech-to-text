@@ -13,6 +13,7 @@ os.environ.setdefault("AUTH_MODE", "eneo_sso")
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
+from app.accent import NO_ACCENT_CSS, Accent, etag, theme_css  # noqa: E402
 from app.config import DEFAULT_ORGANIZATION, LogoFile, Organization  # noqa: E402
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
@@ -73,6 +74,58 @@ class BrandingRouteTests(unittest.TestCase):
         )
         self.assertEqual(self.client.get("/api/branding/logo/dark").status_code, 404)
         self.assertEqual(self.client.get("/api/branding/logo/other").status_code, 422)
+
+
+GREEN = Accent(light="#1E7B34", dark="#2AAE4A", on_light="#FFFFFF", on_dark="#0B1118")
+
+
+class BrandingThemeTests(unittest.TestCase):
+    """The accent override the page links in its head: no session, no user data, safe to cache."""
+
+    def setUp(self) -> None:
+        self.client = TestClient(main.app)
+        self.addCleanup(setattr, main.settings, "accent", main.settings.accent)
+
+    def test_without_an_accent_it_is_a_valid_empty_cacheable_stylesheet(self) -> None:
+        main.settings.accent = None
+        response = self.client.get("/api/branding/theme.css")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.text, NO_ACCENT_CSS)
+        self.assertTrue(response.headers["content-type"].startswith("text/css"))
+        self.assertEqual(response.headers["cache-control"], "public, max-age=300")
+
+    def test_the_accent_is_served_as_the_stylesheet_of_the_validated_colours(self) -> None:
+        main.settings.accent = GREEN
+        response = self.client.get("/api/branding/theme.css")
+        self.assertEqual(response.text, theme_css(GREEN))
+        self.assertIn("--color-accent: light-dark(#1E7B34, #2AAE4A);", response.text)
+
+    def test_it_is_served_safely_and_without_user_data(self) -> None:
+        main.settings.accent = GREEN
+        response = self.client.get("/api/branding/theme.css", headers={"Cookie": "module_session=secret"})
+        self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+        self.assertEqual(response.headers["cache-control"], "public, max-age=300")
+        self.assertNotIn("set-cookie", response.headers)
+        self.assertNotIn("vary", response.headers)
+        self.assertNotIn("secret", response.text)
+
+    def test_the_etag_lets_a_browser_revalidate_for_nothing(self) -> None:
+        main.settings.accent = GREEN
+        first = self.client.get("/api/branding/theme.css")
+        self.assertEqual(first.headers["etag"], etag(theme_css(GREEN)))
+        for header in (first.headers["etag"], "W/" + first.headers["etag"], '"other", ' + first.headers["etag"], "*"):
+            again = self.client.get("/api/branding/theme.css", headers={"If-None-Match": header})
+            self.assertEqual((again.status_code, again.content), (304, b""), header)
+            self.assertEqual(again.headers["etag"], first.headers["etag"])
+            self.assertEqual(again.headers["cache-control"], "public, max-age=300")
+        stale = self.client.get("/api/branding/theme.css", headers={"If-None-Match": '"0000000000000000"'})
+        self.assertEqual(stale.status_code, 200)
+
+    def test_another_accent_is_another_etag(self) -> None:
+        main.settings.accent = GREEN
+        green = self.client.get("/api/branding/theme.css").headers["etag"]
+        main.settings.accent = None
+        self.assertNotEqual(self.client.get("/api/branding/theme.css").headers["etag"], green)
 
 
 if __name__ == "__main__":

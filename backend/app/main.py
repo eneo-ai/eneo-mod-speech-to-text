@@ -35,6 +35,7 @@ from websockets.exceptions import (
     InvalidHandshake,
 )
 
+from app.accent import etag, theme_css
 from app.config import load_settings
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 
@@ -104,8 +105,8 @@ async def get_config():
 
 
 # ---------- Branding ----------
-# The organisation beside "Tal till text" is a deployment setting (Settings.organization). Neither
-# route asks for a session: the login page shows the organisation before there is one.
+# The organisation beside "Tal till text" and its accent colour are deployment settings (Settings.organization,
+# Settings.accent). No branding route asks for a session: the login page shows the organisation before there is one.
 
 
 @app.get("/api/branding")
@@ -129,6 +130,27 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
             "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
         },
     )
+
+
+def _etag_matches(if_none_match: str | None, current: str) -> bool:
+    if if_none_match is None:
+        return False
+    listed = {value.strip().removeprefix("W/") for value in if_none_match.split(",")}
+    return "*" in listed or current in listed
+
+
+@app.get("/api/branding/theme.css")
+async def get_branding_theme(request: Request) -> Response:
+    """The accent override the page links after its built theme; empty (a comment) without ORGANIZATION_ACCENT."""
+    css = theme_css(settings.accent)
+    headers = {
+        "Cache-Control": "public, max-age=300",
+        "ETag": etag(css),
+        "X-Content-Type-Options": "nosniff",
+    }
+    if _etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
+        return Response(status_code=304, headers=headers)
+    return Response(content=css, media_type="text/css", headers=headers)
 
 
 # ---------- Eneo proxy ----------

@@ -403,6 +403,11 @@
     min-height: calc(var(--size-element-md) - 8px);
   }
 
+  .astryx-token[data-color="blue"] {
+    background-color: var(--color-accent-muted);
+    color: var(--color-text-primary);
+  }
+
   .astryx-slider-control {
     min-block-size: 24px;
   }

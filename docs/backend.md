@@ -13,6 +13,7 @@ Hör ihop med: [Arkitektur](architecture.md), [Inloggning och session](auth-and-
 | `backend/app/main.py` | Appen, rutterna, den proxade Eneo-vägen och tillåtelselistan, uppladdningarna, filströmmarna, live-reläet. |
 | `backend/app/module_auth.py` | Inloggning, sessionslager, förnyelse, kontroll av session och origin. |
 | `backend/app/config.py` | Alla inställningar och deras validering vid start. |
+| `backend/app/accent.py` | Organisationens accentfärg: kontroll mot sidans ytor, härledd mörk färg, och stilmallen som serveras. Bara standardbibliotek. |
 | `backend/tests/` | Enhetstester med `unittest`, en fil per ansvar (auth, proxy, uppladdning, filer, live-relä, branding, config, compose). |
 | `backend/Dockerfile`, `backend/requirements*.txt` | Backend-imagen (tvåcontainerfilen) och beroenden. Produktionsimagen byggs av `Dockerfile` i repots rot. |
 
@@ -34,6 +35,7 @@ Alla rutter ligger under `/api`. "Session" betyder giltig modulsession (annars 4
 | `/api/config` | GET | ja | nej | Flödeslistans omfång: `{"flow_list": {"space_id": ...}}` eller `null`. |
 | `/api/branding` | GET | nej | nej | Organisationen som visas i sidhuvudet. |
 | `/api/branding/logo/{light\|dark}` | GET | nej | nej | Organisationens logotyp, 404 om ingen är konfigurerad. |
+| `/api/branding/theme.css` | GET | nej | nej | Accentfärgens stilmall; en tom kommentar utan `ORGANIZATION_ACCENT`. Se [Branding](#branding). |
 | `/api/auth/login` | GET | nej | nej | Startar Eneo SSO. Frågeparametrar: `next`, `renew`. Bara `eneo_sso`. |
 | `/api/auth/login` | POST | nej | ja | Åtkomstkodsinloggning. Bara `access_code`. |
 | `/api/auth/callback` | GET | nej | nej | Tar emot ticket och state från Eneo. Bara `eneo_sso`. |
@@ -128,7 +130,11 @@ Tester: `backend/tests/test_audio_proxy.py`, `backend/tests/test_artifact_proxy.
 
 ## Branding
 
-`/api/branding` och logotyperna kräver ingen session, eftersom inloggningssidan visar organisationen innan det finns en. Logon serveras från samma origin eftersom sidans CSP bara tillåter egna bilder, med `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kan köra något i modulens origin. Inställningarna står i tabellen nedan; stegen för en annan organisation i [Drift](operations.md#egen-organisation-i-sidhuvudet).
+`/api/branding` och logotyperna kräver ingen session, eftersom inloggningssidan visar organisationen innan det finns en. Logon serveras från samma origin eftersom sidans CSP bara tillåter egna bilder, med `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kan köra något i modulens origin. Inställningarna står i tabellen nedan; hur en annan organisation ställer in dem står i [Byt organisation](branding.md).
+
+**Accentfärgen** (`backend/app/accent.py`) kontrolleras när backend startar. Accenten är också textfärgen på länkar och ikoner och färgen på fokusramen, så den hålls till ett enda krav, 4,5:1 (WCAG-kontrast): texten på accenten (vit eller nästan svart, den som syns bäst), accenten mot sidans ytor i båda lägena och den sekundära texten på accentens ton. En färg som inte når det, eller som inte är `#RRGGBB`, stoppar start med ett enda svenskt felmeddelande som anger vad som mättes. Utan `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad; går det inte, krävs en egen mörk färg.
+
+`GET /api/branding/theme.css` formaterar bara en redan kontrollerad accent in i en fast mall, och är en tom kommentar när ingen accent är satt. Svaret har `Cache-Control: public, max-age=300`, en `ETag` (304 vid matchande `If-None-Match`) och `X-Content-Type-Options: nosniff`. Rotlayouten länkar stilmallen i `<head>` (`frontend/app/layout.tsx`): en vanlig same-origin-länk håller första målningen tills den är hämtad, så ingen bildruta visar den gamla färgen, och en strikt `style-src 'self'` släpper in den.
 
 ## Inställningar
 
@@ -159,6 +165,8 @@ grep -ohE '"[A-Z][A-Z_]+"' backend/app/config.py | tr -d '"' | sort -u
 | `ORGANIZATION_NAME` | nej | tomt | Högst 100 tecken. Tomt ger Sundsvalls kommun med dess medföljande logotyp. Är också logons alternativtext. |
 | `ORGANIZATION_LOGO` | nej | tomt | Sökväg till en SVG- eller PNG-fil, högst 1 MiB. Kräver `ORGANIZATION_NAME`. |
 | `ORGANIZATION_LOGO_DARK` | nej | tomt | Valfri logotyp för mörkt tema. Utan den används den vanliga. |
+| `ORGANIZATION_ACCENT` | nej | tomt (temats `#004595`) | Accentfärgen som `#RRGGBB`. Måste nå 4,5:1 mot sidans ytor i ljust och mörkt läge, annars stoppas start. |
+| `ORGANIZATION_ACCENT_DARK` | nej | härleds | Accentfärgen i mörkt läge, `#RRGGBB`. Kräver `ORGANIZATION_ACCENT`. Utelämnad härleds den ur den ljusa med samma nyans. |
 
 Raderna märkta "på gång" finns inte i `backend/app/config.py` på main; se [På gång](#på-gång-inte-på-main).
 
@@ -179,6 +187,7 @@ Raderna märkta "på gång" finns inte i `backend/app/config.py` på main; se [P
 | Begränsade WebSocket-ramar | 128 KiB och 16 i kö i alla startsätt; 15 s skrivtidsgräns. | `test_live_relay.py` |
 | Giltig konfiguration | Se tabellen ovan: fel stoppar start. | `test_config.py` |
 | Logotyper utan körbart innehåll | Bara SVG och PNG, kontrollerade på namn och innehåll, isolerade med en egen CSP. | `test_config.py`, `test_branding.py` |
+| Läsbar accentfärg | Bara `#RRGGBB` godtas, accenten måste nå 4,5:1 i båda lägena, och stilmallen formateras bara ur en kontrollerad färg. | `test_accent.py`, `test_config.py`, `test_branding.py` |
 
 ## På gång (inte på main)
 

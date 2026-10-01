@@ -154,7 +154,7 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
         </VStack>
         <HStack gap={3} wrap="wrap">
           <Button label="Försök igen" variant="primary" icon={<Icon icon={RotateCcw} size="sm" color="inherit" />} onClick={onRetry} />
-          <BackToFlows variant="outline" size="default" />
+          <BackToFlows size="default" />
         </HStack>
       </VStack>
     </StateCard>

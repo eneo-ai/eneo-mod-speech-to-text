@@ -22,7 +22,7 @@ Diagram: [Driftsättning](architecture.md#driftsättning).
 
 Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Backend](backend.md#inställningar). Här är vad en operatör sätter och var.
 
-| Variabel | Läses av | Värde i Sundsvalls fristående miljö | Anmärkning |
+| Variabel | Läses av | Exempelvärde (Sundsvalls fristående miljö) | Anmärkning |
 |---|---|---|---|
 | `ENEO_BACKEND_URL` | backend | `https://flow.sundsvall.dev` | `http://backend:8000` bara på Eneos `module_net` (imagen), aldrig i tvåcontainer-Compose, där `backend` inte finns. |
 | `ENEO_PUBLIC_URL` | backend | `https://flow.sundsvall.dev` | Krävs i `eneo_sso`. |
@@ -39,7 +39,7 @@ Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Bac
 | `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
 | `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för varje request-body utom uppladdningar, 413 över taket. Ett tomt värde nekas av `backend/app/config.py`; Compose använder det numeriska standardvärdet. Se [Backend](backend.md#på-gång-inte-på-main). |
 | `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | (på gång: `fix/backend-body-limits`, väntar på PR). Tak för en uppladdad fil. Höj den om Eneos flöden tar emot större ljudfiler. |
-| `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION` | backend | valfria | Utan dem visas Sundsvalls kommun. Se [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet). |
+| `ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION`, `ORGANIZATION_ACCENT`, `ORGANIZATION_ACCENT_DARK` | backend | valfria | Namn, logga och accentfärg. Utan dem visas Sundsvalls kommun och modulens standardblå (`#004595`). En accentfärg som inte når 4,5:1 mot sidans ytor stoppar start. Variablerna, kraven och felmeddelandena: [Byt organisation](branding.md). |
 | `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED` | frontend, vid byggtid | `false` | Byggargument i Dockerfile och Compose. Se [Granska transkriptet](transcript-review.md). |
 | `INTERNAL_API_BASE` | frontend | `http://127.0.0.1:8000` i imagen, `http://speech-to-text-backend:8000` i Compose | Dit Nexts rewrite skickar `/api/*` och dit sidan hämtar branding. Rewrite-målet bränns in vid bygget (`frontend/playwright.prod.config.ts`), så bygge och körning ska ha samma värde (`frontend/lib/backend-base.mjs`). |
 | `PORT`, `HOSTNAME` | frontend (Next standalone) | `3001` och `0.0.0.0` i imagen | |
@@ -94,7 +94,7 @@ Sessionslagret ligger i backendprocessens minne, avsiktligt, eftersom produktion
 
 Modulen har ingen databas och inga volymer; den enda monteringen är en valfri, skrivskyddad mapp med en logotyp. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
 
-## Dokploy (`transkribering.sundsvall.dev`)
+## Dokploy (exempel: `transkribering.sundsvall.dev`)
 
 1. **Skapa ett Compose-projekt** i Dokploy och peka på det här repot.
 2. **Sätt miljövariablerna** i Dokploy-gränssnittet enligt tabellen ovan (motsvarar `.env`).
@@ -110,13 +110,7 @@ Ingress- eller Traefik-loggning måste utesluta callbackens query string.
 
 ## Egen organisation i sidhuvudet
 
-Sidhuvudet visar Sundsvalls kommuns logga bredvid "Tal till text" om inget annat anges. En annan kommun eller myndighet byter den utan att bygga om:
-
-1. Montera en mapp med loggan i backend-tjänsten, till exempel `./branding:/branding:ro` (en rad finns förberedd som kommentar i `docker-compose.yml`).
-2. Sätt `ORGANIZATION_NAME=Umeå kommun` och `ORGANIZATION_LOGO=/branding/logo.svg` (SVG eller PNG, högst 1 MiB). `ORGANIZATION_LOGO_DARK` är en valfri logga för mörkt tema.
-3. Starta om tjänsterna. `SHOW_ORGANIZATION=false` visar i stället bara "Tal till text".
-
-Namnet är loggans alternativtext. Ett namn utan logga visas som text. En fil som saknas eller inte är en SVG eller PNG loggas en gång vid start, och namnet visas i stället. Backend serverar loggan från samma origin (`/api/branding/logo/light` och `/dark`), eftersom sidans CSP bara tillåter egna bilder. Färgerna följer fortfarande modulens tema. Hur märket ritas i gränssnittet: [Arkitektur](architecture.md#var-organisationens-märke-kommer-in).
+Namn, logga och accentfärg är inställningar på backend-tjänsten, och en annan organisation byter dem utan att bygga om imagen: sätt variablerna, montera loggan skrivskyddat i backend-tjänsten (`docker-compose.yml` har en förberedd rad som kommentar) och starta om tjänsterna. Steg, krav på loggan, kontrastreglerna för accentfärgen, felmeddelandena vid start och hur du kontrollerar resultatet står bara i [Byt organisation](branding.md). Hur märket och färgen kommer in i gränssnittet: [Arkitektur](architecture.md#var-organisationens-märke-och-accent-kommer-in).
 
 ## Säkerhetsheaders
 
@@ -178,6 +172,8 @@ På gång (`fix/backend-lifespan`, väntar på PR): backendens FastAPI-stack hö
 | 411 vid uppladdning | (på gång: `fix/backend-body-limits`, väntar på PR). En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient eller en proxy som skickar bodyn i delar är orsaken. |
 | Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space. |
 | Flödeslistan säger att flödena inte kan visas | I `access_code` saknas `DEMO_SPACE_ID`; backend loggade ett fel vid start. |
+| Backend startar om i en slinga efter en ändrad accentfärg | `ORGANIZATION_ACCENT` eller `ORGANIZATION_ACCENT_DARK` är inte läsbar nog (under 4,5:1) eller har fel form, och backend vägrar starta. Felmeddelandet i loggen (`docker compose logs speech-to-text-backend`) säger vad som mättes och vad som ska göras: [Byt organisation](branding.md#felmeddelanden-vid-start). |
+| En gammal färg visas efter ett byte | Accentens stilmall får cachas i fem minuter (`Cache-Control: max-age=300`). Ladda om sidan eller öppna den i ett privat fönster. |
 | Alla blir utloggade | Backend startade om: sessionslagret är processlokalt. |
 
 ## Kända luckor
@@ -187,4 +183,3 @@ Skillnader mellan vad som är dokumenterat eller möjligt och vad konfiguratione
 | Lucka | Var | Följd |
 |---|---|---|
 | `SESSION_MAX_AGE_MINUTES` läses av backend och är dokumenterad, men `docker-compose.yml` skickar den aldrig vidare, och den står inte i `.env.example`. | `docker-compose.yml`, `backend/app/config.py` | Compose och en Dokploy-deploy av den filen kan inte ändra inloggningens längd: Compose för bara vidare de variabler som räknas upp, så en variabel i Dokploy-gränssnittet når inte containern. Standarden 480 minuter gäller. Produktionsimagen har ingen sådan spärr: där räcker det att miljön ger variabeln till processen. Rättelsen är en rad i `docker-compose.yml` (och en kommentar i `.env.example`). |
-| Kommentaren om organisationen i `docker-compose.yml` hänvisar till README ("se README"), men stegen står numera här. | `docker-compose.yml` | Läsaren hamnar i README, som pekar vidare hit: [Egen organisation i sidhuvudet](#egen-organisation-i-sidhuvudet). |
