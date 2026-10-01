@@ -10,7 +10,7 @@ const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ ru
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
 import { RunProgress, RunUnread } from "../components/flow/RunProgress";
-import { SubmittingView } from "../components/flow/SubmittingView";
+import { SubmittingView, type SubmissionState } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
@@ -73,6 +73,66 @@ test("a long wait says how long the run has gone on and that it can take minutes
   // The minutes count on without being read out on every change.
   assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
   assert.match(text(view(undefined)), /Tar fram texten Det kan ta några minuter\./, "before the start is known");
+});
+
+// The words of every status region in the markup, in order: what a screen reader is told when they change.
+const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
+
+const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>
+  renderToStaticMarkup(
+    createElement(SubmittingView, {
+      submission: { kind: "uploading", filename: "möte.wav", loaded: 512, total: 2048, percent: 25, wait: null, ...extra },
+      onCancelSubmission: () => undefined,
+    }),
+  );
+
+test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt beside the file name", () => {
+  const html = uploading({ percent: 33 });
+  assert.match(html, /role="progressbar"[^>]*aria-valuenow="33"|aria-valuenow="33"[^>]*role="progressbar"/);
+  const words = text(html);
+  assert.match(words, /möte\.wav Avbryt/);
+  assert.match(words, /512 B av 2 kB 33%/);
+  assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen"], "the stage once, first");
+});
+
+test("an upload of unknown size moves without a value and says Pågår, never a made-up percent", () => {
+  const html = uploading({ percent: null, total: null, loaded: 4096 });
+  assert.match(html, /role="progressbar"/);
+  assert.doesNotMatch(html, /aria-valuenow/);
+  const words = text(html);
+  assert.match(words, /Pågår/);
+  assert.doesNotMatch(words, / av |%/);
+});
+
+test("a percent outside 0 to 100 is held to it, in the bar and in the words beside it", () => {
+  for (const [percent, shown] of [[140, 100], [-5, 0]] as const) {
+    const html = uploading({ percent });
+    assert.match(html, new RegExp(`aria-valuenow="${shown}"`), `${percent} on the bar`);
+    assert.match(text(html), new RegExp(`${shown}%`), `${percent} in words`);
+  }
+});
+
+test("every quarter of an upload is said once, and the counting percent never is", () => {
+  const said = (percent: number | null) => statuses(uploading({ percent }))[1];
+  assert.equal(said(null), "");
+  assert.equal(said(24), "", "before the first quarter");
+  assert.equal(said(25), "25 % uppladdat.");
+  assert.equal(said(74), "50 % uppladdat.");
+  assert.equal(said(99), "75 % uppladdat.");
+  assert.equal(said(100), "100 % uppladdat.");
+  assert.ok(statuses(uploading({ percent: 33 })).every((status) => !/33/.test(status)));
+});
+
+test("before the file moves there is no bar and no Avbryt; while the run starts a wait shows, still no Avbryt", () => {
+  const send = (submission: SubmissionState) =>
+    renderToStaticMarkup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
+  const idle = send({ kind: "idle" });
+  assert.deepEqual(statuses(idle), ["Skickar"]);
+  assert.doesNotMatch(idle, /progressbar|Avbryt/);
+  const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
+  assert.equal(statuses(waiting)[0], "Startar flödet");
+  assert.match(text(waiting), /Försöker igen om \d+ s\./);
+  assert.doesNotMatch(waiting, /progressbar|Avbryt/);
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();

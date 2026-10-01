@@ -1,11 +1,16 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { ProgressBar } from "@astryxdesign/core/ProgressBar";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
-import { STATE_HEADING, StateCard } from "@/components/flow/StateCard";
+import { StateCard } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
-import { Button } from "@/components/ui/button";
 import { RetryNotice } from "@/components/RetryNotice";
 
 export type SubmissionState =
@@ -41,20 +46,25 @@ export function SubmittingView({
   const isUploading = submission.kind === "uploading";
   return (
     <StateCard>
-      <div className="flex flex-col gap-2">
-        <h1 ref={heading} tabIndex={-1} className={STATE_HEADING}>
-          {title}
-        </h1>
-        <p role="status" className="flex items-center gap-2 text-base">
-          <Loader2 aria-hidden className="size-4 shrink-0 animate-spin text-primary motion-reduce:animate-none" />
-          {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
-        </p>
-      </div>
-      {isUploading ? (
-        <UploadProgress submission={submission} onCancel={onCancelSubmission} />
-      ) : (
-        submission.kind === "starting" && <RetryNotice wait={submission.wait} />
-      )}
+      <VStack gap={6}>
+        <VStack gap={2}>
+          <Heading level={1} ref={heading} tabIndex={-1}>
+            {title}
+          </Heading>
+          {/* The spinner sits outside the status region: only the words are spoken. */}
+          <HStack gap={2} align="center">
+            <Spinner size="sm" aria-hidden />
+            <Text as="p" role="status">
+              {isUploading ? "Laddar upp filen" : submission.kind === "starting" ? "Startar flödet" : "Skickar"}
+            </Text>
+          </HStack>
+        </VStack>
+        {isUploading ? (
+          <UploadProgress submission={submission} onCancel={onCancelSubmission} />
+        ) : (
+          submission.kind === "starting" && <RetryNotice wait={submission.wait} />
+        )}
+      </VStack>
     </StateCard>
   );
 }
@@ -72,41 +82,28 @@ function UploadProgress({
 }) {
   const percent = Math.max(0, Math.min(100, submission.percent ?? 0));
   return (
-    <div>
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="min-w-0">
-          <div className="text-[14px] md:text-[15px] font-medium text-ink truncate">
+    <VStack gap={2}>
+      <HStack justify="between" align="start" gap={4}>
+        <StackItem size="fill">
+          <Text maxLines={1} weight="medium">
             {submission.filename}
-          </div>
-        </div>
-        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={onCancel}>
-          Avbryt
-        </Button>
-      </div>
-      <div
-        role="progressbar"
-        aria-label="Uppladdning"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={submission.percent != null ? percent : undefined}
-        className="h-2 rounded-full bg-bg-2 overflow-hidden mb-2"
-      >
-        <div
-          className="h-full rounded-full bg-primary transition-[width]"
-          style={{ width: `${percent}%` }}
-        />
-      </div>
-      <div className="flex items-center justify-between text-[12px] text-ink-mute">
-        <span>
+          </Text>
+        </StackItem>
+        <Button label="Avbryt" variant="secondary" size="sm" onClick={onCancel} />
+      </HStack>
+      {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. */}
+      <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />
+      <HStack justify="between" gap={2}>
+        <Text type="supporting">
           {formatBytes(submission.loaded)}
           {submission.total ? ` av ${formatBytes(submission.total)}` : ""}
-        </span>
-        <span>{submission.percent != null ? `${percent}%` : "Pågår"}</span>
-      </div>
-      <p role="status" className="sr-only">
+        </Text>
+        <Text type="supporting">{submission.percent != null ? `${percent}%` : "Pågår"}</Text>
+      </HStack>
+      <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}
-      </p>
+      </VisuallyHidden>
       <RetryNotice wait={submission.wait} />
-    </div>
+    </VStack>
   );
 }
