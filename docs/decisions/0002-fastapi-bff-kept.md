@@ -22,7 +22,7 @@ Hono omprövas bara om modulförfattare visar sig skriva mycket BFF-logik per mo
 
 ## Konsekvenser
 
-- Det planerade steget är att bygga gränssnittet som statiska filer och servera dem från FastAPI, så att Next-servern, rewrite-hoppet och supervisord försvinner (en process). Det är inte genomfört.
+- Det planerade steget är att bygga gränssnittet som statiska filer och servera dem från FastAPI, så att Next-servern, rewrite-hoppet och supervisord försvinner (en process). Det är Plan B: det är inte påbörjat och väntar på ägarens besked. Till dess är Next.js frontend-servern.
 - En naiv "servera filerna med uvicorn" skulle tappa det som Next eller supervisord äger i dag. Det måste föras över uttryckligen:
   - säkerhetsheaders, CSP:n och undantaget för samma-origin-inramning av PDF-förhandsvisning (`frontend/next.config.mjs`);
   - `/health` och port 3001;
@@ -33,5 +33,5 @@ Hono omprövas bara om modulförfattare visar sig skriva mycket BFF-logik per mo
   - de `NEXT_PUBLIC_*`-flaggor som finns, utvecklingsproxyn för API och WebSocket, och att utvecklingssidor inte kommer med i produktion;
   - märket utan att fel organisation visas före initiering, utan ett körbart inline-skript;
   - enkelsidesfallbacken får aldrig svara på en saknad tillgång eller en okänd `/api/*`-sökväg med HTML.
-- En provkörning av en Vite-app med Astryx som serverades av FastAPI körde i Chromium och WebKit utan konsol- eller CSP-fel under `script-src 'self'`, utan `unsafe-inline`.
+- En provkörning (i en kopia, inget av det finns i modulen) av en Vite-app med Astryx som serverades av FastAPI körde i Chromium och WebKit utan konsol- eller CSP-fel under `script-src 'self'`, utan `unsafe-inline`.
 - Ett modulkit i ett eget repo (`eneo-ai/eneo-module-kit`) är planerat att samla BFF och gränssnittsdelar för flera moduler. Den här modulen flyttar över först när det finns en släppt version.

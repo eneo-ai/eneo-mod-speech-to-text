@@ -25,10 +25,10 @@ Bilden är illustrativ och ger överblicken. Mermaid-diagrammen längre ned är 
 
 | Status | Vad |
 |---|---|
-| Nuvarande | Next.js och FastAPI i en image under supervisord (port 3001), eller som två containrar i Compose. Gränssnittet är på väg över till Astryx (se Migration nedan). |
-| Planerat | Plan B: gränssnittet byggs som statiska filer och serveras av FastAPI, så att Next.js-servern, rewrite-hoppet och supervisord försvinner (en process). Plan C: ett delat modulkit i ett eget repo, `eneo-ai/eneo-module-kit`, som den här modulen senare flyttar över på. Inget av detta är byggt här. |
+| Nuvarande | Next.js 16 är frontend-servern och FastAPI ligger internt bakom den. De körs i en image under supervisord (port 3001), eller som två containrar i Compose. Gränssnittet är på väg över till Astryx (se Migration nedan). |
+| Planerat | Plan B: gränssnittet byggs som statiska filer och serveras av FastAPI, så att Next.js-servern, rewrite-hoppet och supervisord försvinner (en process). Plan C: ett delat modulkit i ett eget repo, `eneo-ai/eneo-module-kit`, som den här modulen senare flyttar över på. Plan B är inte påbörjat och väntar på ägarens besked; inget av detta är byggt här. |
 
-Uppgifter nedan beskriver nuvarande läge om inget annat sägs.
+Uppgifter och diagram nedan beskriver nuläget om inget annat sägs: Next.js är frontend-servern, och först Plan B skulle ta bort den.
 
 ## Systemkontext
 
