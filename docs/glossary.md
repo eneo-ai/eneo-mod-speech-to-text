@@ -10,7 +10,7 @@ Hör ihop med: [Arkitektur](architecture.md), [Inloggning och session](auth-and-
 
 | Term | Betydelse | Engelska i kod och samtal |
 |---|---|---|
-| modul | En fristående webbapplikation som Eneo kan installera och länka till. Den här modulen heter Tal till text (kodnamn Lyssna), `MODULE_KEY=speech-to-text`. | module |
+| modul | En fristående webbapplikation som Eneo kan installera och länka till. Den här modulen heter Tal till text, `MODULE_KEY=speech-to-text`. | module |
 | Eneo | Plattformen modulen pratar med: användare, flöden, körningar, filer och inloggning. Modulen är aldrig Eneos egen frontend. | Eneo |
 | BFF | Modulens egen backend i FastAPI (`backend/app/`). Den står mellan webbläsaren och Eneo: håller inloggningen, lägger på credentials och släpper bara igenom tillåtna anrop. Står för "backend for frontend". | BFF |
 | modulsession | Modulens egen inloggning i webbläsaren: en HttpOnly-cookie med ett slumpmässigt, opakt ID. Allt som hör till sessionen (Eneos token) ligger i BFF:ens minne. | module session |
