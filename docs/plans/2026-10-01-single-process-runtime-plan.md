@@ -210,7 +210,7 @@ Created:
 | `routes.tsx` | the route table, `handle.title` per route, route-level `lazy` for `FlowPage`, `FlowsPage`, `LoginPage`, `SignedInAgain`, dev routes only when allowed |
 | `routes/Root.tsx` | providers, `RouteEffects`, `Outlet` |
 | `routes/RouteEffects.tsx` | title, announcement, focus, scroll on a route change |
-| `kit/RouterLink.tsx` | `href` to react-router's `to` (for `LinkProvider` and for `as={RouterLink}`) |
+| `kit/RouterLink.tsx` | `href` to react-router's `to` for an in-app path (for `LinkProvider` and for `as={RouterLink}`); a plain `<a>` for anything else |
 | `kit/ColorModeProvider.tsx` | copied from the kit; `useColorMode()` replaces `useTheme()` of next-themes |
 | `public/color-mode.js` | the first-paint script; the build renames it to `assets/color-mode.<hash>.js` |
 | `scripts/finish-build.mjs` | hash the script and rewrite `index.html`; precompress |
@@ -333,7 +333,7 @@ Result: on the integration branch the app builds with Vite and runs in the dev s
 - Create: `frontend/vite.config.ts`, `frontend/index.html`, `frontend/main.tsx`, `frontend/routes.tsx`, `frontend/routes/Root.tsx`, `frontend/kit/RouterLink.tsx`, `frontend/public/color-mode.js` (empty placeholder until B2.4)
 - Modify: `frontend/package.json` (add `vite`, `@vitejs/plugin-react`, `react-router`; scripts above; keep `next` for now under `dev:next`/`build:next`), `frontend/tsconfig.json` (remove the `next` plugin, the `files` entry for `next/types/global.d.ts`, `next-env.d.ts` and the `.next` includes; add `"types": ["vite/client"]`), `.dockerignore` (`**/dist`, `**/dist-check`), `.gitignore` already lists `dist/`
 
-**Interfaces — Produces:** `routes.tsx` exports `router` (`createBrowserRouter`) with `handle: { title: string }` per route; `kit/RouterLink.tsx` exports `RouterLink({ href, ...rest })` rendering react-router's `Link to={href}`.
+**Interfaces — Produces:** `routes.tsx` exports `router` (`createBrowserRouter`) with `handle: { title: string }` per route; `kit/RouterLink.tsx` exports `RouterLink({ href, ...rest })` rendering react-router's `Link to={href}` only for an in-app path (starts with `/`, not `//`, not under `/api/`, no `download`, and no `target` other than `_self`) and a plain `<a>` for everything else. Why: `LinkProvider` makes every Astryx `Link` and every link `Button` a router link, and the module has links that are not pages: `components/flow/ResultDocument.tsx:206` and `ResultFiles.tsx:146` open an API file in a new tab (`<Button href=… target="_blank">`), `ResultFiles.tsx:62` `DownloadLink` is a plain `<a download>`. A router link to `/api/…` would be a client navigation to a path the router has no route for (it would land on `/` through the `*` route). The AppShell skip link (`dist/AppShell/AppShell.js:500-505`) and `TranscriptPlayer`'s skip link are plain anchors and stay so.
 
 - [ ] **Step 1: Versions.** `npm view vite version`, `npm view @vitejs/plugin-react version`, `npm view react-router version`; install the latest, exact. Read `frontend/AGENTS.md` and run `npm run astryx -- doctor`.
 - [ ] **Step 2: `vite.config.ts`**
@@ -409,6 +409,7 @@ Replacements (the whole inventory; `rg "from \"next|next-themes"` must show only
 | `process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED === "true"` | `typeof __SPEAKER_REVIEW__ !== "undefined" && __SPEAKER_REVIEW__` with `declare const __SPEAKER_REVIEW__: boolean` |
 
 - [ ] **Step 1: Move the files.** One `git mv` commit with no content change, then the edits.
+- [ ] **Step 1b: `LoginPage` and the address.** `app/LoginPage.tsx` removes `?auth_error` with `window.history.replaceState(null, "", "/")`, which drops the router's `idx` and `key` from the entry (the same pattern as the guard's release in B2.7). Use `navigate("/", { replace: true })` there; keep its unit test's expectation (`login-page.test.ts` reads the `replaced` list: it reads `router.state.location` after B2.3).
 - [ ] **Step 2: `useNavigate` stability.** Keep `navigate` in each effect's dependency list only because the data router makes it stable. Add a unit test later in B2.3 that fails if it is not (Review Focus 3).
 - [ ] **Step 3: `/inloggad`.** A route component, same texts. `useSearchParams` reads `fel`; unknown values are the plain "inloggad igen" page, as `refusalOf` returns null today.
 - [ ] **Step 4: Dev routes** from `routes/dev/*` through `routes.tsx` only.
@@ -423,6 +424,7 @@ Replacements (the whole inventory; `rg "from \"next|next-themes"` must show only
 - [ ] **Step 2: `lib/test-router.ts`** exports `withRouter(element, { path, entries })`: a `createMemoryRouter` with the element at `path`, returned with `router` so a test reads `router.state.location` and its navigations (replaces the `replaced: string[]` arrays that `login-page.test.ts` fills from the fake router's `replace`).
 - [ ] **Step 3: Replace the providers.** `ThemeProvider` of next-themes in six test files becomes `ColorModeProvider` once B2.4 exists; until then those tests mount `ModuleProviders` alone. Do the replacement of `AppRouterContext` now, of the theme provider in B2.4.
 - [ ] **Step 4: `tests/vite-types.d.ts`** is `/// <reference types="vite/client" />` (CSS Module typing, replacing `tests/next-types.d.ts`); `tsconfig.test.json` includes it and drops `node_modules/next/types/global.d.ts`.
+- [ ] **Step 4b: The `RouterLink` test.** A link to `/flows` is a router link (a click does not reload the document and updates `router.state.location`); `href="#x"`, `mailto:`, `https://…`, `/api/eneo/…` (with and without `target="_blank"`), and a `download` link are plain anchors that the router never sees.
 - [ ] **Step 5: The navigation-stability test.** In `signed-out.test.ts`: mount `AuthGate` in a memory router, navigate to another path that keeps it mounted, assert `GET /api/auth/status` was requested once (fails if `navigate` changes identity).
 - [ ] **Step 6: Run** `npm test`. Expected: `# fail 0`. **Step 7: Commit.** `test(frontend): the unit tests mount react-router, not Next's app router`
 
