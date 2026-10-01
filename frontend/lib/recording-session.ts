@@ -326,8 +326,16 @@ export class RecordingCapture {
     this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
-    if (!recording || !store || status === "idle" || status === "stopped") return null;
+    if (!recording || !store || status === "idle" || status === "stopped") {
+      // A start that has the microphone and is still waiting for the device's storage: the hardware goes now, and
+      // the start finds out when the storage answers.
+      if (this.starting) this.stopMicrophone();
+      return null;
+    }
     const ended = this.endParts("stop");
+    // The hardware does not wait for the database: the recorders have been told to stop and still hand over their last
+    // data, which lands in the store as before.
+    this.stopMicrophone();
     this.set({ stopping: true });
     await ended;
     await store.setState(recording.id, "stopped");
@@ -349,10 +357,16 @@ export class RecordingCapture {
     this.generation += 1;
     const { recording, status } = this.snapshot;
     const store = this.store;
-    if (!recording || !store || status === "idle" || status === "stopped") return;
-    void this.endParts("leave")
-      .then(() => store.setState(recording.id, "paused"))
-      .finally(() => this.finish());
+    if (!recording || !store || status === "idle" || status === "stopped") {
+      // A start that has the microphone and is still waiting for the device's storage (which may never answer): the
+      // hardware goes now, not when the start gets round to checking whether the page is still here.
+      if (this.starting) this.stopMicrophone();
+      return;
+    }
+    const ended = this.endParts("leave");
+    // The hardware does not wait for the database either.
+    this.stopMicrophone();
+    void ended.then(() => store.setState(recording.id, "paused")).finally(() => this.finish());
   }
 
   /**
