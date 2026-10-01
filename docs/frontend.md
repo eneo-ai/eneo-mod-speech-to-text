@@ -89,7 +89,7 @@ Adressparametrar på flödessidan: `?run=<id>` öppnar en körning, `?recording=
 
 ## Migration (temporary, removed by bead .24)
 
-Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx, en ytgrupp åt gången. Under tiden:
+Gränssnittet har porterats från shadcn/Radix/Tailwind till Astryx, en ytgrupp åt gången. Nu gäller:
 
 - Det gamla systemet (`frontend/components/ui/`, `frontend/components.json`, `frontend/tailwind.config.ts`, `frontend/postcss.config.mjs`, `frontend/lib/utils.ts`, Radix och Tailwind) är borttaget och får inte komma tillbaka: `frontend/lib/legacy-ui.test.ts` misslyckas på en import av det och på en klasssträng.
 - Använd inte shadcn-färdigheten eller shadcn-MCP för nytt arbete.
