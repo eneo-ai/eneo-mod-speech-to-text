@@ -528,6 +528,10 @@
     .astryx-collapsible-trigger {
       min-height: 44px;
     }
+
+    .astryx-radio-list-item {
+      min-height: 44px;
+    }
   }
 }
 }

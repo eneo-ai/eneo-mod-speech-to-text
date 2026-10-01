@@ -390,6 +390,11 @@ export const eneoTheme = {
               "base": {
                 "minHeight": "44px"
               }
+            },
+            "radio-list-item": {
+              "base": {
+                "minHeight": "44px"
+              }
             }
           }
         }
