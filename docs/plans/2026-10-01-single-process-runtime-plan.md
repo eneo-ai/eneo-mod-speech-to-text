@@ -347,7 +347,8 @@ const API = process.env.DEV_API_BASE ?? "http://127.0.0.1:8000";
 
 export default defineConfig(({ mode }) => ({
   plugins: [react()],
-  resolve: { alias: { "@": fileURLToPath(new URL(".", import.meta.url)) } }, // mirrors tsconfig "paths"
+  // `@/x` is `<frontend>/x`, as tsconfig "paths" says; the regex consumes the slash, so no `//` is left in the path.
+  resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./", import.meta.url)) }] },
   // Build-time flags. Undefined in the unit tests, which is false there as process.env was.
   define: { __SPEAKER_REVIEW__: JSON.stringify(process.env.SPEAKER_REVIEW_ENABLED === "true") },
   server: {
