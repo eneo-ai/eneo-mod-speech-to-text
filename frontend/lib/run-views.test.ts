@@ -224,6 +224,8 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Ny inspelning/);
   assert.match(words, /Alla flöden/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
+  // The page's frame supplies the one main region and its width; the result is what goes in it.
+  assert.doesNotMatch(html, /<main|role="main"/);
 });
 
 const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
@@ -400,18 +402,20 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
     renderToStaticMarkup(
       createElement(EarlierRuns, { list: { ...listed([run]), hasMore: true, ...state }, onOpen: () => undefined, onMore: () => undefined }),
     );
-  assert.match(render({}), />Visa fler körningar<\/button>/);
-  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>Hämtar körningar…<\/button>/);
+  // The design system's button holds its words in a span or two and a live region after them.
+  const labelled = (name: string) => new RegExp(`<button[^>]*>(?:<[^>]+>)*${name}(?:<[^>]+>)*</button>`);
+  assert.match(render({}), labelled("Visa fler körningar"));
+  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>(?:<[^>]+>)*Hämtar körningar…(?:<[^>]+>)*<\/button>/);
   const failed = render({ failed: "next" });
   assert.match(failed, /Fler körningar kunde inte hämtas\./);
-  assert.match(failed, />Visa fler körningar<\/button>/, "another try");
+  assert.match(failed, labelled("Visa fler körningar"), "another try");
 
   // The first page failed: said even with no run shown, with a try again whatever Eneo said about more.
   const firstFailed = renderToStaticMarkup(
     createElement(EarlierRuns, { list: { ...listed([]), failed: "first" }, onOpen: () => undefined, onMore: () => undefined }),
   );
   assert.match(firstFailed, /Tidigare körningar kunde inte hämtas\./);
-  assert.match(firstFailed, />Försök igen<\/button>/);
+  assert.match(firstFailed, labelled("Försök igen"));
 });
 
 test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {

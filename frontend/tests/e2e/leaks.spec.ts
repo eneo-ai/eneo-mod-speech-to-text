@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { backLink, open, record, result, run, setup, stop } from "./screens";
+import { backLink, chooseMode, open, record, result, run, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -19,11 +19,19 @@ const WARM_UP = 5;
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
 type Overlay = {
+  /** The overlay is meant to leak: the spec must fail on it, which is what shows that it can. */
+  leaks?: true;
   /** Where the overlay is opened, once; the foundation page when there is none. */
   go?: (page: Page) => Promise<unknown>;
   show: (page: Page) => Promise<unknown>;
   shown: (page: Page) => Locator;
   hide: (page: Page) => Promise<unknown>;
+};
+
+/** How a page mounts a confirmation (app/dev/dialog-leak): once, for each opening, and a dialog that really leaks. */
+const dialogLeaks = async (page: Page) => {
+  await open(page, "/dev/dialog-leak");
+  await expect(page.getByRole("heading", { name: "Dialogläckor" })).toBeVisible();
 };
 
 /** The warning opens once for each end of the login, so each opening is an answer that ends more than a minute from the last. */
@@ -72,6 +80,25 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("menu"),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  "alert dialog mounted once": {
+    go: dialogLeaks,
+    show: (page) => page.getByRole("button", { name: "Monterad en gång" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
+    hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  "alert dialog mounted for each opening": {
+    go: dialogLeaks,
+    show: (page) => page.getByRole("button", { name: "Monterad vid varje öppning" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
+    hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  "dialog that keeps what it mounted": {
+    leaks: true,
+    go: dialogLeaks,
+    show: (page) => page.getByRole("button", { name: "Läckande dialog" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Dialog som läcker" }),
+    hide: (page) => page.getByRole("button", { name: "Stäng dialogen som läcker" }).click(),
+  },
   // The module's own overlays, on the pages that own them.
   "session warning": {
     go: async (page) => {
@@ -107,12 +134,33 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
   },
+  // A popover of the setup page: the list of microphones (a bottom sheet on a touch screen, not counted here).
+  "microphone picker": {
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Spela in");
+    },
+    show: (page) => page.getByRole("combobox", { name: "Mikrofon" }).click(),
+    shown: (page) => page.getByRole("listbox"),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {
     go: (page) => run(page, "run-running"),
     show: (page) => page.getByRole("button", { name: "Avbryt körningen" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
     hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),
+  },
+  // The recording's own question, on the ready state that owns it: it adds the part sources and the player's listeners.
+  "delete question": {
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+    },
+    show: (page) => page.getByRole("button", { name: "Ta bort", exact: true }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort inspelningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Avbryt" }).click(),
   },
 };
 
@@ -141,12 +189,17 @@ async function cycle(page: Page, overlay: Overlay) {
   await expect(overlay.shown(page)).toBeVisible();
   await overlay.hide(page);
   await expect(overlay.shown(page)).toBeHidden();
+  // Chromium keeps the element last under the pointer after it is removed, and with it everything removed with it,
+  // until the pointer moves: one dialog's nodes (25 to 39) that an overlay mounted for each opening leaves behind
+  // when it was closed by a click, and that a person's pointer going elsewhere releases. Not the overlay's leak.
+  await page.mouse.move(2, 2);
 }
 
 for (const [name, overlay] of Object.entries(OVERLAYS)) {
   test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
+    if (overlay.leaks) test.fail(true, "an overlay that keeps what it mounted must fail this spec, or the spec proves nothing");
     if (overlay.go) await overlay.go(page);
     else {
       await open(page, "/dev/foundation");

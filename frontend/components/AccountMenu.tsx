@@ -57,13 +57,17 @@ export function AccountMenu() {
       alignment="end"
       menuWidth="18rem"
     >
-      {/* Who is signed in: words to read, not something to choose. Long ones wrap, then end in an ellipsis. */}
+      {/*
+        Who is signed in: words to read, not something to choose. One line each, ending in an ellipsis when it is long:
+        Astryx caps a menu at 300 px, and on a touch screen the rows alone (4 x 44 px) take most of it, so a longer
+        identity would push Logga ut below the fold. The whole of it stays in the page's text and in the trigger's name.
+      */}
       <Item
-        density="spacious"
+        density="compact"
         label={displayName}
-        labelLines={2}
+        labelLines={1}
         description={user.email && displayName !== user.email ? user.email : undefined}
-        descriptionLines={2}
+        descriptionLines={1}
       />
 
       <DropdownMenuDivider />

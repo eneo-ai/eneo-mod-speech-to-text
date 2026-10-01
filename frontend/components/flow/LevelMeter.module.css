@@ -1,0 +1,60 @@
+/* The level meter's bars: decorative, driven fifteen times a second from the audio frames (LevelMeter.tsx). */
+.meter {
+  display: flex;
+  align-items: center;
+}
+
+.steps {
+  gap: var(--spacing-1);
+}
+
+.wave {
+  gap: var(--spacing-1-5);
+}
+
+.bar {
+  display: block;
+  flex-shrink: 0;
+  inline-size: 3px;
+  border-radius: var(--radius-full);
+}
+
+.steps .bar {
+  background: var(--color-track);
+  transition: background-color var(--duration-fast);
+}
+
+.steps .bar[data-lit="true"] {
+  background: var(--color-accent);
+}
+
+/* A bar's height is the container's; the script scales it from this rest height. */
+.wave .bar {
+  block-size: 100%;
+  background: var(--color-accent);
+  transform: scaleY(0.12);
+  transform-origin: center;
+  /* Just under the 66 ms between two readings, so a bar settles before the next one. */
+  transition: transform 75ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .steps .bar,
+  .wave .bar {
+    transition: none;
+  }
+}
+
+/* Backgrounds are replaced in forced colours, which would leave the meter empty: the proof that the microphone hears. */
+@media (forced-colors: active) {
+  .steps .bar,
+  .wave .bar {
+    forced-color-adjust: none;
+    background: GrayText;
+  }
+
+  .steps .bar[data-lit="true"],
+  .wave .bar {
+    background: Highlight;
+  }
+}
