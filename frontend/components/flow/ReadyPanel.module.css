@@ -1,0 +1,13 @@
+/* Strömma's live text after Stoppa: a box that scrolls on its own, so a long meeting's draft keeps the actions in reach. */
+.draft {
+  max-block-size: 15rem;
+  padding: var(--spacing-3) var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-element);
+  background: var(--color-background-card);
+}
+
+.draft:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}

@@ -114,6 +114,17 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
     hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),
   },
+  // The recording's own question, on the ready state that owns it: it adds the part sources and the player's listeners.
+  "delete question": {
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+    },
+    show: (page) => page.getByRole("button", { name: "Ta bort", exact: true }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Ta bort inspelningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Avbryt" }).click(),
+  },
 };
 
 /** The page's DOM nodes, event listeners and used JS heap once everything unreachable is collected. */

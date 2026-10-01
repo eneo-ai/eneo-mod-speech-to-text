@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { endLogin, isLaptop, open, record, result, run, sessionWarning, setup } from "./screens";
+import { endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -360,4 +360,29 @@ test("the PDF preview open when the login ends is covered with the page, and is 
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
   await expect(preview).toBeVisible();
   await expect(preview.locator("iframe")).toHaveAttribute("src", /disposition=inline/);
+});
+
+test("the delete question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
+  await setup(page);
+  await record(page, "Spela in");
+  await stop(page);
+  const trigger = page.getByRole("button", { name: "Ta bort", exact: true });
+  await trigger.click();
+  const question = page.getByRole("alertdialog", { name: "Ta bort inspelningen?" });
+  await expect(question).toBeVisible();
+
+  await endLogin(page);
+  await expect(question, "a native dialog would stay above the covered page").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Ta bort inspelningen|Den går inte att få tillbaka/);
+  await tabStaysInSignIn(page);
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(question, "still asked, as it was").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(question).toBeHidden();
+  await expect(trigger, "Escape gives the focus back to what opened it, also across the new login").toBeFocused();
 });

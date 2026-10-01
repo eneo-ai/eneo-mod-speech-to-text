@@ -22,6 +22,8 @@
     --destructive-foreground: 0 0% 100%;
     --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
     --record-foreground: 0 0% 100%;
+    /* The recording dot for CSS Modules, from --record in both modes (3:1 on the card and the muted surface). */
+    --module-color-record: light-dark(#dc2828, #dd2c2c);
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
     /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
@@ -157,32 +159,6 @@
   .rule-divider-soft {
     border-bottom: 1px solid hsl(var(--rule-soft));
   }
-
-  /* ----- Recording animations ----- */
-  @keyframes lyssna-pulse-ring {
-    0% {
-      inset: 0;
-      opacity: 0.6;
-    }
-    100% {
-      inset: -22px;
-      opacity: 0;
-    }
-  }
-
-  .lyssna-pulse-ring {
-    animation: lyssna-pulse-ring 2.4s ease-out infinite;
-  }
-
-  @keyframes lyssna-blink {
-    50% {
-      opacity: 0;
-    }
-  }
-
-  .lyssna-blink {
-    animation: lyssna-blink 1s steps(2) infinite;
-  }
 }
 
 
@@ -237,7 +213,6 @@
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
-  .lyssna-pulse-ring, .lyssna-blink { animation: none; }
   /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
@@ -267,6 +242,28 @@ html.dark,
 html.dark [data-astryx-theme] { color-scheme: dark; }
 html.light,
 html.light [data-astryx-theme] { color-scheme: light; }
+
+/* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring
+   on it would only look like one. */
+[data-phase-heading]:focus { outline: none; }
+
+/* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
+   gives it back, for every button the design system draws. */
+@media (forced-colors: active) {
+  .astryx-button { border: 1px solid ButtonText; }
+}
+
+/* The slider is drawn with backgrounds only: the rail, the filled part and the thumb are gone in forced colours, which
+   leaves a position slider with nothing to see or press. Its parts take the system's colours, the thumb with a ring of
+   the page's colour so it stays apart from the filled part. (The filled part has no class of its own.) */
+@media (forced-colors: active) {
+  .astryx-slider-track,
+  .astryx-slider-control > [aria-hidden="true"],
+  .astryx-slider-thumb { forced-color-adjust: none; }
+  .astryx-slider-track { background: ButtonText; }
+  .astryx-slider-control > [aria-hidden="true"]:not(.astryx-slider-track) { background: Highlight; }
+  .astryx-slider-thumb { background: ButtonText; border: 2px solid Canvas; }
+}
 
 /* The brand lockup's mark (components/Brand.tsx). Another organisation's logo keeps Sundsvall's height and a wide one
    scales down inside a bounded width; a name without a logo wraps inside the same bounds. A logo made for one colour

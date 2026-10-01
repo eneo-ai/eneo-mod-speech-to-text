@@ -1,0 +1,233 @@
+/*
+ * The recording's surfaces that are not a design-system component: the red dot, the stage's large timer, and the bar
+ * docked under the work. Colours, spacing and radii are the design system's tokens; sizes with no token (a 10 px dot,
+ * the timer) are structural.
+ */
+
+.dot {
+  display: block;
+  flex-shrink: 0;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: var(--radius-full);
+  background: var(--module-color-record);
+}
+
+/* Backgrounds are replaced in forced colours: the dot keeps a colour that is not the page's. */
+@media (forced-colors: active) {
+  .dot {
+    forced-color-adjust: none;
+    background: Highlight;
+  }
+}
+
+/* ----- Spela in's stage ----- */
+
+/* From a laptop's width the stage fills the column and centres its content; below, it is as tall as its content. */
+.stage {
+  padding-block: var(--spacing-10);
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .stage {
+    padding-block: var(--spacing-12);
+  }
+}
+
+@media (min-width: 1024px) {
+  .stage {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+.timer {
+  font-size: calc(var(--font-size-5xl) * 4 / 3);
+  font-weight: var(--font-weight-semibold);
+  line-height: 1;
+  letter-spacing: -0.04em;
+}
+
+@media (min-width: 640px) {
+  .timer {
+    font-size: calc(var(--font-size-5xl) * 5 / 3);
+  }
+}
+
+@media (min-width: 768px) {
+  .timer {
+    font-size: calc(var(--font-size-5xl) * 2);
+  }
+}
+
+.stageMeter {
+  inline-size: 100%;
+  max-inline-size: 20rem;
+  block-size: 4rem;
+  justify-content: center;
+}
+
+.note {
+  max-inline-size: 24rem;
+}
+
+/* A short screen (a phone on its side, 200 % zoom): compact, so the bar docked under the stage hides none of it. */
+@media (max-height: 480px) {
+  .stage {
+    padding-block: var(--spacing-3);
+  }
+
+  .stage > * {
+    gap: var(--spacing-2);
+  }
+
+  .timer {
+    font-size: calc(var(--font-size-5xl) * 5 / 6);
+  }
+
+  .stageMeter {
+    block-size: 2rem;
+  }
+
+  .note {
+    display: none;
+  }
+}
+
+/* ----- The bar ----- */
+
+/*
+ * Pinned to the bottom of the page, or of the recording's own scroll box on a laptop; in Strömma on a short screen in
+ * the page's flow, where it would cover the live text. Below a laptop's width it bleeds over the page's side gutter to
+ * the window's edges, and from there it is an inset card. The gutter is the frame's own for a recording (FlowFrame.module.css,
+ * `.fill`: 16 px, 32 px from 768 px), and the bar sits in the workspace section, a flex column inside the region that
+ * scrolls: `margin-block-start: auto` needs the first, `position: sticky` the second.
+ */
+.bar {
+  --bar-gutter: var(--spacing-4);
+  position: sticky;
+  inset-block-end: 0;
+  margin-inline: calc(-1 * var(--bar-gutter));
+  margin-block-start: auto;
+  flex-shrink: 0;
+  padding: var(--spacing-3) var(--bar-gutter) max(var(--spacing-3), env(safe-area-inset-bottom));
+  border-block-start: 1px solid var(--color-border);
+  background: var(--color-background-card);
+}
+
+@media (min-width: 768px) {
+  .bar {
+    --bar-gutter: var(--spacing-8);
+  }
+}
+
+@media (min-width: 1024px) {
+  .bar {
+    margin-inline: 0;
+    padding: var(--spacing-3) var(--spacing-5);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+  }
+}
+
+@media (max-height: 480px) {
+  .bar[data-status] {
+    position: static;
+  }
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--spacing-4);
+  row-gap: var(--spacing-3);
+}
+
+/* On a phone: the status over the timer and the level, so the buttons keep the same row. */
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-0-5);
+  min-inline-size: 0;
+}
+
+.readoutLine {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+}
+
+.statusMeter {
+  block-size: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .readout {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--spacing-4);
+  }
+
+  .readoutLine {
+    gap: var(--spacing-4);
+  }
+
+  .statusMeter {
+    block-size: 1.75rem;
+  }
+}
+
+/* Wide enough for "Fortsätt", so pausing moves nothing. */
+.actions {
+  display: grid;
+  grid-template-columns: minmax(8.5rem, 1fr) minmax(8.5rem, 1.4fr);
+  gap: var(--spacing-3);
+  inline-size: 100%;
+}
+
+@media (min-width: 1024px) {
+  .actions {
+    grid-template-columns: 11rem 14rem;
+    justify-content: center;
+  }
+}
+
+/* With the status beside them, the two buttons keep to the row's end. */
+.row[data-status] .actions {
+  grid-template-columns: repeat(2, minmax(6rem, 1fr));
+  gap: var(--spacing-2);
+  inline-size: auto;
+  margin-inline-start: auto;
+}
+
+@media (min-width: 640px) {
+  .row[data-status] .actions {
+    grid-template-columns: repeat(2, 8.5rem);
+    gap: var(--spacing-3);
+  }
+}
+
+.notes {
+  text-align: center;
+}
+
+.notes[data-status] {
+  text-align: start;
+}
+
+@media (min-width: 640px) {
+  .notes[data-status] {
+    text-align: end;
+  }
+}
+
+/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */
+@media (max-height: 480px) {
+  .notes[data-status] .stopLine {
+    display: none;
+  }
+}

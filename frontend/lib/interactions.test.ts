@@ -879,11 +879,69 @@ test("with reduced motion, the level meter still shows the microphone's level, w
     peak = 0;
     for (let i = 0; i < 60; i += 1) await view.act(async () => t.mock.timers.tick(66));
     assert.equal(lit(), 0, "and silence lets them go");
-    const bar = view.container.querySelector("span")!;
-    assert.match(bar.className, /motion-reduce:transition-none/);
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;
     page.matchMedia = browserMedia;
+  }
+});
+
+/** A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one. */
+function listening(t: import("node:test").TestContext, peak: { value: number } | null) {
+  class FakeAudioContext {
+    state = "running";
+    resume = async () => undefined;
+    close = async () => undefined;
+    createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak?.value ?? 0) });
+  }
+  const page = window as unknown as { AudioContext?: unknown; webkitAudioContext?: unknown };
+  const before = { audio: page.AudioContext, webkit: page.webkitAudioContext };
+  page.AudioContext = peak ? FakeAudioContext : undefined;
+  page.webkitAudioContext = undefined;
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  return () => {
+    page.AudioContext = before.audio;
+    page.webkitAudioContext = before.webkit;
+  };
+}
+
+test("the level meter goes quiet when the stream ends, whichever way it is drawn", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const restore = listening(t, { value: 0.5 });
+  const stream = {} as MediaStream;
+  try {
+    for (const variant of ["steps", "wave"] as const) {
+      const view = await mount(createElement(LevelMeter, { stream, bars: 8, variant }));
+      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+      await view.act(async () => t.mock.timers.tick(66));
+      assert.ok(variant === "steps" ? bars.some((bar) => bar.dataset.lit === "true") : bars.some((bar) => bar.style.transform !== "" && bar.style.transform !== "scaleY(0.12)"), `${variant}: sound moves it`);
+      // Stopped, paused or revoked: the stream goes away and the meter settles at once, not at the next reading.
+      await view.act(async () => view.rerender(createElement(LevelMeter, { stream: null, bars: 8, variant })));
+      assert.ok(bars.every((bar) => bar.dataset.lit !== "true"), `${variant}: nothing lit`);
+      if (variant === "wave") assert.ok(bars.every((bar) => bar.style.transform === "scaleY(0.12)"), "wave: every bar at its rest height");
+      await view.unmount();
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("a browser without an audio context still gets a level meter, at rest", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const restore = listening(t, null);
+  try {
+    for (const variant of ["steps", "wave"] as const) {
+      const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
+      await view.act(async () => t.mock.timers.tick(500));
+      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+      assert.equal(bars.length, 8, `${variant}: the bars are there`);
+      assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
+      await view.unmount();
+    }
+  } finally {
+    restore();
   }
 });
