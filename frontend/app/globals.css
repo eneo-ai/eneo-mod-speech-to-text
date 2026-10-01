@@ -282,6 +282,11 @@ img[data-brand-logo] {
   object-fit: contain;
   object-position: left;
 }
+/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller to leave the account
+   button room, also with the text spacing WCAG 1.4.12 lets a reader set (tests/e2e/header-fit.spec.ts). */
+@media (max-width: 359px) {
+  img[data-brand-logo] { block-size: var(--spacing-8); }
+}
 @media (min-width: 640px) {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
   [data-brand-logo="name"] { max-inline-size: 12rem; }
