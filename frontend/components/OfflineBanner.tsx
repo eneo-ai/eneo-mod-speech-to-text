@@ -2,6 +2,11 @@
 
 import { WifiOff } from "lucide-react";
 import { useSyncExternalStore } from "react";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { onlineStatus } from "@/lib/online-status";
 
 const subscribe = (onChange: () => void) => onlineStatus.subscribe(onChange);
@@ -26,13 +31,18 @@ const MESSAGES: Record<NonNullable<OfflineWaiting>, string> = {
 export function OfflineBanner({ waiting }: { waiting: OfflineWaiting }) {
   const online = useOnlineStatus();
   return (
-    <div role="status">
+    // The room below it is its own, only while it shows: online the region holds nothing and takes no space.
+    <VStack role="status" paddingBlockEnd={online ? undefined : 4}>
       {!online && (
-        <p className="mb-4 flex items-start gap-3 rounded-2xl border border-rule-soft bg-paper px-4 py-3 text-[13px] leading-snug text-ink">
-          <WifiOff aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-ink-soft" strokeWidth={2} />
-          {waiting ? MESSAGES[waiting] : "Ingen anslutning."}
-        </p>
+        <Card variant="muted" padding={3}>
+          <HStack gap={3} align="start">
+            <Icon icon={WifiOff} color="secondary" />
+            <Text as="p" type="supporting">
+              {waiting ? MESSAGES[waiting] : "Ingen anslutning."}
+            </Text>
+          </HStack>
+        </Card>
       )}
-    </div>
+    </VStack>
   );
 }

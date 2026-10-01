@@ -238,8 +238,8 @@
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
   .lyssna-pulse-ring, .lyssna-blink { animation: none; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle { animation: none; }
+  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 @media (forced-colors: active) {
@@ -289,3 +289,7 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
+
+/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
+   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
+dialog[open] { pointer-events: auto; }

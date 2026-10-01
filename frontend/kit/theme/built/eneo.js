@@ -347,6 +347,11 @@ export const eneoTheme = {
               "base": {
                 "minHeight": "44px"
               }
+            },
+            "collapsible-trigger": {
+              "base": {
+                "minHeight": "44px"
+              }
             }
           }
         }

@@ -288,6 +288,14 @@ export const STATES: State[] = [
   },
   { name: "unsent-recordings", go: leaveRecording },
   {
+    name: "unsent-recording-delete-question",
+    go: async (page) => {
+      await leaveRecording(page);
+      await page.getByRole("button", { name: "Ta bort" }).click();
+      await expect(page.getByRole("button", { name: "Avbryt" })).toBeFocused();
+    },
+  },
+  {
     name: "setup",
     go: async (page) => {
       await setup(page);
