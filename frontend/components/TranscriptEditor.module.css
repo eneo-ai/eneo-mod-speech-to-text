@@ -1,0 +1,471 @@
+/*
+ * The speaker-review editor: bespoke, because the text is content-editable and every word, passage and speaker change is
+ * a span the code reads back (data-text-span, data-word-start, data-turn-index, data-segment-index). Semantic HTML and
+ * design-system tokens only; the controls in the toolbar are the design system's own.
+ * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in app/globals.css), never an inline style.
+ */
+
+.editor {
+  position: relative;
+}
+
+/* The keyboard ring, as the design system draws it. */
+.ring:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
+.editor [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
+.editor [data-speaker-color="1"] { --tint: var(--module-speaker-1); }
+.editor [data-speaker-color="2"] { --tint: var(--module-speaker-2); }
+.editor [data-speaker-color="3"] { --tint: var(--module-speaker-3); }
+.editor [data-speaker-color="4"] { --tint: var(--module-speaker-4); }
+.editor [data-speaker-color="5"] { --tint: var(--module-speaker-5); }
+
+/* ---- The tools ---- */
+
+.toolbar {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 10;
+  padding: var(--spacing-2) var(--spacing-4);
+  border-block-end: var(--border-width) solid var(--color-border);
+  background: var(--color-background-surface);
+  box-shadow: var(--shadow-low);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-1);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.quiet {
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
+  color: var(--color-text-secondary);
+}
+
+.marked {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  margin-block-start: var(--spacing-2);
+  padding-block: var(--spacing-2) var(--spacing-1);
+  border-block-start: var(--border-width) solid var(--color-border);
+}
+
+.selected {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-supporting-size);
+}
+
+/* The selected words, as far as they fit: the whole text is the title, and the correction field holds all of it. */
+.quote {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  font-weight: var(--font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex-shrink: 0;
+  color: var(--color-text-secondary);
+}
+
+.tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-1);
+}
+
+.speakers {
+  max-inline-size: 100%;
+}
+
+.correction {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  padding-block: var(--spacing-2);
+}
+
+.correction > * {
+  align-self: stretch;
+}
+
+.correction > .buttons {
+  align-self: flex-start;
+}
+
+.buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-2);
+}
+
+.said {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-supporting-size);
+}
+
+/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
+@media (max-width: 639px), (max-height: 600px) {
+  .toolbar {
+    position: static;
+  }
+}
+
+/* ---- What the text says about itself ---- */
+
+.details {
+  padding: var(--spacing-3) var(--spacing-5);
+  border-block-end: var(--border-width) solid var(--color-border);
+  background: var(--color-background-muted);
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
+}
+
+.details[hidden] {
+  display: none;
+}
+
+.details h2 {
+  margin: 0;
+  font-size: inherit;
+  font-weight: var(--font-weight-semibold);
+}
+
+.details p {
+  margin: 0;
+}
+
+.details summary {
+  min-block-size: var(--spacing-6);
+  cursor: pointer;
+}
+
+@media (pointer: coarse) {
+  .details summary {
+    display: flex;
+    align-items: center;
+    min-block-size: var(--spacing-11);
+  }
+}
+
+.details ul {
+  margin: var(--spacing-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.note {
+  margin: 0;
+  padding: var(--spacing-4) var(--spacing-5) 0;
+  font-size: var(--text-supporting-size);
+  line-height: var(--text-supporting-leading);
+  color: var(--color-text-secondary);
+}
+
+.note .focusLabel {
+  font-weight: var(--font-weight-medium);
+}
+
+/* The label of the text lights up, with the text's own focus, so that the page says where the keyboard is. */
+.editor:has(.text:focus-visible) .focusLabel {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+  border-radius: 2px;
+  color: var(--color-text-primary);
+}
+
+/* A control inside a sentence: a link in looks, a button in what it does. Its target is a finger's under a coarse
+   pointer without making the line any taller. */
+.inline {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.inline:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .inline {
+    display: inline-flex;
+    align-items: center;
+    min-block-size: var(--size-element-md);
+    margin-block: calc((1lh - var(--size-element-md)) / 2);
+  }
+}
+
+.empty {
+  margin: 0;
+  padding: var(--spacing-4) var(--spacing-5);
+  color: var(--color-text-secondary);
+}
+
+/* ---- The text ---- */
+
+.text {
+  padding: var(--spacing-5);
+  outline: none;
+}
+
+@media (min-width: 640px) {
+  .text {
+    padding-inline: var(--spacing-7);
+  }
+}
+
+.text:focus,
+.text:focus-visible {
+  outline: none;
+}
+
+.text [data-turn-index] {
+  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
+}
+
+.text [data-text-span]:focus-visible {
+  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
+}
+
+.text button {
+  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
+}
+
+/* A local paragraph marker shows the editing focus without outlining the full page. */
+.text:focus-visible [data-caret-paragraph="true"] {
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+.turn {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-1);
+  margin-block-end: var(--spacing-6);
+  padding-inline-start: var(--spacing-2);
+}
+
+@media (min-width: 640px) {
+  .turn {
+    grid-template-columns: 6rem minmax(0, 1fr);
+    gap: var(--spacing-4);
+  }
+}
+
+.side {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-2);
+  min-inline-size: 0;
+  font-size: var(--text-supporting-size);
+}
+
+@media (min-width: 640px) {
+  .side {
+    display: block;
+    padding-block-start: var(--spacing-1);
+  }
+}
+
+.clock {
+  composes: ring;
+}
+
+.speakerName {
+  composes: ring;
+}
+
+.clock,
+.speakerName {
+  min-block-size: var(--spacing-6);
+  min-inline-size: var(--spacing-6);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-text-secondary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.clock {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.clock:hover {
+  color: var(--color-text-primary);
+}
+
+.speakerName {
+  display: block;
+  max-inline-size: 100%;
+  color: var(--tint, var(--color-text-secondary));
+  font-weight: var(--font-weight-medium);
+  overflow-wrap: anywhere;
+  text-align: start;
+  white-space: normal;
+}
+
+@media (min-width: 640px) {
+  .speakerName {
+    margin-block-start: var(--spacing-1);
+  }
+}
+
+.clock:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .clock,
+  .speakerName {
+    min-block-size: var(--spacing-11);
+    min-inline-size: var(--spacing-11);
+  }
+}
+
+.paragraph {
+  min-inline-size: 0;
+  max-inline-size: 68ch;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  font-size: var(--text-body-size);
+  line-height: 1.95;
+  color: var(--color-text-primary);
+}
+
+.paragraph::selection,
+.paragraph *::selection {
+  background: color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* Who speaks from here on, at a change of speaker inside a paragraph. */
+.marker {
+  display: inline-block;
+  max-inline-size: 100%;
+  margin-inline: var(--spacing-1);
+  padding-inline: var(--spacing-1-5);
+  border-radius: var(--radius-inner);
+  background: var(--color-background-muted);
+  color: var(--tint, var(--color-text-secondary));
+  font-size: var(--text-supporting-size);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+  vertical-align: baseline;
+  white-space: normal;
+}
+
+/* A passage: underlined in its speaker's colour, dotted when the speaker is still a suggestion. */
+.span {
+  composes: ring;
+  padding-block: var(--spacing-1);
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 1.5px;
+  text-decoration-color: var(--tint, var(--color-text-secondary));
+  text-underline-offset: 6px;
+}
+
+.span:focus-visible {
+  border-radius: var(--radius-inner);
+}
+
+/* A passage is a target a finger can hit: its box grows to a control's height without taking more room in the line
+   (padding on an inline box does not move the lines), and so overlaps the lines beside it. */
+@media (pointer: coarse) {
+  .span {
+    padding-block: 0.8em;
+  }
+}
+
+.span[data-seekable]:hover {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  cursor: pointer;
+}
+
+.span[data-review] {
+  text-decoration-color: var(--module-color-review);
+}
+
+.span[data-uncertain] {
+  text-decoration-style: dotted;
+  cursor: pointer;
+}
+
+.span[data-uncertain]:hover {
+  background: color-mix(in srgb, var(--module-color-review) 10%, transparent);
+}
+
+/* A word, in the order of what it is told about: unsure, played now, marked, being said. */
+.word {
+  border-radius: 2px;
+}
+
+.word[data-doubt] {
+  background: color-mix(in srgb, var(--module-color-review) 15%, transparent);
+}
+
+.word[data-active] {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+
+.word[data-selected] {
+  background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.word[aria-current="true"] {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+@media (forced-colors: active) {
+  .span,
+  .span[data-review] {
+    text-decoration-color: CanvasText !important;
+  }
+
+  .word[aria-current="true"] {
+    forced-color-adjust: none;
+    background: Highlight;
+    color: HighlightText;
+    outline: 2px solid Highlight;
+  }
+
+  .text:focus-visible [data-caret-paragraph="true"] {
+    box-shadow: none;
+    border-inline-start: 3px solid Highlight;
+  }
+}

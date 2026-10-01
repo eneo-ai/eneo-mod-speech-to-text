@@ -84,6 +84,29 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
 
+test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const field = dialog.getByRole("combobox", { name: "Vem är Talare 3?" });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 3?" });
+  const row = dialog.getByRole("listitem").filter({ has: page.getByRole("combobox", { name: "Vem är Talare 3?" }) });
+  await row.getByRole("button", { name: "Visa namn" }).click();
+  await expect(list).toBeVisible();
+  await expect(field, "the focus stays in the field").toBeFocused();
+  await row.getByRole("button", { name: "Stäng listan" }).click();
+  await expect(list).toBeHidden();
+  await field.click();
+  await expect(list).toBeVisible();
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await expect(list, "a press outside the field and the list").toBeHidden();
+  await expect(dialog).toBeVisible();
+  // Choosing a row names the speaker and gives the focus back to the field.
+  await field.click();
+  await list.getByRole("option", { name: "Anna Berg" }).click();
+  await expect(field).toHaveValue("Anna Berg");
+  await expect(field).toBeFocused();
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();

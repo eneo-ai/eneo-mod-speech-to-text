@@ -24,6 +24,11 @@ export const eneoTheme = defineTheme({
     // The one action a screen exists for (Starta, Stoppa, Skapa dokument) is 48 px at every pointer; Astryx's
     // large control is 36 px with a mouse.
     '--size-element-lg': '48px',
+    // Error text is 4.1:1 on the page's grey in Astryx's red, and that red is the recording dot's (1.0:1 and 1.25:1
+    // apart): an error never looks like "recording". These are the module's own error colours from before the port.
+    '--color-error': ['#AA181D', '#F47B7F'],
+    // A control's edge is 2.8:1 on the page and on a muted fill in light mode; 3:1 is the floor (WCAG 1.4.11).
+    '--color-border-emphasized': ['#85868F', '#626972'],
   },
   components: {
     // A word with no break point (an e-mail address as a name, a long compound) wraps instead of reaching past a
@@ -61,6 +66,8 @@ export const eneoTheme = defineTheme({
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.
     'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
+    // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
+    'collapsible-trigger': {base: {minHeight: '24px'}},
   },
   adaptations: {
     rules: [

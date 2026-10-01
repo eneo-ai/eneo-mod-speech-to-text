@@ -1,0 +1,9 @@
+{
+  "prompt": "A clean, friendly, flat vector architecture illustration for a software documentation page, wide landscape, light off-white background, calm palette of deep blue, teal and soft grey with one small amber accent, generous whitespace, no photographs, no gradients, no 3D, no shadows beyond a very soft one. Left to right, three clearly separated zones joined by two thick rounded arrows.\n\nZone 1 (left): a simple flat illustration of a person at a laptop and a phone, with the single label \"Webbl\u00e4sare\".\n\nZone 2 (centre, the largest): one big rounded container with the label \"Modulen\". Inside it two stacked rounded cards: the upper card shows a simplified app window with a microphone icon and a small waveform, label \"Gr\u00e4nssnitt\"; the lower card shows a shield with a padlock and a key, label \"S\u00e4ker backend\". A thin small ribbon above the container holds three tiny icons (a logo mark, a name tag, a colour swatch) with the label \"Egen logga, namn och f\u00e4rg\".\n\nZone 3 (right): a rounded platform block with the label \"Eneo\", showing a small flow diagram icon of connected nodes and a document icon.\n\nArrow 1 from Zone 1 to Zone 2 carries a small cookie icon. Arrow 2 from Zone 2 to Zone 3 carries a small key icon and a small person-badge icon; a thinner return arrow below it carries a document icon. Use ONLY these Swedish labels and spell them exactly: Webbl\u00e4sare, Modulen, Gr\u00e4nssnitt, S\u00e4ker backend, Eneo, Egen logga, namn och f\u00e4rg. No other text anywhere, no numbers, no lorem ipsum. Balanced composition, crisp edges, consistent line weight, suitable for a README header.",
+  "background": "opaque",
+  "quality": "high",
+  "size": "1536x1024",
+  "ref": null,
+  "tool": "codex imagegen",
+  "createdAt": "2026-10-01T17:41:37+00:00"
+}
