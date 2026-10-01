@@ -391,6 +391,21 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-button {
+    white-space: normal;
+    height: auto;
+    min-height: var(--size-element-md);
+    padding-block: var(--spacing-0-5);
+  }
+
+  .astryx-button[data-size="sm"] {
+    min-height: var(--size-element-sm);
+  }
+
+  .astryx-button[data-size="lg"] {
+    min-height: var(--size-element-lg);
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
