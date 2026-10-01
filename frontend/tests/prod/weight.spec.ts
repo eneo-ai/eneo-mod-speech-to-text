@@ -2,6 +2,8 @@
  * What a page costs to load, on the production build: the compressed JS and CSS it transfers against
  * weight-budget.json, and that the built theme is used instead of being generated in the browser.
  * Chromium only: it is the engine that reports each request's transfer size.
+ * The budget is the foundation's numbers plus lucide-react 1.x's Icon runtime (+1 KB on /flows). Phase 8's reset
+ * target (226 KB on /flows, 359 KB on /flows/flow-1) was measured with lucide-react 0.451: re-measure it with 1.x.
  */
 import { expect, test, type Page } from "@playwright/test";
 import budget from "./weight-budget.json";
