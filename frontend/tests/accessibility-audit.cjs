@@ -13,7 +13,7 @@ const results = [];
         const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme, reducedMotion: 'reduce' });
         const page = await context.newPage();
         await page.goto('http://localhost:3002/dev/speaker-review');
-        const fixture = page.getByRole('combobox', { name: 'Testfall', exact: true });
+        const fixture = { selectOption: async (name) => { await page.getByRole('combobox', { name: 'Testfall', exact: true }).click(); await page.getByRole('option', { name, exact: true }).click(); } };
         async function scan(state) {
           const result = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
           const overflow = await page.evaluate(() => ({ width: innerWidth, content: document.documentElement.scrollWidth }));
@@ -47,7 +47,7 @@ const results = [];
         await scan('read-only');
         await page.getByRole('checkbox', { name: 'Skrivskyddat', exact: true }).uncheck();
         await fixture.selectOption('accessibility');
-        await page.getByText('Talare', { exact: true }).click();
+        // The fixtures page's "Talare" section is open from the start.
         const names = page.getByRole('combobox', { name: 'Namn för Talare 1', exact: true });
         await names.focus();
         await page.keyboard.press('ArrowDown');
@@ -57,12 +57,12 @@ const results = [];
         await scan('speaker-names-open');
         await page.keyboard.press('Escape');
         await scan('six-speaker-colors');
-        await page.addStyleTag({ content: '.transcript-player *, .speaker-mapping-editor * { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } .transcript-editor-text p { margin-bottom: 2em !important; }' });
+        await page.addStyleTag({ content: '.transcript-player *, .speaker-mapping-editor * { line-height: 1.5 !important; letter-spacing: .12em !important; word-spacing: .16em !important; } [role="textbox"][aria-label^="Transkript"] p { margin-bottom: 2em !important; }' });
         await scan('text-spacing');
         await page.locator('[data-text-span]').last().focus();
         await page.waitForFunction(() => {
           const target = document.activeElement, rect = target.getBoundingClientRect();
-          const tools = document.querySelector('.transcript-toolbar');
+          const tools = document.querySelector('[aria-label="Transkriptverktyg"]');
           const toolbarBottom = getComputedStyle(tools).position === 'sticky' ? tools.getBoundingClientRect().bottom : 0;
           return Math.min(rect.bottom, innerHeight) > Math.max(rect.top, toolbarBottom, 0);
         });
@@ -70,7 +70,7 @@ const results = [];
         await fixture.selectOption('clear');
         await page.emulateMedia({ forcedColors: 'active' });
         await scan('forced-colors');
-        const activeWord = page.locator('.transcript-editor-text [aria-current="true"]').first();
+        const activeWord = page.locator('[role="textbox"][aria-label^="Transkript"] [aria-current="true"]').first();
         assert.equal(await activeWord.evaluate(el => getComputedStyle(el).forcedColorAdjust), 'none');
         await context.close();
       }

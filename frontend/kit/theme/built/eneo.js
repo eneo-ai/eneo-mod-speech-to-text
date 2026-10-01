@@ -39,7 +39,7 @@ export const eneoTheme = {
     "--color-background-popover": "light-dark(#FBFCFF, #2E3135)",
     "--color-background-inverted": "light-dark(#1B1B1F, #F9FCFF)",
     "--color-border": "light-dark(#1B1B1F1A, #EDF1F61A)",
-    "--color-border-emphasized": "light-dark(#8F909B, #626972)",
+    "--color-border-emphasized": "light-dark(#85868F, #626972)",
     "--color-skeleton": "light-dark(#A9AAB5, #414750)",
     "--color-track": "light-dark(#A9AAB5, #414750)",
     "--color-shadow": "light-dark(#0000001A, #0000004D)",
@@ -102,7 +102,8 @@ export const eneoTheme = {
     "--font-family-heading": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
     "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
     "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)",
-    "--size-element-lg": "48px"
+    "--size-element-lg": "48px",
+    "--color-error": "light-dark(#AA181D, #F47B7F)"
   },
   components: {
     "heading": {
@@ -307,6 +308,11 @@ export const eneoTheme = {
     "avatar-fallback": {
       "base": {
         "color": "var(--color-text-primary)"
+      }
+    },
+    "collapsible-trigger": {
+      "base": {
+        "minHeight": "24px"
       }
     }
   },

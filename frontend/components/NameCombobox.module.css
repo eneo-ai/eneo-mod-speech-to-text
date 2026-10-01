@@ -1,0 +1,117 @@
+/* The name field and its list (NameCombobox): the field is the design system's text input with a chevron laid over its
+   end; the list is a popover in the top layer, anchored to the field. */
+.root {
+  position: relative;
+  min-inline-size: 0;
+}
+
+/* Room for the chevron at the end of the field's box. */
+.field {
+  padding-inline-end: var(--size-element-md);
+}
+
+/* Beside the field's box, not the status line under it: as tall as the field. */
+.chevronButton {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+}
+
+.chevron {
+  transition: transform var(--module-duration-quick) var(--module-ease-smooth-out);
+}
+
+.chevronOpen {
+  composes: chevron;
+  transform: rotate(180deg);
+}
+
+/* The positioned layer: as wide as the field, and never wider than the screen. */
+.layer {
+  min-inline-size: max(anchor-size(width), 12rem);
+  max-inline-size: calc(100dvw - 2 * var(--spacing-4));
+}
+
+.list {
+  max-block-size: 15rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--spacing-1);
+  list-style: none;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  min-block-size: var(--spacing-8);
+  padding: var(--spacing-1-5) var(--spacing-2);
+  border-radius: var(--radius-inner);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-primary);
+  cursor: pointer;
+}
+
+/* The row Enter would take. */
+.option[aria-selected="true"] {
+  background: var(--color-overlay-hover);
+  box-shadow: inset 3px 0 0 var(--color-accent);
+}
+
+/* "Ingen" is a different kind of row: set apart, and quieter. */
+.option[data-kind="none"] {
+  color: var(--color-text-secondary);
+}
+
+.option[data-kind="none"]:not(:first-child) {
+  margin-block-start: var(--spacing-1);
+  border-block-start: 1px solid var(--color-border);
+  border-start-start-radius: 0;
+  border-start-end-radius: 0;
+}
+
+.optionIcon {
+  flex-shrink: 0;
+  inline-size: var(--spacing-4);
+  block-size: var(--spacing-4);
+  color: var(--color-icon-secondary);
+}
+
+.option[data-kind="add"] .optionIcon,
+.option:not([data-kind]) .optionIcon {
+  color: var(--color-icon-accent);
+}
+
+.optionText {
+  flex: 1;
+  min-inline-size: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.optionNote {
+  flex-shrink: 0;
+  font-size: var(--font-size-xs);
+  color: var(--color-text-secondary);
+}
+
+@media (pointer: coarse) {
+  .option {
+    min-block-size: var(--size-element-md);
+    font-size: var(--font-size-base);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}
+
+/* Forced colours drop the shadow and the tint: the marked row is outlined. */
+@media (forced-colors: active) {
+  .option[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

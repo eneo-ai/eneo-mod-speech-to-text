@@ -2,7 +2,7 @@
  * How to reach every screen and state of the app against the stub backend
  * (stub-server.py): each state is a name and the steps a user takes to get there.
  */
-import { expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 /** Opens a page of the app, with Next's dev-only indicator hidden (it is not the app). */
 export async function open(page: Page, path: string) {
@@ -173,6 +173,29 @@ export async function result(page: Page) {
   await heading(page, "Dokumentet är klart");
   // Below a laptop's width the transcript waits in its tab.
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
+}
+
+/**
+ * The speaker-review editor (README "Granska transkriptet"): the development page's fixtures, the "bulk" case with its
+ * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
+ */
+export async function reviewEditor(page: Page) {
+  await open(page, "/dev/speaker-review");
+  await pick(page.getByRole("combobox", { name: "Testfall" }), "bulk");
+  await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
+  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
+}
+
+/**
+ * The text at the top of the screen. A tall page scanned from its top has the docked player over whatever lies in the
+ * screen's last 70 px, and a time button half under it is a target "partly obscured" that no one meets by scrolling.
+ */
+const readingTheText = (page: Page) => page.locator("[data-turn-index]").first().evaluate((turn) => turn.scrollIntoView({ block: "start" }));
+
+/** Chooses `option` in one of the design system's selectors. */
+export async function pick(field: Locator, option: string) {
+  await field.click();
+  await field.page().getByRole("option", { name: option, exact: true }).click();
 }
 
 export interface State {
@@ -726,6 +749,47 @@ export const STATES: State[] = [
       });
       await page.reload();
       await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
+    },
+  },
+  { name: "review-editor", go: reviewEditor },
+  {
+    // A passage marked, and the field for correcting it.
+    name: "review-editor-selection",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await page.getByRole("button", { name: "Rätta text", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeFocused();
+      await readingTheText(page);
+    },
+  },
+  {
+    // A passage marked, and what the text says about it.
+    name: "review-editor-details",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await page.getByRole("button", { name: "Detaljer" }).click();
+      await expect(page.getByText("Om markeringen")).toBeVisible();
+      await readingTheText(page);
+    },
+  },
+  {
+    name: "review-editor-confirmed",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: /^Bekräfta alla förslag/ }).click();
+      await expect(page.getByRole("button", { name: "Ångra", exact: true })).toBeVisible();
+      await expect(page.getByText("Inga väntande talarbeslut")).toBeVisible();
+    },
+  },
+  {
+    name: "review-editor-readonly",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("checkbox", { name: "Skrivskyddat" }).check();
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await expect(page.getByText("Talargranskningen är skrivskyddad.")).toBeVisible();
     },
   },
   {

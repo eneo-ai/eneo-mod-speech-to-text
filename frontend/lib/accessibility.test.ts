@@ -1,103 +1,139 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { buttonVariants } from "../components/ui/button";
+import { resolveThemeTokens, type ResolvedThemeMode } from "@astryxdesign/core/theme/tokens";
 
-// WCAG relative luminance using the actual CSS tokens, including alpha backgrounds.
-type RGB = [number, number, number];
-function hsl(h: number, s: number, l: number): RGB {
+// WCAG relative luminance of the values the browser paints: the built theme's resolved tokens and the module's own
+// `--module-*` colours in globals.css. Alpha fills are composited over the surface they sit on.
+type RGBA = [number, number, number, number];
+
+function hslToRgb(h: number, s: number, l: number): RGBA {
   s /= 100; l /= 100;
   const a = s * Math.min(l, 1 - l);
   const channel = (n: number) => { const k = (n + h / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
-  return [channel(0), channel(8), channel(4)];
+  return [channel(0), channel(8), channel(4), 1];
 }
-function contrast(a: RGB, b: RGB) {
-  const luminance = (rgb: RGB) => rgb.map((v) => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
+function parseColor(value: string): RGBA {
+  const text = value.trim();
+  const hex = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(text);
+  if (hex) return [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16) / 255).concat(hex[2] ? parseInt(hex[2], 16) / 255 : 1) as RGBA;
+  const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?\s*\)$/.exec(text);
+  if (rgb) return [Number(rgb[1]) / 255, Number(rgb[2]) / 255, Number(rgb[3]) / 255, rgb[4] === undefined ? 1 : Number(rgb[4])];
+  const hsl = /^hsl\(\s*([\d.]+)(?:deg)?[,\s]+([\d.]+)%[,\s]+([\d.]+)%\s*\)$/.exec(text);
+  if (hsl) return hslToRgb(Number(hsl[1]), Number(hsl[2]), Number(hsl[3]));
+  assert.fail(`not a colour this test reads: ${value}`);
+}
+const over = (foreground: RGBA, background: RGBA): RGBA => {
+  const alpha = foreground[3];
+  return [0, 1, 2].map((i) => foreground[i] * alpha + background[i] * (1 - alpha)).concat(1) as RGBA;
+};
+function contrast(a: RGBA, b: RGBA) {
+  const luminance = (rgb: RGBA) => rgb.slice(0, 3).map((v) => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4)
     .reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
   const [high, low] = [luminance(a), luminance(b)].sort((a, b) => b - a);
   return (high + .05) / (low + .05);
 }
+function hue([r, g, b]: RGBA) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  if (max === min) return 0;
+  const d = max - min;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+
 const css = readFileSync("app/globals.css", "utf8");
-const declarations = (selector: string): Record<string, string> => Object.fromEntries([...css.split(`${selector} {`)[1].split("}")[0]
-  .matchAll(/--([\w-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-// .dark sits on the same element as :root, so a token declared once as var(--x) follows the theme.
-const themes = { ":root": declarations(":root"), ".dark": { ...declarations(":root"), ...declarations(".dark") } };
+// A colour the module defines once for both modes: `--name: light-dark(<light>, <dark>)`.
+function pair(name: string): [string, string] {
+  const match = new RegExp(`--${name}:\\s*light-dark\\(\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*,\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*\\)`, "i").exec(css);
+  assert.ok(match, `globals.css defines --${name} as light-dark(<light>, <dark>)`);
+  return [match[1], match[2]];
+}
+// The recording colour is Phase 4's `--module-color-record`; until it exists, today's `--record` (an HSL triplet per mode).
+function recordPair(): [string, string] {
+  if (/--module-color-record:/.test(css)) return pair("module-color-record");
+  const triplet = (block: string) => /--record:\s*(\d+) (\d+)% (\d+)%/.exec(css.split(`${block} {`)[1])!;
+  const [light, dark] = [triplet(":root"), triplet(".dark")];
+  return [`hsl(${light[1]} ${light[2]}% ${light[3]}%)`, `hsl(${dark[1]} ${dark[2]}% ${dark[3]}%)`];
+}
 
-for (const [theme, raw] of Object.entries(themes)) {
-  const color = (name: string): RGB => {
-    const value = raw[name];
-    assert.ok(value, `${theme} defines --${name}`);
-    const reference = /^var\(--([\w-]+)\)$/.exec(value);
-    if (reference) return color(reference[1]);
-    const parts = /^(\d+) (\d+)% (\d+)%$/.exec(value);
-    assert.ok(parts, `--${name} is an HSL triplet: ${value}`);
-    return hsl(Number(parts[1]), Number(parts[2]), Number(parts[3]));
-  };
-  const atLeast = (minimum: number, foreground: string, background: string) => {
-    const ratio = contrast(color(foreground), color(background));
-    assert.ok(ratio >= minimum, `${theme} ${foreground} on ${background}: ${ratio.toFixed(2)} < ${minimum}`);
-  };
+const SPEAKERS = Array.from({ length: 6 }, (_, i) => `module-speaker-${i}`);
 
-  test(`${theme} editor text, speaker labels, focus and control edges meet AA contrast`, () => {
-    for (const foreground of ["ink", "ink-soft", "ink-mute", "primary", "ochre", ...Array.from({ length: 6 }, (_, i) => `speaker-${i}`)]) {
-      for (const background of ["paper", "bg", "bg-2"]) atLeast(4.5, foreground, background);
+async function themeTokens(mode: ResolvedThemeMode) {
+  const { eneoTheme } = await import("@/kit/theme/built/eneo");
+  return resolveThemeTokens(eneoTheme, { mode });
+}
+
+for (const [index, mode] of (["light", "dark"] as const).entries()) {
+  // The three grounds text and controls sit on: the card, the page, and a muted fill (an alpha) over the card.
+  async function palette() {
+    const tokens = await themeTokens(mode);
+    const token = (name: string) => parseColor(tokens[name]);
+    const surface = token("--color-background-surface");
+    const grounds = { surface, body: token("--color-background-body"), muted: over(token("--color-background-muted"), surface) };
+    const module = (name: string) => parseColor(pair(name)[index]);
+    const atLeast = (minimum: number, foreground: RGBA, background: RGBA, what: string) => {
+      const ratio = contrast(foreground, background);
+      assert.ok(ratio >= minimum, `${mode} ${what}: ${ratio.toFixed(2)} < ${minimum}`);
+    };
+    return { token, module, surface, grounds, atLeast };
+  }
+
+  test(`${mode}: text, error text, speaker labels, review marks, focus and control edges meet AA contrast`, async () => {
+    const { token, module, surface, grounds, atLeast } = await palette();
+    const foregrounds: [string, RGBA][] = [
+      ["text-primary", token("--color-text-primary")], ["text-secondary", token("--color-text-secondary")], ["accent", token("--color-text-accent")],
+      ["error", token("--color-error")],
+      ["review", module("module-color-review")], ...SPEAKERS.map((name): [string, RGBA] => [name, module(name)]),
+    ];
+    for (const [name, foreground] of foregrounds) {
+      for (const [ground, background] of Object.entries(grounds)) atLeast(4.5, foreground, background, `${name} on ${ground}`);
     }
-    for (const background of ["paper", "bg-2"]) atLeast(3, "rule", background);
-    atLeast(4.5, "primary-foreground", "primary");
+    // Confirmed words are text of the transcript, which sits on its card.
+    atLeast(4.5, module("module-color-ok"), surface, "ok on surface");
+    // A control's edge and the focus ring are UI parts: 3:1 against every ground they sit on.
+    for (const [ground, background] of Object.entries(grounds)) atLeast(3, token("--color-border-emphasized"), background, `control edge on ${ground}`);
+    for (const ground of ["surface", "body"] as const) atLeast(3, token("--focus-outline-color"), grounds[ground], `focus ring on ${ground}`);
+    atLeast(4.5, token("--color-on-accent"), token("--color-accent"), "on-accent on accent");
+    atLeast(4.5, token("--color-on-error"), token("--color-error"), "on-error on error");
+    // Text over the selection tint.
     for (const alpha of [.1, .2, .25, .3]) {
-      const blended = color("paper").map((v, i) => v * (1 - alpha) + color("primary")[i] * alpha) as RGB;
-      assert.ok(contrast(color("ink"), blended) >= 4.5, `selected text on primary/${alpha}`);
-      if (alpha <= .2) assert.ok(contrast(color("primary"), blended) >= 4.5, `confirm button on primary/${alpha}`);
+      const tint = over([...token("--color-accent").slice(0, 3), alpha] as RGBA, surface);
+      atLeast(4.5, token("--color-text-primary"), tint, `selected text on accent/${alpha}`);
+      if (alpha <= .2) atLeast(4.5, token("--color-text-accent"), tint, `confirm button on accent/${alpha}`);
     }
   });
 
-  test(`${theme} the first speaker is not the brand's blue, so a name never reads as a link`, () => {
-    const hue = (name: string) => Number(/^(\d+) /.exec(raw[name])?.[1]);
-    const apart = Math.abs(hue("speaker-0") - hue("primary"));
-    assert.ok(Math.min(apart, 360 - apart) >= 40, `${theme} speaker-0 and primary hues: ${apart}`);
+  test(`${mode}: the first speaker is not the brand's blue, so a name never reads as a link`, async () => {
+    const { token, module } = await palette();
+    const apart = Math.abs(hue(module("module-speaker-0")) - hue(token("--color-accent")));
+    assert.ok(Math.min(apart, 360 - apart) >= 40, `${mode} module-speaker-0 and accent hues: ${apart.toFixed(0)}`);
   });
 
-  test(`${theme} defines the shadcn semantic tokens with readable pairs`, () => {
-    for (const [foreground, background] of [
-      ["foreground", "background"], ["card-foreground", "card"], ["popover-foreground", "popover"],
-      ["primary-foreground", "primary"], ["secondary-foreground", "secondary"], ["accent-foreground", "accent"],
-      ["destructive-foreground", "destructive"],
-    ]) atLeast(4.5, foreground, background);
-    // Muted text also carries disabled controls, which keep their words readable.
-    for (const foreground of ["foreground", "muted-foreground", "primary", "destructive"]) {
-      for (const background of ["background", "card", "muted"]) atLeast(4.5, foreground, background);
-    }
-    // Control edges and the focus ring are UI parts: 3:1 against every surface they sit on.
-    for (const background of ["background", "card", "muted"]) atLeast(3, "input", background);
-    for (const background of ["background", "card"]) atLeast(3, "ring", background);
-    color("border");
-  });
-
-  test(`${theme} status colours: the recording dot, errors and the selected tint`, () => {
-    // The recording dot is a UI part next to its word; it shows on every surface.
-    for (const background of ["background", "card", "muted"]) atLeast(3, "record", background);
+  test(`${mode}: status colours: the recording dot, errors and the selected tint`, async () => {
+    const { token, grounds, surface, atLeast } = await palette();
+    const record = parseColor(recordPair()[index]);
+    // The recording dot is a UI part next to its word; it shows on every ground.
+    for (const [ground, background] of Object.entries(grounds)) atLeast(3, record, background, `record dot on ${ground}`);
     // An error or a destructive action never looks like "recording".
-    const apart = contrast(color("destructive"), color("record"));
-    assert.ok(apart >= 1.4, `${theme} destructive and record are distinct: ${apart.toFixed(2)}`);
-    // A selected card: its text, its secondary line and its border on the tint.
-    atLeast(4.5, "foreground", "primary-soft");
-    atLeast(4.5, "ink-soft", "primary-soft");
-    atLeast(3, "primary", "primary-soft");
+    atLeast(1.4, token("--color-error"), record, "error and record are distinct");
+    // A selected card: its text, its secondary line and its accent on the tint.
+    const selected = over(token("--color-accent-muted"), surface);
+    atLeast(4.5, token("--color-text-primary"), selected, "text on the selected tint");
+    atLeast(4.5, token("--color-text-secondary"), selected, "secondary text on the selected tint");
+    atLeast(3, token("--color-accent"), selected, "accent on the selected tint");
   });
 }
 
-
-test("buttons keep a mouse's density and grow to 44 px targets on a touch screen", () => {
-  const px = (classes: string, prefix: string) => {
-    const m = new RegExp(`(?:^| )${prefix}(?:h|size)-(\\d+)(?= |$)`).exec(classes);
-    return m ? Number(m[1]) * 4 : null;
-  };
-  for (const size of ["default", "sm", "lg", "icon"] as const) {
-    const classes = buttonVariants({ size });
-    const mouse = px(classes, ""), touch = px(classes, "coarse:");
-    assert.ok(mouse !== null && mouse >= 24 && mouse <= 40, `${size} on a mouse: ${mouse}`);
-    assert.equal(touch, 44, `${size} on a touch screen`);
-  }
-  // The one action a screen exists for is large at every pointer.
-  assert.equal(px(buttonVariants({ size: "xl" }), ""), 48);
+test("controls keep a mouse's density and grow to 44 px targets on a touch screen", async () => {
+  const built = readFileSync("kit/theme/built/eneo.css", "utf8");
+  const coarse = /@media \(pointer: coarse\) \{[\s\S]*?:scope \{([^}]*)\}/.exec(built)?.[1] ?? "";
+  const touch = (size: string) => Number(new RegExp(`--size-element-${size}:\\s*(\\d+)px`).exec(coarse)?.[1]);
+  const mouse = await themeTokens("light");
+  const onMouse = (size: string) => parseInt(mouse[`--size-element-${size}`], 10);
+  for (const size of ["sm", "md"]) assert.ok(onMouse(size) >= 24 && onMouse(size) <= 40, `${size} on a mouse: ${onMouse(size)}`);
+  // The large control is the one action a screen exists for: never smaller than the medium one, 48 px at most.
+  assert.ok(onMouse("lg") >= onMouse("md") && onMouse("lg") <= 48, `lg on a mouse: ${onMouse("lg")}`);
+  assert.equal(touch("sm"), 44, "sm on a touch screen");
+  assert.equal(touch("md"), 44, "md on a touch screen");
+  assert.ok(touch("lg") >= 44, "lg on a touch screen");
 });
