@@ -281,6 +281,64 @@ class UnsafePathTests(BoundaryCase):
         self.assertEqual(self.eneo.requests, [])
 
 
+class BrowserHeaderTests(BoundaryCase):
+    """The browser's headers are the browser's: one httpx cannot encode is a 400, and framing is the module's own."""
+
+    def raw(self, method: str, path: str, headers: dict[str, str], body=None, **kwargs) -> tuple[int, bytes]:
+        """A request as a client that sends bytes httpx would not: http.client writes a header value as latin-1."""
+        host, port = urlparse(MODULE_SERVER.url).netloc.split(":")
+        connection = http.client.HTTPConnection(host, int(port), timeout=30)
+        connection.request(method, path, body=body, headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN, **headers}, **kwargs)
+        response = connection.getresponse()
+        answer = (response.status, response.read())
+        connection.close()
+        return answer
+
+    def test_a_header_value_httpx_cannot_encode_is_a_400_not_a_500(self) -> None:
+        cases = {
+            "the proxy": ("GET", "/api/eneo/flows/", {"X-Note": "caf\u00e9"}),
+            "the signed file's Accept": ("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", {"Accept": "audio/\u00e9"}),
+            "the signed file's Range": ("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", {"Range": "bytes=0-\u00e9"}),
+        }
+        self.respond_with(lambda seen: (200, [("content-type", "application/json")], json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode()))
+        for label, (method, path, headers) in cases.items():
+            with self.subTest(label):
+                self.eneo.requests.clear()
+
+                status, _ = self.raw(method, path, headers)
+
+                self.assertEqual(status, 400)
+                self.assertEqual(self.eneo.requests, [])
+
+    def test_a_chunked_post_is_forwarded_whole_without_its_framing_headers(self) -> None:
+        payload = b'{"input": "text"}'
+        host, port = urlparse(MODULE_SERVER.url).netloc.split(":")
+        with socket.create_connection((host, int(port)), timeout=30) as connection:
+            connection.sendall(
+                (
+                    f"POST /api/eneo/flows/f/runs/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\n"
+                    f"Cookie: {SESSION_COOKIE}={self.session_a}\r\nContent-Type: application/json\r\n"
+                    f"Transfer-Encoding: chunked\r\n\r\n{len(payload[:5]):x}\r\n".encode()
+                    + payload[:5] + f"\r\n{len(payload[5:]):x}\r\n".encode() + payload[5:] + b"\r\n0\r\n\r\n"
+                )
+            )
+            answer = connection.recv(65536)
+
+        self.assertTrue(answer.startswith(b"HTTP/1.1 200"), answer)
+        seen = self.eneo.requests[-1]
+        self.assertEqual(seen.body, payload)
+        self.assertNotIn("transfer-encoding", seen.headers)
+
+    def test_the_headers_that_frame_a_request_are_not_passed_on(self) -> None:
+        sent = {"TE": "trailers", "Upgrade": "h2c", "Keep-Alive": "timeout=5", "Trailer": "X-Late", "Proxy-Authorization": "Basic Zm9vOmJhcg=="}
+
+        status, _ = self.raw("GET", "/api/eneo/flows/", sent)
+
+        self.assertEqual(status, 200)
+        received = self.eneo.requests[-1].headers
+        self.assertEqual({name for name in map(str.lower, sent) if name in received}, set())
+
+
 class RedirectTests(BoundaryCase):
     """F2: a ``next`` never sends the browser to another host, however the browser reads the Location it gets."""
 

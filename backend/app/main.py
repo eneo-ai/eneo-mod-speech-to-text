@@ -174,8 +174,24 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
     # so the module's own hostname passed on would fail every write in production.
     "origin",
     "referer",
+    # The headers that frame a request or ask for another protocol are the module's own business: the body is read
+    # whole (or counted) here and sent with a Content-Length, so a browser's "Transfer-Encoding: chunked" beside it
+    # makes Eneo refuse the request.
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "keep-alive",
+    "proxy-authorization",
 }
 _HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
+
+def _ascii_only(headers: dict[str, str]) -> dict[str, str]:
+    """``headers`` if httpx can encode them (as ASCII); a byte above 127 in a browser's header would raise, a 500."""
+    if not all(name.isascii() and value.isascii() for name, value in headers.items()):
+        raise HTTPException(status_code=400, detail="Header values must be ASCII")
+    return headers
+
 
 # Headers we should not forward from upstream response back to client. Eneo's cookies are not the browser's:
 # several would be merged into one line, and one named like the module's session would replace it. Its Location
@@ -653,6 +669,13 @@ async def _stream_signed(
     if any(_leaves_route(part) for part in resource):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
 
+    fwd_headers = _ascii_only(
+        {
+            name: value
+            for name, value in request.headers.items()
+            if name.lower() in _STREAM_FORWARD_REQUEST_HEADERS
+        }
+    )
     key = (request.cookies.get(SESSION_COOKIE) or "", mint_path)
     try:
         url = await _signed_url(request, key, unavailable)
@@ -662,11 +685,6 @@ async def _stream_signed(
             content={"error": "upstream_invalid", "detail": "Eneo answered with something the module cannot use."},
         )
 
-    fwd_headers = {
-        name: value
-        for name, value in request.headers.items()
-        if name.lower() in _STREAM_FORWARD_REQUEST_HEADERS
-    }
     upstream_request = http_client.build_request("GET", url, headers=fwd_headers)
     try:
         upstream = await http_client.send(upstream_request, stream=True)
@@ -830,6 +848,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if name.lower() in _HOP_BY_HOP_REQUEST_HEADERS:
             continue
         fwd_headers[name] = value
+    _ascii_only(fwd_headers)
     fwd_headers.update(module_auth.upstream_auth_headers(request))
 
     body = await request.body()
