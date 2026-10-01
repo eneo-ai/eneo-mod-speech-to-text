@@ -33,12 +33,12 @@ test("signed out: the page stays mounted with all it holds, hidden and out of re
 
   await act(async () => setSignedOut(true));
   assert.equal(cover().hasAttribute("inert"), true, "out of reach");
-  assert.match(cover().className, /\binvisible\b/, "and not shown");
+  assert.match(cover().className, /pageSignedOut/, "and not shown (its class hides it)");
   assert.ok(button(container, "Räknat 1"), "still there, as it was");
 
   await act(async () => setSignedOut(false));
   assert.equal(cover().hasAttribute("inert"), false);
-  assert.doesNotMatch(cover().className, /\binvisible\b/);
+  assert.doesNotMatch(cover().className, /pageSignedOut/);
   assert.ok(button(container, "Räknat 1"));
 });
 
@@ -197,7 +197,7 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
   // (useSignedOut), and that it is neither visible, reachable nor in the accessibility tree is proved in
   // tests/e2e/session-cover.spec.ts and, for the PDF preview, in result-document.test.ts.
   assert.ok(dialog.closest("[inert]"), "inside the inert cover");
-  assert.match(dialog.closest("[inert]")!.className, /\binvisible\b/, "and not shown");
+  assert.match(dialog.closest("[inert]")!.className, /pageSignedOut/, "and not shown");
   assert.equal(document.body.querySelector('input[aria-label="Vem är Talare 1?"]'), field, "the same field, still mounted");
   assert.equal(field.value, "Anna Berg");
 });
