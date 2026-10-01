@@ -56,6 +56,9 @@ class Settings(BaseModel):
     cookie_secure: bool = True
     demo_space_id: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
+    # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
+    max_body_bytes: int = 10 * 1024 * 1024
+    max_upload_bytes: int = 1024 * 1024 * 1024
     # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
@@ -92,6 +95,19 @@ def _parse_bool(raw: str | None, *, default: bool, name: str) -> bool:
     if normalized in {"false", "0", "no", "off"}:
         return False
     raise RuntimeError(f"{name} must be a boolean")
+
+
+def _positive_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 0
+    if value <= 0:
+        raise RuntimeError(f"{name} must be an integer greater than zero")
+    return value
 
 
 def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
@@ -228,6 +244,8 @@ def load_settings() -> Settings:
         cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE"),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
         upload_proxy_timeout_seconds=upload_timeout,
+        max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
+        max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
         session_max_age_seconds=session_minutes * 60,
         organization=organization,
         organization_logo=organization_logo,

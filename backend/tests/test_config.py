@@ -104,6 +104,28 @@ class SettingsTests(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "SESSION_MAX_AGE_MINUTES"):
                         load_settings()
 
+    def test_body_limits_default_to_10_mib_and_1_gib(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (10 * 1024 * 1024, 1024**3))
+
+    def test_body_limits_are_configurable(self) -> None:
+        environment = valid_environment() | {"MAX_BODY_BYTES": "2048", "MAX_UPLOAD_BYTES": "5000000"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (2048, 5_000_000))
+
+    def test_rejects_invalid_body_limits(self) -> None:
+        for name in ("MAX_BODY_BYTES", "MAX_UPLOAD_BYTES"):
+            for raw in ("0", "-5", "ten"):
+                with self.subTest(name=name, raw=raw):
+                    with patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, name):
+                            load_settings()
+
     def test_rejects_unknown_auth_mode(self) -> None:
         environment = valid_environment()
         environment["AUTH_MODE"] = "automatic"
