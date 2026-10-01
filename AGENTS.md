@@ -18,6 +18,13 @@ Plan: `docs/plans/2026-10-01-astryx-port-plan.md`. Design: `docs/plans/2026-10-0
 - Do not author StyleX (`stylex.create`, `xstyle`) and do not run `astryx swizzle`.
 - A design-system shortfall is fixed once in `frontend/kit/theme/eneo.theme.ts`, then `npm run theme:build`.
 - Astryx is pinned to an exact version. Do not upgrade it in a feature change.
+- Overlays (dialog, alert dialog, menu, sheet): a dialog mounted once and opened by `isOpen`, as the component's docs show,
+  and one mounted for each opening both leave nothing behind (`frontend/tests/e2e/leaks.spec.ts` proves each over 40
+  openings; `frontend/app/dev/dialog-leak` is its fixture, with a dialog that really leaks to prove the spec can fail).
+  A node count that follows a click on an overlay that was then removed is not the overlay's: Chromium keeps the element
+  last under the pointer, and all that was removed with it (25 to 39 nodes for one dialog), until the pointer moves, so
+  `leaks.spec` moves the pointer off after every close. Add each new overlay to `leaks.spec` as it is; a count that
+  survives the pointer move is a real leak to find, and the slack is never raised.
 - The hosted Astryx MCP documents the latest release. When it and `npm run astryx` disagree, the CLI is right.
 
 ## Product rules
