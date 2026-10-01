@@ -418,7 +418,7 @@ export class RecordingStore {
       const files = await Promise.all(
         recording.parts.map(async (part) => {
           // Overflow is sticky, so its chunks always follow the database's.
-          const data: Array<Blob | ArrayBuffer | Uint8Array> = [
+          const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = [
             ...(await this.backend.chunks(id, part.index)),
             ...(await this.overflow.chunks(id, part.index)),
           ].map((chunk) => chunk.data);

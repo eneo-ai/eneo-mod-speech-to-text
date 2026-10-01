@@ -2,23 +2,11 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "commonjs",
-    "moduleResolution": "node",
     "target": "es2022",
     "noEmit": false,
     "incremental": false,
     "outDir": ".test-build",
-    "rootDir": ".",
-    "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@astryxdesign/core/locales/*": [
-        "./node_modules/@astryxdesign/core/locales/*"
-      ],
-      "@astryxdesign/core/*": [
-        "./node_modules/@astryxdesign/core/dist/*"
-      ]
-    }
+    "rootDir": "."
   },
   "include": [
     "lib/*.test.ts"
