@@ -38,6 +38,7 @@ from fastapi import HTTPException  # noqa: E402
 from app import main  # noqa: E402
 from app.config import load_settings  # noqa: E402
 from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
+from app.upstream import make_client  # noqa: E402
 
 ORIGIN = main.settings.module_origin
 FAR_FUTURE = 4102444800  # 2100-01-01
@@ -90,7 +91,7 @@ class FakeEneo:
         # One connection per request: the module's shared client lives on whichever loop a test runs.
         framing = [(b"connection", b"close")]
         lazy = not isinstance(payload, bytes)
-        if not lazy:
+        if not lazy and not any(name.lower() == "content-length" for name, _ in headers):
             framing.append((b"content-length", str(len(payload)).encode()))
         await send({"type": "http.response.start", "status": status, "headers": [(k.encode(), v.encode("latin-1")) for k, v in headers] + framing})
         if not lazy:
@@ -861,6 +862,35 @@ class UpstreamAnswerTests(BoundaryCase):
         response = self.request("GET", "/api/eneo/flows/", self.session_a)
 
         self.assertEqual((response.status_code, len(response.content)), (200, CAP))
+
+    def test_an_answer_that_cannot_carry_a_body_is_not_judged_by_the_length_it_describes(self) -> None:
+        # RFC 9110: a 304 may carry the Content-Length and Content-Encoding of the representation it stands for.
+        for label, headers in {
+            "a large Content-Length": [("etag", '"v1"'), ("content-length", str(10**9))],
+            "a content-encoding": [("etag", '"v1"'), ("content-encoding", "gzip")],
+            "both": [("etag", '"v1"'), ("content-length", str(10**9)), ("content-encoding", "gzip")],
+        }.items():
+            with self.subTest(label):
+                self.respond_with(lambda seen, headers=headers: (304, headers, b""))
+
+                response = self.request("GET", "/api/eneo/flows/", self.session_a, headers={"If-None-Match": '"v1"'})
+
+                self.assertEqual(response.status_code, 304)
+                self.assertEqual(response.content, b"")
+
+    def test_the_answer_to_a_head_request_is_not_judged_by_the_length_it_describes(self) -> None:
+        self.respond_with(lambda seen: (200, [("content-length", str(10**9)), ("content-encoding", "gzip")], b""))
+
+        async def head():
+            client = make_client(main.settings)
+            try:
+                return await client.head(f"{self.eneo.url}/anything")
+            finally:
+                await client.aclose()
+
+        response = asyncio.run(head())
+
+        self.assertEqual(response.status_code, 200)
 
     def test_an_upload_answer_past_the_bound_is_a_502(self) -> None:
         self.serve(200, [self.JSON], lazy(300 * MiB))

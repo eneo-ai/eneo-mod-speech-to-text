@@ -73,6 +73,10 @@ def make_client(settings: Settings) -> httpx.AsyncClient:
         limit = request.extensions.get(LIMIT, settings.max_response_bytes)
         if limit is None:
             return
+        # These answers carry no content whatever their headers say: a 304's Content-Length and Content-Encoding
+        # describe the representation it stands for (RFC 9110), and so do a HEAD's. No byte of them is read.
+        if request.method == "HEAD" or response.status_code < 200 or response.status_code in {204, 304}:
+            return
         if response.headers.get("content-encoding", "identity").strip().lower() not in {"", "identity"}:
             raise UnboundedAnswer("The answer is encoded, and its decoded size is not known", request=request)
         declared = response.headers.get("content-length", "")
