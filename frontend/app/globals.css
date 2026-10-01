@@ -121,32 +121,6 @@
   }
 }
 
-@layer components {
-  .font-mono {
-    font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
-  }
-
-  .quiet-em {
-    font-style: normal;
-    font-weight: 400;
-    color: hsl(var(--ink-mute));
-  }
-
-  .paper-card {
-    background: hsl(var(--paper));
-    border: 1px solid hsl(var(--rule-soft));
-    border-radius: 16px;
-  }
-
-  .rule-divider {
-    border-bottom: 1px solid hsl(var(--rule));
-  }
-
-  .rule-divider-soft {
-    border-bottom: 1px solid hsl(var(--rule-soft));
-  }
-}
-
 /* The colours of the module's own surfaces (the transcript's speakers and the review marks), one declaration for both
    colour modes. The first speaker is never the brand's blue, so a name is not read as a link. Contrast of each against
    the design system's surfaces is asserted by lib/accessibility.test.ts. */
@@ -169,8 +143,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
+  /* Loading spinners stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .animate-spin, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 /* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
