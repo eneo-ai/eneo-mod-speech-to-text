@@ -351,6 +351,27 @@ test("the microphone test lets go of the microphone when recording starts", asyn
   await view.unmount();
 });
 
+test("earlier runs: Visa fler körningar puts the focus on the first run it added, so the keyboard goes on from there", async () => {
+  const { createElement, useState } = await import("react");
+  const { EarlierRuns } = await import("../components/flow/EarlierRuns");
+  const run = (id: string) => ({ id, flow_id: "flow-1", status: "completed", created_at: new Date().toISOString() });
+  function Page() {
+    const [runs, setRuns] = useState([run("a")]);
+    return createElement(EarlierRuns, {
+      list: { runs, hasMore: runs.length < 3, loading: false, failed: null },
+      onOpen: () => {},
+      onMore: () => setRuns([run("a"), run("b"), run("c")]),
+    });
+  }
+  const view = await mount(createElement(Page));
+  await view.act(async () => button(view.container, "Visa fler körningar")!.click());
+  const opens = [...view.container.querySelectorAll("[data-open-run]")];
+  assert.equal(opens.length, 3);
+  assert.equal(document.activeElement, opens[1], "the first of the added runs, not the top of the list");
+  assert.equal(button(view.container, "Visa fler körningar"), null, "all shown: no more to show");
+  await view.unmount();
+});
+
 test("upload: the whole drop zone opens the file chooser, the chooser knows the flow's extensions, and the zone is no extra Tab stop", async () => {
   const { createElement, createRef } = await import("react");
   const { UploadPanel } = await import("../components/flow/UploadPanel");

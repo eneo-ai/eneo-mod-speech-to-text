@@ -158,7 +158,7 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
     }),
   );
   assert.match(sent, /Tidigare körningar/);
-  assert.match(sent, />Öppna<span class="sr-only">/, "the run Eneo has, one tap away");
+  assert.match(sent, /<button[^>]*aria-label="Öppna, körningen [^"]+"[^>]*>(?:<[^>]+>)*Öppna(?:<[^>]+>)*<\/button>/, "the run Eneo has, one tap away, named by which run it is");
   assert.match(sent, />Ta bort inspelningen från enheten<\/button>/);
 
   const notSent = renderToStaticMarkup(
