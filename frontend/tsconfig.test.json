@@ -21,7 +21,8 @@
     }
   },
   "include": [
-    "lib/*.test.ts"
+    "lib/*.test.ts",
+    "tests/next-types.d.ts"
   ],
   "exclude": [
     "node_modules",
