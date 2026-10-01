@@ -252,6 +252,19 @@ export const eneoTheme = {
           "outlineOffset": "var(--focus-outline-offset)"
         }
       }
+    },
+    "dropdown-menu-item": {
+      "base": {
+        ":focus-visible": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "calc(var(--focus-outline-width) * -1)"
+        }
+      }
+    },
+    "item": {
+      "base": {
+        "overflowWrap": "anywhere"
+      }
     }
   },
   __onDark: {
@@ -301,6 +314,11 @@ export const eneoTheme = {
               }
             },
             "typeahead-item": {
+              "base": {
+                "minHeight": "44px"
+              }
+            },
+            "top-nav-heading": {
               "base": {
                 "minHeight": "44px"
               }

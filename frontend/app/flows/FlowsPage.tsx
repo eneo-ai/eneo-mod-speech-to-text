@@ -3,9 +3,9 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
-import { AppHeader } from "@/components/AppHeader";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { FRAME } from "@/components/frame";
+import { LegacyAppHeader } from "@/components/flow/FlowTopBar";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { UnsentRecordings, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { getConfig } from "@/lib/api";
@@ -67,7 +67,7 @@ function FlowsListPage() {
 
   return (
     <>
-      <AppHeader />
+      <LegacyAppHeader />
       <main id="innehall" className={cn(FRAME, "flex flex-col gap-8 pb-16 pt-2 md:pt-6 lg:pt-8")}>
         <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink md:text-[34px]">
           Välj ett flöde

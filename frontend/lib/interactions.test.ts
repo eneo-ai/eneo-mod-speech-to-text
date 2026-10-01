@@ -517,7 +517,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
 
   const account = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
   await view.act(async () => {
-    account.dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));
+    account.click();
     await settle();
   });
   const logOut = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!;

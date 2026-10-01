@@ -24,7 +24,7 @@ export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
   await open(page, path);
-  await expect(page.getByRole("main").getByRole("status")).toBeVisible();
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
 }
 
 /** The flow list five minutes before the login ends: the warning is open. */
@@ -227,6 +227,15 @@ export const STATES: State[] = [
       await expect(page.getByRole("alert").filter({ hasText: "Inloggningen kunde inte" })).toBeVisible();
     },
   },
+  {
+    name: "signin-unreachable",
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) => route.abort());
+      await open(page, "/");
+      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
+    },
+  },
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
@@ -250,6 +259,28 @@ export const STATES: State[] = [
   {
     name: "account-menu",
     go: async (page) => {
+      await flows(page);
+      await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+    },
+  },
+  {
+    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, nothing is cut off.
+    name: "account-menu-long-name",
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) =>
+        route.fulfill({
+          json: {
+            authenticated: true,
+            auth_mode: "eneo_sso",
+            user: {
+              id: "user-1",
+              email: "gunnar.bostadsforvaltningsnamndsordforande.langefternamnsson@sundsvallskommunsstjansteorganisation.se",
+              username: "Gunnar Bostadsförvaltningsnämndsordförande Långefternamnsson-Östergren",
+            },
+          },
+        }),
+      );
       await flows(page);
       await page.getByRole("button", { name: /^Öppna konto för/ }).click();
       await expect(page.getByRole("menu")).toBeVisible();

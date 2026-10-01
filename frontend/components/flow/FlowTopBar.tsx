@@ -4,9 +4,40 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { useContext, type MouseEvent, type ReactNode } from "react";
 import { AccountMenu } from "@/components/AccountMenu";
-import { AppHeader } from "@/components/AppHeader";
+import { Brand } from "@/components/Brand";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
+import { FRAME } from "@/components/frame";
 import { cn } from "@/lib/utils";
+
+/**
+ * The app's header on the old frame, for the pages not yet on the shell (the flow list, until Phase 2, and this
+ * bar's laptop width, until Phase 3): from laptops a band across the window, its brand on the frame's left edge.
+ */
+export function LegacyAppHeader({
+  onLeave,
+  account = true,
+  linked = account,
+  className,
+}: {
+  /** Asked before the brand's link leaves the page; call preventDefault to stay. */
+  onLeave?: (event: MouseEvent) => void;
+  /** False before sign-in, and while the page shows something else in its place. */
+  account?: boolean;
+  /** Whether the brand links to the flows; not before sign-in, nor while leaving would abort an upload. */
+  linked?: boolean;
+  className?: string;
+}) {
+  return (
+    <header className={cn("lg:border-b lg:border-rule-soft lg:bg-paper", className)}>
+      <div className={cn(FRAME, "flex min-h-16 items-center justify-between pb-6 pt-5 md:pt-7 lg:py-3")}>
+        <div onClickCapture={onLeave}>
+          <Brand href={linked ? "/flows" : undefined} />
+        </div>
+        {account && <AccountMenu />}
+      </div>
+    </header>
+  );
+}
 
 /**
  * Phone and tablet: back, the flow's name as the page heading, and the
@@ -58,7 +89,7 @@ export function FlowTopBar({
         </Title>
         <div className="flex shrink-0 items-center pl-2">{trailing ?? (account && <AccountMenu />)}</div>
       </header>
-      <AppHeader onLeave={onLeaveLink} account={account} linked={!locked} className="hidden lg:block" />
+      <LegacyAppHeader onLeave={onLeaveLink} account={account} linked={!locked} className="hidden lg:block" />
     </>
   );
 }

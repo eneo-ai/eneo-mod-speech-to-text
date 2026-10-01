@@ -382,6 +382,15 @@
     outline-offset: var(--focus-outline-offset);
   }
 
+  .astryx-dropdown-menu-item:focus-visible {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: calc(var(--focus-outline-width) * -1);
+  }
+
+  .astryx-item {
+    overflow-wrap: anywhere;
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
@@ -452,6 +461,10 @@
     }
 
     .astryx-typeahead-item {
+      min-height: 44px;
+    }
+
+    .astryx-top-nav-heading {
       min-height: 44px;
     }
   }

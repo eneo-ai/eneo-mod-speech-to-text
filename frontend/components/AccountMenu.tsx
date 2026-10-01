@@ -1,26 +1,25 @@
 "use client";
 
-import { Laptop, Loader2, LogOut, Moon, Sun } from "lucide-react";
+import { Laptop, LogOut, Moon, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useContext, useEffect, useState } from "react";
+import { Avatar } from "@astryxdesign/core/Avatar";
+import {
+  DropdownMenu,
+  DropdownMenuDivider,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from "@astryxdesign/core/DropdownMenu";
+import { Item } from "@astryxdesign/core/Item";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { Text } from "@astryxdesign/core/Text";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { logout } from "@/lib/api";
-import { userDisplayName, userInitial } from "@/lib/user-identity";
+import { userDisplayName } from "@/lib/user-identity";
 
 export function AccountMenu() {
   const router = useRouter();
@@ -38,73 +37,55 @@ export function AccountMenu() {
     setLoggingOut(true);
     try {
       await logout();
+    } catch {
+      // However the answer came, the page is left: the sign-in page says who is signed in.
     } finally {
       router.replace("/");
     }
   }
 
+  // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
   return (
-    // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={`Öppna konto för ${displayName}`}
-          className="shrink-0 rounded-full p-0"
-        >
-          <Avatar>
-            <AvatarFallback className="bg-primary text-[15px] font-semibold text-primary-foreground">
-              {userInitial(user)}
-            </AvatarFallback>
-          </Avatar>
-        </Button>
-      </DropdownMenuTrigger>
+    <DropdownMenu
+      button={{
+        label: `Öppna konto för ${displayName}`,
+        isIconOnly: true,
+        variant: "ghost",
+        icon: <Avatar name={displayName} size="md" tooltip={false} />,
+      }}
+      hasChevron={false}
+      alignment="end"
+      menuWidth="18rem"
+    >
+      {/* Who is signed in: words to read, not something to choose. Long ones wrap, then end in an ellipsis. */}
+      <Item
+        density="spacious"
+        label={displayName}
+        labelLines={2}
+        description={user.email && displayName !== user.email ? user.email : undefined}
+        descriptionLines={2}
+      />
 
-      <DropdownMenuContent align="end" sideOffset={8} className="w-72">
-        <DropdownMenuLabel className="min-w-0 px-2.5 py-2 font-normal">
-          <span className="block truncate text-sm font-semibold text-ink">
-            {displayName}
-          </span>
-          {user.email && displayName !== user.email && (
-            <span className="mt-0.5 block truncate text-xs text-ink-mute">
-              {user.email}
-            </span>
-          )}
-        </DropdownMenuLabel>
+      <DropdownMenuDivider />
+      {/* The group is named for assistive technology; the words above it are for the eye. */}
+      <Text type="supporting" aria-hidden>
+        Tema
+      </Text>
+      <DropdownMenuRadioGroup label="Tema" value={themeReady ? theme : undefined} onChange={setTheme}>
+        <DropdownMenuRadioItem value="light" icon={Sun} label="Ljust" isDisabled={!themeReady} />
+        <DropdownMenuRadioItem value="dark" icon={Moon} label="Mörkt" isDisabled={!themeReady} />
+        <DropdownMenuRadioItem value="system" icon={Laptop} label="System" isDisabled={!themeReady} />
+      </DropdownMenuRadioGroup>
 
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel className="px-2.5 py-2 text-xs font-normal text-ink-mute">
-          Tema
-        </DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={themeReady ? theme : undefined}
-          onValueChange={setTheme}
-        >
-          <DropdownMenuRadioItem value="light" disabled={!themeReady}>
-            <Sun aria-hidden />
-            Ljust
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="dark" disabled={!themeReady}>
-            <Moon aria-hidden />
-            Mörkt
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem value="system" disabled={!themeReady}>
-            <Laptop aria-hidden />
-            System
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          disabled={loggingOut}
-          onSelect={() => leaveFirst(() => void onLogout())}
-        >
-          {loggingOut ? <Loader2 aria-hidden className="animate-spin" /> : <LogOut aria-hidden />}
-          {loggingOut ? "Loggar ut…" : "Logga ut"}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+      <DropdownMenuDivider />
+      <DropdownMenuItem
+        icon={loggingOut ? <Spinner size="sm" aria-hidden /> : LogOut}
+        label={loggingOut ? "Loggar ut…" : "Logga ut"}
+        isDisabled={loggingOut}
+        // The menu stays open to say that it is signing out, and for the leave question to give back to.
+        hasCloseOnSelect={false}
+        onClick={() => leaveFirst(() => void onLogout())}
+      />
     </DropdownMenu>
   );
 }
