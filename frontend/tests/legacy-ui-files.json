@@ -15,15 +15,11 @@
   "components/UnsentRecordings.tsx",
   "components/flow/AudioPlayer.tsx",
   "components/flow/CopyButton.tsx",
-  "components/flow/DetailsForm.tsx",
-  "components/flow/EarlierRuns.tsx",
   "components/flow/FlowInput.tsx",
   "components/flow/FlowTopBar.tsx",
   "components/flow/LevelMeter.tsx",
   "components/flow/LiveSheet.tsx",
   "components/flow/MicrophoneCheck.tsx",
-  "components/flow/ModeCards.tsx",
-  "components/flow/ParticipantsInput.tsx",
   "components/flow/ProblemAlert.tsx",
   "components/flow/ReadyPanel.tsx",
   "components/flow/Recorder.tsx",
@@ -38,7 +34,6 @@
   "components/flow/StepDetails.tsx",
   "components/flow/StepList.tsx",
   "components/flow/SubmittingView.tsx",
-  "components/flow/UploadPanel.tsx",
   "components/flow/useLeaveQuestion.tsx",
   "components/frame.tsx"
 ]

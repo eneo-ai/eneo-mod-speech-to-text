@@ -294,3 +294,10 @@ html:not(.dark) [data-brand-logo="dark"] { display: none; }
    tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half
    answers) and sit where the transcript's own sticky toolbar is meant to. Unlayered, so it wins over the system's. */
 .astryx-app-shell-header { position: static; }
+
+/* A list that holds the focus while its highlighted option shows where it is (the selector's list in a bottom sheet on
+   a touch screen): the list outlines itself, since the option's tint alone is no focus indicator (WCAG 2.4.7). */
+[role="listbox"]:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: calc(var(--focus-outline-width) * -1);
+}

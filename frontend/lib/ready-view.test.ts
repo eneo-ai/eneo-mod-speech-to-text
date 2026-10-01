@@ -158,7 +158,7 @@ test("a recording Eneo already has shows the earlier runs where the user is, and
     }),
   );
   assert.match(sent, /Tidigare körningar/);
-  assert.match(sent, />Öppna<span class="sr-only">/, "the run Eneo has, one tap away");
+  assert.match(sent, /<button[^>]*aria-label="Öppna, körningen [^"]+"/, "the run Eneo has, one tap away, named by which run it opens");
   assert.match(sent, />Ta bort inspelningen från enheten<\/button>/);
 
   const notSent = renderToStaticMarkup(
@@ -219,8 +219,8 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
     }),
   );
   assert.match(chosen, />mote\.mp3</);
-  assert.match(chosen, /<p role="status" class="sr-only">Vald fil: mote\.mp3<\/p>/, "the choice is announced");
-  assert.match(empty, /<p role="status" class="sr-only"><\/p>/, "the status is there before a file is chosen");
+  assert.match(chosen, /<p[^>]*role="status"[^>]*>Vald fil: mote\.mp3<\/p>/, "the choice is announced");
+  assert.match(empty, /<p[^>]*role="status"[^>]*><\/p>/, "the status is there before a file is chosen");
   assert.match(chosen, /1,2\u00a0MB · 32 min/);
-  assert.match(chosen, />Byt fil<\/button>/);
+  assert.match(chosen, /<button[^>]*>(<[^>]+>)*Byt fil</);
 });

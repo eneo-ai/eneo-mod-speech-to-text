@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ThemeProvider } from "next-themes";
 
+import { ModuleProviders } from "../kit/ModuleProviders";
 import { ClassificationNote } from "../components/flow/ClassificationNote";
 import { COUNT_FROM_NAMES, DetailsForm, SpeakerCountField } from "../components/flow/DetailsForm";
 import { ModeCards } from "../components/flow/ModeCards";
@@ -11,36 +13,57 @@ import type { FlowSecurityClassification, FormField } from "./api";
 
 const noop = () => {};
 
-test("the modes are one radio group of equal cards under the question, and only the chosen one is checked", () => {
-  const html = renderToStaticMarkup(
-    createElement(ModeCards, { modes: ["stromma", "spela-in", "ladda-upp"], mode: "spela-in", onSelect: noop }),
-  );
-  assert.match(html, /<fieldset[^>]*>.*<legend[^>]*><h2[^>]*>Hur vill du lägga till ljudet\?<\/h2><\/legend>/s);
+/** The page's own providers, so the design system's words are Swedish as they are on the page. */
+const render = (element: ReactElement) =>
+  renderToStaticMarkup(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: element }) }));
+
+// The theme provider adds a script that sets the colour mode before the first paint; it is not the page's words.
+const text = (html: string) => html.replace(/<script[\s\S]*?<\/script>/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+/** The text of the element with this id. */
+const textOf = (html: string, id: string) => text(new RegExp(`<(\\w+)[^>]*\\sid="${id}"[^>]*>([\\s\\S]*?)</\\1>`).exec(html)?.[2] ?? "");
+/** The control a detail carries, by the name Eneo gave it (the page finds it by this to move focus). */
+const control = (html: string, field: string) =>
+  html.match(new RegExp(`<(?:input|button|textarea)[^>]*data-detail-field="${field}"[^>]*>`))?.[0] ?? "";
+const attr = (tag: string, name: string) => new RegExp(`\\s${name}="([^"]*)"`, "i").exec(tag)?.[1];
+/** What the control is named by: its <label for>, or the first of the elements it is labelled by. */
+const nameOf = (html: string, tag: string) => {
+  const id = attr(tag, "id");
+  const label = new RegExp(`<label[^>]*for="${id}"[^>]*>([\\s\\S]*?)</label>`).exec(html)?.[1];
+  return label !== undefined ? text(label) : textOf(html, (attr(tag, "aria-labelledby") ?? "").split(" ")[0]);
+};
+/** What the control is described by. */
+const describedBy = (html: string, tag: string) => (attr(tag, "aria-describedby") ?? "").split(" ").filter(Boolean).map((id) => textOf(html, id));
+
+test("the modes are one radio group under the question, and only the chosen one is checked", () => {
+  const html = render(createElement(ModeCards, { modes: ["stromma", "spela-in", "ladda-upp"], mode: "spela-in", onSelect: noop }));
+  assert.match(html, /<h2[^>]*data-phase-heading[^>]*tabindex="-1"[^>]*>Hur vill du lägga till ljudet\?<\/h2>/i, "the question takes focus when the setup appears");
   assert.equal(html.match(/role="radiogroup"/g)?.length, 1);
-  const radios = [...html.matchAll(/<button[^>]*role="radio"[^>]*aria-checked="(true|false)"[^>]*id="satt-([a-z-]+)"/g)];
+  assert.equal(textOf(html, attr(html.match(/<div[^>]*role="radiogroup"[^>]*>/)![0], "aria-labelledby")!), "Hur vill du lägga till ljudet?", "the group is named by the question");
+  const radios = [...html.matchAll(/<input[^>]*type="radio"[^>]*>/g)].map(([tag]) => tag);
+  assert.equal(radios.length, 3, "native radios");
   assert.deepEqual(
-    radios.map(([, checked, id]) => [id, checked]),
+    radios.map((tag) => [attr(tag, "value"), /\schecked=""/.test(tag)]),
     [
-      ["stromma", "false"],
-      ["spela-in", "true"],
-      ["ladda-upp", "false"],
+      ["stromma", false],
+      ["spela-in", true],
+      ["ladda-upp", false],
     ],
   );
-  for (const [name, line] of [
-    ["Strömma", "Se texten medan du pratar."],
-    ["Spela in", "Spela in nu och transkribera efteråt."],
-    ["Ladda upp", "Välj en ljudfil från din enhet."],
-  ]) {
-    assert.ok(html.includes(`>${name}</div>`) && html.includes(`>${line}</p>`), name);
-  }
-  // Each card is the radio's label, so the whole card selects it.
-  assert.equal(html.match(/<label[^>]*for="satt-/g)?.length, 3);
+  // Each radio is named by the mode and described by its line.
+  assert.deepEqual(
+    radios.map((tag) => [nameOf(html, tag), describedBy(html, tag)[0]]),
+    [
+      ["Strömma", "Se texten medan du pratar."],
+      ["Spela in", "Spela in nu och transkribera efteråt."],
+      ["Ladda upp", "Välj en ljudfil från din enhet."],
+    ],
+  );
 });
 
-test("each participant chip has its own remove button named after the person", () => {
-  const html = renderToStaticMarkup(
+test("each participant has its own remove button named after the person, and the field says how many there are", () => {
+  const html = render(
     createElement(ParticipantsInput, {
-      id: "deltagare",
+      label: "Deltagare",
       names: ["Anna Berg", "Erik Lund"],
       onChange: noop,
       suggestions: ["Sara Holm", "Anna Berg"],
@@ -50,19 +73,24 @@ test("each participant chip has its own remove button named after the person", (
     [...html.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map(([, label]) => label),
     ["Ta bort Anna Berg", "Ta bort Erik Lund"],
   );
+  assert.match(html, /<ul[^>]*aria-label="Tillagda namn"/, "the names are a named list");
   assert.match(html, /placeholder="Lägg till namn"/);
   // Earlier names are offered, except those already added.
   assert.deepEqual([...html.matchAll(/<option value="([^"]+)"/g)].map(([, name]) => name), ["Sara Holm"]);
   assert.match(html, /role="status"/, "additions and removals are announced");
+  const field = html.match(/<input[^>]*type="text"[^>]*>/)![0];
+  assert.deepEqual(describedBy(html, field), ["2 namn tillagda."], "the count is the field's description, not hidden text");
 });
 
-test("labels are sentence case with (valfritt) on optional fields, and a missing required field says so at the field", () => {
+test("optional fields are marked, a required one is not and says so to a screen reader, and a missing one says so at the field", () => {
   const fields: FormField[] = [
     { name: "deltagare", label: "Deltagare", type: "list", required: false },
     { name: "motesnamn", label: "Mötets namn", type: "text", required: true },
-    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"] },
+    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
+    { name: "talare", label: "Antal talare", type: "number", required: false },
+    { name: "kategori", label: "Kategori", type: "select", options: ["A", "B"] },
   ];
-  const html = renderToStaticMarkup(
+  const html = render(
     createElement(DetailsForm, {
       fields,
       details: { deltagare: ["Anna Berg"] },
@@ -72,20 +100,32 @@ test("labels are sentence case with (valfritt) on optional fields, and a missing
       onNamesAdded: noop,
     }),
   );
-  assert.match(html, /for="detalj-deltagare"[^>]*>Deltagare <span[^>]*>\(valfritt\)<\/span>/);
-  assert.match(html, /for="detalj-motesnamn"[^>]*>Mötets namn <\/label>/, "a required field has no mark");
+  const named = (field: string) => nameOf(html, control(html, field));
+  assert.match(named("deltagare"), /^Deltagare\s*∙\s*Valfritt/, "an optional field is marked");
+  assert.equal(named("motesnamn"), "Mötets namn", "a required field has no mark");
+  assert.equal(named("typ"), "Mötestyp");
+  assert.match(named("kategori"), /^Kategori\s*∙\s*Valfritt/);
   assert.match(html, /Skriv ett namn och välj Lägg till\. Skilj flera namn med komma\./);
-  const shown = html.replace(/<[^>]+>/g, " ");
-  assert.doesNotMatch(shown, /Enter|retur|tryck|klicka|hovra/i, "no key or pointer a phone does not have");
-  assert.match(html, /id="detalj-motesnamn"[^>]*aria-describedby="detalj-motesnamn-fel"[^>]*aria-invalid="true"/);
-  assert.match(html, /id="detalj-motesnamn-fel"[^>]*>Fyll i det här för att skapa dokumentet\.</);
-  assert.match(html, /<button[^>]*role="combobox"[^>]*id="detalj-typ"|<button[^>]*id="detalj-typ"[^>]*role="combobox"/, "a select field is our own picker");
-  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "never the browser's own list");
+  assert.doesNotMatch(text(html), /Enter|retur|tryck|klicka|hovra/i, "no key or pointer a phone does not have");
+  // A required detail says so before sending too, not only once the send finds it missing.
+  for (const field of ["motesnamn", "typ"]) {
+    const tag = control(html, field);
+    assert.match(tag, /aria-required="true"/, field);
+  }
+  assert.doesNotMatch(control(html, "deltagare"), /aria-required/);
+  assert.doesNotMatch(control(html, "talare"), /aria-required/);
+  assert.doesNotMatch(control(html, "kategori"), /aria-required/);
+  const missing = control(html, "motesnamn");
+  assert.match(missing, /aria-invalid="true"/);
+  assert.ok(describedBy(html, missing).includes("Fyll i det här för att skapa dokumentet."), "said at the field, not in an alert");
+  assert.doesNotMatch(html, /role="alert"/);
+  assert.match(control(html, "typ"), /role="combobox"/, "a select field is the design system's picker");
+  assert.doesNotMatch(html, /<select/, "never the browser's own list");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
 });
 
 test("a missing detail of a flow that makes text says the text, not the document", () => {
-  const html = renderToStaticMarkup(
+  const html = render(
     createElement(DetailsForm, {
       fields: [{ name: "arende", label: "Ärende", type: "text", required: true }],
       details: {},
@@ -96,68 +136,85 @@ test("a missing detail of a flow that makes text says the text, not the document
       makesText: true,
     }),
   );
-  assert.match(html, /id="detalj-arende-fel"[^>]*>Fyll i det här för att skapa texten\.</);
+  assert.ok(describedBy(html, control(html, "arende")).includes("Fyll i det här för att skapa texten."));
 });
 
-test("a required detail says so to a screen reader before sending, and a number field opens a number keyboard", () => {
+test("a number field opens a number keyboard, and no other detail does", () => {
   const fields: FormField[] = [
-    { name: "deltagare", label: "Deltagare", type: "list", required: true },
     { name: "arende", label: "Ärende", type: "text", required: true },
-    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
     { name: "talare", label: "Antal talare", type: "number", required: false },
   ];
-  const html = renderToStaticMarkup(
-    createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop }),
+  const html = render(createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop }));
+  assert.match(control(html, "talare"), /inputMode="numeric"|inputmode="numeric"/i);
+  assert.doesNotMatch(control(html, "arende"), /inputmode/i);
+});
+
+test("a detail of the wrong type is shown as no value, and a select with nothing to choose from is a text field", () => {
+  const fields: FormField[] = [
+    { name: "text", label: "Text", type: "text" },
+    { name: "namn", label: "Namn", type: "list" },
+    { name: "val", label: "Val", type: "select", options: [] },
+    { name: "val2", label: "Val 2", type: "select", options: ["", ""] },
+    { name: "val3", label: "Val 3", type: "select" },
+  ];
+  const html = render(
+    createElement(DetailsForm, {
+      fields,
+      // An array for a text field, a string for a list: Eneo's data is not ours to trust.
+      details: { text: ["x"], namn: "Anna" } as never,
+      invalid: [],
+      onChange: noop,
+      suggestions: [],
+      onNamesAdded: noop,
+    }),
   );
-  const control = (id: string) => html.match(new RegExp(`<(?:input|button|textarea)[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
-  for (const id of ["detalj-deltagare", "detalj-arende", "detalj-typ"]) assert.match(control(id), /aria-required="true"/, id);
-  assert.doesNotMatch(control("detalj-talare"), /aria-required/);
-  assert.match(control("detalj-talare"), /inputMode="numeric"|inputmode="numeric"/);
-  assert.doesNotMatch(control("detalj-arende"), /inputmode/i);
+  assert.match(control(html, "text"), /value=""/);
+  assert.doesNotMatch(html, /Tillagda namn/, "a string is no list of names");
+  for (const field of ["val", "val2", "val3"]) assert.match(control(html, field), /^<input[^>]*type="text"/, `${field}: nothing to choose from is text`);
+  assert.doesNotMatch(html, /role="combobox"/);
 });
 
 test("Antal talare is a light number field with its help below, and a count that is no count says so at the field", () => {
-  const field = (value: string) => renderToStaticMarkup(createElement(SpeakerCountField, { value, onChange: noop }));
+  const field = (value: string) => render(createElement(SpeakerCountField, { value, onChange: noop }));
   const empty = field("");
-  assert.match(empty, /<label[^>]*for="antal-talare"[^>]*>Antal talare <span[^>]*>\(om du vet\)<\/span><\/label>/);
-  const input = empty.match(/<input[^>]*id="antal-talare"[^>]*>/)?.[0] ?? "";
+  const input = control(empty, "antal-talare");
+  assert.equal(nameOf(empty, input), "Antal talare (om du vet)");
   // A text field with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing.
   assert.match(input, /type="text"/);
   assert.match(input, /inputmode="numeric"/i, "a phone's number keyboard");
   assert.match(input, /pattern="\[0-9\]\*"/);
-  assert.match(input, /aria-describedby="antal-talare-hjalp"/);
+  assert.deepEqual(describedBy(empty, input), ["Används som övre gräns. Lämna tomt om du är osäker."]);
   assert.doesNotMatch(input, /aria-invalid/);
-  assert.match(empty, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
   assert.doesNotMatch(empty, /role="alert"/);
 
   for (const typed of ["25", "e", "-", "2+"]) {
     const wrong = field(typed);
-    assert.match(wrong, /<input[^>]*aria-describedby="antal-talare-hjalp antal-talare-fel"[^>]*aria-invalid="true"/, typed);
-    assert.match(wrong, /id="antal-talare-fel"[^>]*>Skriv ett heltal från 1 till 20, eller lämna fältet tomt\.</, typed);
+    const tag = control(wrong, "antal-talare");
+    assert.match(tag, /aria-invalid="true"/, typed);
+    assert.deepEqual(
+      describedBy(wrong, tag),
+      ["Används som övre gräns. Lämna tomt om du är osäker.", "Skriv ett heltal från 1 till 20, eller lämna fältet tomt."],
+      typed,
+    );
   }
 });
 
-test("a count from the names says so under its field, and names the field's description with it", () => {
+test("a count from the names says so under its field, and the field is described by that one sentence pair", () => {
   // One wording for a count the names filled in, under this module's field and under the flow's own.
   assert.equal(COUNT_FROM_NAMES, "Ifyllt från antalet deltagare, ändra om fler talar.");
   const hint = COUNT_FROM_NAMES;
-  // One helper paragraph, the one the field names: "Lämna tomt" beside a filled-in number would contradict it.
-  const own = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
-  assert.match(own, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Ifyllt från antalet deltagare, ändra om fler talar\.</);
-  assert.match(own, /<input[^>]*aria-describedby="antal-talare-hjalp"/);
+  // One description, the one the field names: "Lämna tomt" beside a filled-in number would contradict it.
+  const own = render(createElement(SpeakerCountField, { value: "2", onChange: noop, fromNames: true }));
+  assert.deepEqual(describedBy(own, control(own, "antal-talare")), ["Används som övre gräns. Ifyllt från antalet deltagare, ändra om fler talar."]);
   assert.doesNotMatch(own, /Lämna tomt/);
-  assert.equal(own.match(/data-slot="field-description"/g)?.length, 1, "one helper paragraph");
-  const typed = renderToStaticMarkup(createElement(SpeakerCountField, { value: "2", onChange: noop }));
-  assert.match(typed, /id="antal-talare-hjalp"[^>]*>Används som övre gräns\. Lämna tomt om du är osäker\.</);
+  const typed = render(createElement(SpeakerCountField, { value: "2", onChange: noop }));
+  assert.deepEqual(describedBy(typed, control(typed, "antal-talare")), ["Används som övre gräns. Lämna tomt om du är osäker."]);
   assert.doesNotMatch(typed, /Ifyllt från antalet deltagare/);
 
   const antal: FormField = { name: "antal", label: "Antal talare", type: "number", required: false };
   const form = (notes?: Record<string, string>) =>
-    renderToStaticMarkup(
-      createElement(DetailsForm, { fields: [antal], details: { antal: "2" }, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop, notes }),
-    );
-  assert.match(form({ antal: hint }), /<input[^>]*id="detalj-antal"[^>]*aria-describedby="detalj-antal-not"/);
-  assert.match(form({ antal: hint }), /id="detalj-antal-not"[^>]*>Ifyllt från antalet deltagare, ändra om fler talar\.</);
+    render(createElement(DetailsForm, { fields: [antal], details: { antal: "2" }, invalid: [], onChange: noop, suggestions: [], onNamesAdded: noop, notes }));
+  assert.deepEqual(describedBy(form({ antal: hint }), control(form({ antal: hint }), "antal")), [hint]);
   assert.ok(!form().includes(hint));
 });
 
@@ -184,12 +241,11 @@ test("the information row is the flow's classification as Eneo sends it, and the
 
 test("the microphone is a labelled field like the others: the label above, the chosen device in the trigger", async () => {
   const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
-  const html = renderToStaticMarkup(createElement(MicrophoneCheck, { active: true }));
-  const id = /<label[^>]*for="([^"]+)"[^>]*>Mikrofon<\/label>/.exec(html)?.[1];
-  assert.ok(id, "a label above the control, without a colon");
-  const trigger = new RegExp(`<button[^>]*role="combobox"[^>]*id="${id}"[^>]*>`).exec(html)?.[0] ?? new RegExp(`<button[^>]*id="${id}"[^>]*role="combobox"[^>]*>`).exec(html)?.[0];
-  assert.ok(trigger, "the label names the picker");
+  const html = render(createElement(MicrophoneCheck, { active: true }));
+  const trigger = html.match(/<button[^>]*role="combobox"[^>]*>/)?.[0];
+  assert.ok(trigger, "one picker");
+  assert.equal(nameOf(html, trigger), "Mikrofon", "a label above the control, without a colon");
   assert.doesNotMatch(trigger, /aria-label=/, "no name that hides the chosen device");
-  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "not the browser's own list (Radix keeps a hidden one for forms)");
+  assert.doesNotMatch(html, /<select/, "not the browser's own list");
   assert.match(html, />Testa mikrofonen</);
 });

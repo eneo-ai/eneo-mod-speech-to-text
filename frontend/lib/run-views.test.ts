@@ -239,18 +239,20 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
     renderToStaticMarkup(
       createElement(EarlierRuns, { list: { ...listed([run]), hasMore: true, ...state }, onOpen: () => undefined, onMore: () => undefined }),
     );
-  assert.match(render({}), />Visa fler körningar<\/button>/);
-  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>Hämtar körningar…<\/button>/);
+  const buttons = (html: string) => [...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(([, attributes, inner]) => ({ attributes, name: inner.replace(/<[^>]+>/g, "") }));
+  assert.ok(buttons(render({})).some(({ name }) => name === "Visa fler körningar"));
+  const waiting = buttons(render({ loading: true })).find(({ name }) => name === "Hämtar körningar…");
+  assert.ok(waiting && /\sdisabled=""/.test(waiting.attributes), "waiting, and not to be pressed again");
   const failed = render({ failed: "next" });
   assert.match(failed, /Fler körningar kunde inte hämtas\./);
-  assert.match(failed, />Visa fler körningar<\/button>/, "another try");
+  assert.ok(buttons(failed).some(({ name }) => name === "Visa fler körningar"), "another try");
 
   // The first page failed: said even with no run shown, with a try again whatever Eneo said about more.
   const firstFailed = renderToStaticMarkup(
     createElement(EarlierRuns, { list: { ...listed([]), failed: "first" }, onOpen: () => undefined, onMore: () => undefined }),
   );
   assert.match(firstFailed, /Tidigare körningar kunde inte hämtas\./);
-  assert.match(firstFailed, />Försök igen<\/button>/);
+  assert.ok(buttons(firstFailed).some(({ name }) => name === "Försök igen"));
 });
 
 test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {

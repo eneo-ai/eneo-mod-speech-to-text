@@ -37,6 +37,22 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // The choices of a radio list are the page's main decision, so each is a bordered row of its own, the chosen one
+    // tinted and the one with focus ringed, with room for a finger.
+    'radio-list': {base: {gap: 'var(--spacing-3)'}},
+    'radio-list-item': {
+      base: {
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-container)',
+        padding: 'var(--spacing-3) var(--spacing-4)',
+        minHeight: TOUCH,
+        ':focus-within': focusRing,
+      },
+      selected: {borderColor: 'var(--color-accent)', backgroundColor: 'var(--color-accent-muted)'},
+    },
+    // A name's remove button keeps its hit area (a pseudo-element past the chip's edge, 44 px under a coarse pointer)
+    // instead of being cut at the chip's own box; the name inside still ends in an ellipsis on its own.
+    token: {base: {overflow: 'visible'}},
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.
     'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},

@@ -1,0 +1,16 @@
+/* The whole zone opens the file chooser. */
+.zone {
+  cursor: pointer;
+}
+
+/* "Dra en fil hit" is for a mouse on a screen wide enough to have a place to drag from; elsewhere the zone says what
+   the flow takes and a tap opens the chooser. */
+.fineOnly {
+  display: none;
+}
+
+@media (min-width: 768px) and (pointer: fine) {
+  .fineOnly {
+    display: block;
+  }
+}

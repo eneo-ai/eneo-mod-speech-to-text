@@ -1,10 +1,13 @@
 "use client";
 
-import { Mic } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useEffect, useRef, useState } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { browserStorage, microphoneProblem, type Problem } from "@/lib/flow-session";
@@ -17,7 +20,7 @@ import {
   setPreferredMicrophone,
 } from "@/lib/microphone";
 
-// Radix Select takes no empty value; Standard is "" everywhere else.
+// The selector takes no empty value; Standard is "" everywhere else.
 const STANDARD = "standard";
 
 /**
@@ -28,8 +31,6 @@ const STANDARD = "standard";
  * recording starts; one that is gone falls back to Standard, and says so.
  */
 export function MicrophoneCheck({ active }: { active: boolean }) {
-  const selectId = useId();
-  const noteId = useId();
   const [inputs, setInputs] = useState<MediaDeviceInfo[]>([]);
   const [preferred, setPreferred] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -91,48 +92,40 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     if (stream) void test(id);
   }
 
+  const status = stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : "";
   return (
-    <div className="flex flex-col gap-3">
-      <Field className="gap-2">
-        <FieldLabel htmlFor={selectId} className="text-[15px] font-semibold text-ink">
-          Mikrofon
-        </FieldLabel>
-        {/* Beside each other on a laptop; the test below the picker on a phone. */}
-        <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center">
-          <Select value={value || STANDARD} onValueChange={(next) => choose(next === STANDARD ? "" : next)}>
-            <SelectTrigger id={selectId} aria-describedby={missing ? noteId : undefined} className="min-w-0 sm:flex-1">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {choices.map((choice) => (
-                <SelectItem key={choice.value || STANDARD} value={choice.value || STANDARD}>
-                  {choice.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0"
-            onClick={() => (stream ? setStream(null) : void test())}
-          >
-            <Mic data-icon="inline-start" aria-hidden />
-            {stream ? "Sluta testa" : "Testa mikrofonen"}
-          </Button>
-        </div>
-        {missing && (
-          <FieldDescription id={noteId} className="text-[13px]">
-            Den valda mikrofonen hittades inte. Standard används.
-          </FieldDescription>
-        )}
-      </Field>
+    <VStack gap={3}>
+      {/* Beside each other where there is room; the test below the picker where there is not. */}
+      <HStack gap={3} wrap="wrap" align="end">
+        <Selector
+          label="Mikrofon"
+          options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
+          value={value || STANDARD}
+          onChange={(next) => choose(next === STANDARD ? "" : next)}
+          presentation="adaptive"
+          // Below the picker, not over it: the default puts the open list on the picker, hiding the control that has focus.
+          placement="below"
+          description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
+          width="min(100%, 24rem)"
+        />
+        <Button
+          label={stream ? "Sluta testa" : "Testa mikrofonen"}
+          variant="secondary"
+          icon={<Icon icon="microphone" />}
+          onClick={() => (stream ? setStream(null) : void test())}
+        />
+      </HStack>
       {stream && <LevelMeter stream={stream} bars={24} variant="steps" className="h-6" />}
-      {/* Always rendered, so a screen reader hears the change once. */}
-      <p role="status" className={stream ? "text-[13px] text-ink-soft" : "sr-only"}>
-        {stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : ""}
-      </p>
+      {/* Always rendered, so a screen reader hears the change once; the same words are for the eye while it is tested. */}
+      <VisuallyHidden as="p" role="status">
+        {status}
+      </VisuallyHidden>
+      {stream && (
+        <Text as="p" type="supporting" aria-hidden>
+          {status}
+        </Text>
+      )}
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}
-    </div>
+    </VStack>
   );
 }

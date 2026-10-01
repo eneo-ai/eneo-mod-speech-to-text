@@ -330,7 +330,8 @@ export const STATES: State[] = [
       await page.getByRole("switch", { name: "Märk upp talare" }).click();
       await page.getByRole("textbox", { name: /^Antal talare/ }).fill("e");
       await page.getByRole("button", { name: "Starta inspelning" }).click();
-      await expect(page.getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.")).toBeVisible();
+      // The field says it; the design system's live region says it again, so the first is the field's.
+      await expect(page.getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.").first()).toBeVisible();
     },
   },
   {
@@ -346,7 +347,8 @@ export const STATES: State[] = [
       await setup(page, "flow-3");
       await chooseFile(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      await expect(page.getByText("Fyll i det här för att skapa dokumentet.")).toBeVisible();
+      // The field says it; the design system's live region says it again, so the first is the field's.
+      await expect(page.getByText("Fyll i det här för att skapa dokumentet.").first()).toBeVisible();
     },
   },
   {
@@ -357,7 +359,8 @@ export const STATES: State[] = [
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("textbox", { name: "Antal talare" }).fill("2,5");
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      await expect(page.getByText("Skriv ett heltal från 1, eller lämna fältet tomt.")).toBeVisible();
+      // The field says it; the design system's live region says it again, so the first is the field's.
+      await expect(page.getByText("Skriv ett heltal från 1, eller lämna fältet tomt.").first()).toBeVisible();
     },
   },
   {

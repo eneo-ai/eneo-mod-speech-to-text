@@ -1,45 +1,65 @@
 "use client";
 
-import { Plus, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "@/components/ui/input-group";
+import { Plus } from "lucide-react";
+import { useId, useRef, useState, type FocusEvent } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { Token } from "@astryxdesign/core/Token";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { addNames, splitNames, takeNames } from "@/lib/participants";
-import { cn } from "@/lib/utils";
+
+// What the field needs of the browser that the design system's types leave out (the input spreads what it does not
+// know onto the element, so it works): the page's own suggestions, a capital for each name and the return key's label.
+const hints = (listId: string | undefined) =>
+  ({ list: listId, autoCapitalize: "words", enterKeyHint: "enter" }) as Record<string, string | undefined>;
 
 /**
- * A `list` field as chips. "Lägg till" shows while a name is typed, so a
+ * A `list` field as names. "Lägg till" shows while a name is typed, so a
  * tap adds it on any device; Enter (a phone's return key) or a comma adds it
  * too, a pasted list is split on commas, semicolons and line breaks,
- * Backspace in the empty input removes the last chip, and each chip has its
+ * Backspace in the empty input removes the last name, and each name has its
  * own remove button. Earlier names are offered as the browser's own
- * suggestions. Text left in the input becomes a chip when the field loses
+ * suggestions. Text left in the input becomes a name when the field loses
  * focus, so a typed name is never lost.
+ *
+ * Kept as ours, not the design system's Tokenizer, which needs a search source, has no paste splitting, no comma
+ * and no add-on-blur, no "Lägg till", and offers its "Create" entry in English.
  */
 export function ParticipantsInput({
-  id,
+  label,
+  name,
   names,
   onChange,
   suggestions,
   onAdded,
-  describedBy,
-  invalid,
-  required,
+  description,
+  isOptional,
+  isRequired,
+  status,
   placeholder = "Lägg till namn",
 }: {
-  id: string;
+  label: string;
+  /** The detail's name, which the page finds the field by to move focus to it. */
+  name?: string;
   names: string[];
   onChange: (names: string[]) => void;
   suggestions: string[];
   /** Names the user just added, to offer them again next time. */
   onAdded?: (names: string[]) => void;
-  describedBy?: string;
-  invalid?: boolean;
-  required?: boolean;
+  /** What the field is for, said under its label. */
+  description?: string;
+  isOptional?: boolean;
+  isRequired?: boolean;
+  /** Said at the field: the list is required and empty. */
+  status?: { type: "error"; message: string };
   placeholder?: string;
 }) {
   const listId = useId();
-  const countId = useId();
   const input = useRef<HTMLInputElement>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState("");
 
@@ -52,13 +72,13 @@ export function ParticipantsInput({
     setAnnouncement(fresh.length === 1 ? `${fresh[0]} har lagts till.` : `${fresh.length} namn har lagts till.`);
   }
 
-  function remove(name: string) {
-    onChange(names.filter((existing) => existing !== name));
-    setAnnouncement(`${name} har tagits bort.`);
+  function remove(removed: string) {
+    onChange(names.filter((existing) => existing !== removed));
+    setAnnouncement(`${removed} har tagits bort.`);
   }
 
   const offered = suggestions.filter(
-    (suggestion) => !names.some((name) => name.toLowerCase() === suggestion.toLowerCase()),
+    (suggestion) => !names.some((existing) => existing.toLowerCase() === suggestion.toLowerCase()),
   );
 
   const addTyped = () => {
@@ -66,68 +86,37 @@ export function ParticipantsInput({
     setText("");
   };
 
+  // Leaving the field and its "Lägg till" together adds what was typed; moving between them does not.
+  const leaving = (event: FocusEvent) => {
+    const to = event.relatedTarget;
+    if (!text.trim() || to === input.current || to === addButton.current) return;
+    addTyped();
+  };
+
+  // The field says how many names it already holds; the list itself is named.
+  const count = names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`;
+
   return (
-    // Layout only: the list and the field carry their own names, so no unnamed groups around them.
-    <InputGroup
-      role="none"
-      className={cn(
-        // Sized by its content on every pointer, so "Lägg till" has the same room with names or without.
-        "h-auto flex-col items-stretch rounded-xl border-rule bg-paper coarse:h-auto",
-        // A 2 px ring: the edge turning blue alone is too small a change to see.
-        "has-[[data-slot=input-group-control]:focus-visible]:border-primary has-[[data-slot=input-group-control]:focus-visible]:ring-2 has-[[data-slot=input-group-control]:focus-visible]:ring-primary",
-        invalid && "border-destructive",
-      )}
-    >
-      {names.length > 0 && (
-        <InputGroupAddon role="none" align="block-start" className="cursor-default py-0 pt-3 text-foreground">
-          <ul aria-label="Tillagda namn" className="flex flex-wrap gap-x-2 gap-y-3">
-            {names.map((name) => (
-              <li
-                key={name}
-                className="inline-flex h-8 max-w-full items-center gap-0.5 rounded-lg bg-bg-2 pl-3 pr-0.5 text-[15px] font-normal text-ink"
-              >
-                <span className="truncate">{name}</span>
-                <button
-                  type="button"
-                  aria-label={`Ta bort ${name}`}
-                  onClick={() => {
-                    remove(name);
-                    input.current?.focus();
-                  }}
-                  // The pseudo-element makes the target 44 px without a 44 px chip.
-                  className="relative grid size-7 shrink-0 place-items-center rounded-md text-ink-soft transition-colors hover:bg-rule-soft hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary after:absolute after:-inset-2"
-                >
-                  <X aria-hidden className="size-4" strokeWidth={2} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </InputGroupAddon>
-      )}
-      <div
-        className="flex w-full items-center"
-        // Leaving the field and its "Lägg till" together adds what was typed; moving between them does not.
-        onBlur={(event) => {
-          if (event.currentTarget.contains(event.relatedTarget as Node | null) || !text.trim()) return;
-          addTyped();
-        }}
-      >
-        <InputGroupInput
+    <VStack gap={2}>
+      {/* The button beside the field, not inside it: the design system's field names its label and says whether it is
+          required once, which a group around it would do twice. */}
+      <HStack gap={2} align="end">
+        <TextInput
           ref={input}
-          id={id}
-          type="text"
+          label={label}
+          description={[description, names.length > 0 ? count : null].filter(Boolean).join(" ") || undefined}
+          isOptional={isOptional}
+          isRequired={isRequired}
+          status={status}
+          statusVariant="detached"
           value={text}
-          list={offered.length > 0 ? listId : undefined}
-          autoComplete="off"
-          autoCapitalize="words"
-          enterKeyHint="enter"
           placeholder={placeholder}
-          // The field says how many names it already holds; the list itself is named.
-          aria-describedby={[names.length > 0 ? countId : null, describedBy].filter(Boolean).join(" ") || undefined}
-          aria-invalid={invalid || undefined}
-          aria-required={required || undefined}
-          onChange={(event) => {
-            const value = event.target.value;
+          autoComplete="off"
+          width="100%"
+          data-detail-field={name}
+          {...hints(offered.length > 0 ? listId : undefined)}
+          onBlur={leaving}
+          onChange={(value, event) => {
             const picked =
               (event.nativeEvent as InputEvent).inputType === "insertReplacementText" &&
               offered.some((suggestion) => suggestion.toLowerCase() === value.trim().toLowerCase());
@@ -157,29 +146,37 @@ export function ParticipantsInput({
               remove(names[names.length - 1]);
             }
           }}
-          // The row's height with "Lägg till" in it, on every pointer: typing never makes the field taller.
-          className="h-11 px-3 text-[16px] text-ink placeholder:text-ink-mute"
         />
         {text.trim() && (
-          <InputGroupAddon align="inline-end">
-            <InputGroupButton
-              size="sm"
-              variant="secondary"
-              // Keeps the focus, and a phone's keyboard, in the field for the next name.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                addTyped();
-                input.current?.focus();
-              }}
-              // The chips' height on every pointer; on a touch screen the pseudo-element makes the target 44 px.
-              className="relative px-3 text-[15px] coarse:h-8 coarse:after:absolute coarse:after:-inset-1.5"
-            >
-              <Plus data-icon="inline-start" aria-hidden />
-              Lägg till
-            </InputGroupButton>
-          </InputGroupAddon>
+          <Button
+            ref={addButton}
+            label="Lägg till"
+            icon={<Icon icon={Plus} />}
+            // Keeps the focus, and a phone's keyboard, in the field for the next name.
+            onMouseDown={(event) => event.preventDefault()}
+            onBlur={leaving}
+            onClick={() => {
+              addTyped();
+              input.current?.focus();
+            }}
+          />
         )}
-      </div>
+      </HStack>
+      {names.length > 0 && (
+        <HStack as="ul" aria-label="Tillagda namn" gap={2} wrap="wrap">
+          {names.map((added) => (
+            <li key={added}>
+              <Token
+                label={added}
+                onRemove={() => {
+                  remove(added);
+                  input.current?.focus();
+                }}
+              />
+            </li>
+          ))}
+        </HStack>
+      )}
       {offered.length > 0 && (
         <datalist id={listId}>
           {offered.map((suggestion) => (
@@ -187,15 +184,9 @@ export function ParticipantsInput({
           ))}
         </datalist>
       )}
-      <p role="status" className="sr-only">
+      <VisuallyHidden as="p" role="status">
         {announcement}
-      </p>
-      {names.length > 0 && (
-        // Hidden: read as the field's description only, not again as page text.
-        <span id={countId} hidden>
-          {names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`}
-        </span>
-      )}
-    </InputGroup>
+      </VisuallyHidden>
+    </VStack>
   );
 }

@@ -10,12 +10,12 @@ import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sen
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  for (const [id, name, description, checked] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  for (const [name, description, checked] of [
+    ["Strömma", "Se texten medan du pratar.", false],
+    ["Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
+    expect(await axNode(page.getByRole("radio", { name, exact: true }))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
   expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du lägga till ljudet?" });
 });
@@ -23,7 +23,8 @@ test("the input modes are named by their title, described by their line, and say
 test("a field is not an unnamed group", async ({ page }) => {
   await setup(page);
   await chooseMode(page, "Spela in");
-  await expect(page.locator('[data-slot="field"][role="group"]')).toHaveCount(0);
+  // A group names itself by what it holds; the design system's own groups are labelled, an unnamed one is not allowed.
+  await expect(page.getByRole("main").locator('[role="group"]:not([aria-label]):not([aria-labelledby])')).toHaveCount(0);
 });
 
 test("the added names are a named list the field points to", async ({ page }) => {

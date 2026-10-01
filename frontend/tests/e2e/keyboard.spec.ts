@@ -50,7 +50,11 @@ for (const name of WALKS) {
   });
 }
 
-/** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
+/**
+ * Opens a dialog, menu or list from its trigger with Enter, keeps Tab inside it, and closes it with Escape. A list
+ * that belongs to a combobox keeps the focus on the combobox, which points at the active option and owns the list
+ * (aria-controls): that is inside, as the pattern has it.
+ */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
   await page.keyboard.press("Enter");
@@ -62,7 +66,9 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
   const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
   for (let i = 0; i <= keys.length; i++) {
     const stop = await focusStop(page);
-    const inside = await popup.evaluate((element) => element.contains(document.activeElement));
+    const inside = await popup.evaluate(
+      (element) => element.contains(document.activeElement) || (element.id !== "" && document.activeElement?.getAttribute("aria-controls") === element.id),
+    );
     if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
     else problems.push(...stopProblems([stop]));
     if (keys[i]) await page.keyboard.press(keys[i]);
@@ -223,7 +229,7 @@ test("the input modes change with the arrow keys", async ({ page }) => {
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
+  // Held like a finger holds a key, in case a control moves focus after the key goes down and checks while it is held.
   await page.keyboard.down("ArrowDown");
   await page.waitForTimeout(60);
   await page.keyboard.up("ArrowDown");
@@ -242,7 +248,8 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
-  await page.keyboard.press("Shift+Tab");
+  // The names are after the field, as a list its remove buttons are the next stops.
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
@@ -287,7 +294,7 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
+  // Held like a finger holds a key, in case a control moves focus after the key goes down and checks while it is held.
   const arrow = async (key: string) => {
     await page.keyboard.down(key);
     await page.waitForTimeout(60);

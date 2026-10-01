@@ -266,6 +266,32 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "radio-list": {
+      "base": {
+        "gap": "var(--spacing-3)"
+      }
+    },
+    "radio-list-item": {
+      "base": {
+        "border": "1px solid var(--color-border)",
+        "borderRadius": "var(--radius-container)",
+        "padding": "var(--spacing-3) var(--spacing-4)",
+        "minHeight": "44px",
+        ":focus-within": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "var(--focus-outline-offset)"
+        }
+      },
+      "selected": {
+        "borderColor": "var(--color-accent)",
+        "backgroundColor": "var(--color-accent-muted)"
+      }
+    },
+    "token": {
+      "base": {
+        "overflow": "visible"
+      }
+    },
     "avatar-fallback": {
       "base": {
         "color": "var(--color-text-primary)"

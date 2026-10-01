@@ -1,17 +1,10 @@
 "use client";
 
 import { AudioLines, Mic, Upload, type LucideIcon } from "lucide-react";
-import { forwardRef, useId } from "react";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldLabel,
-  FieldLegend,
-  FieldSet,
-  FieldTitle,
-} from "@/components/ui/field";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Icon } from "@astryxdesign/core/Icon";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
+import { VStack } from "@astryxdesign/core/VStack";
+import { StateHeading } from "@/components/flow/StateCard";
 import type { InputMode } from "@/lib/flow-session";
 
 export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: LucideIcon }> = {
@@ -20,54 +13,40 @@ export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: Lu
   "ladda-upp": { name: "Ladda upp", line: "Välj en ljudfil från din enhet.", icon: Upload },
 };
 
+const QUESTION = "Hur vill du lägga till ljudet?";
+
 /**
- * "Hur vill du lägga till ljudet?": the offered modes as one radio group of equal
- * cards. Selecting only selects; the arrow keys move between the cards.
+ * "Hur vill du lägga till ljudet?": the offered modes as one radio group. Selecting only selects; the arrow keys move
+ * between the modes. The question is the heading that takes focus when the setup appears, and names the group.
  */
-export const ModeCards = forwardRef<
-  HTMLHeadingElement,
-  { modes: InputMode[]; mode: InputMode | null; onSelect: (mode: InputMode) => void }
->(function ModeCards({ modes, mode, onSelect }, heading) {
-  const headingId = useId();
+export function ModeCards({
+  modes,
+  mode,
+  onSelect,
+}: {
+  modes: InputMode[];
+  mode: InputMode | null;
+  onSelect: (mode: InputMode) => void;
+}) {
   return (
-    <FieldSet className="gap-0">
-      {/* A legend does not take part in the fieldset's gap, so it keeps its own margin. */}
-      <FieldLegend className="mb-4">
-        <h2 ref={heading} id={headingId} data-phase-heading tabIndex={-1} className="text-[20px] font-semibold tracking-[-0.01em] text-ink outline-none">
-          Hur vill du lägga till ljudet?
-        </h2>
-      </FieldLegend>
-      <RadioGroup
-        aria-labelledby={headingId}
-        value={mode ?? ""}
-        onValueChange={(value) => onSelect(value as InputMode)}
-        className="gap-3"
-      >
+    <VStack gap={4}>
+      <StateHeading level={2} data-phase-heading tabIndex={-1}>
+        {QUESTION}
+      </StateHeading>
+      <RadioList label={QUESTION} isLabelHidden value={mode ?? ""} onChange={(value) => onSelect(value as InputMode)}>
         {modes.map((value) => {
-          const { name, line, icon: Icon } = MODE_TEXT[value];
-          const id = `satt-${value}`;
+          const { name, line, icon } = MODE_TEXT[value];
           return (
-            <FieldLabel key={value} htmlFor={id} className="transition-colors duration-150">
-              <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
-                <Icon aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
-                <FieldContent className="gap-0.5">
-                  <FieldTitle id={`${id}-namn`} className="text-[17px] font-semibold text-ink">{name}</FieldTitle>
-                  <FieldDescription id={`${id}-rad`} className="text-[15px]">{line}</FieldDescription>
-                </FieldContent>
-                {/* The card shows keyboard focus; the circle does not need a ring of its own. Named by the
-                    title and described by the line, not by the whole card the label wraps. */}
-                <RadioGroupItem
-                  value={value}
-                  id={id}
-                  aria-labelledby={`${id}-namn`}
-                  aria-describedby={`${id}-rad`}
-                  className="focus-visible:ring-0 focus-visible:ring-offset-0"
-                />
-              </Field>
-            </FieldLabel>
+            <RadioListItem
+              key={value}
+              value={value}
+              label={name}
+              description={line}
+              startContent={<Icon icon={icon} color="accent" />}
+            />
           );
         })}
-      </RadioGroup>
-    </FieldSet>
+      </RadioList>
+    </VStack>
   );
-});
+}

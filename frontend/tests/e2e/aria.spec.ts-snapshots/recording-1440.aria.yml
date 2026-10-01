@@ -15,15 +15,14 @@
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
-  - text: Deltagare (valfritt)
+  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma. 1 namn tillagt.
+  - textbox "Deltagare Valfritt":
+    - /placeholder: Lägg till namn
   - list "Tillagda namn":
     - listitem:
       - text: Anna Berg
       - button "Ta bort Anna Berg"
-  - textbox "Deltagare (valfritt)":
-    - /placeholder: Lägg till namn
   - status
-  - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - status: Spelar in.
   - region "Ljudet":
     - status

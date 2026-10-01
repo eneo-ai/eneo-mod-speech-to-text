@@ -2,11 +2,17 @@
 
 import { FileAudio, FileText, Upload } from "lucide-react";
 import { useId, useState, type DragEvent, type Ref } from "react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { RunContractStepInput } from "@/lib/api";
 import { acceptedFormats, fileAccept, type ChosenFile } from "@/lib/flow-session";
 import { formatBytes, formatDuration } from "@/lib/format";
-import { cn } from "@/lib/utils";
+import styles from "./UploadPanel.module.css";
 
 /**
  * Ladda upp: the file chooser, what the flow takes, a zone to click or drop a
@@ -54,14 +60,15 @@ export function UploadPanel({
     },
   };
 
-  // One keyboard stop: the primary action. The zone is a label for the chooser, a larger place to click.
+  // One keyboard stop: the primary action. The zone is a larger place to click, not a control of its own.
+  // A real file input stays (hidden): the page's primary action opens its chooser, and a test sets its files.
   const chooser = (
     <input
       ref={inputRef}
       id={inputId}
       type="file"
       accept={fileAccept(step?.accepted_mimetypes) ?? (audio ? "audio/*" : undefined)}
-      className="sr-only"
+      hidden
       tabIndex={-1}
       aria-hidden
       onChange={(event) => {
@@ -71,12 +78,13 @@ export function UploadPanel({
       }}
     />
   );
+  const choose = () => document.getElementById(inputId)?.click();
   const FileIcon = audio ? FileAudio : FileText;
   // In the same place whichever view shows, so the choice is said once.
   const chosenStatus = (
-    <p role="status" className="sr-only">
+    <VisuallyHidden as="p" role="status">
       {file ? `Vald fil: ${file.filename}` : ""}
-    </p>
+    </VisuallyHidden>
   );
 
   if (file) {
@@ -84,30 +92,21 @@ export function UploadPanel({
       <>
         {chooser}
         {chosenStatus}
-        <div
-          {...dropTarget}
-          className={cn(
-            "flex items-center gap-3 rounded-xl border bg-paper p-4 transition-colors duration-150",
-            dragging ? "border-primary bg-primary-soft/40" : "border-rule-soft",
-          )}
-        >
-          <FileIcon aria-hidden className="size-6 shrink-0 text-primary" strokeWidth={1.75} />
-          <div className="min-w-0 flex-1">
-            <p className="text-[15px] font-medium text-ink [overflow-wrap:anywhere]">{file.filename}</p>
-            <p className="text-[13px] text-ink-soft">
-              {formatBytes(file.blob.size)}
-              {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0"
-            onClick={() => document.getElementById(inputId)?.click()}
-          >
-            Byt fil
-          </Button>
-        </div>
+        <Card padding={4} variant={dragging ? "blue" : "default"} {...dropTarget}>
+          <HStack gap={3} hAlign="between" align="center">
+            <HStack gap={3} align="center">
+              <Icon icon={FileIcon} color="accent" />
+              <VStack gap={0.5}>
+                <Text weight="medium">{file.filename}</Text>
+                <Text type="supporting">
+                  {formatBytes(file.blob.size)}
+                  {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}
+                </Text>
+              </VStack>
+            </HStack>
+            <Button label="Byt fil" variant="secondary" onClick={choose} />
+          </HStack>
+        </Card>
       </>
     );
   }
@@ -116,28 +115,24 @@ export function UploadPanel({
     <>
       {chooser}
       {chosenStatus}
-      <label
-        htmlFor={inputId}
-        data-drop-zone
-        {...dropTarget}
-        className={cn(
-          "flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed px-5 py-6 text-center transition-colors duration-150",
-          dragging ? "border-primary bg-primary-soft/40" : "border-rule bg-paper hover:border-primary hover:bg-primary-soft/20",
-        )}
-      >
-        <Upload aria-hidden className="size-6 text-primary" strokeWidth={1.75} />
-        <span className="hidden text-[15px] font-medium text-ink md:[@media(pointer:fine)]:block">
-          {audio ? "Dra en ljudfil hit eller klicka för att välja en." : "Dra en fil hit eller klicka för att välja en."}
-        </span>
-        {takes && <span className="block text-[14px] text-ink-soft">Flödet tar emot {takes}.</span>}
-      </label>
+      <Card padding={5} variant={dragging ? "blue" : "default"} data-drop-zone className={styles.zone} onClick={choose} {...dropTarget}>
+        <VStack hAlign="center" gap={2}>
+          <Icon icon={Upload} color="accent" />
+          <Text weight="medium" justify="center" className={styles.fineOnly}>
+            {audio ? "Dra en ljudfil hit eller klicka för att välja en." : "Dra en fil hit eller klicka för att välja en."}
+          </Text>
+          {takes && (
+            <Text type="supporting" justify="center">
+              Flödet tar emot {takes}.
+            </Text>
+          )}
+        </VStack>
+      </Card>
       {optional && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <p className="text-[15px] text-ink-soft">{audio ? "Ljudfilen" : "Filen"} är valfri.</p>
-          <Button type="button" variant="outline" onClick={() => document.getElementById(inputId)?.click()}>
-            {audio ? "Välj ljudfil" : "Välj fil"}
-          </Button>
-        </div>
+        <HStack hAlign="between" align="center" gap={3} wrap="wrap">
+          <Text color="secondary">{audio ? "Ljudfilen" : "Filen"} är valfri.</Text>
+          <Button label={audio ? "Välj ljudfil" : "Välj fil"} variant="secondary" onClick={choose} />
+        </HStack>
       )}
     </>
   );

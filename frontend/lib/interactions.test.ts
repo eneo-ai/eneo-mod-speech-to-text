@@ -12,9 +12,9 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
   const outside = document.createElement("button");
   document.body.append(outside);
   const view = await mount(
-    createElement(ParticipantsInput, { id: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", name: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
-  const field = view.container.querySelector<HTMLInputElement>("#namn")!;
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
@@ -34,9 +34,9 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
   const changes: string[][] = [];
   const view = await mount(
-    createElement(ParticipantsInput, { id: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", name: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
-  const field = view.container.querySelector<HTMLInputElement>("#namn2")!;
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn2"]')!;
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Erik Lund"));
   const add = button(view.container, "Lägg till")!;
@@ -146,17 +146,14 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
         onNamesAdded: () => {},
       }),
     );
+  const trigger = (view: Awaited<ReturnType<typeof mountWith>>) => view.container.querySelector<HTMLButtonElement>('[data-detail-field="svar"]')!;
   const open = async (view: Awaited<ReturnType<typeof mountWith>>) => {
-    const trigger = view.container.querySelector<HTMLButtonElement>("#detalj-svar")!;
-    await view.act(async () => {
-      trigger.focus();
-      trigger.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await view.act(async () => trigger(view).click());
     return [...document.querySelectorAll<HTMLElement>('[role="option"]')];
   };
 
   const chosen = await mountWith("inget-val");
-  assert.equal(chosen.container.querySelector("#detalj-svar")?.textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
+  assert.equal(trigger(chosen).textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
   assert.deepEqual((await open(chosen)).map((option) => option.textContent?.trim()), ["Inget val", "inget-val", "Ja", "opt:0"]);
   await chosen.unmount();
 
@@ -169,10 +166,7 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
   ] as const) {
     const view = await mountWith(start);
     const option = (await open(view)).find((o) => o.textContent?.trim() === label)!;
-    await view.act(async () => {
-      option.focus();
-      option.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-    });
+    await view.act(async () => option.click());
     assert.deepEqual(changes.at(-1), ["svar", expected], label);
     await view.unmount();
   }

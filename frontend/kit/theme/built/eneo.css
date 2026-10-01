@@ -391,6 +391,31 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-radio-list {
+    gap: var(--spacing-3);
+  }
+
+  .astryx-radio-list-item {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-container);
+    padding: var(--spacing-3) var(--spacing-4);
+    min-height: 44px;
+  }
+
+  .astryx-radio-list-item:focus-within {
+    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+    outline-offset: var(--focus-outline-offset);
+  }
+
+  .astryx-radio-list-item[data-selected="selected"] {
+    border-color: var(--color-accent);
+    background-color: var(--color-accent-muted);
+  }
+
+  .astryx-token {
+    overflow: visible;
+  }
+
   .astryx-avatar-fallback {
     color: var(--color-text-primary);
   }
