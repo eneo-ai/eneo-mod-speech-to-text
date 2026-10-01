@@ -66,11 +66,15 @@ class FakeEneo:
     def __init__(self, respond=None) -> None:
         self.respond = respond or (lambda seen: (200, [("content-type", "application/json")], b"{}"))
         self.requests: list[Seen] = []
+        self.websocket = None  # an ASGI websocket app, for a test that needs Eneo's live socket
         self.sent = 0  # bytes of lazily served answers handed to the server
         self.outcomes: list[str] = []  # one per lazily served answer: "complete", or "dropped" if the client hung up first
         self.active = 0  # lazily served answers still being served
 
     async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] == "websocket" and self.websocket is not None:
+            await self.websocket(scope, receive, send)
+            return
         if scope["type"] != "http":
             return
         body = b""
@@ -182,7 +186,7 @@ class BoundaryCase(unittest.TestCase):
     def setUp(self) -> None:
         self.eneo = ENEO
         self.eneo.requests.clear()
-        self.eneo.sent, self.eneo.outcomes = 0, []
+        self.eneo.sent, self.eneo.outcomes, self.eneo.websocket = 0, [], None
         self.eneo.respond = lambda seen: (200, [("content-type", "application/json")], b"{}")
         self.addCleanup(self.wait_until_eneo_is_idle)
         self.addCleanup(setattr, main.settings, "eneo_backend_url", main.settings.eneo_backend_url)
@@ -817,6 +821,140 @@ class SecretsInLogsTests(BoundaryCase):
         self.assertIn("refresh", logs.text.lower(), "the failure itself is still logged")
         self.assertNotIn("SECRET-", logs.text)
         self.assertNotIn("token-due", logs.text)
+
+
+class EneoLive:
+    """Eneo's live socket: accepts, says ``ready``, echoes every audio frame, and records how and when it was closed."""
+
+    def __init__(self) -> None:
+        self.closed, self.close_code, self.received = threading.Event(), None, []
+
+    async def __call__(self, scope, receive, send) -> None:
+        await receive()
+        await send({"type": "websocket.accept", "subprotocol": "eneo-live.v1"})
+        await send({"type": "websocket.send", "text": json.dumps({"type": "ready"})})
+        while True:
+            message = await receive()
+            if message["type"] == "websocket.disconnect":
+                self.close_code = message.get("code")
+                self.closed.set()
+                return
+            self.received.append(message)
+            if message.get("bytes") is not None:
+                await send({"type": "websocket.send", "bytes": message["bytes"]})
+
+
+class LiveSessionEndTests(BoundaryCase):
+    """An open live socket is the session's: it ends, both sockets closed, when the session does."""
+
+    FLOW = STEP = "00000000-0000-4000-8000-000000000001"
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.live = EneoLive()
+        self.eneo.websocket = self.live
+
+        def respond(seen: Seen):
+            ceiling = datetime.fromtimestamp(time.time() + 4 * 3600, tz=timezone.utc).isoformat()
+            user = {"id": "user-id", "email": "user@example.test"}
+            if seen.path.endswith("/live-transcription-sessions/"):
+                body = {"ticket": "tkt", "websocket_path": "/ws/live"}
+            elif seen.path.endswith("/token/refresh/") or seen.path.endswith("/module-auth/token/"):
+                body = {"access_token": "token-of-" + seen.path.rsplit("/", 2)[-2], "token_type": "bearer", "expires_in": 900, "session_expires_at": ceiling,
+                        "module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
+            elif seen.path.endswith("/session/"):
+                body = {"module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
+            else:
+                body = {}
+            return 200, [("content-type", "application/json")], json.dumps(body).encode()
+
+        self.respond_with(respond)
+
+    def through(self, session: str, scenario, *, query: str = ""):
+        """A browser opens the relay with ``session`` and waits for ``ready``; ``scenario(browser)`` then runs."""
+
+        async def run():
+            async with websockets.asyncio.client.connect(
+                MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}{query}",
+                additional_headers={"Cookie": f"{SESSION_COOKIE}={session}", "Origin": ORIGIN},
+                open_timeout=10,
+            ) as browser:
+                self.assertEqual(json.loads(await asyncio.wait_for(browser.recv(), 10))["type"], "ready")
+                return await scenario(browser)
+
+        return asyncio.run(run())
+
+    async def assert_ended(self, browser, within: float) -> None:
+        """Both sockets are closed within ``within`` seconds, the browser's with a policy close and a fixed reason."""
+        await asyncio.wait_for(browser.wait_closed(), within)
+        self.assertEqual((browser.close_code, browser.close_reason), (1008, "session_ended"))
+        self.assertTrue(await asyncio.to_thread(self.live.closed.wait, within), "Eneo's socket was left open")
+
+    def test_a_logout_after_ready_closes_both_sockets(self) -> None:
+        async def scenario(browser):
+            await browser.send(b"\x00" * 64)
+            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x00" * 64)  # the relay works until it ends
+            await asyncio.to_thread(self.request, "POST", "/api/auth/logout", self.session_a)
+            await self.assert_ended(browser, 5)
+
+        self.through(self.session_a, scenario)
+
+    def test_a_session_that_expires_while_audio_flows_closes_both_sockets(self) -> None:
+        session = a_session("token-short", lifetime=2)
+
+        async def scenario(browser):
+            async def audio():
+                while True:
+                    await browser.send(b"\x01" * 64)
+                    await asyncio.sleep(0.2)
+
+            sender = asyncio.ensure_future(audio())
+            try:
+                await self.assert_ended(browser, 6)
+            finally:
+                sender.cancel()
+
+        self.through(session, scenario)
+
+    def test_an_idle_connection_ends_with_its_session_too(self) -> None:
+        session = a_session("token-short", lifetime=2)
+
+        async def scenario(browser):
+            await self.assert_ended(browser, 6)  # nothing is sent either way: no frame is there to notice it by
+
+        self.through(session, scenario)
+
+    def test_a_new_login_that_replaces_the_session_closes_the_old_ones_sockets(self) -> None:
+        with self.browser() as client:
+            def sign_in() -> httpx.Response:
+                started = client.get("/api/auth/login")
+                state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+                return client.get("/api/auth/callback", params={"ticket": "one-time", "state": state})
+
+            sign_in()
+            first = client.cookies.get(SESSION_COOKIE)
+
+            async def scenario(browser):
+                await asyncio.to_thread(sign_in)
+                await self.assert_ended(browser, 5)
+
+            self.through(first, scenario)
+
+            self.assertNotEqual(client.cookies.get(SESSION_COOKIE), first)
+            self.assertEqual(client.get("/api/auth/status").status_code, 200)
+            self.assertEqual(self.request("GET", "/api/config", first).status_code, 401, "the replaced session still lives")
+
+    def test_a_session_that_is_refreshed_is_not_cut_off_at_its_first_expiry(self) -> None:
+        session = a_session("token-short", lifetime=3, refresh_in=0, user_id="user-id")  # Eneo's fake renews user-id's token
+
+        async def scenario(browser):
+            # An ordinary request refreshes it (it is due), as the page's status polling does while it records.
+            await asyncio.to_thread(self.request, "GET", "/api/auth/status", session)
+            await asyncio.sleep(4)  # past the 3 s the session had
+            await browser.send(b"\x02" * 8)
+            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x02" * 8)
+
+        self.through(session, scenario)
 
 
 class CallbackStateTests(BoundaryCase):

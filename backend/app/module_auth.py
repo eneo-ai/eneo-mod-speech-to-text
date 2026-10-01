@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import math
 import secrets
@@ -139,6 +140,8 @@ class ModuleSessionStore:
     def __init__(self) -> None:
         self._sessions: dict[str, ModuleSession] = {}
         self._lock = threading.Lock()
+        # Who is waiting for a session to end (a live socket), by session id: the loop to wake and its event.
+        self._watchers: dict[str, list[tuple[asyncio.AbstractEventLoop, asyncio.Event]]] = {}
 
     def create(self, session: ModuleSession) -> str:
         session_id = secrets.token_urlsafe(32)
@@ -155,7 +158,8 @@ class ModuleSessionStore:
             self._delete_expired_locked(now)
             session = self._sessions.get(session_id)
             if session is None or session.expires_at <= now:
-                self._sessions.pop(session_id, None)
+                if self._sessions.pop(session_id, None) is not None:
+                    self._notify_locked(session_id)
                 return None
             return session
 
@@ -169,10 +173,13 @@ class ModuleSessionStore:
         if session_id is None:
             return
         with self._lock:
-            self._sessions.pop(session_id, None)
+            if self._sessions.pop(session_id, None) is not None:
+                self._notify_locked(session_id)
 
     def clear(self) -> None:
         with self._lock:
+            for session_id in list(self._sessions):
+                self._notify_locked(session_id)
             self._sessions.clear()
 
     def _delete_expired_locked(self, now: float) -> None:
@@ -183,6 +190,40 @@ class ModuleSessionStore:
         ]
         for session_id in expired:
             del self._sessions[session_id]
+            self._notify_locked(session_id)
+
+    def _notify_locked(self, session_id: str) -> None:
+        for loop, event in self._watchers.get(session_id, ()):
+            with contextlib.suppress(RuntimeError):  # the watcher's loop has closed
+                loop.call_soon_threadsafe(event.set)
+
+    async def ended(self, session_id: str | None) -> None:
+        """Returns when the session is gone: logged out, replaced by a new login, refused a refresh, or expired.
+
+        The one signal a long-lived connection (the live socket) subscribes to, so that it ends with the session even
+        when nothing is sent over it. An expiry is noticed at the session's own time, and a session that is refreshed
+        meanwhile (its ``expires_at`` moves) is waited for again until its new end.
+        """
+        if session_id is None:
+            return
+        event = asyncio.Event()
+        watcher = (asyncio.get_running_loop(), event)
+        with self._lock:
+            self._watchers.setdefault(session_id, []).append(watcher)
+        try:
+            while (session := self.get(session_id)) is not None:
+                try:
+                    await asyncio.wait_for(event.wait(), max(0.0, session.expires_at - time.time()) + 0.05)
+                    return
+                except TimeoutError:
+                    continue
+        finally:
+            with self._lock:
+                watchers = self._watchers.get(session_id, [])
+                if watcher in watchers:
+                    watchers.remove(watcher)
+                if not watchers:
+                    self._watchers.pop(session_id, None)
 
 
 def eneo_is_unavailable(status_code: int) -> bool:
@@ -289,6 +330,7 @@ class ModuleAuth:
         payload: AccessCodeLoginRequest,
         request: Request,
         response: Response,
+        replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> dict[str, bool]:
         self._require_auth_mode("access_code")
         self.require_same_origin(request)
@@ -308,6 +350,7 @@ class ModuleAuth:
         max_age = self.settings.session_max_age_seconds
         session = AccessCodeSession(expires_at=int(time.time()) + max_age)
         self._set_session_cookie(response, session=session, max_age=max_age)
+        self.sessions.delete(replaced_session_id)  # the one the browser had is over
         response.headers["Cache-Control"] = "no-store"
         return {"ok": True}
 
@@ -319,6 +362,7 @@ class ModuleAuth:
             str | None,
             Cookie(alias=STATE_COOKIE),
         ] = None,
+        replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
         self._require_auth_mode("eneo_sso")
         pending = self._load_pending_login(pending_cookie)
@@ -431,6 +475,8 @@ class ModuleAuth:
         self._set_session_cookie(
             response, session=session, max_age=session_expires_at - now
         )
+        # The browser has the new session now: the one it had is over, with whatever is open under it.
+        self.sessions.delete(replaced_session_id)
         self._delete_state_cookie(response)
         self._secure_callback_response(response)
         return response

@@ -932,6 +932,8 @@ async def eneo_proxy(path: str, request: Request) -> Response:
 # ---------------------------------------------------------------------------
 
 _LIVE_SUBPROTOCOL = "eneo-live.v1"
+# The close the browser gets when its session ends under an open socket: a policy close (1008) and this reason.
+_LIVE_SESSION_ENDED = (1008, "session_ended")
 _LIVE_CLOSE_TIMEOUT_SECONDS = 2
 # A socket that accepts no write for this long has stopped reading, and the
 # relay ends the session. Longer than Eneo's own 10 s deadline toward the model
@@ -1080,17 +1082,22 @@ async def _eneo_to_browser(eneo: ClientConnection, browser: WebSocket) -> _PumpE
     return _PumpEnd.ENEO_ENDED
 
 
-async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> int:
-    """Relay both ways until one side ends; returns the browser's close code."""
+async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> tuple[int, str]:
+    """Relay both ways until one side ends or the session does; returns the browser's close code and reason."""
     upstream = asyncio.create_task(_browser_to_eneo(browser, eneo))
     downstream = asyncio.create_task(_eneo_to_browser(eneo, browser))
+    # The session is checked once, when the socket opens, and a socket lives for as long as a recording: it ends
+    # with the session (logout, a new login, expiry), whether or not a frame is moving.
+    session_over = asyncio.create_task(module_auth.sessions.ended(browser.cookies.get(SESSION_COOKIE)))
     try:
         done, _ = await asyncio.wait(
-            {upstream, downstream}, return_when=asyncio.FIRST_COMPLETED
+            {upstream, downstream, session_over}, return_when=asyncio.FIRST_COMPLETED
         )
+        if session_over in done:
+            return _LIVE_SESSION_ENDED
         ends = {pump.result() for pump in done}
         if _PumpEnd.BROWSER_GONE in ends:
-            return 1011  # stop at once
+            return 1011, ""  # stop at once
         # Eneo ended or stalled. Stop reading the browser and close Eneo, so
         # nothing new arrives, then deliver the events Eneo sent before.
         upstream.cancel()
@@ -1100,12 +1107,12 @@ async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> int
         # `transcript.done` or an `error`, and every event reached the browser;
         # a close that completes after the relay gave up does not count.
         if ends == {_PumpEnd.ENEO_ENDED} and eneo.close_code == 1000:
-            return 1000
-        return 1011
+            return 1000, ""
+        return 1011, ""
     finally:
-        for pump in (upstream, downstream):
-            pump.cancel()
-        await asyncio.gather(upstream, downstream, return_exceptions=True)
+        for task in (upstream, downstream, session_over):
+            task.cancel()
+        await asyncio.gather(upstream, downstream, session_over, return_exceptions=True)
 
 
 async def _close_eneo_socket(eneo: ClientConnection) -> None:
@@ -1118,7 +1125,7 @@ async def _close_eneo_socket(eneo: ClientConnection) -> None:
 
 
 async def _close_browser_socket(
-    websocket: WebSocket, *, code: int = 1000, event: dict[str, object] | None = None
+    websocket: WebSocket, *, code: int = 1000, reason: str = "", event: dict[str, object] | None = None
 ) -> None:
     """Send the last event, if any, and close; the browser may be gone already.
 
@@ -1129,7 +1136,7 @@ async def _close_browser_socket(
         with contextlib.suppress(TimeoutError, WebSocketDisconnect, RuntimeError):
             await asyncio.wait_for(websocket.send_json(event), _LIVE_SEND_TIMEOUT_SECONDS)
     with contextlib.suppress(WebSocketDisconnect, RuntimeError):
-        await websocket.close(code)
+        await websocket.close(code, reason)
 
 
 @app.websocket(
@@ -1147,7 +1154,7 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
         await _close_browser_socket(websocket, event=refused.event)
         return
     try:
-        code = await _relay_live_session(websocket, eneo)
+        code, reason = await _relay_live_session(websocket, eneo)
     finally:
         await _close_eneo_socket(eneo)
-    await _close_browser_socket(websocket, code=code)
+    await _close_browser_socket(websocket, code=code, reason=reason)
