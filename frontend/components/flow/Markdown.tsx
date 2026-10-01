@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState, type ComponentType } from "react";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
 import styles from "./Markdown.module.css";
 
 type MarkdownNode = { type: string; depth?: number; children?: MarkdownNode[] };
@@ -34,17 +37,38 @@ const load = () => import("./MarkdownFormatted").then((module) => (loaded = modu
  * Markdown as a page, its headings under the page's h1 (remarkResultHeadings) and bare addresses as links.
  *
  * Until the code that formats it has arrived the text is there, as it was written: nothing is missing and nothing is
- * announced twice, and the server and the first render of the browser agree, since neither has the code yet.
+ * announced twice, and the server and the first render of the browser agree, since neither has the code yet. If it
+ * cannot be fetched (a page older than the deploy that replaced its files, a connection that dropped) the text stays
+ * and a press tries again: only that code is fetched again, never the page, which may hold work not yet saved.
  */
 export function Markdown({ children }: { children: string }) {
   const [Formatted, setFormatted] = useState<Formatted | null>(() => loaded);
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (Formatted) return;
     let current = true;
-    void load().then((component) => current && setFormatted(() => component));
+    setFailed(false);
+    load().then(
+      (component) => current && setFormatted(() => component),
+      () => current && setFailed(true),
+    );
     return () => {
       current = false;
     };
-  }, [Formatted]);
-  return Formatted ? <Formatted>{children}</Formatted> : <p className={styles.plain}>{children}</p>;
+  }, [Formatted, attempt]);
+  if (Formatted) return <Formatted>{children}</Formatted>;
+  return (
+    <>
+      <p className={styles.plain}>{children}</p>
+      {(failed || attempt > 0) && (
+        <HStack vAlign="center" wrap="wrap" gap={2}>
+          <Text as="p" type="supporting" role="status">
+            {failed ? "Texten visas utan formatering, den kunde inte läsas in." : "Läser in formateringen…"}
+          </Text>
+          <Button size="sm" label="Visa formaterat igen" onClick={() => failed && setAttempt(attempt + 1)} />
+        </HStack>
+      )}
+    </>
+  );
 }
