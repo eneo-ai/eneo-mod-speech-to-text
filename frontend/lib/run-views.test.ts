@@ -95,6 +95,12 @@ const report: ResultFileView = {
   stepId: null,
 };
 
+/** The attributes of every tag with this name in some markup, as the browser would read them. */
+const tagsOf = (html: string, tag: string) =>
+  [...html.matchAll(new RegExp(`<${tag}\\b([^>]*)>`, "g"))].map(([, attrs]) =>
+    Object.fromEntries([...attrs.matchAll(/([\w-]+)(?:="([^"]*)")?/g)].map(([, name, value]) => [name, value ?? ""])),
+  );
+
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
   const html = renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
   const words = text(html);
@@ -104,11 +110,14 @@ test("a generated file is a row with Eneo's name and its size, opened and downlo
   // The module's route names the file from Eneo's response; the page passes no name.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const attachment = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
-  // Phones open the PDF in a new tab; wider screens get a titled dialog (its trigger here).
-  assert.ok(html.includes(`href="${inline}" target="_blank"`), html);
-  assert.match(html, /aria-haspopup="dialog"[^>]*>(?:<[^>]+>)*Öppna/);
-  assert.ok(html.includes(`href="${attachment}" download=""`), html);
+  // Before the window is read it is taken to be a laptop's: the PDF opens in a titled dialog (its trigger here, and its
+  // own link to a tab); the phone's link comes with a narrower window (result-document.test.ts).
+  const links = tagsOf(html, "a");
+  assert.ok(links.some((a) => a.href === inline && a.target === "_blank"), "the dialog's way to a tab of its own");
+  assert.ok(links.some((a) => a.href === attachment && "download" in a), "the download saves the file");
+  assert.ok(tagsOf(html, "button").some((b) => b["aria-haspopup"] === "dialog" && b["aria-label"] === `Öppna ${report.name}`));
   assert.doesNotMatch(html, /filename=/);
+  assert.ok(!html.includes("<iframe"), "the file is fetched only once the dialog is open");
 });
 
 test("a Word file downloads; only a PDF offers Öppna", () => {

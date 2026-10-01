@@ -4,7 +4,7 @@
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
 import { expect, test } from "@playwright/test";
-import { endLogin, run, sessionWarning } from "./screens";
+import { endLogin, isLaptop, result, run, sessionWarning } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -46,4 +46,29 @@ test("the warning already open when the login ends becomes the sign-in dialog, w
   await page.keyboard.press("Escape");
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeHidden();
+});
+
+// The PDF preview is a page dialog like the naming dialog, with a viewer in it that must not be reloaded by the cover.
+test("the PDF preview open when the login ends is covered with the page, and is back with its viewer after the new login", async ({ page }, info) => {
+  test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a tab of its own");
+  await result(page);
+  await page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ }).click();
+  const preview = page.getByRole("dialog", { name: /^Protokoll .*\.pdf$/ });
+  await expect(preview.locator("iframe")).toBeVisible();
+
+  await endLogin(page);
+  await expect(preview, "the preview is not shown, nor in the accessibility tree").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Protokoll kommunstyrelsen|Öppna i ny flik|Ladda ner/);
+  for (let i = 0; i < 12; i++) {
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.closest('[role="alertdialog"]') !== null), `Tab ${i + 1}`).toBe(true);
+  }
+
+  await page.unroute("**/api/auth/status");
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
+  await expect(preview).toBeVisible();
+  await expect(preview.locator("iframe")).toHaveAttribute("src", /disposition=inline/);
 });

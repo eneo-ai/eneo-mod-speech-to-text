@@ -50,6 +50,12 @@ for (const name of WALKS) {
   });
 }
 
+/**
+ * Tab has left the page for the browser's own controls (the document has no focus). A native modal dialog lets Tab
+ * do that, as a trap would break WCAG 2.1.2; it never lets Tab reach the page behind it.
+ */
+const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
@@ -120,7 +126,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
         const clip = await screenClip(page, box);
         if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
       }
-    } else {
+    } else if (!(await inBrowser(page))) {
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);

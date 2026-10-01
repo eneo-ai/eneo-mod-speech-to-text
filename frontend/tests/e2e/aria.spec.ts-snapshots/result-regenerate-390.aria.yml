@@ -9,14 +9,14 @@
     - note:
       - text: Dokumentet skapades före dina rättningar Den nya versionen görs från det rättade transkriptet.
       - button "Skapa dokumentet igen med rättningarna"
-    - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+    - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=attachment
     - link "Öppna PDF i en ny flik":
       - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=inline
     - region "Dokumentet":
       - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:
         - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=inline
-      - paragraph: /PDF, \d+ B/
+      - text: /PDF, \d+ B/
       - region "Förhandsvisning av texten i filen":
         - paragraph: Förhandsvisning av texten i filen
         - article:
@@ -33,8 +33,7 @@
       - heading "Fler filer" [level=2]
       - list:
         - listitem:
-          - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/
-          - paragraph: /Word, \d+ kB/
+          - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx Word, \d+ kB/
           - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
             - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-docx/content?disposition=attachment
     - button "Hur resultatet togs fram 2 steg"
