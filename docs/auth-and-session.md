@@ -100,19 +100,22 @@ Sidan navigerar inte bort. Den ligger kvar, dold och låst (`SignedOutCover` i `
 
 ### Sidans användare i en gammal flik
 
-Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts sessionen, och en gammal flik skulle fortsätta skicka ljud under den nya personens session. Därför namnger en sida den användare (och tenant) den öppnades för, och BFF:en jämför id:n (`is_another_user` och `require_expected_user` i `backend/app/module_auth.py`):
+Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts sessionen, och en gammal flik skulle fortsätta skicka ljud, eller ändra något annat, under den nya personens session. Därför namnger en sida den användare (och tenant) den öppnades för, och BFF:en jämför id:n (`is_another_user` och `require_expected_user` i `backend/app/module_auth.py`):
 
-| Väg | Hur sidan namnger användaren | Är den en annan |
+| Väg | Hur sidan namnger användaren | Saknas namnet, eller är det en annan |
 |---|---|---|
 | Uppladdningarna och `/api/eneo/{path}` | Headrarna `X-Expected-User` och `X-Expected-Tenant` | `409` med `{"detail": "user_changed"}`, innan bodyn läses. Ingenting når Eneo. |
 | Live-socketen | Frågeparametrarna `?expected_user=` och `expected_tenant` (en webbläsare kan inte sätta en header på en WebSocket) | Stängs med `1008` och skälet `user_changed`, innan någon biljett begärs hos Eneo. |
 
-- Frontend namnger användaren på varje anrop under `/api/eneo/` (headern `X-Expected-User`, uppladdningen inräknad) och på varje ny live-anslutning (`?expected_user=`), ur den identitet sidan öppnades med (`expectedUser` i `frontend/lib/login-state.ts`, `frontend/lib/api.ts`, `frontend/lib/live-transcriber.ts`). Den skickar ingen tenant.
-- Får sidan 409 eller 1008 `user_changed` visar den täckskiktet som när en inloggning gått ut ([ovan](#när-inloggningen-har-gått-ut)): förfrågningar som tål att skickas två gånger väntar på sidans egen användare, en uppladdning misslyckas som en utgången session, och inspelningen ligger kvar på enheten. Live-texten fortsätter som efter ett avbrott när sidans egen användare är tillbaka.
-- En request eller socket som inte namnger någon godtas tills vidare.
-- En åtkomstkodssession har ingen användare att jämföra med och godtas alltid.
-- GET av ljud och genererade filer kontrollerar inte sidans användare: ett `<audio src>` och en PDF-ram kan inte sätta headers, och Eneo auktoriserar själv körningen.
+- **Krävs för `eneo_sso`:** namnet måste finnas på varje request under `/api/eneo/` som ändrar något (inte GET, HEAD eller OPTIONS: uppladdningar, start av körning, PATCH, avbryt) och på live-socketen. Ett namn som saknas ger samma `user_changed` som ett fel namn.
+- **En GET får sakna namn,** eftersom ett `<audio src>` och en navigering inte kan skicka en header, men ett namn den ger måste vara sessionens. GET av ljud och genererade filer kontrollerar inte sidans användare alls: en PDF-ram kan inte heller sätta headers, och Eneo auktoriserar själv körningen.
+- **En åtkomstkodssession** har ingen användare att jämföra med och godtas alltid.
 - Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
+
+Frontend namnger användaren på varje anrop under `/api/eneo/` (uppladdningen inräknad) och på varje ny live-anslutning, ur den identitet sidan öppnades med; den skickar ingen tenant (`expectedUser` i `frontend/lib/login-state.ts`, `frontend/lib/api.ts`, `frontend/lib/live-transcriber.ts`).
+
+- **409 eller 1008 `user_changed`:** sidan skickar aldrig om en förfrågan som fått 409 `user_changed`, vem som än loggar in härnäst. Den visar täckskiktet som när en inloggning gått ut ([ovan](#när-inloggningen-har-gått-ut)) och läser om sessionsstatus, så att täckskiktet säger vem man ska logga in som. En uppladdning misslyckas som en utgången session, och inspelningen ligger kvar på enheten.
+- **1008 `session_ended`** (sessionen tog slut under en öppen live-socket) täcker också sidan. Live-texten öppnar ingenting förrän sidans egen användare är tillbaka, och fortsätter då som efter ett avbrott.
 
 Tester: `ExpectedUserTests` och `LiveExpectedUserTests` i `backend/tests/test_boundary.py`.
 
