@@ -3,14 +3,14 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Switch } from "@astryxdesign/core/Switch";
+import { Text } from "@astryxdesign/core/Text";
 import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
-import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
 import { FlowAside } from "@/components/flow/FlowAside";
 import {
   COUNT_FROM_NAMES,
@@ -55,7 +55,6 @@ import {
   recordingNotices,
 } from "@/lib/recording-view";
 import { selectRuntimeInputStep } from "@/lib/upload";
-import { cn } from "@/lib/utils";
 import styles from "./FlowSetup.module.css";
 
 type Session = ReturnType<typeof useFlowSession>;
@@ -333,7 +332,7 @@ function SetupWorkspace({
   const audio = step?.input_format?.toLowerCase() === "audio";
   // The flow runs without a file too: Skapa dokument sends the details alone, and choosing a file stays offered.
   const optionalFile = step?.required === false;
-  const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
+  const ActionIcon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
   const text = makesText(contract.final_output);
   const create = createActionLabel(text);
@@ -361,33 +360,24 @@ function SetupWorkspace({
 
   const speakerChoice =
     speakerOption?.selectable && snapshot.speakerLabels !== null ? (
-      <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
-        <FieldContent className="gap-0.5">
-          <FieldLabel htmlFor="talare" className="text-[17px] font-semibold text-ink">
-            Märk upp talare
-          </FieldLabel>
-          <FieldDescription id="talare-hjalp" className="text-[15px]">
-            Tar längre tid efter inspelningen.
-          </FieldDescription>
-        </FieldContent>
-        <Switch
-          id="talare"
-          checked={snapshot.speakerLabels}
-          onCheckedChange={(on) => session.setSpeakerLabels(on)}
-          aria-describedby="talare-hjalp"
-          // A finger's hit area is 44 px tall: 12 px above and below the switch's padding box, over its own 10.
-          className="coarse:after:-inset-y-3"
-        />
-      </Field>
+      <Switch
+        label="Märk upp talare"
+        description="Tar längre tid efter inspelningen."
+        value={snapshot.speakerLabels}
+        onChange={(on) => session.setSpeakerLabels(on)}
+        labelPosition="start"
+        labelSpacing="spread"
+        width="100%"
+      />
     ) : speakerOption?.required || reviewsSpeakers ? (
-      <p className="text-[15px] text-ink-soft">
+      <Text as="p" color="secondary">
         Flödet märker upp talare.
         {reviewsSpeakers && " Efter transkriberingen bekräftar du vem som är vem."}
-      </p>
+      </Text>
     ) : null;
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <VStack gap={6}>
       <UnsentRecordings
         recordings={unsentRecordings}
         sendLabel={() => create}
@@ -403,14 +393,14 @@ function SetupWorkspace({
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
       ) : (
         // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
-        <h2 data-phase-heading tabIndex={-1} className="sr-only">
+        <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
           {modes[0] ? MODE_TEXT[modes[0]].name : create}
-        </h2>
+        </VisuallyHidden>
       )}
 
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
       {(speakerChoice || snapshot.speakerCount !== null) && (
-        <div className="flex flex-col gap-4">
+        <VStack gap={4}>
           {speakerChoice}
           {snapshot.speakerCount !== null && (
             <SpeakerCountField
@@ -419,7 +409,7 @@ function SetupWorkspace({
               onChange={(text) => session.setSpeakerCount(text)}
             />
           )}
-        </div>
+        </VStack>
       )}
 
       {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
@@ -440,41 +430,33 @@ function SetupWorkspace({
       {(mode || modes.length === 0) &&
         docked(
           dock,
-          <div
-            data-docked-action={dock ? true : undefined}
-            className={cn(
-              "flex flex-col",
-              // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
-              dock
-                ? "gap-2 border-t border-border bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
-                : "gap-3",
-            )}
-          >
+          // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
+          <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
             <Button
-              type="button"
-              variant={resuming ? "outline" : "default"}
-              size="xl"
-              className="w-full"
-              // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
-              aria-disabled={phase === "starting" || checkingUpload || undefined}
+              label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
+              variant={resuming ? "secondary" : "primary"}
+              size="lg"
+              width="100%"
+              icon={ActionIcon ? <Icon icon={ActionIcon} /> : undefined}
+              // Busy, not disabled: that would drop keyboard focus while the browser asks for the microphone, and a
+              // second press is refused by the session.
+              isLoading={phase === "starting" || checkingUpload}
+              isInterruptible
               onClick={primary}
-            >
-              {phase === "starting" || checkingUpload ? (
-                <Spinner data-icon="inline-start" aria-hidden />
-              ) : Icon ? (
-                <Icon data-icon="inline-start" aria-hidden />
-              ) : null}
-              {phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
-            </Button>
+            />
             {/* The wait for a chosen file's length is said, not only written on the button. */}
-            <p role="status" className="sr-only">
+            <VisuallyHidden as="p" role="status">
               {checkingUpload ? "Kontrollerar filen…" : ""}
-            </p>
-            {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
-          </div>,
+            </VisuallyHidden>
+            {recordingMode && (
+              <Text as="p" type="supporting" justify="center">
+                {storageLine(persistent)}
+              </Text>
+            )}
+          </VStack>,
         )}
 
-      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className="pt-4" />
-    </div>
+      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+    </VStack>
   );
 }

@@ -4,7 +4,7 @@
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
 import { expect, test } from "@playwright/test";
-import { endLogin, run, sessionWarning } from "./screens";
+import { chooseMode, endLogin, run, sessionWarning, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -46,4 +46,17 @@ test("the warning already open when the login ends becomes the sign-in dialog, w
   await page.keyboard.press("Escape");
   await expect(dialog).toBeVisible();
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeHidden();
+});
+
+test("the microphone list open when the login ends is covered with the page, and is not in what a screen reader is given", async ({ page }) => {
+  await setup(page);
+  await chooseMode(page, "Spela in");
+  await page.getByRole("combobox", { name: "Mikrofon" }).click();
+  await expect(page.getByRole("listbox")).toBeVisible();
+
+  await endLogin(page);
+  await expect(page.getByRole("listbox"), "a list in the top layer is not left over the sign-in dialog").toBeHidden();
+  const tree = await page.locator("body").ariaSnapshot();
+  expect(tree).toContain("Du behöver logga in igen");
+  expect(tree).not.toMatch(/Mikrofon|Hur vill du lägga till ljudet/);
 });

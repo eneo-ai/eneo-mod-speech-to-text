@@ -15,7 +15,6 @@
   "components/UnsentRecordings.tsx",
   "components/flow/AudioPlayer.tsx",
   "components/flow/CopyButton.tsx",
-  "components/flow/FlowInput.tsx",
   "components/flow/FlowTopBar.tsx",
   "components/flow/LevelMeter.tsx",
   "components/flow/LiveSheet.tsx",

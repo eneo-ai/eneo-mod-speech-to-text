@@ -256,6 +256,22 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
 });
 
+test("while the browser asks for the microphone the start button stays where focus is, busy and not disabled", async ({ page }) => {
+  // The browser's question has no answer yet.
+  await page.addInitScript(() => {
+    navigator.mediaDevices.getUserMedia = () => new Promise(() => {});
+  });
+  await setup(page);
+  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  const start = page.getByRole("button", { name: "Starta inspelning" });
+  await start.focus();
+  await page.keyboard.press("Enter");
+  const waiting = page.getByRole("button", { name: "Startar…" });
+  await expect(waiting).toBeFocused();
+  await expect(waiting).toHaveAttribute("aria-busy", "true");
+  await expect(waiting, "disabled would drop the focus the person is on").toBeEnabled();
+});
+
 test("a wrong access code is said, and focus stays in the field to type it again", async ({ page }) => {
   await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } }));
   await signIn(page, "access_code");

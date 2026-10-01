@@ -217,3 +217,13 @@ test("the microphone: refused says so and offers another try, a gone device is s
   assert.ok(stopped.length > 0, "the test let go of the microphone when recording started");
   localStorage.clear();
 });
+
+test("the design system's busy button stays enabled when it may be interrupted, which the start relies on to keep focus", async () => {
+  const { Button } = await import("@astryxdesign/core/Button");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const html = renderToStaticMarkup(createElement(Button, { label: "Startar…", isLoading: true, isInterruptible: true }));
+  assert.match(html, /aria-busy="true"/);
+  assert.doesNotMatch(html, /\sdisabled=/, "a disabled button drops the focus the person is on");
+  const plain = renderToStaticMarkup(createElement(Button, { label: "Startar…", isLoading: true }));
+  assert.match(plain, /\sdisabled=""/, "without it, busy means disabled");
+});

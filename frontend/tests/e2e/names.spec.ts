@@ -35,6 +35,28 @@ test("the added names are a named list the field points to", async ({ page }) =>
   expect(field.description).toContain("2 namn tillagda");
 });
 
+for (const name of [
+  "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor",
+  "Överenskommelsedokumentationshandläggarutbildningsprogrammet",
+]) {
+  test(`a flow's long name wraps in full and never widens the page: ${name.slice(0, 24)}…`, async ({ page }, info) => {
+    test.skip(!["phone-320-light", "zoom-200"].includes(info.project.name), "the narrowest widths");
+    await page.route("**/api/flows/flow-1/published", async (route) => {
+      const published = await (await route.fetch()).json();
+      await route.fulfill({ json: { ...published, name } });
+    });
+    await setup(page);
+    const heading = page.getByRole("heading", { level: 1, name });
+    await expect(heading).toBeVisible();
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }));
+    expect(scrollWidth, "no horizontal scroll").toBeLessThanOrEqual(clientWidth);
+    const box = (await heading.boundingBox())!;
+    expect(box.x + box.width, "the whole heading is inside the window").toBeLessThanOrEqual(clientWidth);
+    // Every word: nothing clipped by an ellipsis or a box.
+    expect(await heading.evaluate((element) => element.scrollWidth <= element.clientWidth + 1 && element.scrollHeight <= element.clientHeight + 1)).toBe(true);
+  });
+}
+
 test("the sending view is a page with a heading that takes focus, a named progress bar and a spoken stage", async ({ page }) => {
   await sending(page);
   await expect(page.getByRole("main")).toBeVisible();
