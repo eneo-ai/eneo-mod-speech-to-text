@@ -43,6 +43,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.proxy_client = FakeProxyClient()
         main.http_client = self.proxy_client
         self.client = TestClient(main.app)
+        self.client.headers["X-Expected-User"] = "user-id"  # the page names the user it was opened for
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,

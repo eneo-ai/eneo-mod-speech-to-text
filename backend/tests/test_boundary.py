@@ -38,7 +38,7 @@ from fastapi import HTTPException  # noqa: E402
 
 from app import main  # noqa: E402
 from app.config import load_settings  # noqa: E402
-from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
+from app.module_auth import SESSION_COOKIE, AccessCodeSession, EneoSsoSession, ModuleUser  # noqa: E402
 from app.upstream import make_client  # noqa: E402
 
 ORIGIN = main.settings.module_origin
@@ -211,11 +211,20 @@ class BoundaryCase(unittest.TestCase):
         """A browser: a cookie jar of its own, and no redirect followed."""
         return httpx.Client(base_url=MODULE_SERVER.url, follow_redirects=False, trust_env=False, timeout=30)
 
-    def request(self, method: str, path: str, session: str | None = None, **kwargs):
-        """One request from a browser that has sent nothing before, so no cookie is carried over from another call."""
+    def user_of(self, session: str) -> str:
+        return main.module_auth.sessions.get(session).user.id
+
+    def request(self, method: str, path: str, session: str | None = None, *, names_user: bool = True, **kwargs):
+        """One request from a browser that has sent nothing before, so no cookie is carried over from another call.
+
+        The page names the user it was opened for (X-Expected-User), as the frontend does on every /api/eneo request;
+        ``names_user=False`` is a page that does not.
+        """
         headers = {"Origin": ORIGIN, **kwargs.pop("headers", {})}
         if session is not None:
             headers["Cookie"] = f"{SESSION_COOKIE}={session}"
+            if names_user:
+                headers.setdefault("X-Expected-User", self.user_of(session))
         with self.browser() as client:
             return client.request(method, path, headers=headers, **kwargs)
 
@@ -331,7 +340,7 @@ class BrowserHeaderTests(BoundaryCase):
         """A request as a client that sends bytes httpx would not: http.client writes a header value as latin-1."""
         host, port = urlparse(MODULE_SERVER.url).netloc.split(":")
         connection = http.client.HTTPConnection(host, int(port), timeout=30)
-        connection.request(method, path, body=body, headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN, **headers}, **kwargs)
+        connection.request(method, path, body=body, headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN, "X-Expected-User": self.user_of(self.session_a), **headers}, **kwargs)
         response = connection.getresponse()
         answer = (response.status, response.read())
         connection.close()
@@ -367,7 +376,7 @@ class BrowserHeaderTests(BoundaryCase):
             connection.sendall(
                 (
                     f"POST /api/eneo/flows/f/runs/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\n"
-                    f"Cookie: {SESSION_COOKIE}={self.session_a}\r\nContent-Type: application/json\r\n"
+                    f"Cookie: {SESSION_COOKIE}={self.session_a}\r\nX-Expected-User: {self.user_of(self.session_a)}\r\nContent-Type: application/json\r\n"
                     f"Transfer-Encoding: chunked\r\n\r\n{len(payload[:5]):x}\r\n".encode()
                     + payload[:5] + f"\r\n{len(payload[5:]):x}\r\n".encode() + payload[5:] + b"\r\n0\r\n\r\n"
                 )
@@ -516,7 +525,7 @@ class LiveSocketTests(BoundaryCase):
             main.settings.eneo_backend_url = f"http://127.0.0.1:{eneo_server.sockets[0].getsockname()[1]}"
             try:
                 async with websockets.asyncio.client.connect(
-                    MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}",
+                    MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}?expected_user={self.user_of(self.session_a)}",
                     additional_headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN},
                     open_timeout=10,
                 ) as browser:
@@ -685,7 +694,7 @@ class AbandonedUploadTests(BoundaryCase):
             browser = socket.create_connection((host, int(port)))
             browser.sendall(
                 (
-                    f"POST /api/eneo/flows/f/files/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\nCookie: {SESSION_COOKIE}={self.session_a}\r\n"
+                    f"POST /api/eneo/flows/f/files/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\nCookie: {SESSION_COOKIE}={self.session_a}\r\nX-Expected-User: {self.user_of(self.session_a)}\r\n"
                     f"Content-Type: multipart/form-data; boundary={BOUNDARY}\r\nContent-Length: {len(body)}\r\n\r\n"
                 ).encode() + body
             )
@@ -853,6 +862,7 @@ class LiveCase(BoundaryCase):
         super().setUp()
         self.live = EneoLive()
         self.eneo.websocket = self.live
+        self.token_expires_in = 900  # what Eneo says a token it renews lives for
 
         def respond(seen: Seen):
             ceiling = datetime.fromtimestamp(time.time() + 4 * 3600, tz=timezone.utc).isoformat()
@@ -860,7 +870,7 @@ class LiveCase(BoundaryCase):
             if seen.path.endswith("/live-transcription-sessions/"):
                 body = {"ticket": "tkt", "websocket_path": "/ws/live"}
             elif seen.path.endswith("/token/refresh/") or seen.path.endswith("/module-auth/token/"):
-                body = {"access_token": "token-of-" + seen.path.rsplit("/", 2)[-2], "token_type": "bearer", "expires_in": 900, "session_expires_at": ceiling,
+                body = {"access_token": "token-of-" + seen.path.rsplit("/", 2)[-2], "token_type": "bearer", "expires_in": self.token_expires_in, "session_expires_at": ceiling,
                         "module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
             elif seen.path.endswith("/session/"):
                 body = {"module_key": "speech-to-text", "tenant_id": "tenant-id", "user": user}
@@ -870,8 +880,13 @@ class LiveCase(BoundaryCase):
 
         self.respond_with(respond)
 
-    def through(self, session: str, scenario, *, query: str = ""):
-        """A browser opens the relay with ``session`` and waits for ``ready``; ``scenario(browser)`` then runs."""
+    def through(self, session: str, scenario, *, query: str | None = None):
+        """A browser opens the relay with ``session`` and waits for ``ready``; ``scenario(browser)`` then runs.
+
+        The page names the user it was opened for, as the frontend does; ``query`` replaces that.
+        """
+        if query is None:
+            query = f"?expected_user={self.user_of(session)}"
 
         async def run():
             async with websockets.asyncio.client.connect(
@@ -946,17 +961,26 @@ class LiveSessionEndTests(LiveCase):
 
             self.assertNotEqual(client.cookies.get(SESSION_COOKIE), first)
             self.assertEqual(client.get("/api/auth/status").status_code, 200)
-            self.assertEqual(self.request("GET", "/api/config", first).status_code, 401, "the replaced session still lives")
+            self.assertEqual(self.request("GET", "/api/config", first, names_user=False).status_code, 401, "the replaced session still lives")
 
-    def test_a_session_that_is_refreshed_is_not_cut_off_at_its_first_expiry(self) -> None:
-        session = a_session("token-short", lifetime=3, refresh_in=0, user_id="user-id")  # Eneo's fake renews user-id's token
+    def test_a_session_that_is_refreshed_after_the_socket_opened_ends_the_socket_at_its_new_expiry(self) -> None:
+        # Times are whole seconds in a session, so each step has a margin of a second. Not due when the socket opens
+        # (the upgrade does not refresh it); due about 2 s later; its first end is 4 to 5 s from the start.
+        session = a_session("token-short", lifetime=5, refresh_in=2, user_id="user-id")  # user-id: whom Eneo's fake renews
+        self.token_expires_in = 8  # the renewal gives it 8 s more, from when it happens: a new end 9 to 10 s from the start
 
         async def scenario(browser):
-            # An ordinary request refreshes it (it is due), as the page's status polling does while it records.
-            await asyncio.to_thread(self.request, "GET", "/api/auth/status", session)
-            await asyncio.sleep(4)  # past the 3 s the session had
-            await browser.send(b"\x02" * 8)
-            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x02" * 8)
+            started = time.monotonic()
+            await asyncio.sleep(2.3)  # the refresh is due now, and the socket is open
+            await asyncio.to_thread(self.request, "GET", "/api/auth/status", session)  # the page's polling renews it
+            self.assertGreater(main.module_auth.sessions.get(session).expires_at - time.time(), 6, "the renewal did not move the expiry")
+            # Past the ORIGINAL end (5 s at the latest), audio still flows.
+            await asyncio.sleep(max(0, 5.4 - (time.monotonic() - started)))
+            await browser.send(b"\x03" * 8)
+            self.assertEqual(await asyncio.wait_for(browser.recv(), 5), b"\x03" * 8)
+            # And the socket ends at the REVISED end: not before it, not never.
+            await self.assert_ended(browser, 8)
+            self.assertGreater(time.monotonic() - started, 8.5, "it ended before the revised expiry")
 
         self.through(session, scenario)
 
@@ -983,9 +1007,9 @@ class ExpectedUserTests(BoundaryCase):
                     self.assertEqual((response.status_code, response.json()), (409, {"detail": "user_changed"}))
                     self.assertEqual(self.eneo.requests, [])
 
-    def test_a_request_for_the_session_s_user_goes_through_and_so_does_one_that_names_nobody(self) -> None:
+    def test_a_request_for_the_session_s_user_goes_through(self) -> None:
         for label, (method, path, body) in self.MEDIA.items():
-            for header in ({"X-Expected-User": "user-token-of-a"}, {"X-Expected-User": "user-token-of-a", "X-Expected-Tenant": "tenant-id"}, {}):
+            for header in ({"X-Expected-User": "user-token-of-a"}, {"X-Expected-User": "user-token-of-a", "X-Expected-Tenant": "tenant-id"}):
                 with self.subTest(label, header=header):
                     self.eneo.requests.clear()
 
@@ -994,6 +1018,38 @@ class ExpectedUserTests(BoundaryCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertEqual(len(self.eneo.requests), 1)
                     self.assertNotIn("x-expected-user", self.eneo.requests[0].headers, "the page's claim is the module's to check, not Eneo's")
+
+    def test_a_page_that_names_nobody_is_refused_on_every_request_that_changes_something(self) -> None:
+        # A tab still running the old page sends no header: after another person signs in, it would send under their cookie.
+        changes = {
+            **self.MEDIA,
+            "a patch": ("PATCH", "/api/eneo/flows/f/runs/r/steps/s/transcript-corrections/", {"content": b"{}"}),
+            "a cancel": ("POST", "/api/eneo/flows/f/runs/r/cancel/", {"content": b"{}"}),
+        }
+        for label, (method, path, body) in changes.items():
+            with self.subTest(label):
+                self.eneo.requests.clear()
+
+                response = self.request(method, path, self.session_a, names_user=False, **body)
+
+                self.assertEqual((response.status_code, response.json()), (409, {"detail": "user_changed"}))
+                self.assertEqual(self.eneo.requests, [], "something was forwarded for a page that named nobody")
+
+    def test_a_read_may_name_nobody_but_a_name_it_gives_must_be_the_sessions(self) -> None:
+        # An <audio src> or a plain navigation cannot send a header: reads stay optional.
+        for header, status in (({}, 200), ({"X-Expected-User": "user-token-of-a"}, 200), ({"X-Expected-User": "someone-else"}, 409)):
+            with self.subTest(header=header):
+                self.assertEqual(self.request("GET", "/api/eneo/flows/", self.session_a, names_user=False, headers=header).status_code, status)
+
+    def test_a_session_without_a_user_has_nobody_to_compare_and_is_accepted(self) -> None:
+        self.addCleanup(setattr, main.settings, "auth_mode", main.settings.auth_mode)
+        main.settings.auth_mode = "access_code"
+        session = main.module_auth.sessions.create(AccessCodeSession(expires_at=int(time.time()) + 600))
+
+        response = self.request("POST", "/api/eneo/flows/f/files/", session, names_user=False, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.eneo.requests), 1)
 
     def test_a_page_whose_session_was_replaced_by_another_login_is_refused(self) -> None:
         # The same cookie jar, a different person: tab one's page still names the first user.
@@ -1021,15 +1077,30 @@ class LiveExpectedUserTests(LiveCase):
         self.assertEqual(asyncio.run(run()), (1008, "user_changed"))
         self.assertEqual(self.eneo.requests, [], "a ticket was asked for under the wrong user")
 
-    def test_a_socket_for_the_sessions_user_opens_and_so_does_one_that_names_nobody(self) -> None:
+    def test_a_socket_for_the_sessions_user_opens(self) -> None:
         async def scenario(browser):
             return None
 
-        for query in ("?expected_user=user-token-of-a", "?expected_user=user-token-of-a&expected_tenant=tenant-id", ""):
+        for query in ("?expected_user=user-token-of-a", "?expected_user=user-token-of-a&expected_tenant=tenant-id"):
             with self.subTest(query=query):
-                self.through(self.session_a, scenario, query=query)  # waits for `ready`
-                self.assertTrue(any(seen.path.endswith("/live-transcription-sessions/") for seen in self.eneo.requests))
                 self.eneo.requests.clear()
+
+                self.through(self.session_a, scenario, query=query)  # waits for `ready`
+
+                self.assertTrue(any(seen.path.endswith("/live-transcription-sessions/") for seen in self.eneo.requests))
+
+    def test_a_socket_that_names_nobody_is_closed_before_a_ticket_is_asked_for(self) -> None:
+        async def run():
+            async with websockets.asyncio.client.connect(
+                MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}",
+                additional_headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN},
+                open_timeout=10,
+            ) as browser:
+                await asyncio.wait_for(browser.wait_closed(), 5)
+                return browser.close_code, browser.close_reason
+
+        self.assertEqual(asyncio.run(run()), (1008, "user_changed"))
+        self.assertEqual(self.eneo.requests, [], "a ticket was asked for by a page that named nobody")
 
 
 class CallbackStateTests(BoundaryCase):
