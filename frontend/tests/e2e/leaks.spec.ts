@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { open } from "./screens";
+import { backLink, open, record, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -18,7 +18,16 @@ const WARM_UP = 5;
 // What the 40 openings together may leave. Never raised to make a test pass: a number above it is a leak to find.
 const SLACK = { nodes: 20, listeners: 20, heapMB: 1.5 };
 
-type Overlay = { show: (page: Page) => Promise<unknown>; shown: (page: Page) => Locator; hide: (page: Page) => Promise<unknown> };
+type Overlay = {
+  /** Where the overlay is opened, once; the foundation page when there is none. */
+  go?: (page: Page) => Promise<unknown>;
+  show: (page: Page) => Promise<unknown>;
+  shown: (page: Page) => Locator;
+  hide: (page: Page) => Promise<unknown>;
+};
+
+/** The warning opens once for each end of the login, so each opening is an answer that ends more than a minute from the last. */
+let loginEndsIn = 200;
 
 const OVERLAYS: Record<string, Overlay> = {
   "account menu": {
@@ -39,6 +48,41 @@ const OVERLAYS: Record<string, Overlay> = {
   },
   "alert dialog": {
     show: (page) => page.getByRole("button", { name: "Liten" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
+    hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // The module's own overlays, on the pages that own them.
+  "session warning": {
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) =>
+        route.fulfill({
+          json: {
+            authenticated: true,
+            auth_mode: "eneo_sso",
+            user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
+            session_ends_in: loginEndsIn,
+          },
+        }),
+      );
+      await open(page, "/flows");
+      await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
+      await page.keyboard.press("Escape");
+    },
+    show: (page) => {
+      loginEndsIn = loginEndsIn === 200 ? 290 : 200;
+      return page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    },
+    shown: (page) => page.getByRole("alertdialog", { name: "Du loggas snart ut" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // A finished recording is audio the page holds, so leaving asks first; nothing on the page moves while it waits.
+  "leave question": {
+    go: async (page) => {
+      await setup(page);
+      await record(page, "Spela in");
+      await stop(page);
+    },
+    show: (page) => backLink(page).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
   },
@@ -75,8 +119,11 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
   test(`the ${name} leaves nothing behind after ${CYCLES} openings`, async ({ page }, info) => {
     // A dialog's animations make a cycle last about a second.
     test.setTimeout(180_000);
-    await open(page, "/dev/foundation");
-    await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    if (overlay.go) await overlay.go(page);
+    else {
+      await open(page, "/dev/foundation");
+      await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
+    }
     const cdp = await page.context().newCDPSession(page);
 
     for (let i = 0; i < WARM_UP; i++) await cycle(page, overlay);

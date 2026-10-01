@@ -4,7 +4,6 @@
   "app/layout.tsx",
   "components/AuthGate.tsx",
   "components/NameCombobox.tsx",
-  "components/SessionEndWarning.tsx",
   "components/SpeakerNamingDialog.tsx",
   "components/TranscriptEditor.tsx",
   "components/TranscriptPlayer.tsx",
@@ -39,6 +38,5 @@
   "components/flow/StepList.tsx",
   "components/flow/SubmittingView.tsx",
   "components/flow/UploadPanel.tsx",
-  "components/flow/useLeaveQuestion.tsx",
   "components/frame.tsx"
 ]

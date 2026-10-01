@@ -2,21 +2,21 @@
 const Module = require("node:module");
 const path = require("node:path");
 const resolve = Module._resolveFilename;
-Module._resolveFilename = function (request, parent, ...args) {
-  // A stylesheet is not compiled, so it is not in .test-build: it lies beside the source of the file that imports it.
-  if (request.startsWith(".") && request.endsWith(".css") && parent?.filename) {
-    const from = path.dirname(parent.filename).replace(`${path.sep}.test-build${path.sep}`, path.sep);
-    return resolve.call(this, path.resolve(from, request), parent, ...args);
+Module._resolveFilename = function (request, parent, ...rest) {
+  const args = [parent, ...rest];
+  // A stylesheet is not compiled: it lies in the source tree, beside the source of the file that imports it.
+  if (request.endsWith(".css") && request.startsWith(".") && parent?.filename) {
+    request = path.resolve(path.dirname(parent.filename).replace(`${path.sep}.test-build${path.sep}`, path.sep), request);
   }
   if (request.startsWith("@/")) {
     // Compiled sources first; a generated module that is not compiled (the built theme) from where it lies.
     try {
-      return resolve.call(this, path.join(__dirname, "../.test-build", request.slice(2)), parent, ...args);
+      return resolve.call(this, path.join(__dirname, "../.test-build", request.slice(2)), ...args);
     } catch {
       request = path.join(__dirname, "..", request.slice(2));
     }
   }
-  return resolve.call(this, request, parent, ...args);
+  return resolve.call(this, request, ...args);
 };
 
 // A stylesheet a component imports (a CSS Module) is its class names as written; the styles are the browser's.
