@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, cancelRun, getRunStatus, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, getConfig, getRunStatus, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
+import { ACCESS_CODE_USER } from "./user-identity";
 
 const sessionEnded = () =>
   new Response(JSON.stringify({ detail: "Session expired" }), {
@@ -22,18 +23,18 @@ const ok = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 /** A signed-in page (AuthGate) whose login ends at the first request, and whose navigations are recorded. */
-function signedInPage(t: import("node:test").TestContext, answers: Array<() => Response>) {
-  const calls: Array<{ url: string; method: string }> = [];
+function signedInPage(t: import("node:test").TestContext, answers: Array<() => Response>, owner: AuthenticatedUser = anna) {
+  const calls: Array<{ url: string; method: string; headers: Headers }> = [];
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-    calls.push({ url: String(url), method: init?.method ?? "GET" });
+    calls.push({ url: String(url), method: init?.method ?? "GET", headers: new Headers(init?.headers) });
     return (answers.shift() ?? (() => ok({})))();
   }) as typeof fetch;
   const navigated: string[] = [];
   const page = globalThis as { window?: unknown };
   const browserWindow = page.window;
   page.window = { location: { pathname: "/flows/flow-1", replace: (url: string) => navigated.push(url) } };
-  const end = loginState.begin(anna);
+  const end = loginState.begin(owner);
   t.after(() => {
     end();
     globalThis.fetch = browserFetch;
@@ -193,4 +194,107 @@ test("while signed out nothing leaves the page: a read waits for the page's user
   loginState.ended();
   await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm"), (error: ApiError) => error.status === 401);
   assert.equal(CountingXhr.sent, 0, "the upload is not sent either");
+});
+
+// A browser has one cookie for every tab: after someone else signs in in another tab, this page's requests would
+// carry their login. The module compares the user the page names with the session's and answers 409 user_changed.
+const userChanged = () =>
+  new Response(JSON.stringify({ detail: "user_changed" }), {
+    status: 409,
+    headers: { "content-type": "application/json" },
+  });
+
+/** An XMLHttpRequest that answers `httpStatus` and `body`, and keeps the headers it was sent with. */
+function answeringXhr(t: import("node:test").TestContext, httpStatus: number, body: unknown) {
+  const sent: Record<string, string> = {};
+  class AnsweringXhr {
+    upload = {};
+    onload: (() => void) | null = null;
+    onerror = null;
+    onabort = null;
+    withCredentials = false;
+    status = httpStatus;
+    responseText = JSON.stringify(body);
+    open() {}
+    setRequestHeader(name: string, value: string) {
+      sent[name.toLowerCase()] = value;
+    }
+    abort() {}
+    getResponseHeader(name: string) {
+      return name.toLowerCase() === "content-type" ? "application/json" : null;
+    }
+    send() {
+      queueMicrotask(() => this.onload?.());
+    }
+  }
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = AnsweringXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => {
+    globalThis.XMLHttpRequest = browserXhr;
+  });
+  return sent;
+}
+
+test("a page names its user while it is open, and nobody once it is gone", () => {
+  assert.equal(loginState.expectedUser, null);
+  const end = loginState.begin(anna);
+  assert.equal(loginState.expectedUser, "user-1");
+  end();
+  assert.equal(loginState.expectedUser, null);
+});
+
+test("every request to Eneo names the page's user, and the module's own requests do not", async (t) => {
+  const { calls } = signedInPage(t, []);
+  await getRunStatus("flow-1", "run-1");
+  await startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
+  await getConfig();
+  await authStatus();
+  assert.deepEqual(
+    calls.map((call) => call.headers.get("X-Expected-User")),
+    ["user-1", "user-1", null, null],
+  );
+});
+
+test("the access code has no user to name", async (t) => {
+  const { calls } = signedInPage(t, [], ACCESS_CODE_USER);
+  await getRunStatus("flow-1", "run-1");
+  assert.equal(calls[0].headers.has("X-Expected-User"), false);
+});
+
+test("an upload names the page's user", async (t) => {
+  signedInPage(t, []);
+  const sent = answeringXhr(t, 200, { id: "file-1" });
+  await uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm");
+  assert.equal(sent["x-expected-user"], "user-1");
+});
+
+test("another user's login under this page covers it: what is safe to send again goes with the page's own user, the rest is refused as a session end", async (t) => {
+  const { calls } = signedInPage(t, [userChanged, () => ok({ id: "run-1", flow_id: "flow-1", status: "queued" }), userChanged]);
+  const starting = startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loginState.signedOut, true, "the page is covered");
+  assert.equal(calls.length, 1, "and the run start waits");
+
+  loginState.observe(signedIn());
+  assert.equal((await starting).id, "run-1");
+  assert.equal(calls.length, 2);
+
+  await assert.rejects(cancelRun("flow-1", "run-1"), (error: ApiError) => error.status === 401 && error.code === undefined);
+  assert.equal(loginState.signedOut, true, "covered again, and the cancel is the user's to repeat");
+  assert.equal(calls.length, 3, "not sent again by itself");
+});
+
+test("an upload for another user's session covers the page and is the user's to send again", async (t) => {
+  signedInPage(t, []);
+  answeringXhr(t, 409, { detail: "user_changed" });
+  await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm"), (error: ApiError) => error.status === 401);
+  assert.equal(loginState.signedOut, true);
+});
+
+test("any other 409 is an ordinary error and covers nothing", async (t) => {
+  signedInPage(t, [
+    () => new Response(JSON.stringify({ code: "revision_conflict", detail: "Changed." }), { status: 409, headers: { "content-type": "application/json" } }),
+  ]);
+  await assert.rejects(cancelRun("flow-1", "run-1"), (error: ApiError) => error.status === 409 && error.code === "revision_conflict");
+  assert.equal(loginState.signedOut, false);
 });
