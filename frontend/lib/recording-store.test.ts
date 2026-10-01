@@ -4,6 +4,7 @@ import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import { fakeWebLocks } from "./fake-web-locks";
 import {
+  INCOMPLETE_ON_DEVICE,
   openRecordingStore,
   type NewRecording,
   type RecordingFile,
@@ -492,7 +493,7 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
  * transaction, as a browser's does.
  */
 function closable() {
-  const underneath = new IDBFactory();
+  let underneath = new IDBFactory();
   const connections: IDBDatabase[] = [];
   const state = { refuse: false };
   const factory = {
@@ -508,6 +509,8 @@ function closable() {
     state,
     /** Every connection the store has open is closed now. */
     closeConnections: () => connections.splice(0).forEach((connection) => connection.close()),
+    /** The browser cleared the site's storage: the next connection is to an empty database. */
+    wipe: () => void (underneath = new IDBFactory()),
   };
 }
 
@@ -582,6 +585,59 @@ test("audio only this tab has is never read as if it were all there is: an unrea
 
   state.refuse = false; // it does, later: nothing was lost on the way
   assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+});
+
+test("a recording whose stored chunks are gone is read as far as it survived, but is never offered as whole for sending", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    await store.append(recording.id, 0, new Blob(["d"]), 4_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+
+  closeConnections();
+  wipe(); // the reopened database is a new, empty one: "ab" is gone, "cd" is all this tab has
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["cd"], "what survived is still read: Spara som fil and playback keep it");
+  await assert.rejects(store.readPartsToSend(recording.id), { message: INCOMPLETE_ON_DEVICE });
+  assert.equal((await store.get(recording.id))?.parts[0].chunks, 4, "the recording says what it should hold");
+});
+
+test("every part whole is sent; an earlier part with no chunk left at all is a gap too, not a part to leave out", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["ab"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["cd"]), 2_000);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 1, new Blob(["ef"]), 1_000);
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["abcd", "ef"]);
+
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 1, new Blob(["gh"]), 2_000); // only this tab has it
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  closeConnections();
+  wipe(); // the first part's chunks are gone altogether, the second part's "gh" is in this tab
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["gh"]);
+  await assert.rejects(store.readPartsToSend(recording.id), { message: INCOMPLETE_ON_DEVICE });
 });
 
 test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {

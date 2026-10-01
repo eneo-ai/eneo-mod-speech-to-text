@@ -224,6 +224,9 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
+/** Chunks of the recording are gone from the device (it cleared its storage, or lost the database): it would go shorter. */
+export const INCOMPLETE_ON_DEVICE =
+  "Inspelningen är ofullständig på enheten: en del av ljudet saknas, så den skickas inte. Välj Spara som fil för att behålla det som finns kvar.";
 /** Eneo has a run under the recording's key: sent, from this send or an earlier one. */
 export const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
 
@@ -448,37 +451,53 @@ export class RecordingStore {
     });
   }
 
-  /** Each part with audio as one file, in part order; WebM carries its recorded duration. */
+  /** Each part with audio as one file, in part order; WebM carries its recorded duration. What survived, whole or not. */
   readParts(id: string): Promise<RecordingFile[]> {
+    return this.serial(async () => (await this.readEach(id)).filter((file) => file.blob.size > 0));
+  }
+
+  /**
+   * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
+   * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
+   * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.
+   */
+  readPartsToSend(id: string): Promise<RecordingFile[]> {
     return this.serial(async () => {
-      const recording = await this.load(id);
-      if (!recording) return [];
-      const type = baseMimetype(recording.mimeType);
-      const files = await Promise.all(
-        recording.parts.map(async (part) => {
-          // Overflow is sticky, so its chunks follow the database's. The database's are read first and an unreadable
-          // database is the read's failure: audio held in this tab is never taken for all there is, and both copies stay.
-          const stored = await this.backend.chunks(id, part.index);
-          const here = await this.overflow.chunks(id, part.index);
-          // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
-          const bySeq = new Map<number, Chunk>();
-          for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
-          const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = [...bySeq.values()]
-            .sort((a, b) => a.seq - b.seq)
-            .map((chunk) => chunk.data);
-          // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
-          if (data.length > 0) {
-            data[0] = await withRecordedDuration(data[0], part.durationMs, type);
-          }
-          return {
-            index: part.index,
-            blob: new Blob(data, { type }),
-            filename: recordingFilename(recording, part.index),
-          };
-        }),
-      );
+      const files = await this.readEach(id);
+      if (files.some((file) => !file.whole)) throw new Error(INCOMPLETE_ON_DEVICE);
       return files.filter((file) => file.blob.size > 0);
     });
+  }
+
+  private async readEach(id: string): Promise<Array<RecordingFile & { whole: boolean }>> {
+    const recording = await this.load(id);
+    if (!recording) return [];
+    const type = baseMimetype(recording.mimeType);
+    return Promise.all(
+      recording.parts.map(async (part) => {
+        // Overflow is sticky, so its chunks follow the database's. The database's are read first and an unreadable
+        // database is the read's failure: audio held in this tab is never taken for all there is, and both copies stay.
+        const stored = await this.backend.chunks(id, part.index);
+        const here = await this.overflow.chunks(id, part.index);
+        // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
+        const bySeq = new Map<number, Chunk>();
+        for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
+        const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+        const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
+        const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
+        const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = chunks.map((chunk) => chunk.data);
+        // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
+        if (data.length > 0) {
+          data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+        }
+        return {
+          index: part.index,
+          blob: new Blob(data, { type }),
+          filename: recordingFilename(recording, part.index),
+          whole,
+        };
+      }),
+    );
   }
 
   /** Eneo accepted the run: the local copy is no longer needed. */

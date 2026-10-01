@@ -508,6 +508,24 @@ test("a session that ended under the open socket covers the page too, and live t
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [3]);
 });
 
+test("a session that ended before live text was ever ready waits for the page's own user: not unavailable for good", () => {
+  const { login, cover, calls } = fakeLogin();
+  const { live, sockets, elapse } = setup({ login });
+  live.start();
+  live.pushFrame(new Uint8Array([5]).buffer);
+  sockets[0].drop(1008, "session_ended"); // closed before any `ready`
+  assert.deepEqual(calls, { ended: 1, userChanged: 0 });
+  assert.equal(live.getSnapshot().status, "reconnecting", "not unavailable");
+  elapse(60_000);
+  assert.equal(sockets.length, 1, "nothing opens while covered, whatever the backoff says");
+
+  cover(false);
+  assert.equal(sockets.length, 2, "the page's own user is back");
+  sockets[1].ready();
+  assert.equal(live.getSnapshot().status, "live");
+  assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [5], "the audio from before goes now");
+});
+
 test("another policy close covers nothing", () => {
   const { login, calls } = fakeLogin();
   const { live, sockets } = setup({ login });
