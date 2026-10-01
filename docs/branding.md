@@ -1,5 +1,11 @@
 # Byt organisation
 
+Syfte: Beskriva hur en annan kommun eller myndighet byter modulens namn, logga och accentfärg med miljövariabler, vilka krav som gäller och hur man kontrollerar resultatet.
+
+Läs detta när: Du ska ta modulen i drift för en annan organisation, en accentfärg stoppar start, eller du vill veta vad som kan och inte kan ändras utan kod.
+
+Hör ihop med: [Drift](operations.md#egen-organisation-i-sidhuvudet), [Backend (inställningar)](backend.md#inställningar), [Arkitektur](architecture.md#var-organisationens-märke-och-accent-kommer-in), [Beslut 0006](decisions/0006-white-label-branding.md), [Kvalitetsgrindar](quality-gates.md#branding-tillstånden)
+
 En annan kommun eller myndighet kan använda modulen som sin egen utan att ändra kod och utan att bygga om
 avbilderna. Namn, logga och färg är inställningar på backend-tjänsten: ändra dem och starta om tjänsterna.
 
