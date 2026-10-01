@@ -21,6 +21,23 @@ test("a keyboard trap that cycles between two controls is caught", async ({ page
   expect(left, "the walk says focus never left the page").toBe(false);
 });
 
+test("a control in a dialog is in a dialog, native or with the role, so the page's reading order does not judge it", async ({ page }) => {
+  await page.setContent(`
+    <main><h1>Prov</h1><button>Bakom</button></main>
+    <dialog id="native" aria-label="Namnge"><button>Spara</button></dialog>
+    <div role="alertdialog" aria-label="Fråga"><button>Svara</button></div>
+    <script>document.getElementById("native").showModal()</script>`);
+  const inDialog = async (name: string) => {
+    await page.getByRole("button", { name }).evaluate((element) => (element as HTMLElement).focus());
+    return (await focusStop(page))?.inDialog;
+  };
+  expect(await inDialog("Spara"), "a native <dialog> has no role attribute").toBe(true);
+  expect(await inDialog("Svara")).toBe(true);
+  // The page behind a modal dialog cannot take focus, so what is not in a dialog is read where nothing is open.
+  await page.evaluate(() => (document.getElementById("native") as HTMLDialogElement).close());
+  expect(await inDialog("Bakom"), "the page itself is not a dialog").toBe(false);
+});
+
 test("a WCAG violation blocks the gate whatever axe calls its impact", async ({ page }) => {
   // html-xml-lang-mismatch is WCAG 3.1.1 and axe calls it moderate.
   await page.setContent(`<html lang="sv" xml:lang="en"><head><title>Prov</title></head><body><main><h1>Prov</h1></main></body></html>`);
