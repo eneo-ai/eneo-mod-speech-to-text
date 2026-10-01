@@ -24,7 +24,7 @@ export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
   await open(page, path);
-  await expect(page.locator("main svg")).toBeVisible();
+  await expect(page.getByRole("main").getByRole("status")).toBeVisible();
 }
 
 /** The flow list five minutes before the login ends: the warning is open. */

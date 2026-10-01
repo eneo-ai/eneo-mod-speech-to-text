@@ -155,6 +155,9 @@ export const eneoTheme = {
         "fontFamily": "var(--font-family-heading)",
         "fontSize": "var(--text-display-3-size)",
         "lineHeight": "var(--text-display-3-leading)"
+      },
+      "base": {
+        "overflowWrap": "anywhere"
       }
     },
     "text": {
@@ -197,6 +200,9 @@ export const eneoTheme = {
         "fontFamily": "var(--font-family-heading)",
         "fontSize": "var(--text-display-3-size)",
         "lineHeight": "var(--text-display-3-leading)"
+      },
+      "base": {
+        "overflowWrap": "anywhere"
       }
     },
     "text-input": {

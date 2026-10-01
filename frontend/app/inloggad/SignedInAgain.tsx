@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { SESSION_CHANNEL } from "@/components/SessionEndWarning";
 import { authStatus } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
@@ -33,24 +37,29 @@ export function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
     window.close();
   }, [refusal]);
 
+  // A popup window: no top bar and no account menu, so the page's own main region and one readable column.
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col gap-3 px-6 py-12">
-      <h1 className="text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink">
-        {refusal === "annan-anvandare"
-          ? "Du loggade in som en annan användare"
-          : refusal === "utgangen"
-            ? "Inloggningen har redan gått ut"
-            : "Du är inloggad igen"}
-      </h1>
-      <p className="text-[17px] leading-relaxed text-ink-soft">
-        {refusal === "annan-anvandare"
-          ? `Stäng fönstret och logga in som ${name ?? "den som arbetar på sidan"} för att fortsätta.`
-          : refusal === "utgangen"
-            ? // This window cannot know whether the other tab's recording is kept on the device (see leaveWarning):
-              // it promises nothing and says how to keep it, as "Lämna sidan?" does.
-              "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
-            : "Du kan stänga det här fönstret och fortsätta där du var."}
-      </p>
-    </main>
+    <Layout height="auto" contentWidth={640}>
+      <LayoutContent role="main" padding={6} isScrollable={false}>
+        <VStack gap={3} hAlign="start">
+          <Heading level={1}>
+            {refusal === "annan-anvandare"
+              ? "Du loggade in som en annan användare"
+              : refusal === "utgangen"
+                ? "Inloggningen har redan gått ut"
+                : "Du är inloggad igen"}
+          </Heading>
+          <Text as="p" color="secondary">
+            {refusal === "annan-anvandare"
+              ? `Stäng fönstret och logga in som ${name ?? "den som arbetar på sidan"} för att fortsätta.`
+              : refusal === "utgangen"
+                ? // This window cannot know whether the other tab's recording is kept on the device (see leaveWarning):
+                  // it promises nothing and says how to keep it, as "Lämna sidan?" does.
+                  "Stäng fönstret. Om du har en inspelning i den andra fliken: stoppa den och välj Spara som fil innan du loggar in igen. Uppgifter och ändringar som inte är sparade behöver fyllas i igen."
+                : "Du kan stänga det här fönstret och fortsätta där du var."}
+          </Text>
+        </VStack>
+      </LayoutContent>
+    </Layout>
   );
 }

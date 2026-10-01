@@ -1,10 +1,14 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Center } from "@astryxdesign/core/Center";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useRouter } from "next/navigation";
+import { Brand } from "@/components/Brand";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import { PortalContainer } from "@/components/ui/portal-container";
-import { Spinner } from "@/components/ui/spinner";
+import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState } from "@/lib/login-state";
@@ -159,10 +163,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <main className="min-h-screen grid place-items-center">
-        <h1 className="sr-only">Tal till text</h1>
-        <Spinner className="size-5 text-ink-mute" />
-      </main>
+      <ModuleShell label="Tal till text" heading={<Brand />}>
+        <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+        <Center minHeight="60dvh">
+          <Spinner size="lg" aria-label="Laddar" />
+        </Center>
+      </ModuleShell>
     );
   }
 
