@@ -2,8 +2,9 @@ import { defineConfig } from "@playwright/test";
 
 // The production build in every engine the module supports: `npm run test:prod`. It proves what the gate's
 // `next dev` cannot: the built stylesheets' order, the built theme, and the page under the production CSP.
-const APP = 3411;
-const STUB = 8411;
+// A pair of ports per checkout, like the gate's: A11Y_APP_PORT and A11Y_STUB_PORT (defaults 3411 and 8411).
+const APP = Number(process.env.A11Y_APP_PORT ?? 3411);
+const STUB = Number(process.env.A11Y_STUB_PORT ?? 8411);
 
 export default defineConfig({
   testDir: "tests/prod",
