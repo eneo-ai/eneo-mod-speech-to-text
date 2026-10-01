@@ -23,7 +23,9 @@ test("the input modes are named by their title, described by their line, and say
 test("a field is not an unnamed group", async ({ page }) => {
   await setup(page);
   await chooseMode(page, "Spela in");
-  await expect(page.locator('[data-slot="field"][role="group"]')).toHaveCount(0);
+  // A group of the setup (the participants' field, say) is named by its label; none is left without a name.
+  await expect(page.getByRole("main").locator('[role="group"]:not([aria-label]):not([aria-labelledby])')).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("group", { name: /^Deltagare/ })).toHaveCount(1);
 });
 
 test("the added names are a named list the field points to", async ({ page }) => {
