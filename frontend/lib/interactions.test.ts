@@ -369,6 +369,82 @@ test("the folded steps open on their trigger, say so in its label, and fold agai
   await view.unmount();
 });
 
+/** A running view with its cancel question, and the question's dialog as the page has it. */
+async function mountRunning(onCancel: () => Promise<void>, extra: Record<string, unknown> = {}) {
+  const { createElement } = await import("react");
+  const { RunProgress } = await import("../components/flow/RunProgress");
+  const view = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel, ...extra }));
+  const question = () => document.body.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+  const ask = () => view.act(async () => button(view.container, "Avbryt körningen")!.click());
+  return { view, question, ask };
+}
+
+test("the cancel question: Kör vidare leaves the run alone, Avbryt körningen cancels it once and closes the question", async () => {
+  let cancelled = 0;
+  const { view, question, ask } = await mountRunning(async () => void (cancelled += 1));
+  assert.equal(question().hasAttribute("open"), false, "not asked until the button is pressed");
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.match(question().textContent ?? "", /Avbryta körningen\?.*Flödet slutar arbeta och inget dokument skapas\./);
+
+  await view.act(async () => button(question(), "Kör vidare")!.click());
+  assert.equal(question().hasAttribute("open"), false);
+  assert.equal(cancelled, 0);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(question().hasAttribute("open"), false, "answered, so closed");
+  assert.equal(cancelled, 1);
+  await view.unmount();
+});
+
+test("a cancel that is on its way keeps its button off until Eneo has answered, and a refusal shows once as an alert", async () => {
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  const { view, question, ask } = await mountRunning(() => pending, { error: "Körningen kunde inte avbrytas just nu." });
+  const trigger = () => button(view.container, "Avbryt körningen")!;
+  assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
+  assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
+  assert.equal(trigger().disabled, false);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(trigger().disabled, true, "pressed twice, cancelled once");
+  assert.equal(trigger().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(trigger().disabled, false, "free again once it is settled");
+  await view.unmount();
+});
+
+test("a run that ends while its cancel question is open takes the question and the page's lock with it", async () => {
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.equal(document.body.style.position, "fixed", "the page is held still while it is asked");
+  await view.unmount();
+  assert.equal(document.body.querySelector("dialog[open]"), null, "no question left open");
+  assert.equal(document.body.style.position, "", "the page scrolls again");
+  assert.equal(document.body.style.overflow, "");
+});
+
+test("the cancel question is closed while the login has ended and asked again after the new one", async () => {
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna" };
+  const end = loginState.begin(anna);
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  try {
+    await ask();
+    assert.equal(question().hasAttribute("open"), true);
+    await view.act(async () => loginState.ended());
+    assert.equal(question().hasAttribute("open"), false, "a native dialog would stay above the covered page");
+    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    assert.equal(question().hasAttribute("open"), true, "back, as it was asked");
+  } finally {
+    end();
+    await view.unmount();
+  }
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");

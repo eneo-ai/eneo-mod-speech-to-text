@@ -9,7 +9,7 @@ import type { EarlierRunsSnapshot } from "./earlier-runs";
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
-import { RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
 import { SubmittingView, type SubmissionState } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
@@ -21,6 +21,8 @@ import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+// The words of every status region (a paragraph) in the markup, in order: what a screen reader is told when they change.
+const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
 
 const running: StepView[] = [
   { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
@@ -34,7 +36,7 @@ test("the running view names the stage once in a status region and says each ste
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
-  assert.match(html, /role="status"[^>]*>(?:<[^>]+>)*[^<]*Analysera mötesinnehållet/);
+  assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
   assert.match(words, /Transkribera mötet Klar/);
   assert.match(words, /Analysera mötesinnehållet Pågår/);
@@ -71,12 +73,26 @@ test("a long wait says how long the run has gone on and that it can take minutes
   const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
   assert.match(text(html), /Tar fram texten Har pågått i 12 min\. Det kan ta några minuter\./);
   // The minutes count on without being read out on every change.
-  assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
+  assert.ok(statuses(html).every((status) => !/Har pågått/.test(status)), "the elapsed time is in no status region");
   assert.match(text(view(undefined)), /Tar fram texten Det kan ta några minuter\./, "before the start is known");
 });
 
-// The words of every status region in the markup, in order: what a screen reader is told when they change.
-const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
+test("a run with no steps shown yet has no step region, and one that could not be stopped says so once, as an alert", () => {
+  const view = (extra: Record<string, unknown>) =>
+    renderToStaticMarkup(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined, ...extra }));
+  assert.doesNotMatch(view({}), /Flödets steg/);
+  assert.doesNotMatch(view({}), /role="alert"/);
+  const failed = view({ error: "Körningen kunde inte avbrytas just nu." });
+  assert.equal(failed.match(/role="alert"/g)?.length, 1, "one alert");
+  assert.match(failed, /role="alert"(?:(?!<button).)*Körningen kunde inte avbrytas just nu\./, "the sentence is in the alert");
+});
+
+test("opening an earlier run is a busy placeholder that says so once and has no heading to move to", () => {
+  const html = renderToStaticMarkup(createElement(RunOpening));
+  assert.match(html, /aria-busy="true"/);
+  assert.deepEqual(statuses(html), ["Hämtar körningen…"]);
+  assert.doesNotMatch(html, /<h[1-6]/);
+});
 
 const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>
   renderToStaticMarkup(
@@ -476,7 +492,8 @@ test("a finished run whose result could not be read says so and offers to read i
   );
   assert.match(html, /<h1[^>]*>Resultatet kunde inte hämtas<\/h1>/);
   assert.match(html, /Servern kunde inte nås just nu\./);
-  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen<\/button>/);
+  // The design system's button holds a live region after its label.
+  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen(?:<[^>]+>)*<\/button>/);
   assert.match(html, /href="\/flows"/);
   assert.doesNotMatch(html, /klart|Dokumentet/i);
 });

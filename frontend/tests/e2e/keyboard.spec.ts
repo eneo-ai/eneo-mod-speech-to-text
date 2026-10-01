@@ -50,6 +50,12 @@ for (const name of WALKS) {
   });
 }
 
+/**
+ * Tab has left the page for the browser's own controls (the document has no focus). A native modal dialog lets Tab
+ * do that, as a trap would break WCAG 2.1.2; it never lets Tab reach the page behind it.
+ */
+const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
@@ -61,10 +67,12 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
   const problems: string[] = [];
   const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
   for (let i = 0; i <= keys.length; i++) {
-    const stop = await focusStop(page);
-    const inside = await popup.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
-    else problems.push(...stopProblems([stop]));
+    if (!(await inBrowser(page))) {
+      const stop = await focusStop(page);
+      const inside = await popup.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
+      else problems.push(...stopProblems([stop]));
+    }
     if (keys[i]) await page.keyboard.press(keys[i]);
   }
   expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);

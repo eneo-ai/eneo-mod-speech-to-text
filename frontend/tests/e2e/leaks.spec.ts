@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { open } from "./screens";
+import { open, run } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -47,6 +47,13 @@ const OVERLAYS: Record<string, Overlay> = {
     show: (page) => page.getByRole("button", { name: "Liten" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Lämna sidan?" }),
     hide: (page) => page.getByRole("button", { name: "Stanna kvar" }).click(),
+  },
+  // A page dialog on the page that owns it: the run's own view while it runs.
+  "cancel question": {
+    go: (page) => run(page, "run-running"),
+    show: (page) => page.getByRole("button", { name: "Avbryt körningen" }).click(),
+    shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
+    hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),
   },
 };
 
