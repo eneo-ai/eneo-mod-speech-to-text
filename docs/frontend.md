@@ -15,7 +15,7 @@ Next.js (App Router, byggd med webpack: `npm run build`), React, TypeScript, Ast
 | Katalog | Innehåll | Får importera |
 |---|---|---|
 | `frontend/app/` | Routes och sidor: `/` (inloggning), `/flows` (flödeslistan), `/flows/[id]` (ett flöde: inmatning, körning, resultat), `/inloggad` (sidan som förnyelsefönstret visar), utvecklingssidor under `app/dev/`. Rotlayouten (`layout.tsx`) har bara providers. | allt nedan |
-| `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. Äldre delar ligger i `components/ui/` (se Migration). | `kit/`, `lib/`, Astryx |
+| `frontend/components/` | Skärmar och ytor. `components/flow/` är flödessidans delar. | `kit/`, `lib/`, Astryx |
 | `frontend/kit/` | Tema, providers och skal: `ModuleProviders`, `ModuleShell`, `theme/`. Ska kunna lyftas ut: importerar inget från `app/`, `components/` eller `lib/`. | Astryx |
 | `frontend/lib/` | Logik utan gränssnitt, ett ansvar per fil, och testerna bredvid (enhets- och komponenttester ligger tillsammans här). Importerar ingen UI-kod. | inget från `app/`, `components/` eller `kit/` |
 | `frontend/public/` | Statiska filer: Sundsvalls logotyp och live-ljudets AudioWorklet. | |
@@ -85,7 +85,7 @@ Adressparametrar på flödessidan: `?run=<id>` öppnar en körning, `?recording=
 4. **Specialyta?** Bara om designsystemet saknar motsvarighet: en CSS-modul bredvid komponenten, bara tokens.
 5. **Läge i grinden.** Lägg lägen för skärmen i `frontend/tests/e2e/screens.ts`; ett nytt överlägg läggs i `leaks.spec.ts`. Se [Kvalitetsgrindar](quality-gates.md#lägga-till-en-skärm-eller-ett-överlägg).
 6. **Kontrollera.** `npm run lint`, `npm test`, läget i `phone-320-light` och `zoom-200`, sedan `npm run test:a11y`, `npm run test:prod` och `npm run build`.
-7. **Svensk text, ingen ny fil på listan över gamla filer** (`tests/legacy-ui-files.json`).
+7. **Svensk text** i allt användaren läser.
 
 ## Migration (temporary, removed by bead .24)
 
@@ -94,5 +94,5 @@ Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx, en ytgrupp åt g
 - Filer som ännu använder det gamla systemet står i `frontend/tests/legacy-ui-files.json`. Ta bort en fil ur listan när den är portad; lägg aldrig till en.
 - `frontend/components/ui/` (kopierade shadcn-filer), `frontend/components.json`, `frontend/tailwind.config.ts`, `frontend/postcss.config.mjs`, `frontend/lib/utils.ts` och Tailwind-delarna av `frontend/app/globals.css` är det gamla systemet och får inte användas för nytt arbete. De tas bort i portningens sista fas.
 - Använd inte shadcn-färdigheten eller shadcn-MCP för nytt arbete.
-- `AuthGate`, `NameCombobox`, `SpeakerNamingDialog`, `TranscriptEditor`, `TranscriptPlayer` och flera delar av `components/flow/` ligger ännu på det gamla systemet (se listan ovan för det aktuella läget).
+- Vilka filer som ännu ligger på det gamla systemet ser du i listan ovan; den krymper för varje ytgrupp som portas.
 - Planen och dess status: `docs/plans/2026-10-01-astryx-port-plan.md`.

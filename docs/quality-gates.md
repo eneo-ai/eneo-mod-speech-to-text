@@ -85,9 +85,10 @@ Mätningarna körs i den renderade sidan (`frontend/tests/e2e/checks.ts`) och sk
 | `session-cover.spec.ts` | Att inget av sidan, och ingen dialog sidan hade öppen, syns eller går att nå medan inloggningen är slut, och att allt är tillbaka efter ny inloggning. |
 | `flow-list.spec.ts` | Flödeslistan när den laddar, är tom, avklippt, lång eller trasig. |
 | `result-tabs.spec.ts` | Resultatets flikar under laptopbredd. |
+| `header-fit.spec.ts` | Toppfältet vid 320 px med ökat textavstånd: varumärket och kontoknappen hålls isär och produktnamnet är helt. |
 | `leaks.spec.ts` | Att ett överlägg som öppnas och stängs inte lämnar något kvar, se nedan. |
 
-Specarna `color-mode`, `session-cover`, `flow-list`, `result-tabs` och `leaks` väljer själva vilka projekt de gäller (överst i varje fil). `legacy-motion.spec.ts` är tillfällig, se Migration nedan.
+Specarna `color-mode`, `session-cover`, `flow-list`, `result-tabs`, `header-fit` och `leaks` väljer själva vilka projekt de gäller (överst i varje fil).
 
 ### Projekt
 
@@ -156,6 +157,8 @@ Sänk inte ett tröskelvärde, ta inte bort ett läge ur grinden och lägg inte 
 - Fem uppvärmningsvarv räknas inte (en portal, en lat bit, en cache, webbläsarens eget).
 - Tillåten marginal för de 40 öppningarna sammanlagt: 20 noder, 20 lyssnare, 1,5 MB minne. Det höjs aldrig för att få ett test att passera; ett tal över är ett läckage att hitta.
 - Körs bara i `laptop-1440-light`, bara i Chromium, utan trace (trace lägger egna noder på sidan).
+- Chromium behåller elementet som senast låg under pekaren, och allt som togs bort med det (25 till 39 noder för en dialog), tills pekaren flyttas. Specen flyttar därför pekaren bort efter varje stängning; ett tal som överlever det är ett riktigt läckage att hitta.
+- Ett av överläggen läcker med avsikt (fixturen i `frontend/app/dev/dialog-leak/`, bara i `next dev`), så att specen visar att den kan fela.
 - Ett nytt överlägg läggs till i `OVERLAYS` i samma ändring som inför det.
 
 ```bash
@@ -200,11 +203,10 @@ Var resultaten finns:
 2. Behöver den en tangentbordsvandring eller en ARIA-ögonblicksbild, lägg den i `keyboard.spec.ts` respektive `aria.spec.ts`.
 3. Är det ett överlägg (meny, väljare, dialog, bottenark), lägg det i `OVERLAYS` i `leaks.spec.ts`.
 4. Kör läget i `phone-320-light` och `zoom-200` före hela grinden.
-5. Lägg inte in en fil i `tests/legacy-ui-files.json`; se [Frontend](frontend.md#lägga-till-en-skärm).
+5. Hur en ny skärm byggs i övrigt: [Frontend](frontend.md#lägga-till-en-skärm).
 
 ## Migration (temporary, removed by bead .24)
 
 - `frontend/lib/legacy-ui.test.ts` med `frontend/tests/legacy-ui-files.json` är en spärr: den misslyckas när en fil som inte står på listan använder det gamla UI-systemet (shadcn, Radix, cva, tailwind-merge, strängliteral som `className`), och när en listad fil inte längre gör det. Listan krymper bara.
-- `frontend/tests/e2e/legacy-motion.spec.ts` kontrollerar de gamla Radix-dialogernas rörelse (250 ms in, 150 ms ut, med namnrymda `--module-duration-*`-tokens).
 - Viktbudgeten är tillfälligt högre medan båda systemen ligger i bygget. Mät före och efter en fas med `node docs/plans/page-cost.cjs <frontend-mapp> <bas-url> <etikett>` mot det byggda bygget som serveras med stubben.
 - Planens regler för grinden finns i `docs/plans/2026-10-01-astryx-port-plan.md`.
