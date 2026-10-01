@@ -297,6 +297,79 @@ function stubMicrophones(devices: [string, string][], getUserMedia: () => Promis
   });
 }
 
+/** A microphone stream whose tracks a test can look at. */
+function listeningStream() {
+  const track = { stopped: false, stop() { this.stopped = true; } };
+  return { track, stream: { getTracks: () => [track], getAudioTracks: () => [] } };
+}
+
+test("a microphone the browser grants after Sluta testa is let go at once, not turned on again", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  const first = listeningStream();
+  const late = listeningStream();
+  const grants: Array<(stream: unknown) => void> = [];
+  stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise((resolve) => grants.push(resolve)));
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  const settleAll = () => view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click()); // asks the browser...
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click()); // ...and again, as when the device is changed
+  assert.equal(grants.length, 2, "two requests are pending");
+  await view.act(async () => grants[1](first.stream)); // the newer one answers first and is under test
+  await settleAll();
+  assert.ok(button(view.container, "Sluta testa"), "it is under test");
+
+  await view.act(async () => button(view.container, "Sluta testa")!.click());
+  assert.equal(first.track.stopped, true, "Sluta testa lets that one go");
+  await view.act(async () => grants[0](late.stream)); // the older request, still pending, answers now
+  await settleAll();
+  assert.equal(late.track.stopped, true, "the one that arrives after it is let go at once");
+  assert.ok(button(view.container, "Testa mikrofonen"), "and nothing is under test");
+  assert.equal(button(view.container, "Sluta testa"), null);
+  await view.unmount();
+});
+
+test("a microphone request that a newer one has replaced is let go when it arrives, and the newer one is the test", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  const older = listeningStream();
+  const newer = listeningStream();
+  const grants: Array<(stream: unknown) => void> = [];
+  stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise((resolve) => grants.push(resolve)));
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+
+  await view.act(async () => grants[1](newer.stream)); // the newer answers first
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  await view.act(async () => grants[0](older.stream)); // the older one, too late
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.equal(older.track.stopped, true, "the replaced request's microphone is let go");
+  assert.equal(newer.track.stopped, false, "the test runs on the newer one");
+  assert.ok(button(view.container, "Sluta testa"));
+  await view.unmount();
+  assert.equal(newer.track.stopped, true, "and the page going lets that go too");
+});
+
+test("a request that failed after Sluta testa says nothing", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  const first = listeningStream();
+  const grants: Array<{ ok: (stream: unknown) => void; fail: (error: unknown) => void }> = [];
+  stubMicrophones([["usb", "Jabra Speak 510"]], () => new Promise((ok, fail) => grants.push({ ok, fail })));
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => grants[1].ok(first.stream));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  await view.act(async () => button(view.container, "Sluta testa")!.click());
+  await view.act(async () => grants[0].fail(new DOMException("denied", "NotAllowedError")));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.doesNotMatch(view.container.textContent ?? "", /Appen fick inte använda mikrofonen/, "a test that was ended has no error to show");
+  await view.unmount();
+});
+
 test("a microphone the browser refuses is said with what to do, and Försök igen asks again", async () => {
   const { createElement } = await import("react");
   const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");

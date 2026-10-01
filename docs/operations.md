@@ -153,7 +153,7 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 ## Beroendesäkerhet
 
-GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid en hög eller kritisk sårbarhet i produktionsberoenden (`npm audit`, se ovan).
+GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends installerade Python-paket (alla kända sårbarheter).
 
 På gång (`fix/backend-lifespan`, väntar på PR): backendens FastAPI-stack höjs förbi 14 säkerhetsmeddelanden i `backend/requirements.txt`, och CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`). Se [Backend](backend.md#på-gång-inte-på-main).
 

@@ -66,8 +66,8 @@ class FakeEneo:
             return FakeResponse(self.mint_status, {"code": "flow_run_artifact_content_unavailable"})
         return FakeResponse(200, {"url": SIGNED, "expires_at": int(time.time()) + 900})
 
-    def build_request(self, method, url, headers=None):
-        return httpx.Request(method, url, headers=headers)
+    def build_request(self, method, url, headers=None, extensions=None):
+        return httpx.Request(method, url, headers=headers, extensions=extensions)
 
     async def send(self, request, stream=False):
         self.stream_requests.append(request)
