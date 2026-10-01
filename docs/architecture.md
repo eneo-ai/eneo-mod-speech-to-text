@@ -74,42 +74,49 @@ Stegen i ord, felkoder, förnyelse och åtkomstkodsläget står i [Inloggning oc
 
 ## Ett proxat anrop
 
-Följ kontrollerna uppifrån och ned: ett anrop till Eneo når bara fram om det klarar session, origin och tillåtelselistan, och browserns egna credentials byts mot modulens.
+Följ kontrollerna uppifrån och ned: ett anrop till Eneo når bara fram om det klarar taket, session, origin, sidans användare och tillåtelselistan, och bara några få av webbläsarens headers och modulens egna credentials går vidare.
 
 ```mermaid
 flowchart TD
-    req["Anrop till /api/eneo/..."] --> sess{"Giltig modulsession?"}
+    req["Anrop till /api/eneo/..."] --> cap{"Bodyn över MAX_BODY_BYTES?"}
+    cap -->|"ja"| r413["413 max_body_bytes"]
+    cap -->|"nej"| sess{"Giltig modulsession?"}
     sess -->|"nej"| r401["401 Not authenticated"]
     sess -->|"ja"| org{"POST eller PATCH: Origin är MODULE_PUBLIC_URL?"}
     org -->|"nej"| r403a["403 Invalid request origin"]
-    org -->|"ja"| route{"Tillåten metod och sökväg, utan punktsegment, ? eller #?"}
+    org -->|"ja"| user{"Sidan är för sessionens användare?"}
+    user -->|"nej"| r409["409 user_changed"]
+    user -->|"ja"| route{"Tillåten metod och sökväg, utan punktsegment, ?, # eller kontrolltecken?"}
     route -->|"nej"| r403b["403 Eneo resource is not exposed"]
-    route -->|"ja"| hdr["Ta bort cookie, Authorization, API-nyckel, Origin och Referer, lägg på modulens credentials"]
-    hdr --> body["Läs hela bodyn: BFF:en har inget eget tak, Next sätter taket 2 GB"]
-    body --> up["httpx mot Eneo /api/v1/..."]
-    up -->|"nätverksfel"| r502["502 upstream_unreachable"]
-    up -->|"svar"| resp["Svaret tillbaka, utan hop-by-hop-headers"]
+    route -->|"ja"| hdr["Bara tillåtna headers går vidare, modulens credentials läggs på, varje sökvägssegment kodas"]
+    hdr --> up["httpx mot Eneo /api/v1/..., svaret räknas medan det kommer"]
+    up -->|"nätverksfel"| r502a["502 upstream_unreachable"]
+    up -->|"längre än MAX_RESPONSE_BYTES, eller kodat"| r502b["502 upstream_too_large"]
+    up -->|"omdirigering"| r502c["502 upstream_redirect"]
+    up -->|"svar"| resp["Svaret tillbaka utan Set-Cookie, Location och hop-by-hop-headers"]
 ```
 
-Allowlisten, upload-rutterna och testerna beskrivs i [Backend](backend.md). Noden om bodyn beskriver main. På gång: grenen `fix/backend-body-limits` (väntar på PR) lägger ett tak, `MAX_BODY_BYTES`, i en middleware före rutten, se [Backend](backend.md#på-gång-inte-på-main).
+Allowlisten, headrarna, gränserna och testerna beskrivs i [Backend](backend.md).
 
 ## Uppladdning och signerade filer
 
-Först uppladdningen: filen går genom Next-hoppet och byggs om av BFF:en innan den når Eneo.
+Först uppladdningen: filen går genom Next-hoppet och byggs om av BFF:en, som läser den först efter att den kontrollerat vem som skickar.
 
 ```mermaid
 flowchart LR
     b["Webbläsare"] -->|"POST multipart, same-origin"| n["Next.js rewrite"]
-    n -->|"klonar bodyn i minnet: tak 2 GB, tystnadsgräns 31 min"| f["FastAPI: upload-rutt"]
-    f --> chk{"Modulsession och Origin ok?"}
-    chk -->|"nej"| e["401 eller 403"]
-    chk -->|"ja"| p["httpx bygger om multipart ur filen"]
-    p -->|"servicenyckel och modultoken"| eneo["Eneo: runtime-files"]
-    p -->|"timeout"| t["504 upstream_upload_timeout"]
+    n -->|"klonar bodyn i minnet: tak 2 GB, tystnadsgräns 31 min"| mw{"Content-Length över MAX_UPLOAD_BYTES?"}
+    mw -->|"ja"| e413["413 max_upload_bytes"]
+    mw -->|"nej"| chk{"Modulsession, Origin och sidans användare ok?"}
+    chk -->|"nej"| e4["401, 403 eller 409"]
+    chk -->|"ja"| rd["Läser filen: 411 utan Content-Length, 400 om bodyn inte är exakt en fil upload_file"]
+    rd --> p["httpx bygger om multipart ur filen"]
+    p -->|"servicenyckel och modultoken, inom UPLOAD_PROXY_TIMEOUT_SECONDS i sin helhet"| eneo["Eneo: runtime-files"]
+    p -->|"tidsgränsen går ut"| t["504 upstream_upload_timeout"]
     p -->|"nätverksfel"| u["502 upstream_unreachable"]
 ```
 
-Sedan filer ut ur Eneo: webbläsaren får aldrig Eneos signerade URL, BFF:en hämtar den och strömmar bytes med Range intakt.
+Sedan filer ut ur Eneo: webbläsaren får aldrig Eneos signerade URL, BFF:en hämtar den och strömmar bytes med Range intakt, och bara typer som inte kan köra skript öppnas inline.
 
 ```mermaid
 sequenceDiagram
@@ -121,11 +128,11 @@ sequenceDiagram
     alt ingen giltig cachad URL
         M->>E: POST signed-url med servicenyckel och modultoken
         E-->>M: signerad URL
-        M->>M: skriv om scheme och värd till ENEO_BACKEND_URL och cacha per session
+        M->>M: kontrollera svaret, skriv om scheme och värd till ENEO_BACKEND_URL och cacha per session
     end
     M->>E: GET signerad URL med Range, If-Range och Accept
     E-->>M: 200 eller 206, ström
-    M-->>B: ström med Cache-Control private, no-store
+    M-->>B: ström med nosniff, Cache-Control private och no-store, bilaga om typen kan köra skript
 ```
 
 ## Driftsättning

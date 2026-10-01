@@ -57,6 +57,7 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 - Lagret är en process-lokal ordbok i backendminnet (`ModuleSessionStore` i `backend/app/module_auth.py`) med ett lås. Utgångna sessioner städas bort vid varje skapande och uppslag.
 - Sessionen innehåller användaren, tenant, modultoken, när token går ut, när den ska förnyas och inloggningens fasta slut.
 - Logout (`POST /api/auth/logout`, same-origin) tar bort sessionen direkt och raderar cookien.
+- En ny inloggning (callbacken eller åtkomstkodsinloggningen) tar bort den session webbläsaren hade, och med den allt som hänger på den. En öppen live-socket stängs när sessionen tar slut på något sätt (utloggning, utgång, ersättning, nekad förnyelse), se [Backend](backend.md#live-reläet).
 - En omstart av backend ger ny login för alla. Mer än en backendreplik kräver att lagret flyttas till en delad store, se [Drift](operations.md#sessionslagret-är-processlokalt).
 
 ### Hur länge en inloggning gäller
@@ -97,6 +98,22 @@ Fem minuter före slutet varnar sidan (`frontend/components/SessionEndWarning.ts
 
 Sidan navigerar inte bort. Den ligger kvar, dold och låst (`SignedOutCover` i `frontend/components/AuthGate.tsx`), en pågående inspelning fortsätter att spara på enheten, och en dialog ber om ny inloggning. Medan inloggningen saknas skickas inget från sidan (`frontend/lib/login-state.ts`, `frontend/lib/api.ts`): en förfrågan som tål att skickas två gånger (GET, eller en med `Idempotency-Key`) väntar på den nya inloggningen och går sedan; övriga misslyckas och användaren trycker igen. Se [beslutet om täckskiktet](decisions/0004-native-dialogs-and-the-session-cover.md).
 
+### Sidans användare i en gammal flik
+
+Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts sessionen, och en gammal flik skulle fortsätta skicka ljud under den nya personens session. Därför namnger en sida den användare (och tenant) den öppnades för, och BFF:en jämför id:n (`is_another_user` och `require_expected_user` i `backend/app/module_auth.py`):
+
+| Väg | Hur sidan namnger användaren | Är den en annan |
+|---|---|---|
+| Uppladdningarna och `/api/eneo/{path}` | Headrarna `X-Expected-User` och `X-Expected-Tenant` | `409` med `{"detail": "user_changed"}`, innan bodyn läses. Ingenting når Eneo. |
+| Live-socketen | Frågeparametrarna `?expected_user=` och `expected_tenant` (en webbläsare kan inte sätta en header på en WebSocket) | Stängs med `1008` och skälet `user_changed`, innan någon biljett begärs hos Eneo. |
+
+- En sida som inte namnger någon godtas tills vidare, och frontend skickar ännu inget namn.
+- En åtkomstkodssession har ingen användare att jämföra med och godtas alltid.
+- GET av ljud och genererade filer kontrollerar inte sidans användare.
+- Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
+
+Tester: `ExpectedUserTests` och `LiveExpectedUserTests` i `backend/tests/test_boundary.py`.
+
 ## Åtkomstkod (`AUTH_MODE=access_code`, tillfällig)
 
 Läget finns endast för fristående test innan hela SSO-handoffen är deployad. Det är ingen permanent reserv.
@@ -120,14 +137,15 @@ Avvecklingspunkt: när [eneo#536](https://github.com/eneo-ai/eneo/pull/536) är 
 
 | Hemlighet | Var den finns | Hur den hålls borta |
 |---|---|---|
-| Servicenyckeln (`ENEO_API_KEY`) | Backendens miljö | Läggs på i BFF:en. I ett proxat anrop tas webbläsarens `Authorization`, `Cookie`, `X-API-Key` (och den konfigurerade nyckelheadern), `Origin`, `Referer` och internhuvuden bort innan det vidarebefordras. Uppladdningar och filströmmar tar inga av webbläsarens headers med, utom `Range`, `If-Range` och `Accept` för filer. |
+| Servicenyckeln (`ENEO_API_KEY`) | Backendens miljö | Läggs på i BFF:en. Bara ett fåtal request-headers går vidare från webbläsaren ([Backend](backend.md#headers)), så ingen `Authorization`, `Cookie`, `X-API-Key` eller konfigurerad nyckelheader kommer med. Uppladdningar och filströmmar tar inga av webbläsarens headers med, utom `Range`, `If-Range` och `Accept` för filer. |
 | Modultoken | Backendens minne, i sessionen | Webbläsaren har bara sessions-ID. |
 | Login-ticketen | Passerar en gång i callbackens URL | Callbacken redirectar till en ren URL, ingen referrer, ingen accesslogg. |
 | Signerade fil-URL:er | Backendens cache, per session | BFF:en hämtar och strömmar filen; CSP:n tillåter bara same-origin media och ramar. |
 | Live-transkriptionens ticket | Backend | Öppnar Eneos WebSocket server-side; webbläsaren ser aldrig ticketen. |
+| Eneos cookies och `Location` | Eneos svar | Klienten mot Eneo lagrar och skickar inga cookies, `Set-Cookie` och `Location` skickas inte vidare, och en omdirigering från Eneo är ett 502. |
 | Åtkomstkoden | Backendens miljö | Skickas av användaren en gång i en POST-body, jämförs i konstant tid, sparas inte. |
 
-Testerna som håller detta: `backend/tests/test_module_auth.py`, `backend/tests/test_eneo_proxy_auth.py`, `backend/tests/test_audio_proxy.py`.
+Testerna som håller detta: `backend/tests/test_module_auth.py`, `backend/tests/test_eneo_proxy_auth.py`, `backend/tests/test_audio_proxy.py` och `CookieJarTests` och `RedirectFromEneoTests` i `backend/tests/test_boundary.py`.
 
 ## Kontrollen av origin
 
