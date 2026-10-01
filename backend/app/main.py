@@ -34,6 +34,7 @@ from websockets.exceptions import (
     ConnectionClosed,
     ConnectionClosedError,
     InvalidHandshake,
+    InvalidURI,
 )
 
 from app.config import load_settings
@@ -922,9 +923,24 @@ _LIVE_RECORDING_ID = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
 
 class _LiveTicket(BaseModel):
-    ticket: str
-    # A path on Eneo's host; anything else would send the ticket elsewhere.
-    websocket_path: str = Field(pattern=r"^/")
+    # An HTTP token (RFC 7230): the ticket travels as a WebSocket subprotocol, which is one, and a comma or a space
+    # in it would split or break the Sec-WebSocket-Protocol header.
+    ticket: str = Field(pattern=r"^[!#$%&'*+\-.^_`|~0-9A-Za-z]{1,1024}$")
+    # A path on Eneo's host, appended to ENEO_BACKEND_URL: one slash, no fragment, no space or control character
+    # (a second slash would name a host, a fragment or a space fails URI validation); anything else would send the
+    # ticket elsewhere or nowhere.
+    websocket_path: str = Field(pattern=r"^/([^/\s#\\\x00-\x1f\x7f][^\s#\\\x00-\x1f\x7f]*)?$", max_length=2048)
+
+
+class _ConnectWithoutRedirects(connect):
+    """websockets' ``connect`` that follows no handshake redirect.
+
+    The library follows one, to another host too, and sends the same subprotocols there: the user's one-time ticket
+    would go to whoever Eneo's answer names. A redirect is an error here, raised before a second connection is opened.
+    """
+
+    def process_redirect(self, exc: Exception) -> Exception | str:
+        return exc
 
 
 class _EneoError(BaseModel):
@@ -983,16 +999,18 @@ async def _open_live_session(
     try:
         ticket = _LiveTicket.model_validate(response.json())
     except ValueError:
-        logger.exception("Live transcription ticket: invalid response from Eneo")
+        # Not the exception: a validation error quotes what it refused, and that is the user's ticket.
+        logger.error("Live transcription ticket: invalid response from Eneo")
         raise _eneo_unreachable() from None
     try:
-        return await connect(
+        return await _ConnectWithoutRedirects(
             re.sub(r"^http", "ws", settings.eneo_backend_url) + ticket.websocket_path,
             subprotocols=[_LIVE_SUBPROTOCOL, f"ticket.{ticket.ticket}"],
             close_timeout=_LIVE_CLOSE_TIMEOUT_SECONDS,
             max_size=_LIVE_MAX_MESSAGE_BYTES,
         )
-    except (OSError, TimeoutError, InvalidHandshake):
+    except (OSError, TimeoutError, InvalidHandshake, InvalidURI, ValueError):
+        # Refused, a redirect (an InvalidStatus), or a URI or subprotocol the library will not use.
         logger.warning("Live transcription socket: Eneo refused it", exc_info=True)
         raise _eneo_unreachable() from None
 

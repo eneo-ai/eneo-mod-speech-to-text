@@ -31,6 +31,7 @@ os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import uvicorn  # noqa: E402
 import httpx  # noqa: E402
+import websockets.asyncio.client  # noqa: E402
 from fastapi import HTTPException  # noqa: E402
 
 from app import main  # noqa: E402
@@ -445,6 +446,127 @@ class BrowserHeaderTests(BoundaryCase):
 
         self.assertEqual(status, 200)
         self.assertEqual([value for name, value in self.eneo.requests[-1].header_list if name == "idempotency-key"], ["test-key"])
+
+
+class RawEneo:
+    """Eneo's HTTP and its WebSocket handshake by hand, so a test chooses every byte of the handshake answer.
+
+    The ticket request (a POST) is answered with ``ticket``; anything else is a WebSocket handshake, answered with
+    ``handshake(request_line, headers)``. ``handshakes`` are the handshakes it was asked for.
+    """
+
+    def __init__(self, ticket: bytes, handshake) -> None:
+        self.ticket, self.handshake, self.handshakes = ticket, handshake, []
+
+    async def __call__(self, reader, writer) -> None:
+        head = (await reader.readuntil(b"\r\n\r\n")).decode("latin-1")
+        request_line, *lines = head.split("\r\n")
+        headers = {name.lower(): value for name, _, value in (line.partition(": ") for line in lines if line)}
+        if int(headers.get("content-length", 0)):
+            await reader.readexactly(int(headers["content-length"]))
+        if request_line.startswith("POST"):
+            writer.write(b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nConnection: close\r\nContent-Length: %d\r\n\r\n%s" % (len(self.ticket), self.ticket))
+        else:
+            self.handshakes.append((request_line, headers))
+            writer.write(self.handshake(request_line, headers))
+        await writer.drain()
+        writer.close()
+
+
+class Listener:
+    """A TCP server that counts who connects and keeps what they send (it answers nothing)."""
+
+    def __init__(self) -> None:
+        self.connections, self.received = 0, b""
+
+    async def __call__(self, reader, writer) -> None:
+        self.connections += 1
+        try:
+            self.received += await asyncio.wait_for(reader.read(65536), 2)
+        except TimeoutError:
+            pass
+        writer.close()
+
+
+class LiveSocketTests(BoundaryCase):
+    """The live relay opens Eneo's socket with the user's ticket in its subprotocols: only where Eneo said, and only if it is well formed."""
+
+    FLOW = STEP = "00000000-0000-4000-8000-000000000001"
+
+    def run_session(self, ticket: dict | bytes, handshake) -> tuple[dict, RawEneo, Listener]:
+        """A browser opens the relay; returns the first event it gets, the Eneo that was asked, and a second server."""
+        body = ticket if isinstance(ticket, bytes) else json.dumps(ticket).encode()
+
+        async def session():
+            second = Listener()
+            second_server = await asyncio.start_server(second, "127.0.0.1", 0)
+            second_port = second_server.sockets[0].getsockname()[1]
+            eneo = RawEneo(body, lambda line, headers: handshake(second_port, line, headers))
+            eneo_server = await asyncio.start_server(eneo, "127.0.0.1", 0)
+            self.addCleanup(setattr, main.settings, "eneo_backend_url", main.settings.eneo_backend_url)
+            main.settings.eneo_backend_url = f"http://127.0.0.1:{eneo_server.sockets[0].getsockname()[1]}"
+            try:
+                async with websockets.asyncio.client.connect(
+                    MODULE_SERVER.url.replace("http", "ws") + f"/api/live/{self.FLOW}/{self.STEP}",
+                    additional_headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}", "Origin": ORIGIN},
+                    open_timeout=10,
+                ) as browser:
+                    first = json.loads(await asyncio.wait_for(browser.recv(), 10))
+                await asyncio.sleep(0.3)  # long enough for a second connection, were one going to be made
+                return first, eneo, second
+            finally:
+                for server in (eneo_server, second_server):
+                    server.close()
+                    await server.wait_closed()
+
+        return asyncio.run(session())
+
+    @staticmethod
+    def redirect(status: int = 307):
+        return lambda second_port, line, headers: (
+            f"HTTP/1.1 {status} Redirect\r\nLocation: ws://127.0.0.1:{second_port}/stolen\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        ).encode()
+
+    @staticmethod
+    def refuse(second_port, line, headers) -> bytes:
+        return b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+
+    def test_a_redirect_from_eneos_socket_is_not_followed_and_the_ticket_goes_nowhere_else(self) -> None:
+        for status in (301, 302, 303, 307, 308):
+            with self.subTest(status=status):
+                event, eneo, second = self.run_session({"ticket": "secret-ticket", "websocket_path": "/ws/live"}, self.redirect(status))
+
+                self.assertEqual((event["type"], event["code"]), ("error", "upstream_unreachable"))
+                self.assertEqual(len(eneo.handshakes), 1)
+                self.assertIn("ticket.secret-ticket", eneo.handshakes[0][1]["sec-websocket-protocol"])
+                self.assertEqual((second.connections, second.received), (0, b""), "the ticket reached a second server")
+
+    def test_a_ticket_or_path_that_cannot_be_used_is_the_promised_error_event(self) -> None:
+        cases = {
+            "a comma in the ticket": {"ticket": "a,b", "websocket_path": "/ws/live"},
+            "a space in the ticket": {"ticket": "a b", "websocket_path": "/ws/live"},
+            "an empty ticket": {"ticket": "", "websocket_path": "/ws/live"},
+            "a fragment in the path": {"ticket": "t", "websocket_path": "/ws/live#x"},
+            "a space in the path": {"ticket": "t", "websocket_path": "/ws/ live"},
+            "a control character in the path": {"ticket": "t", "websocket_path": "/ws/\u0001live"},
+            "a path on another host": {"ticket": "t", "websocket_path": "//evil.example/ws"},
+            "a path that is not one": {"ticket": "t", "websocket_path": "ws/live"},
+            "no JSON": b"<html>bad gateway</html>",
+        }
+        for label, ticket in cases.items():
+            with self.subTest(label):
+                event, eneo, second = self.run_session(ticket, self.refuse)
+
+                self.assertEqual((event["type"], event["code"]), ("error", "upstream_unreachable"))
+                self.assertEqual(eneo.handshakes, [], "a socket was opened with what Eneo sent")
+                self.assertEqual(second.connections, 0)
+
+    def test_a_usable_ticket_still_reaches_eneos_socket(self) -> None:
+        event, eneo, _ = self.run_session({"ticket": "ok.ticket-1_~", "websocket_path": "/ws/live?x=1"}, self.refuse)
+
+        self.assertEqual(len(eneo.handshakes), 1)
+        self.assertTrue(eneo.handshakes[0][0].startswith("GET /ws/live?x=1 "))
+        self.assertIn("ticket.ok.ticket-1_~", eneo.handshakes[0][1]["sec-websocket-protocol"])
 
 
 class RedirectTests(BoundaryCase):
