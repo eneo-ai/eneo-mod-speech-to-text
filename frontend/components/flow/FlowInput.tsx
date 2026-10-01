@@ -3,7 +3,10 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import { Badge } from "@/components/ui/badge";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Token } from "@astryxdesign/core/Token";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { Button } from "@/components/ui/button";
 import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Spinner } from "@/components/ui/spinner";
@@ -17,8 +20,7 @@ import {
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FLOW_GRID, FRAME } from "@/components/frame";
+import { FlowFrame } from "@/components/flow/FlowFrame";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -53,6 +55,7 @@ import {
 } from "@/lib/recording-view";
 import { selectRuntimeInputStep } from "@/lib/upload";
 import { cn } from "@/lib/utils";
+import styles from "./FlowSetup.module.css";
 
 type Session = ReturnType<typeof useFlowSession>;
 
@@ -159,60 +162,45 @@ export function FlowInput({
   );
 
   return (
-    <div className={cn("flex flex-col", group === "capture" ? "h-dvh" : "min-h-dvh")}>
+    <>
       <TabTitle input={input} flowName={published.name} />
-      <FlowTopBar
-        title={published.name}
+      <FlowFrame
+        fill={group === "capture"}
         onLeave={onLeave}
         trailing={
           holdsAudio && mode ? (
-            <Badge variant="soft" className="h-8 px-3 text-[14px] font-medium">
+            <HStack gap={1}>
               {/* Alone, "Spela in" reads like a command. */}
-              <span className="sr-only">Läge: </span>
-              {MODE_TEXT[mode].name}
-            </Badge>
+              <VisuallyHidden>Läge: </VisuallyHidden>
+              <Token label={MODE_TEXT[mode].name} color="blue" />
+            </HStack>
           ) : undefined
         }
-      />
-      {/* Recording state changes are said once here; the timer never is. */}
-      <p role="status" className="sr-only">
-        {recordingAnnouncement(phase)}
-      </p>
-      <main
-        id="innehall"
-        className={cn(
-          FRAME,
-          FLOW_GRID,
-          "flex-1 pt-3 lg:pt-8",
-          group === "capture"
-            ? "flex min-h-0 flex-col overflow-y-auto lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:pb-6"
-            : "pb-12 lg:items-start",
-        )}
+        // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
+        aside={
+          <FlowAside
+            published={published}
+            classification={contract.security_classification}
+            onLeave={onLeave}
+            compact={holdsAudio}
+            details={details}
+            summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
+            open={openDetails}
+            onOpenChange={setDetailsOpen}
+            className={group === "capture" ? styles.capturePane : undefined}
+          />
+        }
       >
-        {/* While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box. */}
-        <FlowAside
-          published={published}
-          classification={contract.security_classification}
-          onLeave={onLeave}
-          compact={holdsAudio}
-          details={details}
-          summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
-          open={openDetails}
-          onOpenChange={setDetailsOpen}
-          className={cn(group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}
-        />
-
-        <section
+        {/* Recording state changes are said once here; the timer never is. */}
+        <VisuallyHidden as="p" role="status">
+          {recordingAnnouncement(phase)}
+        </VisuallyHidden>
+        <VStack
+          as="section"
           ref={workspace}
           aria-label="Ljudet"
-          className={cn(
-            "flex min-w-0 flex-col gap-4",
-            group === "capture"
-              ? // Scrolls on its own when the bar's warnings or larger text spacing need more room than the
-                // window has; the side room keeps a focused control's outline inside the scroll box.
-                "mt-4 min-h-[22rem] flex-1 lg:-mx-2 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:px-2 short:min-h-0"
-              : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
-          )}
+          gap={group === "capture" ? 4 : 6}
+          className={group === "capture" ? [styles.capturePane, styles.capture].join(" ") : group === "setup" ? styles.setup : undefined}
         >
           <OfflineBanner waiting={group === "capture" ? "recording" : null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
@@ -248,13 +236,13 @@ export function FlowInput({
               makesText={text}
             />
           )}
-        </section>
+        </VStack>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
             form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
             it would let a recording scroll. On a short screen it stays at the page's end instead of covering it. */}
-        {group === "setup" && <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden short:static" />}
-      </main>
-    </div>
+        {group === "setup" && <div ref={setDockSlot} className={styles.dock} />}
+      </FlowFrame>
+    </>
   );
 }
 

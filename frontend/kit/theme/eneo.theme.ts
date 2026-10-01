@@ -50,6 +50,9 @@ export const eneoTheme = defineTheme({
       'size:sm': {minHeight: 'var(--size-element-sm)'},
       'size:lg': {minHeight: 'var(--size-element-lg)'},
     },
+    // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
+    // 4.28:1 in dark mode, the primary one 8.5:1.
+    'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
   },
   adaptations: {
     rules: [

@@ -1,5 +1,9 @@
 import { ShieldCheck } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import type { FlowSecurityClassification } from "@/lib/api";
 
 /**
@@ -9,17 +13,16 @@ import type { FlowSecurityClassification } from "@/lib/api";
  */
 export function ClassificationNote({ classification }: { classification?: FlowSecurityClassification | null }) {
   if (!classification) return null;
+  // A note, not an alert or a status: it is read in its place, never announced.
   return (
-    <Alert role="note">
-      <ShieldCheck aria-hidden />
-      <AlertTitle>
-        {classification.name}
-      </AlertTitle>
-      {classification.description && (
-        <AlertDescription>
-          {classification.description}
-        </AlertDescription>
-      )}
-    </Alert>
+    <Card role="note" padding={4}>
+      <HStack gap={3} align="start">
+        <Icon icon={ShieldCheck} />
+        <VStack gap={1}>
+          <Text weight="semibold">{classification.name}</Text>
+          {classification.description && <Text color="secondary">{classification.description}</Text>}
+        </VStack>
+      </HStack>
+    </Card>
   );
 }

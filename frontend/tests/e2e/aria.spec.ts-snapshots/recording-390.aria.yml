@@ -1,11 +1,15 @@
+- link "Hoppa till innehåll":
+  - /url: "#astryx-app-shell-main"
 - banner:
-  - link "Alla flöden":
-    - /url: /flows
-  - heading "Nämndmöte till rapport" [level=1]
-  - text: "Läge: Spela in"
-- status: Spelar in.
+  - navigation "Tal till text":
+    - link "Alla flöden":
+      - /url: /flows
+      - status
+    - text: "Läge: Spela in"
 - main:
+  - heading "Nämndmöte till rapport" [level=1]
   - 'button "Uppgifter, Deltagare: Anna Berg"'
+  - status: Spelar in.
   - region "Ljudet":
     - status
     - heading "Inspelning" [level=2]

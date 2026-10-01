@@ -8,14 +8,9 @@
   "components/TranscriptEditor.tsx",
   "components/TranscriptPlayer.tsx",
   "components/flow/AudioPlayer.tsx",
-  "components/flow/BackToFlows.tsx",
-  "components/flow/ClassificationNote.tsx",
   "components/flow/DetailsForm.tsx",
   "components/flow/EarlierRuns.tsx",
-  "components/flow/FlowAside.tsx",
   "components/flow/FlowInput.tsx",
-  "components/flow/FlowPageStates.tsx",
-  "components/flow/FlowRunPage.tsx",
   "components/flow/FlowTopBar.tsx",
   "components/flow/LevelMeter.tsx",
   "components/flow/LiveSheet.tsx",
@@ -24,7 +19,6 @@
   "components/flow/ReadyPanel.tsx",
   "components/flow/Recorder.tsx",
   "components/flow/ReviewView.tsx",
-  "components/flow/StateCard.tsx",
   "components/flow/UploadPanel.tsx",
   "components/frame.tsx"
 ]

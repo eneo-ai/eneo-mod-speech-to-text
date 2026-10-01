@@ -290,6 +290,11 @@ export const eneoTheme = {
       "size:lg": {
         "minHeight": "var(--size-element-lg)"
       }
+    },
+    "avatar-fallback": {
+      "base": {
+        "color": "var(--color-text-primary)"
+      }
     }
   },
   __onDark: {

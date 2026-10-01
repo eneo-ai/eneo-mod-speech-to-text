@@ -3,12 +3,16 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import type { MouseEvent } from "react";
-import { Button, type ButtonProps } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Button } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
+
+// The old buttons' names for the design system's: the filled one is the page's main action.
+const VARIANT = { default: "primary", secondary: "secondary", outline: "secondary" } as const;
+const SIZE = { default: "md", sm: "sm" } as const;
 
 /**
- * The way back to the flow list, named the same on every page: a soft filled pill that reads as a button at
- * rest, its edge on the page's edge. An action row may give it more weight.
+ * The way back to the flow list, named the same on every page, a button that reads as one at rest. An action row
+ * may give it more weight.
  */
 export function BackToFlows({
   onLeave,
@@ -18,16 +22,25 @@ export function BackToFlows({
 }: {
   /** Asked before leaving; call preventDefault to stay. */
   onLeave?: (event: MouseEvent) => void;
-  variant?: ButtonProps["variant"];
-  size?: ButtonProps["size"];
+  variant?: keyof typeof VARIANT;
+  size?: keyof typeof SIZE;
   className?: string;
 }) {
   return (
-    <Button asChild variant={variant} size={size} className={cn("w-fit", className)}>
-      <Link href="/flows" onClick={onLeave}>
-        <ArrowLeft data-icon="inline-start" aria-hidden />
-        Alla flöden
-      </Link>
+    <Button
+      as={Link}
+      href="/flows"
+      label="Alla flöden"
+      icon={<Icon icon={ArrowLeft} />}
+      variant={VARIANT[variant]}
+      size={SIZE[size]}
+      className={className}
+      onClick={onLeave}
+    >
+      {/* A fragment, not the label's string: that makes the button name itself with aria-label. Its words are
+          otherwise in a part a modal's aria-hiding (the old dialogs') leaves empty, because the button holds a live
+          region that aria-hidden keeps visible, so the link stays and loses its name. */}
+      <>Alla flöden</>
     </Button>
   );
 }
