@@ -544,3 +544,36 @@ export function orderProblems(stops: FocusStop[]): string[] {
     return sameColumn && s.container !== before.key && s.bottom <= before.top ? [`${s.label} comes after ${before.label} but sits above it`] : [];
   });
 }
+
+/**
+ * The name of the scrolling or clipping ancestor that cuts the focus ring of the focused element, if there is one:
+ * the ring is drawn outside its owner (the element, or the near ancestor that carries the outline: a field's box)
+ * by the outline's width and offset, and an ancestor that clips at the owner's own edge leaves a ring with a side
+ * missing (WCAG 2.4.7).
+ */
+export function clippedFocus(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el || el === document.body) return null;
+    let owner: HTMLElement = el;
+    let ring = 0;
+    for (let e: HTMLElement | null = el, i = 0; e && e !== document.body && i < 4; e = e.parentElement, i++) {
+      const s = getComputedStyle(e);
+      if (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) {
+        owner = e;
+        ring = parseFloat(s.outlineWidth) + Math.max(0, parseFloat(s.outlineOffset) || 0);
+        break;
+      }
+    }
+    const r = owner.getBoundingClientRect();
+    for (let p = owner.parentElement; p && p !== document.body; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (!/auto|scroll|hidden|clip/.test(s.overflowX + s.overflowY)) continue;
+      const b = p.getBoundingClientRect();
+      if (r.left - ring < b.left || r.right + ring > b.right || r.top - ring < b.top || r.bottom + ring > b.bottom) {
+        return `${p.tagName.toLowerCase()}.${String(p.className).split(" ")[0]}`;
+      }
+    }
+    return null;
+  });
+}

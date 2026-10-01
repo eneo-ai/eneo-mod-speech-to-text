@@ -10,12 +10,12 @@ import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sen
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  for (const [id, name, description, checked] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  for (const [name, description, checked] of [
+    ["Strömma", "Se texten medan du pratar.", false],
+    ["Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
+    expect(await axNode(page.getByRole("radio", { name: new RegExp(`^${name}`) }))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
   expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du lägga till ljudet?" });
 });
@@ -160,6 +160,17 @@ test("while recording, the top bar names the mode and the folded details say wha
 test("Eneo's own words on the failure view are marked as English", async ({ page }, info) => {
   await STATES.find((s) => s.name === "failure")!.go(page, info);
   await expect(page.getByText(/^Step 2 failed/)).toHaveAttribute("lang", "en");
+});
+
+test("the folded panels keep their content out of sight until their trigger is pressed", async ({ page }) => {
+  await result(page);
+  await expect(page.getByText("Flödets version 3")).toBeHidden();
+  await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
+  await expect(page.getByText("Flödets version 3")).toBeVisible();
+  await run(page, "run-failed");
+  await expect(page.getByText(/^Step 2 failed/)).toBeHidden();
+  await page.getByRole("button", { name: "Visa teknisk information" }).click();
+  await expect(page.getByText(/^Step 2 failed/)).toBeVisible();
 });
 
 test("the access code can be filled in by a password manager", async ({ page }, info) => {

@@ -158,7 +158,10 @@ export const eneoTheme = {
         "lineHeight": "var(--text-display-3-leading)"
       },
       "base": {
-        "overflowWrap": "anywhere"
+        "overflowWrap": "anywhere",
+        ":focus-visible": {
+          "outline": "none"
+        }
       }
     },
     "text": {
@@ -271,6 +274,20 @@ export const eneoTheme = {
       "base": {
         "minBlockSize": "24px"
       }
+    },
+    "button": {
+      "base": {
+        "whiteSpace": "normal",
+        "height": "auto",
+        "minHeight": "var(--size-element-md)",
+        "paddingBlock": "var(--spacing-0-5)"
+      },
+      "size:sm": {
+        "minHeight": "var(--size-element-sm)"
+      },
+      "size:lg": {
+        "minHeight": "var(--size-element-lg)"
+      }
     }
   },
   __onDark: {
@@ -332,6 +349,11 @@ export const eneoTheme = {
             "slider-control": {
               "base": {
                 "minBlockSize": "44px"
+              }
+            },
+            "collapsible-trigger": {
+              "base": {
+                "minHeight": "44px"
               }
             }
           }
