@@ -4,7 +4,7 @@ Syfte: Beskriva Astryx och Eneo-temat, hur en brist i designsystemet rättas en 
 
 Läs detta när: Du bygger eller ändrar något visuellt, ser att en kontroll bryter mot grinden, ska ändra färger, storlekar eller fokusring, eller ska uppgradera Astryx.
 
-Hör ihop med: [Frontend](frontend.md), [Kvalitetsgrindar](quality-gates.md), [Arkitektur](architecture.md#frontendens-lager), [Beslut: Astryx i stället för shadcn](decisions/0001-astryx-over-shadcn.md)
+Hör ihop med: [Frontend](frontend.md), [Kvalitetsgrindar](quality-gates.md), [Arkitektur](architecture.md#frontendens-lager), [Beslut: Astryx i stället för shadcn](decisions/0001-astryx-over-shadcn.md), [Byt organisation](branding.md)
 
 ## Astryx i korthet
 
@@ -62,7 +62,7 @@ Temat är källan till allt som skiljer modulen från Astryx standard.
 
 Vad temat bestämmer:
 
-- **Accent:** Sundsvalls blå `#004595` (mörkt läge `#52B1FF`), satt som explicita tokens (`--color-accent`, `--color-on-accent`). `color.accent` ger bara en tonpalett ur ett frö, inte själva fröet: `#004595` blev `#325BAF`.
+- **Accent:** standardfärgen är Sundsvalls blå `#004595` (mörkt läge `#52B1FF`), satt som explicita tokens (`--color-accent`, `--color-on-accent`). `color.accent` ger bara en tonpalett ur ett frö, inte själva fröet: `#004595` blev `#325BAF`.
 - **Typsnitt:** systemtypsnitt i 16 px med skala 1,2, inga webbtypsnitt.
 - **Pekmål:** under en grov pekare (`pointer: coarse`) höjs kontroller, menyrader och val till 44 px.
 - **Fokusring** på fält, väljare och liknande (se nedan), och en läsbar etikett på felfärgen i mörkt läge.
@@ -72,7 +72,7 @@ Det finns inget runtime- eller byggberoende till `@sk-web-gui`; färgtokens och 
 
 Färgläget ägs av next-themes, inte av temat. Se [beslutet](decisions/0003-next-themes-owns-the-colour-mode.md).
 
-Sundsvalls domänfärger (inspelningsröd, de sex talarfärgerna) ligger kvar som CSS-variabler i modulen (`frontend/app/globals.css`) tills en andra modul behöver dem. Hur organisationens märke ritas: [Arkitektur](architecture.md#var-organisationens-märke-kommer-in).
+Sundsvalls domänfärger (inspelningsröd, de sex talarfärgerna) ligger kvar som CSS-variabler i modulen (`frontend/app/globals.css`) tills en andra modul behöver dem. Hur organisationens märke och accent kommer in: [Arkitektur](architecture.md#var-organisationens-märke-och-accent-kommer-in). En driftsättning kan byta accenten med `ORGANIZATION_ACCENT`: backend serverar den som en stilmall (`/api/branding/theme.css`) som ersätter temats `#004595`, och den måste nå 4,5:1 mot sidans ytor eftersom den också är länkfärg och fokusram ([Byt organisation](branding.md)). Rätta därför aldrig en färg i temat för en enskild organisation.
 
 ## Rätta en brist i designsystemet
 

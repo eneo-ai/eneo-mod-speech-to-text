@@ -30,6 +30,10 @@ Utan Docker (devcontainer): backend från `backend/` med miljön inläst från `
 
 Raden ovan läses av `backend/tests/test_live_relay.py` och måste ha samma WebSocket-gränser som produktionsimagen. Ändra den inte utan att ändra testet.
 
+## Egen organisation
+
+En annan kommun eller myndighet byter namn, logga och accentfärg utan att ändra kod eller bygga om imagen: sex miljövariabler på backend-tjänsten (`ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION`, `ORGANIZATION_ACCENT`, `ORGANIZATION_ACCENT_DARK`). Utan dem visas Sundsvalls kommun och modulens standardblå. Guiden med kraven och felmeddelandena: [Byt organisation](docs/branding.md).
+
 ## Status
 
 | Status | Vad |
@@ -50,7 +54,8 @@ Hela indexet med status finns i [docs/README.md](docs/README.md).
 | se hur modulen pratar med Eneo | [Eneo-integration](docs/eneo-integration.md), [Inspelaren](docs/recording.md), [Granska transkriptet](docs/transcript-review.md) |
 | bygga eller ändra en skärm | [Frontend](docs/frontend.md), [Designsystem](docs/design-system.md) |
 | köra tester och tillgänglighetsgrinden | [Kvalitetsgrindar](docs/quality-gates.md) |
-| driftsätta, felsöka eller byta organisationens märke | [Drift](docs/operations.md) |
+| driftsätta eller felsöka | [Drift](docs/operations.md) |
+| byta organisationens namn, logga och accentfärg | [Byt organisation](docs/branding.md) |
 | starta lokalt | [Lokal utveckling](docs/development.md) |
 | veta varför något är som det är | [Beslut](docs/decisions/README.md) |
 | förstå en term | [Ordlista](docs/glossary.md) |

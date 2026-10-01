@@ -44,7 +44,7 @@ Importriktningen visas i [diagrammet](architecture.md#frontendens-lager).
 | Inloggningens giltighet | `lib/login-state.ts` (`loginState`), matas av `AuthGate` | Sidan ligger kvar när inloggningen slutar. Se [Inloggning och session](auth-and-session.md#när-inloggningen-har-gått-ut). |
 | Sessionsstatus från backend | `authStatus()` i `lib/api.ts`, hållen vid liv av `lib/session-keepalive.ts` | `refresh_in` och `session_ends_in` styr nästa fråga och varningen. |
 | Färgläge | next-themes (klass på `<html>`, `localStorage`) | `kit/ModuleProviders.tsx` läser det, skriver aldrig. |
-| Organisationens märke | Läses i `app/layout.tsx` per request, ligger i `BrandingProvider` (`components/Brand.tsx`) | |
+| Organisationens märke | Läses i `app/layout.tsx` per request, ligger i `BrandingProvider` (`components/Brand.tsx`) | Accentfärgen är inget tillstånd: den kommer som en stilmall, `/api/branding/theme.css`, länkad i `<head>`. Se [Byt organisation](branding.md). |
 | Flödessidans inmatningssida (läge, uppgifter, talarval, fas) | `lib/flow-session.ts` (klassen `FlowSession`), bunden till React av `components/flow/useFlowSession.ts` | Faserna är `setup`, `starting`, `recording`, `paused`, `interrupted`, `ready`. Fasen läses ur inspelaren, kopieras aldrig. |
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` | Se [Inspelaren](recording.md). |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) | Överlever omladdning och utgången session. |

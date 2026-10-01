@@ -11,7 +11,7 @@ Hör ihop med: [README](../README.md), [Arkitektur](architecture.md), [Ordlista]
 | Du är | Läs i den här ordningen |
 |---|---|
 | Ny utvecklare | [README](../README.md), [Arkitektur](architecture.md), [Lokal utveckling](development.md), [Frontend](frontend.md), [Backend](backend.md) |
-| Operatör | [Drift](operations.md), [Inloggning och session](auth-and-session.md), [Backend (inställningar)](backend.md#inställningar) |
+| Operatör | [Drift](operations.md), [Byt organisation](branding.md), [Inloggning och session](auth-and-session.md), [Backend (inställningar)](backend.md#inställningar) |
 | Granskar säkerhet | [Inloggning och session](auth-and-session.md), [Backend (säkerhetsegenskaper)](backend.md#säkerhetsegenskaper), [Beslut 0005](decisions/0005-deny-by-default-proxy-and-body-limits.md) |
 | Bygger en skärm | [Frontend](frontend.md), [Designsystem](design-system.md), [Kvalitetsgrindar](quality-gates.md) |
 | Ett AI-verktyg | [`AGENTS.md`](../AGENTS.md) (engelska), därefter sidorna ovan efter uppgift |
@@ -33,6 +33,7 @@ Status: **Aktuell** stämmer med koden. **Under arbete** beskriver något som ä
 | [Designsystem](design-system.md) | Astryx, Eneo-temat, rätta en brist en gång, tillgänglighetsnivå | utvecklare | Aktuell, en del är tillfällig (Migration) |
 | [Kvalitetsgrindar](quality-gates.md) | Alla kontroller, hur de körs, hur ett fel läses | utvecklare | Aktuell, en del är tillfällig (Migration) |
 | [Drift](operations.md) | Miljövariabler, Compose, imagen, Dokploy, headers, felsökning | operatör | Aktuell |
+| [Byt organisation](branding.md) | Namn, logga och accentfärg: variabler, krav, kontrastregler, felmeddelanden, kontroll | operatör | Aktuell |
 | [Lokal utveckling](development.md) | Starta lokalt, devcontainer, stub, portar | utvecklare | Aktuell |
 | [Ordlista](glossary.md) | Vad termerna betyder | alla | Aktuell |
 | [Beslut](decisions/README.md) | Arkitekturbeslut, ett per fil | utvecklare | Aktuell |

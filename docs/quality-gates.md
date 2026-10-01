@@ -16,6 +16,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 | Enhets- och komponenttester | Logik och komponenter i jsdom. | `npm test` | snabb |
 | Backendtester | Inloggning, proxy, uppladdning, filer, live-relä, config. | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | snabb |
 | Tillgänglighetsgrinden | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. | `npm run test:a11y` | lång |
+| Grindens branding-tillstånd | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. | `npm run test:a11y:branding` | medel |
 | Produktionssmoke och viktbudget | Det byggda bygget i tre motorer, sidvikt, att det byggda temat används. | `npm run test:prod` | medel |
 | Bygget | Att produktionsbygget går att göra. | `npm run build` | medel |
 | Designsystemets hälsa | Att Astryx är rätt uppsatt. | `npm run astryx -- doctor` | snabb |
@@ -85,6 +86,7 @@ Mätningarna körs i den renderade sidan (`frontend/tests/e2e/checks.ts`) och sk
 | `session-cover.spec.ts` | Att inget av sidan, och ingen dialog sidan hade öppen, syns eller går att nå medan inloggningen är slut, och att allt är tillbaka efter ny inloggning. |
 | `flow-list.spec.ts` | Flödeslistan när den laddar, är tom, avklippt, lång eller trasig. |
 | `result-tabs.spec.ts` | Resultatets flikar under laptopbredd. |
+| `branding.spec.ts` | En driftsättning med egen accentfärg (grön) och egen organisation: ingenting i sidan behåller den blå standardfärgen och accenten finns från första målningen. Körs bara av `npm run test:a11y:branding` (se nedan). |
 | `header-fit.spec.ts` | Toppfältet vid 320 px med ökat textavstånd: varumärket och kontoknappen hålls isär och produktnamnet är helt. |
 | `leaks.spec.ts` | Att ett överlägg som öppnas och stängs inte lämnar något kvar, se nedan. |
 
@@ -108,6 +110,10 @@ Konfigurationen (`playwright.config.ts`) har 19 projekt. `a11y.spec.ts` körs i 
 | `reduced-motion` | 390 × 844 | reducerad rörelse, pekskärm | a11y |
 
 På 1280, 1920, 2560 och 3440 px körs alla kontroller per skärm i ljust och mörkt; tangentbordsvandringarna och dialogernas fokustester körs på 1920 px, eftersom tangentbordsordning och fokushantering inte ändras på bredare skärmar.
+
+### Branding-tillstånden
+
+`npm run test:a11y:branding` (från `frontend/`) kör samma grind mot en stub som startas som en annan organisation: en grön accent, ett långt namn och breda eller inga logotyper. Det görs i två körningar (`STUB_BRANDING=custom` och `STUB_BRANDING=name`) med `frontend/playwright.branding.config.ts`, som bara tar tillstånden som heter `branding-` i `frontend/tests/e2e/screens.ts` och projekten `phone-320-light`, `phone-390-dark`, `laptop-1440-light`, `zoom-200` och `forced-colors`. Skälet är att sidan läser organisationen från backend på servern: det är stubben som startas som organisationen, inte sidan som ändras. En stub som redan lyssnar på porten avvisas hellre än att inget testas. Steg för att kontrollera en egen organisation: [Byt organisation](branding.md#så-kontrollerar-du).
 
 ### Köra delar
 
@@ -143,6 +149,8 @@ Sänk inte ett tröskelvärde, ta inte bort ett läge ur grinden och lägg inte 
 |---|---|
 | `smoke.spec.ts` | Att designsystemet är stylat, tematiserat och fungerar i det byggda bygget, och att en inloggad sida laddar utan blockerat eller trasigt innehåll (en CSP-vägran är ett konsolfel). |
 | `weight.spec.ts` | Att en sidas komprimerade JS och CSS inte överstiger `tests/prod/weight-budget.json`, och att det byggda temat används: inget `<style data-astryx-theme*>` får finnas efter laddning (det vore runtime-generering av tema vid varje sidladdning). Bara Chromium, som rapporterar överföringsstorlek. |
+
+`frontend/tests/prod/branding.spec.ts` kör accentens stilmall i det byggda bygget, också under en strikt `style-src 'self'`, och körs bara när stubben är en organisation med egen accent: `STUB_BRANDING=custom npm run test:prod -- branding.spec.ts --project=chromium`.
 
 ### Viktbudgeten
 

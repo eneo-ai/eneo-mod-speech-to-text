@@ -52,7 +52,8 @@ out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 ## Checks
 
 From `frontend/`: `npm run lint`, `npm test`, `npm run test:a11y`, `npm run test:prod`, `npm run build`,
-`npm run astryx -- doctor`; after a theme change `npm run theme:build` (CI fails if `kit/theme/built` differs).
+`npm run astryx -- doctor`; after a theme change `npm run theme:build` (CI fails if `kit/theme/built` differs); after a
+branding or accent-colour change `npm run test:a11y:branding`.
 From `backend/`: `.venv/bin/python -m unittest discover -s tests`.
 From the repository root: `docker compose --env-file .env.example config -q`.
 What each proves and how to read a failure: `docs/quality-gates.md`.
@@ -65,7 +66,7 @@ checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop
 
 | Path | What |
 |---|---|
-| `backend/app/` | The BFF: `main.py` (routes, proxy allowlist, uploads, file streaming, live relay), `module_auth.py` (login, sessions, refresh), `config.py` (settings). |
+| `backend/app/` | The BFF: `main.py` (routes, proxy allowlist, uploads, file streaming, live relay), `module_auth.py` (login, sessions, refresh), `config.py` (settings), `accent.py` (the deployment's accent colour). |
 | `backend/tests/` | `unittest`, one file per concern. |
 | `frontend/app/` | Next.js routes. The root layout holds providers only. `app/dev/` are development-only pages. |
 | `frontend/components/` | Screens and surfaces; `components/flow/` is the flow page. |
@@ -88,6 +89,7 @@ checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop
 - What a test covers: `frontend/lib/<name>.test.ts` beside `<name>.ts`; backend `backend/tests/test_<area>.py`.
 - The Swedish sentence a user reads for a failed request: `frontend/lib/errors.ts`.
 - Colours, sizes, focus ring: `frontend/kit/theme/eneo.theme.ts`. The module's domain colours: `frontend/app/globals.css`.
+  A deployment's own name, logo and accent: `docs/branding.md` (the one operator guide); the accent must reach 4,5:1.
 - Why something is as it is: `docs/decisions/`. Words with a fixed meaning: `docs/glossary.md`.
 - Use `rg` for exact strings and paths.
 

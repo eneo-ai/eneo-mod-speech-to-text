@@ -41,6 +41,7 @@ Hör ihop med: [Arkitektur](architecture.md), [Inloggning och session](auth-and-
 | Term | Betydelse |
 |---|---|
 | Astryx | Designsystemet (`@astryxdesign/core`) som modulens gränssnitt byggs av. Version fastlåst i `frontend/package.json`. |
+| accentfärg | Färgen på knappar, länkar, ikoner, fokusramar och valda rader. Standard är Sundsvalls blå `#004595`; en organisation byter den med `ORGANIZATION_ACCENT` (minst 4,5:1 mot sidan). Se [Byt organisation](branding.md). |
 | tema | Eneo-temat i `frontend/kit/theme/eneo.theme.ts`: accentfärg, typsnitt, pekstorlekar och fokusring. Byggs till statiska filer. |
 | kit | Mappen `frontend/kit/` (tema, providers, skal). Ska på sikt bli ett delat modulkit. |
 | ytor med CSS-modul | De få specialytor som får ha en CSS-modul med Astryx-tokens i stället för komponenter. |
