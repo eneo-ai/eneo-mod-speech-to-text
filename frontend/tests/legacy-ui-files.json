@@ -1,5 +1,4 @@
 [
-  "app/dev/foundation/FoundationCheck.tsx",
   "components/flow/FlowInput.tsx",
   "components/flow/FlowTopBar.tsx",
   "components/frame.tsx"
