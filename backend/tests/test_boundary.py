@@ -6,6 +6,7 @@ sent. The module's own shared ``main.http_client`` talks to it over a real socke
 """
 
 import asyncio
+import gzip
 import http.client
 import json
 import os
@@ -38,6 +39,8 @@ from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: 
 
 ORIGIN = main.settings.module_origin
 FAR_FUTURE = 4102444800  # 2100-01-01
+MiB = 1 << 20
+CAP = 4 * MiB  # max_response_bytes in the tests of how much of an answer is read
 
 
 @dataclass
@@ -58,6 +61,9 @@ class FakeEneo:
     def __init__(self, respond=None) -> None:
         self.respond = respond or (lambda seen: (200, [("content-type", "application/json")], b"{}"))
         self.requests: list[Seen] = []
+        self.sent = 0  # bytes of lazily served answers handed to the server
+        self.outcomes: list[str] = []  # one per lazily served answer: "complete", or "dropped" if the client hung up first
+        self.active = 0  # lazily served answers still being served
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] != "http":
@@ -78,16 +84,33 @@ class FakeEneo:
         )
         self.requests.append(seen)
         status, headers, payload = self.respond(seen)
-        await send(
-            {
-                "type": "http.response.start",
-                "status": status,
-                "headers": [(k.encode(), v.encode("latin-1")) for k, v in headers]
-                # One connection per request: the module's shared client lives on whichever loop a test runs.
-                + [(b"connection", b"close"), (b"content-length", str(len(payload)).encode())],
-            }
-        )
-        await send({"type": "http.response.body", "body": payload})
+        # One connection per request: the module's shared client lives on whichever loop a test runs.
+        framing = [(b"connection", b"close")]
+        lazy = not isinstance(payload, bytes)
+        if not lazy:
+            framing.append((b"content-length", str(len(payload)).encode()))
+        await send({"type": "http.response.start", "status": status, "headers": [(k.encode(), v.encode("latin-1")) for k, v in headers] + framing})
+        if not lazy:
+            await send({"type": "http.response.body", "body": payload})
+            return
+        hung_up = asyncio.ensure_future(receive())  # resolves with http.disconnect when the client closes
+        outcome = "complete"
+        self.active += 1
+        try:
+            async for chunk in payload():
+                if hung_up.done():
+                    outcome = "dropped"
+                    return
+                self.sent += len(chunk)
+                await send({"type": "http.response.body", "body": chunk, "more_body": True})
+                await asyncio.sleep(0)
+            await send({"type": "http.response.body", "body": b""})
+        except Exception:  # the server refuses a write to a connection that has gone
+            outcome = "dropped"
+        finally:
+            hung_up.cancel()
+            self.outcomes.append(outcome)
+            self.active -= 1
 
     @property
     def url(self) -> str:
@@ -153,7 +176,9 @@ class BoundaryCase(unittest.TestCase):
     def setUp(self) -> None:
         self.eneo = ENEO
         self.eneo.requests.clear()
+        self.eneo.sent, self.eneo.outcomes = 0, []
         self.eneo.respond = lambda seen: (200, [("content-type", "application/json")], b"{}")
+        self.addCleanup(self.wait_until_eneo_is_idle)
         self.addCleanup(setattr, main.settings, "eneo_backend_url", main.settings.eneo_backend_url)
         main.settings.eneo_backend_url = self.eneo.url
         main.module_auth.sessions.clear()
@@ -164,6 +189,12 @@ class BoundaryCase(unittest.TestCase):
 
     def respond_with(self, respond) -> None:
         self.eneo.respond = respond
+
+    def wait_until_eneo_is_idle(self) -> None:
+        """Eneo notices a hang-up a moment after the module has answered; no answer may outlive its test."""
+        deadline = time.time() + 10
+        while self.eneo.active and time.time() < deadline:
+            time.sleep(0.02)
 
     @staticmethod
     def browser() -> httpx.Client:
@@ -558,6 +589,133 @@ class RedirectFromEneoTests(BoundaryCase):
         response = self.request("GET", "/api/eneo/flows/", self.session_a, headers={"If-None-Match": '"v1"'})
 
         self.assertEqual(response.status_code, 304)
+
+
+ENDLESS_STOP = 256 * MiB  # an "endless" answer stops here, so that a client that reads it all ends the test and its memory
+
+
+def lazy(total: int | None, chunk: bytes = b"0" * MiB):
+    """A body of ``total`` bytes (endless, up to ENDLESS_STOP, if None) served a MiB at a time, never held."""
+
+    async def body():
+        left = ENDLESS_STOP if total is None else total
+        while left > 0:
+            piece = chunk[:left]
+            left -= len(piece)
+            yield piece
+
+    return body
+
+
+class UpstreamAnswerTests(BoundaryCase):
+    """How much of an answer from Eneo the module reads: a bound, counted while it arrives, and the answer closed past it."""
+
+    JSON = ("content-type", "application/json")
+    # What the server may have taken before it noticed the hang-up: its own and the kernel's buffers, not the answer.
+    SLACK = 24 * MiB
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.addCleanup(setattr, main.settings, "max_response_bytes", main.settings.max_response_bytes)
+        main.settings.max_response_bytes = CAP
+
+    def serve(self, status: int, headers: list, body, mint=None) -> None:
+        """Eneo answers every call with this; a signed-URL request gets ``mint`` if one is given."""
+        good = json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode()
+        self.respond_with(lambda seen: (200, [self.JSON], good) if seen.path.endswith("/signed-url/") and mint is None else (status, headers, body))
+
+    def assert_refused_and_closed(self, response, error: str, limit: int) -> None:
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json()["error"], error)
+        self.wait_until_eneo_is_idle()
+        self.assertLessEqual(self.eneo.sent, limit + self.SLACK, "the answer was read on past its bound")
+        self.assertEqual(self.eneo.outcomes, ["dropped"], "the answer was not closed")
+
+    def test_an_answer_past_the_bound_is_a_502_that_stops_reading_and_closes_it(self) -> None:
+        for label, total in {"a long answer": 300 * MiB, "an endless one": None}.items():
+            with self.subTest(label):
+                self.eneo.sent, self.eneo.outcomes = 0, []
+                self.serve(200, [self.JSON], lazy(total))
+
+                response = self.request("GET", "/api/eneo/flows/", self.session_a)
+
+                self.assert_refused_and_closed(response, "upstream_too_large", CAP)
+
+    def test_a_declared_length_past_the_bound_is_refused_before_a_byte_is_read(self) -> None:
+        self.serve(200, [self.JSON, ("content-length", str(10**9))], lazy(300 * MiB))
+
+        response = self.request("GET", "/api/eneo/flows/", self.session_a)
+
+        self.assert_refused_and_closed(response, "upstream_too_large", 0)
+
+    def test_a_compressed_answer_is_refused_whatever_it_would_decode_to(self) -> None:
+        bomb = gzip.compress(b"0" * (64 * MiB), 1)  # about 64 KB that decode to 64 MiB
+        self.serve(200, [self.JSON, ("content-encoding", "gzip")], bomb)
+
+        response = self.request("GET", "/api/eneo/flows/", self.session_a)
+
+        self.assertEqual((response.status_code, response.json()["error"]), (502, "upstream_too_large"))
+
+    def test_the_module_asks_eneo_for_no_encoding(self) -> None:
+        self.request("GET", "/api/eneo/flows/", self.session_a)
+
+        self.assertEqual(self.eneo.requests[-1].headers["accept-encoding"], "identity")
+
+    def test_an_answer_at_the_bound_goes_through(self) -> None:
+        self.serve(200, [("content-type", "application/octet-stream")], lazy(CAP))
+
+        response = self.request("GET", "/api/eneo/flows/", self.session_a)
+
+        self.assertEqual((response.status_code, len(response.content)), (200, CAP))
+
+    def test_an_upload_answer_past_the_bound_is_a_502(self) -> None:
+        self.serve(200, [self.JSON], lazy(300 * MiB))
+
+        response = self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
+
+        self.assert_refused_and_closed(response, "upstream_too_large", CAP)
+
+    def test_a_signed_url_answer_past_a_small_bound_is_invalid_and_not_read_on(self) -> None:
+        main.settings.max_response_bytes = 64 * MiB
+        self.serve(200, [self.JSON], lazy(300 * MiB), mint=False)
+
+        response = self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a)
+
+        self.assert_refused_and_closed(response, "upstream_invalid", MiB)
+        self.assertEqual(main._signed_urls, {})
+
+    def test_the_body_of_a_failed_file_answer_is_read_to_a_small_bound_and_closed(self) -> None:
+        main.settings.max_response_bytes = 64 * MiB
+        self.serve(500, [self.JSON], lazy(300 * MiB))
+
+        response = self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a)
+
+        self.assertEqual(response.status_code, 500)
+        self.wait_until_eneo_is_idle()
+        self.assertLessEqual(self.eneo.sent, MiB + self.SLACK)
+        self.assertEqual(self.eneo.outcomes, ["dropped"])
+
+    def test_a_file_that_streams_is_not_counted(self) -> None:
+        self.serve(200, [("content-type", "audio/webm")], lazy(3 * CAP))
+
+        response = self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a)
+
+        self.assertEqual((response.status_code, len(response.content)), (200, 3 * CAP))
+
+    def test_a_ticket_exchange_answer_past_a_small_bound_ends_the_login_without_a_session(self) -> None:
+        main.settings.max_response_bytes = 64 * MiB
+        self.serve(200, [self.JSON], lazy(300 * MiB))
+        with self.browser() as client:
+            started = client.get("/api/auth/login")
+            state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+
+            callback = client.get("/api/auth/callback", params={"ticket": "t", "state": state})
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=exchange_unavailable")
+        self.assertNotIn(SESSION_COOKIE, callback.headers.get("set-cookie", ""))
+        self.wait_until_eneo_is_idle()
+        self.assertLessEqual(self.eneo.sent, MiB + self.SLACK)
+        self.assertEqual(self.eneo.outcomes, ["dropped"])
 
 
 class MintAnswerTests(BoundaryCase):

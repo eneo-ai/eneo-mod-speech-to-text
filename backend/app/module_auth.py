@@ -27,6 +27,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import AuthMode, Settings
+from app.upstream import SMALL_ANSWER
 
 logger = logging.getLogger("eneo_module_auth")
 
@@ -337,6 +338,7 @@ class ModuleAuth:
                 },
                 json={"ticket": ticket},
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.exception("Module ticket exchange could not reach Eneo")
@@ -379,6 +381,7 @@ class ModuleAuth:
                     "Authorization": f"Bearer {token.access_token}",
                 },
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.exception("Module session validation could not reach Eneo")
@@ -551,6 +554,7 @@ class ModuleAuth:
                     "Authorization": f"Bearer {session.access_token}",
                 },
                 timeout=httpx.Timeout(10.0),
+                extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
             logger.warning("Module token refresh could not reach Eneo", exc_info=True)

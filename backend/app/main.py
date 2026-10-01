@@ -9,7 +9,6 @@ import re
 import time
 import unicodedata
 from collections.abc import AsyncIterator
-from http.cookiejar import DefaultCookiePolicy
 from email.message import Message
 from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
@@ -40,6 +39,7 @@ from websockets.exceptions import (
 from app.config import load_settings
 from app.limits import BodyLimitMiddleware, allow_upload, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
+from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -61,28 +61,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
 
-
-class _RefuseCookies(DefaultCookiePolicy):
-    """Eneo's cookies are not a user's: the one client serves every user, so it stores none and sends none."""
-
-    def set_ok(self, cookie, request) -> bool:
-        return False
-
-    def return_ok(self, cookie, request) -> bool:
-        return False
-
-    def domain_return_ok(self, domain, request) -> bool:
-        return False
-
-    def path_return_ok(self, path, request) -> bool:
-        return False
-
-
-http_client = httpx.AsyncClient(
-    timeout=httpx.Timeout(60.0, connect=10.0),
-    follow_redirects=False,
-)
-http_client.cookies.jar.set_policy(_RefuseCookies())
+http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
 app.include_router(module_auth.router, prefix="/api/auth")
 
@@ -192,6 +171,16 @@ _UNFORWARDED_RESPONSE_HEADERS = {
 # The module never follows a redirect, and no route of it is expected to redirect, so one from Eneo is an error,
 # not an answer for the browser. (304 is not one: If-None-Match is forwarded, and a conditional read gets it.)
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
+def _upstream_too_large() -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={
+            "error": "upstream_too_large",
+            "detail": "Eneo answered with more than the module reads of one answer.",
+        },
+    )
 
 
 def _upstream_redirect() -> JSONResponse:
@@ -437,6 +426,9 @@ async def _proxy_multipart_upload(
             },
             timeout=_upload_timeout(timeout_seconds),
         )
+    except UnboundedAnswer:
+        logger.error("Upload answer is past the bound: url=%s", upstream_url)
+        return _upstream_too_large()
     except httpx.TimeoutException:
         logger.exception("Upload timed out: url=%s", upstream_url)
         return JSONResponse(
@@ -622,7 +614,11 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
                 "content_disposition": "inline",
             },
             headers=module_auth.upstream_auth_headers(request),
+            extensions=SMALL_ANSWER,
         )
+    except UnboundedAnswer:
+        logger.error("Signed URL answer is past the bound: path=%s", mint_path)
+        raise _InvalidMintAnswer from None
     except httpx.RequestError:
         logger.exception("Signed URL request failed: path=%s", mint_path)
         raise HTTPException(status_code=502, detail="Eneo could not be reached.")
@@ -643,6 +639,19 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
     _prune_signed_urls(now)
     _signed_urls[key] = _SignedUrl(url=url, expires_at=expires_at)
     return url
+
+
+async def _read_small(upstream: httpx.Response) -> bytes:
+    """The body of a streamed answer that is an error, closed; empty if it is longer than an error is."""
+    body = bytearray()
+    try:
+        async for chunk in upstream.aiter_raw():
+            body += chunk
+            if len(body) > SMALL_ANSWER_BYTES:
+                return b""
+    finally:
+        await upstream.aclose()
+    return bytes(body)
 
 
 async def _stream_signed(
@@ -668,7 +677,7 @@ async def _stream_signed(
             content={"error": "upstream_invalid", "detail": "Eneo answered with something the module cannot use."},
         )
 
-    upstream_request = http_client.build_request("GET", url, headers=fwd_headers)
+    upstream_request = http_client.build_request("GET", url, headers=fwd_headers, extensions=STREAMED)
     try:
         upstream = await http_client.send(upstream_request, stream=True)
     except httpx.RequestError:
@@ -688,10 +697,7 @@ async def _stream_signed(
     if upstream.status_code >= 400:
         # A rejected token is not worth keeping around; the next request mints anew.
         _signed_urls.pop(key, None)
-        try:
-            body = await upstream.aread()
-        finally:
-            await upstream.aclose()
+        body = await _read_small(upstream)
         detail: object = unavailable
         if upstream.headers.get("content-type", "").startswith("application/json"):
             try:
@@ -847,6 +853,9 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             content=body if body else None,
             headers=fwd_headers,
         )
+    except UnboundedAnswer:
+        logger.error("Eneo's answer is past the bound: method=%s url=%s", request.method, upstream_url)
+        return _upstream_too_large()
     except httpx.RequestError:
         logger.exception(
             "Upstream request failed: method=%s url=%s",
@@ -956,8 +965,9 @@ async def _open_live_session(
                 else None
             ),
             timeout=httpx.Timeout(10.0),
+            extensions=SMALL_ANSWER,
         )
-    except httpx.RequestError:
+    except httpx.RequestError:  # also an answer past its bound (UnboundedAnswer)
         logger.warning("Live transcription ticket: Eneo unreachable", exc_info=True)
         raise _eneo_unreachable() from None
     if response.status_code >= 400:
