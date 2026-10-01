@@ -562,6 +562,26 @@ _STREAM_FORWARD_RESPONSE_HEADERS = frozenset(
 )
 
 
+# A run's input file can be any type a flow takes (a document, an image, a page of HTML), and it is served from the
+# module's own origin, where the page's data lives. Only a type that cannot run script opens inline there; anything
+# else, a missing type included, is an attachment (and every file is sent with nosniff, so the browser does not decide
+# otherwise). An entry is a media type or ``type/*``.
+_INLINE_MEDIA_TYPES = ("audio/*", "video/*", "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp")
+
+
+def _may_be_shown_inline(media_type: str) -> bool:
+    return any(
+        media_type.startswith(pattern[:-1]) if pattern.endswith("/*") else media_type == pattern
+        for pattern in _INLINE_MEDIA_TYPES
+    )
+
+
+def _attachment(disposition: str | None) -> str:
+    """``attachment``, keeping the parameters Eneo sent (the file name)."""
+    parameters = (disposition or "").partition(";")[2].strip()
+    return f"attachment; {parameters}" if parameters else "attachment"
+
+
 class _SignedUrl(NamedTuple):
     url: str
     expires_at: float
@@ -737,10 +757,14 @@ async def _stream_signed(
         raise HTTPException(status_code=upstream.status_code, detail=detail)
 
     resp_headers = {
-        k: v
+        k.lower(): v
         for k, v in upstream.headers.items()
         if k.lower() in _STREAM_FORWARD_RESPONSE_HEADERS
     }
+    media_type = resp_headers.get("content-type", "").split(";")[0].strip().lower()
+    if not _may_be_shown_inline(media_type):
+        resp_headers["content-disposition"] = _attachment(resp_headers.get("content-disposition"))
+    resp_headers["x-content-type-options"] = "nosniff"
     resp_headers["Cache-Control"] = "private, no-store"
     return StreamingResponse(
         upstream.aiter_raw(),

@@ -1290,6 +1290,57 @@ class UpstreamAnswerTests(BoundaryCase):
         self.assertEqual(self.eneo.outcomes, ["dropped"])
 
 
+class SignedFileHeadersTests(BoundaryCase):
+    """A run's input file is whatever the user gave a flow, and it is served from the module's origin: only a type that
+    cannot run script opens inline there, the rest is an attachment, and the browser is told not to guess."""
+
+    AUDIO = "/api/eneo/flows/f/runs/r/input-files/x/audio"
+
+    def serve_file(self, headers: list[tuple[str, str]], status: int = 200, body: bytes = b"0123456789") -> None:
+        mint = json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode()
+        self.respond_with(
+            lambda seen: (200, [("content-type", "application/json")], mint) if seen.path.endswith("/signed-url/") else (status, headers, body)
+        )
+
+    def test_a_type_that_could_run_script_is_an_attachment_with_the_name_eneo_gave_it(self) -> None:
+        for media_type in ("text/html", "text/html; charset=utf-8", "TEXT/HTML", "image/svg+xml", "application/xhtml+xml", "text/xml", "application/javascript", "application/octet-stream", "text/plain"):
+            with self.subTest(media_type):
+                self.serve_file([("content-type", media_type), ("content-disposition", 'inline; filename="x.html"')])
+
+                response = self.request("GET", self.AUDIO, self.session_a)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers["content-disposition"], 'attachment; filename="x.html"')
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def test_a_file_with_no_type_is_an_attachment_too(self) -> None:
+        for headers in ([], [("content-disposition", "inline")]):
+            with self.subTest(headers):
+                self.serve_file(headers)
+
+                response = self.request("GET", self.AUDIO, self.session_a)
+
+                self.assertEqual(response.headers["content-disposition"], "attachment")
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+
+    def test_audio_stays_inline_with_its_range_intact(self) -> None:
+        for media_type in ("audio/webm", "audio/mpeg", "Audio/WebM; codecs=opus", "video/mp4", "application/pdf", "image/png", "image/jpeg", "image/gif", "image/webp"):
+            with self.subTest(media_type):
+                self.serve_file(
+                    [("content-type", media_type), ("content-disposition", 'inline; filename="m.bin"'), ("content-range", "bytes 0-1/10"), ("accept-ranges", "bytes"), ("etag", '"v1"')],
+                    status=206, body=b"01",
+                )
+
+                response = self.request("GET", self.AUDIO, self.session_a, headers={"Range": "bytes=0-1"})
+
+                self.assertEqual((response.status_code, response.content), (206, b"01"))
+                self.assertEqual(self.eneo.requests[-1].headers["range"], "bytes=0-1")
+                self.assertEqual(response.headers["content-disposition"], 'inline; filename="m.bin"')
+                self.assertEqual((response.headers["content-range"], response.headers["accept-ranges"], response.headers["etag"]), ("bytes 0-1/10", "bytes", '"v1"'))
+                self.assertEqual(response.headers["x-content-type-options"], "nosniff")
+                self.assertEqual(response.headers["cache-control"], "private, no-store")
+
+
 class MintAnswerTests(BoundaryCase):
     """An answer from Eneo to the signed-URL request that the module cannot use is a 502, and nothing of it is kept."""
 
