@@ -5,7 +5,7 @@
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { backLink, open, record, run, setup, stop } from "./screens";
+import { backLink, open, record, run, reviewEditor, setup, stop } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -60,6 +60,16 @@ const OVERLAYS: Record<string, Overlay> = {
     },
     show: (page) => page.getByRole("combobox", { name: "Vem är Talare 2?" }).click(),
     shown: (page) => page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
+  // The speaker-review editor, on the development page that carries it: the list of speakers for the marked words.
+  "speaker list of the editor": {
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+    },
+    show: (page) => page.getByRole("combobox", { name: "Tilldela talare" }).click(),
+    shown: (page) => page.getByRole("option", { name: "Karin", exact: true }),
     hide: (page) => page.keyboard.press("Escape"),
   },
   // A required dialog stays on Escape: it is closed with its own button.
