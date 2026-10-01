@@ -5,8 +5,7 @@
   - link "Alla flöden":
     - /url: /flows
   - note:
-    - text: Dokumentet skapades före dina rättningar
-    - paragraph: Den nya versionen görs från det rättade transkriptet.
+    - text: Dokumentet skapades före dina rättningar Den nya versionen görs från det rättade transkriptet.
     - button "Skapa dokumentet igen med rättningarna"
   - region "Dokumentet":
     - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
@@ -38,7 +37,7 @@
     - heading "Transkript" [level=2]
     - button "Kopiera transkriptet"
     - status
-    - button "Ladda ner som text , transkriptet"
+    - button "Ladda ner som text, transkriptet"
     - region "Inspelning och transkript":
       - radiogroup "Visa talare":
         - radio "Alla" [checked]
