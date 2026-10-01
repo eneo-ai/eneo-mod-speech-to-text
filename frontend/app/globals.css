@@ -257,3 +257,10 @@ dialog[open] { pointer-events: auto; }
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
+
+/* On a wide screen the bar's content stands in the page's column (1180 px, FlowFrame.module.css), so the brand is above
+   the page's left edge and the account at its right, not a thousand pixels out at the window's edges. Up to 1440 px the
+   bar's own padding already puts them at the page's edges. */
+@media (min-width: 1441px) {
+  .astryx-top-nav { padding-inline: calc((100% - 1180px) / 2 + var(--spacing-2)); }
+}

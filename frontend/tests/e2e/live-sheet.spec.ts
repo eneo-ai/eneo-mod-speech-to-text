@@ -5,35 +5,13 @@
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
 import { expect, test, type Page } from "@playwright/test";
+import { longLiveText, WORDS } from "./live-relay";
 import { record, setup } from "./screens";
 
 // The narrow windows are where the stage is the page's own height; one laptop is the control.
 test.beforeEach(({}, info) =>
   test.skip(!["phone-320-light", "phone-390-light", "zoom-200", "laptop-1440-light"].includes(info.project.name), "the narrow windows, and a laptop as the control"),
 );
-
-const WORDS = 400;
-const SENTENCE = "Första punkten gäller budgeten för nästa år och ramen höjs med två procent medan förvaltningen återkommer med en plan i oktober.".split(" ");
-
-/** The live relay, answering at once with a long text, so a minute of speech takes a few seconds. */
-async function longLiveText(page: Page) {
-  await page.routeWebSocket(/\/api\/live\//, (ws) => {
-    const send = (message: object) => ws.send(JSON.stringify(message));
-    send({ type: "ready", sample_rate: 16000, max_seconds: 18000 });
-    let sent = 0;
-    const timer = setInterval(() => {
-      if (sent >= WORDS) return clearInterval(timer);
-      send({ type: "transcript.delta", text: (sent ? " " : "") + SENTENCE[sent++ % SENTENCE.length] });
-    }, 8);
-    ws.onClose(() => clearInterval(timer));
-    ws.onMessage((message) => {
-      if (typeof message === "string" && JSON.parse(message).type === "stop") {
-        send({ type: "transcript.done", text: "" });
-        ws.close();
-      }
-    });
-  });
-}
 
 const geometry = (page: Page) =>
   page.evaluate(() => {
@@ -70,4 +48,28 @@ test("long live text scrolls inside its sheet above the recording bar, follows t
   await latest.click();
   await expect.poll(async () => (await geometry(page)).fromEnd, { message: "Visa senaste shows the newest line" }).toBeLessThan(4);
   await expect(latest).toBeHidden();
+});
+
+test("with the flow's details unfolded the page is taller than the window: the region scrolls to the bar, whose controls are then in reach", async ({ page }, info) => {
+  test.skip(!["phone-320-light", "phone-390-light"].includes(info.project.name), "the stacked layout: a phone or tablet");
+  await longLiveText(page);
+  await setup(page);
+  await record(page, "Strömma");
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toContainText("oktober", { timeout: 30_000 });
+  await page.getByRole("button", { name: /^Uppgifter/ }).click();
+  // Scrolled to the end of the region, as a person does to reach what the open details pushed down.
+  await page.evaluate(() => {
+    const main = document.getElementById("astryx-app-shell-main")!;
+    main.scrollTop = main.scrollHeight;
+  });
+  await page.waitForTimeout(300);
+  const reach = await page.evaluate(() => {
+    const stop = [...document.querySelectorAll("button")].find((button) => button.textContent?.trim() === "Stoppa")!;
+    const r = stop.getBoundingClientRect();
+    const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    const main = document.getElementById("astryx-app-shell-main")!;
+    return { inside: r.top >= 0 && r.bottom <= innerHeight + 0.5, reached: top === stop || stop.contains(top) || !!top?.contains(stop), scrolled: main.scrollTop, log: Math.round(document.querySelector('[role="log"]')!.getBoundingClientRect().height) };
+  });
+  expect(reach.inside && reach.reached, `Stoppa is in the window and not covered (${JSON.stringify(reach)})`).toBe(true);
+  expect(reach.log, "the text is still a text to read").toBeGreaterThanOrEqual(60);
 });
