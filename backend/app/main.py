@@ -8,6 +8,7 @@ import re
 import time
 import unicodedata
 from collections.abc import AsyncIterator
+from http.cookiejar import DefaultCookiePolicy
 from email.message import Message
 from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
@@ -58,10 +59,29 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
+
+
+class _RefuseCookies(DefaultCookiePolicy):
+    """Eneo's cookies are not a user's: the one client serves every user, so it stores none and sends none."""
+
+    def set_ok(self, cookie, request) -> bool:
+        return False
+
+    def return_ok(self, cookie, request) -> bool:
+        return False
+
+    def domain_return_ok(self, domain, request) -> bool:
+        return False
+
+    def path_return_ok(self, path, request) -> bool:
+        return False
+
+
 http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(60.0, connect=10.0),
     follow_redirects=False,
 )
+http_client.cookies.jar.set_policy(_RefuseCookies())
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
 app.include_router(module_auth.router, prefix="/api/auth")
 
@@ -156,14 +176,32 @@ _HOP_BY_HOP_REQUEST_HEADERS = {
 }
 _HOP_BY_HOP_REQUEST_HEADERS.add(settings.eneo_api_key_header_name.lower())
 
-# Headers we should not forward from upstream response back to client.
-_HOP_BY_HOP_RESPONSE_HEADERS = {
+# Headers we should not forward from upstream response back to client. Eneo's cookies are not the browser's:
+# several would be merged into one line, and one named like the module's session would replace it. Its Location
+# names Eneo's own host, which the browser cannot reach and which says how the network is laid out.
+_UNFORWARDED_RESPONSE_HEADERS = {
     "content-encoding",
     "transfer-encoding",
     "connection",
     "keep-alive",
     "content-length",
+    "set-cookie",
+    "location",
 }
+
+# The module never follows a redirect, and no route of it is expected to redirect, so one from Eneo is an error,
+# not an answer for the browser. (304 is not one: If-None-Match is forwarded, and a conditional read gets it.)
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+
+
+def _upstream_redirect() -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={
+            "error": "upstream_redirect",
+            "detail": "Eneo answered with a redirect, which the module does not follow.",
+        },
+    )
 
 _RESOURCE_ID = r"[^/]+"
 _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
@@ -418,6 +456,10 @@ async def _proxy_multipart_upload(
             },
         )
 
+    if upstream.status_code in _REDIRECT_STATUSES:
+        logger.error("Upload was answered with a redirect: url=%s status=%s", upstream_url, upstream.status_code)
+        return _upstream_redirect()
+
     return Response(
         content=upstream.content,
         status_code=upstream.status_code,
@@ -594,6 +636,13 @@ async def _stream_signed(
             content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
         )
 
+    if upstream.status_code in _REDIRECT_STATUSES:
+        # Not a file: the URL is not worth keeping either, and the stream is closed unread.
+        _signed_urls.pop(key, None)
+        await upstream.aclose()
+        logger.error("File stream was answered with a redirect: path=%s status=%s", mint_path, upstream.status_code)
+        return _upstream_redirect()
+
     if upstream.status_code >= 400:
         # A rejected token is not worth keeping around; the next request mints anew.
         _signed_urls.pop(key, None)
@@ -766,10 +815,19 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             },
         )
 
+    if upstream.status_code in _REDIRECT_STATUSES:
+        logger.error(
+            "Eneo answered with a redirect: method=%s url=%s status=%s",
+            request.method,
+            upstream_url,
+            upstream.status_code,
+        )
+        return _upstream_redirect()
+
     resp_headers = {
         k: v
         for k, v in upstream.headers.items()
-        if k.lower() not in _HOP_BY_HOP_RESPONSE_HEADERS
+        if k.lower() not in _UNFORWARDED_RESPONSE_HEADERS
     }
 
     return Response(

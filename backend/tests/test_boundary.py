@@ -384,17 +384,45 @@ class CookieJarTests(BoundaryCase):
         self.assertEqual(response.status_code, 200)
         self.assertNotIn("set-cookie", response.headers)
 
-    def test_a_redirect_from_eneo_is_not_handed_to_the_browser(self) -> None:
-        # Its Location names Eneo's own host; the module never follows a redirect, and none of its routes expects one.
-        def redirect(seen: Seen):
-            return 307, [("location", "http://backend:8000/api/v1/flows/")], b""
 
-        self.respond_with(redirect)
+class RedirectFromEneoTests(BoundaryCase):
+    """The module follows no redirect and no route of it expects one: a 3xx from Eneo is a 502, and 304 is not a 3xx here."""
 
-        response = self.request("GET", "/api/eneo/flows/", self.session_a)
+    STATUSES = (301, 302, 303, 307, 308)
 
-        self.assertNotIn("location", response.headers)
-        self.assertEqual(response.status_code, 502)
+    def serve(self, redirect_status: int) -> None:
+        def respond(seen: Seen):
+            if seen.path.endswith("/signed-url/"):
+                return 200, [("content-type", "application/json")], json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode()
+            return redirect_status, [("location", "http://backend:8000/elsewhere/")], b""
+
+        self.respond_with(respond)
+
+    def test_a_redirect_is_a_502_for_the_proxy_the_upload_and_the_signed_file(self) -> None:
+        calls = {
+            "proxy": lambda: self.request("GET", "/api/eneo/flows/", self.session_a),
+            "upload": lambda: self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")}),
+            "signed file": lambda: self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a),
+        }
+        for status in self.STATUSES:
+            for label, call in calls.items():
+                with self.subTest(status=status, route=label):
+                    self.serve(status)
+                    main._signed_urls.clear()
+
+                    response = call()
+
+                    self.assertEqual(response.status_code, 502)
+                    self.assertEqual(response.json()["error"], "upstream_redirect")
+                    self.assertNotIn("location", response.headers)
+                    self.assertEqual(main._signed_urls, {}, "a URL that was redirected is not kept")
+
+    def test_a_not_modified_answer_is_not_a_redirect(self) -> None:
+        self.respond_with(lambda seen: (304, [("etag", '"v1"')], b""))
+
+        response = self.request("GET", "/api/eneo/flows/", self.session_a, headers={"If-None-Match": '"v1"'})
+
+        self.assertEqual(response.status_code, 304)
 
 
 class MintAnswerTests(BoundaryCase):
