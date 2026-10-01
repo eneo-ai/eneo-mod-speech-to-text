@@ -18,17 +18,16 @@ import httpx
 from fastapi import (
     Depends,
     FastAPI,
-    File,
     HTTPException,
     Request,
     Response,
-    UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
+from starlette.datastructures import UploadFile
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
     ConnectionClosed,
@@ -37,6 +36,7 @@ from websockets.exceptions import (
 )
 
 from app.config import load_settings
+from app.limits import BodyLimitMiddleware, allow_upload, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 
 logger = logging.getLogger("eneo_proxy")
@@ -57,6 +57,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
+app.add_middleware(BodyLimitMiddleware, settings=settings)
 http_client = httpx.AsyncClient(
     timeout=httpx.Timeout(60.0, connect=10.0),
     follow_redirects=False,
@@ -308,19 +309,57 @@ def _leaves_route(path: str) -> bool:
     )
 
 
+def _has_control_character(value: str | None) -> bool:
+    return value is not None and any(character < " " or character == "\x7f" for character in value)
+
+
 # Dedicated upload routes — bypass the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
+async def _forward_upload(request: Request, upstream_url: str) -> Response:
+    """Re-post the one file of the request's multipart body to ``upstream_url``.
+
+    Call it from a route that has no ``File(...)`` parameter: FastAPI reads a body before it runs a route's
+    dependencies, and this reads it itself, so ``Depends(require_session)`` has run before a byte of it is read.
+    The body must declare its Content-Length (411), at most ``settings.max_upload_bytes`` (413), and hold one file
+    part named ``upload_file`` and no other part (400) whose file name and content type have no control character
+    (400: a line break in either would be written into the part headers sent to Eneo). Nothing is left behind if
+    the upload is cut off or refused.
+    """
+    # Upstream URLs are built from decoded path params; a "." / ".." segment or
+    # a "?" would resolve to a different Eneo route than the upload endpoints exposed.
+    if _leaves_route(upstream_url):
+        raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
+    declared = declared_length(request.headers)
+    if declared is None:
+        raise HTTPException(status_code=411, detail="Content-Length required")
+    if declared > settings.max_upload_bytes:
+        raise too_large("Upload too large")
+    # Only now, after the route's dependencies and these checks, is the body allowed to be as big as an upload; the
+    # limit counts the bytes that arrive, so a Content-Length that lies gets no further than max_upload_bytes.
+    allow_upload(request, settings.max_upload_bytes)
+    # max_fields=0: no text field beside the file. The files are closed when the block ends, and by Starlette
+    # if the parse fails.
+    async with request.form(max_files=1, max_fields=0) as form:
+        parts = form.multi_items()
+        if len(parts) != 1 or parts[0][0] != "upload_file" or not isinstance(parts[0][1], UploadFile):
+            raise HTTPException(status_code=400, detail="Exactly one file, named upload_file, is required")
+        upload_file = parts[0][1]
+        if _has_control_character(upload_file.filename) or _has_control_character(upload_file.content_type):
+            raise HTTPException(
+                status_code=400, detail="The file name and content type must not contain control characters"
+            )
+        return await _proxy_multipart_upload(
+            upstream_url, upload_file, request, _requested_upload_timeout_seconds(request)
+        )
+
+
 async def _proxy_multipart_upload(
     upstream_url: str,
     upload_file: UploadFile,
     request: Request,
     timeout_seconds: float | None = None,
 ) -> Response:
-    # Upstream URLs are built from decoded path params; a "." / ".." segment or
-    # a "?" would resolve to a different Eneo route than the upload endpoints exposed.
-    if _leaves_route(upstream_url):
-        raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
     await upload_file.seek(0)
     try:
         upstream = await http_client.post(
@@ -375,18 +414,9 @@ async def _proxy_multipart_upload(
         Depends(module_auth.require_same_origin),
     ],
 )
-async def eneo_upload_file(
-    flow_id: str,
-    request: Request,
-    upload_file: UploadFile = File(...),
-) -> Response:
+async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     upstream_url = f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/files/"
-    return await _proxy_multipart_upload(
-        upstream_url,
-        upload_file,
-        request,
-        _requested_upload_timeout_seconds(request),
-    )
+    return await _forward_upload(request, upstream_url)
 
 
 @app.post(
@@ -403,22 +433,12 @@ async def eneo_upload_file(
         Depends(module_auth.require_same_origin),
     ],
 )
-async def eneo_upload_step_runtime_file(
-    flow_id: str,
-    step_id: str,
-    request: Request,
-    upload_file: UploadFile = File(...),
-) -> Response:
+async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     upstream_url = (
         f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}"
         f"/steps/{step_id}/runtime-files/"
     )
-    return await _proxy_multipart_upload(
-        upstream_url,
-        upload_file,
-        request,
-        _requested_upload_timeout_seconds(request),
-    )
+    return await _forward_upload(request, upstream_url)
 
 
 @app.post(
@@ -435,20 +455,11 @@ async def eneo_upload_step_runtime_file(
         Depends(module_auth.require_same_origin),
     ],
 )
-async def eneo_upload_template_file(
-    flow_id: str,
-    request: Request,
-    upload_file: UploadFile = File(...),
-) -> Response:
+async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
     upstream_url = (
         f"{settings.eneo_backend_url}/api/v1/flows/{flow_id}/template-files/"
     )
-    return await _proxy_multipart_upload(
-        upstream_url,
-        upload_file,
-        request,
-        _requested_upload_timeout_seconds(request),
-    )
+    return await _forward_upload(request, upstream_url)
 
 
 # ---------------------------------------------------------------------------
