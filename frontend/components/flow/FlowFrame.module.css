@@ -43,11 +43,13 @@
   }
 }
 
-/* A page of panes that scroll on their own (a recording): the window's height, nothing below it. The shell gives
-   such a page no padding, so a bar stuck to the region's bottom is flush with the window; the page's own is here.
-   On a phone the region scrolls as a whole; from a laptop each column scrolls inside it and the bar of controls
-   never moves. */
+/* A page of panes that scroll on their own (a recording): exactly the window's height at every width, so what stands
+   in it (the sheet of live text) is bounded by the window and scrolls inside itself, however long its content grows.
+   The shell gives such a page no padding, so a bar stuck to the region's bottom is flush with the window; the page's
+   own is here. On a phone or tablet the region scrolls as a whole when the flow's details and the stage's least height
+   do not both fit; from a laptop each column scrolls inside it and the bar of controls never moves. */
 .fill {
+  height: 100%;
   padding-inline: var(--spacing-4);
   padding-block: var(--spacing-3) 0;
 }
@@ -60,7 +62,6 @@
 
 @media (min-width: 1024px) {
   .fill {
-    height: 100%;
     min-height: 0;
     padding-block: var(--spacing-8) var(--spacing-6);
     overflow: hidden;
