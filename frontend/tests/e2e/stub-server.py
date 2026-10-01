@@ -32,14 +32,33 @@ import io
 import itertools
 import json
 import math
+import os
 import struct
 import sys
 import time
 import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8401
+
+# STUB_BRANDING is a deployment with an organisation of its own, for the gate's branding states
+# (`npm run test:a11y:branding`): a long name and a green accent, with a wide logo for each colour mode ("custom") or
+# without a logo, the name as text ("name"). The accent stylesheet is the backend's own (backend/app/accent.py), never
+# a copy of it.
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "backend"))
+from app.accent import resolve_accent, theme_css  # noqa: E402
+
+BRANDING = os.environ.get("STUB_BRANDING")
+CUSTOM_LOGO = BRANDING == "custom"
+ORGANIZATION = (
+    {"name": "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län", "logo": "custom" if CUSTOM_LOGO else None, "dark_logo": CUSTOM_LOGO}
+    if BRANDING
+    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}
+)
+ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
+LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
 AUDIO_STEP_ID = "00000000-0000-0000-0000-00000000a001"
 REVIEW_STEP_ID = "00000000-0000-0000-0000-00000000b002"
 
@@ -352,7 +371,11 @@ class Handler(BaseHTTPRequestHandler):
                                    "user": {"id": "user-1", "email": "erik.lund@sundsvall.se", "username": "Erik Lund"},
                                    "session_ends_in": 8 * 60 * 60})
         if path == "/api/branding/":
-            return self.send(200, {"organization": {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}})
+            return self.send(200, {"organization": ORGANIZATION})
+        if path == "/api/branding/theme.css/":
+            return self.send(200, theme_css(ACCENT).encode(), "text/css; charset=utf-8")
+        if path in ("/api/branding/logo/light/", "/api/branding/logo/dark/") and CUSTOM_LOGO:
+            return self.send(200, LOGOS[path.split("/")[-2]], "image/svg+xml")
         if path == "/api/config/":
             return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":

@@ -1,39 +1,38 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import type { ComponentProps } from "react";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Selector } from "@astryxdesign/core/Selector";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
+import styles from "@/components/flow/DetailsForm.module.css";
 import type { FormField } from "@/lib/api";
 import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
 
-// The calendar is loaded for a flow that asks for a date, not for every page.
+// A calendar is rarely asked for and costs a popover: it loads when a flow has a date.
 const DateInput = dynamic(() => import("@astryxdesign/core/DateInput").then((module) => module.DateInput));
+type IsoDate = NonNullable<ComponentProps<typeof DateInput>["value"]>;
+// What the person typed is kept as it is; the calendar shows only a whole date.
+const isoDate = (text: string) => (/^\d{4}-\d{2}-\d{2}$/.test(text) ? (text as IsoDate) : undefined);
 
-// The selector takes no empty value, and a choice must never be mistaken for "no choice": its items carry keys of
-// their own, "none" for no choice and "opt:<n>" for the flow's n-th option, which no option string can be.
+// The selector's items carry keys of their own: "none" for no choice and "opt:<n>" for the flow's n-th option, which
+// no option string can be mistaken for.
 const NONE = "none";
 const optionKey = (index: number) => `opt:${index}`;
 
-// What a number field needs of the browser that the design system's types leave out (the input spreads what it does
-// not know onto the element, so it works). A number detail is the browser's own number field with a number keyboard;
-// the speaker count is text with one, because a number field reads "e", "-" or "2,5" as empty and says nothing, while
-// this keeps what was typed for readSpeakerCount to call it no count.
-const NUMBER = { type: "number", inputMode: "numeric" } as Record<string, string>;
-const COUNT = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, string>;
+// Astryx's types leave out the attributes of a phone's number keyboard, but its field passes them on to the input.
+const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, string>;
 
-/** The control a detail carries, by the name Eneo gave it, so a problem can move focus to it. */
-function detailControl(name: string): HTMLElement | null {
-  const marked = [...document.querySelectorAll<HTMLElement>("[data-detail-field]")].find((el) => el.dataset.detailField === name);
-  const control = "input, textarea, [role=combobox]";
+/**
+ * The control of a detail by its name, so a problem can move focus to it. The design system's fields own their ids,
+ * so a field is found by the name it carries (`data-detail-field`), on the control or inside what holds it.
+ */
+export function detailControl(name: string): HTMLElement | null {
+  const marked = document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(name)}"]`);
+  const control = "input, textarea, button, [role=combobox]";
   return marked?.matches(control) ? marked : (marked?.querySelector<HTMLElement>(control) ?? null);
-}
-
-/** Moves focus to a detail's control (a field the page owns by name, like "Antal talare"). */
-export function focusDetail(name: string): void {
-  detailControl(name)?.focus();
 }
 
 /** "Skapa dokument"; when a required detail is missing, focus goes to it. */
@@ -41,7 +40,7 @@ export async function createDocument(session: FlowSession): Promise<void> {
   if (await session.createDocument()) return;
   const [first] = session.getSnapshot().invalid;
   // After the next paint, so details folded into one line have opened.
-  if (first) requestAnimationFrame(() => focusDetail(first));
+  if (first) requestAnimationFrame(() => detailControl(first)?.focus());
 }
 
 function options(field: FormField): string[] {
@@ -51,7 +50,7 @@ function options(field: FormField): string[] {
     : [];
 }
 
-/** The details the flow asks for; a `list` field is a name input. */
+/** The details the flow asks for; a `list` field is a chip input. */
 export function DetailsForm({
   fields,
   details,
@@ -78,8 +77,9 @@ export function DetailsForm({
   makesText?: boolean;
 }) {
   if (fields.length === 0) return null;
+  // Required is the form's default: a field says only when it is optional ("Valfritt"), and every one of them still
+  // says "required" to a screen reader before sending, not only once the send finds it missing.
   return (
-    // A required field is the form's default, so only an optional one is marked, and every other says it is required.
     <FormLayout defaultOptionality="required">
       {[...fields]
         .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
@@ -88,70 +88,58 @@ export function DetailsForm({
           const isInvalid = invalid.includes(field.name);
           const value = details[field.name];
           const text = typeof value === "string" ? value : "";
-          const isCount = field.name === countField;
           const label = field.label || field.name;
-          const required = !!field.required;
-          const help = [
-            field.description,
-            field.type === "list" ? "Skriv ett namn och välj Lägg till. Skilj flera namn med komma." : null,
-            note,
-          ]
-            .filter(Boolean)
-            .join(" ");
-          // Said at the field once the send finds it missing.
-          const status = isInvalid
-            ? {
-                type: "error" as const,
-                message:
-                  isCount && text.trim()
-                    ? `Skriv ett heltal från 1${required ? "" : ", eller lämna fältet tomt"}.`
-                    : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`,
-              }
+          const isCount = field.name === countField;
+          const help =
+            field.type === "list"
+              ? [field.description, "Skriv ett namn och välj Lägg till. Skilj flera namn med komma."].filter(Boolean).join(" ")
+              : field.description;
+          const description = [help, note].filter(Boolean).join(" ") || undefined;
+          const error = isInvalid
+            ? isCount && text.trim()
+              ? `Skriv ett heltal från 1${field.required ? "" : ", eller lämna fältet tomt"}.`
+              : `Fyll i det här för att skapa ${makesText ? "texten" : "dokumentet"}.`
             : undefined;
-          // The marks and the field's words, the same for each kind of field.
-          const shared = {
+          const common = {
             label,
-            description: help || undefined,
-            isOptional: !required,
-            isRequired: required,
-            statusVariant: "detached" as const,
+            description,
+            isOptional: !field.required,
+            isRequired: !!field.required,
+            status: error ? ({ type: "error", message: error } as const) : undefined,
+            statusVariant: "detached",
             "data-detail-field": field.name,
-          };
+          } as const;
+          const opts = options(field);
           if (field.type === "list") {
             return (
               <ParticipantsInput
                 key={field.name}
-                name={field.name}
                 label={label}
-                description={help || undefined}
-                isOptional={!required}
-                isRequired={required}
                 names={Array.isArray(value) ? value : []}
                 onChange={(names) => onChange(field.name, names)}
                 suggestions={suggestions}
                 onAdded={onNamesAdded}
-                status={status}
+                description={help || undefined}
+                error={error}
+                isOptional={!field.required}
+                isRequired={!!field.required}
+                fieldName={field.name}
               />
             );
           }
-          if (field.type === "select" && options(field).length > 0) {
-            const choices = options(field);
+          if (field.type === "select" && opts.length > 0) {
             return (
               <Selector
                 key={field.name}
-                {...shared}
-                status={status}
+                {...common}
                 htmlName={field.name}
-                presentation="adaptive"
-                // Below the field, not over it: the default puts the open list on the field, hiding the control with focus.
-                placement="below"
+                // An optional choice can be taken back; a required one starts unchosen.
                 options={[
-                  // An optional choice can be taken back; a required one starts unchosen.
-                  { value: NONE, label: required ? "Välj" : "Inget val" },
-                  ...choices.map((option, index) => ({ value: optionKey(index), label: option })),
+                  { value: NONE, label: field.required ? "Välj" : "Inget val" },
+                  ...opts.map((option, index) => ({ value: optionKey(index), label: option })),
                 ]}
-                value={text && choices.includes(text) ? optionKey(choices.indexOf(text)) : NONE}
-                onChange={(key) => onChange(field.name, key === NONE ? "" : choices[Number(key.slice(4))])}
+                value={text && opts.includes(text) ? optionKey(opts.indexOf(text)) : NONE}
+                onChange={(key) => onChange(field.name, key === NONE ? "" : opts[Number(key.slice(4))])}
               />
             );
           }
@@ -159,8 +147,7 @@ export function DetailsForm({
             return (
               <TextArea
                 key={field.name}
-                {...shared}
-                status={status}
+                {...common}
                 htmlName={field.name}
                 autoComplete="off"
                 rows={4}
@@ -173,9 +160,8 @@ export function DetailsForm({
             return (
               <DateInput
                 key={field.name}
-                {...shared}
-                status={status}
-                value={(text || undefined) as never}
+                {...common}
+                value={isoDate(text)}
                 onChange={(next) => onChange(field.name, next ?? "")}
               />
             );
@@ -183,15 +169,15 @@ export function DetailsForm({
           return (
             <TextInput
               key={field.name}
-              {...shared}
-              {...(isCount ? COUNT : field.type === "number" ? NUMBER : undefined)}
-              status={status}
+              {...common}
               htmlName={field.name}
               autoComplete="off"
-              // The field's width is its label's and help's too, so it is no narrower than they need.
-              width={isCount ? "min(100%, 16rem)" : undefined}
+              // The count is text with a number keyboard, as Antal talare: a number field reads "e", "-" or "2,5" as
+              // empty and says nothing.
+              {...(isCount || field.type === "number" ? NUMERIC : {})}
               value={text}
               onChange={(next) => onChange(field.name, next)}
+              className={isCount ? styles.count : undefined}
             />
           );
         })}
@@ -199,8 +185,11 @@ export function DetailsForm({
   );
 }
 
-/** The name "Antal talare" carries, so a refused start can move focus to it. */
+/** What "Antal talare" is found by, so a refused start can move focus to it. */
 export const SPEAKER_COUNT_ID = "antal-talare";
+
+/** Moves focus to "Antal talare". The design system's field owns its id, so it is found by its name. */
+export const focusSpeakerCount = () => detailControl(SPEAKER_COUNT_ID)?.focus();
 
 /** Said of a speaker count the names filled in, until the person edits it: this module's field and the flow's own. */
 export const COUNT_FROM_NAMES = "Ifyllt från antalet deltagare, ändra om fler talar.";
@@ -221,18 +210,19 @@ export function SpeakerCountField({
     <TextInput
       label="Antal talare (om du vet)"
       htmlName={SPEAKER_COUNT_ID}
-      data-detail-field={SPEAKER_COUNT_ID}
       autoComplete="off"
-      {...COUNT}
+      // Text with a number keyboard: a number field reads "e", "-" or "+" as empty and says nothing, while this
+      // keeps what was typed for readSpeakerCount to call it no count.
+      {...NUMERIC}
       value={value}
       onChange={onChange}
-      // One paragraph, the one the field is described by: its second sentence says where a filled-in number came from,
-      // since "Lämna tomt" beside it would contradict it.
+      // One paragraph: its second sentence says where a filled-in number came from, since "Lämna tomt" beside it
+      // would contradict it.
       description={`Används som övre gräns. ${fromNames ? COUNT_FROM_NAMES : "Lämna tomt om du är osäker."}`}
       status={invalid ? { type: "error", message: `Skriv ett heltal från 1 till ${MAX_SPEAKER_COUNT}, eller lämna fältet tomt.` } : undefined}
       statusVariant="detached"
-      // The field's width is its label's and help's too, so it is no narrower than they need.
-      width="min(100%, 16rem)"
+      data-detail-field={SPEAKER_COUNT_ID}
+      className={styles.count}
     />
   );
 }

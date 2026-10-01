@@ -2,7 +2,12 @@
 const Module = require("node:module");
 const path = require("node:path");
 const resolve = Module._resolveFilename;
-Module._resolveFilename = function (request, ...args) {
+Module._resolveFilename = function (request, parent, ...rest) {
+  const args = [parent, ...rest];
+  // A stylesheet is not compiled: it lies in the source tree, beside the source of the file that imports it.
+  if (request.endsWith(".css") && request.startsWith(".") && parent?.filename) {
+    request = path.resolve(path.dirname(parent.filename).replace(`${path.sep}.test-build${path.sep}`, path.sep), request);
+  }
   if (request.startsWith("@/")) {
     // Compiled sources first; a generated module that is not compiled (the built theme) from where it lies.
     try {

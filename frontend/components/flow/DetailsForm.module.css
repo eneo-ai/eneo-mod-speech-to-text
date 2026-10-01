@@ -1,0 +1,4 @@
+/* Room for two digits: the field's box, not its label, help and message, which keep the full width. */
+.count {
+  max-inline-size: 7rem;
+}

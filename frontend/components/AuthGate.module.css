@@ -1,0 +1,11 @@
+/* The page while the login holds: no box of its own, so what is in it lays out as if the wrapper were not there. */
+.page {
+  display: contents;
+}
+
+/* The page while the login has ended: still laid out and still mounted, but neither shown nor within reach (inert,
+   in the component); its sign-in dialog sits above it. */
+.pageSignedOut {
+  display: contents;
+  visibility: hidden;
+}

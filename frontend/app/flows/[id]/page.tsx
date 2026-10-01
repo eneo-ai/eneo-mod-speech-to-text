@@ -13,7 +13,7 @@ import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { FlowFrame } from "@/components/flow/FlowFrame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -631,18 +631,21 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   if (run.kind === "awaiting_review") {
     return withLeave(
-      <ReviewView
-        flowId={flowId}
-        published={published}
-        checkpoint={run.checkpoint}
-        runState={{ run: run.run, steps: run.steps }}
-        runError={runError}
-        onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
-        onSaveEdit={onSaveEdit}
-        onReject={(cp, reason) =>
-          onReject(cp, { run: run.run, steps: run.steps }, reason)
-        }
-      />,
+      // The review's own heading names the state, so the flow's name is not the heading.
+      <FlowFrame title={published.name} titleIsHeading={false}>
+        <ReviewView
+          flowId={flowId}
+          published={published}
+          checkpoint={run.checkpoint}
+          runState={{ run: run.run, steps: run.steps }}
+          runError={runError}
+          onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
+          onSaveEdit={onSaveEdit}
+          onReject={(cp, reason) =>
+            onReject(cp, { run: run.run, steps: run.steps }, reason)
+          }
+        />
+      </FlowFrame>,
     );
   }
 
@@ -677,10 +680,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const inputStep = selectRuntimeInputStep(contract);
   if (runOutcome(run.run.status) === "succeeded") {
     return (
-      <>
-        {/* The result has its own layout; its heading names the state, so the flow's name is not the heading. */}
-        <FlowTopBar title={published.name} titleIsHeading={false} />
-      <RunResult
+      // The result has its own layout; its heading names the state, so the flow's name is not the heading.
+      <FlowFrame title={published.name} titleIsHeading={false}>
+        <RunResult
           flowId={flowId}
           flowName={published.name}
           run={run.run}
@@ -699,7 +701,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
             void follow(regenerated.id);
           }}
         />
-      </>
+      </FlowFrame>
     );
   }
   const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;

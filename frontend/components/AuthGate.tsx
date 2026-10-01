@@ -7,7 +7,8 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useRouter } from "next/navigation";
 import { Brand } from "@/components/Brand";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
-import { PortalContainer } from "@/components/ui/portal-container";
+import { PortalContainer } from "@/components/portal-container";
+import styles from "@/components/AuthGate.module.css";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
@@ -20,6 +21,16 @@ export const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(
 
 /** While the page is covered for a new login: the place in the sign-in dialog for its recording controls. */
 export const SignedOutSlot = createContext<HTMLElement | null>(null);
+
+/**
+ * Whether the page's login has ended. A native dialog of the page is in the top layer and escapes the cover's inert,
+ * hidden wrapper: it stays visible and focusable above the page. So each page dialog closes itself while this holds
+ * and opens again after the new login, with its state kept above it (design decision D6, point 3). Taking this away
+ * fails the cover specs of every dialog (tests/e2e/session-cover.spec.ts), measured on the merged tip.
+ */
+export function useSignedOut(): boolean {
+  return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+}
 
 export function useAuthenticatedUser(): AuthenticatedUser {
   const user = useContext(AuthenticatedUserContext);
@@ -68,7 +79,7 @@ export function SignedOutCover({
     };
   }
   return (
-    <div ref={setContainer} className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
+    <div ref={setContainer} className={signedOut ? styles.pageSignedOut : styles.page} inert={signedOut}>
       <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
     </div>
   );
@@ -81,7 +92,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
   const recheckRef = useRef(() => {});
-  const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+  const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);

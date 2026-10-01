@@ -16,8 +16,10 @@
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
   - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma. 1 namn tillagt.
-  - textbox "Deltagare Valfritt":
-    - /placeholder: Lägg till namn
+  - group "Deltagare Valfritt":
+    - text: Lägg till namn
+    - textbox "Deltagare Valfritt Lägg till namn":
+      - /placeholder: Lägg till namn
   - list "Tillagda namn":
     - listitem:
       - text: Anna Berg
@@ -29,7 +31,11 @@
     - heading "Inspelning" [level=2]
     - text: /Spelar in 0:\d+/
     - paragraph: Texten skapas när du stoppar inspelningen. Inspelningen sparas på enheten medan du spelar in.
-    - button "Pausa"
-    - button "Stoppa"
+    - button "Pausa":
+      - text: ""
+      - status
+    - button "Stoppa":
+      - text: ""
+      - status
     - status
     - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

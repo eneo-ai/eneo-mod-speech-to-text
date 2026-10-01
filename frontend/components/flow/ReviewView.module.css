@@ -1,0 +1,124 @@
+/* The review page's layout: what the design system's stacks do not say. The frame (FlowFrame) gives the page its width. */
+
+.intro {
+  margin-block-end: var(--spacing-5);
+}
+
+.description {
+  max-inline-size: 65ch;
+}
+
+/* The text review is a reading column. */
+.reading {
+  max-inline-size: 42rem;
+}
+
+/* A section with its own box: what the text review and its rejection are held in. */
+.card {
+  margin-block-end: var(--spacing-5);
+  padding: var(--spacing-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+  background: var(--color-background-card);
+}
+
+.textActions {
+  padding-block-start: var(--spacing-4);
+}
+
+.notices {
+  margin-block-end: var(--spacing-3);
+}
+
+.notices:empty {
+  display: none;
+}
+
+.yours {
+  padding: var(--spacing-3);
+  border-radius: var(--radius-element);
+  background: var(--color-background-muted);
+  white-space: pre-wrap;
+}
+
+/* The speaker review: one column that may shrink below its content. */
+.review {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-3);
+}
+
+.reviewSplit {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--spacing-5);
+}
+
+@media (min-width: 1024px) {
+  .reviewSplit {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    align-items: start;
+  }
+}
+
+@media (min-width: 1280px) {
+  .reviewSplit {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 8fr);
+  }
+}
+
+/* Who is who at a glance. */
+.speakers {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.speaker {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-3);
+  padding-block: calc(var(--spacing-2) + var(--spacing-0-5));
+  border-block-end: 1px solid var(--color-border);
+}
+
+.speaker:first-child {
+  padding-block-start: 0;
+}
+
+.speaker:last-child {
+  border-block-end: 0;
+}
+
+.speakerLabel {
+  inline-size: 4.5rem;
+  flex-shrink: 0;
+}
+
+.selfStart {
+  align-self: flex-start;
+}
+
+/* The decision and what stops it, under Namnge talarna: set apart by a rule. */
+.decision {
+  margin-block-start: var(--spacing-4);
+  padding-block-start: var(--spacing-4);
+  border-block-start: 1px solid var(--color-border);
+}
+
+/* The transcript's card. From a laptop's width it has a height of its own, within the screen's, and scrolls inside. */
+.transcriptCard {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-container);
+  background: var(--color-background-card);
+}
+
+@media (min-width: 1024px) {
+  .transcriptCard {
+    min-block-size: 28rem;
+    max-block-size: calc(100vh - 14rem);
+    overflow: hidden;
+  }
+}

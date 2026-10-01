@@ -1,0 +1,55 @@
+/* The naming dialog's rows (SpeakerNamingDialog): the speaker, what they say and a sample on one side, the name field on
+   the other, wrapping under each other where the dialog is narrow. */
+.rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Focus brings a control into view at the edge of the dialog's scrolling body, which would clip its ring: room for it. */
+.rows :is(button, input) {
+  scroll-margin-block: var(--spacing-3);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--spacing-3);
+  padding-block: var(--spacing-4);
+  border-block-end: 1px solid var(--color-border);
+}
+
+.row:last-child {
+  border-block-end: 0;
+}
+
+.who {
+  display: flex;
+  flex: 3 1 14rem;
+  gap: var(--spacing-3);
+  min-inline-size: 0;
+}
+
+.said {
+  min-inline-size: 0;
+}
+
+.name {
+  display: flex;
+  flex: 1 1 14rem;
+  flex-direction: column;
+  gap: var(--spacing-1);
+  max-inline-size: 18rem;
+  min-inline-size: 0;
+}
+
+/* Said at the start of the footer, the actions at its end. */
+.note {
+  margin-inline-end: auto;
+}
+
+/* A ghost button's own padding would set the sample's icon in from the words above it. */
+.sample {
+  margin-inline-start: calc(-1 * var(--spacing-3));
+}

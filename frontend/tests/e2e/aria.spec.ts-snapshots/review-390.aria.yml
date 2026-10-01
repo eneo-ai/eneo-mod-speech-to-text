@@ -2,26 +2,42 @@
   - paragraph: Pausat i steg 2
   - heading "Vem är vem?" [level=1]
   - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
-  - group:
+  - group "Talare":
     - list:
       - listitem: Talare 1 Anna Berg
       - listitem: Talare 2 Erik Lund
       - listitem: Talare 3 Inget namn
-    - button "Namnge talarna"
-    - button "Avvisa"
-    - button "Godkänn och fortsätt"
+    - button "Namnge talarna":
+      - text: ""
+      - status
+    - button "Avvisa":
+      - text: ""
+      - status
+    - button "Godkänn och fortsätt":
+      - text: ""
+      - status
   - heading "Transkript" [level=2]
   - region "Inspelning och transkript":
-    - radiogroup "Visa talare":
-      - radio "Alla" [checked]
-      - radio "Anna Berg"
-      - radio "Erik Lund"
-      - radio "Talare 3"
-    - group:
-      - group
-      - searchbox "Sök i transkriptet"
+    - group "Visa talare":
+      - button "Alla" [pressed]:
+        - text: ""
+        - status
+      - button "Anna Berg":
+        - text: ""
+        - status
+      - button "Erik Lund":
+        - text: ""
+        - status
+      - button "Talare 3":
+        - text: ""
+        - status
+    - text: Sök i transkriptet
+    - textbox "Sök i transkriptet"
     - status
-    - button "Hämta granskat transkript"
+    - status
+    - button "Hämta granskat transkript":
+      - text: ""
+      - status
     - link "Hoppa förbi transkriptet":
       - /url: /#.+/
     - heading "Del 1" [level=3]
@@ -30,36 +46,40 @@
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 1/
         - text: Välkomna till kommunstyrelsens möte.
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 1/
       - listitem /Erik Lund, 0:\d+ i del 1/:
         - button "Erik Lund, ändra talare"
         - button /Spela från 0:\d+ i del 1/
         - text: Första punkten gäller budgeten för nästa år.
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 1/
       - listitem /Talare 3, 0:\d+ i del 1/:
         - button "Talare 3, ändra talare"
         - button /Spela från 0:\d+ i del 1/
         - text: Ramen höjs med två procent
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 1/
       - listitem /Anna Berg, 0:\d+ i del 1/:
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 1/
         - text: och förvaltningen återkommer i oktober.
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 1/
     - heading "Del 2" [level=3]
     - list "Del 2":
       - listitem /Erik Lund, 0:\d+ i del 2/:
         - button "Erik Lund, ändra talare"
         - button /Spela från 0:\d+ i del 2/
         - text: Andra punkten är skolskjutsarna.
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 2/
       - listitem /Anna Berg, 0:\d+ i del 2/:
         - button "Anna Berg, ändra talare"
         - button /Spela från 0:\d+ i del 2/
         - text: Nya turer börjar gälla efter höstlovet.
-        - button /Rätta repliken från 0:\d+/
+        - button /Rätta repliken från 0:\d+ i del 2/
+    - button "Hastighet 1×":
+      - text: ""
+      - status
     - 'group "Uppspelning: Inspelningen"':
-      - button "Spela upp"
+      - button "Spela upp":
+        - status
+      - text: Position i inspelningen
       - slider "Position i inspelningen"
       - text: /0:\d+ \/ 0:\d+/
-      - button "Hastighet 1×"

@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { computeAccessibleName } from "dom-accessibility-api";
 
-import { shortcut, TranscriptPlayer } from "../components/TranscriptPlayer";
+import { preloadTranscriptEditor, shortcut, TranscriptPlayer } from "../components/TranscriptPlayer";
 import { Playback, type MediaLike } from "./playback";
+import { parse } from "./test-dom";
 import { findActiveSegmentIndex, type TranscriptSegment } from "./transcript";
+
+// The editor loads when it is first shown; markup rendered at once has it only once it has been loaded.
+before(async () => void (await preloadTranscriptEditor()));
 
 const segments: TranscriptSegment[] = [
   { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
@@ -30,7 +36,8 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   const html = render(2);
   assert.match(html, /role="group" aria-label="Uppspelning: Inspelningen"/);
   assert.match(html, /<button[^>]*aria-label="Spela upp"/);
-  assert.match(html, /aria-label="Position i inspelningen"/);
+  // The design system's slider is named by its label (aria-labelledby), not by an aria-label of its own.
+  assert.equal(computeAccessibleName(parse(html).querySelector('[role="slider"]')!), "Position i inspelningen");
   assert.match(html, /aria-label="Bakåt 10 sekunder"/);
   assert.match(html, /aria-label="Framåt 10 sekunder"/);
   assert.match(html, /aria-label="Hastighet 1×"/);
@@ -214,11 +221,36 @@ test("no instruction lines: the pencil names its passage and is fully there for 
   );
   const shown = html.replace(/<[^>]+>/g, " ");
   assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
-  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
+  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"/g)];
   // Each with its part, as the play button: the two parts both start at 0:00.
   assert.deepEqual(pencils.map(([, time]) => time), ["0:00 i del 1", "0:02 i del 1", "0:00 i del 2"]);
   // Never hidden until hovered: a mouse user would not learn the action exists.
-  for (const [, , classes] of pencils) assert.doesNotMatch(classes, /opacity-0|(^|\s)w-0(\s|$)|group-hover/);
+  const css = readFileSync("components/TranscriptPlayer.module.css", "utf8");
+  const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, selector]) => /\.correct\b/.test(selector));
+  assert.ok(rules.length > 0, "the pencil's rules are in the module");
+  for (const [, selector, body] of rules) {
+    assert.doesNotMatch(body, /opacity:\s*0|display:\s*none|inline-size:\s*0|visibility:\s*hidden/, `${selector.trim()} hides it`);
+  }
   // Each passage is a list item named by who speaks and when.
   assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
+});
+
+test("the editor's place is held by a placeholder until its code has arrived, and the page's first render agrees with the server's", () => {
+  // A module of its own, as the first page load has it: the editor not yet loaded.
+  const path = require.resolve("../components/TranscriptPlayer");
+  const kept = require.cache[path];
+  delete require.cache[path];
+  try {
+    const fresh = require("../components/TranscriptPlayer") as typeof import("../components/TranscriptPlayer");
+    const html = renderToStaticMarkup(
+      createElement(fresh.TranscriptPlayer, {
+        segments, fileCount: 0, audioSrcFor: () => "", speakerNames: {}, textFallback: "", reviewEnabled: true,
+      }),
+    );
+    assert.match(html, /aria-busy="true"/);
+    assert.match(html, /Hämtar granskningsverktygen…/);
+    assert.doesNotMatch(html, /Transkriptverktyg/, "none of the editor yet");
+  } finally {
+    if (kept) require.cache[path] = kept;
+  }
 });

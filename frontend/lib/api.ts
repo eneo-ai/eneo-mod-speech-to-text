@@ -132,7 +132,7 @@ export async function getConfig() {
 
 /**
  * The organisation beside "Tal till text", a deployment setting of the
- * module's backend (GET /api/branding): Sundsvall's bundled logo
+ * module's backend (GET /api/branding): the bundled default logo
  * ("default"), the deployment's own ("custom", with a dark variant when
  * `dark_logo`), or the name as text (null). No organisation shows the
  * product name alone.

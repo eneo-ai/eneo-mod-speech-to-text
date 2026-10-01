@@ -1,65 +1,58 @@
 "use client";
 
-import { Plus } from "lucide-react";
-import { useId, useRef, useState, type FocusEvent } from "react";
+import { useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Icon } from "@astryxdesign/core/Icon";
+import { InputGroup } from "@astryxdesign/core/InputGroup";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { VStack } from "@astryxdesign/core/VStack";
 import { addNames, splitNames, takeNames } from "@/lib/participants";
 
-// What the field needs of the browser that the design system's types leave out (the input spreads what it does not
-// know onto the element, so it works): the page's own suggestions, a capital for each name and the return key's label.
-const hints = (listId: string | undefined) =>
-  ({ list: listId, autoCapitalize: "words", enterKeyHint: "enter" }) as Record<string, string | undefined>;
+const ADD_NAME = "Lägg till namn";
+
+// Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
+// them on to the input.
+const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter" } as Record<string, string>;
 
 /**
- * A `list` field as names. "Lägg till" shows while a name is typed, so a
+ * A `list` field as chips. "Lägg till" shows while a name is typed, so a
  * tap adds it on any device; Enter (a phone's return key) or a comma adds it
  * too, a pasted list is split on commas, semicolons and line breaks,
- * Backspace in the empty input removes the last name, and each name has its
+ * Backspace in the empty input removes the last chip, and each chip has its
  * own remove button. Earlier names are offered as the browser's own
- * suggestions. Text left in the input becomes a name when the field loses
+ * suggestions. Text left in the input becomes a chip when the field loses
  * focus, so a typed name is never lost.
- *
- * Kept as ours, not the design system's Tokenizer, which needs a search source, has no paste splitting, no comma
- * and no add-on-blur, no "Lägg till", and offers its "Create" entry in English.
  */
 export function ParticipantsInput({
   label,
-  name,
   names,
   onChange,
   suggestions,
   onAdded,
   description,
+  error,
   isOptional,
   isRequired,
-  status,
-  placeholder = "Lägg till namn",
+  fieldName,
 }: {
   label: string;
-  /** The detail's name, which the page finds the field by to move focus to it. */
-  name?: string;
   names: string[];
   onChange: (names: string[]) => void;
   suggestions: string[];
   /** Names the user just added, to offer them again next time. */
   onAdded?: (names: string[]) => void;
-  /** What the field is for, said under its label. */
+  /** Under the label, before the field. */
   description?: string;
+  /** Said at the field when what it holds blocks sending. */
+  error?: string;
   isOptional?: boolean;
   isRequired?: boolean;
-  /** Said at the field: the list is required and empty. */
-  status?: { type: "error"; message: string };
-  placeholder?: string;
+  /** The detail's name, so a problem can move focus to the field (DetailsForm). */
+  fieldName?: string;
 }) {
   const listId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const addButton = useRef<HTMLButtonElement>(null);
   const [text, setText] = useState("");
   const [announcement, setAnnouncement] = useState("");
 
@@ -72,13 +65,13 @@ export function ParticipantsInput({
     setAnnouncement(fresh.length === 1 ? `${fresh[0]} har lagts till.` : `${fresh.length} namn har lagts till.`);
   }
 
-  function remove(removed: string) {
-    onChange(names.filter((existing) => existing !== removed));
-    setAnnouncement(`${removed} har tagits bort.`);
+  function remove(name: string) {
+    onChange(names.filter((existing) => existing !== name));
+    setAnnouncement(`${name} har tagits bort.`);
   }
 
   const offered = suggestions.filter(
-    (suggestion) => !names.some((existing) => existing.toLowerCase() === suggestion.toLowerCase()),
+    (suggestion) => !names.some((name) => name.toLowerCase() === suggestion.toLowerCase()),
   );
 
   const addTyped = () => {
@@ -86,90 +79,95 @@ export function ParticipantsInput({
     setText("");
   };
 
-  // Leaving the field and its "Lägg till" together adds what was typed; moving between them does not.
-  const leaving = (event: FocusEvent) => {
-    const to = event.relatedTarget;
-    if (!text.trim() || to === input.current || to === addButton.current) return;
-    addTyped();
-  };
-
-  // The field says how many names it already holds; the list itself is named.
+  // The field says how many names it already holds, as part of what describes it.
   const count = names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`;
+  const described = [description, names.length > 0 ? count : null].filter(Boolean).join(" ") || undefined;
 
   return (
     <VStack gap={2}>
-      {/* The button beside the field, not inside it: the design system's field names its label and says whether it is
-          required once, which a group around it would do twice. */}
-      <HStack gap={2} align="end">
-        <TextInput
-          ref={input}
+      {/* Leaving the field and its "Lägg till" together adds what was typed; moving between them does not. */}
+      <VStack
+        onBlur={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null) || !text.trim()) return;
+          addTyped();
+        }}
+      >
+        <InputGroup
           label={label}
-          description={[description, names.length > 0 ? count : null].filter(Boolean).join(" ") || undefined}
+          description={described}
           isOptional={isOptional}
           isRequired={isRequired}
-          status={status}
-          statusVariant="detached"
-          value={text}
-          placeholder={placeholder}
-          autoComplete="off"
-          width="100%"
-          data-detail-field={name}
-          {...hints(offered.length > 0 ? listId : undefined)}
-          onBlur={leaving}
-          onChange={(value, event) => {
-            const picked =
-              (event.nativeEvent as InputEvent).inputType === "insertReplacementText" &&
-              offered.some((suggestion) => suggestion.toLowerCase() === value.trim().toLowerCase());
-            if (picked) {
-              add([value.trim()]);
+          status={error ? { type: "error", message: error } : undefined}
+        >
+          <TextInput
+            ref={input}
+            // The group is named by the field's label; read with it, this says what the input is for.
+            label={ADD_NAME}
+            isLabelHidden
+            value={text}
+            htmlName={fieldName}
+            autoComplete="off"
+            placeholder={ADD_NAME}
+            isRequired={isRequired}
+            isOptional={isOptional}
+            // The group says what is wrong; the input says that it is.
+            status={error ? { type: "error" } : undefined}
+            data-detail-field={fieldName}
+            {...NAME_HINTS}
+            {...(offered.length > 0 ? { list: listId } : {})}
+            onChange={(value, event) => {
+              const picked =
+                (event?.nativeEvent as InputEvent | undefined)?.inputType === "insertReplacementText" &&
+                offered.some((suggestion) => suggestion.toLowerCase() === value.trim().toLowerCase());
+              if (picked) {
+                add([value.trim()]);
+                setText("");
+                return;
+              }
+              const { names: complete, rest } = takeNames(value);
+              if (complete.length > 0) add(complete);
+              setText(rest.trimStart());
+            }}
+            onPaste={(event) => {
+              // A single-line input drops line breaks, so split the pasted list here.
+              const pasted = event.clipboardData.getData("text");
+              if (!/[,;\n\r]/.test(pasted)) return;
+              event.preventDefault();
+              add(splitNames(text + pasted));
               setText("");
-              return;
-            }
-            const { names: complete, rest } = takeNames(value);
-            if (complete.length > 0) add(complete);
-            setText(rest.trimStart());
-          }}
-          onPaste={(event) => {
-            // A single-line input drops line breaks, so split the pasted list here.
-            const pasted = event.clipboardData.getData("text");
-            if (!/[,;\n\r]/.test(pasted)) return;
-            event.preventDefault();
-            add(splitNames(text + pasted));
-            setText("");
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              addTyped();
-            } else if (event.key === "Backspace" && text === "" && names.length > 0) {
-              event.preventDefault();
-              remove(names[names.length - 1]);
-            }
-          }}
-        />
-        {text.trim() && (
-          <Button
-            ref={addButton}
-            label="Lägg till"
-            icon={<Icon icon={Plus} />}
-            // Keeps the focus, and a phone's keyboard, in the field for the next name.
-            onMouseDown={(event) => event.preventDefault()}
-            onBlur={leaving}
-            onClick={() => {
-              addTyped();
-              input.current?.focus();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addTyped();
+              } else if (event.key === "Backspace" && text === "" && names.length > 0) {
+                event.preventDefault();
+                remove(names[names.length - 1]);
+              }
             }}
           />
-        )}
-      </HStack>
+          {text.trim() && (
+            <Button
+              label="Lägg till"
+              variant="secondary"
+              // Keeps the focus, and a phone's keyboard, in the field for the next name.
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                addTyped();
+                input.current?.focus();
+              }}
+            />
+          )}
+        </InputGroup>
+      </VStack>
       {names.length > 0 && (
-        <HStack as="ul" aria-label="Tillagda namn" gap={2} wrap="wrap">
-          {names.map((added) => (
-            <li key={added}>
+        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2}>
+          {names.map((name) => (
+            <li key={name}>
               <Token
-                label={added}
+                label={name}
                 onRemove={() => {
-                  remove(added);
+                  remove(name);
                   input.current?.focus();
                 }}
               />

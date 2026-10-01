@@ -6,6 +6,13 @@ import { button, cleanup, installDom, mount } from "./test-dom";
 installDom();
 afterEach(cleanup);
 
+/** Under the page's providers, so the design system speaks Swedish: its own words (the dialog's "Stäng") come from there. */
+async function inProviders(element: import("react").ReactElement) {
+  const { createElement } = await import("react");
+  const { ModuleProviders } = await import("../kit/ModuleProviders");
+  return createElement(ModuleProviders, { children: element });
+}
+
 test("signed out: the page stays mounted with all it holds, hidden and out of reach, until the new login", async () => {
   const { createElement, useState } = await import("react");
   const { SignedOutCover } = await import("../components/AuthGate");
@@ -26,12 +33,12 @@ test("signed out: the page stays mounted with all it holds, hidden and out of re
 
   await act(async () => setSignedOut(true));
   assert.equal(cover().hasAttribute("inert"), true, "out of reach");
-  assert.match(cover().className, /\binvisible\b/, "and not shown");
+  assert.match(cover().className, /pageSignedOut/, "and not shown (its class hides it)");
   assert.ok(button(container, "Räknat 1"), "still there, as it was");
 
   await act(async () => setSignedOut(false));
   assert.equal(cover().hasAttribute("inert"), false);
-  assert.doesNotMatch(cover().className, /\binvisible\b/);
+  assert.doesNotMatch(cover().className, /pageSignedOut/);
   assert.ok(button(container, "Räknat 1"));
 });
 
@@ -39,9 +46,10 @@ test("signed out: the dialog asks for a new login, says the page and a recording
   const { createElement } = await import("react");
   const { SessionEndWarning } = await import("../components/SessionEndWarning");
   const { act } = await mount(
-    createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "eneo_sso", signedOut: true, onRenewed: () => {} }),
+    await inProviders(createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "eneo_sso", signedOut: true, onRenewed: () => {} })),
   );
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  assert.equal(dialog()?.tagName, "DIALOG", "a native dialog: the browser keeps it above whatever the page has open");
   assert.match(dialog()?.textContent ?? "", /Du behöver logga in igen/);
   assert.match(dialog()?.textContent ?? "", /inspelning fortsätter/);
   assert.ok(button(dialog()!, "Logga in igen"));
@@ -90,7 +98,10 @@ test("signed out, Logga in igen starts a new login; before the end, a renewal bo
   const endsAt = Date.now() + 60_000; // the warning is open: less than five minutes left
   const warning = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} }));
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
-  await warning.act(async () => new Promise((resolve) => setTimeout(resolve, 10))); // it opens on a timer
+  // It opens on a timer, which a busy machine fires late.
+  await warning.act(async () => {
+    for (let waited = 0; !document.body.querySelector('[role="alertdialog"]') && waited < 2_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+  });
   await warning.act(async () => button(dialog(), "Fortsätt arbeta")!.click());
   await warning.unmount();
   const ended = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", signedOut: true, onRenewed: () => {} }));
@@ -103,14 +114,16 @@ test("someone else signed in: the dialog says who, and whom to sign in as, and s
   const { createElement } = await import("react");
   const { SessionEndWarning } = await import("../components/SessionEndWarning");
   await mount(
-    createElement(SessionEndWarning, {
-      endsAt: Date.now() + 3_600_000,
-      mode: "eneo_sso",
-      signedOut: true,
-      owner: { id: "user-1", email: "anna@example.se", username: "Anna Berg" },
-      otherUser: { id: "user-2", email: "erik@example.se", username: "Erik Lund" },
-      onRenewed: () => {},
-    }),
+    await inProviders(
+      createElement(SessionEndWarning, {
+        endsAt: Date.now() + 3_600_000,
+        mode: "eneo_sso",
+        signedOut: true,
+        owner: { id: "user-1", email: "anna@example.se", username: "Anna Berg" },
+        otherUser: { id: "user-2", email: "erik@example.se", username: "Erik Lund" },
+        onRenewed: () => {},
+      }),
+    ),
   );
   const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
   assert.match(dialog.textContent ?? "", /Du är inloggad som Erik Lund\. Logga in som Anna Berg för att fortsätta\./);
@@ -156,7 +169,7 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
 test("signed out, a dialog open on the page is hidden and out of reach with it, and keeps what was typed in it", async () => {
   const { createElement, useState } = await import("react");
   const { SignedOutCover } = await import("../components/AuthGate");
-  const { Dialog, DialogContent, DialogTitle } = await import("../components/ui/dialog");
+  const { Dialog } = await import("@astryxdesign/core/Dialog");
   const { type } = await import("./test-dom");
   let setSignedOut: (on: boolean) => void = () => {};
   function Page() {
@@ -164,11 +177,12 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
     setSignedOut = set;
     return createElement(SignedOutCover, {
       signedOut,
-      children: createElement(
-        Dialog,
-        { open: true },
-        createElement(DialogContent, { "aria-describedby": undefined }, createElement(DialogTitle, null, "Namnge talarna"), createElement("input", { "aria-label": "Vem är Talare 1?" })),
-      ),
+      children: createElement(Dialog, {
+        isOpen: true,
+        onOpenChange() {},
+        "aria-label": "Namnge talarna",
+        children: createElement("input", { "aria-label": "Vem är Talare 1?" }),
+      }),
     });
   }
   const { act } = await mount(createElement(Page));
@@ -176,9 +190,14 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
   await act(async () => type(field, "Anna Berg"));
 
   await act(async () => setSignedOut(true));
-  const dialog = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
-  assert.ok(dialog.closest("[inert]"), "out of reach, and out of the accessibility tree");
-  assert.match(dialog.closest("[inert]")!.className, /\binvisible\b/, "and not shown");
+  // A native dialog is an element of its own (it carries no role attribute).
+  const dialog = document.body.querySelector<HTMLElement>("dialog[open]")!;
+  // A structural check of the cover only: the design system's dialog sits in the page's own subtree. In a browser a
+  // native dialog escapes an inert ancestor, which jsdom cannot show: so a page's dialog closes while signed out
+  // (useSignedOut), and that it is neither visible, reachable nor in the accessibility tree is proved in
+  // tests/e2e/session-cover.spec.ts and, for the PDF preview, in result-document.test.ts.
+  assert.ok(dialog.closest("[inert]"), "inside the inert cover");
+  assert.match(dialog.closest("[inert]")!.className, /pageSignedOut/, "and not shown");
   assert.equal(document.body.querySelector('input[aria-label="Vem är Talare 1?"]'), field, "the same field, still mounted");
   assert.equal(field.value, "Anna Berg");
 });
@@ -278,7 +297,7 @@ test("the 5-minute warning open when the login ends: after the new login the foc
     const pausa = button(view.container, "Pausa")!;
     pausa.focus();
     await view.act(async () => wait(1_100));
-    assert.ok(document.body.querySelector('[role="alertdialog"]'), "the warning is open");
+    assert.ok(document.body.querySelector('[role="alertdialog"][open]'), "the warning is open");
     await view.act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
     if (!keep) await view.act(async () => setShown(false));
     // The new login: the page reads the status again, with its new end.
@@ -291,7 +310,7 @@ test("the 5-minute warning open when the login ends: after the new login the foc
       document.dispatchEvent(new window.Event("visibilitychange"));
       await wait(20);
     });
-    assert.ok(!document.body.querySelector('[role="alertdialog"]'), "closed");
+    assert.ok(!document.body.querySelector('[role="alertdialog"][open]'), "closed");
     const heading = view.container.querySelector("[data-phase-heading]");
     if (keep) assert.ok(document.activeElement === pausa, "back on Pausa, where it was before the warning");
     else assert.ok(document.activeElement === heading, "Pausa is gone: the page's heading, not the body");
@@ -319,4 +338,90 @@ test("when the login ends the focus moves into the sign-in dialog, onto its head
   const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
   const heading = [...dialog.querySelectorAll("h2")].find((h) => h.textContent === "Du behöver logga in igen");
   assert.ok(heading && document.activeElement === heading, "on the dialog's heading");
+});
+
+test("before the end the warning can be closed, with Stäng or Escape; the page keeps all it holds", async () => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  // In the tree while it is open only.
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  // Less than five minutes left: it opens on a timer, which a busy machine fires late.
+  const opens = async () => {
+    for (let waited = 0; !dialog() && waited < 2_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
+  };
+  const endsAt = Date.now() + 60_000;
+  const first = await mount(await inProviders(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} })));
+  await first.act(opens);
+  assert.ok(dialog()!.hasAttribute("open"));
+  assert.match(dialog()!.textContent ?? "", /Du loggas snart ut/);
+  await first.act(async () => button(dialog()!, "Stäng")!.click());
+  assert.ok(!dialog(), "Stäng closes it");
+  await first.unmount();
+
+  const second = await mount(await inProviders(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} })));
+  await second.act(opens);
+  assert.ok(dialog());
+  await second.act(async () => {
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+  });
+  assert.ok(!dialog(), "Escape closes it");
+});
+
+test("with the access code the dialog takes the code, sends it once, and says a wrong or an empty one", async (t) => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  const { type } = await import("./test-dom");
+  const sent: string[] = [];
+  let status = 401;
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    sent.push((JSON.parse(String(init?.body)) as { access_code: string }).access_code);
+    return new Response(JSON.stringify(status === 200 ? { ok: true } : { detail: "Felaktig åtkomstkod" }), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  const wait = () => new Promise((resolve) => setTimeout(resolve, 10));
+  let renewed = 0;
+  const view = await mount(
+    createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "access_code", signedOut: true, onRenewed: () => renewed++ }),
+  );
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
+  const field = dialog.querySelector<HTMLInputElement>('input[type="password"]')!;
+  assert.equal(field.autocomplete, "current-password", "a password manager can fill it in");
+  const send = () => button(dialog, "Logga in igen")!;
+  assert.equal(field.getAttribute("aria-errormessage"), null, "nothing to point at before there is a problem");
+
+  await view.act(async () => send().click());
+  assert.equal(sent.length, 0, "an empty code is not sent");
+  assert.match(dialog.textContent ?? "", /Felaktig åtkomstkod\./);
+  assert.equal(field.getAttribute("aria-invalid"), "true");
+  // The field in error names its message: the alert, which says it once when it appears (aria-describedby is the
+  // field's own, the design system overwrites a given one).
+  const message = document.getElementById(field.getAttribute("aria-errormessage") ?? "");
+  assert.ok(message, "the field in error points at an element");
+  assert.equal(message.getAttribute("role"), "alert");
+  assert.match(message.textContent ?? "", /Felaktig åtkomstkod\./);
+
+  await view.act(async () => type(field, "k".repeat(300)));
+  assert.equal(field.value.length, 256, "the backend takes no more than 256 characters");
+  await view.act(async () => {
+    send().click();
+    await wait();
+  });
+  assert.deepEqual(sent.map((code) => code.length), [256]);
+  assert.equal(renewed, 0);
+  assert.match(dialog.textContent ?? "", /Felaktig åtkomstkod\./);
+
+  status = 200;
+  await view.act(async () => type(field, "rätt-kod"));
+  await view.act(async () => {
+    send().click();
+    await wait();
+  });
+  assert.equal(sent.at(-1), "rätt-kod");
+  assert.equal(renewed, 1, "the new login is read once");
 });

@@ -15,23 +15,19 @@
     --ink-mute: 240 2% 42%; /* gray-500 #68686D – mute */
     --rule: 240 3% 52%; /* Control edges: >=3:1 on paper and secondary surfaces. */
     --rule-soft: 0 0% 90%; /* gray-200 #E5E5E5 – mjuk kant */
-    --primary: 212 100% 29%; /* Sundsvall blue #004595 – brand, action, selection */
+    /* The default accent #004595 – brand, action, selection. A deployment's ORGANIZATION_ACCENT overrides this and the
+       two tokens below (GET /api/branding/theme.css, unlayered), as it does the design system's accent. */
+    --primary: 212 100% 29%;
     --primary-foreground: 0 0% 100%;
     --primary-soft: 205 43% 87%; /* light blue #CFE0EC – the selected tint */
     --destructive: 358 75% 38%; /* errors and discarding actions, darker than the recording red */
     --destructive-foreground: 0 0% 100%;
     --record: 0 72% 51%; /* röd – inspelning (mikrofon) */
     --record-foreground: 0 0% 100%;
+    /* The recording dot for CSS Modules, from --record in both modes (3:1 on the card and the muted surface). */
+    --module-color-record: light-dark(#dc2828, #dd2c2c);
     --ochre: 42 95% 28%; /* Review marks/text remain legible in the light theme. */
     --ok: 152 55% 32%; /* grön – bekräftat/klart */
-    /* Talarfärger i transkript och talarlista: dämpade, läsbara på papper. Den första talaren är
-       aldrig varumärkets blå, så att ett namn inte läses som en länk. */
-    --speaker-0: 262 46% 48%;
-    --speaker-1: 152 48% 30%;
-    --speaker-2: 28 78% 34%;
-    --speaker-3: 330 52% 42%;
-    --speaker-4: 190 58% 33%;
-    --speaker-5: 70 45% 28%;
     /* shadcn's semantic layer over the module tokens. Declared once: .dark sits
        on the same element, so each reference resolves to the active theme. */
     --background: var(--bg);
@@ -77,12 +73,6 @@
     --record-foreground: 0 0% 100%;
     --ochre: 47 92% 58%;
     --ok: 152 50% 58%;
-    --speaker-0: 262 62% 74%;
-    --speaker-1: 152 52% 62%;
-    --speaker-2: 32 88% 66%;
-    --speaker-3: 330 62% 72%;
-    --speaker-4: 190 62% 62%;
-    --speaker-5: 70 45% 60%;
     color-scheme: dark;
   }
 
@@ -124,7 +114,7 @@
 
   /* The page: full window width, so a header's band spans it. The content's width is the frame's
      (components/frame.tsx), never the shell's. */
-  .app-shell {
+  [data-app-shell] {
     min-height: 100vh;
     background: hsl(var(--bg));
     position: relative;
@@ -157,65 +147,20 @@
   .rule-divider-soft {
     border-bottom: 1px solid hsl(var(--rule-soft));
   }
-
-  /* ----- Recording animations ----- */
-  @keyframes lyssna-pulse-ring {
-    0% {
-      inset: 0;
-      opacity: 0.6;
-    }
-    100% {
-      inset: -22px;
-      opacity: 0;
-    }
-  }
-
-  .lyssna-pulse-ring {
-    animation: lyssna-pulse-ring 2.4s ease-out infinite;
-  }
-
-  @keyframes lyssna-blink {
-    50% {
-      opacity: 0;
-    }
-  }
-
-  .lyssna-blink {
-    animation: lyssna-blink 1s steps(2) infinite;
-  }
 }
 
-
-/* Keyboard focus stays local to the control, including native selects. */
-.transcript-player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-}
-/* The shortcut region is often taller than the screen and sits in a clipping card: its ring is drawn inside, and the
-   docked player, on screen whenever the transcript is, carries it too. Outlines, so forced colours keep them. */
-.transcript-player:focus-visible,
-.transcript-player:focus-visible [data-docked-player] {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: -2px;
-}
-.transcript-editor:has(.transcript-editor-text:focus-visible) .transcript-focus-label {
-  outline: 2px solid hsl(var(--primary));
-  outline-offset: 3px;
-  border-radius: 2px;
-  color: hsl(var(--ink));
-}
-.transcript-editor-text [data-turn-index] {
-  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
-}
-.transcript-editor-text [data-text-span]:focus-visible {
-  scroll-margin-block-start: var(--transcript-toolbar-height, 0px);
-}
-
-/* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
-@media (max-width: 639px), (max-height: 600px) {
-  .transcript-toolbar { position: static; }
-  .transcript-player { max-height: none !important; }
-  .transcript-scrollport { max-height: none; overflow: visible; }
+/* The colours of the module's own surfaces (the transcript's speakers and the review marks), one declaration for both
+   colour modes. The first speaker is never the brand's blue, so a name is not read as a link. Contrast of each against
+   the design system's surfaces is asserted by lib/accessibility.test.ts. */
+:root {
+  --module-speaker-0: light-dark(hsl(262 46% 48%), hsl(262 62% 74%));
+  --module-speaker-1: light-dark(hsl(152 48% 30%), hsl(152 52% 62%));
+  --module-speaker-2: light-dark(hsl(28 78% 34%), hsl(32 88% 66%));
+  --module-speaker-3: light-dark(hsl(330 52% 42%), hsl(330 62% 72%));
+  --module-speaker-4: light-dark(hsl(190 58% 33%), hsl(190 62% 62%));
+  --module-speaker-5: light-dark(hsl(70 45% 28%), hsl(70 45% 60%));
+  --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
+  --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
 /* Dialog open and close (Radix waits for the closing animation before unmounting). */
@@ -231,34 +176,14 @@
 /* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
    focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
 @media (max-width: 1023px) {
-  html:has([data-docked-player]) { scroll-padding-bottom: 5rem; }
+  html:has([data-docked-player]) { scroll-padding-bottom: 7rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
   .t-overlay, .t-modal { animation: none !important; }
-  .lyssna-pulse-ring, .lyssna-blink { animation: none; }
-  /* Loading spinners and skeletons stand still, and the design system's spinner arc; the words beside them say that something is loading. */
-  .animate-spin, .animate-pulse, .astryx-spinner circle { animation: none; }
-}
-
-@media (forced-colors: active) {
-  .transcript-editor-text [data-text-span] { text-decoration-color: CanvasText !important; }
-  .transcript-editor-text [aria-current="true"] {
-    forced-color-adjust: none;
-    background: Highlight;
-    color: HighlightText;
-    outline: 2px solid Highlight;
-  }
-}
-
-/* A local paragraph marker shows the editing focus without outlining the full page. */
-.transcript-editor-text:focus-visible [data-caret-paragraph="true"] {
-  box-shadow: inset 3px 0 0 hsl(var(--primary));
-}
-.transcript-editor-text button { scroll-margin-block-start: var(--transcript-toolbar-height, 0px); }
-@media (forced-colors: active) {
-  .transcript-editor-text:focus-visible [data-caret-paragraph="true"] { border-inline-start: 3px solid Highlight; }
+  /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
+  .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
 /* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
@@ -268,9 +193,31 @@ html.dark [data-astryx-theme] { color-scheme: dark; }
 html.light,
 html.light [data-astryx-theme] { color-scheme: light; }
 
-/* The brand lockup's mark (components/Brand.tsx). Another organisation's logo keeps Sundsvall's height and a wide one
+/* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring
+   on it would only look like one. */
+[data-phase-heading]:focus { outline: none; }
+
+/* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
+   gives it back, for every button the design system draws. */
+@media (forced-colors: active) {
+  .astryx-button { border: 1px solid ButtonText; }
+}
+
+/* The slider is drawn with backgrounds only: the rail, the filled part and the thumb are gone in forced colours, which
+   leaves a position slider with nothing to see or press. Its parts take the system's colours, the thumb with a ring of
+   the page's colour so it stays apart from the filled part. (The filled part has no class of its own.) */
+@media (forced-colors: active) {
+  .astryx-slider-track,
+  .astryx-slider-control > [aria-hidden="true"],
+  .astryx-slider-thumb { forced-color-adjust: none; }
+  .astryx-slider-track { background: ButtonText; }
+  .astryx-slider-control > [aria-hidden="true"]:not(.astryx-slider-track) { background: Highlight; }
+  .astryx-slider-thumb { background: ButtonText; border: 2px solid Canvas; }
+}
+
+/* The brand lockup's mark (components/Brand.tsx). Any organisation's logo has the same height and a wide one
    scales down inside a bounded width; a name without a logo wraps inside the same bounds. A logo made for one colour
-   mode stays out of the other, and Sundsvall's black mark turns white in the dark one. */
+   mode stays out of the other, and the bundled default's black mark turns white in the dark one. */
 [data-brand-logo]:not([data-brand-logo="default"]) {
   display: block;
   max-inline-size: 6.5rem;
@@ -282,6 +229,11 @@ img[data-brand-logo] {
   object-fit: contain;
   object-position: left;
 }
+/* The design system's top bar never shrinks the brand, so on the narrowest phones the mark is smaller to leave the account
+   button room, also with the text spacing WCAG 1.4.12 lets a reader set (tests/e2e/header-fit.spec.ts). */
+@media (max-width: 359px) {
+  img[data-brand-logo] { block-size: var(--spacing-8); }
+}
 @media (min-width: 640px) {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
   [data-brand-logo="name"] { max-inline-size: 12rem; }
@@ -289,6 +241,10 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
+
+/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
+   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
+dialog[open] { pointer-events: auto; }
 
 /* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
    tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half

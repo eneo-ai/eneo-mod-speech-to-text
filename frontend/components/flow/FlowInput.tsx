@@ -16,8 +16,7 @@ import {
   COUNT_FROM_NAMES,
   createDocument,
   DetailsForm,
-  focusDetail,
-  SPEAKER_COUNT_ID,
+  focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
@@ -338,7 +337,7 @@ function SetupWorkspace({
   const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
-  const focusCount = () => focusDetail(SPEAKER_COUNT_ID);
+  const focusCount = focusSpeakerCount;
   const onContinue = modes.includes("spela-in")
     ? (recording: StoredRecording) => (countInvalid ? focusCount() : void session.continueCutOff(recording))
     : undefined;

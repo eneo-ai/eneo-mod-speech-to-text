@@ -6,8 +6,8 @@ import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
+import { VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { VStack } from "@astryxdesign/core/VStack";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
@@ -51,18 +51,18 @@ export function EarlierRuns({
       <List>
         {shown.map((run) => {
           const outcome = runOutcome(run.status);
-          const [icon, color, action] = outcome
+          const [glyph, color, action] = outcome
             ? OUTCOME[outcome]
-            : [Clock, "accent" as const, run.status === "awaiting_review" ? "Granska" : "Följ"];
+            : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
           const when = run.created_at ? formatRelativeDate(run.created_at) : "";
           return (
             <ListItem
               key={run.id}
               label={when.replace(/^./, (c) => c.toUpperCase())}
               description={runStatusLabel(run.status)}
-              startContent={<Icon icon={icon} color={color} />}
+              startContent={<Icon icon={glyph} color={color} />}
               endContent={
-                // The words the eye reads are the action; the button's name says which run it opens.
+                // The name says which run, for a screen reader that lists the buttons; the words say what it does.
                 <Button label={`${action}, körningen ${when}`} variant="secondary" data-open-run onClick={() => onOpen(run.id)}>
                   {action}
                 </Button>
@@ -72,14 +72,20 @@ export function EarlierRuns({
         })}
       </List>
       {list.failed === "first" && onMore && (
-        <VStack gap={2} hAlign="start">
-          <Text type="supporting">Tidigare körningar kunde inte hämtas.</Text>
+        <VStack gap={2} align="start">
+          <Text as="p" type="supporting">
+            Tidigare körningar kunde inte hämtas.
+          </Text>
           <Button label="Försök igen" variant="secondary" isDisabled={list.loading} onClick={onMore} />
         </VStack>
       )}
       {list.hasMore && list.failed !== "first" && onMore && (
-        <VStack gap={2} hAlign="start">
-          {list.failed === "next" && <Text type="supporting">Fler körningar kunde inte hämtas. Försök igen.</Text>}
+        <VStack gap={2} align="start">
+          {list.failed === "next" && (
+            <Text as="p" type="supporting">
+              Fler körningar kunde inte hämtas. Försök igen.
+            </Text>
+          )}
           <Button
             label={list.loading ? "Hämtar körningar…" : "Visa fler körningar"}
             variant="secondary"

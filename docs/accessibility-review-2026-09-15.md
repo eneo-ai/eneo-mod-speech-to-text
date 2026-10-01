@@ -1,4 +1,4 @@
-# Lyssna accessibility review — 2026-09-15
+# Tal till text accessibility review — 2026-09-15
 
 ## Scope and baseline
 
@@ -79,9 +79,9 @@ Commands run inside the devcontainer. Audit tools are temporary test dependencie
 not production app dependencies. The dev frontend must be running on port 3002.
 
 ```sh
-docker exec blissful_boyd npm install --prefix /tmp/lyssna-a11y-tools --no-audit --no-fund playwright@1.63.0 @axe-core/playwright@4.13.0
-docker exec blissful_boyd /tmp/lyssna-a11y-tools/node_modules/.bin/playwright install --with-deps chromium
-docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/frontend && NODE_PATH=/tmp/lyssna-a11y-tools/node_modules node tests/accessibility-audit.cjs'
+docker exec blissful_boyd npm install --prefix /tmp/tal-till-text-a11y-tools --no-audit --no-fund playwright@1.63.0 @axe-core/playwright@4.13.0
+docker exec blissful_boyd /tmp/tal-till-text-a11y-tools/node_modules/.bin/playwright install --with-deps chromium
+docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/frontend && NODE_PATH=/tmp/tal-till-text-a11y-tools/node_modules node tests/accessibility-audit.cjs'
 docker exec blissful_boyd sh -lc 'cd /workspaces/eneo-mod-speech-to-text/frontend && npm test && npm run lint && npm run build'
 ```
 

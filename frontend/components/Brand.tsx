@@ -8,9 +8,8 @@ import { Text } from "@astryxdesign/core/Text";
 import { TopNavHeading } from "@astryxdesign/core/TopNav";
 import type { Branding } from "@/lib/api";
 
-const SUNDSVALL: Branding = { organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false } };
-
-const BrandingContext = createContext<Branding>(SUNDSVALL);
+// Without a provider there is no organisation to name: the backend's branding (readBranding) is the one owner of who is shown.
+const BrandingContext = createContext<Branding>({ organization: null });
 
 /** The deployment's branding, read by the root layout from the module's backend for every page. */
 export function BrandingProvider({ value, children }: { value: Branding; children: ReactNode }) {

@@ -2,7 +2,7 @@
  * How to reach every screen and state of the app against the stub backend
  * (stub-server.py): each state is a name and the steps a user takes to get there.
  */
-import { expect, type Page, type TestInfo } from "@playwright/test";
+import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 
 /** Opens a page of the app, with Next's dev-only indicator hidden (it is not the app). */
 export async function open(page: Page, path: string) {
@@ -175,6 +175,29 @@ export async function result(page: Page) {
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
 }
 
+/**
+ * The speaker-review editor (README "Granska transkriptet"): the development page's fixtures, the "bulk" case with its
+ * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
+ */
+export async function reviewEditor(page: Page, testCase = "bulk") {
+  await open(page, "/dev/speaker-review");
+  await pick(page.getByRole("combobox", { name: "Testfall" }), testCase);
+  await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
+  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
+}
+
+/**
+ * The text at the top of the screen. A tall page scanned from its top has the docked player over whatever lies in the
+ * screen's last 70 px, and a time button half under it is a target "partly obscured" that no one meets by scrolling.
+ */
+const readingTheText = (page: Page) => page.locator("[data-turn-index]").first().evaluate((turn) => turn.scrollIntoView({ block: "start" }));
+
+/** Chooses `option` in one of the design system's selectors. */
+export async function pick(field: Locator, option: string) {
+  await field.click();
+  await field.page().getByRole("option", { name: option, exact: true }).click();
+}
+
 export interface State {
   name: string;
   go: (page: Page, info: TestInfo) => Promise<void>;
@@ -265,7 +288,8 @@ export const STATES: State[] = [
     },
   },
   {
-    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, nothing is cut off.
+    // A long name and a long address, every word of a Swedish compound whole: the menu wraps them, and Logga ut, the
+    // last row, is still in view inside the menu with nothing to scroll to (the identity may end in an ellipsis).
     name: "account-menu-long-name",
     go: async (page) => {
       await page.route("**/api/auth/status", (route) =>
@@ -283,10 +307,32 @@ export const STATES: State[] = [
       );
       await flows(page);
       await page.getByRole("button", { name: /^Öppna konto för/ }).click();
-      await expect(page.getByRole("menu")).toBeVisible();
+      const menu = page.getByRole("menu");
+      await expect(menu).toBeVisible();
+      await expect
+        .poll(() =>
+          menu.evaluate((element) => {
+            const row = [...element.querySelectorAll('[role="menuitem"]')].find((item) => item.textContent?.includes("Logga ut"))!.getBoundingClientRect();
+            const box = element.getBoundingClientRect();
+            return {
+              scrolls: element.scrollHeight > element.clientHeight + 1,
+              insideMenu: row.top >= box.top - 0.5 && row.bottom <= box.bottom + 0.5,
+              inView: row.top >= 0 && row.bottom <= window.innerHeight,
+            };
+          }),
+        )
+        .toEqual({ scrolls: false, insideMenu: true, inView: true });
     },
   },
   { name: "unsent-recordings", go: leaveRecording },
+  {
+    name: "unsent-recording-delete-question",
+    go: async (page) => {
+      await leaveRecording(page);
+      await page.getByRole("button", { name: "Ta bort" }).click();
+      await expect(page.getByRole("button", { name: "Avbryt" })).toBeFocused();
+    },
+  },
   {
     name: "setup",
     go: async (page) => {
@@ -330,8 +376,8 @@ export const STATES: State[] = [
       await page.getByRole("switch", { name: "Märk upp talare" }).click();
       await page.getByRole("textbox", { name: /^Antal talare/ }).fill("e");
       await page.getByRole("button", { name: "Starta inspelning" }).click();
-      // The field says it; the design system's live region says it again, so the first is the field's.
-      await expect(page.getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.").first()).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.")).toBeVisible();
     },
   },
   {
@@ -347,8 +393,8 @@ export const STATES: State[] = [
       await setup(page, "flow-3");
       await chooseFile(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      // The field says it; the design system's live region says it again, so the first is the field's.
-      await expect(page.getByText("Fyll i det här för att skapa dokumentet.").first()).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Fyll i det här för att skapa dokumentet.")).toBeVisible();
     },
   },
   {
@@ -359,8 +405,8 @@ export const STATES: State[] = [
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("textbox", { name: "Antal talare" }).fill("2,5");
       await page.getByRole("button", { name: "Skapa dokument" }).click();
-      // The field says it; the design system's live region says it again, so the first is the field's.
-      await expect(page.getByText("Skriv ett heltal från 1, eller lämna fältet tomt.").first()).toBeVisible();
+      // The sentence is also in a live region of the design system, outside the page's main region.
+      await expect(page.getByRole("main").getByText("Skriv ett heltal från 1, eller lämna fältet tomt.")).toBeVisible();
     },
   },
   {
@@ -686,7 +732,7 @@ export const STATES: State[] = [
       await run(page, "run-review-text");
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
-      await expect(page.locator("main textarea")).toBeVisible();
+      await expect(page.getByRole("main").locator("textarea")).toBeVisible();
     },
   },
   {
@@ -695,7 +741,7 @@ export const STATES: State[] = [
       await run(page, "run-review-text");
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
-      await page.locator("main textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
+      await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
       // Someone else saves the review meanwhile: the page opens on the newer revision, and the edit waits beside it.
       await page.route("**/review-checkpoints/active**", async (route) => {
         const checkpoint = await (await route.fetch()).json();
@@ -703,6 +749,57 @@ export const STATES: State[] = [
       });
       await page.reload();
       await expect(page.getByRole("button", { name: "Använd din version" })).toBeVisible();
+    },
+  },
+  { name: "review-editor", go: (page) => reviewEditor(page) },
+  {
+    // A passage marked, and the field for correcting it.
+    name: "review-editor-selection",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await page.getByRole("button", { name: "Rätta text", exact: true }).click();
+      await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeFocused();
+      await readingTheText(page);
+    },
+  },
+  {
+    // A passage marked, and what the text says about it.
+    name: "review-editor-details",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await page.getByRole("button", { name: "Detaljer" }).click();
+      await expect(page.getByText("Om markeringen")).toBeVisible();
+      await readingTheText(page);
+    },
+  },
+  {
+    // The widest the editor gets: six speakers, a word with no break point, a passage chosen by its speaker's name.
+    name: "review-editor-speakers",
+    go: async (page) => {
+      await reviewEditor(page, "accessibility");
+      await page.getByRole("button", { name: /^Markera stycket: / }).first().click();
+      await expect(page.getByRole("group", { name: "Markerade ord" })).toBeVisible();
+      await readingTheText(page);
+    },
+  },
+  {
+    name: "review-editor-confirmed",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("button", { name: /^Bekräfta alla förslag/ }).click();
+      await expect(page.getByRole("button", { name: "Ångra", exact: true })).toBeVisible();
+      await expect(page.getByText("Inga väntande talarbeslut")).toBeVisible();
+    },
+  },
+  {
+    name: "review-editor-readonly",
+    go: async (page) => {
+      await reviewEditor(page);
+      await page.getByRole("checkbox", { name: "Skrivskyddat" }).check();
+      await page.getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+      await expect(page.getByText("Talargranskningen är skrivskyddad.")).toBeVisible();
     },
   },
   {
@@ -720,3 +817,26 @@ export const STATES: State[] = [
     },
   },
 ];
+
+/**
+ * A deployment with an organisation of its own and a green accent. The stub serves it when STUB_BRANDING is set, so
+ * these states exist only in `npm run test:a11y:branding`; they take the default states' steps. "custom": wide logos
+ * for both colour modes. "name": no logo, a long name as text.
+ */
+const BRANDED: Record<string, string[]> = {
+  custom: [
+    "signin-sso",
+    "signin-access-code",
+    "flow-list",
+    "account-menu",
+    "setup",
+    "setup-participants",
+    "setup-microphone-check",
+    "recording",
+    "result-transcript-tab",
+  ],
+  name: ["signin-access-code", "flow-list", "setup"],
+};
+for (const name of BRANDED[process.env.STUB_BRANDING ?? ""] ?? []) {
+  STATES.push({ ...STATES.find((state) => state.name === name)!, name: `branding-${process.env.STUB_BRANDING}-${name}` });
+}

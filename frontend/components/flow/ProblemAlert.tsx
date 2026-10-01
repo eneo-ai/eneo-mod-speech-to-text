@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
-import { TriangleAlert } from "lucide-react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { Problem } from "@/lib/flow-session";
 
@@ -18,28 +18,23 @@ export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Pr
     ref.current?.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   }, [reveal, problem]);
 
+  const actions = (problem.retry && onRetry) || problem.back;
+  // A warning, as before: "try again" is not a failure of the person's. Title and detail are plain text, not headings.
   return (
-    <Alert ref={ref} variant="warning">
-      <TriangleAlert aria-hidden />
-      {problem.detail ? (
-        <>
-          <AlertTitle>{problem.title}</AlertTitle>
-          <AlertDescription>{problem.detail}</AlertDescription>
-        </>
-      ) : (
-        <AlertDescription className="text-ink">{problem.title}</AlertDescription>
-      )}
-      {((problem.retry && onRetry) || problem.back) && (
-        // In a row of their own, so the alert's text indent lines them up instead of padding them.
-        <div className="mt-3 flex flex-wrap gap-3">
-          {problem.retry && onRetry && (
-            <Button type="button" variant="outline" onClick={onRetry}>
-              Försök igen
-            </Button>
-          )}
-          {problem.back && <BackToFlows variant="outline" size="default" />}
-        </div>
-      )}
-    </Alert>
+    <Banner
+      ref={ref}
+      status="warning"
+      title={problem.title}
+      description={problem.detail}
+      collapsible={false}
+      endContent={
+        actions ? (
+          <HStack gap={2} wrap="wrap" align="center">
+            {problem.retry && onRetry && <Button label="Försök igen" variant="secondary" onClick={onRetry} />}
+            {problem.back && <BackToFlows variant="outline" size="default" />}
+          </HStack>
+        ) : undefined
+      }
+    />
   );
 }

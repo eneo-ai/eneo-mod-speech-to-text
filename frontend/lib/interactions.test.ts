@@ -12,7 +12,7 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
   const outside = document.createElement("button");
   document.body.append(outside);
   const view = await mount(
-    createElement(ParticipantsInput, { label: "Deltagare", name: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
   await view.act(async () => field.focus());
@@ -34,7 +34,7 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
   const changes: string[][] = [];
   const view = await mount(
-    createElement(ParticipantsInput, { label: "Deltagare", name: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn2", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn2"]')!;
   await view.act(async () => field.focus());
@@ -44,6 +44,53 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
+  await view.unmount();
+});
+
+/** A participants field with a record of what it hands back, the browser's own typing and pasting done to its input. */
+async function mountParticipants(suggestions: string[] = []) {
+  const { createElement } = await import("react");
+  const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
+  const changes: string[][] = [];
+  const view = await mount(
+    createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn3", names: [], onChange: (names: string[]) => changes.push(names), suggestions }),
+  );
+  const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn3"]')!;
+  return { view, field, changes };
+}
+
+test("participants: a pasted list is split on commas, semicolons and line breaks, and one name without a separator is typed as usual", async () => {
+  const { view, field, changes } = await mountParticipants();
+  const paste = (text: string) => {
+    const event = new window.Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+    field.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  await view.act(async () => field.focus());
+  let prevented = true;
+  await view.act(async () => {
+    prevented = paste("Anna Berg");
+  });
+  assert.equal(prevented, false, "a single name is left for the field to take");
+  assert.deepEqual(changes, []);
+  await view.act(async () => void paste("Anna Berg, Erik Lund;Sara Holm\nanna berg"));
+  // Added once each: a name already there, in another case, is not added again.
+  assert.deepEqual(changes.at(-1), ["Anna Berg", "Erik Lund", "Sara Holm"]);
+  await view.unmount();
+});
+
+test("participants: a name picked from the browser's suggestions is added at once, a typed one waits for its comma", async () => {
+  const { view, field, changes } = await mountParticipants(["Sara Holm"]);
+  const typeAs = (value: string, inputType: string) => {
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")!.set!.call(field, value);
+    field.dispatchEvent(new window.InputEvent("input", { bubbles: true, inputType }));
+  };
+  await view.act(async () => typeAs("sara holm", "insertText"));
+  assert.deepEqual(changes, [], "typed in full, it is still only text");
+  await view.act(async () => typeAs("Sara Holm", "insertReplacementText"));
+  assert.deepEqual(changes.at(-1), ["Sara Holm"], "picked from the list: added, as typed in the list");
+  assert.equal(field.value, "");
   await view.unmount();
 });
 
@@ -67,7 +114,8 @@ async function mountEditableTranscript(onChange: (next: unknown) => void) {
     }),
   );
   await view.act(async () => button(view.container, "Rätta repliken från 0:00")!.click());
-  const editor = view.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Rätta repliken från 0:00"]')!;
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  const editor = [...view.container.querySelectorAll<HTMLTextAreaElement>("textarea")].find((area) => computeAccessibleName(area) === "Rätta repliken från 0:00")!;
   assert.ok(editor, "the line editor is open");
   await view.act(async () => type(editor, "Välkomna allihop."));
   return { view, editor };
@@ -146,14 +194,14 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
         onNamesAdded: () => {},
       }),
     );
-  const trigger = (view: Awaited<ReturnType<typeof mountWith>>) => view.container.querySelector<HTMLButtonElement>('[data-detail-field="svar"]')!;
   const open = async (view: Awaited<ReturnType<typeof mountWith>>) => {
-    await view.act(async () => trigger(view).click());
+    const trigger = view.container.querySelector<HTMLButtonElement>('[data-detail-field="svar"]')!;
+    await view.act(async () => trigger.click());
     return [...document.querySelectorAll<HTMLElement>('[role="option"]')];
   };
 
   const chosen = await mountWith("inget-val");
-  assert.equal(trigger(chosen).textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
+  assert.equal(chosen.container.querySelector('[data-detail-field="svar"]')?.textContent?.trim(), "inget-val", "the chosen option, not 'no choice'");
   assert.deepEqual((await open(chosen)).map((option) => option.textContent?.trim()), ["Inget val", "inget-val", "Ja", "opt:0"]);
   await chosen.unmount();
 
@@ -170,6 +218,29 @@ test("a choice field keeps every option Eneo sends, also one that reads like 'no
     assert.deepEqual(changes.at(-1), ["svar", expected], label);
     await view.unmount();
   }
+});
+
+test("a refused start puts focus on the first detail that blocks it, whatever kind of field it is", async () => {
+  const { createElement } = await import("react");
+  const { DetailsForm, createDocument } = await import("../components/flow/DetailsForm");
+  const fields = [
+    { name: "arende", label: "Ärende", type: "text", required: true },
+    { name: "typ", label: "Mötestyp", type: "select", options: ["Nämnd", "Styrelse"], required: true },
+    { name: "deltagare", label: "Deltagare", type: "list", required: true },
+  ] as import("./api").FormField[];
+  const view = await mount(
+    createElement(DetailsForm, { fields, details: {}, invalid: [], onChange: () => {}, suggestions: [], onNamesAdded: () => {} }),
+  );
+  for (const [name, role] of [["arende", "INPUT"], ["typ", "BUTTON"], ["deltagare", "INPUT"]] as const) {
+    const session = { createDocument: async () => false, getSnapshot: () => ({ invalid: [name] }) } as unknown as import("./flow-session").FlowSession;
+    await view.act(async () => {
+      await createDocument(session);
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    assert.equal(document.activeElement?.tagName, role, name);
+    assert.equal(document.activeElement?.closest("[data-detail-field], [role=group]")?.querySelector("[data-detail-field]")?.getAttribute("data-detail-field") ?? document.activeElement?.getAttribute("data-detail-field"), name);
+  }
+  await view.unmount();
 });
 
 test("the microphone test uses the device recording will use, and shows it, also before the names are known", async () => {
@@ -213,6 +284,95 @@ test("the microphone test uses the device recording will use, and shows it, also
   localStorage.clear();
 });
 
+/** A microphone the browser has, by what it answers: devices (named once allowed) and what asking for one does. */
+function stubMicrophones(devices: [string, string][], getUserMedia: () => Promise<unknown>) {
+  Object.defineProperty(navigator, "mediaDevices", {
+    configurable: true,
+    value: {
+      addEventListener() {},
+      removeEventListener() {},
+      enumerateDevices: async () => devices.map(([deviceId, label]) => ({ kind: "audioinput", deviceId, label, groupId: deviceId })),
+      getUserMedia,
+    },
+  });
+}
+
+test("a microphone the browser refuses is said with what to do, and Försök igen asks again", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  let asked = 0;
+  stubMicrophones([], async () => {
+    asked += 1;
+    throw new DOMException("denied", "NotAllowedError");
+  });
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.match(view.container.textContent ?? "", /Appen fick inte använda mikrofonen\.Tillåt mikrofonen i webbläsarens inställningar/);
+  assert.equal(button(view.container, "Testa mikrofonen") !== null, true, "no test is running");
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.equal(asked, 2);
+  await view.unmount();
+});
+
+test("a remembered microphone that is gone falls back to Standard and says so", async () => {
+  const { createElement } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  stubMicrophones(
+    [["default", "Standard – Inbyggd mikrofon"], ["mac", "Inbyggd mikrofon"]],
+    async () => ({ getTracks: () => [], getAudioTracks: () => [] }),
+  );
+  localStorage.setItem("tal-till-text:microphone", "gone");
+  const view = await mount(createElement(MicrophoneCheck, { active: true }));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.match(view.container.textContent ?? "", /Den valda mikrofonen hittades inte\. Standard används\./);
+  await view.unmount();
+  localStorage.clear();
+});
+
+test("the microphone test lets go of the microphone when recording starts", async () => {
+  const { createElement, useState } = await import("react");
+  const { MicrophoneCheck } = await import("../components/flow/MicrophoneCheck");
+  let stopped = 0;
+  stubMicrophones([["default", "Standard"]], async () => ({ getTracks: () => [{ stop: () => (stopped += 1) }], getAudioTracks: () => [] }));
+  let setActive: (on: boolean) => void = () => {};
+  function Page() {
+    const [active, set] = useState(true);
+    setActive = set;
+    return createElement(MicrophoneCheck, { active });
+  }
+  const view = await mount(createElement(Page));
+  await view.act(async () => button(view.container, "Testa mikrofonen")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.ok(button(view.container, "Sluta testa"), "the test is running");
+  assert.equal(stopped, 0);
+  await view.act(async () => setActive(false));
+  assert.equal(stopped, 1, "the recording gets the microphone");
+  assert.ok(button(view.container, "Testa mikrofonen"));
+  await view.unmount();
+});
+
+test("earlier runs: Visa fler körningar puts the focus on the first run it added, so the keyboard goes on from there", async () => {
+  const { createElement, useState } = await import("react");
+  const { EarlierRuns } = await import("../components/flow/EarlierRuns");
+  const run = (id: string) => ({ id, flow_id: "flow-1", status: "completed", created_at: new Date().toISOString() });
+  function Page() {
+    const [runs, setRuns] = useState([run("a")]);
+    return createElement(EarlierRuns, {
+      list: { runs, hasMore: runs.length < 3, loading: false, failed: null },
+      onOpen: () => {},
+      onMore: () => setRuns([run("a"), run("b"), run("c")]),
+    });
+  }
+  const view = await mount(createElement(Page));
+  await view.act(async () => button(view.container, "Visa fler körningar")!.click());
+  const opens = [...view.container.querySelectorAll("[data-open-run]")];
+  assert.equal(opens.length, 3);
+  assert.equal(document.activeElement, opens[1], "the first of the added runs, not the top of the list");
+  assert.equal(button(view.container, "Visa fler körningar"), null, "all shown: no more to show");
+  await view.unmount();
+});
+
 test("upload: the whole drop zone opens the file chooser, the chooser knows the flow's extensions, and the zone is no extra Tab stop", async () => {
   const { createElement, createRef } = await import("react");
   const { UploadPanel } = await import("../components/flow/UploadPanel");
@@ -236,6 +396,37 @@ test("upload: the whole drop zone opens the file chooser, the chooser knows the 
   Object.defineProperty(input, "files", { value: [new File(["# Plan"], "underlag.md")], configurable: true });
   await view.act(async () => input.dispatchEvent(new Event("change", { bubbles: true })));
   assert.deepEqual(chosen, ["underlag.md"]);
+  await view.unmount();
+});
+
+test("upload: a file dropped on the zone is chosen, the first of several; something dragged that is no file is left alone", async () => {
+  const { createElement, createRef } = await import("react");
+  const { UploadPanel } = await import("../components/flow/UploadPanel");
+  const chosen: string[] = [];
+  const view = await mount(
+    createElement(UploadPanel, { step: null, file: null, audio: true, inputRef: createRef<HTMLInputElement>(), onChoose: (file: File) => chosen.push(file.name) }),
+  );
+  const zone = view.container.querySelector<HTMLElement>("[data-drop-zone]")!;
+  const drag = (type: string, types: string[], files: File[] = []) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { types, files } });
+    zone.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  let over = true;
+  await view.act(async () => {
+    over = drag("dragover", ["text/plain"]);
+  });
+  assert.equal(over, false, "a dragged text is not taken: the browser's own handling stays");
+  await view.act(async () => void drag("drop", ["text/plain"]));
+  // Dropping with no file in it (the guard was only on the drag over) chooses nothing.
+  assert.deepEqual(chosen, []);
+  await view.act(async () => {
+    over = drag("dragover", ["Files"]);
+  });
+  assert.equal(over, true, "a file is welcome");
+  await view.act(async () => void drag("drop", ["Files"], [new File(["a"], "forst.mp3"), new File(["b"], "andra.mp3")]));
+  assert.deepEqual(chosen, ["forst.mp3"], "the first file only");
   await view.unmount();
 });
 
@@ -344,6 +535,135 @@ test("a run's tab title names its state and its flow, so tabs and history entrie
   await failed.unmount();
 });
 
+test("the folded steps open on their trigger, say so in its label, and fold again", async () => {
+  const { createElement } = await import("react");
+  const { StepDetails } = await import("../components/flow/StepDetails");
+  const steps = [
+    { order: 1, label: "Transkribera mötet", state: "done" as const, transcribes: true, note: null },
+    { order: 2, label: "Skapa rapport", state: "waiting" as const, transcribes: false, note: "Här granskar du resultatet." },
+  ];
+  const view = await mount(createElement(StepDetails, { steps, version: 3 }));
+  const trigger = () => view.container.querySelector<HTMLButtonElement>("button[aria-expanded]")!;
+  assert.equal(trigger().getAttribute("aria-expanded"), "false", "closed to begin with");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "true");
+  assert.equal(trigger().textContent, "Dölj hur resultatet togs fram 2 steg");
+  await view.act(async () => trigger().click());
+  assert.equal(trigger().getAttribute("aria-expanded"), "false");
+  assert.equal(trigger().textContent, "Hur resultatet togs fram 2 steg");
+  await view.unmount();
+});
+
+/** A running view with its cancel question, and the question's dialog as the page has it. */
+async function mountRunning(onCancel: () => Promise<void>, extra: Record<string, unknown> = {}) {
+  const { createElement } = await import("react");
+  const { RunProgress } = await import("../components/flow/RunProgress");
+  const view = await mount(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel, ...extra }));
+  const question = () => document.body.querySelector<HTMLDialogElement>('dialog[role="alertdialog"]')!;
+  const ask = () => view.act(async () => button(view.container, "Avbryt körningen")!.click());
+  return { view, question, ask };
+}
+
+test("the cancel question: Kör vidare leaves the run alone, Avbryt körningen cancels it once and closes the question", async () => {
+  let cancelled = 0;
+  const { view, question, ask } = await mountRunning(async () => void (cancelled += 1));
+  assert.equal(question().hasAttribute("open"), false, "not asked until the button is pressed");
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.match(question().textContent ?? "", /Avbryta körningen\?.*Flödet slutar arbeta och inget dokument skapas\./);
+
+  await view.act(async () => button(question(), "Kör vidare")!.click());
+  assert.equal(question().hasAttribute("open"), false);
+  assert.equal(cancelled, 0);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(question().hasAttribute("open"), false, "answered, so closed");
+  assert.equal(cancelled, 1);
+  await view.unmount();
+});
+
+test("a cancel that is on its way keeps its button off until Eneo has answered, and a refusal shows once as an alert", async () => {
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  const { view, question, ask } = await mountRunning(() => pending, { error: "Körningen kunde inte avbrytas just nu." });
+  const trigger = () => button(view.container, "Avbryt körningen")!;
+  assert.equal(view.container.querySelectorAll('[role="alert"]').length, 1);
+  assert.match(view.container.querySelector('[role="alert"]')?.textContent ?? "", /Körningen kunde inte avbrytas just nu\./);
+  assert.equal(trigger().disabled, false);
+
+  await ask();
+  await view.act(async () => button(question(), "Avbryt körningen")!.click());
+  assert.equal(trigger().disabled, true, "pressed twice, cancelled once");
+  assert.equal(trigger().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(trigger().disabled, false, "free again once it is settled");
+  await view.unmount();
+});
+
+test("a run that ends while its cancel question is open takes the question and the page's lock with it", async () => {
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  await ask();
+  assert.equal(question().hasAttribute("open"), true);
+  assert.equal(document.body.style.position, "fixed", "the page is held still while it is asked");
+  await view.unmount();
+  assert.equal(document.body.querySelector("dialog[open]"), null, "no question left open");
+  assert.equal(document.body.style.position, "", "the page scrolls again");
+  assert.equal(document.body.style.overflow, "");
+});
+
+test("the cancel question is closed while the login has ended and asked again after the new one", async () => {
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna" };
+  const end = loginState.begin(anna);
+  const { view, question, ask } = await mountRunning(async () => undefined);
+  try {
+    await ask();
+    assert.equal(question().hasAttribute("open"), true);
+    await view.act(async () => loginState.ended());
+    assert.equal(question().hasAttribute("open"), false, "a native dialog would stay above the covered page");
+    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    assert.equal(question().hasAttribute("open"), true, "back, as it was asked");
+  } finally {
+    end();
+    await view.unmount();
+  }
+});
+
+test("Försök igen on a failed run is busy and off while Eneo answers, so a second press cannot start it twice", async () => {
+  const { createElement } = await import("react");
+  const { RunFailure } = await import("../components/flow/RunFailure");
+  let answer: () => void = () => undefined;
+  const pending = new Promise<void>((resolve) => (answer = resolve));
+  let retries = 0;
+  const view = await mount(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte",
+      run: { id: "run-1", status: "failed", error: { code: "flow_provider_unavailable", message: "x", retryable: true } },
+      failure: null,
+      steps: [],
+      stepResults: [],
+      files: [],
+      onRetry: () => {
+        retries += 1;
+        return pending;
+      },
+    }),
+  );
+  const retry = () => button(view.container, "Försök igen")!;
+  assert.equal(retry().disabled, false);
+  await view.act(async () => retry().click());
+  await view.act(async () => retry().click());
+  assert.equal(retries, 1);
+  assert.equal(retry().disabled, true);
+  assert.equal(retry().getAttribute("aria-busy"), "true");
+  await view.act(async () => answer());
+  assert.equal(retry().disabled, false, "free again once Eneo has answered");
+  await view.unmount();
+});
+
 test("a run of an earlier version of the flow shows no details labelled by today's form", async () => {
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
@@ -440,21 +760,24 @@ test("Back during an upload asks first and says what leaving stops", async () =>
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
   const view = await mount(await signedIn(createElement(Page), []));
-  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  // A native dialog stays in the tree while it is closed: open is its open attribute.
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   await view.act(async () => {
     window.history.back();
     await settle();
   });
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
-  assert.match(button(dialog()!, "Stanna kvar")!.className, /\bbg-primary\b/, "staying is the filled action");
-  assert.doesNotMatch(button(dialog()!, "Lämna sidan")!.className, /\bbg-primary\b/);
+  // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
+  assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
+  assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
+  assert.ok(document.activeElement === button(dialog()!, "Stanna kvar"), "staying has the focus");
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
-  assert.equal(dialog(), null);
+  assert.ok(!dialog(), "answered: closed");
   await view.unmount();
 });
 
-test("signed out, Back still asks in a dialog that is shown, focused and answerable, outside the covered page", async () => {
+test("signed out, Back still asks in a native dialog that is open, focused and answerable", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
@@ -468,13 +791,16 @@ test("signed out, Back still asks in a dialog that is shown, focused and answera
     window.history.back();
     await settle();
   });
-  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   assert.ok(dialog, "asked");
   // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
-  assert.ok(!dialog.closest("[inert]"), "not in the covered page");
+  // The question sits in the covered page's tree, and the browser lifts a modal dialog out of an inert ancestor:
+  // that, and its stacking above the sign-in dialog, are proved in tests/e2e/session-cover.spec.ts.
+  assert.equal(dialog.tagName, "DIALOG", "a native dialog");
+  assert.ok(dialog.hasAttribute("open"), "opened as a modal");
   assert.ok(dialog.contains(document.activeElement), "the focus is in the question");
   await view.act(async () => button(dialog, "Stanna kvar")!.click());
-  assert.equal(document.body.querySelector('[role="alertdialog"]'), null, "and it can be answered");
+  assert.ok(!document.body.querySelector('[role="alertdialog"][open]'), "and it can be answered");
   await view.unmount();
 });
 
@@ -504,7 +830,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
   }
   await settle(); // the history step the last test's guard took back
   const view = await mount(await signedIn(createElement(Review), navigated));
-  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
+  const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
   await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
   assert.ok(asked(), "Alla flöden asks");
@@ -738,11 +1064,69 @@ test("with reduced motion, the level meter still shows the microphone's level, w
     peak = 0;
     for (let i = 0; i < 60; i += 1) await view.act(async () => t.mock.timers.tick(66));
     assert.equal(lit(), 0, "and silence lets them go");
-    const bar = view.container.querySelector("span")!;
-    assert.match(bar.className, /motion-reduce:transition-none/);
   } finally {
     await view.unmount();
     page.AudioContext = browserAudio;
     page.matchMedia = browserMedia;
+  }
+});
+
+/** A stream the meter listens to, a microphone that hears `peak`, and the audio context of a browser that has one. */
+function listening(t: import("node:test").TestContext, peak: { value: number } | null) {
+  class FakeAudioContext {
+    state = "running";
+    resume = async () => undefined;
+    close = async () => undefined;
+    createMediaStreamSource = () => ({ connect: () => undefined, disconnect: () => undefined });
+    createAnalyser = () => ({ fftSize: 0, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(peak?.value ?? 0) });
+  }
+  const page = window as unknown as { AudioContext?: unknown; webkitAudioContext?: unknown };
+  const before = { audio: page.AudioContext, webkit: page.webkitAudioContext };
+  page.AudioContext = peak ? FakeAudioContext : undefined;
+  page.webkitAudioContext = undefined;
+  t.mock.timers.enable({ apis: ["setInterval"] });
+  return () => {
+    page.AudioContext = before.audio;
+    page.webkitAudioContext = before.webkit;
+  };
+}
+
+test("the level meter goes quiet when the stream ends, whichever way it is drawn", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const restore = listening(t, { value: 0.5 });
+  const stream = {} as MediaStream;
+  try {
+    for (const variant of ["steps", "wave"] as const) {
+      const view = await mount(createElement(LevelMeter, { stream, bars: 8, variant }));
+      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+      await view.act(async () => t.mock.timers.tick(66));
+      assert.ok(variant === "steps" ? bars.some((bar) => bar.dataset.lit === "true") : bars.some((bar) => bar.style.transform !== "" && bar.style.transform !== "scaleY(0.12)"), `${variant}: sound moves it`);
+      // Stopped, paused or revoked: the stream goes away and the meter settles at once, not at the next reading.
+      await view.act(async () => view.rerender(createElement(LevelMeter, { stream: null, bars: 8, variant })));
+      assert.ok(bars.every((bar) => bar.dataset.lit !== "true"), `${variant}: nothing lit`);
+      if (variant === "wave") assert.ok(bars.every((bar) => bar.style.transform === "scaleY(0.12)"), "wave: every bar at its rest height");
+      await view.unmount();
+    }
+  } finally {
+    restore();
+  }
+});
+
+test("a browser without an audio context still gets a level meter, at rest", async (t) => {
+  const { createElement } = await import("react");
+  const { LevelMeter } = await import("../components/flow/LevelMeter");
+  const restore = listening(t, null);
+  try {
+    for (const variant of ["steps", "wave"] as const) {
+      const view = await mount(createElement(LevelMeter, { stream: {} as MediaStream, bars: 8, variant }));
+      await view.act(async () => t.mock.timers.tick(500));
+      const bars = [...view.container.querySelectorAll<HTMLElement>("span")];
+      assert.equal(bars.length, 8, `${variant}: the bars are there`);
+      assert.ok(bars.every((bar) => bar.dataset.lit !== "true" && (variant === "steps" || bar.style.transform === "")), `${variant}: at rest`);
+      await view.unmount();
+    }
+  } finally {
+    restore();
   }
 });

@@ -405,7 +405,7 @@ export function correctionsFromResponse(response: {
       char_end: e.char_end === null ? null : offset(e.segment_index, e.char_end),
     })),
   };
-  if (![1, 2, 3].includes(version)) throw new Error(`Rättningarnas version (${version}) stöds inte. Uppdatera Lyssna innan du fortsätter.`);
+  if (![1, 2, 3].includes(version)) throw new Error(`Rättningarnas version (${version}) stöds inte. Uppdatera Tal till text innan du fortsätter.`);
   if (response.stale) throw new Error("Rättningarna gäller ett äldre transkript. Läs in det aktuella underlaget innan du fortsätter.");
   const occupiedText = new Map<number, [number, number][]>();
   for (const occurrence of response.occurrences) {
@@ -448,7 +448,7 @@ export function correctionsFromResponse(response: {
 /** Guard full-list writes until the original base hash is known. */
 export function correctionWriteProblem(set: CorrectionSet): string | null {
   const version = set.schemaVersion ?? 2;
-  if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Lyssna.";
+  if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Tal till text.";
   if (version >= 3 && !/^[0-9a-f]{64}$/.test(set.segmentsHash ?? "")) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
     return "Talarbeslut kräver Eneos uppdaterade transkriptunderlag.";

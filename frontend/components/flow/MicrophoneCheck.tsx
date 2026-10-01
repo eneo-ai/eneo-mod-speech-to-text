@@ -2,12 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Selector } from "@astryxdesign/core/Selector";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
-import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { VStack } from "@astryxdesign/core/VStack";
 import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { browserStorage, microphoneProblem, type Problem } from "@/lib/flow-session";
@@ -20,7 +18,7 @@ import {
   setPreferredMicrophone,
 } from "@/lib/microphone";
 
-// The selector takes no empty value; Standard is "" everywhere else.
+// The picker takes no empty value; Standard is "" everywhere else.
 const STANDARD = "standard";
 
 /**
@@ -92,19 +90,17 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
     if (stream) void test(id);
   }
 
-  const status = stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : "";
   return (
-    <VStack gap={3}>
+    <VStack gap={2}>
       {/* Beside each other where there is room; the test below the picker where there is not. */}
       <HStack gap={3} wrap="wrap" align="end">
+        {/* Its list is a popover, as the page's other overlays are covered with it when the login ends: the touch screen's
+            bottom sheet is a modal dialog of its own, which would stay above the covered page. */}
         <Selector
           label="Mikrofon"
           options={choices.map((choice) => ({ value: choice.value || STANDARD, label: choice.label }))}
           value={value || STANDARD}
           onChange={(next) => choose(next === STANDARD ? "" : next)}
-          presentation="adaptive"
-          // Below the picker, not over it: the default puts the open list on the picker, hiding the control that has focus.
-          placement="below"
           description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
           width="min(100%, 24rem)"
         />
@@ -115,16 +111,16 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           onClick={() => (stream ? setStream(null) : void test())}
         />
       </HStack>
-      {stream && <LevelMeter stream={stream} bars={24} variant="steps" className="h-6" />}
-      {/* Always rendered, so a screen reader hears the change once; the same words are for the eye while it is tested. */}
-      <VisuallyHidden as="p" role="status">
-        {status}
-      </VisuallyHidden>
+      {/* The bars take their height from the row they stand in. */}
       {stream && (
-        <Text as="p" type="supporting" aria-hidden>
-          {status}
-        </Text>
+        <HStack height={24}>
+          <LevelMeter stream={stream} bars={24} variant="steps" />
+        </HStack>
       )}
+      {/* Always rendered, so a screen reader hears the change once. */}
+      <Text as="p" role="status" type="supporting">
+        {stream ? (heard ? "Mikrofonen hör dig." : "Säg något för att se att mikrofonen hör dig.") : ""}
+      </Text>
       {problem && <ProblemAlert problem={problem} onRetry={() => void test()} />}
     </VStack>
   );

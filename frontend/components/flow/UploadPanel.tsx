@@ -4,15 +4,14 @@ import { FileAudio, FileText, Upload } from "lucide-react";
 import { useId, useState, type DragEvent, type Ref } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { VStack } from "@astryxdesign/core/VStack";
 import type { RunContractStepInput } from "@/lib/api";
 import { acceptedFormats, fileAccept, type ChosenFile } from "@/lib/flow-session";
 import { formatBytes, formatDuration } from "@/lib/format";
-import styles from "./UploadPanel.module.css";
+import styles from "@/components/flow/UploadPanel.module.css";
 
 /**
  * Ladda upp: the file chooser, what the flow takes, a zone to click or drop a
@@ -60,8 +59,7 @@ export function UploadPanel({
     },
   };
 
-  // One keyboard stop: the primary action. The zone is a larger place to click, not a control of its own.
-  // A real file input stays (hidden): the page's primary action opens its chooser, and a test sets its files.
+  // One keyboard stop: the primary action. The zone is a larger place to click, and opens the same chooser.
   const chooser = (
     <input
       ref={inputRef}
@@ -78,8 +76,8 @@ export function UploadPanel({
       }}
     />
   );
-  const choose = () => document.getElementById(inputId)?.click();
-  const FileIcon = audio ? FileAudio : FileText;
+  const openChooser = () => document.getElementById(inputId)?.click();
+  const FileGlyph = audio ? FileAudio : FileText;
   // In the same place whichever view shows, so the choice is said once.
   const chosenStatus = (
     <VisuallyHidden as="p" role="status">
@@ -92,10 +90,10 @@ export function UploadPanel({
       <>
         {chooser}
         {chosenStatus}
-        <Card padding={4} variant={dragging ? "blue" : "default"} {...dropTarget}>
-          <HStack gap={3} hAlign="between" align="center">
-            <HStack gap={3} align="center">
-              <Icon icon={FileIcon} color="accent" />
+        <Card {...dropTarget} padding={4} variant={dragging ? "blue" : "default"}>
+          <HStack gap={3} align="center">
+            <Icon icon={FileGlyph} size="lg" color="accent" />
+            <StackItem size="fill">
               <VStack gap={0.5}>
                 <Text weight="medium">{file.filename}</Text>
                 <Text type="supporting">
@@ -103,8 +101,8 @@ export function UploadPanel({
                   {file.durationMs != null && ` · ${formatDuration(file.durationMs)}`}
                 </Text>
               </VStack>
-            </HStack>
-            <Button label="Byt fil" variant="secondary" onClick={choose} />
+            </StackItem>
+            <Button label="Byt fil" variant="secondary" onClick={openChooser} />
           </HStack>
         </Card>
       </>
@@ -115,23 +113,22 @@ export function UploadPanel({
     <>
       {chooser}
       {chosenStatus}
-      <Card padding={5} variant={dragging ? "blue" : "default"} data-drop-zone className={styles.zone} onClick={choose} {...dropTarget}>
+      <Card data-drop-zone {...dropTarget} onClick={openChooser} padding={5} variant={dragging ? "blue" : "default"} className={styles.zone}>
         <VStack hAlign="center" gap={2}>
-          <Icon icon={Upload} color="accent" />
-          <Text weight="medium" justify="center" className={styles.fineOnly}>
+          <Icon icon={Upload} size="lg" color="accent" />
+          {/* Only where a file can be dragged: a mouse on a screen wide enough for the page beside it. */}
+          <Text weight="medium" className={styles.fineOnly}>
             {audio ? "Dra en ljudfil hit eller klicka för att välja en." : "Dra en fil hit eller klicka för att välja en."}
           </Text>
-          {takes && (
-            <Text type="supporting" justify="center">
-              Flödet tar emot {takes}.
-            </Text>
-          )}
+          {takes && <Text type="supporting">Flödet tar emot {takes}.</Text>}
         </VStack>
       </Card>
       {optional && (
-        <HStack hAlign="between" align="center" gap={3} wrap="wrap">
-          <Text color="secondary">{audio ? "Ljudfilen" : "Filen"} är valfri.</Text>
-          <Button label={audio ? "Välj ljudfil" : "Välj fil"} variant="secondary" onClick={choose} />
+        <HStack justify="between" align="center" wrap="wrap" gap={3}>
+          <Text as="p" color="secondary">
+            {audio ? "Ljudfilen" : "Filen"} är valfri.
+          </Text>
+          <Button label={audio ? "Välj ljudfil" : "Välj fil"} variant="secondary" onClick={openChooser} />
         </HStack>
       )}
     </>

@@ -44,5 +44,20 @@ class DeploymentComposeTests(unittest.TestCase):
         )
 
 
+class BrandingSettingsReachTheBackendTests(unittest.TestCase):
+    def test_every_organization_setting_is_passed_to_the_backend_service(self) -> None:
+        compose = COMPOSE_FILE.read_text()
+        for name in (
+            "ORGANIZATION_NAME",
+            "ORGANIZATION_LOGO",
+            "ORGANIZATION_LOGO_DARK",
+            "SHOW_ORGANIZATION",
+            "ORGANIZATION_ACCENT",
+            "ORGANIZATION_ACCENT_DARK",
+        ):
+            with self.subTest(name=name):
+                self.assertRegex(compose, rf"(?m)^      {name}: \$\{{{name}:-", msg=f"{name} is not passed through docker-compose.yml")
+
+
 if __name__ == "__main__":
     unittest.main()
