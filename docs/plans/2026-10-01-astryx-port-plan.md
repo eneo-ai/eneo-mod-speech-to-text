@@ -29,6 +29,13 @@
 - No third-party network request: no font link, no CDN. The CSP in `next.config.mjs` is not changed.
 - State that must survive a dialog closing lives above the dialog, never inside it.
 - ARIA snapshots are updated only for the surface being ported, and only after reading the diff: `npm run test:a11y -- aria.spec.ts --update-snapshots -g "<state>"`.
+- **Performance and resource guards (added 2026-10-01, measured on a production build).** The port must not make the module slower or heavier than today, except transitionally while both UI systems are in the tree.
+  - Baseline of `main` (+ `next` 16.3.8), compressed transfer, Chromium: `/flows` 226 KB JS + 15.6 KB CSS; `/flows/flow-1` 359 KB JS + 15.6 KB CSS. On a throttled phone (4x CPU, 1.6 Mbit/s, 150 ms): LCP 2.4 s on `/flows` and 2.8 s on `/flows/flow-1`, total blocking time 100–134 ms, JS heap 4–6 MB.
+  - `tests/prod/weight.spec.ts` fails when a page's compressed JS + CSS exceeds `tests/prod/weight-budget.json`. A phase that raises the budget says why in its pull request. **Phase 8 sets the budget back to at most the baseline above.**
+  - The built theme must be used: no `<style data-astryx-theme*>` element may exist after load (that is runtime style generation on every page load).
+  - Every overlay (menu, picker, dialog, alert dialog, bottom sheet) must leave no DOM nodes or event listeners behind: `tests/e2e/leaks.spec.ts` opens and closes each 40 times and compares Chromium's DOM counters. A new overlay surface is added to that spec in the phase that ports it.
+  - Nothing is loaded that the page does not use: a locale catalog, icon set or component is imported where it is used, not in a shared barrel. Check `weight.spec.ts` after adding an import from `@astryxdesign/core`.
+  - Measure before and after a phase with `node docs/plans/page-cost.cjs <frontend dir> <base url> <label>` (needs the production build served with the stub: see Task 0.6, Step 1) and put the table in the pull request.
 - One phase is one pull request. The app is deployable after each. Commit after every task. Push or open a pull request only when the owner asks.
 - Branches: Phase 0 goes to `main`. Phases 1–7 go to the integration branch `feat/astryx` so users never see half-ported screens; it is merged to `main` once, after Phase 7. Merge `main` into it at the start of every phase.
 
@@ -334,6 +341,21 @@ git add -A && git commit -m "chore: Node 22 in the devcontainer and agent instru
 
 - [ ] **Step 3: Commit.** `git commit -am "ci: check the design system, the built theme and the browser gate"`
 
+### Task 0.6: Performance and resource guards
+
+**Files:**
+- Create: `frontend/tests/prod/weight.spec.ts`, `frontend/tests/prod/weight-budget.json`, `frontend/tests/e2e/leaks.spec.ts`
+- Modify: `frontend/playwright.prod.config.ts` (nothing if the new spec is picked up by its `testDir`), `frontend/app/dev/foundation/FoundationCheck.tsx` only if an overlay is missing from it.
+
+**Interfaces — Produces:** `weight-budget.json` is `{ "/flows": { "jsKB": number, "cssKB": number }, "/flows/flow-1": { ... } }`, compressed transfer sizes in KB (1 KB = 1024 B).
+
+- [ ] **Step 1: Measure first.** From `frontend/`, with the production build running against the stub (`npm run test:prod` starts it on 3411/8411; or build with `INTERNAL_API_BASE=http://127.0.0.1:8411` and `npx next start -p 3411` — the rewrite target is baked in at build time, a build without it shows "Kunde inte kontakta modulen" and is not a valid measurement), run a Playwright script that loads `/flows` and `/flows/flow-1` in Chromium and sums `await request.sizes()` → `responseBodySize + responseHeadersSize` for `script` and `stylesheet` requests. Write the numbers for the foundation branch next to the baseline in the Task's pull request text.
+- [ ] **Step 2: `weight.spec.ts`** (Chromium project only): the same measurement as a test; it fails when a page is above `weight-budget.json`; the message names the page, the number, the budget and says "raise the budget only with a reason in the pull request; Phase 8 returns it to the 2026-10-01 baseline". Initial budget = the foundation numbers rounded up to the next 5 KB.
+- [ ] **Step 3: The built theme is used.** In the same spec: after `/flows` has loaded, `page.locator("style[data-astryx-theme], style[data-astryx-theme-prose], style[data-astryx-theme-base]")` has count 0. Prove it can fail: temporarily import the unbuilt theme in `kit/ModuleProviders.tsx`, see the test fail, revert.
+- [ ] **Step 4: `leaks.spec.ts`** (project `laptop-1440-light` only; Chromium): on `/dev/foundation`, record `Memory.getDOMCounters` (`nodes`, `jsEventListeners`) through a CDP session after one warm-up open/close of each overlay and a forced GC (`HeapProfiler.collectGarbage`); then open and close, 40 times each, the account menu, the speaker picker, the dialog and the alert dialog; collect garbage again; expect `nodes` and `jsEventListeners` each within +20 of the warm-up values and `performance.memory.usedJSHeapSize` within +1.5 MB (launch Chromium with `--enable-precise-memory-info`). If a number is off, find the leak (a listener added in an effect without cleanup, a portal not removed) and report it as a finding; never raise the slack to pass.
+- [ ] **Step 5: Run** `npm run test:prod` and `npm run test:a11y -- leaks.spec.ts --project=laptop-1440-light`. Expected: all pass.
+- [ ] **Step 6: Commit.** `test(perf): a page-weight budget, a built-theme check and an overlay leak test`
+
 ### Phase 0 exit
 
 All of these hold, with no threshold changed:
@@ -346,6 +368,7 @@ All of these hold, with no threshold changed:
 | Theme | `color-mode.spec.ts` passes: 0 frames in the wrong mode. `test:prod` sees accent `rgb(0, 69, 149)`. |
 | Cover | `session-cover.spec.ts` passes. |
 | Maintenance | No ejected component, no StyleX, no changed threshold. |
+| Cost | `weight.spec.ts`, `leaks.spec.ts` and the no-runtime-theme check pass; the Phase 0 numbers (Task 0.6) are in the pull request next to the baseline. |
 
 Then open the pull request for Phase 0 to `main` when the owner asks. Ask the owner to try sign-in and one menu on a Safari 17 or 18 device against a preview of this branch's foundation page, and record the result in the pull request.
 
