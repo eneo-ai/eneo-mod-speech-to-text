@@ -105,6 +105,15 @@ test("the name list opens with its chevron and closes with it again; a press out
   await expect(field).toBeFocused();
 });
 
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+  await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  await page.unroute("**/input-files/*/audio");
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();

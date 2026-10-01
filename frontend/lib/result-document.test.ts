@@ -173,13 +173,16 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
   assert.deepEqual([...panels].map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
 
-  const search = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  // The search is found by the name a screen reader gives it: the design system's input is named by its label.
+  const searchBox = () => [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
+  const search = searchBox();
   await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
   await view.act(async () => tab("Dokument").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
   await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  assert.equal(view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!.value, "punkten", "the search is kept");
+  assert.equal(searchBox().value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
   // Nothing has played: no pause beside the document yet.
   assert.ok(!view.container.querySelector("[data-docked-player] button[aria-label='Pausa uppspelningen']"));
@@ -232,7 +235,7 @@ test("a failed later save keeps the note that the document is older, and says wh
 
   // A later correction fails to save.
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] button[role="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
   await view.act(async () => button(document.body, "Spara")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.ok(note(), "still said: the document is older than the saved corrections");

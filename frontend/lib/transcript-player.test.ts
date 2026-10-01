@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
@@ -214,11 +215,16 @@ test("no instruction lines: the pencil names its passage and is fully there for 
   );
   const shown = html.replace(/<[^>]+>/g, " ");
   assert.doesNotMatch(shown, /hovra|klicka|Peka på|Tryck på pennan/i);
-  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"[^>]*class="([^"]*)"/g)];
+  const pencils = [...html.matchAll(/<button[^>]*aria-label="Rätta repliken från ([^"]+)"/g)];
   // Each with its part, as the play button: the two parts both start at 0:00.
   assert.deepEqual(pencils.map(([, time]) => time), ["0:00 i del 1", "0:02 i del 1", "0:00 i del 2"]);
   // Never hidden until hovered: a mouse user would not learn the action exists.
-  for (const [, , classes] of pencils) assert.doesNotMatch(classes, /opacity-0|(^|\s)w-0(\s|$)|group-hover/);
+  const css = readFileSync("components/TranscriptPlayer.module.css", "utf8");
+  const rules = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].filter(([, selector]) => /\.correct\b/.test(selector));
+  assert.ok(rules.length > 0, "the pencil's rules are in the module");
+  for (const [, selector, body] of rules) {
+    assert.doesNotMatch(body, /opacity:\s*0|display:\s*none|inline-size:\s*0|visibility:\s*hidden/, `${selector.trim()} hides it`);
+  }
   // Each passage is a list item named by who speaks and when.
   assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
 });

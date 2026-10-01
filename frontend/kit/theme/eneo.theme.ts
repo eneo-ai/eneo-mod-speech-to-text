@@ -44,6 +44,8 @@ export const eneoTheme = defineTheme({
     item: {base: {overflowWrap: 'anywhere'}},
     // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
     'collapsible-trigger': {base: {minHeight: '24px'}},
+    // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
+    'toggle-button-group': {base: {flexWrap: 'wrap'}},
   },
   adaptations: {
     rules: [

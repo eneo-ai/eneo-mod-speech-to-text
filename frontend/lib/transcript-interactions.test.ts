@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
+import { computeAccessibleName } from "dom-accessibility-api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
 import type { CorrectionSet } from "./transcript-corrections";
 import type { TranscriptSegment } from "./transcript";
@@ -35,14 +36,23 @@ async function player(segments: TranscriptSegment[], props: Record<string, unkno
 
 const passages = (within: ParentNode) =>
   [...within.querySelectorAll<HTMLLIElement>("li[data-turn-index]")].map((li) => li.getAttribute("aria-label"));
-const status = (within: ParentNode) => within.querySelector('[role="status"]')?.textContent ?? "";
+// The count is the paragraph that says it: the design system's buttons hold live regions of their own.
+const status = (within: ParentNode) => within.querySelector('p[role="status"]')?.textContent ?? "";
 const chip = (within: ParentNode, words: string) =>
   [...within.querySelectorAll<HTMLButtonElement>('[aria-label="Visa talare"] button')].find((b) => b.textContent?.includes(words))!;
-const pick = (value: string) => document.querySelector<HTMLButtonElement>(`[role="dialog"] button[role="radio"][value="${value}"]`)!;
+const searchField = (within: ParentNode) =>
+  [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
+// "Ändra talare" is a popover of the top layer; its choices are radios, named by their words.
+const picker = () => document.querySelector("[data-popover-open]");
+const radios = (within = "[data-popover-open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];
+const radio = (name: string) => radios().find((input) => computeAccessibleName(input) === name)!;
+const pick = (value: string) => radios().find((input) => input.value === value)!;
+// The speakers to choose from are the picker's first group of radios; the scope ("Gäller") is the second.
+const speakerRadios = () => [...(document.querySelector('[data-popover-open] [role="radiogroup"]')?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
 
 test("search counts the hits, marks them, and steps through them with buttons and Enter", async () => {
   const view = await player(meeting);
-  const field = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
+  const field = searchField(view.container);
   assert.equal(status(view.container), "", "no count before there is something to look for");
   await view.act(async () => type(field, "punkten"));
   assert.equal(status(view.container), "Träff 1 av 3");
@@ -66,12 +76,13 @@ test("search counts the hits, marks them, and steps through them with buttons an
 
 test("the speaker row filters and does nothing else; the search follows the filter", async () => {
   const view = await player(meeting);
-  assert.equal(chip(view.container, "Talare 1").textContent, "1Talare 1", "the mark and the name, no count");
+  assert.equal(computeAccessibleName(chip(view.container, "Talare 1")), "Talare 1", "named by the name, no count");
+  assert.ok(chip(view.container, "Talare 1").querySelector("[data-speaker-color]"), "with the speaker's mark");
   await view.act(async () => chip(view.container, "Talare 2").click());
   assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
-  assert.ok(!document.querySelector('[role="dialog"]'), "a chip opens nothing");
+  assert.ok(!picker(), "a chip opens nothing");
 
-  const field = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
+  const field = searchField(view.container);
   await view.act(async () => type(field, "punkt"));
   assert.equal(status(view.container), "Träff 1 av 2", "only the passages shown are searched");
 
@@ -84,7 +95,7 @@ test("by default Ändra talare moves the one passage", async () => {
   const saved: CorrectionSet[] = [];
   const view = await player(meeting, { editable: true, corrections: EMPTY, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  assert.equal(button(document.body, "Bara det här inlägget")!.getAttribute("data-state"), "on", "this passage alone unless widened");
+  assert.equal(radio("Bara det här inlägget").checked, true, "this passage alone unless widened");
   await view.act(async () => pick("SPEAKER_01").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.deepEqual(saved[0].speaker_edits.map((e) => e.segment_index), [0]);
@@ -94,7 +105,7 @@ test("Alla N inlägg från … is chosen, and writes one whole-passage edit for 
   const saved: CorrectionSet[] = [];
   const view = await player(meeting, { editable: true, corrections: EMPTY, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => button(document.body, "Alla 2 inlägg från Talare 1")!.click());
+  await view.act(async () => radio("Alla 2 inlägg från Talare 1").click());
   await view.act(async () => pick("SPEAKER_01").click());
   await view.act(async () => button(document.body, "Spara")!.click());
 
@@ -128,17 +139,17 @@ test("an uncertain passage keeps Eneo's words in the name slot, and one action: 
 
   // The passages to check are a filter set apart from the speakers: after a divider, counted as a to-do.
   const toDo = chip(view.container, "Osäkra");
-  assert.equal(toDo.textContent, "Osäkra (1)");
+  assert.equal(computeAccessibleName(toDo), "Osäkra (1)");
   assert.equal(toDo.previousElementSibling?.getAttribute("data-orientation"), "vertical", "after a divider");
   await view.act(async () => toDo.click());
   assert.deepEqual(passages(view.container), ["Överlappande tal – osäker talare, 0:02"]);
   await view.act(async () => chip(view.container, "Alla").click());
 
   await view.act(async () => button(view.container, "Ändra talare")!.click());
-  const options = [...document.querySelectorAll('[role="dialog"] label')].map((l) => l.textContent?.trim());
-  assert.equal(options[0], "2Det stämmer: Talare 2", "first: the speaker Eneo put there is right");
-  assert.equal(options[options.length - 1], "?Går inte att avgöra", "last: it cannot be told");
-  assert.equal(button(document.body, "Bara det här inlägget")!.getAttribute("data-state"), "on");
+  const options = speakerRadios().map((input) => computeAccessibleName(input));
+  assert.equal(options[0], "Det stämmer: Talare 2", "first: the speaker Eneo put there is right");
+  assert.equal(options[options.length - 1], "Går inte att avgöra", "last: it cannot be told");
+  assert.equal(radio("Bara det här inlägget").checked, true);
   await view.act(async () => pick("SPEAKER_00").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.deepEqual(
@@ -160,7 +171,7 @@ test("Det stämmer confirms the speaker, and Går inte att avgöra is a decision
   const view = await player(toCheck, { editable: true, corrections: v3, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
   await view.act(async () => button(view.container, "Ändra talare")!.click());
   await view.act(async () => pick("__unresolved").click());
-  assert.ok(!button(document.body, "Bara det här inlägget"), "no scope for a passage-only decision");
+  assert.equal(radios().find((input) => computeAccessibleName(input) === "Bara det här inlägget"), undefined, "no scope for a passage-only decision");
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.deepEqual(saved[0].speaker_edits.map((e) => [e.segment_index, e.decision, e.speaker]), [[1, "unresolved", null]]);
 });
@@ -179,7 +190,7 @@ test("a transcript without speakers reads as paragraphs: no speaker row, marks o
   assert.ok(!view.container.querySelector('[aria-label="Visa talare"]'), "no speaker row");
   assert.doesNotMatch(view.container.textContent ?? "", /Talare|Okänd/);
   assert.deepEqual(passages(view.container), ["0:00", "0:24"], "one paragraph per timed block");
-  assert.ok(view.container.querySelector('input[aria-label="Sök i transkriptet"]'));
+  assert.ok(searchField(view.container));
 });
 
 test("a bulk change past Eneo's cap on speaker edits is refused before anything is sent", async () => {
@@ -198,7 +209,7 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
     editable: true, corrections: existing, speakerOptions: ["SPEAKER_02"], onCorrectionsChange: (next: CorrectionSet) => saved.push(next),
   });
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => button(document.body, "Alla 1001 inlägg från Talare 1")!.click());
+  await view.act(async () => radio("Alla 1001 inlägg från Talare 1").click());
   await view.act(async () => pick("SPEAKER_02").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.equal(saved.length, 0, "nothing sent");
@@ -241,7 +252,8 @@ test("one Rätta per passage, after its text; in a passage of several sentences 
 
   const second = sentences()[1];
   await view.act(async () => second.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-  opened.push(view.container.querySelector("textarea")?.getAttribute("aria-label") ?? "");
+  const editor = view.container.querySelector("textarea");
+  opened.push(editor ? computeAccessibleName(editor) : "");
   assert.deepEqual(opened, ["Rätta repliken från 0:02"]);
 });
 
@@ -282,7 +294,7 @@ test("a sentence corrected in its middle is named by the words it shows, unbroke
   const sentence = view.container.querySelector<HTMLElement>('[role="button"][data-segment-index="0"]')!;
   // What a sighted user reads: the rendered text without the visually hidden notes.
   const shown = (node: Node): string =>
-    node.nodeType === 3 ? node.textContent ?? "" : (node as Element).classList?.contains("sr-only") ? "" : [...node.childNodes].map(shown).join("");
+    node.nodeType === 3 ? node.textContent ?? "" : (node as Element).hasAttribute?.("data-correction-note") ? "" : [...node.childNodes].map(shown).join("");
   assert.equal(shown(sentence), "Budgeten sänks nästa år.");
   // WCAG 2.5.3: the computed name holds the visible words together, the action after them; the note stays out.
   assert.equal(computeAccessibleName(sentence), "Budgeten sänks nästa år. Rätta meningen från 0:00.");
@@ -362,4 +374,36 @@ test("an approval that arrives while a passage is being corrected ends the corre
   assert.deepEqual(saved, [], "never applied");
   assert.equal(button(view.container, "Rätta repliken från 0:00"), null, "no correcting once approved");
   assert.equal(button(view.container, "Talare 1, ändra talare"), null, "nor changing a speaker");
+});
+
+test("more than five speakers: chips from a laptop's width, a list to pick one below it", async () => {
+  const six: TranscriptSegment[] = Array.from({ length: 7 }, (_, i) => ({
+    fileIndex: 0, start: i * 2, end: i * 2 + 2, speaker: `SPEAKER_0${i % 6}`, text: `Mening ${i}.`,
+  }));
+  const view = await player(six);
+  assert.ok(view.container.querySelector("[data-many]"), "the chips know there are many, so a narrow screen hides them");
+  const list = [...view.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
+  assert.ok(list, "a list to pick a speaker from");
+  const few = await player(meeting);
+  assert.equal(few.container.querySelector("[data-many]"), null, "with few speakers the chips are always shown");
+  const none = [...few.container.querySelectorAll<HTMLElement>("[role=combobox], button")].find((el) => computeAccessibleName(el) === "Filtrera talare");
+  assert.equal(none, undefined, "and there is no list");
+});
+
+test("a filter whose speaker has gone shows everyone again", async () => {
+  const { createElement, useState } = await import("react");
+  const { TranscriptPlayer } = await import("../components/TranscriptPlayer");
+  let drop!: () => void;
+  function Review() {
+    const [segments, setSegments] = useState(meeting);
+    drop = () => setSegments(meeting.filter((segment) => segment.speaker !== "SPEAKER_01"));
+    return createElement(TranscriptPlayer, { segments, fileCount: 0, audioSrcFor: () => "", speakerNames: {}, textFallback: "", reviewEnabled: false });
+  }
+  const view = await mount(createElement(Review));
+  await view.act(async () => chip(view.container, "Talare 2").click());
+  assert.deepEqual(passages(view.container), ["Talare 2, 0:02", "Talare 2, 0:06"]);
+  await view.act(async () => drop());
+  // Their two passages are one now, with no one between them: Talare 2 has none left, so all are shown.
+  assert.deepEqual(passages(view.container), ["Talare 1, 0:00"]);
+  assert.equal(chip(view.container, "Alla").getAttribute("aria-pressed"), "true");
 });

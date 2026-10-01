@@ -396,6 +396,10 @@
     min-height: 24px;
   }
 
+  .astryx-toggle-button-group {
+    flex-wrap: wrap;
+  }
+
   .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
 
   .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }

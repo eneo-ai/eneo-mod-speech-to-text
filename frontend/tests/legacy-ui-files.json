@@ -9,7 +9,6 @@
   "components/RetryNotice.tsx",
   "components/SessionEndWarning.tsx",
   "components/TranscriptEditor.tsx",
-  "components/TranscriptPlayer.tsx",
   "components/UnsentRecordings.tsx",
   "components/flow/AudioPlayer.tsx",
   "components/flow/BackToFlows.tsx",

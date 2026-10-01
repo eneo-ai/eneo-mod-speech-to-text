@@ -271,6 +271,11 @@ export const eneoTheme = {
       "base": {
         "minHeight": "24px"
       }
+    },
+    "toggle-button-group": {
+      "base": {
+        "flexWrap": "wrap"
+      }
     }
   },
   __onDark: {

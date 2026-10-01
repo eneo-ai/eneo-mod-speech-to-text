@@ -59,6 +59,13 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" }),
     hide: (page) => page.keyboard.press("Escape"),
   },
+  // "Ändra talare" on a passage of the transcript: a popover of the page, one per passage, opened from the passage's name.
+  "change-speaker popover": {
+    go: (page) => reviewPage(page),
+    show: (page) => page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click(),
+    shown: (page) => page.getByRole("dialog", { name: "Ändra talare" }),
+    hide: (page) => page.keyboard.press("Escape"),
+  },
   // A required dialog stays on Escape: it is closed with its own button.
   dialog: {
     show: (page) => page.getByRole("button", { name: "Primär" }).click(),
