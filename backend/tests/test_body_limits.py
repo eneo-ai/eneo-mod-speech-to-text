@@ -137,7 +137,8 @@ class JsonBodyTests(Case):
         second = await self.post("/api/auth/login", chunked, authenticated=False, declare_length=False)
 
         self.assertEqual((first.status_code, second.status_code), (413, 413))
-        self.assertEqual(first.json(), {"detail": "Request body too large"})
+        self.assertEqual(first.json(), {"detail": "Request body too large", "max_body_bytes": CAP})
+        self.assertEqual(second.json(), first.json())
         self.assertEqual(first.headers["connection"], "close")
         self.assertEqual(declared.taken, 0)
         self.assertLessEqual(chunked.taken, CAP // MiB + 2, "the rest of the body was never taken")
@@ -300,6 +301,13 @@ class UploadTests(Case):
     def open_files(self) -> int:
         return len(os.listdir("/dev/fd"))
 
+    def assert_says_it_is_the_modules_upload_limit(self, response) -> None:
+        """Eneo has a limit of its own (a flow's max_file_size_bytes); this one says whose it is, and how many bytes."""
+        body = response.json()
+        self.assertEqual(body["max_upload_bytes"], UPLOAD_CAP)
+        self.assertIn("MAX_UPLOAD_BYTES", body["detail"])
+        self.assertEqual(set(body), {"detail", "max_upload_bytes"})
+
     async def test_an_unauthenticated_upload_is_a_401_and_not_a_byte_of_it_is_read(self) -> None:
         body = multipart_of(6)  # within the upload cap, so it is the session that decides
 
@@ -317,6 +325,7 @@ class UploadTests(Case):
                 response = await self.upload(body, authenticated=authenticated)
 
                 self.assertEqual(response.status_code, 413)
+                self.assert_says_it_is_the_modules_upload_limit(response)
                 self.assertEqual(body.taken, 0)
                 self.assertEqual(self.eneo.calls, [])
                 self.assertEqual(os.listdir(self.temporary), [])
@@ -384,6 +393,7 @@ class UploadTests(Case):
         response = await self.upload(body, declare_length=False, headers={**MULTIPART, "Content-Length": str(MiB)})
 
         self.assertEqual(response.status_code, 413)
+        self.assert_says_it_is_the_modules_upload_limit(response)
         self.assertLessEqual(body.taken, UPLOAD_CAP // MiB + 2)
         self.assertEqual(self.eneo.calls, [])
         self.assertEqual(os.listdir(self.temporary), [])

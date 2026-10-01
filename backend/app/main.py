@@ -38,7 +38,7 @@ from websockets.exceptions import (
 )
 
 from app.config import load_settings
-from app.limits import BodyLimitMiddleware, allow_upload, declared_length, too_large
+from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
 
@@ -61,6 +61,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
+app.add_exception_handler(BodyTooLarge, body_too_large_handler)
 
 http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
@@ -387,7 +388,7 @@ async def _forward_upload(request: Request, path: str) -> Response:
     if declared is None:
         raise HTTPException(status_code=411, detail="Content-Length required")
     if declared > settings.max_upload_bytes:
-        raise too_large("Upload too large")
+        raise too_large(settings, upload=True)
     # Only now, after the route's dependencies and these checks, is the body allowed to be as big as an upload; the
     # limit counts the bytes that arrive, so a Content-Length that lies gets no further than max_upload_bytes.
     allow_upload(request, settings.max_upload_bytes)
