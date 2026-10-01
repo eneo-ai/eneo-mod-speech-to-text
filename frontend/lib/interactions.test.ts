@@ -377,6 +377,37 @@ test("upload: the whole drop zone opens the file chooser, the chooser knows the 
   await view.unmount();
 });
 
+test("upload: a file dropped on the zone is chosen, the first of several; something dragged that is no file is left alone", async () => {
+  const { createElement, createRef } = await import("react");
+  const { UploadPanel } = await import("../components/flow/UploadPanel");
+  const chosen: string[] = [];
+  const view = await mount(
+    createElement(UploadPanel, { step: null, file: null, audio: true, inputRef: createRef<HTMLInputElement>(), onChoose: (file: File) => chosen.push(file.name) }),
+  );
+  const zone = view.container.querySelector<HTMLElement>("[data-drop-zone]")!;
+  const drag = (type: string, types: string[], files: File[] = []) => {
+    const event = new window.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: { types, files } });
+    zone.dispatchEvent(event);
+    return event.defaultPrevented;
+  };
+  let over = true;
+  await view.act(async () => {
+    over = drag("dragover", ["text/plain"]);
+  });
+  assert.equal(over, false, "a dragged text is not taken: the browser's own handling stays");
+  await view.act(async () => void drag("drop", ["text/plain"]));
+  // Dropping with no file in it (the guard was only on the drag over) chooses nothing.
+  assert.deepEqual(chosen, []);
+  await view.act(async () => {
+    over = drag("dragover", ["Files"]);
+  });
+  assert.equal(over, true, "a file is welcome");
+  await view.act(async () => void drag("drop", ["Files"], [new File(["a"], "forst.mp3"), new File(["b"], "andra.mp3")]));
+  assert.deepEqual(chosen, ["forst.mp3"], "the first file only");
+  await view.unmount();
+});
+
 /** A page's router and signed-in user, as the app gives them. */
 async function signedIn(element: import("react").ReactElement, navigated: string[]) {
   const { createElement } = await import("react");

@@ -34,6 +34,5 @@
   "components/flow/RunResult.tsx",
   "components/flow/RunTranscript.tsx",
   "components/flow/StateCard.tsx",
-  "components/flow/UploadPanel.tsx",
   "components/frame.tsx"
 ]
