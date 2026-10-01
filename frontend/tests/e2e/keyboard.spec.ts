@@ -7,7 +7,7 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
+import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
 import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
@@ -170,12 +170,16 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
   const problems: string[] = [];
   const reached = new Set<string>();
   for (let i = 0; i < 8; i++) {
-    const stop = await focusStop(page);
-    const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
-    else {
-      problems.push(...stopProblems([stop]));
-      reached.add(stop.label);
+    if (!(await inBrowser(page))) {
+      const stop = await focusStop(page);
+      const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
+      else {
+        problems.push(...stopProblems([stop]));
+        const clipped = await clippedFocus(page);
+        if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+        reached.add(stop.label);
+      }
     }
     await page.keyboard.press("Tab");
   }
@@ -206,14 +210,27 @@ test("the warning before the login ends takes focus, holds it, and gives it back
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible({ timeout: 15_000 });
   await settle(page);
+  // The dialog takes focus on its title, which names it (it is no Tab stop, so it needs no ring); Tab then walks
+  // the close button and the action.
+  await expect(warning.getByRole("heading", { name: "Du loggas snart ut" })).toBeFocused();
   const problems: string[] = [];
-  for (const key of ["Tab", "Tab", "Shift+Tab"]) {
+  // Down to the close button, the action, back up, and down again: the walk ends on the action.
+  for (const key of ["Tab", "Tab", "Shift+Tab", "Tab"]) {
+    await page.keyboard.press(key);
+    if (await inBrowser(page)) continue;
+    // A tooltip is measured at rest, as a dialog is: not on its way in.
+    await settle(page);
     const stop = await focusStop(page);
     if (!stop || !(await warning.evaluate((element) => element.contains(document.activeElement)))) problems.push("focus left the warning");
-    else problems.push(...stopProblems([stop]));
-    await page.keyboard.press(key);
+    else {
+      problems.push(...stopProblems([stop]));
+      const clipped = await clippedFocus(page);
+      if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+    }
   }
   expect.soft(problems).toEqual([]);
+  // The close button's tooltip leaves a moment after focus does, and takes the first Escape if it is still there.
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(warning).toBeHidden();
   await expect(link, "focus goes back to where it was").toBeFocused();

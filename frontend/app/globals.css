@@ -289,3 +289,7 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
+
+/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
+   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
+dialog[open] { pointer-events: auto; }
