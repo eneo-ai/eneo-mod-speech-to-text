@@ -482,7 +482,8 @@ function probeFocus(page: Page) {
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,
-      inDialog: el.closest('[role="dialog"], [role="alertdialog"]') !== null,
+      // A native <dialog> (the design system's) carries no role attribute.
+      inDialog: el.closest('dialog, [role="dialog"], [role="alertdialog"]') !== null,
       container: el.parentElement?.closest<HTMLElement>("[data-a11y-stop]")?.dataset.a11yStop ?? null,
       top: Math.round(r.top + scrolled),
       bottom: Math.round(r.bottom + scrolled),
