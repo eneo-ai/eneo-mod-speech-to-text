@@ -2,6 +2,8 @@
 
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
+  type ComponentProps,
+  type ComponentType,
   useCallback,
   useEffect,
   useId,
@@ -24,7 +26,7 @@ import { TextInput } from "@astryxdesign/core/TextInput";
 import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
 import { VStack } from "@astryxdesign/core/VStack";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { TranscriptEditor } from "@/components/TranscriptEditor";
+import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { formatClock } from "@/lib/format";
@@ -106,6 +108,39 @@ const join = (...names: (string | false | null | undefined)[]) => names.filter(B
 
 function rateLabel(rate: number): string {
   return `${String(rate).replace(".", ",")}×`;
+}
+
+type EditorProps = ComponentProps<typeof TranscriptEditor>;
+
+// The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
+// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
+// and the server and the browser's first render agree, since neither has the code yet.
+let loadedEditor: ComponentType<EditorProps> | null = null;
+/** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
+export const preloadTranscriptEditor = () => import("@/components/TranscriptEditor").then((module) => (loadedEditor = module.TranscriptEditor));
+
+function LazyTranscriptEditor(props: EditorProps) {
+  const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(() => loadedEditor);
+  useEffect(() => {
+    if (Editor) return;
+    let current = true;
+    void preloadTranscriptEditor().then((component) => current && setEditor(() => component));
+    return () => {
+      current = false;
+    };
+  }, [Editor]);
+  if (Editor) return <Editor {...props} />;
+  return (
+    <div className={styles.editorPending} aria-busy="true">
+      <VisuallyHidden as="p" role="status">
+        Hämtar granskningsverktygen…
+      </VisuallyHidden>
+      <Skeleton width="100%" height={40} />
+      <Skeleton width="60%" height={16} />
+      <Skeleton width="100%" height={16} />
+      <Skeleton width="90%" height={16} />
+    </div>
+  );
 }
 
 /** A speaker's round mark: the initial on the speaker's colour, the same everywhere on the page. */
@@ -706,7 +741,7 @@ export function TranscriptPlayer(
         onTouchMove={onUserScroll}
         className={join(styles.scrollport, !reviewEnabled && styles.padded)}
       >
-        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
+        {reviewEnabled ? <LazyTranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
           audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
@@ -779,12 +814,14 @@ export function TranscriptPlayer(
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
         <div id={pastId} tabIndex={-1} data-docked-player className={styles.dock}>
-          {/* On its own line: in the player's row it would squeeze the position slider to nothing on a narrow screen. */}
-          {!follow && (
-            <div className={styles.follow}>
-              <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />
-            </div>
-          )}
+          {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
+              row from 640 px (below it the copy here is shown, and the one in the row is not). */}
+          <div className={styles.dockTools}>
+            {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />}
+            <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
+              {rateLabel(rate)}
+            </Button>
+          </div>
           <AudioPlayer playback={playback} label="Inspelningen">
             <IconButton
               variant="ghost"

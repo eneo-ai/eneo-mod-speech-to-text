@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { computeAccessibleName } from "dom-accessibility-api";
 
-import { shortcut, TranscriptPlayer } from "../components/TranscriptPlayer";
+import { preloadTranscriptEditor, shortcut, TranscriptPlayer } from "../components/TranscriptPlayer";
 import { Playback, type MediaLike } from "./playback";
 import { parse } from "./test-dom";
 import { findActiveSegmentIndex, type TranscriptSegment } from "./transcript";
+
+// The editor loads when it is first shown; markup rendered at once has it only once it has been loaded.
+before(async () => void (await preloadTranscriptEditor()));
 
 const segments: TranscriptSegment[] = [
   { fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
@@ -230,4 +233,24 @@ test("no instruction lines: the pencil names its passage and is fully there for 
   }
   // Each passage is a list item named by who speaks and when.
   assert.match(html, /<li[^>]*aria-label="Talare 1, 0:00 i del 1"/);
+});
+
+test("the editor's place is held by a placeholder until its code has arrived, and the page's first render agrees with the server's", () => {
+  // A module of its own, as the first page load has it: the editor not yet loaded.
+  const path = require.resolve("../components/TranscriptPlayer");
+  const kept = require.cache[path];
+  delete require.cache[path];
+  try {
+    const fresh = require("../components/TranscriptPlayer") as typeof import("../components/TranscriptPlayer");
+    const html = renderToStaticMarkup(
+      createElement(fresh.TranscriptPlayer, {
+        segments, fileCount: 0, audioSrcFor: () => "", speakerNames: {}, textFallback: "", reviewEnabled: true,
+      }),
+    );
+    assert.match(html, /aria-busy="true"/);
+    assert.match(html, /Hämtar granskningsverktygen…/);
+    assert.doesNotMatch(html, /Transkriptverktyg/, "none of the editor yet");
+  } finally {
+    if (kept) require.cache[path] = kept;
+  }
 });

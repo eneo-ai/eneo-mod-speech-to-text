@@ -2,14 +2,20 @@
   - paragraph: Pausat i steg 2
   - heading "Vem är vem?" [level=1]
   - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
-  - group:
+  - group "Talare":
     - list:
       - listitem: Talare 1 Anna Berg
       - listitem: Talare 2 Erik Lund
       - listitem: Talare 3 Inget namn
-    - button "Namnge talarna"
-    - button "Avvisa"
-    - button "Godkänn och fortsätt"
+    - button "Namnge talarna":
+      - text: ""
+      - status
+    - button "Avvisa":
+      - text: ""
+      - status
+    - button "Godkänn och fortsätt":
+      - text: ""
+      - status
   - heading "Transkript" [level=2]
   - region "Inspelning och transkript":
     - group "Visa talare":
@@ -68,10 +74,12 @@
         - button /Spela från 0:\d+ i del 2/
         - text: Nya turer börjar gälla efter höstlovet.
         - button /Rätta repliken från 0:\d+ i del 2/
+    - button "Hastighet 1×":
+      - text: ""
+      - status
     - 'group "Uppspelning: Inspelningen"':
-      - button "Spela upp"
+      - button "Spela upp":
+        - status
+      - text: Position i inspelningen
       - slider "Position i inspelningen"
       - text: /0:\d+ \/ 0:\d+/
-      - button "Hastighet 1×":
-        - text: ""
-        - status

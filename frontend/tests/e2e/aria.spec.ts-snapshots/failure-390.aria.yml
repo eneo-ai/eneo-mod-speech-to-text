@@ -1,10 +1,13 @@
 - main:
+  - paragraph: Nämndmöte till rapport
   - 'button "Uppgifter, Deltagare: Anna Berg, Erik Lund"'
   - status
   - heading "Dokumentet kunde inte skapas" [level=1]
   - paragraph: /Startad i dag \d+:\d+/
   - note: Steg 2, Skriv rapporten Körningen kunde inte slutföras. Det går bra att köra flödet igen om en stund.
-  - button "Försök igen"
+  - button "Försök igen":
+    - text: ""
+    - status
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
@@ -13,9 +16,13 @@
       - listitem: Skriv rapporten Misslyckades
   - region "Transkript":
     - heading "Transkript" [level=2]
-    - button "Kopiera transkriptet"
+    - button "Kopiera transkriptet":
+      - text: ""
+      - status
     - status
-    - button "Ladda ner som text, transkriptet"
+    - button "Ladda ner som text, transkriptet":
+      - text: ""
+      - status
     - region "Inspelning och transkript":
       - group "Visa talare":
         - button "Alla" [pressed]:
@@ -62,18 +69,23 @@
           - button /Spela från 0:\d+ i del 2/
           - text: Nya turer börjar gälla efter höstlovet.
           - button /Rätta repliken från 0:\d+ i del 2/
+      - button "Hastighet 1×":
+        - text: ""
+        - status
       - 'group "Uppspelning: Inspelningen"':
-        - button "Spela upp"
+        - button "Spela upp":
+          - status
+        - text: Position i inspelningen
         - slider "Position i inspelningen"
         - text: /0:\d+ \/ 0:\d+/
-        - button "Hastighet 1×":
-          - text: ""
-          - status
+  - separator
   - region "Kontakta support":
     - heading "Kontakta support" [level=2]
     - text: Körnings-ID
     - code: run-failed
-    - button "Kopiera körnings-ID"
+    - button "Kopiera körnings-ID":
+      - text: ""
+      - status
     - status
     - button "Dölj teknisk information" [expanded]
     - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
