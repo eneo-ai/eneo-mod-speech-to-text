@@ -407,8 +407,9 @@ async def _forward_upload(request: Request, path: str) -> Response:
         # A browser that leaves midway leaves no complete file, so nothing is forwarded (the parse above raises
         # ClientDisconnect). One that leaves after the last byte does not stop this call: cancelling it midway could
         # leave Eneo with a part of the file, a write the module cannot know about and cannot undo. The cost is
-        # bounded: the file is at most max_upload_bytes, the call at most upload_proxy_timeout_seconds, and the
-        # spooled file is closed when this block ends, however the call does.
+        # bounded: the file is at most max_upload_bytes, the call at most upload_proxy_timeout_seconds in all (a
+        # deadline around the whole forward, not only a timeout per read), and the spooled file is closed when this
+        # block ends, however the call does.
         return await _proxy_multipart_upload(
             upstream_url, upload_file, request, _requested_upload_timeout_seconds(request)
         )
@@ -421,23 +422,28 @@ async def _proxy_multipart_upload(
     timeout_seconds: float | None = None,
 ) -> Response:
     await upload_file.seek(0)
+    timeout = _upload_timeout(timeout_seconds)
     try:
-        upstream = await http_client.post(
-            upstream_url,
-            headers=module_auth.upstream_auth_headers(request),
-            files={
-                "upload_file": (
-                    upload_file.filename,
-                    upload_file.file,
-                    upload_file.content_type or "application/octet-stream",
-                )
-            },
-            timeout=_upload_timeout(timeout_seconds),
-        )
+        # The timeouts above are per operation: an Eneo that keeps making small progress never trips one. The deadline
+        # is the whole forward, sending the file and waiting for the answer; past it the call is cancelled and its
+        # connection closed (and the spooled file with it, when the caller's block ends).
+        async with asyncio.timeout(timeout.read):
+            upstream = await http_client.post(
+                upstream_url,
+                headers=module_auth.upstream_auth_headers(request),
+                files={
+                    "upload_file": (
+                        upload_file.filename,
+                        upload_file.file,
+                        upload_file.content_type or "application/octet-stream",
+                    )
+                },
+                timeout=timeout,
+            )
     except UnboundedAnswer:
         logger.error("Upload answer is past the bound: url=%s", upstream_url)
         return _upstream_too_large()
-    except httpx.TimeoutException:
+    except (httpx.TimeoutException, TimeoutError):
         logger.exception("Upload timed out: url=%s", upstream_url)
         return JSONResponse(
             status_code=504,

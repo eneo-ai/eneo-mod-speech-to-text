@@ -700,6 +700,40 @@ class AbandonedUploadTests(BoundaryCase):
         self.assertEqual(os.listdir(folder.name), [])
 
 
+class UploadDeadlineTests(BoundaryCase):
+    """The forward is the finish-after-receipt policy with a limit: a total deadline, not only a timeout per read."""
+
+    def test_an_eneo_that_keeps_making_small_progress_does_not_outlast_the_deadline(self) -> None:
+        self.addCleanup(setattr, main.settings, "upload_proxy_timeout_seconds", main.settings.upload_proxy_timeout_seconds)
+        main.settings.upload_proxy_timeout_seconds = 1.0  # each read may wait 1 s; the whole forward may take 1 s
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.addCleanup(setattr, tempfile, "tempdir", tempfile.tempdir)
+        tempfile.tempdir = folder.name
+
+        async def trickle():
+            for _ in range(100):  # a byte every 0.3 s, for 30 s: no single read ever waits a second
+                yield b" "
+                await asyncio.sleep(0.3)
+
+        self.respond_with(lambda seen: (200, [("content-type", "application/json")], trickle))
+        fds_before = len(os.listdir("/dev/fd"))
+        started = time.monotonic()
+
+        response = self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", os.urandom(3 * MiB), "audio/webm")}, timeout=20)
+
+        self.assertEqual(response.status_code, 504)
+        self.assertEqual(response.json()["error"], "upstream_upload_timeout")
+        self.assertLess(time.monotonic() - started, 8, "the forward outlasted its deadline")
+        self.wait_until_eneo_is_idle()
+        self.assertEqual(self.eneo.outcomes, ["dropped"], "the connection to Eneo was not closed")
+        deadline = time.time() + 5
+        while len(os.listdir("/dev/fd")) > fds_before and time.time() < deadline:
+            time.sleep(0.02)
+        self.assertLessEqual(len(os.listdir("/dev/fd")), fds_before, "the spooled file was left open")
+        self.assertEqual(os.listdir(folder.name), [])
+
+
 class CallbackStateTests(BoundaryCase):
     """A state that is not the one the login handed out ends the login as invalid_state, whatever characters it has."""
 
