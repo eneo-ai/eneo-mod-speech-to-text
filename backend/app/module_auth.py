@@ -355,7 +355,9 @@ class ModuleAuth:
         try:
             token = ModuleTokenResponse.model_validate(upstream.json())
         except (ValueError, ValidationError):
-            logger.exception("Module ticket exchange returned an invalid response")
+            # Not the exception, here and in the two like it below: a validation error quotes the input it refused,
+            # and that is an access token.
+            logger.error("Module ticket exchange returned an invalid response")
             return self._auth_error("exchange_invalid")
 
         now = int(time.time())
@@ -397,7 +399,7 @@ class ModuleAuth:
         try:
             validated = ModuleResourceSessionResponse.model_validate(validation.json())
         except (ValueError, ValidationError):
-            logger.exception("Module session validation returned an invalid response")
+            logger.error("Module session validation returned an invalid response")
             return self._auth_error("validation_invalid")
         if (
             validated.module_key != token.module_key
@@ -574,7 +576,7 @@ class ModuleAuth:
         try:
             token = ModuleTokenResponse.model_validate(upstream.json())
         except (ValueError, ValidationError):
-            logger.exception("Module token refresh returned an invalid response")
+            logger.error("Module token refresh returned an invalid response")
             return None
         if (
             token.module_key != session.module_key

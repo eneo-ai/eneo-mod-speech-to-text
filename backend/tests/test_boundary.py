@@ -9,6 +9,7 @@ import asyncio
 import gzip
 import http.client
 import json
+import logging
 import os
 import re
 import socket
@@ -143,17 +144,18 @@ class Served:
         self.thread.join(10)
 
 
-def a_session(access_token: str) -> str:
+def a_session(access_token: str, *, lifetime: int = 600, refresh_in: int = 300, user_id: str | None = None, tenant_id: str = "tenant-id") -> str:
+    """A signed-in session; it ends ``lifetime`` seconds from now and is due a refresh ``refresh_in`` seconds from now."""
     now = int(time.time())
     return main.module_auth.sessions.create(
         EneoSsoSession(
             access_token=access_token,
-            expires_at=now + 600,
-            refresh_at=now + 300,
+            expires_at=now + lifetime,
+            refresh_at=now + refresh_in,
             session_expires_at=now + 3600,
             module_key="speech-to-text",
-            tenant_id="tenant-id",
-            user=ModuleUser(id=f"user-{access_token}", email=f"{access_token}@example.test"),
+            tenant_id=tenant_id,
+            user=ModuleUser(id=user_id or f"user-{access_token}", email=f"{access_token}@example.test"),
         )
     )
 
@@ -732,6 +734,89 @@ class UploadDeadlineTests(BoundaryCase):
             time.sleep(0.02)
         self.assertLessEqual(len(os.listdir("/dev/fd")), fds_before, "the spooled file was left open")
         self.assertEqual(os.listdir(folder.name), [])
+
+
+class LogCapture(logging.Handler):
+    """Every record the app logs, formatted as a log file would show it: with the traceback, and the exception's text."""
+
+    def __init__(self) -> None:
+        super().__init__(logging.DEBUG)
+        self.lines: list[str] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.lines.append(logging.Formatter().format(record))
+
+    @property
+    def text(self) -> str:
+        return "\n".join(self.lines)
+
+
+class SecretsInLogsTests(BoundaryCase):
+    """A response that fails validation holds a token: pydantic quotes its input in the error, so the error is not logged."""
+
+    def capture(self) -> LogCapture:
+        capture = LogCapture()
+        logging.getLogger().addHandler(capture)
+        self.addCleanup(logging.getLogger().removeHandler, capture)
+        return capture
+
+    def token_answer(self, access_token: str) -> dict:
+        ceiling = datetime.fromtimestamp(time.time() + 4 * 3600, tz=timezone.utc).isoformat()
+        return {
+            "access_token": access_token, "token_type": "bearer", "expires_in": 900, "session_expires_at": ceiling,
+            "module_key": "speech-to-text", "tenant_id": "tenant-id", "user": {"id": "user-id", "email": "user@example.test"},
+        }
+
+    def callback(self) -> httpx.Response:
+        with self.browser() as client:
+            started = client.get("/api/auth/login")
+            state = parse_qs(urlparse(started.headers["location"]).query)["state"][0]
+            return client.get("/api/auth/callback", params={"ticket": "one-time", "state": state})
+
+    def serve(self, answer: dict, *, path_ends: str) -> None:
+        def respond(seen: Seen):
+            if seen.path.endswith(path_ends):
+                return 200, [("content-type", "application/json")], json.dumps(answer).encode()
+            return 200, [("content-type", "application/json")], json.dumps(self.token_answer("valid-token")).encode()
+
+        self.respond_with(respond)
+
+    def test_a_token_exchange_answer_that_fails_validation_is_not_logged(self) -> None:
+        logs = self.capture()
+        self.serve({"access_token": "SECRET-EXCHANGE-TOKEN", "unexpected": "SECRET-EXCHANGE-EXTRA"}, path_ends="/module-auth/token/")
+
+        callback = self.callback()
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=exchange_invalid")
+        self.assertIn("exchange", logs.text.lower(), "the failure itself is still logged")
+        self.assertNotIn("SECRET-", logs.text)
+
+    def test_a_session_check_answer_that_fails_validation_is_not_logged(self) -> None:
+        logs = self.capture()
+
+        def respond(seen: Seen):
+            body = self.token_answer("valid-token") if seen.method == "POST" else {"module_key": "speech-to-text", "leak": "SECRET-CHECK-EXTRA"}
+            return 200, [("content-type", "application/json")], json.dumps(body).encode()
+
+        self.respond_with(respond)
+
+        callback = self.callback()
+
+        self.assertEqual(callback.headers["location"], "/?auth_error=validation_invalid")
+        self.assertNotIn("SECRET-", logs.text)
+        self.assertNotIn("valid-token", logs.text)
+
+    def test_a_refresh_answer_that_fails_validation_is_not_logged(self) -> None:
+        logs = self.capture()
+        self.serve({"access_token": "SECRET-REFRESH-TOKEN", "unexpected": "SECRET-REFRESH-EXTRA"}, path_ends="/token/refresh/")
+        due = a_session("token-due", refresh_in=-5)
+
+        response = self.request("GET", "/api/eneo/flows/", due)
+
+        self.assertEqual(response.status_code, 401)  # Eneo's refresh answer was unusable: the session ends
+        self.assertIn("refresh", logs.text.lower(), "the failure itself is still logged")
+        self.assertNotIn("SECRET-", logs.text)
+        self.assertNotIn("token-due", logs.text)
 
 
 class CallbackStateTests(BoundaryCase):
