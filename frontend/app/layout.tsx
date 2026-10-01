@@ -27,6 +27,12 @@ export default async function RootLayout({
   const branding = await readBranding(backendBase());
   return (
     <html lang="sv" suppressHydrationWarning>
+      <head>
+        {/* The deployment's accent colour (ORGANIZATION_ACCENT), served by the backend as an override of the built theme;
+            an empty comment when none is set. A plain stylesheet link in the head: it holds the first paint until it is
+            there, so no frame shows the old colour, it is cached, and a strict style-src 'self' allows it. */}
+        <link rel="stylesheet" href="/api/branding/theme.css" />
+      </head>
       <body>
         <ThemeProvider
           attribute="class"

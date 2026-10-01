@@ -276,6 +276,10 @@ export const eneoTheme = {
         "overflow": "visible",
         "height": "auto",
         "minHeight": "calc(var(--size-element-md) - 8px)"
+      },
+      "color:blue": {
+        "backgroundColor": "var(--color-accent-muted)",
+        "color": "var(--color-text-primary)"
       }
     },
     "slider-control": {

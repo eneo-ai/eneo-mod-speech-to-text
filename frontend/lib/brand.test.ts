@@ -56,6 +56,12 @@ test("a name without a logo shows as text, and a hidden organisation leaves the 
   assert.match(hidden, />Tal till text</);
 });
 
+test("without a provider no organisation is named: the backend's branding is the one owner of who is shown", () => {
+  const html = renderToStaticMarkup(createElement(Brand, { href: "/flows" }));
+  assert.doesNotMatch(html, /<img|Sundsvall/);
+  assert.match(html, /aria-label="Tal till text"/);
+});
+
 test("without a destination the lockup is not a link", () => {
   const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false } });
   assert.doesNotMatch(html, /<a /);
