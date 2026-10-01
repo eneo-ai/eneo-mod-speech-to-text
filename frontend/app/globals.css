@@ -46,12 +46,10 @@
     --input: var(--rule);
     --ring: var(--primary);
     --radius: 0.5rem;
-    /* Motion on the transitions.dev scale: modals open in 250 ms, close in 150 ms. Namespaced: the design system declares
-       --duration-fast (175 ms) in a layer above this one, and an un-namespaced token here would be overridden by it. */
+    /* Motion on the transitions.dev scale. Namespaced: the design system declares --duration-fast (175 ms) in a layer
+       above this one, and an un-namespaced token here would be overridden by it. */
     --module-duration-quick: 150ms;
-    --module-duration-fast: 250ms;
     --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
-    --module-scale-large: 0.96;
     color-scheme: light;
   }
 
@@ -163,16 +161,6 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
-/* Dialog open and close (Radix waits for the closing animation before unmounting). */
-@keyframes t-fade-in { from { opacity: 0; } }
-@keyframes t-fade-out { to { opacity: 0; } }
-@keyframes t-modal-in { from { opacity: 0; scale: var(--module-scale-large); } }
-@keyframes t-modal-out { to { opacity: 0; scale: var(--module-scale-large); } }
-.t-overlay[data-state="open"] { animation: t-fade-in var(--module-duration-fast) var(--module-ease-smooth-out); }
-.t-overlay[data-state="closed"] { animation: t-fade-out var(--module-duration-quick) var(--module-ease-smooth-out); }
-.t-modal[data-state="open"] { animation: t-modal-in var(--module-duration-fast) var(--module-ease-smooth-out); }
-.t-modal[data-state="closed"] { animation: t-modal-out var(--module-duration-quick) var(--module-ease-smooth-out); }
-
 /* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
    focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
 @media (max-width: 1023px) {
@@ -181,7 +169,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; }
-  .t-overlay, .t-modal { animation: none !important; }
   /* Loading spinners and skeletons stand still, and the design system's spinner arc and indeterminate bar; the words beside them say that something is loading. */
   .animate-spin, .animate-pulse, .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
@@ -241,10 +228,6 @@ img[data-brand-logo] {
 html.dark [data-brand-logo="default"] { filter: invert(1); }
 html.dark [data-brand-logo="light"] { display: none; }
 html:not(.dark) [data-brand-logo="dark"] { display: none; }
-
-/* A Radix modal dialog turns off pointer events on <body> while it is open, and a native dialog, which the session
-   dialogs are, inherits that, so it could not be pressed. Until the last Radix modal is gone (Phase 8 removes this). */
-dialog[open] { pointer-events: auto; }
 
 /* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
    tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half
