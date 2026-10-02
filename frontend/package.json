@@ -15,7 +15,8 @@
     "state": "playwright test a11y.spec.ts --project=laptop-1440-light --headed -g",
     "test:a11y:branding": "STUB_BRANDING=custom playwright test --config playwright.branding.config.ts && STUB_BRANDING=name playwright test --config playwright.branding.config.ts",
     "test:a11y:review": "NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
-    "test:prod": "playwright test --config playwright.prod.config.ts"
+    "test:prod": "playwright test --config playwright.prod.config.ts",
+    "test:image": "../deploy/acceptance.sh"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.3",

@@ -1,0 +1,744 @@
+#!/usr/bin/env python3
+"""The acceptance of the production image: the 16 checks of Plan B, Task B4.2, on a running stack (deploy/acceptance/compose.yml).
+
+    checks.py                run every check, one report, exit 1 if one failed
+    checks.py --only 4,5,9   run these
+    checks.py --list         say what each check proves
+
+Standard library only; it drives docker, the image (directly and through Traefik), the stub that is the image's Eneo, and the
+scripts of this folder (upload/measure.py, poll.cjs, auth-preload.cjs, loads.cjs, live_load.py). deploy/acceptance.sh builds and starts
+the stack and then runs this. The stack is the one the environment names; the defaults are acceptance.sh's:
+
+    ACCEPT_MODULE_URL    http://127.0.0.1:8480   the module as a browser reaches it: Traefik, and the image's MODULE_PUBLIC_URL
+    ACCEPT_DIRECT_URL    http://127.0.0.1:8482   the image's own port
+    ACCEPT_ENEO_URL      http://127.0.0.1:8481   the stub as Eneo: the sign-in handshake, /__log, /__reset and /__stub/stats
+    ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   <that>-review (built with SPEAKER_REVIEW_ENABLED=true)
+    ACCEPT_CONTAINER     stt-acceptance-module                     ACCEPT_TRAEFIK_CONTAINER   stt-acceptance-traefik
+
+A client that acts as the page names its user: X-Expected-User on a write, ?expected_user= on the live socket. Identifiers are those of
+frontend/tests/fixtures/ids.json, which the stub serves; the headers are those of backend/app/security_headers.json; the numbers the
+image is measured against are baseline.json (B0.1). Checks that stop or recreate the image leave it running when they end.
+
+What the stub must answer, besides the module-login handshake and the data of the gate (B3.1): GET /__stub/stats with open_streams,
+streams_started, live_frames, live_bytes and uploads_received; GET /__log and /__reset (upload/upstream.py's record format, one record per
+upload); and a file in ids.json under files.audioLarge that never finishes by itself (a long WAV served in small pieces, with a pause),
+which checks 7, 10 and 16 hold open.
+"""
+
+from __future__ import annotations
+
+import argparse
+import dataclasses
+import http.client
+import json
+import os
+import re
+import socket
+import statistics
+import struct
+import subprocess
+import sys
+import time
+import traceback
+from collections.abc import Callable
+from pathlib import Path
+from urllib.parse import urlsplit
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+sys.path.insert(0, str(HERE))
+from wsclient import HandshakeRefused, WebSocket  # noqa: E402
+
+IDS = json.loads((ROOT / "frontend/tests/fixtures/ids.json").read_text())
+SECURITY_HEADERS = json.loads((ROOT / "backend/app/security_headers.json").read_text())
+BASELINE = json.loads((HERE / "baseline.json").read_text())
+REDIRECTS = {301, 302, 303, 307, 308}
+MB = 1024 * 1024
+
+FLOW, RUN_DONE, RUN_PDF, RUN_RUNNING = IDS["flows"]["flow1"], IDS["runs"]["done"], IDS["runs"]["pdf"], IDS["runs"]["running"]
+AUDIO_STEP, AUDIO_FILE, PDF_FILE = IDS["steps"]["audio"], IDS["files"]["audioA"], IDS["files"]["pdf"]
+AUDIO_LARGE = IDS["files"].get("audioLarge")
+UPLOAD_PATH = f"/api/eneo/flows/{FLOW}/steps/{AUDIO_STEP}/runtime-files/"
+# The speaker review's own text, in the part of an ASCII-escaped bundle before its first non-ASCII character: it is in dist/ only when
+# the flag was on at build time (frontend/components/flow/ReviewView.tsx). B2 moves the code; the marker follows it.
+SPEAKER_REVIEW_MARKER = os.environ.get("ACCEPT_SPEAKER_REVIEW_MARKER", "Lyssna, markera ord och v")
+DEV_MARKERS = ("Grundkontroll", "/dev/foundation", "/dev/speaker-review", "/dev/dialog-leak")
+
+
+class Failed(Exception):
+    pass
+
+
+def expect(condition: object, message: str) -> None:
+    if not condition:
+        raise Failed(message)
+
+
+# ---- the stack ----------------------------------------------------------------------------------------------------------
+@dataclasses.dataclass
+class Stack:
+    module: str = os.environ.get("ACCEPT_MODULE_URL", "http://127.0.0.1:8480")
+    direct: str = os.environ.get("ACCEPT_DIRECT_URL", "http://127.0.0.1:8482")
+    eneo: str = os.environ.get("ACCEPT_ENEO_URL", "http://127.0.0.1:8481")
+    image: str = os.environ.get("ACCEPT_IMAGE", "eneo-mod-speech-to-text:acceptance")
+    container: str = os.environ.get("ACCEPT_CONTAINER", "stt-acceptance-module")
+    traefik: str = os.environ.get("ACCEPT_TRAEFIK_CONTAINER", "stt-acceptance-traefik")
+    traefik_image: str = "traefik:v3.7.13"
+
+    @property
+    def review_image(self) -> str:
+        return os.environ.get("ACCEPT_REVIEW_IMAGE", f"{self.image}-review")
+
+
+STACK = Stack()
+
+
+@dataclasses.dataclass
+class Response:
+    status: int
+    headers: dict[str, str]
+    body: bytes
+    set_cookies: list[str]
+
+    def json(self) -> object:
+        return json.loads(self.body)
+
+    def text(self) -> str:
+        return self.body.decode(errors="replace")
+
+
+def http_request(method: str, url: str, *, headers: dict[str, str] | None = None, body: bytes | None = None, timeout: float = 60) -> Response:
+    parts = urlsplit(url)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=timeout)
+    try:
+        connection.request(method, parts.path + (f"?{parts.query}" if parts.query else ""), body=body, headers=headers or {})
+        r = connection.getresponse()
+        data = r.read()
+        return Response(r.status, {k.lower(): v for k, v in r.getheaders()}, data, r.msg.get_all("set-cookie") or [])
+    finally:
+        connection.close()
+
+
+def get(url: str, **kw: object) -> Response:
+    return http_request("GET", url, **kw)  # type: ignore[arg-type]
+
+
+def docker(*args: str, timeout: float = 600, check: bool = True) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(["docker", *args], capture_output=True, text=True, timeout=timeout)
+    if check and result.returncode != 0:
+        raise Failed(f"docker {' '.join(args[:3])} failed ({result.returncode}): {(result.stderr or result.stdout).strip()[:300]}")
+    return result
+
+
+def exec_in(container: str, *command: str) -> str:
+    return docker("exec", container, *command).stdout.strip()
+
+
+def wait_until(condition: Callable[[], bool], seconds: float, what: str, interval: float = 0.25) -> None:
+    end = time.monotonic() + seconds
+    while time.monotonic() < end:
+        if condition():
+            return
+        time.sleep(interval)
+    raise Failed(f"{what}: not within {seconds:.0f} s")
+
+
+def health_status() -> str:
+    return docker("inspect", "-f", "{{.State.Health.Status}}", STACK.container, check=False).stdout.strip()
+
+
+def direct_health_ok() -> bool:
+    try:
+        return get(f"{STACK.direct}/health", timeout=2).status == 200
+    except OSError:
+        return False
+
+
+def wait_healthy(seconds: float = 120) -> None:
+    wait_until(lambda: health_status() == "healthy" and direct_health_ok(), seconds, "the image is healthy")
+
+
+def fresh_module(max_upload_bytes: int | None = None) -> None:
+    """Recreate the image (a fresh process, no sessions, an empty /tmp), optionally with another MAX_UPLOAD_BYTES; wait until healthy."""
+    env = dict(os.environ)
+    if max_upload_bytes is not None:
+        env["ACCEPT_MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
+    else:
+        env.pop("ACCEPT_MAX_UPLOAD_BYTES", None)
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(HERE / "compose.yml"), "-p", "stt-acceptance", "up", "-d", "--force-recreate", "--no-deps", "speech-to-text"],
+        capture_output=True, text=True, env=env, timeout=300,
+    )
+    if result.returncode != 0:
+        raise Failed(f"could not recreate the image: {result.stderr.strip()[:300]}")
+    wait_healthy()
+
+
+@dataclasses.dataclass
+class Session:
+    cookie: str
+    user: str
+
+    def read(self) -> dict[str, str]:
+        return {"Cookie": self.cookie}
+
+    def write(self) -> dict[str, str]:
+        """What the page sends with a request that changes something."""
+        return {"Cookie": self.cookie, "Origin": STACK.module, "X-Expected-User": self.user}
+
+
+def sign_in(base: str | None = None) -> Session:
+    """The module's SSO handshake with the stub, redirects followed by hand (login -> Eneo -> callback), as a browser does."""
+    base = base or STACK.module
+    r = get(f"{base}/api/auth/login?next=/flows")
+    expect(r.status == 303, f"GET /api/auth/login answered {r.status}, not 303")
+    state_cookie = "; ".join(c.split(";")[0] for c in r.set_cookies)
+    r = get(r.headers["location"])
+    expect(r.status == 303, f"the stub's /module-login answered {r.status}, not 303")
+    r = get(r.headers["location"], headers={"Cookie": state_cookie})
+    expect(r.status == 303, f"GET /api/auth/callback answered {r.status}, not 303")
+    session = [c.split(";")[0] for c in r.set_cookies if c.startswith("eneo_module_session=")]
+    expect(session, "the callback set no session cookie")
+    status = get(f"{base}/api/auth/status", headers={"Cookie": session[0]})
+    user = status.json()["user"]["id"]  # type: ignore[index]
+    return Session(session[0], user)
+
+
+def stub_stats() -> dict[str, int]:
+    r = get(f"{STACK.eneo}/__stub/stats")
+    expect(r.status == 200, f"GET /__stub/stats answered {r.status}")
+    stats = r.json()
+    missing = {"open_streams", "streams_started", "live_frames", "live_bytes", "uploads_received"} - set(stats)  # type: ignore[arg-type]
+    expect(not missing, f"/__stub/stats lacks {sorted(missing)}")
+    return stats  # type: ignore[return-value]
+
+
+def open_stream(base: str, path: str, headers: dict[str, str], read_bytes: int = 65536) -> socket.socket:
+    """GET on a raw socket, headers and the first ``read_bytes`` of the body read; the caller closes it (or leaves it open)."""
+    parts = urlsplit(base)
+    sock = socket.create_connection((parts.hostname, parts.port or 80), timeout=30)
+    sock.sendall((f"GET {path} HTTP/1.1\r\nHost: {parts.netloc}\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n").encode())
+    data = b""
+    while True:
+        head, separator, body = data.partition(b"\r\n\r\n")
+        if separator and len(body) >= read_bytes:
+            break
+        chunk = sock.recv(65536)
+        if not chunk:
+            raise Failed(f"the stream of {path} ended before {read_bytes} bytes of body")
+        data += chunk
+    expect(data.startswith((b"HTTP/1.1 200", b"HTTP/1.1 206")), f"the stream of {path} answered {data[:30]!r}")
+    return sock
+
+
+def reset(sock: socket.socket) -> None:
+    """Close with a reset, as a browser tab that is closed in the middle of a download does."""
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()
+
+
+def audio_path(file_id: str = AUDIO_FILE) -> str:
+    return f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/input-files/{file_id}/audio"
+
+
+# ---- the pages and paths the first checks read -----------------------------------------------------------------------------
+PAGES = ["/", "/flows", "/flows/", f"/flows/{FLOW}", f"/flows/{FLOW}?run={RUN_DONE}", "/inloggad", "/inloggad?fel=utgangen", "/inloggad?fel=annan-anvandare"]
+# The reads the UI makes (frontend/lib/api.ts); the sign-in's own navigations (/api/auth/login and /callback) redirect by design.
+API_READS = [
+    "/api/auth/status", "/api/branding", "/api/branding/theme.css", "/api/config", "/api/eneo/flows/", f"/api/eneo/flows/{FLOW}/published/",
+    f"/api/eneo/flows/{FLOW}/run-contract/", f"/api/eneo/flows/{FLOW}/graph/", f"/api/eneo/flows/{FLOW}/runs/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/",
+    f"/api/eneo/flows/{FLOW}/runs/{RUN_RUNNING}/status/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/steps/",
+    f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/transcript-corrections/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/review-checkpoints/active/",
+]
+UNKNOWN = ["/api/nope", "/api", "/api/", "/api/auth/nope/deeper", "/assets/x.js", "/assets/x.js.br", "/x.png", "/a/b/style.css", "/openapi.json", "/a%00.js"]
+_cache: dict[str, list[tuple[str, Response]]] = {}
+
+
+def fetched_pages() -> list[tuple[str, Response]]:
+    if "pages" not in _cache:
+        session = sign_in()
+        _cache["pages"] = [(p, get(STACK.direct + p)) for p in PAGES] + [(p, get(STACK.direct + p, headers=session.read())) for p in API_READS]
+    return _cache["pages"]
+
+
+def fetched_unknowns() -> list[tuple[str, Response]]:
+    if "unknown" not in _cache:
+        _cache["unknown"] = [(p, get(STACK.direct + p)) for p in UNKNOWN]
+    return _cache["unknown"]
+
+
+def is_html(r: Response) -> bool:
+    return r.headers.get("content-type", "").startswith("text/html") or bool(re.search(rb"<!doctype html|<html", r.body[:2000], re.I))
+
+
+# ---- the checks ------------------------------------------------------------------------------------------------------------
+CHECKS: dict[int, tuple[str, Callable[[], str]]] = {}
+
+
+def check(number: int, title: str) -> Callable[[Callable[[], str]], Callable[[], str]]:
+    def register(function: Callable[[], str]) -> Callable[[], str]:
+        CHECKS[number] = (title, function)
+        return function
+
+    return register
+
+
+@check(1, "healthy: docker says so, and /health and /api/healthz answer {\"ok\": true} on 3001")
+def check_1() -> str:
+    expect(health_status() == "healthy", f"docker health is {health_status()!r}")
+    for path in ("/health", "/api/healthz"):
+        r = get(STACK.direct + path)
+        expect(r.status == 200 and r.json() == {"ok": True}, f"GET {path} answered {r.status} {r.text()[:80]}")
+    return "healthy; both routes answer {\"ok\": true}"
+
+
+@check(2, "one process: one python, no node and no supervisord, and the user is not root")
+def check_2() -> str:
+    lines = docker("top", STACK.container).stdout.splitlines()
+    header = lines[0].split()
+    command_at, user_at = len(header) - 1, next(i for i, name in enumerate(header) if name in ("USER", "UID"))
+    rows = [line.split(None, command_at) for line in lines[1:] if line.strip()]
+    # The image's own health check starts a short-lived python beside the server.
+    rows = [r for r in rows if "urllib.request.urlopen" not in r[command_at]]
+    expect(len(rows) == 1, f"the container runs {len(rows)} processes: {[r[command_at][:60] for r in rows]}")
+    command, user = rows[0][command_at], rows[0][user_at]
+    expect("python" in command and "app.serve" in command, f"the process is {command[:80]!r}, not python -m app.serve")
+    expect(user not in ("root", "0"), f"the process runs as {user}")
+    found = exec_in(STACK.container, "sh", "-c", "command -v node; command -v supervisord; true")
+    expect(found == "", f"the image holds {found!r}")
+    uid = exec_in(STACK.container, "id", "-u")
+    expect(uid != "0", "the container's user is root")
+    return f"one process ({command[:50]}), user {user} (uid {uid}), no node, no supervisord"
+
+
+@check(3, "every route of the app is the page, and no route or API path of the UI redirects")
+def check_3() -> str:
+    pages = fetched_pages()
+    for path, r in pages[: len(PAGES)]:
+        expect(r.status == 200 and r.headers.get("content-type", "").startswith("text/html"), f"GET {path} answered {r.status} {r.headers.get('content-type')}")
+        expect("no-cache" in r.headers.get("cache-control", ""), f"GET {path}: Cache-Control is {r.headers.get('cache-control')!r}, not no-cache")
+    for path, r in pages:
+        expect(r.status not in REDIRECTS, f"GET {path} answered the redirect {r.status} to {r.headers.get('location')}")
+    reads = pages[len(PAGES):]
+    unreached = [p for p, r in reads if r.status >= 400]
+    expect(not unreached, f"API reads that the stub should answer were refused: {unreached}")
+    return f"{len(PAGES)} pages are 200 text/html no-cache; {len(PAGES) + len(reads)} requests, none a redirect"
+
+
+@check(4, "/api/nope, /assets/x.js, /x.png and the other unknown paths are 404 with no HTML body")
+def check_4() -> str:
+    for path, r in fetched_unknowns():
+        expect(r.status == 404, f"GET {path} answered {r.status}, not 404")
+        expect(not is_html(r), f"GET {path} answered HTML: {r.text()[:80]!r}")
+    return f"{len(UNKNOWN)} paths, all 404, none HTML"
+
+
+@check(5, "the headers of checks 3 and 4 are security_headers.json, and script and style allow nothing unsafe")
+def check_5() -> str:
+    seen = fetched_pages() + fetched_unknowns()
+    for path, r in seen:
+        for name, value in SECURITY_HEADERS.items():
+            expect(r.headers.get(name.lower()) == value, f"GET {path}: {name} is {r.headers.get(name.lower())!r}, not {value!r}")
+        policy = {d.split()[0]: d.split()[1:] for d in r.headers["content-security-policy"].split(";") if d.strip()}
+        for directive in ("script-src", "style-src"):
+            expect(not any(s.startswith("'unsafe-") for s in policy.get(directive, [])), f"GET {path}: {directive} allows {policy.get(directive)}")
+    return f"{len(seen)} responses carry all {len(SECURITY_HEADERS)} headers with the file's values"
+
+
+@check(6, "the shipped test:prod project, the real profile's claim states and the renewal tests pass against the image")
+def check_6() -> str:
+    claim = "recording|stromma|result|result-docked-player|result-pdf-dialog|result-pdf-preview-whole|result-table|setup-date|account-menu|leave-dialog|naming-dialog|ready-delete-dialog"
+    commands = {
+        "shipped": os.environ.get("ACCEPT_PROD_CMD", "npx playwright test --config playwright.prod.config.ts --project=shipped"),
+        "real": os.environ.get("ACCEPT_REAL_CMD", f"npx playwright test --project=phone-390-light -g \"({claim})|renewal|session-cover\""),
+    }
+    env_for = {
+        "shipped": {"PROD_EXTERNAL_URL": STACK.module},
+        "real": {"GATE_TARGET": "real", "REAL_EXTERNAL_URL": STACK.module},
+    }
+    lines = []
+    for name, command in commands.items():
+        r = subprocess.run(command, shell=True, cwd=ROOT / "frontend", env={**os.environ, **env_for[name]}, capture_output=True, text=True, timeout=3600)
+        tail = [line for line in (r.stdout + r.stderr).splitlines() if line.strip()][-3:]
+        expect(r.returncode == 0, f"{name}: `{command}` failed ({r.returncode}): {' | '.join(tail)}")
+        lines.append(f"{name}: {tail[-1].strip() if tail else 'ok'}")
+    return "; ".join(lines)
+
+
+@check(7, "Range on the audio route: 206 with Content-Range, a second range, 416, and a client that leaves leaves no upstream open")
+def check_7() -> str:
+    session = sign_in()
+    path = audio_path()
+    first = get(STACK.direct + path, headers={**session.read(), "Range": "bytes=0-99"})
+    total = re.fullmatch(r"bytes 0-99/(\d+)", first.headers.get("content-range", ""))
+    expect(first.status == 206 and total and len(first.body) == 100, f"bytes=0-99 answered {first.status} {first.headers.get('content-range')}")
+    size = int(total.group(1))
+    second = get(STACK.direct + path, headers={**session.read(), "Range": "bytes=100-199"})
+    expect(second.status == 206 and second.headers.get("content-range") == f"bytes 100-199/{size}", f"bytes=100-199 answered {second.status} {second.headers.get('content-range')}")
+    beyond = get(STACK.direct + path, headers={**session.read(), "Range": f"bytes={size + 1000}-"})
+    expect(beyond.status == 416, f"a range past the end answered {beyond.status}, not 416")
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: nothing can be held open to leave half-way (B3.1's stub)")
+    before = stub_stats()
+    sock = open_stream(STACK.direct, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
+    wait_until(lambda: stub_stats()["open_streams"] >= 1, 10, "the stub sees the stream open")
+    reset(sock)
+    wait_until(lambda: stub_stats()["open_streams"] == 0, 10, "the upstream closes after the client leaves")
+    expect(stub_stats()["streams_started"] > before["streams_started"], "the stub counted no stream started")
+    return f"206 for two ranges of {size} bytes, 416 past the end; a stream left with a reset closed its upstream"
+
+
+@check(8, "the live socket relays a 64 KiB frame, and a frame of 128 KiB + 1 closes it with 1009 before the stub sees it")
+def check_8() -> str:
+    session = sign_in()
+    path = f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-0001"
+    ws = WebSocket(STACK.direct, path, headers={"Origin": STACK.module, "Cookie": session.cookie})
+    try:
+        expect(ws.recv_json(timeout=10).get("type") == "ready", "the first event was not ready")
+        before = stub_stats()
+        ws.send_binary(os.urandom(64 * 1024))
+        wait_until(lambda: stub_stats()["live_frames"] == before["live_frames"] + 1, 10, "the stub receives the 64 KiB frame")
+        after = stub_stats()
+        expect(after["live_bytes"] - before["live_bytes"] == 64 * 1024, f"the stub received {after['live_bytes'] - before['live_bytes']} bytes of it")
+        try:
+            ws.send_binary(os.urandom(128 * 1024 + 1))
+        except OSError:
+            pass  # the server closed while the frame was still being sent
+        code = ws.wait_for_close(10)
+        expect(code == 1009, f"a frame of 128 KiB + 1 closed the socket with {code}, not 1009")
+        time.sleep(1)
+        final = stub_stats()
+        expect(final["live_frames"] == after["live_frames"] and final["live_bytes"] == after["live_bytes"], "the stub received something of the oversize frame")
+    finally:
+        ws.abort()
+    return "64 KiB relayed (+1 frame, +65536 bytes); 128 KiB + 1 closed with 1009 and the stub saw nothing of it"
+
+
+def measure(case: str, base: str, *, fresh: bool = True) -> dict:
+    """upload/measure.py for one case, in a fresh container unless the image already runs as the check needs it; returns its row."""
+    if fresh:
+        fresh_module()
+    env = {**os.environ, "UPLOAD_PATH": UPLOAD_PATH, "UPLOAD_ORIGIN": STACK.module, "EXPECTED_USER": sign_in(base).user}
+    r = subprocess.run([sys.executable, str(HERE / "upload/measure.py"), STACK.container, base, STACK.eneo, case], capture_output=True, text=True, env=env, timeout=1800)
+    rows = [line for line in r.stdout.splitlines() if line.startswith("{")]
+    expect(r.returncode == 0 and rows, f"measure.py {case} failed: {(r.stderr or r.stdout).strip()[-300:]}")
+    return json.loads(rows[-1])
+
+
+def upload_row(case: str, base: str, file_bytes: int, files: int, growth_limit_mb: int) -> str:
+    row = measure(case, base)
+    client = row["client"]
+    expect(all("http=201" in c for c in client), f"{case}: the client got {client}")
+    got = [s["bytes_received"] for s in row["sink"]]
+    expect(len(got) == files and all(file_bytes <= g <= file_bytes + 4096 for g in got), f"{case}: the stub received {got} bytes for {files} file(s) of {file_bytes}")
+    grew = row["memory"]["backend"]["growth_MB"]
+    expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {row['memory']['backend']['peak_MB']}")
+    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {row['memory']['backend']['peak_MB']}, {row['seconds']} s)"
+
+
+SIZES = {"300MB": 300 * MB, "1GB": 1024 * MB}
+
+
+def over_cap(base: str, cap: int) -> str:
+    """With a small MAX_UPLOAD_BYTES: a declared length over it is 413 at once with max_upload_bytes in the body; a real upload
+    over it is 413 too, with memory flat."""
+    fresh_module(cap)
+    session = sign_in(base)
+    parts = urlsplit(base)
+    connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=30)
+    connection.putrequest("POST", UPLOAD_PATH)
+    for name, value in {**session.write(), "Content-Type": "multipart/form-data; boundary=x", "Content-Length": str(cap + 1)}.items():
+        connection.putheader(name, value)
+    connection.endheaders()  # no body is sent: the answer comes from the declared length
+    r = connection.getresponse()
+    body = r.read()
+    connection.close()
+    expect(r.status == 413 and json.loads(body).get("max_upload_bytes") == cap, f"a declared length over the cap answered {r.status} {body[:100]!r}")
+    row = measure("curl-300MB-1", base, fresh=False)
+    expect("http=413" in row["client"][0], f"an upload of 300 MiB over a cap of {cap} answered {row['client']}")
+    grew = row["memory"]["backend"]["growth_MB"]
+    expect(grew <= 32, f"the refused upload grew the image's memory {grew} MB")
+    return f"over the cap of {cap} bytes: 413 with max_upload_bytes at once, and for a real upload of 300 MiB (memory +{grew} MB)"
+
+
+def abandoned(base: str) -> str:
+    """An upload the client leaves half-way: the image stays healthy and holds no file descriptor or temp file for it."""
+    fresh_module()
+    session = sign_in(base)
+    fds = lambda: int(exec_in(STACK.container, "sh", "-c", "ls /proc/1/fd | wc -l"))
+    tmp = lambda: int(exec_in(STACK.container, "sh", "-c", "ls -A /tmp | wc -l"))
+    before = (fds(), tmp())
+    boundary = "acceptanceboundary"
+    head = f'--{boundary}\r\nContent-Disposition: form-data; name="upload_file"; filename="opptagning.webm"\r\nContent-Type: audio/webm\r\n\r\n'.encode()
+    total = len(head) + 300 * MB + len(f"\r\n--{boundary}--\r\n")
+    parts = urlsplit(base)
+    sock = socket.create_connection((parts.hostname, parts.port or 80), timeout=60)
+    headers = {**session.write(), "Host": parts.netloc, "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(total)}
+    sock.sendall((f"POST {UPLOAD_PATH} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n").encode() + head)
+    chunk = bytes(MB)
+    for _ in range(150):
+        sock.sendall(chunk)
+    reset(sock)
+    wait_until(lambda: fds() <= before[0] and tmp() <= before[1], 20, "the image releases the abandoned upload's file descriptor and temp file")
+    expect(get(f"{STACK.direct}/health").status == 200, "the image is not healthy after the abandoned upload")
+    return f"a client that left after 150 of 300 MiB: file descriptors {before[0]} -> {fds()}, /tmp entries {before[1]} -> {tmp()}, still healthy"
+
+
+@check(9, "upload memory: 300 MiB, 1 GiB and two at once cost the spool, not the file; over the cap is 413; a leaver leaves nothing")
+def check_9() -> str:
+    limit = 32
+    lines = [
+        upload_row("curl-300MB-1", STACK.direct, SIZES["300MB"], 1, limit),
+        upload_row("curl-1GB-1", STACK.direct, SIZES["1GB"], 1, limit),
+        upload_row("curl-300MB-2", STACK.direct, SIZES["300MB"], 2, 2 * limit),
+        over_cap(STACK.direct, 100 * MB),
+        abandoned(STACK.direct),
+    ]
+    up = BASELINE["uploads"]
+    lines.append(f"baseline on Next (growth in MB): 300 MiB {up['curl_300MB']}, 1 GiB {up['curl_1GB']}, 2 x 300 MiB {up['curl_2x300MB']}; over 2 GiB: {up['over_2GiB']}")
+    lines.append("path: /steps/<step>/runtime-files/, the baseline's, not the plan's .../files wording, so that the comparison is like for like")
+    fresh_module()
+    return "\n    ".join(lines)
+
+
+@check(10, "docker stop with a file still streaming ends the container in under 10 s")
+def check_10() -> str:
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")
+    session = sign_in()
+    sock = open_stream(STACK.direct, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
+    try:
+        started = time.monotonic()
+        docker("stop", STACK.container, timeout=60)
+        took = time.monotonic() - started
+        code = docker("inspect", "-f", "{{.State.ExitCode}}", STACK.container).stdout.strip()
+    finally:
+        sock.close()
+        fresh_module()
+    expect(took < 10 and code != "137", f"docker stop took {took:.1f} s and the exit code was {code} (137 is the kill after the grace period)")
+    return f"stopped in {took:.1f} s, exit code {code}, with a stream open"
+
+
+@check(11, "the inline PDF carries frame-ancestors 'self' and SAMEORIGIN")
+def check_11() -> str:
+    session = sign_in()
+    r = get(f"{STACK.direct}/api/eneo/flows/{FLOW}/runs/{RUN_PDF}/artifacts/{PDF_FILE}/content", headers=session.read())
+    expect(r.status == 200 and r.headers.get("content-type", "").startswith("application/pdf"), f"the PDF route answered {r.status} {r.headers.get('content-type')}")
+    expect(r.headers.get("x-frame-options") == "SAMEORIGIN", f"X-Frame-Options is {r.headers.get('x-frame-options')!r}")
+    expect(r.headers.get("content-security-policy") == "frame-ancestors 'self'", f"Content-Security-Policy is {r.headers.get('content-security-policy')!r}")
+    return "200 application/pdf, X-Frame-Options SAMEORIGIN, Content-Security-Policy frame-ancestors 'self' (the preview frame itself is in check 6: result-pdf-dialog)"
+
+
+def grep_dist(image: str, pattern: str) -> list[str]:
+    r = docker("run", "--rm", "--entrypoint", "sh", image, "-c", 'grep -rlF -- "$0" "$STATIC_DIR"; test $? -le 1', pattern, check=False)
+    expect(r.returncode == 0, f"grep in {image} failed: {r.stderr.strip()[:200]}")
+    return r.stdout.split()
+
+
+@check(12, "a build with SPEAKER_REVIEW_ENABLED=true has the speaker review's text in dist/, the default image has not")
+def check_12() -> str:
+    on, off = grep_dist(STACK.review_image, SPEAKER_REVIEW_MARKER), grep_dist(STACK.image, SPEAKER_REVIEW_MARKER)
+    expect(on, f"{STACK.review_image} (built with SPEAKER_REVIEW_ENABLED=true) does not contain {SPEAKER_REVIEW_MARKER!r}")
+    expect(not off, f"the default image contains {SPEAKER_REVIEW_MARKER!r} in {off}")
+    return f"{SPEAKER_REVIEW_MARKER!r} is in {len(on)} file(s) of the review build and in none of the default image's"
+
+
+@check(13, "the default image's dist/ holds no Grundkontroll and no /dev/ route")
+def check_13() -> str:
+    found = {marker: grep_dist(STACK.image, marker) for marker in DEV_MARKERS}
+    expect(not any(found.values()), f"the default image contains {({m: f for m, f in found.items() if f})}")
+    return f"none of {list(DEV_MARKERS)} is in the default image (the browser's view of /dev/foundation is the routes spec of check 6)"
+
+
+def probe(*args: str) -> str:
+    docker("cp", str(HERE / "upload/container_probe.py"), f"{STACK.container}:/tmp/container_probe.py")
+    return exec_in(STACK.container, "python", "/tmp/container_probe.py", *args)
+
+
+def rss_by_role(snapshot: list[dict]) -> dict[str, float]:
+    roles: dict[str, float] = {}
+    for p in snapshot:
+        roles[p["role"]] = roles.get(p["role"], 0) + p["rss_kb"] / 1024
+    return roles
+
+
+def node(script: str, *args: str, preload: bool = False, env: dict[str, str] | None = None, timeout: float = 900) -> str:
+    pw = str(ROOT / "frontend")
+    command = ["node", *(["-r", str(HERE / "auth-preload.cjs")] if preload else []), script, *args]
+    r = subprocess.run(command, capture_output=True, text=True, cwd=ROOT, env={**os.environ, "PW_DIR": pw, "BASE_URL": STACK.module, **(env or {})}, timeout=timeout)
+    expect(r.returncode == 0, f"{Path(script).name} failed: {(r.stderr or r.stdout).strip()[-300:]}")
+    return r.stdout.strip()
+
+
+@check(14, "the image against B0.1: size, start, idle and loaded memory, CPU under polling, page cost, layout shift")
+def check_14() -> str:
+    pw = str(ROOT / "frontend")
+    out, problems = [], []
+    size = int(docker("image", "inspect", "-f", "{{.Size}}", STACK.image).stdout)
+    out.append(f"image size {size / 1e6:.0f} MB (baseline {BASELINE['image_bytes'] / 1e6:.0f} MB)")
+    # start to healthy: a fresh container, timed from the command
+    started = time.time()
+    fresh_module()
+    healthy_after = time.time() - started
+    out.append(f"recreate to healthy {healthy_after:.1f} s (baseline docker healthy {BASELINE['start_seconds']['docker_healthy'][0]} s, first /health {BASELINE['start_seconds']['first_health_200'][0]} s)")
+    time.sleep(40)
+    idle = rss_by_role(json.loads(probe("snapshot")))
+    idle_total = sum(idle.values())
+    out.append(f"idle RSS {idle_total:.1f} MB {({k: round(v, 1) for k, v in idle.items()})} (baseline Next + uvicorn {BASELINE['idle_rss_mb']['frontend_and_backend']} MB, with supervisord {BASELINE['idle_rss_mb']['all']})")
+    if idle_total > BASELINE["idle_rss_mb"]["frontend_and_backend"]:
+        problems.append(f"idle memory {idle_total:.1f} MB is above the baseline's two processes, {BASELINE['idle_rss_mb']['frontend_and_backend']} MB")
+    loaded_run = json.loads(node(str(HERE / "loads.cjs"), pw, STACK.module, "/flows", "20"))
+    expect(loaded_run["ok"] == 20 and "/flows" in loaded_run["finalUrl"], f"loads.cjs: {loaded_run}")
+    loaded = sum(rss_by_role(json.loads(probe("snapshot"))).values())
+    out.append(f"RSS after /flows loaded 20 times {loaded:.1f} MB (baseline {BASELINE['loaded_rss_mb']['frontend_and_backend']} MB without supervisord)")
+    if loaded > BASELINE["loaded_rss_mb"]["frontend_and_backend"]:
+        problems.append(f"memory after 20 loads {loaded:.1f} MB is above the baseline's {BASELINE['loaded_rss_mb']['frontend_and_backend']} MB")
+    # CPU and memory with 10 browsers polling a run, from the container's own samples over poll.cjs's window
+    docker("exec", STACK.container, "rm", "-f", "/tmp/upload-probe-stop", "/tmp/poll.jsonl")
+    docker("exec", "-d", STACK.container, "python", "/tmp/container_probe.py", "sample", "/tmp/poll.jsonl", "500")
+    time.sleep(1)
+    window = json.loads(node(str(HERE / "poll.cjs"), pw, STACK.module, "10", "60", RUN_RUNNING, FLOW))
+    docker("exec", STACK.container, "touch", "/tmp/upload-probe-stop")
+    time.sleep(1)
+    samples = [json.loads(line) for line in exec_in(STACK.container, "cat", "/tmp/poll.jsonl").splitlines() if line.strip()]
+    inside = [s for s in samples if window["from"] <= s["t"] <= window["to"]]
+    expect(len(inside) > 20 and window["onRunPage"] == 10, f"poll.cjs: {window}, {len(inside)} samples inside the window")
+    ticks = lambda s: sum(p["cpu_ticks"] for p in s["p"])
+    cpu = (ticks(inside[-1]) - ticks(inside[0])) / 100 / (inside[-1]["t"] - inside[0]["t"]) * 100
+    peak = max(sum(p["rss_kb"] for p in s["p"]) for s in inside) / 1024
+    out.append(f"10 browsers polling ({window['pollsPerSecond']} polls/s): CPU {cpu:.1f} % of one core, RSS max {peak:.1f} MB (baseline CPU {BASELINE['polling']['cpu_percent']['all']} % with supervisord, RSS max {BASELINE['polling']['rss_mb']['all']['max']} MB)")
+    if cpu > BASELINE["polling"]["cpu_percent"]["all"]:
+        problems.append(f"CPU under polling {cpu:.1f} % is above the baseline's {BASELINE['polling']['cpu_percent']['all']} %")
+    # what a page costs a visitor: page-cost.cjs, signed in, three runs, median
+    paths = {"flows": "/flows", "flow": f"/flows/{FLOW}"}
+    runs = [json.loads(node(str(ROOT / "docs/plans/page-cost.cjs"), pw, STACK.module, f"b42-{n}", *paths.values(), preload=True)) for n in (1, 2, 3)]
+    for key, path in paths.items():
+        base = BASELINE["pages"][key]
+        for profile in ("desktop", "phone-4x-cpu"):
+            rows = [r for run in runs for r in run["rows"] if r["path"] == path and r["profile"] == profile]
+            med = lambda field: statistics.median(r[field] for r in rows)
+            first_load = med("jsKB") + med("cssKB")
+            wanted = (base["js_kb"] + base["css_kb"]) * 1.05
+            ref = base["desktop" if profile == "desktop" else "phone_4x_cpu"]
+            out.append(f"{path} {profile}: JS {med('jsKB'):g} + CSS {med('cssKB'):g} KB (baseline {base['js_kb']} + {base['css_kb']}), {med('requests'):g} requests (baseline {base['requests']}), LCP {med('lcp'):g} ms (baseline {ref['lcp_ms']}), TBT {med('tbt'):g} ms (baseline {ref['tbt_ms']}), CLS {med('cls'):g}")
+            if first_load > wanted:
+                problems.append(f"{path} {profile}: first-load JS+CSS {first_load:.1f} KB is more than 5 % above the baseline's {wanted / 1.05:.1f} KB")
+            if med("cls") > 0.01:
+                problems.append(f"{path} {profile}: layout shift {med('cls'):g} (the baseline has none: this is the evidence against decision D4, the organisation's mark written into the page)")
+    out.append("LCP and TBT move with the machine's load: compare them against stt-before run in the same session; the sizes and counts above are the check")
+    expect(not problems, "; ".join(problems) + "\n    " + "\n    ".join(out))
+    return "\n    ".join(out)
+
+
+@check(15, "the live relay under static load: the loaded p95 round trip is at most twice the idle p95")
+def check_15() -> str:
+    session = sign_in()
+    r = subprocess.run(
+        [sys.executable, str(HERE / "live_load.py"), STACK.direct, FLOW, AUDIO_STEP, session.user, "--cookie", session.cookie, "--origin", STACK.module, "--seconds", "30", "--clients", "200"],
+        capture_output=True, text=True, timeout=300,
+    )
+    expect(r.returncode == 0, f"live_load.py failed: {(r.stderr or r.stdout).strip()[-300:]}")
+    result = json.loads(r.stdout.strip().splitlines()[-1])
+    idle, loaded, load = result["idle"], result["loaded"], result["load"]
+    expect(idle.get("samples", 0) >= 100 and loaded.get("samples", 0) >= 100, f"too few round trips: idle {idle}, loaded {loaded}")
+    expect(load["errors"] == 0, f"the load had {load['errors']} errors in {load['requests']} requests")
+    detail = f"idle {idle}, loaded {loaded}; load {load['clients']} clients, {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors"
+    expect(loaded["p95_ms"] <= 2 * idle["p95_ms"], f"the loaded p95 {loaded['p95_ms']} ms is more than twice the idle p95 {idle['p95_ms']} ms (stop condition): {detail}")
+    return detail
+
+
+@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed and docker stop")
+def check_16() -> str:
+    lines = []
+    digest = docker("image", "inspect", "-f", "{{index .RepoDigests 0}}", STACK.traefik_image).stdout.strip()
+    lines.append(f"Traefik {STACK.traefik_image}, {digest}")
+    session = sign_in(STACK.module)
+    # the cookie the BFF sets reaches the client, and comes back
+    login = get(f"{STACK.module}/api/auth/login?next=/flows")
+    expect(any(c.startswith("eneo_module_login_state=") and "HttpOnly" in c for c in login.set_cookies), f"the login's Set-Cookie did not arrive through Traefik: {login.set_cookies}")
+    status = get(f"{STACK.module}/api/auth/status", headers=session.read())
+    expect(status.json()["authenticated"] is True, "the session cookie did not come back through Traefik")  # type: ignore[index]
+    lines.append("the login's state cookie and the session cookie arrive and come back")
+    # a write that names no user is a 409, as direct
+    for base, name in ((STACK.module, "through Traefik"), (STACK.direct, "direct")):
+        r = http_request("POST", f"{base}/api/eneo/flows/{FLOW}/runs/", headers={"Cookie": session.cookie, "Origin": STACK.module, "Content-Type": "application/json"}, body=b"{}")
+        expect(r.status == 409 and r.json() == {"detail": "user_changed"}, f"a write naming no user {name} answered {r.status} {r.text()[:80]}")
+    lines.append("a write that names no user is 409 user_changed, through Traefik and direct")
+    # the socket upgrades and relays, and the browser's Origin reaches the check unchanged
+    path = f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-0016"
+    ws = WebSocket(STACK.module, path, headers={"Origin": STACK.module, "Cookie": session.cookie})
+    try:
+        expect(ws.recv_json(timeout=10).get("type") == "ready", "no ready event through Traefik")
+        before = stub_stats()
+        ws.send_binary(os.urandom(64 * 1024))
+        wait_until(lambda: stub_stats()["live_frames"] == before["live_frames"] + 1, 10, "the stub receives a frame relayed through Traefik")
+    finally:
+        ws.abort()
+    try:
+        WebSocket(STACK.module, path, headers={"Origin": "http://evil.example", "Cookie": session.cookie}).abort()
+        raise Failed("a socket opened with another Origin was accepted through Traefik")
+    except HandshakeRefused as refused:
+        expect(refused.status in (403, 400), f"another Origin was answered {refused.status}")
+    lines.append("the socket upgrades and relays a 64 KiB frame; another Origin is refused")
+    # Range through Traefik equals direct
+    for header in ("bytes=0-99", "bytes=100-199", "bytes=99999999999-"):
+        a = get(STACK.module + audio_path(), headers={**session.read(), "Range": header})
+        b = get(STACK.direct + audio_path(), headers={**session.read(), "Range": header})
+        expect((a.status, a.headers.get("content-range"), a.body) == (b.status, b.headers.get("content-range"), b.body), f"Range {header}: Traefik {a.status} {a.headers.get('content-range')}, direct {b.status} {b.headers.get('content-range')}")
+    lines.append("Range 206, 206 and 416 are the same through Traefik as direct")
+    # uploads through Traefik, as direct
+    lines.append(upload_row("curl-300MB-1", STACK.module, SIZES["300MB"], 1, 32) + " (through Traefik)")
+    lines.append(upload_row("curl-1GB-1", STACK.module, SIZES["1GB"], 1, 32) + " (through Traefik)")
+    lines.append(over_cap(STACK.module, 100 * MB) + " (through Traefik)")
+    # docker stop with a stream open through Traefik
+    fresh_module()
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")
+    session = sign_in(STACK.module)
+    sock = open_stream(STACK.module, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
+    try:
+        started = time.monotonic()
+        docker("stop", STACK.container, timeout=60)
+        took = time.monotonic() - started
+    finally:
+        sock.close()
+        fresh_module()
+    expect(took < 10, f"docker stop with a stream open through Traefik took {took:.1f} s")
+    lines.append(f"docker stop with a stream open through Traefik: {took:.1f} s")
+    lines.append("not covered: TLS and the Secure cookie (a hand check at B6.1)")
+    return "\n    ".join(lines)
+
+
+# 10 stops the image and 16 stops it again; both leave a fresh one running. Everything else only reads or recreates it.
+ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 10, 16]
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--only", help="comma-separated check numbers")
+    parser.add_argument("--list", action="store_true")
+    args = parser.parse_args()
+    if args.list:
+        for number in sorted(CHECKS):
+            print(f"{number:>2}  {CHECKS[number][0]}")
+        return 0
+    wanted = [int(n) for n in args.only.split(",")] if args.only else ORDER
+    image = docker("image", "inspect", "-f", "{{.Id}} {{.Size}}", STACK.image, check=False).stdout.split()
+    print(f"image {STACK.image} {image[0][:19] if image else '(not found)'}  module {STACK.module}  direct {STACK.direct}  eneo {STACK.eneo}", flush=True)
+    failed = []
+    for number in [n for n in ORDER if n in wanted]:
+        title, function = CHECKS[number]
+        began = time.monotonic()
+        try:
+            detail = function()
+            print(f"PASS {number:>2}  {title}\n    {detail}", flush=True)
+        except Failed as error:
+            failed.append(number)
+            print(f"FAIL {number:>2}  {title}\n    {error}", flush=True)
+        except Exception:  # a check that broke, not one that failed: show where
+            failed.append(number)
+            print(f"FAIL {number:>2}  {title}\n    {traceback.format_exc().strip()}", flush=True)
+        print(f"        ({time.monotonic() - began:.1f} s)", flush=True)
+    print(f"{len(wanted) - len(failed)} of {len(wanted)} checks passed" + (f"; failed: {failed}" if failed else ""))
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

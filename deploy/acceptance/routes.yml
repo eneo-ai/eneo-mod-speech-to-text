@@ -1,0 +1,13 @@
+# One router for the module, everything to the image on its port 3001. Traefik forwards the browser's Host and Origin unchanged and
+# upgrades a WebSocket on its own; nothing else is configured, so what the checks see is what a bare Traefik does to the module.
+http:
+  routers:
+    module:
+      entryPoints: [web]
+      rule: PathPrefix(`/`)
+      service: module
+  services:
+    module:
+      loadBalancer:
+        servers:
+          - url: http://speech-to-text:3001
