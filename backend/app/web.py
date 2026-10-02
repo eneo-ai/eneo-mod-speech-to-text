@@ -30,8 +30,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 SECURITY_HEADERS: dict[str, str] = json.loads(Path(__file__).with_name("security_headers.json").read_text())
 
 
+NO_STORE = (b"cache-control", b"no-store")
+
+
 class SecurityHeadersMiddleware:
     """Adds each header in ``headers`` that a response lacks, to every HTTP response, a streamed one and an error too.
+    An answer under ``/api`` also gets ``Cache-Control: no-store`` if it says nothing about caching: a transcript must
+    not land in a shared computer's disk cache. A route that sets its own (the theme, the logo) keeps it.
 
     Pure ASGI: the response is passed on as it is built, so a streamed body is not wrapped, a client that leaves ends
     the stream where it always did, and its upstream is closed by the response's own background task.
@@ -46,10 +51,13 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        api = scope["path"] == "/api" or scope["path"].startswith("/api/")
+        added = [*self.headers, *([NO_STORE] if api else [])]
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 present = {name.lower() for name, _ in message.get("headers", [])}
-                message = {**message, "headers": [*message.get("headers", []), *(h for h in self.headers if h[0] not in present)]}
+                message = {**message, "headers": [*message.get("headers", []), *(h for h in added if h[0] not in present)]}
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
@@ -86,8 +94,9 @@ ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
 ASSETS = "assets"
-# A path with one of these (NUL and the rest of C0, DEL, a backslash) names nothing: a 404, never the page.
-_NOT_A_NAME = re.compile(r"[\x00-\x1f\x7f\\]")
+# A path with one of these (NUL and the rest of C0, DEL, a backslash), or a segment that starts with a dot (a dotfile, "."
+# and ".."), names nothing: a 404, never the page, a file or a way past the /api rule.
+_NOT_A_NAME = re.compile(r"[\x00-\x1f\x7f\\]|(?:^|/)\.")
 
 
 def _etag(data: bytes) -> str:
@@ -199,9 +208,10 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve(path: str, request: Request) -> Response:
         last = path.rsplit("/", 1)[-1]
-        # The scope's path, not ``path``: the route's pattern ends in ``$``, which matches before a trailing newline, so
-        # ``path`` has lost it.
-        if path == "api" or path.startswith("api/") or _NOT_A_NAME.search(request.scope["path"]):
+        # The scope's path, not ``path``: the route's pattern drops one leading slash (``//api/x`` is ``/api/x``) and, ending
+        # in ``$``, a trailing newline.
+        asked = request.scope["path"]
+        if _NOT_A_NAME.search(asked) or asked.lstrip("/") == "api" or asked.lstrip("/").startswith("api/"):
             raise HTTPException(status_code=404)
         # A compressed sibling is served by negotiation only, never by its own name.
         if last.endswith((".br", ".gz")):
@@ -210,8 +220,9 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
         if path == "index.html" or (not in_assets and "." not in last):
             return answer_page(request)
         file = _file_under(root, path)
-        # ``a/../index.html`` is the raw page, with its marker empty: the page is only ever the processed one.
-        if file is None or file == index:
+        # ``a/../index.html`` is the raw page, with its marker empty: the page is only ever the processed one. A file has one
+        # URL: ``/assets/app.js/`` is not it (and its ``.br`` twin with a slash is not a way past the check above).
+        if file is None or file == index or path.endswith("/"):
             raise HTTPException(status_code=404)
         headers = {"Cache-Control": ASSET_CACHE_CONTROL if in_assets else REVALIDATE}
         served, encoding = file, None

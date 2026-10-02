@@ -5,6 +5,7 @@ The header set is ``app/security_headers.json``, the one definition; a header an
 
 import gzip
 import html
+import asyncio
 import importlib.util
 import json
 import os
@@ -272,6 +273,38 @@ class EndpointHeadersWinTests(HeadersCase):
                 self.assert_default_headers(response)
 
 
+class ProxiedAnswerTests(HeadersCase):
+    """What the proxy leaves of Eneo's answer: the module's own headers are not Eneo's to replace, and nothing confidential is stored."""
+
+    FLOWS = "/api/eneo/flows/"
+
+    def proxied(self, headers: dict[str, str]) -> httpx.Response:
+        fake = self.serve_files()
+        fake.answer = FakeAnswer(b'{"items": []}', {"content-type": "application/json", **headers})
+        return self.client.get(self.FLOWS)
+
+    def test_eneos_framing_policy_and_referrer_headers_never_replace_the_modules(self) -> None:
+        response = self.proxied(
+            {
+                "x-frame-options": "SAMEORIGIN",
+                "content-security-policy": "frame-ancestors 'self'",
+                "permissions-policy": "microphone=*",
+                "referrer-policy": "unsafe-url",
+            }
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assert_default_headers(response)
+
+    def test_a_proxied_answer_is_not_stored_and_an_answer_that_says_how_long_keeps_its_say(self) -> None:
+        self.assertEqual(self.proxied({}).headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/api/config").headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/api/nope").headers["cache-control"], "no-store")
+        theme = self.anonymous.get("/api/branding/theme.css")
+        self.assertEqual(theme.headers["cache-control"], "public, max-age=300")
+        self.assertEqual(self.anonymous.get("/health").headers.get("cache-control"), None, "outside /api nothing is added")
+
+
 class AbandonedStreamTests(unittest.TestCase):
     """A client that walks away from a streamed file must still close the module's request to Eneo, middleware or not."""
 
@@ -375,6 +408,27 @@ class BuiltUiCase(unittest.TestCase):
         self.client = TestClient(self.module.app, raise_server_exceptions=False, follow_redirects=False)
         # What the page is: the file with its marker holding what GET /api/branding answers.
         self.page = branded(INDEX, self.client.get("/api/branding").text)
+
+    def raw_get(self, path: str) -> httpx.Response:
+        """A GET with ``path`` as the server receives it. The test client's URL parser reads ``//api/x`` as a host and
+        resolves ``/./``, so a path that is not canonical goes to the app directly."""
+        sent: list[dict] = []
+
+        async def receive():
+            return {"type": "http.request", "body": b"", "more_body": False}
+
+        async def send(message):
+            sent.append(message)
+
+        scope = {
+            "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http", "root_path": "",
+            "path": path, "raw_path": path.encode(), "query_string": b"", "headers": [(b"host", b"testserver")],
+            "client": ("127.0.0.1", 1), "server": ("testserver", 80),
+        }
+        asyncio.run(self.module.app(scope, receive, send))
+        start = next(message for message in sent if message["type"] == "http.response.start")
+        body = b"".join(message.get("body", b"") for message in sent if message["type"] == "http.response.body")
+        return httpx.Response(start["status"], headers=start["headers"], content=body)
 
 
 class StaticServingTests(BuiltUiCase):
@@ -498,6 +552,40 @@ class StaticServingTests(BuiltUiCase):
         for path in ("/a%20b", "/fl%C3%B6de/%C3%A5", "/flows/abc"):  # a space, and letters outside ASCII, are names
             with self.subTest(path=path):
                 self.assertEqual(self.client.get(path).text, self.page)
+
+    def test_a_path_that_is_not_canonical_is_never_the_page_in_place_of_an_api_404(self) -> None:
+        for path in ("//api/x", "///api/x", "//api", "/./api/x", "/../api/x", "/a/../api/x", "/flows/./x", "/flows/../x"):
+            with self.subTest(path=path):
+                response = self.raw_get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+        self.assertEqual(self.raw_get("/flows/abc").text, self.page)
+
+    def test_a_dotfile_is_never_served(self) -> None:
+        (self.root / ".hidden").write_text("hidden-content")
+        (self.root / "assets" / ".DS_Store").write_text("hidden-content")
+        for path in ("/.hidden", "/assets/.DS_Store", "/.env", "/.git/config", "/assets/.hidden.js", "/a/.b"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+                self.assertNotIn("hidden-content", response.text)
+
+    def test_a_file_has_one_url_and_a_sibling_is_not_served_by_the_twin_of_its_name_with_a_slash(self) -> None:
+        for path in ("/assets/app.js/", "/assets/app.css/", "/assets/app.js.br/", "/assets/app.js.gz/", "/assets/"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+                self.assertNotIn("not really", response.text)
+        self.assertEqual(self.client.get("/assets/app.js").status_code, 200)
+        # Outside assets/ a path ending in a slash is a route of the app, as any other: the page, never a file or its sibling.
+        for path in ("/flows/", "/index.html.br/", "/favicon.svg.gz/"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.text), (200, self.page))
+                self.assertNotIn("content-encoding", response.headers)
 
     def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
         (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")
@@ -754,8 +842,11 @@ class PrecompressedTests(BuiltUiCase):
                 self.assertIn(b"<title>Tal till text</title>", body)
 
     def test_the_sibling_is_never_served_by_its_own_name(self) -> None:
-        for path in ("/assets/app.js.br", "/assets/app.js.gz"):
+        for path in ("/assets/app.js.br", "/assets/app.js.gz", "/assets/app.js.br/", "/assets/app.js.gz/"):
             self.assertEqual(self.client.get(path, headers={"Accept-Encoding": "br, gzip"}).status_code, 404)
+        twin = self.client.get("/index.html.br/", headers={"Accept-Encoding": "br, gzip"})
+        self.assertEqual((twin.status_code, twin.headers.get("content-encoding")), (200, None))
+        self.assertNotIn(b"BROTLI-PAGE", twin.content, "a route of the app: the page, not the sibling")
 
 
 class BrandingMarkerTests(BuiltUiCase):
