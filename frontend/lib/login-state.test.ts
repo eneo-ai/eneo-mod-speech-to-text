@@ -43,6 +43,31 @@ function signedInPage(t: import("node:test").TestContext, answers: Array<() => R
   return { calls, navigated };
 }
 
+/**
+ * A signed-in page whose requests are answered when the test says so, as the network does: late, and out of order.
+ * `answer(i, response)` answers the i-th request sent; `reread` counts the status reads the page was asked for.
+ */
+function heldPage(t: import("node:test").TestContext) {
+  const waiting: Array<(response: Response) => void> = [];
+  const calls: Array<{ url: string; method: string }> = [];
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(url), method: init?.method ?? "GET" });
+    return new Promise<Response>((resolve) => waiting.push(resolve));
+  }) as typeof fetch;
+  const page = globalThis as { window?: unknown };
+  const browserWindow = page.window;
+  page.window = { location: { pathname: "/flows/flow-1", replace: () => undefined } };
+  const reread = { count: 0 };
+  const end = loginState.begin(anna, () => (reread.count += 1));
+  t.after(() => {
+    end();
+    globalThis.fetch = browserFetch;
+    page.window = browserWindow;
+  });
+  return { calls, reread, answer: (i: number, response: Response) => waiting[i](response) };
+}
+
 test("a session end never navigates away: the page stays signed out, and a read waits for the new login and goes again", async (t) => {
   const { calls, navigated } = signedInPage(t, [sessionEnded, () => ok({ id: "run-1", flow_id: "flow-1", status: "running" })]);
   const reading = getRunStatus("flow-1", "run-1");
@@ -205,8 +230,10 @@ const userChanged = () =>
   });
 
 /** An XMLHttpRequest that answers `httpStatus` and `body`, and keeps the headers it was sent with and how often it sent. */
-function answeringXhr(t: import("node:test").TestContext, httpStatus: number, body: unknown) {
-  const sent = { headers: {} as Record<string, string>, count: 0 };
+function answeringXhr(t: import("node:test").TestContext, httpStatus: number, body: unknown, hold = false) {
+  const sent = { headers: {} as Record<string, string>, count: 0, release: () => {} };
+  const held: Array<() => void> = [];
+  sent.release = () => held.splice(0).forEach((answer) => answer());
   class AnsweringXhr {
     upload = {};
     onload: (() => void) | null = null;
@@ -225,7 +252,8 @@ function answeringXhr(t: import("node:test").TestContext, httpStatus: number, bo
     }
     send() {
       sent.count += 1;
-      queueMicrotask(() => this.onload?.());
+      if (hold) held.push(() => this.onload?.());
+      else queueMicrotask(() => this.onload?.());
     }
   }
   const browserXhr = globalThis.XMLHttpRequest;
@@ -315,5 +343,93 @@ test("any other 409 is an ordinary error and covers nothing", async (t) => {
     () => new Response(JSON.stringify({ code: "revision_conflict", detail: "Changed." }), { status: 409, headers: { "content-type": "application/json" } }),
   ]);
   await assert.rejects(cancelRun("flow-1", "run-1"), (error: ApiError) => error.status === 409 && error.code === "revision_conflict");
+  assert.equal(loginState.signedOut, false);
+});
+
+// Results come back late and out of order. Every request and status read records the login's revision when it
+// starts; a result from an older revision describes a login that has changed since, and never changes the state.
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+const running = { id: "run-1", flow_id: "flow-1", status: "running" };
+
+test("a late 401 to a request sent on the old cookie does not cover the page that has been signed in again", async (t) => {
+  const page = heldPage(t);
+  const first = getRunStatus("flow-1", "run-1"); // both go out on the old cookie
+  const second = getRunStatus("flow-1", "run-2");
+  await tick();
+  page.answer(0, sessionEnded());
+  await tick();
+  assert.equal(loginState.signedOut, true, "the first one's 401 covers the page");
+
+  loginState.observe(signedIn(), loginState.revision); // the new login, read after the cover
+  assert.equal(loginState.signedOut, false);
+  page.answer(1, sessionEnded()); // the second one's 401, from the old cookie
+  await tick();
+  assert.equal(loginState.signedOut, false, "does not cover the signed-in page again");
+
+  assert.equal(page.calls.length, 4, "both reads go again, with the new login");
+  page.answer(2, ok(running));
+  page.answer(3, ok(running));
+  assert.equal((await first).id, "run-1");
+  assert.equal((await second).id, "run-1");
+  assert.equal(loginState.signedOut, false);
+});
+
+test("a late status that said signed in does not uncover a page the login's end has covered", () => {
+  const end = loginState.begin(anna);
+  try {
+    const started = loginState.revision; // the status read goes out while signed in
+    loginState.ended(); // and a request finds the login ended
+    assert.equal(loginState.signedOut, true);
+    assert.equal(loginState.observe(signedIn(), started), false, "the answer is not used");
+    assert.equal(loginState.signedOut, true, "the page stays covered");
+
+    assert.equal(loginState.observe(signedIn(), loginState.revision), true, "a status read after the end is believed");
+    assert.equal(loginState.signedOut, false);
+  } finally {
+    end();
+  }
+});
+
+test("a late status that said another user is signed in changes nothing either, in the other direction", () => {
+  const end = loginState.begin(anna);
+  try {
+    const started = loginState.revision;
+    loginState.ended();
+    loginState.observe(signedIn(), loginState.revision); // renewed as Anna
+    assert.equal(loginState.observe(signedIn(8 * 3600, erik), started), false);
+    assert.equal(loginState.signedOut, false);
+    assert.equal(loginState.otherUser, null);
+  } finally {
+    end();
+  }
+});
+
+test("a late 409 user_changed from the old cookie does not cover the signed-in page, or read the status again", async (t) => {
+  const page = heldPage(t);
+  const first = getRunStatus("flow-1", "run-1");
+  const second = getRunStatus("flow-1", "run-2").catch((error: ApiError) => error);
+  await tick();
+  page.answer(0, sessionEnded());
+  await tick();
+  loginState.observe(signedIn(), loginState.revision);
+  page.answer(1, userChanged());
+  await tick();
+  assert.equal(loginState.signedOut, false);
+  assert.equal(page.reread.count, 0, "no status is asked for on a result that describes a login gone");
+  page.answer(2, ok(running));
+  await first;
+  assert.equal(page.calls.length, 3, "the first one went again; the second's 409 is its own failure");
+  assert.equal(((await second) as ApiError).status, 401);
+});
+
+test("a late 409 to an upload sent on the old cookie does not cover the page signed in again", async (t) => {
+  heldPage(t);
+  const upload = answeringXhr(t, 409, { detail: "user_changed" }, true);
+  const uploading = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm").catch((error) => error);
+  await tick();
+  loginState.ended();
+  loginState.observe(signedIn(), loginState.revision); // covered and signed in again while the upload was out
+  upload.release();
+  assert.equal(((await uploading) as ApiError).status, 401, "the upload is the user's to send again");
   assert.equal(loginState.signedOut, false);
 });

@@ -71,14 +71,15 @@ export interface LiveDeps {
   /**
    * The page's login (loginState): covered while signed out or someone else is signed in. The relay takes
    * whoever's cookie the browser has then, so live text sends nothing and connects to nothing until the page's
-   * own user is back; the recording goes on meanwhile. The relay's closes for a session that ended under an open
-   * socket (ended) and for another user's session (userChanged) cover the page the way a request's refusal does.
+   * own user is back; the recording goes on meanwhile. The relay's closes for another user's session and for a session
+   * that ended under an open socket cover the page the way a request's refusal does (userChanged, and the status is
+   * read again), unless the socket was opened under an older revision of the login.
    */
   login?: {
     readonly signedOut: boolean;
+    readonly revision: number;
     subscribe(listener: () => void): () => void;
-    ended(): void;
-    userChanged(): void;
+    userChanged(revision?: number): void;
   };
   now?: () => number;
 }
@@ -295,6 +296,8 @@ export class LiveTranscriber {
     this.failure = null;
     this.attempts += 1;
     let socket: LiveSocket;
+    // The login as it is when this connects: a close from an older one never changes it (loginState.revision).
+    const revision = this.deps.login?.revision;
     try {
       socket = this.deps.openSocket();
     } catch {
@@ -304,7 +307,7 @@ export class LiveTranscriber {
     }
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => this.onMessage(socket, event.data);
-    socket.onclose = (event) => this.onClose(socket, event);
+    socket.onclose = (event) => this.onClose(socket, event, revision);
     // A failed socket also closes; the close says what to do.
     socket.onerror = () => undefined;
     this.socket = socket;
@@ -352,7 +355,7 @@ export class LiveTranscriber {
     }
   }
 
-  private onClose(socket: LiveSocket, event: { code: number; reason?: string }) {
+  private onClose(socket: LiveSocket, event: { code: number; reason?: string }, revision: number | undefined) {
     if (socket !== this.socket) return;
     this.socket = null;
     const wasReady = this.ready;
@@ -362,8 +365,7 @@ export class LiveTranscriber {
       // The login is not the page's user's any more: the page is covered, and live text goes on as after a break
       // once the page's own user is back (connect() waits for it); it opens nothing on its own meanwhile.
       this.failure = "retry";
-      if (event.reason === "user_changed") this.deps.login?.userChanged();
-      else this.deps.login?.ended();
+      this.deps.login?.userChanged(revision);
     }
     if (this.stopping) {
       this.finish();
