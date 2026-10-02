@@ -822,6 +822,26 @@ class PrecompressedTests(BuiltUiCase):
         self.assertEqual((again.status_code, again.content), (304, b""))
         self.assertEqual(again.headers["vary"], "Accept-Encoding")
 
+    def test_a_compressed_file_is_read_off_the_event_loop(self) -> None:
+        # Reading a few hundred KB blocks whoever is on the loop: the live relay shares it.
+        where: list[str] = []
+        read_bytes = Path.read_bytes
+
+        def spy(path: Path) -> bytes:
+            if path.suffix in (".br", ".gz"):
+                try:
+                    asyncio.get_running_loop()
+                    where.append("on the event loop")
+                except RuntimeError:  # a worker thread has no running loop
+                    where.append("in a worker thread")
+            return read_bytes(path)
+
+        with patch.object(Path, "read_bytes", spy):
+            for encoding in ("br", "gzip"):
+                self.raw("/assets/app.js", **{"Accept-Encoding": encoding})
+
+        self.assertEqual(where, ["in a worker thread"] * 2)
+
     def test_a_range_of_a_compressed_file_is_answered_whole(self) -> None:
         # A range of a compressed file is not a range of the file.
         response, body = self.raw("/assets/app.js", **{"Accept-Encoding": "br", "Range": "bytes=0-3"})

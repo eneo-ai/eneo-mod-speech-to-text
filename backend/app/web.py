@@ -23,6 +23,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # The one definition of the headers every response carries; a header an endpoint sets itself wins (the inline PDF's
@@ -242,5 +243,6 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
             return Response(status_code=304, headers={name: value for name, value in headers.items() if name != "Content-Encoding"})
         if encoding is not None:
             # Not a FileResponse: it would honour a Range, and a range of a compressed file is not a range of the file.
-            return Response(content=served.read_bytes(), media_type=mimetypes.guess_type(file.name)[0], headers=headers)
+            content = await run_in_threadpool(served.read_bytes)  # off the loop: the live relay shares it
+            return Response(content=content, media_type=mimetypes.guess_type(file.name)[0], headers=headers)
         return FileResponse(file, headers=headers)
