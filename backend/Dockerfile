@@ -13,7 +13,6 @@ COPY --chown=module:module app ./app
 EXPOSE 8000
 USER module
 
-# Callback-queryn innehåller en kortlivad login-ticket. Uvicorns accesslogg
-# stängs därför av så att ticket/state aldrig hamnar i containerloggar.
-# WebSocket-gränserna är desamma som i deploy/supervisord.conf.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--ws-max-size", "131072", "--ws-max-queue", "16"]
+# Backend startas av startprogrammet (app/serve.py), som ensam sätter en arbetsprocess, ingen accesslogg (callback-queryn
+# innehåller en kortlivad login-ticket) och WebSocket-gränserna i app/limits.py, samma som i deploy/supervisord.conf.
+CMD ["python", "-m", "app.serve", "--api-only", "--port", "8000"]

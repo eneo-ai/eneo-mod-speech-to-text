@@ -24,12 +24,12 @@ import httpx  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
-from uvicorn.main import main as uvicorn_cli  # noqa: E402
 from websockets.asyncio.client import connect as websocket_connect  # noqa: E402
 from websockets.asyncio.server import serve  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
-from app import main  # noqa: E402
+from app import main, serve as launcher  # noqa: E402
+from app.limits import WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 from test_module_auth import token_payload  # noqa: E402
 
@@ -527,12 +527,6 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
         self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
 
 
-def uvicorn_options(command: list[str]) -> dict[str, object]:
-    """The options uvicorn's own command line makes of a launch command."""
-    arguments = command[command.index("app.main:app") :]
-    return uvicorn_cli.make_context("uvicorn", arguments).params
-
-
 def launch_commands() -> dict[str, list[str]]:
     """Every way the repository starts the module backend."""
     supervisord = configparser.ConfigParser(interpolation=None)
@@ -543,7 +537,7 @@ def launch_commands() -> dict[str, list[str]]:
         "production image": shlex.split(supervisord["program:backend"]["command"]),
         "backend image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
         "README dev server": shlex.split(
-            re.search(r"^\.venv/bin/python -m (uvicorn .+)$", readme, re.M)[1]
+            re.search(r"^(\.venv/bin/python -m app\.serve .+)$", readme, re.M)[1]
         ),
     }
 
@@ -571,22 +565,22 @@ def serve_module(**options):
 
 
 class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
-    def test_every_launch_path_sets_the_same_browser_limits(self) -> None:
-        limits = {
-            name: {
-                option: uvicorn_options(command)[option]
-                for option in ("ws_max_size", "ws_max_queue")
-            }
-            for name, command in launch_commands().items()
-        }
-
-        for name, limit in limits.items():
+    def test_every_launch_path_runs_the_launcher_which_sets_the_browser_limits(self) -> None:
+        # The limits live in app.limits and only app.serve passes them: a path that ran uvicorn itself could set others.
+        for name, command in launch_commands().items():
             with self.subTest(name):
-                self.assertEqual(limit, limits["production image"])
+                self.assertEqual(command[command.index("-m") + 1], "app.serve")
+                self.assertNotIn("uvicorn", " ".join(command))
+                launcher.parse_args(command[command.index("app.serve") + 1 :])  # the arguments are the launcher's own
+        with patch("uvicorn.run") as run:
+            launcher.serve("app.main:app", api_only=True)
+        self.assertEqual(
+            (run.call_args.kwargs["ws_max_size"], run.call_args.kwargs["ws_max_queue"]),
+            (WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE),
+        )
 
     def test_production_limits_refuse_an_oversized_message_before_eneo(self) -> None:
-        options = uvicorn_options(launch_commands()["production image"])
-        max_size, max_queue = options["ws_max_size"], options["ws_max_queue"]
+        max_size, max_queue = WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE
         # Eneo's largest audio frame fits, and a connection queues at most 2 MiB.
         self.assertGreaterEqual(max_size, 64 * 1024)
         self.assertLessEqual(max_size * max_queue, 2 * 2**20)
