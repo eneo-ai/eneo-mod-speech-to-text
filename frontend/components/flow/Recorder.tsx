@@ -138,7 +138,7 @@ export function RecordingBar({
   const marker = showStatus ? "" : undefined;
   return (
     <div className={styles.bar} data-status={marker}>
-      <VStack gap={3}>
+      <VStack gap={3} className={styles.barStack}>
         {warnings.length > 0 && (
           <VStack gap={2}>
             {warnings.map((warning) => (
