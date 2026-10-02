@@ -78,7 +78,6 @@ Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`
 | PATCH | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/` |
 | POST | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/approve/`, `.../reject/`, `.../resume/` |
 | GET | `flows/{flow}/template-files/` |
-| POST | `flows/{flow}/template-files/{file}/signed-url/` |
 
 Källan är `_PROXY_ROUTE_RULES` i `backend/app/main.py`; testerna är `backend/tests/test_eneo_proxy_auth.py`.
 

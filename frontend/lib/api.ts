@@ -1336,21 +1336,3 @@ export async function uploadFlowTemplateFile(
     { method: "POST", body: fd },
   );
 }
-
-export async function getFlowTemplateSignedUrl(
-  flowId: string,
-  fileId: string,
-  expiresInSeconds = 3600,
-) {
-  // TODO(eneo-refactor): När prod är stabil på nya specen, behåll bara `expires_in`.
-  return request<{ url: string; expires_at?: string | number }>(
-    `/api/eneo/flows/${flowId}/template-files/${fileId}/signed-url/`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        expires_in_seconds: expiresInSeconds, // legacy fältnamn
-        expires_in: expiresInSeconds, // ny spec
-      }),
-    },
-  );
-}
