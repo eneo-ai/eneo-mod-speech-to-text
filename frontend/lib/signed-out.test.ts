@@ -65,7 +65,7 @@ test("someone signing in here keeps only their own drafts: another person's type
   const { createElement } = await import("react");
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthGate } = await import("../components/AuthGate");
-  const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
+  const { browserDrafts, isRecord, readDraft, writeDraft } = await import("./drafts");
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
@@ -83,8 +83,8 @@ test("someone signing in here keeps only their own drafts: another person's type
   const { container, act } = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: "Sidan" })));
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.match(container.textContent ?? "", /Sidan/);
-  assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1"), { motesnamn: "Byggnadsnämnden" });
-  assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1"), null);
+  assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1", isRecord), { motesnamn: "Byggnadsnämnden" });
+  assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1", isRecord), null);
 });
 
 test("signed out, Logga in igen starts a new login; before the end, a renewal bound to the user signed in now", async (t) => {

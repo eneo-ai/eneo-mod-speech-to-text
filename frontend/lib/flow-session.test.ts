@@ -1871,3 +1871,52 @@ test("Eneo's part length applies only to parts it takes as one recording; parts 
     maxRecordingMs: undefined,
   });
 });
+
+test("the details and speaker choices kept through a reload come back only in the shape the session reads: any other is dropped from the storage and counts as none", async () => {
+  const detailsKey = "tal-till-text:draft:user-1:flow:flow-1";
+  const choicesKey = `${detailsKey}:talare`;
+  const contract = { ...countContract({ max_speakers: PARTICIPANTS }), form_fields: [PEOPLE] };
+  const opened = async (kept: Record<string, string>) => {
+    const drafts = memoryDrafts();
+    for (const [key, raw] of Object.entries(kept)) drafts.setItem(key, raw);
+    const { session } = await setup({ drafts });
+    session.setContract(contract);
+    const { details, speakerLabels, speakerCount, speakerCountFromNames } = session.getSnapshot();
+    return { drafts, details, choices: [speakerLabels, speakerCount, speakerCountFromNames] };
+  };
+  const none = await opened({});
+
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["a list", '["Anna", 2]'],
+    ["a number", "3"],
+    ["a detail of the wrong type", '{"motesdeltagare": 5}'],
+    ["a list of the wrong things", '{"motesdeltagare": [1, 2]}'],
+  ]) {
+    const got = await opened({ [detailsKey]: raw });
+    assert.deepEqual(got.details, none.details, `${what} is no details`);
+    assert.equal(got.drafts.getItem(detailsKey), null, `${what} is removed, not left to fail again`);
+  }
+  const typed = await opened({ [detailsKey]: '{"motesdeltagare": ["Gunnar", "Maria"]}' });
+  assert.deepEqual(typed.details, { motesdeltagare: ["Gunnar", "Maria"] }, "details of the right shape come back");
+  assert.notEqual(typed.drafts.getItem(detailsKey), null, "and stay");
+  const empty = await opened({ [detailsKey]: "{}" });
+  assert.deepEqual(empty.details, none.details, "an empty record is details, with nothing in them");
+
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["a list", '[true, "3"]'],
+    ["a choice of the wrong type", '{"labels": "yes", "count": "3"}'],
+    ["a count that is a number", '{"count": 3}'],
+  ]) {
+    const got = await opened({ [choicesKey]: raw });
+    assert.deepEqual(got.choices, none.choices, `${what} is no choices`);
+    assert.equal(got.drafts.getItem(choicesKey), null, `${what} is removed`);
+  }
+  assert.equal(none.choices[0], true, "the contract has the labels on");
+  const off = await opened({ [choicesKey]: JSON.stringify({ labels: false }) });
+  assert.equal(off.choices[0], false, "a choice of the right shape comes back");
+  assert.notEqual(off.drafts.getItem(choicesKey), null, "and stays");
+  const counted = await opened({ [choicesKey]: JSON.stringify({ labels: true, count: "7", edited: true }) });
+  assert.deepEqual(counted.choices, [true, "7", false], "with the count as the person's own");
+});

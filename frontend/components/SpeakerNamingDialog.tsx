@@ -14,7 +14,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
-import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { browserDrafts, clearDraft, isRecord, readDraft, writeDraft } from "@/lib/drafts";
 import { speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel } from "@/lib/transcript";
 
@@ -49,8 +49,14 @@ function useVisibleHeight(active: boolean): number | null {
 /** The button that opens the dialog, whatever it is: it keeps its own props and gets the dialog's. */
 type Trigger = ReactElement<{ onClick?: (event: MouseEvent<HTMLElement>) => void } & Record<string, unknown>>;
 
+/** What the dialog takes from names kept earlier: for each speaker the label, and the name (null when it was taken away). */
+type TypedName = Pick<SpeakerMappingRow, "label" | "name">;
+const isNamesDraft = (value: unknown): value is TypedName[] =>
+  Array.isArray(value) && value.every((row) => isRecord(row) && typeof row.label === "string" && (typeof row.name === "string" || row.name === null));
+
 /** Names typed earlier, and kept for this person, wait to be shown: the dialog opens with them as it mounts. */
-export const hasNamesDraft = (draftKey: { ownerId: string; name: string }) => readDraft(browserDrafts(), draftKey.ownerId, draftKey.name) !== null;
+export const hasNamesDraft = (draftKey: { ownerId: string; name: string }) =>
+  readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) !== null;
 
 /**
  * "Namnge talarna" at the review pause: one row per speaker with a sample to
@@ -109,8 +115,8 @@ export function SpeakerNamingDialog({
 }) {
   // Names typed but not saved: kept through closing the dialog and through a reload (it opens again with them);
   // saving them or Avbryt ends them.
-  const [typed, setTyped] = useState<SpeakerMappingRow[] | null>(() =>
-    draftKey ? readDraft<SpeakerMappingRow[]>(browserDrafts(), draftKey.ownerId, draftKey.name) : null,
+  const [typed, setTyped] = useState<TypedName[] | null>(() =>
+    draftKey ? readDraft(browserDrafts(), draftKey.ownerId, draftKey.name, isNamesDraft) : null,
   );
   const [open, setOpen] = useState(() => typed !== null);
   // A native dialog stays above the cover of a page whose login has ended (a modal dialog's inertness is its own), so
