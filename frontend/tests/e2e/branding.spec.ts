@@ -43,7 +43,7 @@ for (const state of states) {
       const found: string[] = [];
       for (const element of document.querySelectorAll("body *")) {
         const style = getComputedStyle(element);
-        if (style.display === "none" || style.visibility === "hidden" || element.closest("nextjs-portal")) continue;
+        if (style.display === "none" || style.visibility === "hidden") continue;
         // A shadow layer of no size paints nothing: Tailwind's ring, 0 0 0 0 in its default blue, sits in every shadow.
         const painted = style.boxShadow
           .split(/,(?![^(]*\))/)

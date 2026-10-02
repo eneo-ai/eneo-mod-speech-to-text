@@ -1,5 +1,5 @@
 /**
- * The review page with the speaker review switched on (NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED, fixed when the app is built),
+ * The review page with the speaker review switched on (SPEAKER_REVIEW_ENABLED, fixed when the app is built),
  * where the speakers sit in a card that folds away: `npm run test:a11y:review`, which starts the app that way. Only there
  * are these tests run; the gate's own app has the setting off.
  */
@@ -7,7 +7,7 @@ import { expect, test } from "@playwright/test";
 import { run } from "./screens";
 import ids from "../fixtures/ids.json";
 
-test.skip(process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED !== "true", "needs the app started with the speaker review on");
+test.skip(process.env.SPEAKER_REVIEW_ENABLED !== "true", "needs the app started with the speaker review on");
 
 test("names typed but not saved come back as a dialog you can see and reach", async ({ page }) => {
   await run(page, ids.runs.review, ids.flows.flow2);

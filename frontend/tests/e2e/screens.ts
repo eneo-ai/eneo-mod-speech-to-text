@@ -5,10 +5,9 @@
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 
-/** Opens a page of the app, with Next's dev-only indicator hidden (it is not the app). */
+/** Opens a page of the app. */
 export async function open(page: Page, path: string) {
   await page.goto(path);
-  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" });
 }
 
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";

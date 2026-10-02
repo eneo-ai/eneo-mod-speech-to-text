@@ -32,7 +32,7 @@ export async function settle(page: Page) {
 
 export async function axe(page: Page) {
   await settle(page);
-  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).exclude("nextjs-portal").analyze();
+  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   return {
     violations: result.violations.map((v) => ({
       id: v.id,
@@ -208,7 +208,7 @@ export function reflow(page: Page) {
     for (const el of Array.from(document.body.querySelectorAll("*"))) {
       const s = getComputedStyle(el);
       const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2 || s.visibility === "hidden" || el.closest('[aria-hidden="true"], nextjs-portal')) continue;
+      if (r.width < 2 || r.height < 2 || s.visibility === "hidden" || el.closest('[aria-hidden="true"]')) continue;
       // Visually hidden text for screen readers is meant to be clipped.
       if (s.position === "absolute" && (s.clip !== "auto" || r.width <= 1)) continue;
       const scrollsX = (e: Element | null): boolean =>
@@ -381,7 +381,6 @@ function probeFocus(page: Page) {
   return page.evaluate(async () => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body || el === document.documentElement) return null;
-    if (el.closest("nextjs-portal")) return null;
     el.dataset.a11yStop ??= String(Math.random()).slice(2);
     document.querySelectorAll("[data-a11y-current]").forEach((e) => e.removeAttribute("data-a11y-current"));
     el.setAttribute("data-a11y-current", "");

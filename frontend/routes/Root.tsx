@@ -12,6 +12,7 @@ import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import type { Branding } from "@/lib/api";
 import { readBranding } from "@/lib/read-branding";
+import { RouteEffects } from "@/routes/RouteEffects";
 
 /** What every screen stands in: the colour mode and the design system's providers. */
 function Providers({ children }: { children: ReactNode }) {
@@ -41,6 +42,7 @@ export function Root() {
   return (
     <Providers>
       <BrandingProvider value={branding}>
+        <RouteEffects />
         <div data-app-shell>
           <Outlet />
         </div>

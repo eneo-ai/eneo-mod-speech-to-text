@@ -1,8 +1,8 @@
 import { defineConfig, type PlaywrightTestConfig } from "@playwright/test";
 
-// The accessibility gate: `npm run test:a11y`. The app runs in `next dev` against
-// the stub backend in tests/e2e, so no Eneo is needed. Next allows one dev
-// server per checkout: stop your own `npm run dev` here first.
+// The accessibility gate: `npm run test:a11y`. The app runs on the Vite dev server against
+// the stub backend in tests/e2e, so no Eneo is needed. The server is this run's own, on its own port, so your own
+// `npm run dev` (3002) can stay up.
 // One pair of ports per checkout, so several worktrees can run the gate at the same time: set A11Y_APP_PORT and
 // A11Y_STUB_PORT to a pair no other run uses. The defaults are for a single checkout.
 const APP = Number(process.env.A11Y_APP_PORT ?? 3401);
@@ -29,7 +29,7 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   fullyParallel: true,
-  // One `next dev` serves every worker: more than four starve it on a shared host, and a page
+  // One dev server serves every worker: more than four starve it on a shared host, and a page
   // still loading then fails a check that is not about accessibility.
   workers: 4,
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/a11y-report" }]],
@@ -76,10 +76,11 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
     },
     {
-      command: `npx next dev -H 127.0.0.1 -p ${APP}`,
+      command: `npx vite --host 127.0.0.1 --port ${APP} --strictPort`,
       url: `http://127.0.0.1:${APP}/`,
-      env: { INTERNAL_API_BASE: `http://127.0.0.1:${STUB}`, NEXT_TELEMETRY_DISABLED: "1" },
-      timeout: 180_000,
+      // The speaker review is off in the gate's own app; playwright.review.config.ts starts one with it on.
+      env: { DEV_API_BASE: `http://127.0.0.1:${STUB}`, SPEAKER_REVIEW_ENABLED: "false" },
+      timeout: 120_000,
       reuseExistingServer: !process.env.CI,
     },
   ],

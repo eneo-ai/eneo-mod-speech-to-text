@@ -246,7 +246,7 @@ async function counters(cdp: CDPSession) {
   return { nodes, listeners: jsEventListeners, heapMB: usedSize / 1024 ** 2 };
 }
 
-/** The counters once the page has stopped changing by itself: `next dev` builds its own indicator after the load. */
+/** The counters once the page has stopped changing by itself: a dev server's own client and the page's lazy chunks settle after the load. */
 async function settledCounters(page: Page, cdp: CDPSession) {
   let previous = await counters(cdp);
   for (let quiet = 0; quiet < 4; ) {

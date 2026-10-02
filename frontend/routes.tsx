@@ -1,11 +1,7 @@
 import type { ComponentType } from "react";
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { Root, RootHydrateFallback, RouteError } from "@/routes/Root";
-
-/** What a route says about itself beside its page: the title, which the page itself may refine (B2.8). */
-export interface RouteHandle {
-  title: string;
-}
+import type { RouteHandle } from "@/routes/RouteEffects";
 
 /**
  * One page. Its code is fetched when the route is first entered, so a person on the sign-in page does not download the
