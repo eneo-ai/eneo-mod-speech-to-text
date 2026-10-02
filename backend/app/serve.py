@@ -25,7 +25,7 @@ from collections.abc import Sequence
 import uvicorn
 
 from app.config import load_settings
-from app.limits import WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE
+from app.limits import WS_MAX_MESSAGE_BYTES
 
 APP = "app.main:app"
 GRACEFUL_SHUTDOWN_SECONDS = 8
@@ -67,7 +67,6 @@ def serve(
         "access_log": False,
         "server_header": False,
         "ws_max_size": WS_MAX_MESSAGE_BYTES,
-        "ws_max_queue": WS_MAX_QUEUE,
         "timeout_graceful_shutdown": GRACEFUL_SHUTDOWN_SECONDS,
     }
     if refused := sorted(options.keys() & overrides.keys()):

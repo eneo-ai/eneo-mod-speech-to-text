@@ -31,7 +31,6 @@ FIXED = {
     "access_log": False,
     "server_header": False,
     "ws_max_size": 128 * 1024,
-    "ws_max_queue": 16,
     "timeout_graceful_shutdown": 8,
     "reload": False,
 }
@@ -51,17 +50,16 @@ class ServeTests(unittest.TestCase):
         run.assert_called_once_with("app.main:app", **FIXED)
 
     def test_the_constants_are_the_ones_in_limits(self) -> None:
-        self.assertEqual((limits.WS_MAX_MESSAGE_BYTES, limits.WS_MAX_QUEUE), (128 * 1024, 16))
+        self.assertEqual(limits.WS_MAX_MESSAGE_BYTES, 128 * 1024)
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
 
         self.assertEqual(run.call_args.kwargs["ws_max_size"], limits.WS_MAX_MESSAGE_BYTES)
-        self.assertEqual(run.call_args.kwargs["ws_max_queue"], limits.WS_MAX_QUEUE)
+        self.assertNotIn("ws_max_queue", run.call_args.kwargs, "uvicorn's default implementation has no such limit")
 
-    def test_the_limits_satisfy_the_bounds_the_relay_depends_on(self) -> None:
-        # Eneo's largest audio frame (64 KiB) fits, and a connection queues at most 2 MiB before Eneo sees a frame.
+    def test_the_limit_satisfies_the_bound_the_relay_depends_on(self) -> None:
+        # Eneo's largest audio frame (64 KiB) fits.
         self.assertGreaterEqual(limits.WS_MAX_MESSAGE_BYTES, 64 * 1024)
-        self.assertLessEqual(limits.WS_MAX_MESSAGE_BYTES * limits.WS_MAX_QUEUE, 2 * 2**20)
 
     def test_host_and_port_can_be_chosen_and_so_can_options_the_launcher_does_not_fix(self) -> None:
         with patch("uvicorn.run") as run:
@@ -83,7 +81,6 @@ class ServeTests(unittest.TestCase):
             "access_log": (True, False),
             "server_header": (True, False),
             "ws_max_size": (1024**3, 128 * 1024),
-            "ws_max_queue": (10_000, 16),
             "timeout_graceful_shutdown": (30, 8),
         }
         for name, values in attempts.items():
@@ -189,7 +186,7 @@ class CommandLineTests(unittest.TestCase):
         run.assert_called_once_with("app.main:app", **{**FIXED, "host": "127.0.0.1", "port": 8000, "reload": True})
 
     def test_an_option_that_is_fixed_is_not_an_option(self) -> None:
-        for flag in ("--workers", "--no-access-log", "--ws-max-size", "--ws-max-queue", "--server-header"):
+        for flag in ("--workers", "--no-access-log", "--ws-max-size", "--server-header"):
             with self.subTest(flag), patch("uvicorn.run") as run, patch("sys.stderr"):
                 with self.assertRaises(SystemExit) as refused:
                     launcher.main(["--api-only", flag, "2"])

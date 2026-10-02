@@ -29,7 +29,7 @@ from websockets.asyncio.server import serve  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 from app import main, serve as launcher  # noqa: E402
-from app.limits import WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE  # noqa: E402
+from app.limits import WS_MAX_MESSAGE_BYTES  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 from test_module_auth import token_payload  # noqa: E402
 
@@ -545,9 +545,16 @@ def launch_commands() -> dict[str, list[str]]:
 @contextlib.contextmanager
 def serve_module(**options):
     """The module backend on uvicorn, as the image runs it; yields the port."""
+    with serving(main.app, **options) as (port, _):
+        yield port
+
+
+@contextlib.contextmanager
+def serving(app, **options):
+    """``app`` on uvicorn, as the image runs it; yields the port and the server."""
     server = uvicorn.Server(
         uvicorn.Config(
-            main.app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
+            app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
         )
     )
     thread = threading.Thread(target=server.run, daemon=True)
@@ -558,7 +565,7 @@ def serve_module(**options):
             if time.monotonic() > deadline:
                 raise RuntimeError("uvicorn did not start")
             time.sleep(0.01)
-        yield server.servers[0].sockets[0].getsockname()[1]
+        yield server.servers[0].sockets[0].getsockname()[1], server
     finally:
         server.should_exit = True
         thread.join(5)
@@ -575,15 +582,14 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
         self.assertEqual(
-            (run.call_args.kwargs["ws_max_size"], run.call_args.kwargs["ws_max_queue"]),
-            (WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE),
+            run.call_args.kwargs["ws_max_size"],
+            WS_MAX_MESSAGE_BYTES,
         )
 
     def test_production_limits_refuse_an_oversized_message_before_eneo(self) -> None:
-        max_size, max_queue = WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE
-        # Eneo's largest audio frame fits, and a connection queues at most 2 MiB.
+        max_size = WS_MAX_MESSAGE_BYTES
+        # Eneo's largest audio frame fits.
         self.assertGreaterEqual(max_size, 64 * 1024)
-        self.assertLessEqual(max_size * max_queue, 2 * 2**20)
         session_id = self.create_session(refresh_at=int(time.time()) + 30)
 
         async def stream(port: int) -> int:
@@ -601,9 +607,47 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                     await asyncio.wait_for(browser.recv(), 5)
                 return refused.exception.rcvd.code
 
-        with serve_module(ws_max_size=max_size, ws_max_queue=max_queue) as port:
+        with serve_module(ws_max_size=max_size) as port:
             self.assertEqual(asyncio.run(stream(port)), 1009)
         self.assertEqual([len(frame) for frame in self.eneo_socket.frames], [64 * 1024])
+
+    def test_a_connection_buffers_a_message_or_two_and_the_sender_is_held_back(self) -> None:
+        """What bounds a connection's queue is not a limit of ours: uvicorn's default implementation stops reading as soon
+        as a message is queued, until the app has taken it. This pins that, with an app that takes nothing. It reads the
+        implementation's own queue, so it names what a uvicorn upgrade (pinned) must keep."""
+        release = threading.Event()
+
+        async def takes_nothing(scope, receive, send) -> None:
+            if scope["type"] == "websocket":
+                await receive()  # the connect
+                await send({"type": "websocket.accept"})
+                while not release.is_set():
+                    await asyncio.sleep(0.05)
+
+        frame = bytes(64 * 1024)  # Eneo's largest audio frame
+
+        with serving(takes_nothing, ws_max_size=WS_MAX_MESSAGE_BYTES) as (port, server):
+
+            async def flood() -> tuple[int, int]:
+                sender = await websocket_connect(f"ws://127.0.0.1:{port}", compression=None)
+                try:
+                    sent = 0
+                    with contextlib.suppress(TimeoutError):
+                        for _ in range(2000):  # 128 MiB, more than every buffer on the way
+                            await asyncio.wait_for(sender.send(frame), 1)  # the wait is also what lets the server settle
+                            sent += 1
+                    (connection,) = server.server_state.connections
+                    return sent, connection.queue.qsize()
+                finally:
+                    sender.transport.abort()  # a close would wait for a server that is not reading
+
+            try:
+                sent, queued = asyncio.run(flood())
+            finally:
+                release.set()
+
+        self.assertLess(sent, 2000, "the sender was never held back")
+        self.assertLessEqual(queued * len(frame), 2 * WS_MAX_MESSAGE_BYTES, f"{queued} messages were queued")
 
 
 if __name__ == "__main__":
