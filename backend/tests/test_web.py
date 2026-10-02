@@ -296,7 +296,12 @@ class ProxiedAnswerTests(HeadersCase):
         self.assertEqual(response.status_code, 200)
         self.assert_default_headers(response)
 
-    def test_a_proxied_answer_is_not_stored_and_an_answer_that_says_how_long_keeps_its_say(self) -> None:
+    def test_the_module_owns_the_caching_of_its_origin_so_eneos_cache_control_never_reaches_the_browser(self) -> None:
+        for eneo in ("public, max-age=3600", "no-cache", "private, max-age=60"):
+            with self.subTest(eneo):
+                self.assertEqual(self.proxied({"cache-control": eneo}).headers.get_list("cache-control"), ["no-store"])
+
+    def test_a_proxied_answer_is_not_stored_and_a_route_that_says_how_long_keeps_its_say(self) -> None:
         self.assertEqual(self.proxied({}).headers["cache-control"], "no-store")
         self.assertEqual(self.client.get("/api/config").headers["cache-control"], "no-store")
         self.assertEqual(self.client.get("/api/nope").headers["cache-control"], "no-store")

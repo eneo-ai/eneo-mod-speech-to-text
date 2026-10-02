@@ -197,7 +197,8 @@ def _ascii_only(headers: dict[str, str]) -> dict[str, str]:
 # Headers we should not forward from upstream response back to client. Eneo's cookies are not the browser's:
 # several would be merged into one line, and one named like the module's session would replace it. Its Location
 # names Eneo's own host, which the browser cannot reach and which says how the network is laid out. The module's
-# own security headers are not Eneo's to replace (they are added only where an answer lacks them).
+# own security headers are not Eneo's to replace (they are added only where an answer lacks them), and neither is its
+# caching policy: the module decides what its own origin lets a browser store (nothing under /api).
 _UNFORWARDED_RESPONSE_HEADERS = {
     "content-encoding",
     "transfer-encoding",
@@ -210,6 +211,7 @@ _UNFORWARDED_RESPONSE_HEADERS = {
     "x-frame-options",
     "permissions-policy",
     "referrer-policy",
+    "cache-control",
 }
 
 # The module never follows a redirect, and no route of it is expected to redirect, so one from Eneo is an error,
