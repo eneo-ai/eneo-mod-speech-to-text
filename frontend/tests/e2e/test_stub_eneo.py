@@ -315,9 +315,17 @@ class FileTests(SignedIn):
 
 
 class LiveTests(SignedIn):
+    def setUp(self) -> None:
+        super().setUp()
+        self.recording = f"rec-{os.urandom(6).hex()}"  # the page names its recording: the stub keeps what each one sent
+
+    def session_stats(self) -> dict:
+        return self.stats()["live_sessions"].get(self.recording, {})
+
     def run_live(self, scenario, *, user: str | None = USER):
         async def run():
-            url = f"ws://127.0.0.1:{self.backend}/api/live/{FLOW}/{AUDIO_STEP}" + (f"?expected_user={user}" if user else "")
+            query = f"?recording_id={self.recording}" + (f"&expected_user={user}" if user else "")
+            url = f"ws://127.0.0.1:{self.backend}/api/live/{FLOW}/{AUDIO_STEP}{query}"
             async with websocket_client.connect(url, origin=self.origin, additional_headers={"Cookie": self.cookie}, open_timeout=10) as socket_:
                 return await scenario(socket_)
 
@@ -327,7 +335,7 @@ class LiveTests(SignedIn):
         async def scenario(socket_):
             self.assertEqual(json.loads(await socket_.recv())["type"], "ready")
             await socket_.send(bytes(64 * KB))
-            self.eventually(lambda: self.stats()["live_frames"] == 1, "the frame did not reach the stub")
+            self.eventually(lambda: self.session_stats().get("frames") == 1, "the frame did not reach the stub")
             for _ in range(3):
                 await socket_.send(bytes(KB))
             return json.loads(await asyncio.wait_for(socket_.recv(), 5))
@@ -335,13 +343,13 @@ class LiveTests(SignedIn):
         delta = self.run_live(scenario)
 
         self.assertEqual(delta["type"], "transcript.delta")
-        self.assertEqual(self.stats()["live_bytes"], 64 * KB + 3 * KB)
+        self.assertEqual(self.session_stats()["bytes"], 64 * KB + 3 * KB)
 
     def test_a_frame_over_128_kib_closes_the_socket_with_1009_and_never_reaches_the_stub(self) -> None:
         async def scenario(socket_):
             await socket_.recv()
             await socket_.send(bytes(64 * KB))
-            self.eventually(lambda: self.stats()["live_frames"] == 1, "the frame did not reach the stub")
+            self.eventually(lambda: self.session_stats().get("frames") == 1, "the frame did not reach the stub")
             await socket_.send(os.urandom(128 * KB + 1))
             with self.assertRaises(ConnectionClosed) as closed:
                 await asyncio.wait_for(socket_.recv(), 5)
@@ -349,7 +357,19 @@ class LiveTests(SignedIn):
 
         self.assertEqual(self.run_live(scenario), 1009)
         time.sleep(0.3)
-        self.assertEqual((self.stats()["live_frames"], self.stats()["live_bytes"]), (1, 64 * KB))
+        self.assertEqual((self.session_stats()["frames"], self.session_stats()["bytes"]), (1, 64 * KB))
+
+    def test_each_recording_has_its_own_numbers_and_the_totals_add_them_up(self) -> None:
+        async def scenario(socket_):
+            await socket_.recv()
+            await socket_.send(bytes(2 * KB))
+            self.eventually(lambda: self.session_stats().get("frames") == 1, "the frame did not reach the stub")
+
+        self.run_live(scenario)
+
+        stats = self.stats()
+        self.assertEqual(stats["live_sessions"][self.recording]["bytes"], 2 * KB)
+        self.assertEqual((stats["live_frames"], stats["live_bytes"]), (1, 2 * KB))
 
     def test_the_stub_sees_the_ticket_in_the_subprotocol_and_no_origin(self) -> None:
         async def scenario(socket_):
@@ -357,7 +377,7 @@ class LiveTests(SignedIn):
 
         self.run_live(scenario)
 
-        seen = self.stats()["last_live_handshake"]
+        seen = self.session_stats()
         self.assertEqual(seen["subprotocols"][0], "eneo-live.v1")
         self.assertTrue(seen["subprotocols"][1].startswith("ticket."))
         self.assertIsNone(seen["origin"], "Eneo sees no browser Origin: the backend opens its socket itself")
