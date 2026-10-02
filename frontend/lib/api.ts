@@ -81,8 +81,8 @@ async function request<T>(
     if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again);
     throw sessionEnded();
   }
-  // The login as it is when this goes out: a late answer from an older one never changes it (loginState.revision).
-  const revision = loginState.revision;
+  // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
+  const question = loginState.ask();
   let res: Response;
   try {
     res = await fetch(path, {
@@ -110,14 +110,14 @@ async function request<T>(
     // say) is an error to show. The page stays, and asks for a new login in place (loginState): a request that
     // is safe to send twice waits for it and goes again.
     if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
-      loginState.ended(revision);
+      loginState.ended(question);
       if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
         return request<T>(path, init, true);
       }
     } else if (isUserChanged(error)) {
       // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
       // session end, and the user decides.
-      loginState.userChanged(revision);
+      loginState.userChanged(question);
       throw sessionEnded();
     }
     throw error;
@@ -708,8 +708,8 @@ function requestMultipartWithProgress<T>(
 
   // Signed out, or someone else signed in here: the upload is the user's to send again once back.
   if (loginState.signedOut) return Promise.reject(sessionEnded());
-  // The login as it is when this goes out: a late answer from an older one never changes it (loginState.revision).
-  const revision = loginState.revision;
+  // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
+  const question = loginState.ask();
   return new Promise<T>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -759,10 +759,10 @@ function requestMultipartWithProgress<T>(
     xhr.onload = () => {
       onlineStatus.reportReachable();
       // The login ended: the dialog asks for a new one, and the send is the user's to start again.
-      if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended(revision);
+      if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended(question);
       // The session is another person's: the upload is the user's to send again, as for a session end.
       const changed = xhr.status === 409 && isUserChanged(parseXhrError(xhr));
-      if (changed) loginState.userChanged(revision);
+      if (changed) loginState.userChanged(question);
       if (settled) return;
       settled = true;
       clearScheduledTimeout();

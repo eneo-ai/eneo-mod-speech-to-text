@@ -7,31 +7,29 @@
  * GET, or one with an Idempotency-Key) waits for the new login and goes; any
  * other fails, for the user to press again once signed in.
  *
- * Answers come back late and out of order, so the login has a revision. A
- * request, a status read or a socket records it when it starts and hands it
- * back with what it found: a result from an older revision describes a login
- * that has changed since (the late 401 of a request sent on the old cookie, a
- * status read that went out while signed in), and never changes the state.
- * This is the only ordering of results against the login. A new login by the
- * same person while the page is not covered (an early renewal replaces the
- * session, and the backend deletes the old one) is no cover and no uncover,
- * so it is told by the session's end moving: what was sent on the old session
- * is stale from then on.
+ * Answers come back in any order: a request sent under a login that a renewal
+ * has since replaced may be refused late, and a status read asked before the
+ * end may say "signed in" after it. The state is the one owner of the login's
+ * revision, so neither moves it (`Question`). The shape follows the module
+ * kit's session state (packages/ui/src/session/state.ts), which this module
+ * moves onto.
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";
 import { ACCESS_CODE_USER, sessionUser } from "./user-identity";
 
 /**
- * How far a new login moves the end of the session: the backend fixes it at the login (the token's refresh leaves it),
- * so the same session read again moves it by the request's second or so.
+ * What a question to the backend (a status read, a request, a socket) remembers of the login when it was asked, to
+ * tell when its answer comes whether it is still about the login the page has: the login's revision, and the
+ * question's place among the questions.
  */
-export const NEW_LOGIN_MOVES_END_MS = 60_000;
+export interface Question {
+  readonly revision: number;
+  readonly order: number;
+}
 
 export interface LoginState {
   readonly signedOut: boolean;
-  /** Counts the changes of the login: covered, uncovered, another user signed in instead, or a new login by the same one. */
-  readonly revision: number;
   /**
    * The user the page was opened for, which the page names in what it sends to Eneo (api.ts) and to the live relay:
    * the module refuses a request whose session is someone else's. Null where no page is open, and for the access
@@ -46,20 +44,32 @@ export interface LoginState {
    * returned function ends it.
    */
   begin(owner: AuthenticatedUser, reread?: () => void): () => void;
+  /** Starts a question to the backend: ask before sending, and give the question back with its answer. */
+  ask(): Question;
   /**
-   * What the module's backend says of the login: signed in and until when, or signed out. `revision` is the one
-   * the read started under; false when the answer was too old to be used.
+   * What the module's backend says of the login: signed in and until when, or signed out. False, and nothing changes,
+   * when the answer belongs to a question asked before the login changed or before one already answered: it is about
+   * a login that is gone. Without a question, it is taken as asked now.
    */
-  observe(status: AuthStatus, revision?: number): boolean;
-  /** A request found the login ended (401 with X-Auth-Required: session); `revision` as for observe. */
-  ended(revision?: number): void;
+  observe(status: AuthStatus, question?: Question): boolean;
+  /**
+   * A request found the login ended (401 with X-Auth-Required: session). False, and nothing changes, when the
+   * request was sent before the login changed: the refusal is about the old login, not the page's. Without a
+   * question, the login is ended.
+   */
+  ended(question?: Question): boolean;
   /**
    * The session is not the page's user's any more: the module found it someone else's (409 user_changed, the live
    * relay's close of that name), or it ended under an open socket, which another person's login may have done
    * (close session_ended). The page is covered as for an end, and the status is read again, which says whose
-   * session it is. `revision` as for observe.
+   * session it is. False, and nothing changes, for a question asked before the login changed.
    */
-  userChanged(revision?: number): void;
+  userChanged(question?: Question): boolean;
+  /**
+   * A login window of the module says it is done (AuthGate hears it on the session channel): the first status read
+   * asked from now confirms a new login of the page's user, also when the page was never covered.
+   */
+  loginWindowDone(): void;
   /** True once signed in again; false at once where no signed-in page waits, or when `signal` ends the wait. */
   whenRenewed(signal?: AbortSignal | null): Promise<boolean>;
 }
@@ -69,11 +79,17 @@ export function createLoginState(): LoginState {
   let owner: AuthenticatedUser | null = null;
   let reread: (() => void) | undefined;
   let signedOut = false;
-  let revision = 0;
-  // When the login last read ends, from its status; a later status that moves it far is a new login.
-  let endsAt: number | null = null;
   let otherUser: AuthenticatedUser | null = null;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
+  // The one revision of the login: it changes whenever the login does (ended, signed in again, someone else's, a new
+  // login confirmed). A question's answer counts only under the revision it was asked in, and only if no later status
+  // question has been answered: so a late answer never undoes what a newer one, or the end itself, has settled.
+  let revision = 0;
+  let asked = 0;
+  let answered = 0;
+  // The question number a login window's word came after: the first answer to a question asked past it confirms a new
+  // login. Early renewal replaces the session (the backend deletes the old one) with no cover to show for it.
+  let windowDoneAt: number | null = null;
   let waiting: Array<(renewed: boolean) => void> = [];
   const listeners = new Set<() => void>();
 
@@ -90,18 +106,16 @@ export function createLoginState(): LoginState {
     if (!next) settle(true);
     listeners.forEach((listener) => listener());
   };
-  // Started under an older revision: the result describes a login that has changed since.
-  const stale = (started?: number) => started !== undefined && started !== revision;
-  const ended = (started?: number) => {
-    if (pages > 0 && !stale(started)) setSignedOut(true);
+  const ended = (question?: Question) => {
+    if (question && question.revision !== revision) return false;
+    if (pages > 0) setSignedOut(true);
+    return true;
   };
+  const ask = (): Question => ({ revision, order: ++asked });
 
   return {
     get signedOut() {
       return signedOut;
-    },
-    get revision() {
-      return revision;
     },
     get otherUser() {
       return otherUser;
@@ -125,18 +139,19 @@ export function createLoginState(): LoginState {
         if (pages > 0) return;
         owner = null;
         reread = undefined;
-        endsAt = null;
         clearTimeout(endTimer);
         settle(false);
         setSignedOut(false);
       };
     },
-    observe(status, started) {
-      if (stale(started)) return false;
+    ask,
+    observe(status, question = ask()) {
+      if (question.revision !== revision || question.order <= answered) return false;
+      answered = question.order;
       clearTimeout(endTimer);
       const user = sessionUser(status);
       if (!user) {
-        endsAt = null;
+        windowDoneAt = null;
         ended();
         return true;
       }
@@ -145,23 +160,24 @@ export function createLoginState(): LoginState {
         setSignedOut(true, user);
         return true;
       }
+      const confirmed = windowDoneAt !== null && question.order > windowDoneAt;
+      if (confirmed) windowDoneAt = null;
       setSignedOut(false);
+      // A new login of the page's user that no cover showed: what went out on the old one is stale from here on.
+      if (confirmed) revision += 1;
       // The login ends at this time whatever the page does; only a new login moves it.
-      if (status.session_ends_in !== undefined) {
-        const end = Date.now() + status.session_ends_in * 1000;
-        // A new login by the same person, seen while the page was not covered: what went out on the old session is
-        // stale (its answers are the old session's, which the backend deleted).
-        if (endsAt !== null && Math.abs(end - endsAt) >= NEW_LOGIN_MOVES_END_MS) revision += 1;
-        endsAt = end;
-        endTimer = setTimeout(() => ended(), status.session_ends_in * 1000);
-      }
+      if (status.session_ends_in !== undefined) endTimer = setTimeout(() => ended(), status.session_ends_in * 1000);
       return true;
     },
     ended,
-    userChanged(started) {
-      if (stale(started)) return;
+    userChanged(question) {
+      if (question && question.revision !== revision) return false;
       ended();
       if (pages > 0) reread?.();
+      return true;
+    },
+    loginWindowDone() {
+      windowDoneAt = asked;
     },
     whenRenewed(signal) {
       if (pages === 0 || signal?.aborted) return Promise.resolve(false);
