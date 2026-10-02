@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "../e2e/auth";
 
 /** What the browser reports as broken or blocked (a Content-Security-Policy refusal is a console error). */
 function problemsOf(page: Page): string[] {
@@ -8,7 +9,7 @@ function problemsOf(page: Page): string[] {
   return problems;
 }
 
-test("the design system is styled, themed and working in the built app", async ({ page }) => {
+test("the design system is styled, themed and working in the built app @fixture", async ({ page }) => {
   const problems = problemsOf(page);
   await page.goto("/dev/foundation");
   await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
@@ -28,7 +29,8 @@ test("the design system is styled, themed and working in the built app", async (
   expect(problems).toEqual([]);
 });
 
-test("a signed-in page of the built app loads with nothing blocked or broken", async ({ page }) => {
+test("a signed-in page of the built app loads with nothing blocked or broken", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
   const problems = problemsOf(page);
   await page.goto("/flows");
   await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();

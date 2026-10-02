@@ -15,7 +15,7 @@ Hör ihop med: [Drift](operations.md), [Kvalitetsgrindar](quality-gates.md), [Ba
 | 3002 | `npm run dev` (Vite-utvecklingsserver, som vidarebefordrar `/api` och `/health` till backend på 8000). |
 | 8000 | Backend (FastAPI), internt; i utveckling med `--api-only`, alltså utan gränssnitt. |
 | 3401 och 8401 | Tillgänglighetsgrinden och `npm run dev:stub`: app och stubbackend. |
-| 3411 och 8411 | `npm run test:prod`: byggd app och stubbackend. |
+| 3411 till 3413 och 8411 | `npm run test:prod`: tre riktiga backends med varsitt bygge, och stubben som Eneo. |
 
 Dev-servern lyssnar avsiktligt på 3002: Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Grindens portar kan flyttas med `A11Y_APP_PORT` och `A11Y_STUB_PORT`, se [Kvalitetsgrindar](quality-gates.md#portar-och-flera-utcheckningar).
 
