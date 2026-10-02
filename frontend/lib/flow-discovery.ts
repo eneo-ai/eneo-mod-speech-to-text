@@ -5,7 +5,7 @@
  */
 
 import { listPublishedFlows, type AppConfig, type FlowSparsePublic } from "./api";
-import { createActionLabel, makesText } from "./flow-session";
+import { createActionLabel, makesText } from "./flow-output";
 
 export const DISCOVERY_PAGE_SIZE = 200;
 // ponytail: 1 000 flows is far more than a person runs; the page says when it cuts, raise the cap if that ever shows.

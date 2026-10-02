@@ -1,10 +1,16 @@
 "use client";
 
-import { Pause, Play, Square } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { SignedOutSlot } from "@/components/AuthGate";
-import { Button } from "@/components/ui/button";
 import { LevelMeter } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { useElapsed } from "@/components/flow/recording-hooks";
@@ -12,23 +18,21 @@ import type { Problem, SessionPhase } from "@/lib/flow-session";
 import { formatClock } from "@/lib/format";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { stopLine } from "@/lib/recording-view";
-import { cn } from "@/lib/utils";
+import styles from "./Recorder.module.css";
 
 // Pausa and Stoppa appear under the finger that tapped Starta: a double tap's second tap must not end the meeting.
 const SETTLE_MS = 700;
 
 /** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
-export function RecordingStatus({ phase, className }: { phase: SessionPhase; className?: string }) {
+export function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
   const recording = phase === "recording";
   return (
-    <span className={cn("inline-flex items-center gap-2 font-medium text-ink", className)}>
-      {recording ? (
-        <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-record" />
-      ) : (
-        <Pause aria-hidden className="size-3.5 shrink-0 text-ink-soft" strokeWidth={2.5} />
-      )}
-      {recording ? "Spelar in" : "Pausad"}
-    </span>
+    <HStack as="span" gap={2} align="center">
+      {recording ? <span aria-hidden className={styles.dot} /> : <Icon icon={Pause} size="sm" color="secondary" />}
+      <Text weight="medium" size={size}>
+        {recording ? "Spelar in" : "Pausad"}
+      </Text>
+    </HStack>
   );
 }
 
@@ -36,14 +40,20 @@ export function RecordingStatus({ phase, className }: { phase: SessionPhase; cla
 export function Timer({
   capture,
   phase,
+  weight,
   className,
 }: {
   capture: RecordingCapture;
   phase: SessionPhase;
+  weight?: "medium";
   className?: string;
 }) {
   const elapsed = useElapsed(capture, phase === "recording");
-  return <span className={cn("tabular-nums", className)}>{formatClock(elapsed)}</span>;
+  return (
+    <Text hasTabularNumbers weight={weight} className={className}>
+      {formatClock(elapsed)}
+    </Text>
+  );
 }
 
 /** Spela in's workspace: the status, a large timer and a calm level. */
@@ -60,33 +70,30 @@ export function FocusedRecorder({
   storageNote: string | null;
 }) {
   return (
-    // On a short screen compact, so the bar docked under it hides none of it.
-    <div className="flex flex-col items-center gap-6 rounded-xl border border-rule-soft bg-paper px-6 py-10 text-center md:py-14 lg:flex-1 lg:justify-center short:gap-2 short:py-3 md:short:py-3">
-      <h2 data-phase-heading tabIndex={-1} className="sr-only">
-        Inspelning
-      </h2>
-      <RecordingStatus phase={phase} className="text-[18px]" />
-      <Timer
-        capture={capture}
-        phase={phase}
-        className="text-[64px] font-semibold leading-none tracking-[-0.04em] text-ink sm:text-[80px] md:text-[96px] short:text-[40px] sm:short:text-[40px] md:short:text-[40px]"
-      />
-      <LevelMeter
-        stream={phase === "recording" ? stream : null}
-        bars={25}
-        variant="wave"
-        className="h-16 w-full max-w-xs justify-center short:h-8"
-      />
-      <p className="max-w-sm text-[15px] leading-relaxed text-ink-soft short:hidden">
-        Texten skapas när du stoppar inspelningen.
-        {storageNote && (
-          <>
-            <br />
-            {storageNote}
-          </>
-        )}
-      </p>
-    </div>
+    <Card padding={6} className={styles.stage}>
+      <VStack align="center" gap={6}>
+        <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
+          Inspelning
+        </VisuallyHidden>
+        <RecordingStatus phase={phase} size="lg" />
+        <Timer capture={capture} phase={phase} className={styles.timer} />
+        <LevelMeter
+          stream={phase === "recording" ? stream : null}
+          bars={25}
+          variant="wave"
+          className={styles.stageMeter}
+        />
+        <Text as="p" color="secondary" className={styles.note}>
+          Texten skapas när du stoppar inspelningen.
+          {storageNote && (
+            <>
+              <br />
+              {storageNote}
+            </>
+          )}
+        </Text>
+      </VStack>
+    </Card>
   );
 }
 
@@ -128,76 +135,62 @@ export function RecordingBar({
   const settled = (act: () => void) => () => {
     if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
   };
+  const marker = showStatus ? "" : undefined;
   return (
-    <div
-      className={cn(
-        // Pinned to the bottom, of the page or of the recording's own scroll box on a laptop; in Strömma on a short
-        // screen in the page's flow, where it would cover the live text.
-        "sticky bottom-0 -mx-4 mt-auto shrink-0 border-t border-rule-soft bg-paper px-4 pt-3",
-        showStatus && "short:static",
-        "pb-[max(0.75rem,env(safe-area-inset-bottom))] md:-mx-8 md:px-8",
-        "lg:mx-0 lg:rounded-xl lg:border lg:px-5 lg:pb-3",
-      )}
-    >
-      {warnings.length > 0 && (
-        <div className="mb-3 flex flex-col gap-2">
-          {warnings.map((warning) => (
-            <ProblemAlert key={warning.title} problem={warning} />
-          ))}
-        </div>
-      )}
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        {showStatus && (
-          // On a phone: the status over the timer and level, so the buttons keep the same row.
-          <div className="flex min-w-0 flex-col gap-0.5 text-[15px] sm:flex-row sm:items-center sm:gap-4">
-            <RecordingStatus phase={phase} />
-            <div className="flex items-center gap-3 sm:gap-4">
-              <Timer capture={capture} phase={phase} className="text-[17px] font-medium text-ink" />
-              <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className="h-6 sm:h-7" />
+    <div className={styles.bar} data-status={marker}>
+      <VStack gap={3} className={styles.barStack}>
+        {warnings.length > 0 && (
+          <VStack gap={2} className={styles.warnings}>
+            {warnings.map((warning) => (
+              <ProblemAlert key={warning.title} problem={warning} />
+            ))}
+          </VStack>
+        )}
+        <VStack gap={3} className={styles.controls}>
+          <div className={styles.row} data-status={marker}>
+            {showStatus && (
+              <div className={styles.readout}>
+                <RecordingStatus phase={phase} />
+                <div className={styles.readoutLine}>
+                  <Timer capture={capture} phase={phase} weight="medium" />
+                  <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
+                </div>
+              </div>
+            )}
+            <div className={styles.actions}>
+              <Button
+                label={running ? "Pausa" : "Fortsätt"}
+                variant="secondary"
+                size="lg"
+                width="100%"
+                icon={<Icon icon={running ? Pause : Play} size="md" />}
+                onClick={settled(onPause)}
+              />
+              <Button
+                label="Stoppa"
+                variant="primary"
+                size="lg"
+                width="100%"
+                icon={<Icon icon="stop" size="md" />}
+                onClick={settled(onStop)}
+              />
             </div>
           </div>
-        )}
-        <div className={cn("flex", showStatus ? "ml-auto gap-2 sm:gap-3" : "w-full gap-3 lg:justify-center")}>
-          <Button
-            type="button"
-            variant="outline"
-            size="xl"
-            className={cn(
-              // Wide enough for "Fortsätt", so pausing moves nothing; on a phone, with less padding, in the same row.
-              showStatus ? "min-w-24 max-sm:px-4 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-1 lg:w-44 lg:flex-none",
-            )}
-            onClick={settled(onPause)}
-          >
-            {running ? (
-              <Pause data-icon="inline-start" aria-hidden className={cn(showStatus && "max-sm:hidden")} />
-            ) : (
-              <Play data-icon="inline-start" aria-hidden className={cn(showStatus && "max-sm:hidden")} />
-            )}
-            {running ? "Pausa" : "Fortsätt"}
-          </Button>
-          <Button
-            type="button"
-            size="xl"
-            className={cn(
-              showStatus ? "max-sm:px-4 sm:min-w-[8.5rem]" : "min-w-[8.5rem] flex-[1.4] lg:w-56 lg:flex-none",
-            )}
-            onClick={settled(onStop)}
-          >
-            <Square data-icon="inline-start" aria-hidden className={cn("fill-current", showStatus && "max-sm:hidden")} />
-            Stoppa
-          </Button>
-        </div>
-      </div>
-      <div className={cn("mt-2 flex flex-col gap-0.5 text-[13px] leading-snug text-ink-soft", showStatus ? "sm:text-right" : "text-center")}>
-        {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
-        <div role="status" className="flex flex-col gap-0.5">
-          {notes.map((note) => (
-            <p key={note}>{note}</p>
-          ))}
-        </div>
-        {/* In Strömma on a short screen, the room goes to the live text; the warnings above stay. */}
-        <p className={cn(showStatus && "short:hidden")}>{stopLine(makesText)}</p>
-      </div>
+          <VStack gap={0.5} className={styles.notes} data-status={marker}>
+            {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
+            <VStack role="status" gap={0.5}>
+              {notes.map((note) => (
+                <Text as="p" type="supporting" key={note}>
+                  {note}
+                </Text>
+              ))}
+            </VStack>
+            <Text as="p" type="supporting" className={styles.stopLine}>
+              {stopLine(makesText)}
+            </Text>
+          </VStack>
+        </VStack>
+      </VStack>
     </div>
   );
 }
@@ -210,18 +203,18 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
   const slot = useContext(SignedOutSlot);
   if (!slot || (phase !== "recording" && phase !== "paused")) return null;
   return createPortal(
-    <div role="group" aria-label="Inspelningen" className="flex flex-wrap items-center gap-2">
-      <RecordingStatus phase={phase} className="mr-auto text-[15px]" />
-      {/* The recording bar's buttons, a size smaller. */}
-      <Button type="button" variant="outline" className="h-11" onClick={onPause}>
-        {phase === "recording" ? <Pause data-icon="inline-start" aria-hidden /> : <Play data-icon="inline-start" aria-hidden />}
-        {phase === "recording" ? "Pausa" : "Fortsätt"}
-      </Button>
-      <Button type="button" className="h-11" onClick={onStop}>
-        <Square data-icon="inline-start" aria-hidden className="fill-current" />
-        Stoppa
-      </Button>
-    </div>,
+    <HStack role="group" aria-label="Inspelningen" gap={2} wrap="wrap" justify="between" align="center">
+      <RecordingStatus phase={phase} />
+      <HStack gap={2}>
+        <Button
+          label={phase === "recording" ? "Pausa" : "Fortsätt"}
+          variant="secondary"
+          icon={<Icon icon={phase === "recording" ? Pause : Play} size="sm" />}
+          onClick={onPause}
+        />
+        <Button label="Stoppa" variant="primary" icon={<Icon icon="stop" size="sm" />} onClick={onStop} />
+      </HStack>
+    </HStack>,
     slot,
   );
 }

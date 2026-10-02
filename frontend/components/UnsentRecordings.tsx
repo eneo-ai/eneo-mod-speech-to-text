@@ -1,8 +1,14 @@
 "use client";
 
-import { Mic } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
@@ -11,6 +17,7 @@ import {
   recordingStore,
   type StoredRecording,
 } from "@/lib/recording-store";
+import styles from "./UnsentRecordings.module.css";
 
 /** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
 export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
@@ -46,6 +53,25 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRec
   return recordings;
 }
 
+/** Whether the browser may delete this device's recordings (its storage is not persistent); false until it has said. */
+export function useEvictable(): boolean {
+  const [evictable, setEvictable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe = () => {};
+    void recordingStore().then((store) => {
+      if (cancelled) return;
+      setEvictable(store.evictable);
+      unsubscribe = store.subscribe(() => setEvictable(store.evictable));
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+  return evictable;
+}
+
 /** "Nämndmöte till rapport · 42 min": under the name the recording had when it was made. */
 export function recordingDetails(
   recording: StoredRecording,
@@ -69,37 +95,45 @@ export function UnsentRecordings({
   onContinue,
   withFlowName = false,
   sendLabel = () => "Skapa dokument",
+  evictable = false,
 }: {
   recordings: UnsentRecording[];
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
-  /** What a recording's send says: what its flow makes (lib/flow-session createActionLabel). */
+  /** What a recording's send says: what its flow makes (lib/flow-output createActionLabel). */
   sendLabel?: (recording: StoredRecording) => string;
+  /** The browser may delete the recordings (useEvictable): the list then does not promise they stay. */
+  evictable?: boolean;
 }) {
   const headingId = useId();
   if (recordings.length === 0) return null;
   const resumable = onContinue ? resumableRecording(recordings) : undefined;
   const cutOff = recordings.length === 1 && resumable !== undefined;
+  // A named region (Section is no landmark), as the screen reader's list of landmarks has it.
   return (
-    <section aria-labelledby={headingId} className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <h2 id={headingId} className="text-[19px] font-semibold leading-snug tracking-[-0.01em] text-ink">
+    <VStack role="region" aria-labelledby={headingId} gap={3}>
+      <VStack gap={1}>
+        <Heading level={2} id={headingId}>
           {cutOff
             ? "Inspelningen avbröts"
             : recordings.length === 1
               ? "En inspelning har inte skickats"
               : `${recordings.length} inspelningar har inte skickats`}
-        </h2>
-        <p className="text-[15px] leading-relaxed text-ink-soft">
+        </Heading>
+        <Text as="p" color="secondary">
           {cutOff
             ? "Välj Fortsätt spela in så fortsätter den i samma inspelning."
             : recordings.length === 1
-              ? "Den finns kvar på den här enheten tills den har skickats."
-              : "De finns kvar på den här enheten tills de har skickats."}
-        </p>
-      </div>
-      <ul className="flex flex-col gap-3">
+              ? evictable
+                ? "Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+                : "Den finns kvar på den här enheten tills den har skickats."
+              : evictable
+                ? "De finns på den här enheten, men webbläsaren kan rensa dem om de ligger kvar osända för länge."
+                : "De finns kvar på den här enheten tills de har skickats."}
+        </Text>
+      </VStack>
+      <List hasDividers>
         {recordings.map((recording) => (
           <UnsentRecordingRow
             key={recording.id}
@@ -111,8 +145,8 @@ export function UnsentRecordings({
             primary={recording === resumable}
           />
         ))}
-      </ul>
-    </section>
+      </List>
+    </VStack>
   );
 }
 
@@ -170,81 +204,65 @@ function UnsentRecordingRow({
     }
   }
 
+  // The summary is the row's label; what can be done with the recording is its description, a body of its own.
   return (
-    <li className="flex gap-4 rounded-xl border border-border bg-card p-4">
-      <span aria-hidden className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-        <Mic className="size-5" strokeWidth={1.75} />
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div id={summaryId} className="flex flex-col gap-0.5">
-          <p className="text-[17px] font-semibold leading-snug text-ink">{recordingName(recording.startedAt)}</p>
-          <p className="text-[15px] leading-snug text-ink-soft">{recordingDetails(recording, { withFlowName })}</p>
-        </div>
-        {recording.exportOnly ? (
-          // Without Web Locks another tab may still hold it: here it is only read.
-          <div className="mt-3 flex flex-col items-start gap-2">
-            <p className="text-[15px] text-ink-soft">I den här webbläsaren kan den bara sparas som fil.</p>
-            <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => void save()}>
-              Spara som fil
-            </Button>
-          </div>
-        ) : confirming ? (
-          <div role="group" aria-labelledby={questionId} className="mt-3 flex flex-wrap items-center gap-2">
-            <p id={questionId} className="basis-full text-[15px] text-ink">
-              Ta bort inspelningen från enheten? Det går inte att ångra.
-            </p>
-            <Button
-              ref={cancelRef}
-              type="button"
-              variant="outline"
-              onClick={() => setConfirming(false)}
-            >
-              Avbryt
-            </Button>
-            <Button type="button" variant="destructive" onClick={() => void remove()}>
-              Ta bort
-            </Button>
-          </div>
-        ) : (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {onContinue && (
+    <ListItem
+      className={styles.row}
+      startContent={<Icon icon="microphone" color="accent" />}
+      label={
+        <VStack id={summaryId} gap={0.5}>
+          <Text as="p" weight="semibold">
+            {recordingName(recording.startedAt)}
+          </Text>
+          <Text as="p" color="secondary">
+            {recordingDetails(recording, { withFlowName })}
+          </Text>
+        </VStack>
+      }
+      description={
+        <VStack gap={3} paddingBlockStart={3}>
+          {recording.exportOnly ? (
+            // Without Web Locks another tab may still hold it: here it is only read.
+            <VStack gap={2} hAlign="start">
+              <Text as="p" color="secondary">
+                I den här webbläsaren kan den bara sparas som fil.
+              </Text>
+              <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+            </VStack>
+          ) : confirming ? (
+            <VStack role="group" aria-labelledby={questionId} gap={2} hAlign="start">
+              <Text as="p" id={questionId}>
+                Ta bort inspelningen från enheten? Det går inte att ångra.
+              </Text>
+              <HStack gap={2} wrap="wrap">
+                <Button ref={cancelRef} label="Avbryt" onClick={() => setConfirming(false)} />
+                <Button label="Ta bort" variant="destructive" onClick={() => void remove()} />
+              </HStack>
+            </VStack>
+          ) : (
+            <HStack gap={2} wrap="wrap" hAlign="start">
+              {onContinue && (
+                <Button
+                  label="Fortsätt spela in"
+                  variant={primary ? "primary" : "secondary"}
+                  aria-describedby={summaryId}
+                  onClick={() => onContinue(recording)}
+                />
+              )}
+              <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />
+              <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
               <Button
-                type="button"
-                variant={primary ? "default" : "outline"}
+                ref={deleteRef}
+                label="Ta bort"
+                variant="ghost"
                 aria-describedby={summaryId}
-                onClick={() => onContinue(recording)}
-              >
-                Fortsätt spela in
-              </Button>
-            )}
-            <Button type="button" variant="outline" aria-describedby={summaryId} onClick={() => onSend(recording)}>
-              {sendLabel}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              aria-describedby={summaryId}
-              onClick={() => void save()}
-            >
-              Spara som fil
-            </Button>
-            <Button
-              ref={deleteRef}
-              type="button"
-              variant="ghost"
-              aria-describedby={summaryId}
-              onClick={() => setConfirming(true)}
-            >
-              Ta bort
-            </Button>
-          </div>
-        )}
-        {problem && (
-          <p role="alert" className="mt-2 text-[15px] text-destructive">
-            {problem}
-          </p>
-        )}
-      </div>
-    </li>
+                onClick={() => setConfirming(true)}
+              />
+            </HStack>
+          )}
+          {problem && <Banner status="error" title={problem} collapsible={false} />}
+        </VStack>
+      }
+    />
   );
 }

@@ -9,8 +9,8 @@ import type { EarlierRunsSnapshot } from "./earlier-runs";
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
 import { RunFailure } from "../components/flow/RunFailure";
-import { RunProgress, RunUnread } from "../components/flow/RunProgress";
-import { SubmittingView } from "../components/flow/SubmittingView";
+import { RunOpening, RunProgress, RunUnread } from "../components/flow/RunProgress";
+import { SubmittingView, type SubmissionState } from "../components/flow/SubmittingView";
 import { RunResult } from "../components/flow/RunResult";
 import { StepDetails } from "../components/flow/StepDetails";
 import { RunTranscriptView } from "../components/flow/RunTranscript";
@@ -21,6 +21,8 @@ import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
 
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+// The words of every status region (a paragraph) in the markup, in order: what a screen reader is told when they change.
+const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
 
 const running: StepView[] = [
   { order: 1, label: "Transkribera mötet", state: "done", transcribes: true, note: null },
@@ -34,7 +36,7 @@ test("the running view names the stage once in a status region and says each ste
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
-  assert.match(html, /role="status"[^>]*>(?:<[^>]+>)*[^<]*Analysera mötesinnehållet/);
+  assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
   assert.match(words, /Transkribera mötet Klar/);
   assert.match(words, /Analysera mötesinnehållet Pågår/);
@@ -71,8 +73,82 @@ test("a long wait says how long the run has gone on and that it can take minutes
   const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
   assert.match(text(html), /Tar fram texten Har pågått i 12 min\. Det kan ta några minuter\./);
   // The minutes count on without being read out on every change.
-  assert.doesNotMatch(html, /role="status"[^>]*>(?:(?!<\/p>).)*Har pågått/);
+  assert.ok(statuses(html).every((status) => !/Har pågått/.test(status)), "the elapsed time is in no status region");
   assert.match(text(view(undefined)), /Tar fram texten Det kan ta några minuter\./, "before the start is known");
+});
+
+test("a run with no steps shown yet has no step region, and one that could not be stopped says so once, as an alert", () => {
+  const view = (extra: Record<string, unknown>) =>
+    renderToStaticMarkup(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined, ...extra }));
+  assert.doesNotMatch(view({}), /Flödets steg/);
+  assert.doesNotMatch(view({}), /role="alert"/);
+  const failed = view({ error: "Körningen kunde inte avbrytas just nu." });
+  assert.equal(failed.match(/role="alert"/g)?.length, 1, "one alert");
+  assert.match(failed, /role="alert"(?:(?!<button).)*Körningen kunde inte avbrytas just nu\./, "the sentence is in the alert");
+});
+
+test("opening an earlier run is a busy placeholder that says so once and has no heading to move to", () => {
+  const html = renderToStaticMarkup(createElement(RunOpening));
+  assert.match(html, /aria-busy="true"/);
+  assert.deepEqual(statuses(html), ["Hämtar körningen…"]);
+  assert.doesNotMatch(html, /<h[1-6]/);
+});
+
+const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>
+  renderToStaticMarkup(
+    createElement(SubmittingView, {
+      submission: { kind: "uploading", filename: "möte.wav", loaded: 512, total: 2048, percent: 25, wait: null, ...extra },
+      onCancelSubmission: () => undefined,
+    }),
+  );
+
+test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt beside the file name", () => {
+  const html = uploading({ percent: 33 });
+  assert.match(html, /role="progressbar"[^>]*aria-valuenow="33"|aria-valuenow="33"[^>]*role="progressbar"/);
+  const words = text(html);
+  assert.match(words, /möte\.wav Avbryt/);
+  assert.match(words, /512 B av 2 kB 33%/);
+  assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen"], "the stage once, first");
+});
+
+test("an upload of unknown size moves without a value and says Pågår, never a made-up percent", () => {
+  const html = uploading({ percent: null, total: null, loaded: 4096 });
+  assert.match(html, /role="progressbar"/);
+  assert.doesNotMatch(html, /aria-valuenow/);
+  const words = text(html);
+  assert.match(words, /Pågår/);
+  assert.doesNotMatch(words, / av |%/);
+});
+
+test("a percent outside 0 to 100 is held to it, in the bar and in the words beside it", () => {
+  for (const [percent, shown] of [[140, 100], [-5, 0]] as const) {
+    const html = uploading({ percent });
+    assert.match(html, new RegExp(`aria-valuenow="${shown}"`), `${percent} on the bar`);
+    assert.match(text(html), new RegExp(`${shown}%`), `${percent} in words`);
+  }
+});
+
+test("every quarter of an upload is said once, and the counting percent never is", () => {
+  const said = (percent: number | null) => statuses(uploading({ percent }))[1];
+  assert.equal(said(null), "");
+  assert.equal(said(24), "", "before the first quarter");
+  assert.equal(said(25), "25 % uppladdat.");
+  assert.equal(said(74), "50 % uppladdat.");
+  assert.equal(said(99), "75 % uppladdat.");
+  assert.equal(said(100), "100 % uppladdat.");
+  assert.ok(statuses(uploading({ percent: 33 })).every((status) => !/33/.test(status)));
+});
+
+test("before the file moves there is no bar and no Avbryt; while the run starts a wait shows, still no Avbryt", () => {
+  const send = (submission: SubmissionState) =>
+    renderToStaticMarkup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
+  const idle = send({ kind: "idle" });
+  assert.deepEqual(statuses(idle), ["Skickar"]);
+  assert.doesNotMatch(idle, /progressbar|Avbryt/);
+  const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
+  assert.equal(statuses(waiting)[0], "Startar flödet");
+  assert.match(text(waiting), /Försöker igen om \d+ s\./);
+  assert.doesNotMatch(waiting, /progressbar|Avbryt/);
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -95,6 +171,12 @@ const report: ResultFileView = {
   stepId: null,
 };
 
+/** The attributes of every tag with this name in some markup, as the browser would read them. */
+const tagsOf = (html: string, tag: string) =>
+  [...html.matchAll(new RegExp(`<${tag}\\b([^>]*)>`, "g"))].map(([, attrs]) =>
+    Object.fromEntries([...attrs.matchAll(/([\w-]+)(?:="([^"]*)")?/g)].map(([, name, value]) => [name, value ?? ""])),
+  );
+
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
   const html = renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
   const words = text(html);
@@ -104,11 +186,14 @@ test("a generated file is a row with Eneo's name and its size, opened and downlo
   // The module's route names the file from Eneo's response; the page passes no name.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const attachment = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
-  // Phones open the PDF in a new tab; wider screens get a titled dialog (its trigger here).
-  assert.ok(html.includes(`href="${inline}" target="_blank"`), html);
-  assert.match(html, /aria-haspopup="dialog"[^>]*>(?:<[^>]+>)*Öppna/);
-  assert.ok(html.includes(`href="${attachment}" download=""`), html);
+  // Before the window is read it is taken to be a laptop's: the PDF opens in a titled dialog (its trigger here, and its
+  // own link to a tab); the phone's link comes with a narrower window (result-document.test.ts).
+  const links = tagsOf(html, "a");
+  assert.ok(links.some((a) => a.href === inline && a.target === "_blank"), "the dialog's way to a tab of its own");
+  assert.ok(links.some((a) => a.href === attachment && "download" in a), "the download saves the file");
+  assert.ok(tagsOf(html, "button").some((b) => b["aria-haspopup"] === "dialog" && b["aria-label"] === `Öppna ${report.name}`));
   assert.doesNotMatch(html, /filename=/);
+  assert.ok(!html.includes("<iframe"), "the file is fetched only once the dialog is open");
 });
 
 test("a Word file downloads; only a PDF offers Öppna", () => {
@@ -139,6 +224,33 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Ny inspelning/);
   assert.match(words, /Alla flöden/);
   assert.doesNotMatch(html, /eyebrow|uppercase/);
+  // The page's frame supplies the one main region and its width; the result is what goes in it.
+  assert.doesNotMatch(html, /<main|role="main"/);
+});
+
+const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
+  renderToStaticMarkup(
+    createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", ...run } as never,
+      steps: [],
+      stepResults: [],
+      files,
+      showTranscript: false,
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    }),
+  );
+
+test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
+  const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });
+  assert.match(sent, /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  assert.doesNotMatch(sent, /aria-label="Dokumentet"/, "nothing to show but the note that it was sent");
+  assert.match(text(sent), /Skapad (i dag|i går|\d+ \w+) 16:02/, "finished_at is missing: the start is the time");
+
+  const undated = resultOf({ result: { kind: "outbound_http" } });
+  assert.doesNotMatch(text(undated), /Skapad/, "no time at all: none said");
 });
 
 test("a failure names the step, says Kördes inte for the rest, keeps the run id copyable and retries only with the same audio", () => {
@@ -176,6 +288,55 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   // The page's own way back is beside the card; the card holds the next step only.
   assert.doesNotMatch(words, /Alla flöden/);
   assert.doesNotMatch(text(render(undefined)), /Försök igen/);
+  assert.match(words, /Startad .*16:02/);
+  // The callout is a note the heading's focus has already announced, not an alert that interrupts it.
+  assert.match(render(undefined), /role="note"/);
+  assert.doesNotMatch(render(undefined), /role="alert"/);
+});
+
+test("a failure Eneo said nothing about still says what happened, and shows no start time it was not given", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", error: null }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  const words = text(html);
+  assert.match(words, /Körningen kunde inte slutföras Körningen kunde inte slutföras\./, "the callout's title, then its sentence");
+  assert.doesNotMatch(words, /Startad/);
+  assert.doesNotMatch(words, /Visa teknisk information|Stegen/, "no folded detail without Eneo's, no empty step list");
+  assert.match(words, /Kontakta support Körnings-ID run-1 Kopiera körnings-ID/, "the run id to quote, always");
+});
+
+test("an Eneo detail with nothing in it offers no folded technical information", () => {
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "", retryable: false } },
+      failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "", inputMustChange: false },
+      steps,
+      stepResults: [],
+      files: [],
+    }),
+  );
+  assert.doesNotMatch(html, /teknisk information/);
+});
+
+test("the same sentence from a refusal and from a failed new run is said once, not twice", () => {
+  const message = "Det gick inte att starta en ny körning just nu.";
+  const html = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "x", retryable: false } },
+      failure: null,
+      steps,
+      stepResults: [],
+      files: [],
+      refusal: { message, startAgain: true },
+      error: message,
+    }),
+  );
+  assert.equal(text(html).split(message).length - 1, 1);
+  assert.equal(html.match(/role="alert"/g)?.length, 1);
 });
 
 test("a failure the same input cannot pass offers another file as its one filled action, with Eneo's words calm, not red", () => {
@@ -195,9 +356,11 @@ test("a failure the same input cannot pass offers another file as its one filled
   assert.match(words, /Steg 1, Transkribera ljud/);
   assert.match(words, /Välj en annan fil/);
   assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
-  const buttons = [...html.matchAll(/<button[^>]*class="([^"]*)"/g)].map(([, classes]) => classes);
-  assert.equal(buttons.filter((classes) => /\bbg-primary\b/.test(classes)).length, 1, "one filled action");
-  assert.match(html, /class="[^"]*text-ink-soft[^"]*"[^>]*>Inspelningen eller filen är längre/, "the description reads in the page's own text colour");
+  assert.equal([...html.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1, "one filled action");
+  // Eneo's words come as a note, not an alert: the heading's focus has announced the view already.
+  assert.match(html, /role="note"(?:(?!<button).)*Inspelningen eller filen är längre/);
+  assert.doesNotMatch(html, /role="alert"/);
+  assert.match(html, /data-status="warning"/, "a file to change is a warning, not an error");
 });
 
 test("earlier runs list this flow's runs by when and status, each one tap from its result", () => {
@@ -239,18 +402,20 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
     renderToStaticMarkup(
       createElement(EarlierRuns, { list: { ...listed([run]), hasMore: true, ...state }, onOpen: () => undefined, onMore: () => undefined }),
     );
-  assert.match(render({}), />Visa fler körningar<\/button>/);
-  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>Hämtar körningar…<\/button>/);
+  // The design system's button holds its words in a span or two and a live region after them.
+  const labelled = (name: string) => new RegExp(`<button[^>]*>(?:<[^>]+>)*${name}(?:<[^>]+>)*</button>`);
+  assert.match(render({}), labelled("Visa fler körningar"));
+  assert.match(render({ loading: true }), /<button[^>]*disabled=""[^>]*>(?:<[^>]+>)*Hämtar körningar…(?:<[^>]+>)*<\/button>/);
   const failed = render({ failed: "next" });
   assert.match(failed, /Fler körningar kunde inte hämtas\./);
-  assert.match(failed, />Visa fler körningar<\/button>/, "another try");
+  assert.match(failed, labelled("Visa fler körningar"), "another try");
 
   // The first page failed: said even with no run shown, with a try again whatever Eneo said about more.
   const firstFailed = renderToStaticMarkup(
     createElement(EarlierRuns, { list: { ...listed([]), failed: "first" }, onOpen: () => undefined, onMore: () => undefined }),
   );
   assert.match(firstFailed, /Tidigare körningar kunde inte hämtas\./);
-  assert.match(firstFailed, />Försök igen<\/button>/);
+  assert.match(firstFailed, labelled("Försök igen"));
 });
 
 test("earlier runs ask Eneo for the user's own runs only, never a colleague's", async (t) => {
@@ -276,24 +441,30 @@ test("earlier runs ask Eneo for the user's own runs only, never a colleague's", 
   ]);
 });
 
-test("folded panels stay hidden: no display utility may override the closed content's hidden attribute", () => {
-  const html = [
-    renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 })),
-    renderToStaticMarkup(
-      createElement(RunFailure, {
-        flowId: "flow-1",
-        flowName: "Flöde",
-        run: { id: "run-1", status: "failed", error: { code: "x", message: "detail", retryable: false } },
-        failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "detail", inputMustChange: false },
-        steps,
-        stepResults: [],
-        files: [],
-      }),
-    ),
-  ].join("");
-  const closed = [...html.matchAll(/<div([^>]*\shidden=""[^>]*)>/g)].map((m) => m[1]);
-  assert.ok(closed.length >= 2, "both folded panels render closed");
-  for (const attributes of closed) assert.doesNotMatch(attributes, /class="[^"]*\b(flex|grid|block|inline-flex)\b/, attributes);
+test("folded panels start closed, and the steps' own lines say what is and is not there", () => {
+  const failed = renderToStaticMarkup(
+    createElement(RunFailure, {
+      flowId: "flow-1",
+      flowName: "Flöde",
+      run: { id: "run-1", status: "failed", error: { code: "x", message: "detail", retryable: false } },
+      failure: { step: null, summary: "Körningen kunde inte slutföras.", detail: "detail", inputMustChange: false },
+      steps,
+      stepResults: [],
+      files: [],
+    }),
+  );
+  const details = renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 }));
+  // What a screen reader hears of a folded panel: its trigger, collapsed. (Whether the content is then out of sight is CSS: tests/e2e.)
+  const triggers = (html: string) => [...html.matchAll(/<button[^>]*aria-expanded="(\w+)"[^>]*>(.*?)<\/button>/g)].map(([, expanded, inner]) => [expanded, text(inner)]);
+  assert.deepEqual(triggers(details), [["false", "Hur resultatet togs fram 4 steg"]]);
+  assert.deepEqual(triggers(failed), [["false", "Visa teknisk information"]]);
+
+  // Nothing to fold: no steps, no panel; a step without a note has no note; no version, no version line.
+  assert.equal(renderToStaticMarkup(createElement(StepDetails, { steps: [], version: 4 })), "");
+  assert.doesNotMatch(text(renderToStaticMarkup(createElement(StepDetails, { steps }))), /Flödets version/);
+  assert.match(text(details), /Flödets version 4/);
+  const plain = renderToStaticMarkup(createElement(StepDetails, { steps: [{ order: 1, label: "Transkribera", state: "done", transcribes: true, note: null }] }));
+  assert.equal(plain.match(/data-type="supporting"/g)?.length, 2, "the step count and the step's state, no note");
 });
 
 test("Försök igen continues where the run stopped; a refusal says why and offers a new run only when that helps", () => {
@@ -312,9 +483,9 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   const retryButton = (run: typeof failedRun) =>
     renderToStaticMarkup(
       createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run, failure, steps, stepResults: [], files: [], onRetry: async () => undefined }),
-    ).match(/<button[^>]*class="([^"]*)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
-  assert.doesNotMatch(retryButton(failedRun), /\bbg-primary\b/);
-  assert.match(retryButton({ ...failedRun, error: { ...failedRun.error, retryable: true } }), /\bbg-primary\b/);
+    ).match(/<button[^>]*data-variant="(\w+)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
+  assert.equal(retryButton(failedRun), "secondary");
+  assert.equal(retryButton({ ...failedRun, error: { ...failedRun.error, retryable: true } }), "primary");
   assert.doesNotMatch(offered, /Starta en ny körning/, "a new run is the fallback, not a second choice up front");
 
   const stale = view({
@@ -351,7 +522,27 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelled, /Starta en ny körning/);
   assert.match(cancelled, /En ny körning använder samma ljud och uppgifter och gör om alla steg\./);
   assert.doesNotMatch(cancelled, /Försök igen/);
+  // A cancellation is not an error: its callout is information, and the one filled action is the new run.
+  const cancelledHtml = renderToStaticMarkup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined }),
+  );
+  assert.match(cancelledHtml, /role="note"[^>]*>(?:(?!<button).)*Körningen stoppades/);
+  assert.match(cancelledHtml, /data-status="info"/);
+  assert.doesNotMatch(cancelledHtml, /data-status="error"/);
+  assert.equal([...cancelledHtml.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1);
 });
+
+/**
+ * Every button of the markup by what a screen reader hears, and whether it is off. The design system names a button by
+ * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriptet").
+ */
+const buttonsIn = (html: string) =>
+  [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)].map(
+    ([, attrs, inner]) =>
+      [/\saria-label="([^"]*)"/.exec(attrs)?.[1] ?? inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const,
+  );
+const exportButtons = (html: string) => buttonsIn(html).filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
+const names = (html: string) => buttonsIn(html).map(([name]) => name);
 
 test("the transcript is not copied or downloaded while its saved corrections could not be read", () => {
   const transcript = {
@@ -387,21 +578,16 @@ test("the transcript is not copied or downloaded while its saved corrections cou
         onReload: () => undefined,
       }),
     );
-  // Each export button by what a screen reader hears (visible words and hidden ones), and whether it is off.
-  const exportButtons = (html: string) =>
-    [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)]
-      .map(([, attrs, inner]) => [inner.replace(/<[^>]+>/g, "").trim(), /\sdisabled=""/.test(attrs)] as const)
-      .filter(([name]) => /^(Kopiera|Ladda ner)/.test(name));
 
   const readable = render(null);
   assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner som text, transkriptet", false]]);
-  assert.doesNotMatch(readable, />Läs in igen</);
+  assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
   assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
-  assert.match(unread, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+  assert.ok(names(unread).includes("Läs in igen"));
 });
 
 test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {
@@ -410,7 +596,8 @@ test("a finished run whose result could not be read says so and offers to read i
   );
   assert.match(html, /<h1[^>]*>Resultatet kunde inte hämtas<\/h1>/);
   assert.match(html, /Servern kunde inte nås just nu\./);
-  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen<\/button>/);
+  // The design system's button holds a live region after its label.
+  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Försök igen(?:<[^>]+>)*<\/button>/);
   assert.match(html, /href="\/flows"/);
   assert.doesNotMatch(html, /klart|Dokumentet/i);
 });
@@ -452,14 +639,20 @@ function transcriptView(overrides: Record<string, unknown>) {
 test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
   const html = transcriptView({ textPreview: true });
   assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Kopiera<span class="sr-only"> transkriptet/);
-  assert.match(html, /<button[^>]*disabled=""[^>]*>(?:(?!<\/button>).)*Ladda ner/);
-  assert.match(html, />Läs in igen</);
+  assert.deepEqual(exportButtons(html), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.ok(names(html).includes("Läs in igen"));
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
   const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner." });
   assert.match(html, /Kunde inte läsa transkriptets underlag/);
-  assert.match(html, /<button[^>]*>(?:(?!<\/button>).)*Läs in igen<\/button>/);
+  assert.deepEqual(names(html), ["Läs in igen"]);
   assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
+});
+
+test("a transcript still being read shows only skeletons the screen reader skips", () => {
+  const html = transcriptView({ pending: true, segments: [] });
+  assert.match(html, /^<div[^>]*aria-hidden="true"/, "hidden from the start");
+  assert.deepEqual(names(html), []);
+  assert.equal(html.replace(/<[^>]*>/g, ""), "", "no words, no heading");
 });

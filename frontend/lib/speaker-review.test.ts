@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import fixtures from "../tests/fixtures/speaker_review.json";
-import { TranscriptPlayer } from "../components/TranscriptPlayer";
+import { preloadTranscriptEditor, TranscriptPlayer } from "../components/TranscriptPlayer";
 import { attachWords, computeTurns, effectiveSpeakerLabel, findActiveSegmentIndices, firstSegmentForSpeaker, locateWords, parseTranscriptText, segmentsFromTranscription, speakerDisplayLabel, type TranscriptSegment } from "./transcript";
 import { overlapKey, reviewPassages, speakerReviewsFromTranscription } from "./speaker-review";
 import { applyCorrections, correctionsFromResponse, correctionWriteProblem, EMPTY_CORRECTIONS, withLineCorrection, withSpeakerEdit, type CorrectionSet } from "./transcript-corrections";
+
+// The editor loads when it is first shown; markup rendered at once has it only once it has been loaded.
+before(async () => void (await preloadTranscriptEditor()));
 
 const name = (label: string | null) => label ? speakerDisplayLabel(label) : "Okänd talare";
 const fixture = (key: string) => fixtures.cases.find((c) => c.name === key)!.result;
@@ -22,7 +25,8 @@ for (const example of fixtures.cases) {
     const html = render(example.result);
     for (const segment of segments) assert.ok(html.replace(/<[^>]*>/g, "").includes(segment.text));
     assert.equal(html.includes("Överlappningsanalys saknas"), example.name === "unavailable");
-    assert.equal(html.includes("decoration-dotted"), ["overlap", "three-voices", "wordless-unknown"].includes(example.name));
+    // A passage whose speaker is still a suggestion is offered whole, as its aria-label says; no other passage is.
+    assert.equal(html.includes("Markera hela passagen"), ["overlap", "three-voices", "wordless-unknown"].includes(example.name));
     if (example.name === "overlap") {
       assert.equal(computeTurns(segments).length, 3);
       assert.ok(html.includes("Förslag: Anna"));

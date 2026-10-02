@@ -3,11 +3,13 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RunContract } from "@/lib/api";
 import { browserDrafts } from "@/lib/drafts";
-import { browserStorage, FlowSession } from "@/lib/flow-session";
+import { FlowSession } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import type { CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, sealed } from "@/lib/recording-store";
 import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
+import { useEvictable } from "@/components/UnsentRecordings";
 import { pickSupportedAudioMimetype } from "@/lib/upload";
 
 type NavigatorWithWakeLock = Navigator & {
@@ -93,6 +95,7 @@ export function useFlowSession({
   );
   // Whether this browser keeps recordings on the device; unknown until the store opens.
   const [persistent, setPersistent] = useState<boolean | null>(null);
+  const evictable = useEvictable();
 
   useEffect(() => {
     let cancelled = false;
@@ -113,6 +116,7 @@ export function useFlowSession({
     snapshot,
     capture,
     persistent: capture.recording ? capture.persistent : persistent,
+    evictable,
     // The ready state offers "Fortsätt spela in" when this browser can record for the flow, no send of the
     // recording has begun (it is sealed from then on), and it did not stop because the flow takes no more.
     continueStopped:

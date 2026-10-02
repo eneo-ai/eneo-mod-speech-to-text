@@ -1,13 +1,17 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { Center } from "@astryxdesign/core/Center";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useRouter } from "next/navigation";
+import { Brand } from "@/components/Brand";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
-import { PortalContainer } from "@/components/ui/portal-container";
-import { Spinner } from "@/components/ui/spinner";
+import styles from "@/components/AuthGate.module.css";
+import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
-import { loginState } from "@/lib/login-state";
+import { loginState, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
@@ -16,6 +20,16 @@ export const AuthenticatedUserContext = createContext<AuthenticatedUser | null>(
 
 /** While the page is covered for a new login: the place in the sign-in dialog for its recording controls. */
 export const SignedOutSlot = createContext<HTMLElement | null>(null);
+
+/**
+ * Whether the page's login has ended. A native dialog of the page is in the top layer and escapes the cover's inert,
+ * hidden wrapper: it stays visible and focusable above the page. So each page dialog closes itself while this holds
+ * and opens again after the new login, with its state kept above it (design decision D6, point 3). Taking this away
+ * fails the cover specs of every dialog (tests/e2e/session-cover.spec.ts), measured on the merged tip.
+ */
+export function useSignedOut(): boolean {
+  return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+}
 
 export function useAuthenticatedUser(): AuthenticatedUser {
   const user = useContext(AuthenticatedUserContext);
@@ -39,7 +53,7 @@ export function SignedOutCover({
   focusBack?: { current: ((before: HTMLElement | null) => void) | null };
   children: React.ReactNode;
 }) {
-  // The page's overlays open in here too, so a dialog with names or quotes is covered with the page.
+  // The page's own element, which the focus is kept to and given back into.
   const [container, setContainer] = useState<HTMLElement | null>(null);
   // Where on the page the focus was when the login ended, taken before the cover's inert moves it away.
   const lost = useRef<{ from: HTMLElement | null } | null>(null);
@@ -64,8 +78,8 @@ export function SignedOutCover({
     };
   }
   return (
-    <div ref={setContainer} className={signedOut ? "contents invisible" : "contents"} inert={signedOut}>
-      <PortalContainer.Provider value={container}>{children}</PortalContainer.Provider>
+    <div ref={setContainer} className={signedOut ? styles.pageSignedOut : styles.page} inert={signedOut}>
+      {children}
     </div>
   );
 }
@@ -76,8 +90,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   // When the login ends, and how a new login moves that.
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [mode, setMode] = useState<AuthMode | null>(null);
-  const recheckRef = useRef(() => {});
-  const signedOut = useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
+  const renewedRef = useRef(() => {});
+  const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
@@ -88,27 +102,26 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     let channel: BroadcastChannel | null = null;
 
     let endPage: (() => void) | undefined;
-    const observe = (s: AuthStatus) => {
-      // Signed in, until when, or signed out: the page asks for a new login in place, never navigates.
-      loginState.observe(s);
+    const observe = (s: AuthStatus, question: Question) => {
+      // Signed in, until when, or signed out: the page asks for a new login in place, never navigates. An answer to
+      // a read asked before the login changed, or before one already answered, is about a login that is gone: it
+      // moves no end or keepalive either.
+      if (!loginState.observe(s, question)) return false;
       if (s.authenticated && s.session_ends_in !== undefined) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
         setMode(s.auth_mode);
       }
+      return true;
     };
-    // Answers can come back out of order (a slow check, then a renewal's): only an answer to a later question
-    // than the last one used moves the end or the keepalive. A stopped keepalive's answers count the same way.
-    let asked = 0;
-    let used = 0;
+    // Answers can come back out of order (a slow check, then a renewal's): the login state takes only an answer to a
+    // later question than the last one used. A stopped keepalive's answers count the same way.
     const read = async (): Promise<AuthStatus | null> => {
-      const question = ++asked;
+      const question = loginState.ask();
       const s = await authStatus();
-      if (cancelled || question <= used) return null;
-      used = question;
-      observe(s);
-      return s;
+      if (cancelled) return null;
+      return observe(s, question) ? s : null;
     };
     // The token keepalive follows the latest status: a renewed login brings a token of its own to refresh,
     // after the old one's keepalive stopped at the old end.
@@ -121,7 +134,14 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         (s) => s && keepAlive(s),
         () => undefined,
       );
-    recheckRef.current = recheck;
+    // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel), or an
+    // access code was entered in the dialog: a new login is announced, also when the page was never covered, so what
+    // went out on the old session is obsolete at once, and the status read that follows decides.
+    const renewed = () => {
+      loginState.loginWindowDone();
+      recheck();
+    };
+    renewedRef.current = renewed;
     const onVisible = () => document.visibilityState === "visible" && recheck();
 
     read()
@@ -137,11 +157,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setUser(sessionIdentity);
         // Someone else's unsent details and edits are not this person's to see.
         keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
-        endPage = loginState.begin(sessionIdentity);
+        endPage = loginState.begin(sessionIdentity, recheck);
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.
         channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(SESSION_CHANNEL);
-        channel?.addEventListener("message", recheck);
+        channel?.addEventListener("message", renewed);
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
@@ -159,10 +179,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!user) {
     return (
-      <main className="min-h-screen grid place-items-center">
-        <h1 className="sr-only">Tal till text</h1>
-        <Spinner className="size-5 text-ink-mute" />
-      </main>
+      <ModuleShell label="Tal till text" heading={<Brand />}>
+        <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+        <Center minHeight="60dvh">
+          <Spinner size="lg" aria-label="Laddar" />
+        </Center>
+      </ModuleShell>
     );
   }
 
@@ -181,7 +203,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         otherUser={otherUser}
         controlsRef={setControls}
         onFocusBack={(before) => focusBack.current?.(before)}
-        onRenewed={() => recheckRef.current()}
+        onRenewed={() => renewedRef.current()}
       />
     </AuthenticatedUserContext.Provider>
   );

@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { afterEach } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { AudioPlayer } from "../components/flow/AudioPlayer";
 
 import { Playback, probeLength, type MediaLike, type PlayerSource } from "./playback";
+import { cleanup, installDom, mount } from "./test-dom";
+
+installDom();
+afterEach(cleanup);
 
 /** An audio element that only does what it is told; the test plays the browser's part. */
 class FakeMedia implements MediaLike {
@@ -404,4 +408,34 @@ test("the same parts given again change nothing; new parts start from the beginn
   playback.setSources([{ url: "/c", durationMs: 1_000 }]);
   assert.equal(media.src, "/c");
   assert.deepEqual([playback.getSnapshot().withinMs, playback.getSnapshot().started], [0, false]);
+});
+
+test("the position slider is keyboard operable as before: an arrow moves a second, Page Up and Page Down ten, Home and End the ends", async () => {
+  const { playback } = started([{ url: "/a", durationMs: 60_000 }]);
+  const view = await mount(createElement(AudioPlayer, { playback, label: "Inspelning" }));
+  const thumb = view.container.querySelector<HTMLElement>('[role="slider"]')!;
+  assert.equal(thumb.getAttribute("aria-valuemax"), "60");
+  const press = async (key: string) => {
+    await view.act(async () => void thumb.dispatchEvent(new window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true })));
+    return playback.getSnapshot().atMs / 1_000;
+  };
+  await view.act(async () => thumb.focus());
+  assert.equal(await press("ArrowRight"), 1);
+  assert.equal(await press("ArrowUp"), 2);
+  assert.equal(await press("ArrowLeft"), 1);
+  assert.equal(await press("PageUp"), 11);
+  assert.equal(await press("PageDown"), 1);
+  assert.equal(await press("End"), 60);
+  assert.equal(await press("ArrowRight"), 60, "never past the end");
+  assert.equal(await press("Home"), 0);
+  assert.equal(await press("ArrowLeft"), 0, "never before the start");
+  assert.equal(thumb.getAttribute("aria-valuetext"), "0:00 av 1:00", "the position is said in minutes and seconds");
+});
+
+test("a recording whose length is not known yet still has a slider that cannot go out of range", async () => {
+  const { playback } = started([{ url: "/a", durationMs: 0 }]);
+  const view = await mount(createElement(AudioPlayer, { playback, label: "Inspelning" }));
+  const thumb = view.container.querySelector<HTMLElement>('[role="slider"]')!;
+  assert.equal(thumb.getAttribute("aria-valuemin"), "0");
+  assert.equal(thumb.getAttribute("aria-valuemax"), "1", "a floor of one second, so the slider is never zero-wide");
 });

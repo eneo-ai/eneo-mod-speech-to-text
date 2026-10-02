@@ -1,35 +1,40 @@
 - main:
   - link "Alla flöden":
     - /url: /flows
+    - text: ""
+    - status
   - heading "Samråd till protokoll" [level=1]
   - paragraph: Gör ett protokoll av ett samrådsmöte.
-  - text: Deltagare (valfritt)
-  - textbox "Deltagare (valfritt)":
-    - /placeholder: Lägg till namn
+  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
+  - group "Deltagare Valfritt":
+    - text: Lägg till namn
+    - textbox "Deltagare Valfritt Lägg till namn":
+      - /placeholder: Lägg till namn
   - status
-  - paragraph: Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - text: Ärende
   - textbox "Ärende" [invalid]
-  - alert: Fyll i det här för att skapa dokumentet.
+  - text: Fyll i det här för att skapa dokumentet. Antal talare Valfritt
+  - textbox "Antal talare Valfritt"
+  - status
   - region "Ljudet":
     - status
-    - group "Hur vill du lägga till ljudet?":
-      - heading "Hur vill du lägga till ljudet?" [level=2]
-      - radiogroup "Hur vill du lägga till ljudet?":
-        - text: Strömma
-        - paragraph: Se texten medan du pratar.
-        - radio "Strömma"
-        - text: Spela in
-        - paragraph: Spela in nu och transkribera efteråt.
-        - radio "Spela in"
-        - text: Ladda upp
-        - paragraph: Välj en ljudfil från din enhet.
-        - radio "Ladda upp" [checked]:
-          - img
-    - text: Märk upp talare
-    - paragraph: Tar längre tid efter inspelningen.
+    - heading "Hur vill du lägga till ljudet?" [level=2]
+    - text: Hur vill du lägga till ljudet?
+    - radiogroup "Hur vill du lägga till ljudet?":
+      - radio "Strömma"
+      - text: Strömma Se texten medan du pratar.
+      - radio "Spela in"
+      - text: Spela in Spela in nu och transkribera efteråt.
+      - radio "Ladda upp" [checked]
+      - text: Ladda upp Välj en ljudfil från din enhet.
+    - text: Märk upp talare Tar längre tid efter inspelningen.
     - switch "Märk upp talare"
-    - paragraph: kommunstyrelsen-mote.wav
-    - paragraph: /\d+,\d+ kB · \d+ s/
-    - button "Byt fil"
-    - button "Skapa dokument"
+    - status: "Vald fil: kommunstyrelsen-mote.wav"
+    - text: /kommunstyrelsen-mote\.wav \d+,\d+ kB · 1 s/
+    - button "Byt fil":
+      - text: ""
+      - status
+    - button "Skapa dokument":
+      - text: ""
+      - status
+    - status

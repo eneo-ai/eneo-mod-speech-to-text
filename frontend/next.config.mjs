@@ -5,6 +5,8 @@ const isDev = process.env.NODE_ENV === "development";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: "standalone",
+  // Read at build time, so an image built without FOUNDATION_CHECK=1 carries none of app/dev/foundation's code.
+  env: { FOUNDATION_CHECK: process.env.FOUNDATION_CHECK ?? "" },
   poweredByHeader: false,
   // `next dev` skriver annars ospårade AGENTS.md och CLAUDE.md i frontend/ vid varje start.
   agentRules: false,
@@ -36,7 +38,7 @@ const nextConfig = {
             // default-src locks every fetch directive to same-origin; the
             // exceptions below are only what the module actually uses:
             //   media/img blob: + data: — in-browser audio recording preview,
-            //   style 'unsafe-inline' — Tailwind/Next inline style attributes.
+            //   style 'unsafe-inline' — the inline style attributes of Next and the design system.
             // script keeps 'unsafe-inline' because Next's hydration bootstrap
             // is inline and would be blocked without per-request nonces
             // (nonce middleware is a follow-up); everything else is denied.

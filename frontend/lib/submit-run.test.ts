@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test, { type TestContext } from "node:test";
-import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import {
   ApiError,
@@ -14,7 +14,7 @@ import {
 } from "./api";
 import { fakeWebLocks } from "./fake-web-locks";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
-import { openRecordingStore, type NewRecording, type RecordingStore, type StoredRecording } from "./recording-store";
+import { INCOMPLETE_ON_DEVICE, openRecordingStore, type NewRecording, type RecordingStore, type StoredRecording } from "./recording-store";
 import {
   retryFailedRun,
   startAgain,
@@ -525,6 +525,55 @@ async function stoppedRecording(store: RecordingStore, parts: string[][]) {
   await settle();
   return recording;
 }
+
+test("a recording whose stored chunks are gone is not sent and not deleted, and what survived stays for Spara som fil", async () => {
+  let underneath = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const factory = {
+    open(name: string, version?: number) {
+      const request = underneath.open(name, version);
+      request.addEventListener("success", () => connections.push(request.result));
+      return request;
+    },
+  } as unknown as IDBFactory;
+  const store = await openRecordingStore({ indexedDB: factory, keyRange: IDBKeyRange });
+  const recording = await store.create(meeting);
+  const index = await store.startPart(recording.id);
+  await store.append(recording.id, index, new Blob(["a"]), 1_000);
+  await store.append(recording.id, index, new Blob(["b"]), 2_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, index, new Blob(["c"]), 3_000);
+    await store.append(recording.id, index, new Blob(["d"]), 4_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  await store.setState(recording.id, "stopped");
+  store.release(recording.id);
+  await settle();
+  // The browser closes the connection and gives back an empty database: "ab" is gone, "cd" is all this tab has.
+  connections.splice(0).forEach((connection) => connection.close());
+  underneath = new IDBFactory();
+
+  let uploads = 0;
+  const deps: SubmitDeps = {
+    upload: async () => {
+      uploads += 1;
+      return { id: "file-1" };
+    },
+    startRun: async () => queuedRun,
+  };
+  await assert.rejects(submitRecording(store, recording.id, params(), deps), { message: INCOMPLETE_ON_DEVICE });
+  assert.equal(uploads, 0, "nothing goes to Eneo");
+  const kept = await store.get(recording.id);
+  assert.equal(kept?.state, "stopped", "the recording is not sealed, and not deleted");
+  const files = await store.readParts(recording.id);
+  assert.deepEqual(await Promise.all(files.map((file) => file.blob.text())), ["cd"], "what survived is there to save");
+});
 
 test("sending a recording uploads its parts and deletes the local copy only once Eneo accepted the run", async () => {
   const store = await openRecordingStore({});

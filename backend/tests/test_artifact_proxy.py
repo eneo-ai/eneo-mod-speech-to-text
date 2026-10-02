@@ -66,8 +66,8 @@ class FakeEneo:
             return FakeResponse(self.mint_status, {"code": "flow_run_artifact_content_unavailable"})
         return FakeResponse(200, {"url": SIGNED, "expires_at": int(time.time()) + 900})
 
-    def build_request(self, method, url, headers=None):
-        return httpx.Request(method, url, headers=headers)
+    def build_request(self, method, url, headers=None, extensions=None):
+        return httpx.Request(method, url, headers=headers, extensions=extensions)
 
     async def send(self, request, stream=False):
         self.stream_requests.append(request)
@@ -84,6 +84,7 @@ class ArtifactProxyTests(unittest.TestCase):
         main.http_client = self.fake
         main._signed_urls.clear()
         self.client = TestClient(main.app)
+        self.client.headers["X-Expected-User"] = "user-id"  # the page names the user it was opened for
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,

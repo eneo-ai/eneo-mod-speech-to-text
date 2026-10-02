@@ -6,6 +6,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 
+/** WCAG 1.4.12: the spacing a reader may set. Nothing may be cut off, covered or moved out of reach by it. */
+export const TEXT_SPACING =
+  "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
+
 export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
@@ -58,13 +62,15 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
   return page.evaluate(
     ([min, spacing]) => {
       const SELECTOR =
-        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"]';
+        'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="link"], [role="checkbox"], [role="radio"], [role="switch"], [role="slider"], [role="combobox"], [role="tab"], [role="menuitem"], [role="menuitemradio"], [role="option"], .astryx-radio-list-item';
       type Box = { left: number; top: number; right: number; bottom: number };
       const box = (r: DOMRect | Box): Box => ({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
       const shown = (el: Element) => {
         const r = el.getBoundingClientRect();
         const s = getComputedStyle(el);
-        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert], [hidden]');
+        // An open modal dialog is in reach whatever its ancestors say: it leaves an inert ancestor's inertness.
+        const outOfReach = el.closest('[aria-hidden="true"], [hidden]') !== null || (el.closest("[inert]") !== null && el.closest("dialog:modal") === null);
+        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !outOfReach;
       };
       const parts = (el: HTMLElement): Box[] => {
         const own = box(el.getBoundingClientRect());
@@ -81,11 +87,18 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
             bottom: own.bottom - px(s.borderBottomWidth) - px(after.bottom),
           });
         }
+        // A field's box takes the click for the control inside it (the design system's inputs and pickers).
+        const fieldBox = el.matches('input, textarea, [role="combobox"]')
+          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
+          : null;
+        if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {
-          const track = el.parentElement?.closest("[data-orientation]");
-          if (track) out.push(box(track.getBoundingClientRect()));
+          // The thumb is small by design; a press anywhere on the slider's control moves it. The design system's control
+          // is the box (its rail is 4 px and hidden from the tree); Radix's root, still on the old widgets, is the other.
+          const control = el.parentElement?.closest(".astryx-slider-control, [data-orientation]");
+          if (control) out.push(box(control.getBoundingClientRect()));
         }
         return out;
       };
@@ -302,7 +315,11 @@ async function seenChange(page: Page, box: Rect): Promise<number> {
   const withFocus = await shot(page, clip);
   await page.evaluate(() => (window as unknown as { a11yRest: () => Promise<void> }).a11yRest());
   const without = await shot(page, clip);
-  await page.evaluate(() => (document.querySelector("[data-a11y-current]") as HTMLElement | null)?.focus({ preventScroll: true }));
+  await page.evaluate(() => {
+    const current = document.querySelector("[data-a11y-current]") as HTMLElement | null;
+    current?.style.removeProperty("outline");
+    current?.focus({ preventScroll: true });
+  });
   return changedArea(page, withFocus, without, clip.width);
 }
 
@@ -388,6 +405,9 @@ function probeFocus(page: Page) {
     // How to take focus off the element without closing what it is in: a menu or picker closes when its
     // item loses focus, so its item gives focus to the list itself, or to an item two or more rows away.
     const restOf = async (target: HTMLElement) => {
+      // A list that holds the focus itself (a combobox's list in a bottom sheet, its option shown by
+      // aria-activedescendant) cannot hand it on without closing: what rests is its own focus ring.
+      if (target.matches('[role="menu"], [role="listbox"]')) return async () => target.style.setProperty("outline", "none", "important");
       const list = target.closest<HTMLElement>('[role="menu"], [role="listbox"]');
       if (!list) return async () => target.blur();
       const items = Array.from(list.querySelectorAll<HTMLElement>(`[role="${target.getAttribute("role")}"]`));
@@ -425,6 +445,7 @@ function probeFocus(page: Page) {
     (window as unknown as { a11yRest: () => Promise<void> }).a11yRest = await restOf(el);
     await (window as unknown as { a11yRest: () => Promise<void> }).a11yRest();
     const resting = await look(el);
+    el.style.removeProperty("outline");
     el.focus({ preventScroll: true });
     // The indicator's owner: the outermost of the element and its near ancestors whose look changes with
     // focus (a card's ring for its radio, a field group's edge for its input). The screenshots measure it.
@@ -473,7 +494,8 @@ function probeFocus(page: Page) {
       coveredBy,
       offscreen: points === 0,
       pinned: ownPin !== null,
-      inDialog: el.closest('[role="dialog"], [role="alertdialog"]') !== null,
+      // A native <dialog> (the design system's) carries no role attribute.
+      inDialog: el.closest('dialog, [role="dialog"], [role="alertdialog"]') !== null,
       container: el.parentElement?.closest<HTMLElement>("[data-a11y-stop]")?.dataset.a11yStop ?? null,
       top: Math.round(r.top + scrolled),
       bottom: Math.round(r.bottom + scrolled),
@@ -533,5 +555,38 @@ export function orderProblems(stops: FocusStop[]): string[] {
     const before = flow[i];
     const sameColumn = s.left < before.right && s.right > before.left;
     return sameColumn && s.container !== before.key && s.bottom <= before.top ? [`${s.label} comes after ${before.label} but sits above it`] : [];
+  });
+}
+
+/**
+ * The name of the scrolling or clipping ancestor that cuts the focus ring of the focused element, if there is one:
+ * the ring is drawn outside its owner (the element, or the near ancestor that carries the outline: a field's box)
+ * by the outline's width and offset, and an ancestor that clips at the owner's own edge leaves a ring with a side
+ * missing (WCAG 2.4.7).
+ */
+export function clippedFocus(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el || el === document.body) return null;
+    let owner: HTMLElement = el;
+    let ring = 0;
+    for (let e: HTMLElement | null = el, i = 0; e && e !== document.body && i < 4; e = e.parentElement, i++) {
+      const s = getComputedStyle(e);
+      if (s.outlineStyle !== "none" && parseFloat(s.outlineWidth) > 0) {
+        owner = e;
+        ring = parseFloat(s.outlineWidth) + Math.max(0, parseFloat(s.outlineOffset) || 0);
+        break;
+      }
+    }
+    const r = owner.getBoundingClientRect();
+    for (let p = owner.parentElement; p && p !== document.body; p = p.parentElement) {
+      const s = getComputedStyle(p);
+      if (!/auto|scroll|hidden|clip/.test(s.overflowX + s.overflowY)) continue;
+      const b = p.getBoundingClientRect();
+      if (r.left - ring < b.left || r.right + ring > b.right || r.top - ring < b.top || r.bottom + ring > b.bottom) {
+        return `${p.tagName.toLowerCase()}.${String(p.className).split(" ")[0]}`;
+      }
+    }
+    return null;
   });
 }

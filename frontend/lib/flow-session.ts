@@ -14,7 +14,7 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, isRecord, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
@@ -22,11 +22,13 @@ import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecordi
 import { formatBytes, formatDuration } from "./format";
 import type { LivePiece, LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
+import type { KeyValueStorage } from "./browser-storage";
+import { createActionLabel, makesText } from "./flow-output";
+import { lastFlowKey } from "./last-used-flow";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
 export type SessionPhase = "setup" | "starting" | "recording" | "paused" | "interrupted" | "ready";
 export type DetailValue = string | string[];
-export type KeyValueStorage = Pick<Storage, "getItem" | "setItem">;
 
 /** What happened, and what to do next. */
 export interface Problem {
@@ -261,11 +263,12 @@ export function labelsSpeakers(
   return choice ?? Boolean(option?.required);
 }
 
-/** Claims the recording is kept on the device only when the device store keeps it. */
-export function storageLine(persistent: boolean | null): string {
-  return persistent
-    ? "Inspelningen sparas på enheten medan du spelar in."
-    : "Låt sidan vara öppen under inspelningen.";
+/** Claims the recording is kept on the device only when the device store keeps it, and says when the browser may clear it. */
+export function storageLine(persistent: boolean | null, evictable = false): string {
+  if (!persistent) return "Låt sidan vara öppen under inspelningen.";
+  return evictable
+    ? "Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge."
+    : "Inspelningen sparas på enheten medan du spelar in.";
 }
 
 /** Whether the setup asks "Antal talare": the run labels speakers, and the flow's own form asks no count. */
@@ -312,20 +315,6 @@ export function captureLimits(contract: RunContract | null, step: RunContractSte
     partMs: whole ? ms(step?.recording_part_seconds) : undefined,
     maxRecordingMs: ms(whole),
   };
-}
-
-/**
- * Whether the flow's result is text rather than a document: exactly when Eneo gives it back in the run (delivery
- * "payload"), which the result view shows. A file, a result sent on to a receiver, and an Eneo or flow that does not
- * say are a document, as they always were.
- */
-export function makesText(output: Pick<NonNullable<RunContract["final_output"]>, "delivery"> | null | undefined): boolean {
-  return output?.delivery === "payload";
-}
-
-/** The action that makes the run, by what the flow ends in (`makesText`). */
-export function createActionLabel(text: boolean): string {
-  return text ? "Skapa text" : "Skapa dokument";
 }
 
 export function primaryActionLabel(mode: InputMode, hasFile: boolean, text = false): string {
@@ -422,33 +411,7 @@ export function detailsPayload(
   return payload;
 }
 
-/** The browser's localStorage, or null where the page may not use it. */
-export function browserStorage(): KeyValueStorage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 const modeKey = (flowId: string) => `tal-till-text:mode:${flowId}`;
-
-const lastFlowKey = (ownerId: string) => `tal-till-text:${ownerId}:last-flow`;
-
-/** The flow this user last recorded, streamed or uploaded with in this browser. */
-export function lastUsedFlow(storage: KeyValueStorage | null | undefined, ownerId: string): string | null {
-  try {
-    return storage?.getItem(lastFlowKey(ownerId)) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** The flow list with the last used flow first; the rest keep their order. */
-export function withLastUsedFirst<T extends { id: string }>(flows: T[], lastId: string | null): T[] {
-  const last = flows.find((flow) => flow.id === lastId);
-  return last ? [last, ...flows.filter((flow) => flow !== last)] : flows;
-}
 
 /** Strömma's live text for one recording, as the session drives it. */
 export interface LiveSession {
@@ -493,6 +456,17 @@ interface SpeakerChoices {
   count: string;
   edited: boolean;
 }
+
+// What a draft kept before a reload must be to be read: the details as the form's fields take them, and each speaker
+// choice, when it is there, of its own type. Any other is dropped by readDraft.
+const isDetails = (value: unknown): value is Record<string, DetailValue> =>
+  isRecord(value) &&
+  Object.values(value).every((detail) => typeof detail === "string" || (Array.isArray(detail) && detail.every((item) => typeof item === "string")));
+const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
+  isRecord(value) &&
+  (value.labels === undefined || value.labels === null || typeof value.labels === "boolean") &&
+  (value.count === undefined || typeof value.count === "string") &&
+  (value.edited === undefined || typeof value.edited === "boolean");
 
 export interface FlowSessionOptions {
   flowId: string;
@@ -554,9 +528,9 @@ export class FlowSession {
   constructor(private readonly options: FlowSessionOptions) {
     this.flowName = options.flowName;
     // What this person typed before a reload (a lost login, a tab put to sleep); the contract decides what fits.
-    this.details = readDraft<Record<string, DetailValue>>(options.drafts, options.ownerId, this.draftName()) ?? {};
+    this.details = readDraft(options.drafts, options.ownerId, this.draftName(), isDetails) ?? {};
     // And their speaker choices, so a recording sent after the reload gets the labels and the bound they saw.
-    const choices = readDraft<Partial<SpeakerChoices>>(options.drafts, options.ownerId, this.choicesDraftName());
+    const choices = readDraft(options.drafts, options.ownerId, this.choicesDraftName(), isSpeakerChoices);
     if (typeof choices?.labels === "boolean") this.explicitSpeakerLabels = choices.labels;
     if (typeof choices?.count === "string") this.speakerCountText = choices.count;
     if (choices?.edited === true) this.countFollowsNames = false;

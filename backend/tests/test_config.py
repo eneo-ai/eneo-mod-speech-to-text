@@ -1,9 +1,11 @@
 import os
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from app.accent import Accent
 from app.config import FlowListScope, Organization, load_settings
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
@@ -103,6 +105,48 @@ class SettingsTests(unittest.TestCase):
                 with patch.dict(os.environ, environment, clear=True):
                     with self.assertRaisesRegex(RuntimeError, "SESSION_MAX_AGE_MINUTES"):
                         load_settings()
+
+    def test_body_limits_default_to_10_mib_and_1_gib(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes), (10 * 1024 * 1024, 1024**3))
+        self.assertEqual(settings.max_response_bytes, 32 * 1024 * 1024)
+
+    def test_body_limits_are_configurable(self) -> None:
+        environment = valid_environment() | {"MAX_BODY_BYTES": "2048", "MAX_UPLOAD_BYTES": "5000000", "MAX_RESPONSE_BYTES": "4096"}
+
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+
+        self.assertEqual((settings.max_body_bytes, settings.max_upload_bytes, settings.max_response_bytes), (2048, 5_000_000, 4096))
+
+    def test_rejects_invalid_body_limits(self) -> None:
+        # An empty value is refused too: docker-compose.yml gives the defaults itself, so it never passes one.
+        for name in ("MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_RESPONSE_BYTES"):
+            for raw in ("0", "-5", "ten", "", "1.5", "inf", "nan", "9" * 5000, "9" * 30):
+                with self.subTest(name=name, raw=raw):
+                    with patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, name):
+                            load_settings()
+
+    def test_the_upload_budget_is_a_finite_number_greater_than_zero(self) -> None:
+        # An infinite budget would defeat the total deadline on the forward of an upload.
+        for raw in ("inf", "-inf", "Infinity", "nan", "1e999", "1e308", "0", "-1", "abc", "", "86401"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, valid_environment() | {"UPLOAD_PROXY_TIMEOUT_SECONDS": raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, "UPLOAD_PROXY_TIMEOUT_SECONDS"):
+                        load_settings()
+
+    def test_the_upload_budget_takes_a_number_of_seconds(self) -> None:
+        for raw, seconds in (("1800", 1800.0), ("0.5", 0.5), ("86400", 86400.0)):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, valid_environment() | {"UPLOAD_PROXY_TIMEOUT_SECONDS": raw}, clear=True):
+                    self.assertEqual(load_settings().upload_proxy_timeout_seconds, seconds)
+
+    def test_the_default_upload_budget_is_30_minutes(self) -> None:
+        with patch.dict(os.environ, valid_environment(), clear=True):
+            self.assertEqual(load_settings().upload_proxy_timeout_seconds, 1800.0)
 
     def test_rejects_unknown_auth_mode(self) -> None:
         environment = valid_environment()
@@ -280,6 +324,26 @@ class OrganizationTests(unittest.TestCase):
     def test_rejects_an_ambiguous_show_organization(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "SHOW_ORGANIZATION must be a boolean"):
             self.load(SHOW_ORGANIZATION="kanske")
+
+    def test_the_accent_is_set_apart_from_the_organisation_and_applies_hidden_or_shown(self) -> None:
+        green = Accent(light="#1E7B34", dark="#2AAE4A", on_light="#FFFFFF", on_dark="#0B1118")
+        self.assertIsNone(self.load().accent)
+        # Whitespace around an environment value (a compose file's, a pasted line) is not part of the colour.
+        self.assertEqual(self.load(ORGANIZATION_ACCENT=" #1e7b34\n").accent, green)
+        self.assertEqual(self.load(SHOW_ORGANIZATION="false", ORGANIZATION_ACCENT="#1E7B34").accent, green)
+        self.assertEqual(self.load(ORGANIZATION_ACCENT="#1E7B34", ORGANIZATION_ACCENT_DARK="#52B1FF").accent, replace(green, dark="#52B1FF"))
+
+    def test_an_accent_that_cannot_be_used_refuses_to_start_with_one_swedish_error(self) -> None:
+        for overrides, message in (
+            ({"ORGANIZATION_ACCENT": "#FFD700"}, "ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,23:1 i ljust läge"),
+            ({"ORGANIZATION_ACCENT": "grön"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
+            ({"ORGANIZATION_ACCENT": "#1E7B34;}body{display:none"}, "ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB"),
+            ({"ORGANIZATION_ACCENT_DARK": "#52B1FF"}, "ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT"),
+            ({"ORGANIZATION_ACCENT": "#1E7B34", "ORGANIZATION_ACCENT_DARK": "#1E7B34"}, "ORGANIZATION_ACCENT_DARK=#1E7B34: accentfärgen mot sidans ytor når"),
+        ):
+            with self.subTest(overrides=overrides), self.assertRaises(RuntimeError) as raised:
+                self.load(**overrides)
+            self.assertIn(message, str(raised.exception))
 
 
 if __name__ == "__main__":

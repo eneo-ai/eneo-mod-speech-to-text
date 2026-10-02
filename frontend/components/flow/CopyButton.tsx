@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
-import { Check, Copy } from "lucide-react";
-import { Button, type ButtonProps } from "@/components/ui/button";
+import { useEffect, useState } from "react";
+import { Button, type ButtonProps } from "@astryxdesign/core/Button";
+import { Icon } from "@astryxdesign/core/Icon";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 
 export type CopyState = "idle" | "copied" | "failed";
 
@@ -30,13 +31,13 @@ export function useCopy(text: string): [CopyState, () => Promise<void>] {
 /** What a screen reader hears once after a copy. */
 export function CopyStatus({ state }: { state: CopyState }) {
   return (
-    <span role="status" className="sr-only">
+    <VisuallyHidden role="status">
       {state === "copied"
         ? "Kopierat"
         : state === "failed"
           ? "Det gick inte att kopiera. Markera texten och kopiera den själv."
           : ""}
-    </span>
+    </VisuallyHidden>
   );
 }
 
@@ -44,15 +45,33 @@ export function CopyStatus({ state }: { state: CopyState }) {
 export function CopyButton({
   text,
   label,
-  variant = "outline",
-  ...props
-}: { text: string; label: ReactNode } & Omit<ButtonProps, "onClick" | "children">) {
+  name,
+  variant = "secondary",
+  size,
+  isDisabled,
+}: {
+  text: string;
+  /** The visible words. */
+  label: string;
+  /** What the button is called when that says more than its words ("Kopiera transkriptet"); it starts with them. */
+  name?: string;
+  variant?: ButtonProps["variant"];
+  size?: ButtonProps["size"];
+  isDisabled?: boolean;
+}) {
   const [state, copy] = useCopy(text);
+  const words = state === "copied" ? "Kopierat" : state === "failed" ? "Kunde inte kopiera" : label;
   return (
     <>
-      <Button type="button" variant={variant} {...props} onClick={copy}>
-        {state === "copied" ? <Check data-icon="inline-start" aria-hidden /> : <Copy data-icon="inline-start" aria-hidden />}
-        {state === "copied" ? "Kopierat" : state === "failed" ? "Kunde inte kopiera" : label}
+      <Button
+        variant={variant}
+        size={size}
+        isDisabled={isDisabled}
+        icon={<Icon icon={state === "copied" ? "check" : "copy"} />}
+        label={state === "idle" ? (name ?? label) : words}
+        onClick={copy}
+      >
+        {words}
       </Button>
       <CopyStatus state={state} />
     </>

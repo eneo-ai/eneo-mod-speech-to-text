@@ -1,0 +1,8 @@
+/*
+ * Signed out, nothing of the page shows through the backdrop: not the page, and not a dialog the page had open, which
+ * sits in the top layer too and is only covered by what was opened after it. Opaque, and still so where a backdrop
+ * does not inherit the theme's custom properties (before Chromium 122), through the fallback.
+ */
+.signedOut::backdrop {
+  background: var(--color-background-body, Canvas);
+}

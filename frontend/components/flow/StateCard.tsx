@@ -1,13 +1,24 @@
-import type { ComponentProps } from "react";
-import { cn } from "@/lib/utils";
+"use client";
 
-/** The heading of a state's card, which takes focus when the state appears. */
-export const STATE_HEADING = "text-[22px] font-semibold tracking-[-0.01em] text-ink outline-none";
+import type { ComponentProps } from "react";
+import { Card } from "@astryxdesign/core/Card";
+import { Heading } from "@astryxdesign/core/Heading";
+import { VStack } from "@astryxdesign/core/VStack";
+import styles from "./StateCard.module.css";
+
+/** The heading of a state's card, which takes focus when the state appears (give it a ref and tabIndex -1). */
+export function StateHeading({ level, ...props }: Omit<ComponentProps<typeof Heading>, "level"> & { level: 1 | 2 }) {
+  return <Heading level={level} className={styles.heading} {...props} />;
+}
 
 /**
  * The card a flow's page shows a state in, beside the flow (ready, sending, running, failed): one state
  * replaces another in the same place.
  */
-export function StateCard({ className, ...props }: ComponentProps<"div">) {
-  return <div {...props} className={cn("flex flex-col gap-6 rounded-xl border border-rule-soft bg-paper p-5 md:p-6", className)} />;
+export function StateCard({ children, ...props }: ComponentProps<typeof Card>) {
+  return (
+    <Card padding={5} {...props}>
+      <VStack gap={6}>{children}</VStack>
+    </Card>
+  );
 }

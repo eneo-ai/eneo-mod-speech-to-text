@@ -1,0 +1,1617 @@
+diff -ruN a/frontend/app/dev/foundation/FoundationCheck.tsx b/frontend/app/dev/foundation/FoundationCheck.tsx
+--- a/frontend/app/dev/foundation/FoundationCheck.tsx	1970-01-01 01:00:00
++++ b/frontend/app/dev/foundation/FoundationCheck.tsx	2026-10-01 14:28:23
+@@ -0,0 +1,67 @@
++"use client";
++
++import {useState} from "react";
++import {AppShell} from "@astryxdesign/core/AppShell";
++import {TopNav} from "@astryxdesign/core/TopNav";
++import {Button} from "@astryxdesign/core/Button";
++import {TextInput} from "@astryxdesign/core/TextInput";
++import {Switch} from "@astryxdesign/core/Switch";
++import {Selector} from "@astryxdesign/core/Selector";
++import {Banner} from "@astryxdesign/core/Banner";
++import {Dialog} from "@astryxdesign/core/Dialog";
++import {AlertDialog} from "@astryxdesign/core/AlertDialog";
++import {DropdownMenu} from "@astryxdesign/core/DropdownMenu";
++import {VStack} from "@astryxdesign/core/VStack";
++import {Heading, Text} from "@astryxdesign/core/Text";
++import {Card} from "@astryxdesign/core/Card";
++import {Button as LegacyButton} from "@/components/ui/button";
++
++/**
++ * One page of the design system's parts beside the old ones, for the checks that a broken foundation fails on every
++ * page at once: the cascade layers, the built theme, the colour mode, touch sizes and the overlays.
++ */
++export function FoundationCheck() {
++  const [text, setText] = useState("");
++  const [on, setOn] = useState(false);
++  const [speaker, setSpeaker] = useState("a");
++  const [dialog, setDialog] = useState(false);
++  const [alert, setAlert] = useState(false);
++  const [covered, setCovered] = useState(false);
++  return (
++    <div inert={covered} data-cover>
++      <AppShell
++        height="auto"
++        contentPadding={4}
++        mobileNav={false}
++        topNav={
++          <TopNav
++            label="Tal till text"
++            heading={<Text weight="semibold">Tal till text</Text>}
++            endContent={<DropdownMenu button={{label: "Konto"}} items={[{label: "Logga ut", onClick() {}}]} />}
++          />
++        }>
++        <div data-foundation-check>
++          <VStack gap={4}>
++            <Heading level={1}>Grundkontroll</Heading>
++            <Banner status="warning" title="Flödet har uppdaterats" description="Läs in sidan igen." collapsible={false} />
++            <Button label="Primär" variant="primary" onClick={() => setDialog(true)} />
++            <Button label="Liten" size="sm" variant="secondary" onClick={() => setAlert(true)} />
++            <LegacyButton onClick={() => setCovered(true)}>Legacy shadcn-knapp</LegacyButton>
++            <TextInput label="Ärende" placeholder="Skriv ärendet" value={text} onChange={setText} />
++            <Switch label="Märk upp talare" value={on} onChange={setOn} />
++            <Selector label="Talare" value={speaker} onChange={setSpeaker} options={[{value: "a", label: "Anna Berg"}, {value: "b", label: "Erik Lund"}]} />
++            <Card>Ett kort med standardutfyllnad och en lång rad text som måste radbrytas på en smal skärm utan att sidan rullar i sidled.</Card>
++            <p className="rounded-lg bg-primary-soft p-4 text-ink">Tailwind-klasser fungerar fortfarande.</p>
++          </VStack>
++        </div>
++        <Dialog isOpen={dialog} onOpenChange={setDialog} purpose="required" role="alertdialog" aria-label="Du behöver logga in igen">
++          <VStack gap={3}>
++            <Text>Logga in igen för att fortsätta.</Text>
++            <Button label="Stäng" onClick={() => setDialog(false)} />
++          </VStack>
++        </Dialog>
++        <AlertDialog isOpen={alert} onOpenChange={setAlert} title="Lämna sidan?" description="Inspelningen finns kvar på enheten." actionLabel="Lämna sidan" cancelLabel="Stanna kvar" onAction={() => setAlert(false)} />
++      </AppShell>
++    </div>
++  );
++}
+diff -ruN a/frontend/app/dev/foundation/page.tsx b/frontend/app/dev/foundation/page.tsx
+--- a/frontend/app/dev/foundation/page.tsx	1970-01-01 01:00:00
++++ b/frontend/app/dev/foundation/page.tsx	2026-10-01 14:28:23
+@@ -0,0 +1,8 @@
++import { notFound } from "next/navigation";
++import { FoundationCheck } from "./FoundationCheck";
++
++// A development page; FOUNDATION_CHECK=1 also serves it from a production build, for tests/prod.
++export default function FoundationCheckPage() {
++  if (process.env.NODE_ENV !== "development" && process.env.FOUNDATION_CHECK !== "1") notFound();
++  return <FoundationCheck />;
++}
+diff -ruN a/frontend/app/globals.css b/frontend/app/globals.css
+--- a/frontend/app/globals.css	2026-09-25 21:37:49
++++ b/frontend/app/globals.css	2026-10-01 14:20:42
+@@ -1,4 +1,6 @@
+-@tailwind base;
++@layer tw-preflight {
++  @tailwind base;
++}
+ @tailwind components;
+ @tailwind utilities;
+ 
+@@ -257,3 +259,10 @@
+ @media (forced-colors: active) {
+   .transcript-editor-text:focus-visible [data-caret-paragraph="true"] { border-inline-start: 3px solid Highlight; }
+ }
++
++/* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
++   sets its own colour scheme, so it follows that class here; unlayered, this wins over the system's layered styles. */
++html.dark,
++html.dark [data-astryx-theme] { color-scheme: dark; }
++html.light,
++html.light [data-astryx-theme] { color-scheme: light; }
+diff -ruN a/frontend/app/layers.css b/frontend/app/layers.css
+--- a/frontend/app/layers.css	1970-01-01 01:00:00
++++ b/frontend/app/layers.css	2026-10-01 14:00:28
+@@ -0,0 +1 @@
++@layer reset, tw-preflight, astryx-base, astryx-theme;
+diff -ruN a/frontend/app/layout.tsx b/frontend/app/layout.tsx
+--- a/frontend/app/layout.tsx	2026-09-25 21:37:49
++++ b/frontend/app/layout.tsx	2026-10-01 14:20:42
+@@ -1,8 +1,13 @@
+ import type { Metadata } from "next";
+ import { BrandingProvider } from "@/components/Brand";
+ import { ThemeProvider } from "@/components/theme-provider";
++import { ModuleProviders } from "@/kit/ModuleProviders";
+ import { backendBase } from "@/lib/backend-base.mjs";
+ import { readBranding } from "@/lib/read-branding";
++import "./layers.css";
++import "@astryxdesign/core/reset.css";
++import "@astryxdesign/core/astryx.css";
++import "@/kit/theme/built/eneo.css";
+ import "./globals.css";
+ 
+ // The organisation's mark is a runtime setting of each deployment, rendered into the first HTML so no
+@@ -29,9 +34,11 @@
+           enableSystem
+           disableTransitionOnChange
+         >
+-          <BrandingProvider value={branding}>
+-            <div className="app-shell">{children}</div>
+-          </BrandingProvider>
++          <ModuleProviders>
++            <BrandingProvider value={branding}>
++              <div className="app-shell">{children}</div>
++            </BrandingProvider>
++          </ModuleProviders>
+         </ThemeProvider>
+       </body>
+     </html>
+diff -ruN a/frontend/kit/ModuleProviders.tsx b/frontend/kit/ModuleProviders.tsx
+--- a/frontend/kit/ModuleProviders.tsx	1970-01-01 01:00:00
++++ b/frontend/kit/ModuleProviders.tsx	2026-10-01 14:20:42
+@@ -0,0 +1,24 @@
++"use client";
++
++import type { ReactNode } from "react";
++import { InternationalizationProvider } from "@astryxdesign/core/i18n";
++import sv from "@astryxdesign/core/locales/sv-SE.json";
++import { Theme } from "@astryxdesign/core/theme";
++import { eneoTheme } from "@/kit/theme/built/eneo";
++
++const MESSAGES = { "sv-SE": sv };
++
++/**
++ * The design system's providers for every page: the built Eneo theme and the Swedish catalog for the system's own
++ * words. The colour mode is not set here: next-themes owns it (the class on <html>), and app/globals.css makes the
++ * theme root follow that class from the first paint.
++ */
++export function ModuleProviders({ children }: { children: ReactNode }) {
++  return (
++    <InternationalizationProvider locale="sv-SE" messages={MESSAGES}>
++      <Theme theme={eneoTheme} mode="system">
++        {children}
++      </Theme>
++    </InternationalizationProvider>
++  );
++}
+diff -ruN a/frontend/kit/theme/built/eneo.css b/frontend/kit/theme/built/eneo.css
+--- a/frontend/kit/theme/built/eneo.css	1970-01-01 01:00:00
++++ b/frontend/kit/theme/built/eneo.css	2026-10-01 14:30:05
+@@ -0,0 +1,469 @@
++/*
++ * @generated by `astryx theme build` — do not edit manually.
++ * Source: kit/theme/eneo.theme.ts
++ * Command: astryx theme build kit/theme/eneo.theme.ts --out kit/theme/built/eneo.css
++ * CLI: @astryxdesign/cli@0.6.3
++ * Core: @astryxdesign/core@0.6.3
++ */
++
++@layer reset {
++@scope ([data-astryx-theme="eneo"]) to ([data-astryx-theme]) {
++  :where(h1, h2, h3, h4, h5, h6) {
++    font-family: var(--font-family-heading);
++    color: var(--color-text-primary);
++  }
++
++  :where(h1) {
++    font-size: var(--text-heading-1-size);
++    font-weight: var(--text-heading-1-weight);
++    line-height: var(--text-heading-1-leading);
++  }
++
++  :where(h2) {
++    font-size: var(--text-heading-2-size);
++    font-weight: var(--text-heading-2-weight);
++    line-height: var(--text-heading-2-leading);
++  }
++
++  :where(h3) {
++    font-size: var(--text-heading-3-size);
++    font-weight: var(--text-heading-3-weight);
++    line-height: var(--text-heading-3-leading);
++  }
++
++  :where(h4) {
++    font-size: var(--text-heading-4-size);
++    font-weight: var(--text-heading-4-weight);
++    line-height: var(--text-heading-4-leading);
++  }
++
++  :where(h5) {
++    font-size: var(--text-heading-5-size);
++    font-weight: var(--text-heading-5-weight);
++    line-height: var(--text-heading-5-leading);
++  }
++
++  :where(h6) {
++    font-size: var(--text-heading-6-size);
++    font-weight: var(--text-heading-6-weight);
++    line-height: var(--text-heading-6-leading);
++  }
++
++  :where(p) {
++    font-family: var(--font-family-body);
++    font-size: var(--text-body-size);
++    font-weight: var(--text-body-weight);
++    line-height: var(--text-body-leading);
++    color: var(--color-text-primary);
++  }
++
++  :where(small) {
++    font-size: var(--text-supporting-size);
++    font-weight: var(--text-supporting-weight);
++    line-height: var(--text-supporting-leading);
++    color: var(--color-text-secondary);
++  }
++
++  :where(code, pre) {
++    font-family: var(--font-family-code);
++    font-size: var(--text-code-size);
++    line-height: var(--text-code-leading);
++  }
++
++  :where(hr) {
++    border: none;
++    border-top: 1px solid var(--color-border);
++  }
++}
++}
++
++@layer astryx-base {
++:root {
++  --color-data-categorical-blue: light-dark(#0171E3, #0171E3);
++  --color-data-categorical-orange: light-dark(#EB6E00, #EB6E00);
++  --color-data-categorical-purple: light-dark(#6B1EFD, #6B1EFD);
++  --color-data-categorical-green: light-dark(#0B991F, #0B991F);
++  --color-data-categorical-pink: light-dark(#F351C0, #F351C0);
++  --color-data-categorical-cyan: light-dark(#0171A4, #0171A4);
++  --color-data-categorical-red: light-dark(#F5394F, #F5394F);
++  --color-data-categorical-teal: light-dark(#08A3A3, #08A3A3);
++  --color-data-categorical-brown: light-dark(#965E03, #965E03);
++  --color-data-categorical-indigo: light-dark(#6F8AFF, #6F8AFF);
++  --color-data-neutral: light-dark(#8494A3, #8C939B);
++  --color-data-blue-5: light-dark(#02165E, #02165E);
++  --color-data-blue-4: light-dark(#004CBC, #004CBC);
++  --color-data-blue-3: light-dark(#2694FE, #2694FE);
++  --color-data-blue-2: light-dark(#78BEFF, #78BEFF);
++  --color-data-blue-1: light-dark(#DBECFF, #DBECFF);
++  --color-data-shamrock-5: light-dark(#0B603D, #0B603D);
++  --color-data-shamrock-4: light-dark(#138546, #138546);
++  --color-data-shamrock-3: light-dark(#24BB5E, #24BB5E);
++  --color-data-shamrock-2: light-dark(#8EF7AA, #8EF7AA);
++  --color-data-shamrock-1: light-dark(#D6FEE4, #D6FEE4);
++  --color-data-orange-5: light-dark(#A13F04, #A13F04);
++  --color-data-orange-4: light-dark(#D66100, #D66100);
++  --color-data-orange-3: light-dark(#FD9537, #FD9537);
++  --color-data-orange-2: light-dark(#FDB876, #FDB876);
++  --color-data-orange-1: light-dark(#FFE6CF, #FFE6CF);
++  --color-data-pink-5: light-dark(#8E1073, #8E1073);
++  --color-data-pink-4: light-dark(#D123A1, #D123A1);
++  --color-data-pink-3: light-dark(#F989D3, #F989D3);
++  --color-data-pink-2: light-dark(#FEADE3, #FEADE3);
++  --color-data-pink-1: light-dark(#FCE3F4, #FCE3F4);
++  --color-data-purple-5: light-dark(#3E0697, #3E0697);
++  --color-data-purple-4: light-dark(#6B1EFD, #6B1EFD);
++  --color-data-purple-3: light-dark(#9081FF, #9081FF);
++  --color-data-purple-2: light-dark(#B3B0FE, #B3B0FE);
++  --color-data-purple-1: light-dark(#E8E8FB, #E8E8FB);
++  --color-data-red-5: light-dark(#9D0519, #9D0519);
++  --color-data-red-4: light-dark(#D31130, #D31130);
++  --color-data-red-3: light-dark(#FB7D87, #FB7D87);
++  --color-data-red-2: light-dark(#FFB2B8, #FFB2B8);
++  --color-data-red-1: light-dark(#FEE4E6, #FEE4E6);
++  --color-data-teal-5: light-dark(#08767D, #08767D);
++  --color-data-teal-4: light-dark(#0C9293, #0C9293);
++  --color-data-teal-3: light-dark(#0DB7AF, #0DB7AF);
++  --color-data-teal-2: light-dark(#6CE6D8, #6CE6D8);
++  --color-data-teal-1: light-dark(#D7FCF8, #D7FCF8);
++  --color-data-yellow-5: light-dark(#8A5001, #8A5001);
++  --color-data-yellow-4: light-dark(#D69804, #D69804);
++  --color-data-yellow-3: light-dark(#FBCE03, #FBCE03);
++  --color-data-yellow-2: light-dark(#FCEC85, #FCEC85);
++  --color-data-yellow-1: light-dark(#FDF6BA, #FDF6BA);
++  --color-data-gray-5: light-dark(#25363F, #333338);
++  --color-data-gray-4: light-dark(#5D6C7B, #666A72);
++  --color-data-gray-3: light-dark(#AFB9C4, #B2B8BE);
++  --color-data-gray-2: light-dark(#CCD3DB, #D0D3D6);
++  --color-data-gray-1: light-dark(#F1F4F7, #F2F4F6);
++}
++}
++
++@layer astryx-theme {
++  :root { color-scheme: light dark; }
++  html[data-theme="light"] { color-scheme: light; }
++  html[data-theme="dark"] { color-scheme: dark; }
++
++@scope ([data-astryx-theme="eneo"]) to ([data-astryx-theme]) {
++  :scope {
++    --color-accent: light-dark(#004595, #52B1FF);
++    --color-accent-muted: light-dark(color-mix(in srgb, var(--color-accent) 20%, transparent), color-mix(in srgb, var(--color-accent) 25%, transparent));
++    --color-on-accent: light-dark(#FFFFFF, #0B1118);
++    --color-neutral: light-dark(#1B1B1F1A, #DFE3E833);
++    --color-background-surface: light-dark(#FBFCFF, #191C1F);
++    --color-background-body: light-dark(#F0F0F6, #0E1115);
++    --color-overlay: light-dark(#1B1B1F66, #191C1F99);
++    --color-overlay-hover: light-dark(#1B1B1F0D, #FFFFFF0D);
++    --color-overlay-pressed: light-dark(#1B1B1F1A, #FFFFFF1A);
++    --color-background-muted: light-dark(#1B1B1F0D, #191C1F80);
++    --color-text-primary: light-dark(#1B1B1F, #DFE3E8);
++    --color-text-secondary: light-dark(#454650, #A5ACB6);
++    --color-text-disabled: light-dark(#8F909B, #585F68);
++    --color-text-accent: var(--color-accent);
++    --color-icon-accent: var(--color-accent);
++    --color-icon-primary: light-dark(#1B1B1F, #DFE3E8);
++    --color-icon-secondary: light-dark(#454650, #A5ACB6);
++    --color-icon-disabled: light-dark(#8F909B, #585F68);
++    --color-background-card: light-dark(#FBFCFF, #191C1F);
++    --color-background-popover: light-dark(#FBFCFF, #2E3135);
++    --color-background-inverted: light-dark(#1B1B1F, #F9FCFF);
++    --color-border: light-dark(#1B1B1F1A, #EDF1F61A);
++    --color-border-emphasized: light-dark(#8F909B, #626972);
++    --color-skeleton: light-dark(#A9AAB5, #414750);
++    --color-track: light-dark(#A9AAB5, #414750);
++    --color-shadow: light-dark(#0000001A, #0000004D);
++    --color-tint-hover: light-dark(black, white);
++    --font-size-4xs: 0.375rem;
++    --font-size-3xs: 0.5rem;
++    --font-size-2xs: 0.5625rem;
++    --font-size-xs: 0.6875rem;
++    --font-size-sm: 0.8125rem;
++    --font-size-base: 1rem;
++    --font-size-lg: 1.1875rem;
++    --font-size-xl: 1.4375rem;
++    --font-size-2xl: 1.75rem;
++    --font-size-3xl: 2.0625rem;
++    --font-size-4xl: 2.5rem;
++    --font-size-5xl: 3rem;
++    --text-heading-1-size: var(--font-size-2xl);
++    --text-heading-1-weight: var(--font-weight-semibold);
++    --text-heading-1-leading: 1.4286;
++    --text-heading-2-size: var(--font-size-xl);
++    --text-heading-2-weight: var(--font-weight-semibold);
++    --text-heading-2-leading: 1.3913;
++    --text-heading-3-size: var(--font-size-lg);
++    --text-heading-3-weight: var(--font-weight-semibold);
++    --text-heading-3-leading: 1.4737;
++    --text-heading-4-size: var(--font-size-base);
++    --text-heading-4-weight: var(--font-weight-semibold);
++    --text-heading-4-leading: 1.5;
++    --text-heading-5-size: var(--font-size-sm);
++    --text-heading-5-weight: var(--font-weight-semibold);
++    --text-heading-5-leading: 1.5385;
++    --text-heading-6-size: var(--font-size-xs);
++    --text-heading-6-weight: var(--font-weight-semibold);
++    --text-heading-6-leading: 1.4545;
++    --text-body-size: var(--font-size-base);
++    --text-body-weight: var(--font-weight-normal);
++    --text-body-leading: 1.5;
++    --text-large-size: var(--font-size-lg);
++    --text-large-weight: var(--font-weight-semibold);
++    --text-large-leading: 1.4737;
++    --text-label-size: var(--font-size-base);
++    --text-label-weight: var(--font-weight-medium);
++    --text-label-leading: 1.5;
++    --text-code-size: var(--font-size-base);
++    --text-code-weight: var(--font-weight-normal);
++    --text-code-leading: 1.5;
++    --text-supporting-size: var(--font-size-sm);
++    --text-supporting-weight: var(--font-weight-normal);
++    --text-supporting-leading: 1.5385;
++    --text-display-1-size: var(--font-size-5xl);
++    --text-display-1-weight: var(--font-weight-normal);
++    --text-display-1-leading: 1.25;
++    --text-display-2-size: var(--font-size-4xl);
++    --text-display-2-weight: var(--font-weight-normal);
++    --text-display-2-leading: 1.3;
++    --text-display-3-size: var(--font-size-3xl);
++    --text-display-3-weight: var(--font-weight-normal);
++    --text-display-3-leading: 1.2121;
++    --font-family-body: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
++    --font-family-heading: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
++    --font-family-code: ui-monospace, "SFMono-Regular", Consolas, monospace;
++    --color-on-error: light-dark(#FFFFFF, #1A0A0C);
++  }
++
++  :scope {
++    font-family: var(--font-family-body);
++  }
++
++  .astryx-heading[data-level="1"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-1-size);
++    font-weight: var(--text-heading-1-weight);
++    line-height: var(--text-heading-1-leading);
++  }
++
++  .astryx-heading[data-level="2"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-2-size);
++    font-weight: var(--text-heading-2-weight);
++    line-height: var(--text-heading-2-leading);
++  }
++
++  .astryx-heading[data-level="3"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-3-size);
++    font-weight: var(--text-heading-3-weight);
++    line-height: var(--text-heading-3-leading);
++  }
++
++  .astryx-heading[data-level="4"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-4-size);
++    font-weight: var(--text-heading-4-weight);
++    line-height: var(--text-heading-4-leading);
++  }
++
++  .astryx-heading[data-level="5"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-5-size);
++    font-weight: var(--text-heading-5-weight);
++    line-height: var(--text-heading-5-leading);
++  }
++
++  .astryx-heading[data-level="6"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-heading-6-size);
++    font-weight: var(--text-heading-6-weight);
++    line-height: var(--text-heading-6-leading);
++  }
++
++  .astryx-heading[data-type="display-1"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-1-size);
++    line-height: var(--text-display-1-leading);
++  }
++
++  .astryx-heading[data-type="display-2"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-2-size);
++    line-height: var(--text-display-2-leading);
++  }
++
++  .astryx-heading[data-type="display-3"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-3-size);
++    line-height: var(--text-display-3-leading);
++  }
++
++  .astryx-text[data-type="body"] {
++    font-family: var(--font-family-body);
++    font-size: var(--text-body-size);
++    line-height: var(--text-body-leading);
++  }
++
++  .astryx-text[data-type="large"] {
++    font-family: var(--font-family-body);
++    font-size: var(--text-large-size);
++    line-height: var(--text-large-leading);
++  }
++
++  .astryx-text[data-type="label"] {
++    font-family: var(--font-family-body);
++    font-size: var(--text-label-size);
++    line-height: var(--text-label-leading);
++  }
++
++  .astryx-text[data-type="code"] {
++    font-family: var(--font-family-code);
++    font-size: var(--text-code-size);
++    line-height: var(--text-code-leading);
++  }
++
++  .astryx-text[data-type="supporting"] {
++    font-family: var(--font-family-body);
++    font-size: var(--text-supporting-size);
++    line-height: var(--text-supporting-leading);
++  }
++
++  .astryx-text[data-type="display-1"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-1-size);
++    line-height: var(--text-display-1-leading);
++  }
++
++  .astryx-text[data-type="display-2"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-2-size);
++    line-height: var(--text-display-2-leading);
++  }
++
++  .astryx-text[data-type="display-3"] {
++    font-family: var(--font-family-heading);
++    font-size: var(--text-display-3-size);
++    line-height: var(--text-display-3-leading);
++  }
++
++  .astryx-text-input:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-text-area:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-number-input:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-selector:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-typeahead:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-tokenizer:focus-within {
++    outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
++    outline-offset: var(--focus-outline-offset);
++  }
++
++  .astryx-text[data-color="primary"] { color: var(--color-text-primary); }
++
++  .astryx-heading[data-color="primary"] { color: var(--color-text-primary); }
++
++  .astryx-text[data-color="secondary"] { color: var(--color-text-secondary); }
++
++  .astryx-heading[data-color="secondary"] { color: var(--color-text-secondary); }
++
++  .astryx-text[data-color="disabled"] { color: var(--color-text-disabled); }
++
++  .astryx-heading[data-color="disabled"] { color: var(--color-text-disabled); }
++
++  .astryx-text[data-color="placeholder"] { color: var(--color-text-secondary); }
++
++  .astryx-heading[data-color="placeholder"] { color: var(--color-text-secondary); }
++
++  .astryx-text[data-color="accent"] { color: var(--color-text-accent); }
++
++  .astryx-heading[data-color="accent"] { color: var(--color-text-accent); }
++
++  .astryx-text[data-size="4xs"] { font-size: var(--font-size-4xs); }
++
++  .astryx-text[data-size="3xs"] { font-size: var(--font-size-3xs); }
++
++  .astryx-text[data-size="2xs"] { font-size: var(--font-size-2xs); }
++
++  .astryx-text[data-size="xsm"] { font-size: var(--font-size-xs); }
++
++  .astryx-text[data-size="sm"] { font-size: var(--font-size-sm); }
++
++  .astryx-text[data-size="base"] { font-size: var(--font-size-base); }
++
++  .astryx-text[data-size="lg"] { font-size: var(--font-size-lg); }
++
++  .astryx-text[data-size="xl"] { font-size: var(--font-size-xl); }
++
++  .astryx-text[data-size="2xl"] { font-size: var(--font-size-2xl); }
++
++  .astryx-text[data-size="3xl"] { font-size: var(--font-size-3xl); }
++
++  .astryx-text[data-size="4xl"] { font-size: var(--font-size-4xl); }
++
++  .astryx-heading[data-weight="normal"] { font-weight: var(--font-weight-normal); }
++
++  .astryx-heading[data-weight="medium"] { font-weight: var(--font-weight-medium); }
++
++  .astryx-heading[data-weight="semibold"] { font-weight: var(--font-weight-semibold); }
++
++  .astryx-heading[data-weight="bold"] { font-weight: var(--font-weight-bold); }
++}
++}
++
++@layer astryx-theme {
++@media (pointer: coarse) {
++  @scope ([data-astryx-theme="eneo"]) to ([data-astryx-theme]) {
++    :scope {
++      --size-element-sm: 44px;
++      --size-element-md: 44px;
++      --size-element-lg: 48px;
++    }
++
++    .astryx-dropdown-menu-item {
++      min-height: 44px;
++    }
++
++    .astryx-selector-option-row {
++      min-height: 44px;
++    }
++
++    .astryx-typeahead-item {
++      min-height: 44px;
++    }
++  }
++}
++}
++
++@layer astryx-theme {
++@scope ([data-astryx-theme="eneo"]) to ([data-astryx-theme]) {
++  [data-astryx-media="dark"] {
++    color-scheme: dark;
++    --color-text-primary: var(--color-on-dark);
++    --color-icon-primary: var(--color-on-dark);
++    --color-accent: var(--color-on-dark);
++  }
++
++  [data-astryx-media="light"] {
++    color-scheme: light;
++    --color-text-primary: var(--color-on-light);
++    --color-icon-primary: var(--color-on-light);
++    --color-accent: var(--color-on-light);
++  }
++}
++}
+diff -ruN a/frontend/kit/theme/built/eneo.d.ts b/frontend/kit/theme/built/eneo.d.ts
+--- a/frontend/kit/theme/built/eneo.d.ts	1970-01-01 01:00:00
++++ b/frontend/kit/theme/built/eneo.d.ts	2026-10-01 14:30:05
+@@ -0,0 +1,10 @@
++/**
++ * @generated by `astryx theme build` — do not edit manually.
++ * Source: kit/theme/eneo.theme.ts
++ * Command: astryx theme build kit/theme/eneo.theme.ts --out kit/theme/built/eneo.css
++ * CLI: @astryxdesign/cli@0.6.3
++ * Core: @astryxdesign/core@0.6.3
++ */
++
++import type { DefinedTheme } from '@astryxdesign/core/theme';
++export declare const eneoTheme: DefinedTheme;
+diff -ruN a/frontend/kit/theme/built/eneo.js b/frontend/kit/theme/built/eneo.js
+--- a/frontend/kit/theme/built/eneo.js	1970-01-01 01:00:00
++++ b/frontend/kit/theme/built/eneo.js	2026-10-01 14:30:05
+@@ -0,0 +1,332 @@
++/**
++ * @generated by `astryx theme build` — do not edit manually.
++ * Source: kit/theme/eneo.theme.ts
++ * Command: astryx theme build kit/theme/eneo.theme.ts --out kit/theme/built/eneo.css
++ * CLI: @astryxdesign/cli@0.6.3
++ * Core: @astryxdesign/core@0.6.3
++ */
++
++/**
++ * eneo theme — built by `npx astryx theme build`
++ * Import the CSS file alongside this module:
++ *
++ *   import { eneoTheme } from './eneo';
++ *   import './eneo.css';
++ */
++export const eneoTheme = {
++  name: 'eneo',
++  __built: true,
++  tokens: {
++    "--color-accent": "light-dark(#004595, #52B1FF)",
++    "--color-accent-muted": "light-dark(color-mix(in srgb, var(--color-accent) 20%, transparent), color-mix(in srgb, var(--color-accent) 25%, transparent))",
++    "--color-on-accent": "light-dark(#FFFFFF, #0B1118)",
++    "--color-neutral": "light-dark(#1B1B1F1A, #DFE3E833)",
++    "--color-background-surface": "light-dark(#FBFCFF, #191C1F)",
++    "--color-background-body": "light-dark(#F0F0F6, #0E1115)",
++    "--color-overlay": "light-dark(#1B1B1F66, #191C1F99)",
++    "--color-overlay-hover": "light-dark(#1B1B1F0D, #FFFFFF0D)",
++    "--color-overlay-pressed": "light-dark(#1B1B1F1A, #FFFFFF1A)",
++    "--color-background-muted": "light-dark(#1B1B1F0D, #191C1F80)",
++    "--color-text-primary": "light-dark(#1B1B1F, #DFE3E8)",
++    "--color-text-secondary": "light-dark(#454650, #A5ACB6)",
++    "--color-text-disabled": "light-dark(#8F909B, #585F68)",
++    "--color-text-accent": "var(--color-accent)",
++    "--color-icon-accent": "var(--color-accent)",
++    "--color-icon-primary": "light-dark(#1B1B1F, #DFE3E8)",
++    "--color-icon-secondary": "light-dark(#454650, #A5ACB6)",
++    "--color-icon-disabled": "light-dark(#8F909B, #585F68)",
++    "--color-background-card": "light-dark(#FBFCFF, #191C1F)",
++    "--color-background-popover": "light-dark(#FBFCFF, #2E3135)",
++    "--color-background-inverted": "light-dark(#1B1B1F, #F9FCFF)",
++    "--color-border": "light-dark(#1B1B1F1A, #EDF1F61A)",
++    "--color-border-emphasized": "light-dark(#8F909B, #626972)",
++    "--color-skeleton": "light-dark(#A9AAB5, #414750)",
++    "--color-track": "light-dark(#A9AAB5, #414750)",
++    "--color-shadow": "light-dark(#0000001A, #0000004D)",
++    "--color-tint-hover": "light-dark(black, white)",
++    "--font-size-4xs": "0.375rem",
++    "--font-size-3xs": "0.5rem",
++    "--font-size-2xs": "0.5625rem",
++    "--font-size-xs": "0.6875rem",
++    "--font-size-sm": "0.8125rem",
++    "--font-size-base": "1rem",
++    "--font-size-lg": "1.1875rem",
++    "--font-size-xl": "1.4375rem",
++    "--font-size-2xl": "1.75rem",
++    "--font-size-3xl": "2.0625rem",
++    "--font-size-4xl": "2.5rem",
++    "--font-size-5xl": "3rem",
++    "--text-heading-1-size": "var(--font-size-2xl)",
++    "--text-heading-1-weight": "var(--font-weight-semibold)",
++    "--text-heading-1-leading": "1.4286",
++    "--text-heading-2-size": "var(--font-size-xl)",
++    "--text-heading-2-weight": "var(--font-weight-semibold)",
++    "--text-heading-2-leading": "1.3913",
++    "--text-heading-3-size": "var(--font-size-lg)",
++    "--text-heading-3-weight": "var(--font-weight-semibold)",
++    "--text-heading-3-leading": "1.4737",
++    "--text-heading-4-size": "var(--font-size-base)",
++    "--text-heading-4-weight": "var(--font-weight-semibold)",
++    "--text-heading-4-leading": "1.5",
++    "--text-heading-5-size": "var(--font-size-sm)",
++    "--text-heading-5-weight": "var(--font-weight-semibold)",
++    "--text-heading-5-leading": "1.5385",
++    "--text-heading-6-size": "var(--font-size-xs)",
++    "--text-heading-6-weight": "var(--font-weight-semibold)",
++    "--text-heading-6-leading": "1.4545",
++    "--text-body-size": "var(--font-size-base)",
++    "--text-body-weight": "var(--font-weight-normal)",
++    "--text-body-leading": "1.5",
++    "--text-large-size": "var(--font-size-lg)",
++    "--text-large-weight": "var(--font-weight-semibold)",
++    "--text-large-leading": "1.4737",
++    "--text-label-size": "var(--font-size-base)",
++    "--text-label-weight": "var(--font-weight-medium)",
++    "--text-label-leading": "1.5",
++    "--text-code-size": "var(--font-size-base)",
++    "--text-code-weight": "var(--font-weight-normal)",
++    "--text-code-leading": "1.5",
++    "--text-supporting-size": "var(--font-size-sm)",
++    "--text-supporting-weight": "var(--font-weight-normal)",
++    "--text-supporting-leading": "1.5385",
++    "--text-display-1-size": "var(--font-size-5xl)",
++    "--text-display-1-weight": "var(--font-weight-normal)",
++    "--text-display-1-leading": "1.25",
++    "--text-display-2-size": "var(--font-size-4xl)",
++    "--text-display-2-weight": "var(--font-weight-normal)",
++    "--text-display-2-leading": "1.3",
++    "--text-display-3-size": "var(--font-size-3xl)",
++    "--text-display-3-weight": "var(--font-weight-normal)",
++    "--text-display-3-leading": "1.2121",
++    "--font-family-body": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
++    "--font-family-heading": "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif",
++    "--font-family-code": "ui-monospace, \"SFMono-Regular\", Consolas, monospace",
++    "--color-on-error": "light-dark(#FFFFFF, #1A0A0C)"
++  },
++  components: {
++    "heading": {
++      "level:1": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-1-size)",
++        "fontWeight": "var(--text-heading-1-weight)",
++        "lineHeight": "var(--text-heading-1-leading)"
++      },
++      "level:2": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-2-size)",
++        "fontWeight": "var(--text-heading-2-weight)",
++        "lineHeight": "var(--text-heading-2-leading)"
++      },
++      "level:3": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-3-size)",
++        "fontWeight": "var(--text-heading-3-weight)",
++        "lineHeight": "var(--text-heading-3-leading)"
++      },
++      "level:4": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-4-size)",
++        "fontWeight": "var(--text-heading-4-weight)",
++        "lineHeight": "var(--text-heading-4-leading)"
++      },
++      "level:5": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-5-size)",
++        "fontWeight": "var(--text-heading-5-weight)",
++        "lineHeight": "var(--text-heading-5-leading)"
++      },
++      "level:6": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-heading-6-size)",
++        "fontWeight": "var(--text-heading-6-weight)",
++        "lineHeight": "var(--text-heading-6-leading)"
++      },
++      "type:display-1": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-1-size)",
++        "lineHeight": "var(--text-display-1-leading)"
++      },
++      "type:display-2": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-2-size)",
++        "lineHeight": "var(--text-display-2-leading)"
++      },
++      "type:display-3": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-3-size)",
++        "lineHeight": "var(--text-display-3-leading)"
++      }
++    },
++    "text": {
++      "type:body": {
++        "fontFamily": "var(--font-family-body)",
++        "fontSize": "var(--text-body-size)",
++        "lineHeight": "var(--text-body-leading)"
++      },
++      "type:large": {
++        "fontFamily": "var(--font-family-body)",
++        "fontSize": "var(--text-large-size)",
++        "lineHeight": "var(--text-large-leading)"
++      },
++      "type:label": {
++        "fontFamily": "var(--font-family-body)",
++        "fontSize": "var(--text-label-size)",
++        "lineHeight": "var(--text-label-leading)"
++      },
++      "type:code": {
++        "fontFamily": "var(--font-family-code)",
++        "fontSize": "var(--text-code-size)",
++        "lineHeight": "var(--text-code-leading)"
++      },
++      "type:supporting": {
++        "fontFamily": "var(--font-family-body)",
++        "fontSize": "var(--text-supporting-size)",
++        "lineHeight": "var(--text-supporting-leading)"
++      },
++      "type:display-1": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-1-size)",
++        "lineHeight": "var(--text-display-1-leading)"
++      },
++      "type:display-2": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-2-size)",
++        "lineHeight": "var(--text-display-2-leading)"
++      },
++      "type:display-3": {
++        "fontFamily": "var(--font-family-heading)",
++        "fontSize": "var(--text-display-3-size)",
++        "lineHeight": "var(--text-display-3-leading)"
++      }
++    },
++    "text-input": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    },
++    "text-area": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    },
++    "number-input": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    },
++    "selector": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    },
++    "typeahead": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    },
++    "tokenizer": {
++      "base": {
++        ":focus-within": {
++          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
++          "outlineOffset": "var(--focus-outline-offset)"
++        }
++      }
++    }
++  },
++  __onDark: {
++    "tokens": {
++      "color-scheme": "dark",
++      "--color-text-primary": "var(--color-on-dark)",
++      "--color-icon-primary": "var(--color-on-dark)",
++      "--color-accent": "var(--color-on-dark)"
++    }
++  },
++  __onLight: {
++    "tokens": {
++      "color-scheme": "light",
++      "--color-text-primary": "var(--color-on-light)",
++      "--color-icon-primary": "var(--color-on-light)",
++      "--color-accent": "var(--color-on-light)"
++    }
++  },
++  __adaptations: {
++    "widthBreakpoints": {
++      "sm": 640,
++      "md": 768,
++      "lg": 1024,
++      "xl": 1280,
++      "2xl": 1536
++    },
++    "rules": [
++      {
++        "when": {
++          "pointer": "coarse"
++        },
++        "value": {
++          "tokens": {
++            "--size-element-sm": "44px",
++            "--size-element-md": "44px",
++            "--size-element-lg": "48px"
++          },
++          "components": {
++            "dropdown-menu-item": {
++              "base": {
++                "minHeight": "44px"
++              }
++            },
++            "selector-option-row": {
++              "base": {
++                "minHeight": "44px"
++              }
++            },
++            "typeahead-item": {
++              "base": {
++                "minHeight": "44px"
++              }
++            }
++          }
++        }
++      }
++    ]
++  },
++  __axes: {
++    "typography": {
++      "scale": {
++        "base": 16,
++        "ratio": 1.2
++      },
++      "body": {
++        "family": "system-ui",
++        "fallbacks": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
++      },
++      "code": {
++        "family": "ui-monospace",
++        "fallbacks": "\"SFMono-Regular\", Consolas, monospace"
++      }
++    },
++    "color": {
++      "accent": [
++        "#004595",
++        "#52B1FF"
++      ],
++      "neutralStyle": "neutral",
++      "contrast": "standard"
++    }
++  },
++
++};
+diff -ruN a/frontend/kit/theme/eneo.theme.ts b/frontend/kit/theme/eneo.theme.ts
+--- a/frontend/kit/theme/eneo.theme.ts	1970-01-01 01:00:00
++++ b/frontend/kit/theme/eneo.theme.ts	2026-10-01 14:11:49
+@@ -0,0 +1,46 @@
++import {defineTheme} from '@astryxdesign/core/theme';
++
++const focusRing = {
++  outline: 'var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)',
++  outlineOffset: 'var(--focus-outline-offset)',
++};
++const TOUCH = '44px';
++
++export const eneoTheme = defineTheme({
++  name: 'eneo',
++  color: {accent: ['#004595', '#52B1FF'], neutralStyle: 'neutral', contrast: 'standard'},
++  typography: {
++    scale: {base: 16, ratio: 1.2},
++    body: {family: 'system-ui', fallbacks: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif'},
++    code: {family: 'ui-monospace', fallbacks: '"SFMono-Regular", Consolas, monospace'},
++  },
++  tokens: {
++    '--color-accent': ['#004595', '#52B1FF'],
++    '--color-on-accent': ['#FFFFFF', '#0B1118'],
++    // Astryx's default white label on the dark-mode error fill is 3.76:1; a dark label is 5.4:1.
++    '--color-on-error': ['#FFFFFF', '#1A0A0C'],
++  },
++  components: {
++    'text-input': {base: {':focus-within': focusRing}},
++    'text-area': {base: {':focus-within': focusRing}},
++    'number-input': {base: {':focus-within': focusRing}},
++    selector: {base: {':focus-within': focusRing}},
++    typeahead: {base: {':focus-within': focusRing}},
++    tokenizer: {base: {':focus-within': focusRing}},
++  },
++  adaptations: {
++    rules: [
++      {
++        when: {pointer: 'coarse'},
++        value: {
++          tokens: {'--size-element-sm': TOUCH, '--size-element-md': TOUCH, '--size-element-lg': '48px'},
++          components: {
++            'dropdown-menu-item': {base: {minHeight: TOUCH}},
++            'selector-option-row': {base: {minHeight: TOUCH}},
++            'typeahead-item': {base: {minHeight: TOUCH}},
++          },
++        },
++      },
++    ],
++  },
++});
+diff -ruN a/frontend/lib/design-system.test.ts b/frontend/lib/design-system.test.ts
+--- a/frontend/lib/design-system.test.ts	1970-01-01 01:00:00
++++ b/frontend/lib/design-system.test.ts	2026-10-01 14:21:16
+@@ -0,0 +1,35 @@
++import assert from "node:assert/strict";
++import test, { afterEach } from "node:test";
++import { createElement } from "react";
++import { cleanup, installDom, mount } from "./test-dom";
++
++installDom();
++afterEach(cleanup);
++
++test("a design-system dialog opens where it is rendered, named, under the test document", async () => {
++  const { Dialog } = await import("@astryxdesign/core/Dialog");
++  const view = await mount(
++    createElement(Dialog, {
++      isOpen: true,
++      onOpenChange() {},
++      purpose: "required",
++      role: "alertdialog",
++      "aria-label": "Du behöver logga in igen",
++      children: createElement("p", null, "Logga in igen."),
++    }),
++  );
++  const dialog = view.container.querySelector("dialog");
++  assert.ok(dialog?.hasAttribute("open"), "open");
++  assert.equal(dialog?.getAttribute("role"), "alertdialog");
++});
++
++test("the providers render a page in the Swedish catalog and the Eneo theme", async () => {
++  const { ModuleProviders } = await import("@/kit/ModuleProviders");
++  const { ThemeProvider } = await import("next-themes");
++  const { AppShell } = await import("@astryxdesign/core/AppShell");
++  const view = await mount(
++    createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: createElement(AppShell, { height: "auto", mobileNav: false, children: "Sidan" }) }) }),
++  );
++  assert.ok(view.container.querySelector('[data-astryx-theme="eneo"]'), "themed");
++  assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
++});
+diff -ruN a/frontend/lib/legacy-ui.test.ts b/frontend/lib/legacy-ui.test.ts
+--- a/frontend/lib/legacy-ui.test.ts	1970-01-01 01:00:00
++++ b/frontend/lib/legacy-ui.test.ts	2026-10-01 14:28:23
+@@ -0,0 +1,22 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { readdirSync, readFileSync } from "node:fs";
++import { join } from "node:path";
++
++// What the port to the design system removes: the copied shadcn components and their helpers, and class strings
++// (Tailwind's). A ported file styles through the design system's props, or a CSS Module (className={styles.x}).
++const LEGACY = /from "(?:@\/components\/ui\/|@radix-ui\/|class-variance-authority"|tailwind-merge"|@\/lib\/utils")|className=(?:"|\{`|\{cn\()/;
++
++const sources = (dir: string): string[] =>
++  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
++    const path = join(dir, entry.name);
++    if (entry.isDirectory()) return path === join("components", "ui") ? [] : sources(path);
++    return /\.tsx?$/.test(entry.name) ? [path] : [];
++  });
++
++test("the files still on the old UI system are the listed ones, and the list only shrinks", () => {
++  const listed: string[] = JSON.parse(readFileSync("tests/legacy-ui-files.json", "utf8"));
++  const legacy = ["app", "components", "kit"].flatMap(sources).filter((file) => LEGACY.test(readFileSync(file, "utf8"))).sort();
++  assert.deepEqual(legacy.filter((file) => !listed.includes(file)), [], "not on the list and on the old system: port it, do not list it");
++  assert.deepEqual(listed.filter((file) => !legacy.includes(file)), [], "ported: remove from tests/legacy-ui-files.json");
++});
+diff -ruN a/frontend/lib/test-dom.ts b/frontend/lib/test-dom.ts
+--- a/frontend/lib/test-dom.ts	2026-09-25 21:37:49
++++ b/frontend/lib/test-dom.ts	2026-10-01 14:22:38
+@@ -61,6 +61,35 @@
+   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
+   Object.defineProperty(dom.window, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
+   Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
++  // jsdom has neither modal dialogs nor the Popover API, which the design system's overlays call: here they open
++  // and close as attributes and events. Modality, stacking and anchoring are the browser's, proved in tests/e2e.
++  const dialog = dom.window.HTMLDialogElement.prototype;
++  dialog.showModal = dialog.show = function (this: HTMLDialogElement) {
++    this.setAttribute("open", "");
++  };
++  dialog.close = function (this: HTMLDialogElement) {
++    if (!this.hasAttribute("open")) return;
++    this.removeAttribute("open");
++    this.dispatchEvent(new dom.window.Event("close"));
++  };
++  const element = dom.window.HTMLElement.prototype;
++  const toggled = (target: HTMLElement, newState: "open" | "closed") =>
++    target.dispatchEvent(Object.assign(new dom.window.Event("toggle"), { newState, oldState: newState === "open" ? "closed" : "open" }));
++  element.showPopover = function (this: HTMLElement) {
++    this.setAttribute("data-popover-open", "");
++    toggled(this, "open");
++  };
++  element.hidePopover = function (this: HTMLElement) {
++    this.removeAttribute("data-popover-open");
++    toggled(this, "closed");
++  };
++  element.togglePopover = function (this: HTMLElement) {
++    const open = !this.hasAttribute("data-popover-open");
++    if (open) this.showPopover();
++    else this.hidePopover();
++    return open;
++  };
++  if (!("CSS" in globalThis)) Object.defineProperty(globalThis, "CSS", { value: { supports: () => false }, configurable: true, writable: true });
+   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+   return dom;
+ }
+diff -ruN a/frontend/package.json b/frontend/package.json
+--- a/frontend/package.json	2026-09-25 21:37:49
++++ b/frontend/package.json	2026-10-01 14:28:23
+@@ -8,9 +8,15 @@
+     "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
+     "start": "next start -H 0.0.0.0 -p 3000",
+     "lint": "tsc --noEmit",
+-    "test:a11y": "playwright test"
++    "test:a11y": "playwright test",
++    "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
++    "theme:build": "npm run astryx -- theme build kit/theme/eneo.theme.ts -o kit/theme/built/eneo.css",
++    "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py 8401 & trap \"kill $!\" EXIT; INTERNAL_API_BASE=http://127.0.0.1:8401 next dev -H 127.0.0.1 -p 3401'",
++    "state": "playwright test a11y.spec.ts --project=laptop-1440-light --headed -g",
++    "test:prod": "playwright test --config playwright.prod.config.ts"
+   },
+   "dependencies": {
++    "@astryxdesign/core": "0.6.3",
+     "@radix-ui/react-alert-dialog": "^1.1.23",
+     "@radix-ui/react-avatar": "^1.2.6",
+     "@radix-ui/react-collapsible": "^1.1.20",
+@@ -27,6 +33,7 @@
+     "@radix-ui/react-tabs": "^1.1.21",
+     "@radix-ui/react-toggle": "^1.1.18",
+     "@radix-ui/react-toggle-group": "^1.1.19",
++    "@stylexjs/stylex": "0.19.1",
+     "class-variance-authority": "^0.7.1",
+     "clsx": "^2.1.1",
+     "lucide-react": "0.451.0",
+@@ -39,6 +46,7 @@
+     "tailwind-merge": "^3.6.0"
+   },
+   "devDependencies": {
++    "@astryxdesign/cli": "0.6.3",
+     "@axe-core/playwright": "4.13.0",
+     "@playwright/test": "1.63.0",
+     "@tailwindcss/typography": "0.5.15",
+@@ -53,5 +61,8 @@
+     "postcss": "^8.5.26",
+     "tailwindcss": "3.4.17",
+     "typescript": "5.6.3"
++  },
++  "engines": {
++    "node": ">=22.13.0"
+   }
+ }
+diff -ruN a/frontend/playwright.config.ts b/frontend/playwright.config.ts
+--- a/frontend/playwright.config.ts	2026-10-01 13:35:39
++++ b/frontend/playwright.config.ts	2026-10-01 14:28:23
+@@ -40,6 +40,7 @@
+     permissions: ["microphone"],
+     launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+     trace: "retain-on-failure",
++    screenshot: "only-on-failure",
+   },
+   projects: [
+     { name: "phone-320-light", use: { ...touch(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },
+diff -ruN a/frontend/playwright.prod.config.ts b/frontend/playwright.prod.config.ts
+--- a/frontend/playwright.prod.config.ts	1970-01-01 01:00:00
++++ b/frontend/playwright.prod.config.ts	2026-10-01 14:28:23
+@@ -0,0 +1,29 @@
++import { defineConfig } from "@playwright/test";
++
++// The production build in every engine the module supports: `npm run test:prod`. It proves what the gate's
++// `next dev` cannot: the built stylesheets' order, the built theme, and the page under the production CSP.
++const APP = 3411;
++const STUB = 8411;
++
++export default defineConfig({
++  testDir: "tests/prod",
++  outputDir: "test-results/prod",
++  timeout: 60_000,
++  reporter: [["list"]],
++  use: { baseURL: `http://127.0.0.1:${APP}`, locale: "sv-SE", colorScheme: "light", viewport: { width: 1280, height: 800 }, trace: "retain-on-failure" },
++  projects: [
++    { name: "chromium", use: { browserName: "chromium" } },
++    { name: "webkit", use: { browserName: "webkit" } },
++    { name: "firefox", use: { browserName: "firefox" } },
++  ],
++  webServer: [
++    { command: `python3 tests/e2e/stub-server.py ${STUB}`, url: `http://127.0.0.1:${STUB}/api/auth/status`, reuseExistingServer: false },
++    {
++      command: `npm run build && npx next start -H 127.0.0.1 -p ${APP}`,
++      url: `http://127.0.0.1:${APP}/`,
++      env: { INTERNAL_API_BASE: `http://127.0.0.1:${STUB}`, FOUNDATION_CHECK: "1", NEXT_TELEMETRY_DISABLED: "1" },
++      timeout: 300_000,
++      reuseExistingServer: false,
++    },
++  ],
++});
+diff -ruN a/frontend/tests/e2e/a11y.spec.ts b/frontend/tests/e2e/a11y.spec.ts
+--- a/frontend/tests/e2e/a11y.spec.ts	2026-10-01 13:35:39
++++ b/frontend/tests/e2e/a11y.spec.ts	2026-10-01 14:28:23
+@@ -23,6 +23,8 @@
+     const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
+     const edges = project.startsWith("phone-320") || project === "zoom-200" || desktop;
+     await state.go(page, info);
++    // SHOTS=1: a picture of every state, for review (test-results/shots/<project>/<state>.png).
++    if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
+ 
+     const scan = await axe(page);
+     const unnamed = await unnamedControls(page);
+diff -ruN a/frontend/tests/e2e/checks.ts b/frontend/tests/e2e/checks.ts
+--- a/frontend/tests/e2e/checks.ts	2026-10-01 13:35:39
++++ b/frontend/tests/e2e/checks.ts	2026-10-01 14:26:30
+@@ -64,7 +64,9 @@
+       const shown = (el: Element) => {
+         const r = el.getBoundingClientRect();
+         const s = getComputedStyle(el);
+-        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !el.closest('[aria-hidden="true"], [inert], [hidden]');
++        // An open modal dialog is in reach whatever its ancestors say: it leaves an inert ancestor's inertness.
++        const outOfReach = el.closest('[aria-hidden="true"], [hidden]') !== null || (el.closest("[inert]") !== null && el.closest("dialog:modal") === null);
++        return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && Number(s.opacity) > 0 && !outOfReach;
+       };
+       const parts = (el: HTMLElement): Box[] => {
+         const own = box(el.getBoundingClientRect());
+@@ -81,6 +83,11 @@
+             bottom: own.bottom - px(s.borderBottomWidth) - px(after.bottom),
+           });
+         }
++        // A field's box takes the click for the control inside it (the design system's inputs and pickers).
++        const fieldBox = el.matches('input, textarea, [role="combobox"]')
++          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
++          : null;
++        if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
+         const labels = (el as HTMLInputElement).labels;
+         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
+         if (el.getAttribute("role") === "slider") {
+diff -ruN a/frontend/tests/e2e/color-mode.spec.ts b/frontend/tests/e2e/color-mode.spec.ts
+--- a/frontend/tests/e2e/color-mode.spec.ts	1970-01-01 01:00:00
++++ b/frontend/tests/e2e/color-mode.spec.ts	2026-10-01 14:28:23
+@@ -0,0 +1,39 @@
++/**
++ * The stored colour mode is the page's from its first paint, on the design system's components as on the old ones:
++ * next-themes sets the class on <html> before the page shows, and the theme root follows it (app/globals.css).
++ */
++import { expect, test } from "@playwright/test";
++
++test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough"));
++
++type Sampled = { modes: string[] };
++
++for (const [stored, system] of [["dark", "light"], ["light", "dark"], ["system", "dark"], [null, "light"]] as const) {
++  test(`stored ${stored ?? "nothing"}, system ${system}: no frame in the other mode`, async ({ browser, baseURL }) => {
++    const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: system });
++    const page = await context.newPage();
++    await page.addInitScript((stored) => {
++      if (stored) localStorage.setItem("theme", stored);
++      else localStorage.removeItem("theme");
++      const modes: string[] = ((window as unknown as Sampled).modes = []);
++      const dark = (color: string) => {
++        const [r, g, b] = (color.match(/[\d.]+/g) ?? []).map(Number);
++        return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
++      };
++      let frames = 0;
++      const sample = () => {
++        // A card's surface is light in the light mode and dark in the dark one.
++        const surface = document.querySelector(".astryx-card");
++        if (surface) modes.push(dark(getComputedStyle(surface).backgroundColor) ? "dark" : "light");
++        if (++frames < 240) requestAnimationFrame(sample);
++      };
++      requestAnimationFrame(sample);
++    }, stored);
++    await page.goto(`${baseURL}/dev/foundation`);
++    await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
++    await page.waitForFunction(() => (window as unknown as Sampled).modes.length >= 60);
++    const seen = await page.evaluate(() => [...new Set((window as unknown as Sampled).modes)]);
++    expect(seen).toEqual([stored === "dark" || stored === "light" ? stored : system]);
++    await context.close();
++  });
++}
+diff -ruN a/frontend/tests/e2e/harness.spec.ts b/frontend/tests/e2e/harness.spec.ts
+--- a/frontend/tests/e2e/harness.spec.ts	2026-09-25 21:37:49
++++ b/frontend/tests/e2e/harness.spec.ts	2026-10-01 14:28:23
+@@ -87,3 +87,41 @@
+     <button aria-label="Liten"></button>`);
+   expect(await targetSizes(page, 44, false)).toEqual(['button "Liten" 24×24']);
+ });
++
++test("a field's box counts as its control's target only for the control it activates", async ({ page }) => {
++  await page.setContent(`
++    <style>
++      .astryx-text-input, .plain { display: flex; align-items: center; height: 44px; width: 240px; border: 1px solid #767676; }
++      input { height: 20px; border: 0; }
++      button { width: 20px; height: 20px; padding: 0; margin-left: 40px; }
++    </style>
++    <div class="astryx-text-input"><input aria-label="I fältets ruta"><button aria-label="Rensa"></button></div>
++    <div class="plain" style="margin-top: 40px"><input aria-label="I en vanlig ruta"></div>`);
++  // The design system's field is credited with its box; a control of its own inside that box, and a field in any
++  // other box, are measured as they are.
++  expect(await targetSizes(page, 44, false)).toEqual(['button "Rensa" 20×20', expect.stringMatching(/^input "I en vanlig ruta" \d+×20$/)]);
++});
++
++test("the design system's field box does activate its control, so crediting it is true", async ({ browser, baseURL }) => {
++  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
++  const page = await context.newPage();
++  await page.goto(`${baseURL}/dev/foundation`);
++  for (const [name, selector] of [["Ärende", ".astryx-text-input"], ["Talare", ".astryx-selector"]] as const) {
++    const control = page.locator(`${selector} :is(input, [role="combobox"])`).first();
++    const box = (await page.locator(selector).first().boundingBox())!;
++    expect(box.height, `${name}: the box is a 44 px target on a touch screen`).toBeGreaterThanOrEqual(44);
++    // The box's own edge, outside the control inside it.
++    await page.touchscreen.tap(box.x + box.width / 2, box.y + 2);
++    // A text field takes the focus; a picker opens.
++    if (selector === ".astryx-selector") await expect(control, `${name}: a tap on the box's edge opens the picker`).toHaveAttribute("aria-expanded", "true");
++    else await expect(control, `${name}: a tap on the box's edge reaches the field`).toBeFocused();
++    await page.keyboard.press("Escape");
++  }
++  await context.close();
++});
++
++test("a target in an open modal dialog is measured even under an inert ancestor", async ({ page }) => {
++  await page.setContent(`<div inert><dialog><button aria-label="Liten" style="width: 10px; height: 10px; padding: 0"></button></dialog></div>`);
++  await page.evaluate(() => document.querySelector("dialog")!.showModal());
++  expect(await targetSizes(page, 24, false)).toEqual(['button "Liten" 10×10']);
++});
+diff -ruN a/frontend/tests/e2e/screens.ts b/frontend/tests/e2e/screens.ts
+--- a/frontend/tests/e2e/screens.ts	2026-10-01 13:35:39
++++ b/frontend/tests/e2e/screens.ts	2026-10-01 14:28:23
+@@ -43,6 +43,11 @@
+   await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
+ }
+ 
++async function foundation(page: Page) {
++  await open(page, "/dev/foundation");
++  await heading(page, "Grundkontroll");
++}
++
+ export async function flows(page: Page) {
+   await open(page, "/flows");
+   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
+@@ -179,6 +184,40 @@
+ 
+ /** Every screen and state the gate visits. */
+ export const STATES: State[] = [
++  // The design system's parts beside the old ones (app/dev/foundation).
++  { name: "foundation", go: (page) => foundation(page) },
++  {
++    name: "foundation-dialog",
++    go: async (page) => {
++      await foundation(page);
++      await page.getByRole("button", { name: "Primär" }).click();
++      await expect(page.getByRole("alertdialog", { name: "Du behöver logga in igen" })).toBeVisible();
++    },
++  },
++  {
++    name: "foundation-alert",
++    go: async (page) => {
++      await foundation(page);
++      await page.getByRole("button", { name: "Liten" }).click();
++      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
++    },
++  },
++  {
++    name: "foundation-menu",
++    go: async (page) => {
++      await foundation(page);
++      await page.getByRole("button", { name: "Konto" }).click();
++      await expect(page.getByRole("menu")).toBeVisible();
++    },
++  },
++  {
++    name: "foundation-selector",
++    go: async (page) => {
++      await foundation(page);
++      await page.getByRole("combobox", { name: "Talare" }).click();
++      await expect(page.getByRole("option", { name: "Erik Lund" })).toBeVisible();
++    },
++  },
+   { name: "signin-sso", go: (page) => signIn(page, "eneo_sso") },
+   { name: "signin-access-code", go: (page) => signIn(page, "access_code") },
+   {
+diff -ruN a/frontend/tests/e2e/session-cover.spec.ts b/frontend/tests/e2e/session-cover.spec.ts
+--- a/frontend/tests/e2e/session-cover.spec.ts	1970-01-01 01:00:00
++++ b/frontend/tests/e2e/session-cover.spec.ts	2026-10-01 14:32:22
+@@ -0,0 +1,49 @@
++/**
++ * While the login has ended, nothing of the page is shown or within reach: not the page, and not a dialog the page
++ * had open. Proved in the browser as a person meets it (what is visible, what takes focus, what the accessibility
++ * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
++ */
++import { expect, test } from "@playwright/test";
++import { endLogin, run, sessionWarning } from "./screens";
++
++test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
++
++const signIn = { name: "Du behöver logga in igen" };
++
++test("a page dialog open when the login ends is covered with the page, and is back with its edit after the new login", async ({ page }) => {
++  await run(page, "run-review", "flow-2");
++  await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
++  await page.getByRole("button", { name: "Namnge talarna" }).click();
++  const naming = page.getByRole("dialog", { name: "Namnge talarna" });
++  const name = naming.getByLabel(/^Vem är Talare 1/);
++  await name.fill("Zara Testsson");
++
++  await endLogin(page);
++  await expect(naming, "the page's dialog is not shown, nor in the accessibility tree").toBeHidden();
++  // What a screen reader is given holds the sign-in dialog and nothing of the page.
++  const tree = await page.locator("body").ariaSnapshot();
++  expect(tree).toContain("Du behöver logga in igen");
++  expect(tree).not.toMatch(/Namnge talarna|Vem är vem|Zara Testsson/);
++  // Focus stays in the sign-in dialog however far Tab goes.
++  for (let i = 0; i < 12; i++) {
++    await page.keyboard.press("Tab");
++    expect(await page.evaluate(() => document.activeElement?.closest('[role="alertdialog"]') !== null), `Tab ${i + 1}`).toBe(true);
++  }
++
++  // The same person signs in again (here: the session answers again, and the page asks when it becomes visible).
++  await page.unroute("**/api/auth/status");
++  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
++  await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
++  await expect(naming).toBeVisible();
++  await expect(name).toHaveValue("Zara Testsson");
++});
++
++test("the warning already open when the login ends becomes the sign-in dialog, which nothing but a new login closes", async ({ page }) => {
++  await sessionWarning(page);
++  await endLogin(page);
++  const dialog = page.getByRole("alertdialog", signIn);
++  await expect(dialog.getByRole("button", { name: "Stäng" })).toHaveCount(0);
++  await page.keyboard.press("Escape");
++  await expect(dialog).toBeVisible();
++  await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeHidden();
++});
+diff -ruN a/frontend/tests/legacy-ui-files.json b/frontend/tests/legacy-ui-files.json
+--- a/frontend/tests/legacy-ui-files.json	1970-01-01 01:00:00
++++ b/frontend/tests/legacy-ui-files.json	2026-10-01 14:28:23
+@@ -0,0 +1,55 @@
++[
++  "app/LoginPage.tsx",
++  "app/dev/foundation/FoundationCheck.tsx",
++  "app/dev/speaker-review/ReviewFixtures.tsx",
++  "app/flows/FlowsPage.tsx",
++  "app/inloggad/SignedInAgain.tsx",
++  "app/layout.tsx",
++  "components/AccountMenu.tsx",
++  "components/AppHeader.tsx",
++  "components/AuthGate.tsx",
++  "components/Brand.tsx",
++  "components/FlowList.tsx",
++  "components/NameCombobox.tsx",
++  "components/OfflineBanner.tsx",
++  "components/RetryNotice.tsx",
++  "components/SessionEndWarning.tsx",
++  "components/SpeakerNamingDialog.tsx",
++  "components/TranscriptEditor.tsx",
++  "components/TranscriptPlayer.tsx",
++  "components/UnsentRecordings.tsx",
++  "components/flow/AudioPlayer.tsx",
++  "components/flow/BackToFlows.tsx",
++  "components/flow/ClassificationNote.tsx",
++  "components/flow/CopyButton.tsx",
++  "components/flow/DetailsForm.tsx",
++  "components/flow/EarlierRuns.tsx",
++  "components/flow/FlowAside.tsx",
++  "components/flow/FlowInput.tsx",
++  "components/flow/FlowPageStates.tsx",
++  "components/flow/FlowRunPage.tsx",
++  "components/flow/FlowTopBar.tsx",
++  "components/flow/LevelMeter.tsx",
++  "components/flow/LiveSheet.tsx",
++  "components/flow/MicrophoneCheck.tsx",
++  "components/flow/ModeCards.tsx",
++  "components/flow/ParticipantsInput.tsx",
++  "components/flow/ProblemAlert.tsx",
++  "components/flow/ReadyPanel.tsx",
++  "components/flow/Recorder.tsx",
++  "components/flow/RegenerateNotice.tsx",
++  "components/flow/ResultDocument.tsx",
++  "components/flow/ResultFiles.tsx",
++  "components/flow/ReviewView.tsx",
++  "components/flow/RunFailure.tsx",
++  "components/flow/RunProgress.tsx",
++  "components/flow/RunResult.tsx",
++  "components/flow/RunTranscript.tsx",
++  "components/flow/StateCard.tsx",
++  "components/flow/StepDetails.tsx",
++  "components/flow/StepList.tsx",
++  "components/flow/SubmittingView.tsx",
++  "components/flow/UploadPanel.tsx",
++  "components/flow/useLeaveQuestion.tsx",
++  "components/frame.tsx"
++]
+diff -ruN a/frontend/tests/prod/smoke.spec.ts b/frontend/tests/prod/smoke.spec.ts
+--- a/frontend/tests/prod/smoke.spec.ts	1970-01-01 01:00:00
++++ b/frontend/tests/prod/smoke.spec.ts	2026-10-01 14:28:23
+@@ -0,0 +1,37 @@
++import { expect, test, type Page } from "@playwright/test";
++
++/** What the browser reports as broken or blocked (a Content-Security-Policy refusal is a console error). */
++function problemsOf(page: Page): string[] {
++  const problems: string[] = [];
++  page.on("console", (message) => message.type() === "error" && problems.push(message.text()));
++  page.on("pageerror", (error) => problems.push(String(error)));
++  return problems;
++}
++
++test("the design system is styled, themed and working in the built app", async ({ page }) => {
++  const problems = problemsOf(page);
++  await page.goto("/dev/foundation");
++  await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
++  const primary = page.getByRole("button", { name: "Primär" });
++  // A lost cascade layer shows as a button without padding; a theme that did not load, as another accent.
++  expect(await primary.evaluate((button) => getComputedStyle(button).paddingInline)).not.toBe("0px");
++  expect(await primary.evaluate((button) => getComputedStyle(button).backgroundColor)).toBe("rgb(0, 69, 149)");
++  await page.getByRole("button", { name: "Konto" }).click();
++  await expect(page.getByRole("menuitem", { name: "Logga ut" })).toBeVisible();
++  await page.keyboard.press("Escape");
++  await primary.click();
++  const dialog = page.getByRole("alertdialog", { name: "Du behöver logga in igen" });
++  await expect(dialog).toBeVisible();
++  // A required dialog stays on Escape.
++  await page.keyboard.press("Escape");
++  await expect(dialog).toBeVisible();
++  expect(problems).toEqual([]);
++});
++
++test("a signed-in page of the built app loads with nothing blocked or broken", async ({ page }) => {
++  const problems = problemsOf(page);
++  await page.goto("/flows");
++  await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
++  await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
++  expect(problems).toEqual([]);
++});
+diff -ruN a/frontend/tests/register.cjs b/frontend/tests/register.cjs
+--- a/frontend/tests/register.cjs	2026-09-23 10:50:44
++++ b/frontend/tests/register.cjs	2026-10-01 14:22:38
+@@ -3,6 +3,18 @@
+ const path = require("node:path");
+ const resolve = Module._resolveFilename;
+ Module._resolveFilename = function (request, ...args) {
+-  if (request.startsWith("@/")) request = path.join(__dirname, "../.test-build", request.slice(2));
++  if (request.startsWith("@/")) {
++    // Compiled sources first; a generated module that is not compiled (the built theme) from where it lies.
++    try {
++      return resolve.call(this, path.join(__dirname, "../.test-build", request.slice(2)), ...args);
++    } catch {
++      request = path.join(__dirname, "..", request.slice(2));
++    }
++  }
+   return resolve.call(this, request, ...args);
++};
++
++// A stylesheet a component imports (a CSS Module) is its class names as written; the styles are the browser's.
++require.extensions[".css"] = (module) => {
++  module.exports = new Proxy({}, { get: (_, name) => (name === "__esModule" ? false : String(name)) });
+ };
+diff -ruN a/frontend/tsconfig.test.json b/frontend/tsconfig.test.json
+--- a/frontend/tsconfig.test.json	2026-09-23 10:50:44
++++ b/frontend/tsconfig.test.json	2026-10-01 14:22:17
+@@ -7,7 +7,18 @@
+     "noEmit": false,
+     "incremental": false,
+     "outDir": ".test-build",
+-    "rootDir": "."
++    "rootDir": ".",
++    "paths": {
++      "@/*": [
++        "./*"
++      ],
++      "@astryxdesign/core/locales/*": [
++        "./node_modules/@astryxdesign/core/locales/*"
++      ],
++      "@astryxdesign/core/*": [
++        "./node_modules/@astryxdesign/core/dist/*"
++      ]
++    }
+   },
+   "include": [
+     "lib/*.test.ts"

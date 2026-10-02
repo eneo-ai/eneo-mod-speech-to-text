@@ -61,6 +61,35 @@ export function installDom(): JSDOM {
   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
   Object.defineProperty(dom.window, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
   Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
+  // jsdom has neither modal dialogs nor the Popover API, which the design system's overlays call: here they open
+  // and close as attributes and events. Modality, stacking and anchoring are the browser's, proved in tests/e2e.
+  const dialog = dom.window.HTMLDialogElement.prototype;
+  dialog.showModal = dialog.show = function (this: HTMLDialogElement) {
+    this.setAttribute("open", "");
+  };
+  dialog.close = function (this: HTMLDialogElement) {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    this.dispatchEvent(new dom.window.Event("close"));
+  };
+  const element = dom.window.HTMLElement.prototype;
+  const toggled = (target: HTMLElement, newState: "open" | "closed") =>
+    target.dispatchEvent(Object.assign(new dom.window.Event("toggle"), { newState, oldState: newState === "open" ? "closed" : "open" }));
+  element.showPopover = function (this: HTMLElement) {
+    this.setAttribute("data-popover-open", "");
+    toggled(this, "open");
+  };
+  element.hidePopover = function (this: HTMLElement) {
+    this.removeAttribute("data-popover-open");
+    toggled(this, "closed");
+  };
+  element.togglePopover = function (this: HTMLElement) {
+    const open = !this.hasAttribute("data-popover-open");
+    if (open) this.showPopover();
+    else this.hidePopover();
+    return open;
+  };
+  if (!("CSS" in globalThis)) Object.defineProperty(globalThis, "CSS", { value: { supports: () => false }, configurable: true, writable: true });
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   return dom;
 }
@@ -88,12 +117,18 @@ export async function mount(element: import("react").ReactElement) {
     container.remove();
   };
   mounted.add(unmount);
-  return { container, act, unmount };
+  const rerender = (next: import("react").ReactElement) => root.render(next);
+  return { container, act, unmount, rerender };
 }
 
 /** Takes down whatever a test left mounted, also when an assertion stopped it early (use with afterEach). */
 export async function cleanup(): Promise<void> {
   for (const unmount of [...mounted]) await unmount();
+}
+
+/** Static markup as a document of its own (no globals installed), for assertions on structure, names and attributes. */
+export function parse(html: string): Document {
+  return new JSDOM(html).window.document;
 }
 
 /** A button by its visible words or its accessible name, anywhere under `within`. */

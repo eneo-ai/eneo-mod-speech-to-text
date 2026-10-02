@@ -1,7 +1,9 @@
 "use client";
 
-import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw, Search } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
+  type ComponentProps,
+  type ComponentType,
   useCallback,
   useEffect,
   useId,
@@ -9,20 +11,28 @@ import {
   useRef,
   useState,
 } from "react";
-import { TranscriptEditor } from "@/components/TranscriptEditor";
+import { Banner } from "@astryxdesign/core/Banner";
+import { Button } from "@astryxdesign/core/Button";
+import { Divider } from "@astryxdesign/core/Divider";
+import { HStack } from "@astryxdesign/core/HStack";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Popover, type PopoverTriggerRenderProps } from "@astryxdesign/core/Popover";
+import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Text } from "@astryxdesign/core/Text";
+import { TextArea } from "@astryxdesign/core/TextArea";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import { ToggleButton, ToggleButtonGroup } from "@astryxdesign/core/ToggleButton";
+import { VStack } from "@astryxdesign/core/VStack";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
+import styles from "@/components/TranscriptPlayer.module.css";
+import { useDock } from "@/lib/dock";
 import { formatClock } from "@/lib/format";
-import { Button } from "@/components/ui/button";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
-import { Skeleton } from "@/components/ui/skeleton";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
-import { cn } from "@/lib/utils";
 import { countUncertain, wordKey } from "@/lib/confirmed-words";
 import {
   computeTurns,
@@ -94,27 +104,50 @@ export function shortcut(key: string): { skipMs: number; preventDefault: boolean
   }
 }
 
+/** The class names that apply, joined: a CSS Module's names and a caller's own. */
+const join = (...names: (string | false | null | undefined)[]) => names.filter(Boolean).join(" ");
+
 function rateLabel(rate: number): string {
   return `${String(rate).replace(".", ",")}×`;
 }
 
-export function speakerColor(label: string | null): string {
-  const index = label ? speakerColorIndex(label) : 0;
-  return `hsl(var(--speaker-${index}))`;
+type EditorProps = ComponentProps<typeof TranscriptEditor>;
+
+// The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
+// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
+// and the server and the browser's first render agree, since neither has the code yet.
+let loadedEditor: ComponentType<EditorProps> | null = null;
+/** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
+export const preloadTranscriptEditor = () => import("@/components/TranscriptEditor").then((module) => (loadedEditor = module.TranscriptEditor));
+
+function LazyTranscriptEditor(props: EditorProps) {
+  const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(() => loadedEditor);
+  useEffect(() => {
+    if (Editor) return;
+    let current = true;
+    void preloadTranscriptEditor().then((component) => current && setEditor(() => component));
+    return () => {
+      current = false;
+    };
+  }, [Editor]);
+  if (Editor) return <Editor {...props} />;
+  return (
+    <div className={styles.editorPending} aria-busy="true">
+      <VisuallyHidden as="p" role="status">
+        Hämtar granskningsverktygen…
+      </VisuallyHidden>
+      <Skeleton width="100%" height={40} />
+      <Skeleton width="60%" height={16} />
+      <Skeleton width="100%" height={16} />
+      <Skeleton width="90%" height={16} />
+    </div>
+  );
 }
 
 /** A speaker's round mark: the initial on the speaker's colour, the same everywhere on the page. */
-export function SpeakerMark({ label, name, className }: { label: string | null; name: string; className?: string }) {
+export function SpeakerMark({ label, name, size = "md" }: { label: string | null; name: string; size?: "sm" | "md" | "lg" }) {
   return (
-    <span
-      aria-hidden
-      className={cn(
-        "grid size-7 shrink-0 select-none place-items-center rounded-full text-[12px] font-semibold text-paper",
-        !label && "bg-ink-mute",
-        className,
-      )}
-      style={label ? { background: speakerColor(label) } : undefined}
-    >
+    <span aria-hidden className={styles.mark} data-size={size} data-speaker-color={label ? speakerColorIndex(label) : undefined}>
       {label ? speakerInitial(name) : "?"}
     </span>
   );
@@ -260,6 +293,7 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
+  const [, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -489,31 +523,29 @@ export function TranscriptPlayer(
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
       return (
-        <section className={cn("flex flex-col gap-5 p-4", className)} aria-label="Transkript" aria-busy="true">
-          <p role="status" className="sr-only">
+        <section className={join(styles.loading, className)} aria-label="Transkript" aria-busy="true">
+          <VisuallyHidden as="p" role="status">
             Hämtar transkriptet…
-          </p>
+          </VisuallyHidden>
           {[0, 1, 2].map((row) => (
-            <div key={row} className="flex gap-3">
-              <Skeleton className="size-8 shrink-0 rounded-full" />
-              <div className="flex flex-1 flex-col gap-2">
-                <Skeleton className="h-4 w-1/4" />
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-4/5" />
-              </div>
-            </div>
+            <HStack key={row} gap={3} vAlign="start">
+              <Skeleton width={32} height={32} radius="rounded" />
+              <VStack gap={2} className={styles.skeletonLines}>
+                <Skeleton width="25%" height={16} />
+                <Skeleton width="100%" height={16} />
+                <Skeleton width="80%" height={16} />
+              </VStack>
+            </HStack>
           ))}
         </section>
       );
     }
     return (
-      <section className={cn("flex flex-col", className)} aria-label="Transkript">
-        <p className="px-4 pt-4 text-[12px] text-ink-mute">
+      <section className={join(styles.fallback, className)} aria-label="Transkript">
+        <Text as="p" type="supporting">
           Transkriptet saknar tidsmarkeringar och kan inte följas i ljudet.
-        </p>
-        <pre className="whitespace-pre-wrap px-4 py-4 text-[15px] leading-relaxed font-sans text-ink">
-          {textFallback}
-        </pre>
+        </Text>
+        <pre className={styles.fallbackText}>{textFallback}</pre>
       </section>
     );
   }
@@ -533,82 +565,65 @@ export function TranscriptPlayer(
 
   return (
     <section
-      className={cn("transcript-player flex min-h-0 flex-col", className)}
+      className={join(styles.player, className)}
       role="region"
       aria-label="Inspelning och transkript"
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
       {tools && (
-        <div className="flex flex-col gap-3 border-b border-rule-soft px-3 pb-3 pt-1">
+        <VStack gap={3} className={styles.tools}>
           {labelled && (<>
           {/* The speaker filter, nothing else: chips that wrap, so none is cut off on a phone. */}
-          <ToggleGroup
-            type="single"
-            variant="chip"
-            size="sm"
-            value={shownFilter}
-            onValueChange={(value) => setFilter(value || "all")}
-            aria-label="Visa talare"
-            className={cn(
-              "flex-wrap justify-start py-1",
-              speakers.length > CHIP_LIMIT && "max-lg:hidden",
-            )}
-          >
-            <ToggleGroupItem value="all" className="shrink-0 px-3">
-              Alla
-            </ToggleGroupItem>
-            {speakers.map((speaker) => (
-              <ToggleGroupItem key={speaker.label} value={speaker.label} className="shrink-0 gap-1.5 pl-1 pr-3">
-                <SpeakerMark label={speaker.label} name={displayName(speaker.label)} className="size-6 text-[11px]" />
-                {displayName(speaker.label)}
-              </ToggleGroupItem>
-            ))}
-            {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
-            {toCheck > 0 && (
-              <>
-                <Separator orientation="vertical" className="mx-1 h-6 self-center" />
-                <ToggleGroupItem value={TO_CHECK} className="shrink-0 gap-1.5 px-3">
-                  <AlertTriangle aria-hidden className="text-ochre" />
-                  Osäkra ({toCheck})
-                </ToggleGroupItem>
-              </>
-            )}
-          </ToggleGroup>
+          <div className={styles.chips} data-many={speakers.length > CHIP_LIMIT || undefined}>
+            <ToggleButtonGroup label="Visa talare" type="single" size="sm" value={shownFilter} onChange={(value) => setFilter(value || "all")}>
+              <ToggleButton value="all" label="Alla" />
+              {speakers.map((speaker) => (
+                <ToggleButton
+                  key={speaker.label}
+                  value={speaker.label}
+                  label={displayName(speaker.label)}
+                  icon={<SpeakerMark label={speaker.label} name={displayName(speaker.label)} size="sm" />}
+                />
+              ))}
+              {/* The passages to check are a to-do, set apart from the speakers, so they are counted. */}
+              {toCheck > 0 && (
+                <>
+                  <Divider orientation="vertical" />
+                  <ToggleButton value={TO_CHECK} label={`Osäkra (${toCheck})`} icon={<AlertTriangle aria-hidden className={styles.reviewIcon} />} />
+                </>
+              )}
+            </ToggleButtonGroup>
+          </div>
           {/* A large meeting on a narrow screen picks one speaker from a list instead of endless chips. */}
           {speakers.length > CHIP_LIMIT && (
-            <div className="lg:hidden">
-              <Select value={shownFilter} onValueChange={setFilter}>
-                <SelectTrigger aria-label="Filtrera talare">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Alla talare</SelectItem>
-                  {speakers.map((speaker) => (
-                    <SelectItem key={speaker.label} value={speaker.label}>
-                      {displayName(speaker.label)}
-                    </SelectItem>
-                  ))}
-                  {toCheck > 0 && <SelectItem value={TO_CHECK}>Osäkra ({toCheck})</SelectItem>}
-                </SelectContent>
-              </Select>
+            <div className={styles.speakerList}>
+              <Selector
+                label="Filtrera talare"
+                isLabelHidden
+                value={shownFilter}
+                onChange={setFilter}
+                options={[
+                  { value: "all", label: "Alla talare" },
+                  ...speakers.map((speaker) => ({ value: speaker.label, label: displayName(speaker.label) })),
+                  ...(toCheck > 0 ? [{ value: TO_CHECK, label: `Osäkra (${toCheck})` }] : []),
+                ]}
+              />
             </div>
           )}
           </>)}
 
-          <div className="flex items-center gap-2">
-            <InputGroup className="min-w-0 flex-1">
-              <InputGroupAddon>
-                <Search aria-hidden />
-              </InputGroupAddon>
-              <InputGroupInput
-                id={searchId}
-                type="search"
-                value={query}
+          <HStack gap={2} vAlign="center">
+            <div className={styles.search}>
+              <TextInput
+                label="Sök i transkriptet"
+                isLabelHidden
+                startIcon="search"
+                hasClear
                 placeholder="Sök i transkriptet"
-                aria-label="Sök i transkriptet"
-                onChange={(e) => {
-                  setQuery(e.target.value);
+                value={query}
+                onChange={(next) => {
+                  setQuery(next);
                   setHitIndex(0);
                 }}
                 onKeyDown={(e) => {
@@ -617,60 +632,46 @@ export function TranscriptPlayer(
                   stepHit(e.shiftKey ? -1 : 1);
                 }}
               />
-              {query.trim() && (
-                <InputGroupAddon align="inline-end" className="cursor-default tabular-nums">
-                  {hitStatus}
-                </InputGroupAddon>
-              )}
-            </InputGroup>
+            </div>
             {query.trim() && (
               <>
-                <Button type="button" variant="outline" size="icon" aria-label="Föregående träff" disabled={hits.length === 0} onClick={() => stepHit(-1)}>
-                  <ChevronUp aria-hidden />
-                </Button>
-                <Button type="button" variant="outline" size="icon" aria-label="Nästa träff" disabled={hits.length === 0} onClick={() => stepHit(1)}>
-                  <ChevronDown aria-hidden />
-                </Button>
+                <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
+                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(-1)} />
+                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(1)} />
               </>
             )}
-          </div>
+          </HStack>
           {/* The count is said once per change, not per keystroke's markup. */}
-          <p role="status" className="sr-only">{hitStatus && hits.length > 0 ? `Träff ${hitStatus}` : hitStatus}</p>
-        </div>
+          <VisuallyHidden as="p" role="status">{hitStatus && hits.length > 0 ? `Träff ${hitStatus}` : hitStatus}</VisuallyHidden>
+        </VStack>
       )}
 
       {/* Always in the page, so the first save's Sparar… is heard: a live region added with its text often is not. */}
-      <p role="status" className="sr-only">
+      <VisuallyHidden as="p" role="status">
         {saveText}
-      </p>
+      </VisuallyHidden>
       {(audioPending ||
         audioUnavailable ||
         fileCount === 0 ||
         uncertainWords > 0 ||
         saveState !== "idle") && (
-        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-2 text-[12px] leading-relaxed">
-          <div className="min-w-0">
-            {audioPending && <p className="text-ink-mute">Hämtar ljud…</p>}
+        <div className={styles.status}>
+          <div className={styles.statusText}>
+            {audioPending && <Text as="p" type="supporting">Hämtar ljud…</Text>}
             {!audioPending && fileCount === 0 && (
-              <p className="text-ink-mute">Ljudet är inte tillgängligt för den här körningen.</p>
+              <Text as="p" type="supporting">Ljudet är inte tillgängligt för den här körningen.</Text>
             )}
             {audioUnavailable && (
-              <p className="text-destructive">
+              <p className={styles.error}>
                 Ljudet kunde inte spelas.{" "}
-                <button
-                  type="button"
-                  className="inline-flex min-h-6 items-center underline coarse:min-h-11"
-                  onClick={() => playback.reload()}
-                >
-                  Försök igen
-                </button>
+                <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
               </p>
             )}
             {uncertainWords > 0 && (
-              <p className="text-ink-mute">
+              <Text as="p" type="supporting">
                 {uncertain.remaining > 0 ? (
                   <>
-                    <span className="rounded-[3px] bg-ochre/25 px-1 text-ink">
+                    <span className={styles.uncertainCount}>
                       {uncertain.remaining} ord
                     </span>{" "}
                     kunde inte hittas i ljudet.
@@ -682,55 +683,56 @@ export function TranscriptPlayer(
                   "Alla osäkra ord är bekräftade."
                 )}
                 {uncertain.confirmed > 0 && uncertain.remaining > 0 && (
-                  <span className="text-ink-mute"> {uncertain.confirmed} bekräftade.</span>
+                  <span> {uncertain.confirmed} bekräftade.</span>
                 )}
-              </p>
+              </Text>
             )}
           </div>
           {saveState !== "idle" && (
-            <p
-              className={cn(
-                "shrink-0 text-[12px]",
-                saveState === "error" ? "text-destructive" : "text-ink-mute",
-              )}
-            >
+            <p className={join(styles.saveState, saveState === "error" && styles.error)}>
               {saveText}
             </p>
           )}
         </div>
       )}
 
-      {correctionProblem && <p role="alert" className="px-3 py-2 text-[12px] text-destructive">{correctionProblem}</p>}
-      {editError && <p role="alert" className="px-3 pt-2 text-[13px] text-destructive">{editError}</p>}
+      {correctionProblem && (
+        <div className={styles.notice}>
+          <Banner status="error" title={correctionProblem} collapsible={false} />
+        </div>
+      )}
+      {editError && (
+        <div className={styles.notice}>
+          <Banner status="error" title={editError} collapsible={false} />
+        </div>
+      )}
       {downloadable && corrections && !correctionProblem && (
         <Button
-          type="button"
           variant="ghost"
           size="sm"
-          className="mx-1 mt-1 shrink-0 self-start"
+          icon={<Download aria-hidden />}
+          label="Hämta granskat transkript"
+          className={styles.download}
           onClick={() => {
             const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
             const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
             setTimeout(() => URL.revokeObjectURL(url), 1000);
           }}
-        >
-          <Download data-icon="inline-start" aria-hidden />
-          Hämta granskat transkript
-        </Button>
+        />
       )}
 
       {/* The text and its player: the player's sticking stays within the text, never over the tools above. */}
-      <div className="flex min-h-0 flex-1 flex-col">
+      <div className={styles.body}>
       {/* Each passage is a few Tab stops, a long meeting hundreds: the way past them, shown when it has focus.
           It moves focus itself, so the address and the history stay the run's. */}
-      {/* A plain link: a Button's touch height would outgrow sr-only and leave a small, invisible target. */}
+      {/* A plain link: a Button's touch height would outgrow the hidden link and leave a small, invisible target. */}
       <a
         href={`#${pastId}`}
         onClick={(e) => {
           e.preventDefault();
           document.getElementById(pastId)?.focus();
         }}
-        className="sr-only focus:not-sr-only focus:m-2 focus:inline-flex focus:min-h-9 focus:items-center focus:self-start focus:rounded-md focus:border focus:border-input focus:bg-card focus:px-3 focus:text-sm focus:font-medium focus:outline-none focus:ring-2 focus:ring-ring coarse:focus:min-h-11"
+        className={styles.skipLink}
       >
         Hoppa förbi transkriptet
       </a>
@@ -739,9 +741,9 @@ export function TranscriptPlayer(
         ref={listRef}
         onWheel={onUserScroll}
         onTouchMove={onUserScroll}
-        className={cn("transcript-scrollport min-h-0 flex-1 lg:overflow-y-auto", !reviewEnabled && "px-1 py-2")}
+        className={join(styles.scrollport, !reviewEnabled && styles.padded)}
       >
-        {reviewEnabled ? <TranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
+        {reviewEnabled ? <LazyTranscriptEditor raw={segments} shown={shown} corrections={corrections} reviews={speakerReviews} labelled={labelled}
           editable={canReview} textEditable={canEdit} onChange={onCorrectionsChange} displayName={displayName} speakerOptions={labelOptions}
           audioAvailable={hasAudio && !audioUnavailable} currentFile={currentFile} currentTime={playhead} playing={!paused} onSeek={(fileIndex, time, autoplay, end) => {
             if (end === undefined) return seekTo(fileIndex, time, autoplay);
@@ -751,11 +753,11 @@ export function TranscriptPlayer(
           }}
           confirmedWords={confirmedWords} onToggleConfirmed={onToggleConfirmed}
           onInteract={() => setFollow(false)} /> : parts.map((part) => (
-          <div key={part.fileIndex} className="flex flex-col">
+          <div key={part.fileIndex} className={styles.part}>
             {totalFiles > 1 && (
-              <h3 className="px-2 pb-1 pt-3 text-[13px] font-medium text-ink-mute">Del {part.fileIndex + 1}</h3>
+              <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>
             )}
-            <ol className="flex flex-col" aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriptet"}>
+            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriptet"}>
               {part.turns.map((turn) => {
                 // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
                 const editableTurn =
@@ -806,52 +808,42 @@ export function TranscriptPlayer(
           </div>
         ))}
         {!reviewEnabled && visibleTurns.length === 0 && (
-          <p className="px-3 py-6 text-[14px] text-ink-mute">Inga repliker att visa.</p>
+          <Text as="p" className={styles.empty}>Inga repliker att visa.</Text>
         )}
       </div>
 
       {hasAudio ? (
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
-        <div id={pastId} tabIndex={-1} data-docked-player className="sticky bottom-0 z-10 rounded-b-xl border-t border-rule-soft bg-card px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring lg:static lg:pb-2 short:static">
-          <AudioPlayer playback={playback} label="Inspelningen">
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="hidden shrink-0 rounded-full sm:inline-flex"
-              disabled={audioUnavailable}
-              aria-label={`Bakåt ${SKIP_SECONDS} sekunder`}
-              onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
-            >
-              <RotateCcw aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="hidden shrink-0 rounded-full sm:inline-flex"
-              disabled={audioUnavailable}
-              aria-label={`Framåt ${SKIP_SECONDS} sekunder`}
-              onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
-            >
-              <RotateCw aria-hidden />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="shrink-0 px-2 tabular-nums coarse:min-w-11"
-              aria-label={`Hastighet ${rateLabel(rate)}`}
-              onClick={cycleRate}
-            >
+        <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
+          {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
+              row from 640 px (below it the copy here is shown, and the one in the row is not). */}
+          <div className={styles.dockTools}>
+            {!follow && <Button variant="ghost" size="sm" label="Följ" onClick={() => setFollow(true)} />}
+            <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rateBelow} onClick={cycleRate}>
               {rateLabel(rate)}
             </Button>
-            {!follow && (
-              <Button type="button" variant="ghost" size="sm" className="shrink-0 text-primary" onClick={() => setFollow(true)}>
-                Följ
-              </Button>
-            )}
+          </div>
+          <AudioPlayer playback={playback} label="Inspelningen">
+            <IconButton
+              variant="ghost"
+              className={styles.skip}
+              isDisabled={audioUnavailable}
+              label={`Bakåt ${SKIP_SECONDS} sekunder`}
+              icon={<RotateCcw aria-hidden />}
+              onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
+            />
+            <IconButton
+              variant="ghost"
+              className={styles.skip}
+              isDisabled={audioUnavailable}
+              label={`Framåt ${SKIP_SECONDS} sekunder`}
+              icon={<RotateCw aria-hidden />}
+              onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
+            />
+            <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
+              {rateLabel(rate)}
+            </Button>
           </AudioPlayer>
         </div>
       ) : (
@@ -942,7 +934,7 @@ function TurnBlock({
     wasEditing.current = editingHere;
   }, [editingHere]);
 
-  const picker = (trigger: React.ReactNode) => (
+  const picker = (trigger: (props: PopoverTriggerRenderProps) => React.ReactNode) => (
     <SpeakerPicker
       current={toCheck || decision === "unresolved" ? null : turn.speaker}
       suggested={toCheck ? turn.speaker : null}
@@ -964,52 +956,45 @@ function TurnBlock({
       data-turn-index={turn.index}
       data-active={isActive}
       aria-label={labelled ? `${name}, ${clock}${partLabel}` : `${clock}${partLabel}`}
-      className={cn(
-        "flex gap-3 rounded-lg px-2 py-2.5 transition-colors",
-        isActive && "bg-primary-soft/60",
-      )}
+      className={styles.turn}
     >
-      {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} className="mt-px" />}
-      <div className="min-w-0 flex-1">
+      {labelled && <SpeakerMark label={markLabel} name={displayName(turn.speaker)} />}
+      <div className={styles.turnBody}>
         {/* On a touch screen the head's controls are 44 px targets; negative margins keep the row compact. */}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          {labelled && toCheck && <span className="text-[15px] font-semibold leading-tight text-ink-soft">{name}</span>}
+        <div className={styles.head}>
+          {labelled && toCheck && <span className={join(styles.name, styles.quiet)}>{name}</span>}
           {labelled && !toCheck &&
             (canPickSpeaker ? (
-              picker(
+              picker((trigger) => (
                 <button
+                  {...trigger}
                   type="button"
                   // The name starts with the words on the button (WCAG 2.5.3) and says what it does.
                   aria-label={`${name}, ändra talare`}
-                  className="inline-flex min-h-6 items-center gap-1 rounded text-left text-[15px] font-semibold leading-tight text-ink decoration-dotted underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:min-w-11"
+                  className={join(styles.inline, styles.name, styles.speakerName)}
                 >
                   {name}
-                  <ChevronDown aria-hidden className="size-3.5 text-ink-mute" />
-                </button>,
-              )
+                  <ChevronDown aria-hidden className={styles.chevron} />
+                </button>
+              ))
             ) : (
-              <span className="text-[15px] font-semibold leading-tight text-ink">{name}</span>
+              <span className={styles.name}>{name}</span>
             ))}
           <button
             type="button"
             onClick={onSeekTurn}
             aria-label={`Spela från ${clock}${partLabel}`}
-            className={cn(
-              "-mx-1 inline-flex min-h-6 min-w-6 items-center rounded px-1 text-[13px] tabular-nums hover:text-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:min-w-11",
-              isActive ? "text-ink" : "text-ink-mute",
-            )}
+            className={join(styles.inline, styles.clock)}
           >
             {clock}
           </button>
           {labelled && toCheck && canPickSpeaker &&
-            picker(
-              <Button type="button" variant="link" size="sm" className="-my-1 px-1 coarse:-my-2.5">
-                Ändra talare
-              </Button>,
-            )}
+            picker((trigger) => (
+              <Button {...trigger} variant="ghost" size="sm" label="Ändra talare" className={styles.changeSpeaker} />
+            ))}
         </div>
-        {choosable && <p className="mt-1 text-[13px] text-ink-mute">Välj meningen du vill rätta.</p>}
-        <div className="mt-0.5 text-[15px] leading-[1.65] text-ink">
+        {choosable && <Text as="p" type="supporting" className={styles.hint}>Välj meningen du vill rätta.</Text>}
+        <div className={styles.text}>
           {turn.parts.map((part) => {
             const partActive = activeIndices.has(part.segmentIndex);
             const corrected = correctedIndices.has(part.segmentIndex);
@@ -1031,7 +1016,7 @@ function TurnBlock({
             }
             const shown = pieces(part.segment, ranges, hitsBySegment.get(part.segmentIndex));
             return (
-              <span key={part.segmentIndex} className="group/part">
+              <span key={part.segmentIndex}>
                 {/* While choosing, the sentence itself is the control. A span, since a button cannot break across
                     lines inside the text; it then holds no other control, so a word is confirmed outside choosing.
                     Its name is the words it shows, then the action (WCAG 2.5.3): the hidden correction notes inside
@@ -1049,15 +1034,7 @@ function TurnBlock({
                       onStartEdit(part.segmentIndex);
                     },
                   })}
-                  className={cn(
-                    "cursor-pointer rounded-sm box-decoration-clone transition-colors",
-                    partActive && "bg-primary/10",
-                    // A tint on every sentence, stronger where pointed at or focused (a dotted line in forced colours,
-                    // which drop tints); the padding grows the target to 24 px without moving the lines, and on a
-                    // touch screen each sentence is a 44 px row.
-                    choosable &&
-                      "bg-primary-soft/50 bg-clip-content py-1 hover:bg-primary/20 focus-visible:bg-primary/20 coarse:my-1 coarse:block coarse:min-h-11 coarse:bg-clip-border coarse:px-2 coarse:py-2.5 forced-colors:underline forced-colors:decoration-dotted",
-                  )}
+                  className={join(styles.sentence, partActive && styles.sentenceActive, choosable && styles.choosable)}
                 >
                   {shown.map((piece, k, all) => {
                     const key = piece.word ? wordKey(part.segment.sourceSegmentIndex ?? part.segmentIndex, piece.word) : null;
@@ -1069,23 +1046,19 @@ function TurnBlock({
                     const lastOfWord =
                       Boolean(piece.word?.uncertain) &&
                       all[k + 1]?.wordIndex !== piece.wordIndex;
-                    const Text = piece.hit ? "mark" : "span";
+                    const Word = piece.hit ? "mark" : "span";
                     return (
                       <span key={k}>
-                        <Text
+                        <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
                           data-hit={piece.hit ?? undefined}
-                          className={cn(
-                            "rounded-[3px] box-decoration-clone",
-                            flagged &&
-                              "bg-ochre/25 px-[2px] -mx-[2px] underline decoration-wavy decoration-ochre underline-offset-[3px]",
-                            confirmed &&
-                              "bg-ok/15 px-[2px] -mx-[2px] text-ink underline decoration-dotted decoration-ok/70 underline-offset-[3px]",
-                            piece.hit === "match" && "bg-primary-soft text-ink",
-                            (piece.hit === "current" || isWordActive) &&
-                              "bg-primary text-primary-foreground forced-colors:bg-[Highlight] forced-colors:text-[HighlightText]",
-                            piece.correctedFrom !== null &&
-                              "underline decoration-dotted decoration-primary underline-offset-[3px]",
+                          className={join(
+                            styles.word,
+                            flagged && styles.flagged,
+                            confirmed && styles.confirmed,
+                            piece.hit === "match" && styles.match,
+                            (piece.hit === "current" || isWordActive) && styles.lit,
+                            piece.correctedFrom !== null && styles.corrected,
                           )}
                           title={
                             piece.correctedFrom !== null
@@ -1098,12 +1071,12 @@ function TurnBlock({
                           }
                         >
                           {piece.text}
-                          {piece.correctedFrom !== null && <span className="sr-only"> (rättad från {piece.correctedFrom})</span>}
-                        </Text>
+                          {piece.correctedFrom !== null && <VisuallyHidden data-correction-note> (rättad från {piece.correctedFrom})</VisuallyHidden>}
+                        </Word>
                         {lastOfWord && onToggleConfirmed && key !== null && !choosable && (
                           <button
                             type="button"
-                            className="group/confirm -my-1 -ml-[1.5px] -mr-[4.5px] inline-grid size-6 translate-y-[-1px] place-items-center rounded-full align-middle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-[14.5px] coarse:-ml-[11.5px] coarse:-mr-[14.5px] coarse:size-11"
+                            className={styles.confirmButton}
                             onClick={(e) => {
                               e.stopPropagation();
                               onToggleConfirmed(key);
@@ -1116,16 +1089,8 @@ function TurnBlock({
                             }
                             title={confirmed ? "Bekräftat – välj igen för att ångra" : "Ordet stämmer"}
                           >
-                            <span
-                              aria-hidden
-                              className={cn(
-                                "grid size-[15px] place-items-center rounded-full border transition-colors",
-                                confirmed
-                                  ? "border-transparent bg-ok text-paper group-hover/confirm:bg-ok/80"
-                                  : "border-ochre text-ochre group-hover/confirm:bg-ochre group-hover/confirm:text-ink",
-                              )}
-                            >
-                              <Check className="h-[9px] w-[9px]" strokeWidth={3} />
+                            <span aria-hidden className={join(styles.confirmMark, confirmed && styles.confirmMarkDone)}>
+                              <Check strokeWidth={3} />
                             </span>
                           </button>
                         )}
@@ -1147,9 +1112,9 @@ function TurnBlock({
               aria-label={several ? (choosing ? `Klar med repliken från ${clock}${partLabel}` : `Rätta repliken från ${clock}${partLabel}: välj mening`) : `Rätta repliken från ${clock}${partLabel}`}
               aria-expanded={several ? choosing : undefined}
               onClick={() => (several ? setChoosing(!choosing) : onStartEdit(turn.parts[0].segmentIndex))}
-              className="-my-1 ml-0.5 inline-flex min-h-6 items-center gap-1 rounded px-1.5 align-baseline text-[13px] text-ink-mute hover:bg-accent hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring coarse:-my-2.5 coarse:min-h-11 coarse:text-ink-soft"
+              className={join(styles.inline, styles.correct)}
             >
-              {choosing ? <Check aria-hidden className="size-3.5" strokeWidth={2} /> : <Pencil aria-hidden className="size-3.5" strokeWidth={2} />}
+              {choosing ? <Check aria-hidden strokeWidth={2} /> : <Pencil aria-hidden strokeWidth={2} />}
               {choosing ? "Klar" : "Rätta"}
             </button>
           )}
@@ -1192,18 +1157,18 @@ function SpeakerPicker({
   toCheck: boolean;
   /** Saves the choice; returns why it was not saved, or null. */
   onPick: (speaker: string, all: boolean) => string | null;
-  children: React.ReactNode;
+  /** The button that opens it: the design system's own props for it go on the button. */
+  children: (trigger: PopoverTriggerRenderProps) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>(current ?? "");
   const [scope, setScope] = useState<"one" | "all">("one");
   const [problem, setProblem] = useState<string | null>(null);
-  const titleId = useId();
   const others = suggested ? options.filter((label) => label !== suggested) : options;
 
   return (
     <Popover
-      open={open}
+      isOpen={open}
       onOpenChange={(next) => {
         setOpen(next);
         if (next) {
@@ -1213,84 +1178,79 @@ function SpeakerPicker({
           setProblem(null);
         }
       }}
-    >
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent align="start" className="w-[22rem] max-w-[calc(100vw-2rem)] p-0" aria-labelledby={titleId}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (!choice) return;
-            const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
-            setProblem(refused);
-            if (!refused) setOpen(false);
-          }}
-        >
-          <div className="border-b border-border px-4 py-3">
-            <p id={titleId} className="text-[14px] font-semibold text-ink">Ändra talare</p>
-            <p className="mt-0.5 line-clamp-2 text-[13px] text-ink-mute">{quote}</p>
-          </div>
-          <RadioGroup value={choice} onValueChange={setChoice} aria-labelledby={titleId} className="max-h-64 gap-0 overflow-y-auto p-1.5">
-            {suggested && (
-              <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
-            )}
-            {others.map((label) => (
-              <PickerOption
-                key={label}
-                value={label}
-                label={label}
-                name={displayName(label)}
-                note={label === stored && !toCheck ? "ursprunglig" : undefined}
-              />
-            ))}
-            {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
-          </RadioGroup>
-          {passages > 1 && choice !== UNRESOLVED && (
-            <div className="border-t border-border px-4 py-3">
-              <ToggleGroup
-                type="single"
-                variant="outline"
-                size="sm"
-                value={scope}
-                onValueChange={(value) => value && setScope(value as "one" | "all")}
-                aria-label="Gäller"
-                className="grid grid-cols-2 gap-1"
-              >
-                <ToggleGroupItem value="one" className="h-auto min-h-8 whitespace-normal py-1.5 text-[13px] leading-snug data-[state=on]:border-primary data-[state=on]:bg-primary-soft">
-                  Bara det här inlägget
-                </ToggleGroupItem>
-                <ToggleGroupItem value="all" className="h-auto min-h-8 whitespace-normal py-1.5 text-[13px] leading-snug data-[state=on]:border-primary data-[state=on]:bg-primary-soft">
-                  Alla {passages} inlägg från {fromName}
-                </ToggleGroupItem>
-              </ToggleGroup>
+      label="Ändra talare"
+      width="22rem"
+      placement="below"
+      alignment="start"
+      isModal={false}
+      hasCloseButton={false}
+      content={
+        // Only while it is open: a long meeting has hundreds of passages, none of them with a form of its own in the page.
+        open ? (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!choice) return;
+              const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
+              setProblem(refused);
+              if (!refused) setOpen(false);
+            }}
+          >
+            <div className={styles.pickerHead}>
+              <Text as="p" weight="semibold">Ändra talare</Text>
+              <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
             </div>
-          )}
-          {problem && (
-            <p role="alert" className="border-t border-border px-4 py-3 text-[13px] text-destructive">
-              {problem}
-            </p>
-          )}
-          <div className="flex justify-end gap-2 border-t border-border px-4 py-3">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(false)}>
-              Avbryt
-            </Button>
-            <Button type="submit" size="sm" disabled={!choice || choice === current}>
-              Spara
-            </Button>
-          </div>
-        </form>
-      </PopoverContent>
+            <div className={styles.pickerList}>
+              <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
+                {suggested && (
+                  <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
+                )}
+                {others.map((label) => (
+                  <PickerOption
+                    key={label}
+                    value={label}
+                    label={label}
+                    name={displayName(label)}
+                    note={label === stored && !toCheck ? "ursprunglig" : undefined}
+                  />
+                ))}
+                {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
+              </RadioList>
+            </div>
+            {passages > 1 && choice !== UNRESOLVED && (
+              <div className={styles.pickerSection}>
+                <RadioList label="Gäller" value={scope} onChange={(value) => setScope(value as "one" | "all")}>
+                  <RadioListItem value="one" label="Bara det här inlägget" />
+                  <RadioListItem value="all" label={`Alla ${passages} inlägg från ${fromName}`} />
+                </RadioList>
+              </div>
+            )}
+            {problem && (
+              <div className={styles.pickerSection}>
+                <Banner status="error" title={problem} collapsible={false} />
+              </div>
+            )}
+            <HStack gap={2} hAlign="end" className={styles.pickerSection}>
+              <Button variant="ghost" size="sm" label="Avbryt" onClick={() => setOpen(false)} />
+              <Button type="submit" variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} />
+            </HStack>
+          </form>
+        ) : null
+      }
+    >
+      {children}
     </Popover>
   );
 }
 
 function PickerOption({ value, label, name, markName = name, note }: { value: string; label: string | null; name: string; markName?: string; note?: string }) {
   return (
-    <label className="flex min-h-9 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-[14px] text-ink hover:bg-accent coarse:min-h-11">
-      <RadioGroupItem value={value} />
-      <SpeakerMark label={label} name={markName} className="size-6 text-[11px]" />
-      <span className="min-w-0 flex-1 truncate">{name}</span>
-      {note && <span className="shrink-0 text-[12px] text-ink-mute">{note}</span>}
-    </label>
+    <RadioListItem
+      value={value}
+      label={name}
+      startContent={<SpeakerMark label={label} name={markName} size="sm" />}
+      endContent={note ? <Text type="supporting">{note}</Text> : undefined}
+    />
   );
 }
 
@@ -1314,17 +1274,20 @@ function LineEditor({
 }) {
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLTextAreaElement | null>(null);
+  const fit = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  };
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.focus();
     el.setSelectionRange(el.value.length, el.value.length);
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
+    fit(el);
   }, []);
   return (
     <div
-      className="my-1"
+      className={styles.lineEditor}
       // Focus moving between the text and its buttons stays in the editor; leaving it all saves or closes.
       onBlur={(e) => {
         if (locked || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -1332,16 +1295,16 @@ function LineEditor({
         else onCancel();
       }}
     >
-      <textarea
+      <TextArea
         ref={ref}
+        label={label}
+        isLabelHidden
         value={value}
         rows={1}
-        readOnly={locked}
-        aria-label={label}
-        onChange={(e) => {
-          setValue(e.target.value);
-          e.target.style.height = "auto";
-          e.target.style.height = `${e.target.scrollHeight}px`;
+        isReadOnly={locked}
+        onChange={(next, e) => {
+          setValue(next);
+          fit(e.target);
         }}
         onKeyDown={(e) => {
           if (locked) {
@@ -1356,31 +1319,22 @@ function LineEditor({
             onCancel();
           }
         }}
-        className="w-full resize-none rounded-md border border-rule bg-paper px-2 py-1 text-[15px] leading-[1.65] text-ink focus:outline-none focus:ring-2 focus:ring-primary coarse:text-base"
       />
       {locked ? (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-mute">
-          <span>Rättningen kan inte sparas längre. Kopiera texten om du vill behålla den.</span>
-          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
-            Stäng
-          </Button>
-        </div>
+        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
+          <Text type="supporting">Rättningen kan inte sparas längre. Kopiera texten om du vill behålla den.</Text>
+          <Button size="sm" variant="ghost" label="Stäng" onClick={onCancel} />
+        </HStack>
       ) : (
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-ink-mute">
+        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
           {/* Pressed without taking the focus, so leaving the field does not save first. */}
-          <Button type="button" size="sm" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)}>
-            Spara
-          </Button>
-          <Button type="button" size="sm" variant="ghost" onMouseDown={(e) => e.preventDefault()} onClick={onCancel}>
-            Avbryt
-          </Button>
-          <span className="coarse:hidden">Enter sparar · Esc avbryter</span>
+          <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
+          <Button size="sm" variant="ghost" label="Avbryt" onMouseDown={(e) => e.preventDefault()} onClick={onCancel} />
+          <Text type="supporting" className={styles.keysHint}>Enter sparar · Esc avbryter</Text>
           {corrected && (
-            <Button type="button" size="sm" variant="link" className="px-0" onMouseDown={(e) => e.preventDefault()} onClick={onRevert}>
-              Återställ originalet
-            </Button>
+            <Button size="sm" variant="ghost" label="Återställ originalet" onMouseDown={(e) => e.preventDefault()} onClick={onRevert} />
           )}
-        </div>
+        </HStack>
       )}
     </div>
   );

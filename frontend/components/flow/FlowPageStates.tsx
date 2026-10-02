@@ -1,48 +1,46 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { FLOW_GRID, FRAME, ReadingMain } from "@/components/frame";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
+import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Skeleton } from "@astryxdesign/core/Skeleton";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
+import { FlowFrame } from "@/components/flow/FlowFrame";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 
 /** The flow page's shape while it loads, so nothing moves when it arrives. */
 export function FlowSkeleton() {
   return (
-    <div className="flex min-h-dvh flex-col" aria-busy="true">
-      <p role="status" className="sr-only">
+    <FlowFrame
+      aside={
+        <VStack gap={5} aria-busy="true">
+          <Skeleton width="75%" height={28} />
+          <VStack gap={2}>
+            <Skeleton width="100%" height={16} />
+            <Skeleton width="66%" height={16} />
+          </VStack>
+          <Skeleton width="100%" height={48} />
+          <Skeleton width={128} height={16} />
+          <Skeleton width="100%" height={80} />
+        </VStack>
+      }
+    >
+      <VisuallyHidden as="p" role="status">
         Laddar flödet…
-      </p>
-      <div className="flex items-center gap-3 px-4 pb-1 pt-3 lg:hidden">
-        <Skeleton className="size-9 rounded-full" />
-        <Skeleton className="h-5 flex-1" />
-        <Skeleton className="size-10 rounded-full" />
-      </div>
-      <div className="hidden h-16 border-b border-rule-soft bg-paper lg:block" />
-      <div className={cn(FRAME, FLOW_GRID, "flex-1 pb-12 pt-3 lg:items-start lg:pt-8")}>
-        <div className="flex flex-col gap-5">
-          <Skeleton className="hidden h-7 w-3/4 lg:block" />
-          <div className="flex flex-col gap-2">
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-2/3" />
-          </div>
-          <Skeleton className="h-12 w-full rounded-xl" />
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-20 w-full rounded-xl" />
-        </div>
-        <div className="mt-10 flex flex-col gap-3 lg:mt-0">
-          <Skeleton className="mb-1 h-6 w-56" />
-          {[0, 1, 2].map((card) => (
-            <Skeleton key={card} className="h-[4.75rem] w-full rounded-xl" />
-          ))}
-          <Skeleton className="mt-3 h-12 w-full rounded-xl" />
-        </div>
-      </div>
-    </div>
+      </VisuallyHidden>
+      <VStack gap={3} aria-busy="true">
+        <Skeleton width={224} height={24} />
+        {[0, 1, 2].map((card) => (
+          <Skeleton key={card} index={card} width="100%" height={76} />
+        ))}
+        <Skeleton width="100%" height={48} />
+      </VStack>
+    </FlowFrame>
   );
 }
 
@@ -64,22 +62,18 @@ export function FlowUnavailable({ error }: { error: unknown }) {
   const { title, detail, retry } = unavailableCopy(error);
   useDocumentTitle(`${title.replace(/\.$/, "")} · Tal till text`);
   return (
-    <div className="flex min-h-dvh flex-col">
-      <FlowTopBar title={title} />
-      <ReadingMain id="innehall" className="gap-4">
-        <h1 className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink lg:block">
-          {title}
-        </h1>
-        <p className="text-[17px] leading-relaxed text-ink-soft">{detail}</p>
-        <div className="flex flex-wrap gap-3">
+    <FlowFrame>
+      {/* A reading column on the frame's left edge, like the flow's own column beside the card. */}
+      <VStack gap={4} maxWidth={640}>
+        <Heading level={1}>{title}</Heading>
+        <Text as="p" color="secondary">
+          {detail}
+        </Text>
+        <HStack gap={3} wrap="wrap">
           <BackToFlows variant="default" size="default" />
-          {retry && (
-            <Button type="button" variant="outline" onClick={() => window.location.reload()}>
-              Försök igen
-            </Button>
-          )}
-        </div>
-      </ReadingMain>
-    </div>
+          {retry && <Button label="Försök igen" variant="secondary" onClick={() => window.location.reload()} />}
+        </HStack>
+      </VStack>
+    </FlowFrame>
   );
 }

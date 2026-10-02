@@ -1,5 +1,5 @@
 import type { FlowRunError, FlowRunResult, RunContract } from "./api";
-import { makesText } from "./flow-session";
+import { makesText } from "./flow-output";
 import { ofContractVersion } from "./run-progress";
 
 export interface RunResultView {

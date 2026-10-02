@@ -1,32 +1,20 @@
-import type { MouseEvent } from "react";
-import { AccountMenu } from "@/components/AccountMenu";
-import { Brand } from "@/components/Brand";
-import { FRAME } from "@/components/frame";
-import { cn } from "@/lib/utils";
+"use client";
 
-/** The app's header: from laptops a band across the window, its brand on the frame's left edge. */
-export function AppHeader({
+import type { MouseEvent } from "react";
+import { Brand } from "@/components/Brand";
+
+/**
+ * The brand in a page's top bar (ModuleShell's `heading`): the organisation's mark and the product's name, a link to
+ * the flows unless there is nothing to go back to.
+ */
+export function HeaderBrand({
   onLeave,
-  account = true,
-  linked = account,
-  className,
+  linked = true,
 }: {
   /** Asked before the brand's link leaves the page; call preventDefault to stay. */
   onLeave?: (event: MouseEvent) => void;
-  /** False before sign-in, and while the page shows something else in its place. */
-  account?: boolean;
   /** Whether the brand links to the flows; not before sign-in, nor while leaving would abort an upload. */
   linked?: boolean;
-  className?: string;
 }) {
-  return (
-    <header className={cn("lg:border-b lg:border-rule-soft lg:bg-paper", className)}>
-      <div className={cn(FRAME, "flex min-h-16 items-center justify-between pb-6 pt-5 md:pt-7 lg:py-3")}>
-        <div onClickCapture={onLeave}>
-          <Brand href={linked ? "/flows" : undefined} />
-        </div>
-        {account && <AccountMenu />}
-      </div>
-    </header>
-  );
+  return <Brand href={linked ? "/flows" : undefined} onClickCapture={onLeave} />;
 }
