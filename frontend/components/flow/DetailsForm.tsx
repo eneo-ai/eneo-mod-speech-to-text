@@ -161,6 +161,7 @@ export function DetailsForm({
               <DateInput
                 key={field.name}
                 {...common}
+                className={styles.date}
                 value={isoDate(text)}
                 onChange={(next) => onChange(field.name, next ?? "")}
               />
