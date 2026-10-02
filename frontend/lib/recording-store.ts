@@ -202,13 +202,18 @@ function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: 
   };
 }
 
-function memoryBackend(): Backend {
+export function memoryBackend(): Backend {
   const recordings = new Map<string, StoredRecording>();
   const chunks = new Map<string, Chunk[]>();
   return {
     async put(recording, chunk) {
       recordings.set(recording.id, recording);
-      if (chunk) chunks.set(recording.id, [...(chunks.get(recording.id) ?? []), chunk]);
+      if (!chunk) return;
+      // In place: the array is this backend's own (chunks() hands out copies), and a copy per chunk is quadratic over
+      // a recording of thousands of chunks.
+      const held = chunks.get(recording.id);
+      if (held) held.push(chunk);
+      else chunks.set(recording.id, [chunk]);
     },
     get: async (id) => recordings.get(id),
     list: async () => [...recordings.values()],
