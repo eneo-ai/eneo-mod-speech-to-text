@@ -1170,10 +1170,15 @@ async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> tup
 
 async def _close_eneo_socket(eneo: ClientConnection) -> None:
     # close() first flushes its close frame, which a peer that stopped reading
-    # never takes, and only then applies its own timeout.
+    # never takes, and only then applies its own timeout. Whatever ends the wait
+    # (that timeout, or the handler being cancelled, which cancels this cleanup
+    # too) the transport is aborted: Eneo's socket is never left open. After a
+    # close that completed there is nothing left to abort.
     try:
         await asyncio.wait_for(eneo.close(), _LIVE_CLOSE_TIMEOUT_SECONDS)
     except TimeoutError:
+        pass
+    finally:
         eneo.transport.abort()
 
 
