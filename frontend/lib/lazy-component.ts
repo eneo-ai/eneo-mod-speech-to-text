@@ -4,11 +4,11 @@ import { useEffect, useState } from "react";
 export interface Loader<T> {
   /** The code, if it has arrived. */
   readonly loaded: T | null;
-  /** Fetches it. Pages that ask while it is on its way share the one fetch; a failed fetch is not kept, so the next asks again. */
+  /** Gets it. Pages that ask while it is on its way share the one request; a failed one is not kept, so the next asks again. */
   load(): Promise<T>;
 }
 
-export function lazyLoader<T>(fetch: () => Promise<T>): Loader<T> {
+export function lazyLoader<T>(get: () => Promise<T>): Loader<T> {
   let loaded: T | null = null;
   let pending: Promise<T> | null = null;
   return {
@@ -16,7 +16,7 @@ export function lazyLoader<T>(fetch: () => Promise<T>): Loader<T> {
       return loaded;
     },
     load() {
-      pending ??= fetch().then(
+      pending ??= get().then(
         (code) => (loaded = code),
         (error) => {
           pending = null;

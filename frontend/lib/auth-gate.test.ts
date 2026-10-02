@@ -2,20 +2,10 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import { cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
-
-// AuthGate asks Next's router only to leave for the start page, which these tests never need. The router is one
-// object, as Next's is: AuthGate's effect depends on it.
-const router = { replace() {}, push() {} };
-const navigation = require.resolve("next/navigation");
-require.cache[navigation] = {
-  id: navigation,
-  filename: navigation,
-  loaded: true,
-  exports: { useRouter: () => router },
-} as unknown as NodeModule;
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 const json = (body: unknown) =>
@@ -40,7 +30,7 @@ test("a status read that went out while signed in, answered after a request foun
     globalThis.fetch = browserFetch;
   });
 
-  const { container, act } = await mount(createElement(AuthGate, null, createElement("p", null, "Sidan")));
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a"] }).tree);
   for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
   assert.ok(container.textContent?.includes("Sidan"), "the page is shown once the first read says signed in");
   assert.equal(loginState.signedOut, false);
@@ -106,7 +96,7 @@ test("a login window that tells the session channel it is done confirms a new lo
     globalThis.BroadcastChannel = browserChannel;
   });
 
-  const { container, act } = await mount(createElement(AuthGate, null, createElement("p", null, "Sidan")));
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a"] }).tree);
   for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
   assert.equal(reads, 1);
   const reading = getRunStatus("flow-1", "run-1"); // out on the old session
@@ -127,4 +117,30 @@ test("a login window that tells the session channel it is done confirms a new lo
   assert.equal(held.length, 2, "and the read goes again under the new login");
   await act(async () => held[1](json({ id: "run-1", flow_id: "flow-1", status: "running" })));
   assert.equal((await reading).id, "run-1");
+});
+
+test("a navigation that keeps the page mounted does not make AuthGate read the session again: the router's navigate is one function", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  let reads = 0;
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    if (String(url).startsWith("/api/auth/status")) reads += 1;
+    return String(url).startsWith("/api/auth/status") ? json(signedIn) : json({});
+  }) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  // A route with a parameter: another flow is another address of the same page, which stays mounted.
+  const { router, tree } = withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a"] });
+  const { container, act } = await mount(tree);
+  for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+  assert.equal(reads, 1, "one read on arrival");
+  await act(async () => router.navigate("/flows/b"));
+  await act(settle);
+  await act(async () => router.navigate({ search: "?run=r1" }, { replace: true }));
+  await act(settle);
+  assert.equal(router.state.location.pathname, "/flows/b", "the router moved");
+  assert.ok(container.textContent?.includes("Sidan"), "the page stayed");
+  assert.equal(reads, 1, "and the session was not read again: the effect did not run again, nor the keep-alive restart");
 });

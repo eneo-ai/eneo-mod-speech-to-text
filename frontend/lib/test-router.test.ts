@@ -35,7 +35,7 @@ async function openPage({ blocking }: { blocking: boolean }) {
         : null,
     );
   }
-  const { router, tree } = await withRouter(createElement(Page), { path: "/page", entries: ["/before", "/page"] });
+  const { router, tree } = withRouter(createElement(Page), { path: "/page", entries: ["/before", "/page"] });
   return { router, ...(await mount(tree)) };
 }
 
@@ -53,6 +53,16 @@ test("a link click moves the memory router without loading a document, and Back 
   assert.equal(router.state.location.pathname, "/page");
   await act(async () => router.navigate(-1));
   assert.equal(router.state.location.pathname, "/before");
+});
+
+test("withRouter lists the addresses the router moved to, and nothing for a page that stayed", async () => {
+  const { createElement } = await import("react");
+  const { router, visited, tree } = withRouter(createElement("p", null, "Sidan"), { path: "/page" });
+  const { act } = await mount(tree);
+  assert.deepEqual(visited, [], "the first address is where it started, not a move");
+  await act(async () => router.navigate("/page?run=1", { replace: true }));
+  await act(async () => router.navigate("/flows"));
+  assert.deepEqual(visited, ["/page?run=1", "/flows"]);
 });
 
 test("a page's own navigate(-1) goes back one entry", async () => {

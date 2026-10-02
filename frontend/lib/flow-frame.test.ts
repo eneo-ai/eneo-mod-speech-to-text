@@ -2,18 +2,16 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createElement, useState } from "react";
 import { cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
 
 /** A page's router and signed-in user, as the app gives them. */
 async function signedIn(element: import("react").ReactElement) {
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
-  const noop = () => undefined;
-  const router = { push: noop, replace: noop, prefetch: noop, back: noop, forward: noop, refresh: noop } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return createElement(AppRouterContext.Provider, { value: router }, createElement(AuthenticatedUserContext.Provider, { value: user }, element));
+  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element)).tree;
 }
 
 const FLOW = { id: "flow-1", name: "Nämndmöte", description: null, published_version: 1 } as unknown as import("./api").FlowPublished;

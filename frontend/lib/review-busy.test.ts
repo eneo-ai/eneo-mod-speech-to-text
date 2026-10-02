@@ -3,6 +3,7 @@ import test, { afterEach } from "node:test";
 
 import type { FlowPublished, FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
@@ -84,11 +85,9 @@ const rejected: string[] = [];
 /** The review on the page; with `saves`, Spara ändring goes through and the page holds the saved text. */
 async function review(start = pause, { saves = false } = {}) {
   const { createElement, useState } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const { ReviewView } = await import("../components/flow/ReviewView");
   const { continueFromPause } = await import("./review-continue");
-  const router = { push: () => undefined, replace: () => undefined, prefetch: () => undefined, back: () => undefined, forward: () => undefined, refresh: () => undefined } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
   const run = { id: "run-1", flow_id: "flow-1", status: "awaiting_review" } as FlowRunPublic;
   const published = { id: "flow-1", name: "Nämndmöte till rapport", published_version: 3 } as FlowPublished;
   // The page's own wiring: the pause's newer states reach the view, a failure says why.
@@ -121,11 +120,7 @@ async function review(start = pause, { saves = false } = {}) {
     });
   }
   return mount(
-    createElement(
-      AppRouterContext.Provider,
-      { value: router },
-      createElement(AuthenticatedUserContext.Provider, { value: { id: "user-1", email: "anna@example.se" } }, createElement(Page)),
-    ),
+    withRouter(createElement(AuthenticatedUserContext.Provider, { value: { id: "user-1", email: "anna@example.se" } }, createElement(Page))).tree,
   );
 }
 

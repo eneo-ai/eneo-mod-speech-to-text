@@ -8,6 +8,7 @@ import { ProblemAlert } from "../components/flow/ProblemAlert";
 import { onlineStatus } from "./online-status";
 import type { Problem } from "./flow-session";
 import { button, cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
@@ -57,7 +58,7 @@ test("a long reason with no way to retry is shown whole", async () => {
 });
 
 test("the way back to the flows is offered when the problem asks for it", async () => {
-  const { container } = await mount(createElement(ProblemAlert, { problem: { title: "Flödet finns inte längre.", back: true } }));
+  const { container } = await mount(withRouter(createElement(ProblemAlert, { problem: { title: "Flödet finns inte längre.", back: true } })).tree);
   const back = [...container.querySelectorAll("a")].find((link) => link.textContent?.trim() === "Alla flöden");
   assert.equal(back?.getAttribute("href"), "/flows");
 });

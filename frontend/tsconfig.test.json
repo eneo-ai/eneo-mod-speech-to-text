@@ -8,12 +8,9 @@
     "outDir": ".test-build",
     "rootDir": "."
   },
-  "files": [
-    "node_modules/next/types/global.d.ts"
-  ],
   "include": [
     "lib/*.test.ts",
-    "tests/next-types.d.ts"
+    "tests/vite-types.d.ts"
   ],
   "exclude": [
     "node_modules",

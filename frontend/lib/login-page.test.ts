@@ -1,21 +1,18 @@
 import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
-import type { ReactElement } from "react";
 
 import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
 
-type Router = import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
-
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 const status = (auth_mode: "eneo_sso" | "access_code") => json({ authenticated: false, auth_mode, user: null });
 
-/** The sign-in page under the providers every page has, with its server's answers and the routes it replaced. */
+/** The sign-in page under the providers every page has, with its server's answers and the router that says where it went. */
 async function openLoginPage(t: TestContext, answers: (url: string, init?: RequestInit) => Response | Promise<Response>) {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { default: LoginPage } = await import("../routes/LoginPage");
@@ -29,17 +26,16 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
     globalThis.fetch = browserFetch;
     window.history.replaceState(null, "", "/");
   });
-  const replaced: string[] = [];
-  const router = { push() {}, replace: (to: string) => replaced.push(to), prefetch() {}, back() {}, forward() {}, refresh() {} } as unknown as Router;
-  const page: ReactElement = createElement(
-    AppRouterContext.Provider,
-    { value: router },
+  // The page reads the address from the window, as in the browser, where the router writes it: a memory router does not,
+  // so the entry it starts at is the window's too.
+  const { router, tree } = withRouter(
     createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: createElement(LoginPage) }) }),
+    { entries: [`${window.location.pathname}${window.location.search}`] },
   );
-  const view = await mount(page);
+  const view = await mount(tree);
   // The page asks who is signed in first; let that answer land.
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-  return { ...view, requests, replaced };
+  return { ...view, requests, router };
 }
 
 /** The form control a person finds by its label, as the accessibility tree names it. */
@@ -97,7 +93,7 @@ test("an empty access code is not sent", async (t) => {
 });
 
 test("a refused access code is said once, as an alert, the field is marked and has focus again to type it", async (t) => {
-  const { container, act, requests, replaced } = await openLoginPage(t, (url) =>
+  const { container, act, requests, router } = await openLoginPage(t, (url) =>
     url === "/api/auth/login" ? json({ detail: "Felaktig åtkomstkod" }, 401) : status("access_code"),
   );
   const code = field(container, "Åtkomstkod")!;
@@ -114,7 +110,7 @@ test("a refused access code is said once, as an alert, the field is marked and h
   assert.equal(message.textContent, "Felaktig åtkomstkod.");
   assert.equal(code.disabled, false);
   assert.equal(document.activeElement, code, "focus is back in the field");
-  assert.deepEqual(replaced, []);
+  assert.equal(router.state.location.pathname, "/", "it stays where it is");
 });
 
 test("any other failure to sign in with the code is said in one sentence and the field is open again", async (t) => {
@@ -131,23 +127,26 @@ test("any other failure to sign in with the code is said in one sentence and the
 });
 
 test("a correct access code goes on to the flow list", async (t) => {
-  const { container, act, replaced } = await openLoginPage(t, (url) => (url === "/api/auth/login" ? json({ ok: true }) : status("access_code")));
+  const { container, act, router } = await openLoginPage(t, (url) => (url === "/api/auth/login" ? json({ ok: true }) : status("access_code")));
   await act(async () => type(field(container, "Åtkomstkod")!, "en-riktig-kod-1234"));
   await act(async () => button(container, "Fortsätt")!.click());
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-  assert.deepEqual(replaced, ["/flows"]);
+  assert.equal(router.state.location.pathname, "/flows");
+  assert.equal(router.state.historyAction, "REPLACE", "in place of the sign-in page: Back does not return to it");
 });
 
 test("someone already signed in goes straight on to the flow list", async (t) => {
-  const { replaced } = await openLoginPage(t, () => json({ authenticated: true, auth_mode: "eneo_sso", user: { id: "u", email: "a@b.se", username: "A" } }));
-  assert.deepEqual(replaced, ["/flows"]);
+  const { router } = await openLoginPage(t, () => json({ authenticated: true, auth_mode: "eneo_sso", user: { id: "u", email: "a@b.se", username: "A" } }));
+  assert.equal(router.state.location.pathname, "/flows");
+  assert.equal(router.state.historyAction, "REPLACE");
 });
 
 test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", async (t) => {
   window.history.replaceState(null, "", "/?auth_error=1");
-  const { container } = await openLoginPage(t, () => status("access_code"));
+  const { container, router } = await openLoginPage(t, () => status("access_code"));
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("Inloggningen")), ["Inloggningen kunde inte slutföras. Försök igen."]);
-  assert.equal(window.location.search, "");
+  assert.equal(router.state.location.search, "", "the router has the address without it");
+  assert.equal(router.state.historyAction, "REPLACE", "in place: Back does not return to the refusal");
   assert.ok(field(container, "Åtkomstkod"), "the way in is still there");
   assert.equal(document.getElementById(field(container, "Åtkomstkod")!.getAttribute("aria-errormessage") ?? "-")?.getAttribute("role"), "alert");
 });

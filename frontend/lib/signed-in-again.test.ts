@@ -25,7 +25,7 @@ async function open(t: TestContext, address: string, answers: (url: string) => R
     globalThis.fetch = browserFetch;
     document.title = title;
   });
-  const { router, tree } = await withRouter(createElement(SignedInAgain), { path: "/inloggad", entries: [address] });
+  const { router, tree } = withRouter(createElement(SignedInAgain), { path: "/inloggad", entries: [address] });
   const view = await mount(tree);
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   return { ...view, router, requests, closed };

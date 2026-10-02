@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 
 import { cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
@@ -10,7 +11,6 @@ afterEach(async () => {
   document.documentElement.className = "";
 });
 
-type Router = import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
 type User = import("./api").AuthenticatedUser;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -22,13 +22,11 @@ async function openAccountMenu(
   options: { user?: User; leaveFirst?: (goOn: () => void) => void; logout?: () => Promise<Response> } = {},
 ) {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const { LeaveContext } = await import("../components/flow/useLeaveQuestion");
   const { AccountMenu } = await import("../components/AccountMenu");
-  const replaced: string[] = [];
   const requests: string[] = [];
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
@@ -38,27 +36,25 @@ async function openAccountMenu(
   t.after(() => {
     globalThis.fetch = browserFetch;
   });
-  const router = { push() {}, replace: (to: string) => replaced.push(to), prefetch() {}, back() {}, forward() {}, refresh() {} } as unknown as Router;
   const leave = { onLeave() {}, leaveFirst: options.leaveFirst ?? ((goOn: () => void) => goOn()) };
-  const view = await mount(
+  // The page is the flow list; signing out leaves it for the sign-in page ("/").
+  const { router, tree } = withRouter(
     createElement(
-      AppRouterContext.Provider,
-      { value: router },
+      ThemeProvider,
+      { attribute: "class", defaultTheme: "system", enableSystem: true },
       createElement(
-        ThemeProvider,
-        { attribute: "class", defaultTheme: "system", enableSystem: true },
+        ModuleProviders,
+        null,
         createElement(
-          ModuleProviders,
-          null,
-          createElement(
-            AuthenticatedUserContext.Provider,
-            { value: options.user ?? ANNA },
-            createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
-          ),
+          AuthenticatedUserContext.Provider,
+          { value: options.user ?? ANNA },
+          createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
         ),
       ),
     ),
+    { path: "/flows" },
   );
+  const view = await mount(tree);
   const trigger = () => [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
   const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
   /** Opens it as a pointer does: the press, then the click (Radix opens on the press, the design system on the click). */
@@ -70,7 +66,7 @@ async function openAccountMenu(
     });
   const item = (name: string) =>
     [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((element) => element.textContent?.trim() === name || element.textContent?.includes(name))!;
-  return { ...view, replaced, requests, trigger, menu, open, item };
+  return { ...view, router, requests, trigger, menu, open, item };
 }
 
 test("the trigger is named by who is signed in, and opens a menu", async (t) => {
@@ -147,7 +143,7 @@ test("choosing a colour mode sets next-themes' mode: the class of the page, kept
 
 test("Logga ut asks the page's leave question first, and does nothing until the answer is to go on", async (t) => {
   const asked: (() => void)[] = [];
-  const { open, item, act, requests, replaced } = await openAccountMenu(t, { leaveFirst: (goOn) => asked.push(goOn) });
+  const { open, item, act, requests, router } = await openAccountMenu(t, { leaveFirst: (goOn) => asked.push(goOn) });
   await open();
   await act(async () => {
     item("Logga ut").click();
@@ -155,20 +151,21 @@ test("Logga ut asks the page's leave question first, and does nothing until the 
   });
   assert.equal(asked.length, 1, "asked once");
   assert.deepEqual(requests, [], "not signed out yet");
-  assert.deepEqual(replaced, []);
+  assert.equal(router.state.location.pathname, "/flows");
   await act(async () => {
     asked[0]();
     await settle();
   });
   assert.deepEqual(requests, ["POST /api/auth/logout"]);
-  assert.deepEqual(replaced, ["/"]);
+  assert.equal(router.state.location.pathname, "/", "gone to the sign-in page");
+  assert.equal(router.state.historyAction, "REPLACE", "in place of the page, not on top of it");
 });
 
 test("while signing out it says so, cannot be pressed again, and the page is left however the answer came", async (t) => {
   for (const answer of [() => Promise.resolve(new Response("{}", { status: 200 })), () => Promise.reject(new TypeError("Failed to fetch")), () => Promise.resolve(new Response("{}", { status: 500 }))]) {
     let finish: () => void = () => {};
     const gate = new Promise<void>((resolve) => (finish = resolve));
-    const { open, item, act, requests, replaced, unmount } = await openAccountMenu(t, { logout: () => gate.then(answer) });
+    const { open, item, act, requests, router, unmount } = await openAccountMenu(t, { logout: () => gate.then(answer) });
     await open();
     await act(async () => {
       item("Logga ut").click();
@@ -182,12 +179,13 @@ test("while signing out it says so, cannot be pressed again, and the page is lef
       await settle();
     });
     assert.deepEqual(requests, ["POST /api/auth/logout"], "one request");
-    assert.deepEqual(replaced, [], "still here while it runs");
+    assert.equal(router.state.location.pathname, "/flows", "still here while it runs");
     await act(async () => {
       finish();
       await settle();
     });
-    assert.deepEqual(replaced, ["/"], "and gone to the sign-in page when it ended");
+    assert.equal(router.state.location.pathname, "/", "and gone to the sign-in page when it ended");
+    assert.equal(router.state.historyAction, "REPLACE");
     await unmount();
   }
 });

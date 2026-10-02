@@ -7,12 +7,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { Brand, BrandingProvider } from "../components/Brand";
 import type { Branding } from "./api";
 import { cleanup, installDom, mount } from "./test-dom";
+import { inStaticRouter, withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
 
 const render = (branding: Branding, href?: string) =>
-  renderToStaticMarkup(createElement(BrandingProvider, { value: branding, children: createElement(Brand, { href }) }));
+  renderToStaticMarkup(inStaticRouter(createElement(BrandingProvider, { value: branding, children: createElement(Brand, { href }) })));
 
 const images = (html: string) => [...html.matchAll(/<img ([^>]*)\/>/g)].map(([, attributes]) => attributes);
 
@@ -57,7 +58,7 @@ test("a name without a logo shows as text, and a hidden organisation leaves the 
 });
 
 test("without a provider no organisation is named: the backend's branding is the one owner of who is shown", () => {
-  const html = renderToStaticMarkup(createElement(Brand, { href: "/flows" }));
+  const html = renderToStaticMarkup(inStaticRouter(createElement(Brand, { href: "/flows" })));
   assert.doesNotMatch(html, /<img|Sundsvall/);
   assert.match(html, /aria-label="Tal till text"/);
 });
@@ -76,28 +77,24 @@ test("the stylesheet shows the logo of the colour mode and inverts Sundsvall's",
 });
 
 test("the brand's link asks before it leaves the page, and stays when told to", async () => {
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { HeaderBrand } = await import("../components/AppHeader");
-  const pushed: string[] = [];
-  const router = { push: (to: string) => pushed.push(to), replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {} } as never;
   const asked: boolean[] = [];
-  const { container, act } = await mount(
-    createElement(AppRouterContext.Provider, {
-      value: router,
-      children: createElement(HeaderBrand, {
-        linked: true,
-        onLeave: (event) => {
-          asked.push(true);
-          event.preventDefault();
-        },
-      }),
+  const { router, tree } = withRouter(
+    createElement(HeaderBrand, {
+      linked: true,
+      onLeave: (event) => {
+        asked.push(true);
+        event.preventDefault();
+      },
     }),
+    { path: "/start" },
   );
+  const { container, act } = await mount(tree);
   const link = container.querySelector("a")!;
   assert.equal(link.getAttribute("href"), "/flows");
   await act(async () => link.click());
   assert.deepEqual(asked, [true], "asked once");
-  assert.deepEqual(pushed, [], "and the page was not left");
+  assert.equal(router.state.location.pathname, "/start", "and the page was not left");
 });
 
 test("the header brand of a page nobody has signed in to is not a link", async () => {

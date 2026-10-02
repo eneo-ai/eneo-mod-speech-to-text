@@ -3,6 +3,7 @@ import test, { afterEach, type TestContext } from "node:test";
 import type { ReactElement } from "react";
 
 import { button, cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 
 installDom();
@@ -490,12 +491,14 @@ test("crossing the laptop breakpoint keeps an unfinished correction and its draf
     ] } },
   };
   const view = await mount(
-    createElement(RunResult, {
-      flowId: "flow-1", flowName: "Nämndmöte till rapport",
-      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
-      steps: [], stepResults: [transcribe] as never, files: [pdf],
-      onNewRecording: () => undefined, onRegenerated: () => undefined,
-    }),
+    withRouter(
+      createElement(RunResult, {
+        flowId: "flow-1", flowName: "Nämndmöte till rapport",
+        run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
+        steps: [], stepResults: [transcribe] as never, files: [pdf],
+        onNewRecording: () => undefined, onRegenerated: () => undefined,
+      }),
+    ).tree,
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   await view.act(async () => button(view.container, "Rätta repliken från 0:00")!.click());

@@ -15,7 +15,7 @@ afterEach(cleanup);
 async function press(props: ComponentProps<typeof import("@/kit/RouterLink").RouterLink>) {
   const { createElement } = await import("react");
   const { RouterLink } = await import("@/kit/RouterLink");
-  const { router, tree } = await withRouter(createElement(RouterLink, props, "Länk"));
+  const { router, tree } = withRouter(createElement(RouterLink, props, "Länk"));
   const { container, act } = await mount(tree);
   const anchor = container.querySelector("a")!;
   let handledByRouter: boolean | null = null;

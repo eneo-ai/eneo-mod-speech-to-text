@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { button, installDom, mount, type } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 
@@ -503,15 +504,12 @@ test("upload: a file dropped on the zone is chosen, the first of several; someth
   await view.unmount();
 });
 
-/** A page's router and signed-in user, as the app gives them. */
-async function signedIn(element: import("react").ReactElement, navigated: string[]) {
+/** A page's router and signed-in user, as the app gives them; `visited` is where the router went. */
+async function signedIn(element: import("react").ReactElement) {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
-  const go = (href: string) => void navigated.push(href);
-  const router = { push: go, replace: go, prefetch: () => undefined, back: () => undefined, forward: () => undefined, refresh: () => undefined } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return createElement(AppRouterContext.Provider, { value: router }, createElement(AuthenticatedUserContext.Provider, { value: user }, element));
+  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element));
 }
 
 const exits = (container: HTMLElement) => ({
@@ -540,14 +538,15 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
   const view = await mount(
-    await signedIn(
-      createElement(
-        FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" }, version: 2 },
-        createElement("h1", null, "Dokumentet skapas"),
-      ),
-      [],
-    ),
+    (
+      await signedIn(
+        createElement(
+          FlowRunPage,
+          { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" }, version: 2 },
+          createElement("h1", null, "Dokumentet skapas"),
+        ),
+      )
+    ).tree,
   );
   // The shell's one main region: a div with the role, not a <main> element.
   const main = view.container.querySelector('[role="main"]')!;
@@ -585,7 +584,7 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
     });
   }
   for (const afterRun of [false, true]) {
-    const view = await mount(await signedIn(createElement(Setup, { afterRun }), []));
+    const view = await mount((await signedIn(createElement(Setup, { afterRun }))).tree);
     const focused = document.activeElement;
     const where = `${focused?.tagName} "${focused?.textContent?.slice(0, 40)}"`;
     if (afterRun) assert.ok(focused?.matches("h2[data-phase-heading]") && focused.textContent === "Ladda upp", `after a run: focus on ${where}`);
@@ -742,10 +741,7 @@ test("a run of an earlier version of the flow shows no details labelled by today
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
   for (const version of [1, null]) {
     const view = await mount(
-      await signedIn(
-        createElement(FlowRunPage, { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max"], talare: "4" }, version }),
-        [],
-      ),
+      (await signedIn(createElement(FlowRunPage, { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max"], talare: "4" }, version }))).tree,
     );
     assert.equal(view.container.querySelectorAll("dt").length, 0, `version ${version}: the form may have changed since`);
     assert.ok(!(view.container.textContent ?? "").includes("Max"), "nor the values, unlabelled");
@@ -757,31 +753,28 @@ test("upload under way: the header offers no way off the page, which would abort
   const { createElement } = await import("react");
   const { SubmittingView } = await import("../components/flow/SubmittingView");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
-  const navigated: string[] = [];
   let cancelled = 0;
   const submission = { kind: "uploading", filename: "underlag.pdf", loaded: 0, total: 2048, percent: 0, wait: null } as const;
-  const view = await mount(
-    await signedIn(
-      createElement(
-        FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, version: 2, locked: true },
-        createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
-      ),
-      navigated,
+  const { tree, visited } = await signedIn(
+    createElement(
+      FlowRunPage,
+      { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, version: 2, locked: true },
+      createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
     ),
   );
+  const view = await mount(tree);
   assert.deepEqual(exits(view.container), { links: 0, account: 0 }, "no back link, no brand link, no sign-out while it uploads");
 
   await view.act(async () => button(view.container, "Avbryt")!.click());
   assert.equal(cancelled, 1);
-  assert.deepEqual(navigated, []);
+  assert.deepEqual(visited, []);
   await view.unmount();
 });
 
 test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount(await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }), []));
+  const view = await mount((await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }))).tree);
   assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it), asked through onLeave");
   await view.unmount();
 });
@@ -791,15 +784,16 @@ test("the way back: a link to the flow list named Alla flöden, and a leave guar
   const { BackToFlows } = await import("../components/flow/BackToFlows");
   const asked: boolean[] = [];
   const view = await mount(
-    await signedIn(
-      createElement(BackToFlows, {
-        onLeave: (event: import("react").MouseEvent) => {
-          event.preventDefault();
-          asked.push(true);
-        },
-      }),
-      [],
-    ),
+    (
+      await signedIn(
+        createElement(BackToFlows, {
+          onLeave: (event: import("react").MouseEvent) => {
+            event.preventDefault();
+            asked.push(true);
+          },
+        }),
+      )
+    ).tree,
   );
   const links = [...view.container.querySelectorAll("a")];
   assert.equal(links.length, 1);
@@ -816,7 +810,7 @@ test("the way back: a link to the flow list named Alla flöden, and a leave guar
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount(await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }), []));
+  const view = await mount((await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }))).tree);
   const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
   assert.ok(chevron, "the arrow in the bar is named like every other way back");
   assert.equal(chevron.getAttribute("href"), "/flows");
@@ -832,7 +826,7 @@ test("Back during an upload asks first and says what leaving stops", async () =>
     // A file on its way: the page holds no audio.
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
-  const view = await mount(await signedIn(createElement(Page), []));
+  const view = await mount((await signedIn(createElement(Page))).tree);
   // A native dialog stays in the tree while it is closed: open is its open attribute.
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   await view.act(async () => {
@@ -859,7 +853,7 @@ test("signed out, Back still asks in a native dialog that is open, focused and a
     return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
   }
   await settle(); // the history step the last test's guard took back
-  const view = await mount(await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), []));
+  const view = await mount((await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }))).tree);
   await view.act(async () => {
     window.history.back();
     await settle();
@@ -882,7 +876,6 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
   const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-  const navigated: string[] = [];
   let loggedOut = 0;
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -902,12 +895,13 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     );
   }
   await settle(); // the history step the last test's guard took back
-  const view = await mount(await signedIn(createElement(Review), navigated));
+  const { tree, visited } = await signedIn(createElement(Review));
+  const view = await mount(tree);
   const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
   await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
   assert.ok(asked(), "Alla flöden asks");
-  assert.deepEqual(navigated, []);
+  assert.deepEqual(visited, [], "and the page is still here");
   await view.act(async () => button(asked()!, "Stanna kvar")!.click());
 
   const account = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;

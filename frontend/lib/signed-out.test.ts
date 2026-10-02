@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
 import { button, cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
@@ -63,7 +64,6 @@ test("signed out: the dialog asks for a new login, says the page and a recording
 
 test("someone signing in here keeps only their own drafts: another person's typed details and review edits go", async (t) => {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthGate } = await import("../components/AuthGate");
   const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
   const browserFetch = globalThis.fetch;
@@ -78,9 +78,7 @@ test("someone signing in here keeps only their own drafts: another person's type
   });
   writeDraft(browserDrafts(), "user-1", "flow:flow-1", { motesnamn: "Byggnadsnämnden" });
   writeDraft(browserDrafts(), "user-2", "flow:flow-1", { motesnamn: "Socialnämnden" });
-  const go = () => undefined;
-  const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
-  const { container, act } = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: "Sidan" })));
+  const { container, act } = await mount(withRouter(createElement(AuthGate, { children: "Sidan" })).tree);
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.match(container.textContent ?? "", /Sidan/);
   assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1"), { motesnamn: "Byggnadsnämnden" });
@@ -204,7 +202,6 @@ test("signed out, a dialog open on the page is hidden and out of reach with it, 
 
 test("after the new login the focus is back where it was, or on the page's heading when that is gone", async (t) => {
   const { createElement, useState } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthGate } = await import("../components/AuthGate");
   const { loginState } = await import("./login-state");
   const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
@@ -228,9 +225,7 @@ test("after the new login the focus is back where it was, or on the page's headi
       shown && createElement("button", { type: "button" }, "Pausa"),
     );
   }
-  const go = () => undefined;
-  const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
-  const { container, act } = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: createElement(Recorder) })));
+  const { container, act } = await mount(withRouter(createElement(AuthGate, { children: createElement(Recorder) })).tree);
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const signOutAndBack = async (whileOut = () => {}) => {
     await act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
@@ -263,7 +258,6 @@ test("after the new login the focus is back where it was, or on the page's headi
 
 test("the 5-minute warning open when the login ends: after the new login the focus goes where it was before the warning, else the heading", async (t) => {
   const { createElement, useState } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthGate } = await import("../components/AuthGate");
   const { loginState } = await import("./login-state");
   const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
@@ -290,9 +284,7 @@ test("the 5-minute warning open when the login ends: after the new login the foc
         shown && createElement("button", { type: "button" }, "Pausa"),
       );
     }
-    const go = () => undefined;
-    const router = { push: go, replace: go, prefetch: go, back: go, forward: go, refresh: go } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
-    const view = await mount(createElement(AppRouterContext.Provider, { value: router }, createElement(AuthGate, { children: createElement(Recorder) })));
+    const view = await mount(withRouter(createElement(AuthGate, { children: createElement(Recorder) })).tree);
     await view.act(async () => wait(20));
     const pausa = button(view.container, "Pausa")!;
     pausa.focus();
