@@ -6,6 +6,7 @@ sent. The module's own shared ``main.http_client`` talks to it over a real socke
 """
 
 import asyncio
+import contextlib
 import gzip
 import http.client
 import json
@@ -1410,6 +1411,57 @@ class SignedFileHeadersTests(BoundaryCase):
                 self.assertEqual((response.headers["content-range"], response.headers["accept-ranges"], response.headers["etag"]), ("bytes 0-1/10", "bytes", '"v1"'))
                 self.assertEqual(response.headers["x-content-type-options"], "nosniff")
                 self.assertEqual(response.headers["cache-control"], "private, no-store")
+
+
+class SignedFilePoolTests(BoundaryCase):
+    """The module's pool has a seat for the next file after one that broke off or that the browser left: a connection
+    that was not given back shows as a request that waits for a seat (the pool here has one) until it is refused."""
+
+    AUDIO = "/api/eneo/flows/f/runs/r/input-files/x/audio"
+
+    def setUp(self) -> None:
+        super().setUp()
+        one_seat = httpx.AsyncClient(
+            limits=httpx.Limits(max_connections=1),
+            timeout=httpx.Timeout(30.0, pool=3.0),
+            headers={"Accept-Encoding": "identity"},
+            follow_redirects=False,
+            event_hooks=main.http_client.event_hooks,
+        )
+        self.addCleanup(setattr, main, "http_client", main.http_client)
+        main.http_client = one_seat
+        self.file = lazy(None)
+        mint = json.dumps({"url": f"{self.eneo.url}/files/x?sig=1", "expires_at": FAR_FUTURE}).encode()
+        self.respond_with(
+            lambda seen: (200, [("content-type", "application/json")], mint)
+            if seen.path.endswith("/signed-url/")
+            else (200, [("content-type", "audio/webm")], self.file)
+        )
+
+    def next_file_is_served(self) -> None:
+        self.file = lambda: lazy(10, b"0123456789")()
+        response = self.request("GET", self.AUDIO, self.session_a)
+
+        self.assertEqual((response.status_code, response.content), (200, b"0123456789"))
+
+    def test_the_seat_comes_back_when_eneos_answer_breaks_in_the_middle_of_the_body(self) -> None:
+        async def breaks():
+            yield b"0" * MiB
+            raise RuntimeError("Eneo's server fails after its first MiB")
+
+        self.file = breaks
+        with contextlib.suppress(httpx.HTTPError):  # the answer ends short, and the browser is told by a broken response
+            self.request("GET", self.AUDIO, self.session_a)
+
+        self.next_file_is_served()
+
+    def test_the_seat_comes_back_when_the_browser_leaves_in_the_middle_of_the_file(self) -> None:
+        with self.browser() as client:
+            with client.stream("GET", self.AUDIO, headers={"Cookie": f"{SESSION_COOKIE}={self.session_a}"}) as response:
+                self.assertEqual(response.status_code, 200)
+                next(response.iter_raw())  # the first bytes, and then the browser is gone
+
+        self.next_file_is_served()
 
 
 class MintAnswerTests(BoundaryCase):

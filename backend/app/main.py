@@ -15,6 +15,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from uuid import UUID
 
+import anyio
 import httpx
 from fastapi import (
     Depends,
@@ -27,8 +28,8 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile
+from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
     ConnectionClosed,
@@ -719,6 +720,31 @@ async def _read_small(upstream: httpx.Response) -> bytes:
     return bytes(body)
 
 
+# How long closing Eneo's answer may take: a peer that does not answer the close does not hold the response.
+_STREAM_CLOSE_TIMEOUT_SECONDS = 2
+
+
+class _FileResponse(StreamingResponse):
+    """Eneo's file, streamed, with Eneo's answer closed however the response ends: whole, an error in the body, or the
+    browser going away. A BackgroundTask runs only after a stream that succeeded, and a generator is closed only if it
+    is resumed (it is left at its ``yield`` when a send fails or the response is cancelled), so the closing belongs to
+    the response's whole lifetime. It is shielded from the cancellation that may be ending that lifetime, and bounded."""
+
+    def __init__(self, upstream: httpx.Response, headers: dict[str, str]) -> None:
+        super().__init__(upstream.aiter_raw(), status_code=upstream.status_code, headers=headers)
+        self.upstream = upstream
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.move_on_after(_STREAM_CLOSE_TIMEOUT_SECONDS, shield=True):
+                try:
+                    await self.upstream.aclose()
+                except Exception:
+                    logger.warning("File stream: closing Eneo's answer failed", exc_info=True)
+
+
 async def _stream_signed(
     request: Request, *resource: str, mint_path: str, unavailable: str
 ) -> Response:
@@ -788,12 +814,7 @@ async def _stream_signed(
         resp_headers["content-disposition"] = _attachment(resp_headers.get("content-disposition"))
     resp_headers["x-content-type-options"] = "nosniff"
     resp_headers["Cache-Control"] = "private, no-store"
-    return StreamingResponse(
-        upstream.aiter_raw(),
-        status_code=upstream.status_code,
-        headers=resp_headers,
-        background=BackgroundTask(upstream.aclose),
-    )
+    return _FileResponse(upstream, resp_headers)
 
 
 async def _stream_input_file_audio(
