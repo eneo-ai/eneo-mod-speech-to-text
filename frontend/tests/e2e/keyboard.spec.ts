@@ -9,6 +9,7 @@ import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
 import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
 
 const WALKS = [
   "signin-access-code",
@@ -109,7 +110,7 @@ test("the leave question holds focus and gives it back", async ({ page }, info) 
 });
 
 test("the cancel question holds focus and gives it back", async ({ page }) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
@@ -118,7 +119,7 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
 // 2.1.2). From those controls, Escape closes the dialog.
 test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
-  await run(page, "run-done");
+  await run(page, ids.runs.done);
   const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
   const dialog = page.getByRole("dialog");
   await trigger.focus();

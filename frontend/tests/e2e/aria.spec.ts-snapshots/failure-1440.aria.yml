@@ -82,7 +82,7 @@
   - region "Kontakta support":
     - heading "Kontakta support" [level=2]
     - text: Körnings-ID
-    - code: run-failed
+    - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
     - button "Kopiera körnings-ID"
     - status
     - button "Dölj teknisk information" [expanded]

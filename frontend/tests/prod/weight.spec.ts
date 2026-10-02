@@ -4,11 +4,12 @@
  * Chromium only: it is the engine that reports each request's transfer size.
  *
  * Each budget is the measured value rounded up to the next 5 KB (2026-10-02: /flows 331.7 KB of JS and 44.1 KB of CSS,
- * /flows/flow-1 432.6 and 45.9). A change that raises one says why in its pull request. This build carries
+ * /flows/:id 432.6 and 45.9). A change that raises one says why in its pull request. This build carries
  * app/dev/foundation (FOUNDATION_CHECK=1, for the smoke tests), and that page moves shared chunks: about 6.5 KB more
  * than the image, which is built without it.
  */
 import { expect, test, type Page } from "@playwright/test";
+import ids from "../fixtures/ids.json";
 import budget from "./weight-budget.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "chromium", "only Chromium reports transfer sizes"));
@@ -18,7 +19,13 @@ type Path = keyof typeof budget;
 /** A heading each page shows once the stub has answered, so a page that shows an error is never measured. */
 const HEADING: Record<Path, string> = {
   "/flows": "Välj ett flöde",
-  "/flows/flow-1": "Hur vill du lägga till ljudet?",
+  "/flows/:id": "Hur vill du lägga till ljudet?",
+};
+
+/** The address behind each budget's label: the stub's first flow stands for any flow. */
+const ADDRESS: Record<Path, string> = {
+  "/flows": "/flows",
+  "/flows/:id": `/flows/${ids.flows.flow1}`,
 };
 
 /** Loads a page and returns the JS and CSS it transferred, in KB: compressed bodies plus headers. */
@@ -35,7 +42,7 @@ async function transferredKB(page: Page, path: Path) {
       }),
     );
   });
-  await page.goto(path, { waitUntil: "networkidle" });
+  await page.goto(ADDRESS[path], { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: HEADING[path] })).toBeVisible();
   await Promise.all(measured);
   return { jsKB: kb.script, cssKB: kb.stylesheet };
