@@ -66,8 +66,10 @@ export interface LoginState {
    */
   userChanged(question?: Question): boolean;
   /**
-   * A login window of the module says it is done (AuthGate hears it on the session channel): the first status read
-   * asked from now confirms a new login of the page's user, also when the page was never covered.
+   * A login window of the module says it is done (AuthGate hears it on the session channel, or an access code was
+   * entered): a new login is announced, also when the page was never covered. Everything asked before is about the
+   * old login from now on, whenever its answer comes, and so is the old session's end time; the status read asked
+   * next decides (the page's own user uncovers it, someone else's covers it).
    */
   loginWindowDone(): void;
   /** True once signed in again; false at once where no signed-in page waits, or when `signal` ends the wait. */
@@ -82,14 +84,11 @@ export function createLoginState(): LoginState {
   let otherUser: AuthenticatedUser | null = null;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   // The one revision of the login: it changes whenever the login does (ended, signed in again, someone else's, a new
-  // login confirmed). A question's answer counts only under the revision it was asked in, and only if no later status
+  // login announced). A question's answer counts only under the revision it was asked in, and only if no later status
   // question has been answered: so a late answer never undoes what a newer one, or the end itself, has settled.
   let revision = 0;
   let asked = 0;
   let answered = 0;
-  // The question number a login window's word came after: the first answer to a question asked past it confirms a new
-  // login. Early renewal replaces the session (the backend deletes the old one) with no cover to show for it.
-  let windowDoneAt: number | null = null;
   let waiting: Array<(renewed: boolean) => void> = [];
   const listeners = new Set<() => void>();
 
@@ -151,7 +150,6 @@ export function createLoginState(): LoginState {
       clearTimeout(endTimer);
       const user = sessionUser(status);
       if (!user) {
-        windowDoneAt = null;
         ended();
         return true;
       }
@@ -160,11 +158,7 @@ export function createLoginState(): LoginState {
         setSignedOut(true, user);
         return true;
       }
-      const confirmed = windowDoneAt !== null && question.order > windowDoneAt;
-      if (confirmed) windowDoneAt = null;
       setSignedOut(false);
-      // A new login of the page's user that no cover showed: what went out on the old one is stale from here on.
-      if (confirmed) revision += 1;
       // The login ends at this time whatever the page does; only a new login moves it.
       if (status.session_ends_in !== undefined) endTimer = setTimeout(() => ended(), status.session_ends_in * 1000);
       return true;
@@ -177,7 +171,11 @@ export function createLoginState(): LoginState {
       return true;
     },
     loginWindowDone() {
-      windowDoneAt = asked;
+      // Early renewal replaces the session (the backend deletes the old one) with no cover to show for it, and the
+      // status cannot always tell the logins apart (Eneo's ceiling may end both): so the announcement itself is the
+      // change. What was asked before it, and the old deadline, no longer count; nothing is covered by them.
+      revision += 1;
+      clearTimeout(endTimer);
     },
     whenRenewed(signal) {
       if (pages === 0 || signal?.aborted) return Promise.resolve(false);

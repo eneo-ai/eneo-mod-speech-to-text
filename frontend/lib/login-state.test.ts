@@ -460,27 +460,99 @@ test("a login window that finished, seen while the page is not covered, makes wh
   assert.equal(loginState.signedOut, false);
 });
 
-test("the backend's own refresh of the same session is not a new login, and nor is a status asked before the window finished", () => {
+test("the backend's own refresh of the same session is not a new login: what went out on it is still about the page's login", () => {
   const end = loginState.begin(anna);
   try {
     loginState.observe(signedIn(3600));
-    // The session read again, its token refreshed: what went out on it is still about the page's login.
     const request = loginState.ask();
     assert.equal(loginState.observe(signedIn(3598)), true);
     assert.equal(loginState.ended(request), true, "its refusal still counts");
     assert.equal(loginState.signedOut, true);
-    loginState.observe(signedIn(3600));
-    assert.equal(loginState.signedOut, false);
-
-    // A read asked before the window said it was done may still answer from the old session.
-    const early = loginState.ask();
-    const old = loginState.ask();
-    loginState.loginWindowDone();
-    assert.equal(loginState.observe(signedIn(3600), early), true);
-    assert.equal(loginState.ended(old), true, "not confirmed by it");
   } finally {
     end();
   }
+});
+
+// A login window that says it is done announces a new login. Everything asked before the announcement is about the old
+// login from then on, whenever its answer comes: the status read asked after it is the one that decides.
+test("an old signed-out status that answers between the announcement and the fresh status is not used, and the fresh one is", () => {
+  const end = loginState.begin(anna);
+  try {
+    loginState.observe(signedIn(3600));
+    const old = loginState.ask(); // a read asked before the window finished
+    loginState.loginWindowDone();
+    assert.equal(loginState.observe(signedOut, old), false, "the old session's answer");
+    assert.equal(loginState.signedOut, false);
+    assert.equal(loginState.observe(signedIn(8 * 3600)), true, "the fresh status is accepted");
+    assert.equal(loginState.signedOut, false);
+  } finally {
+    end();
+  }
+});
+
+test("the old session's end time that falls between the announcement and the fresh status does not cover the page", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const end = loginState.begin(anna);
+  try {
+    loginState.observe(signedIn(60)); // the old session ends in a minute
+    loginState.loginWindowDone();
+    t.mock.timers.tick(60_000);
+    assert.equal(loginState.signedOut, false, "the old deadline is the old login's");
+    assert.equal(loginState.observe(signedIn(8 * 3600)), true);
+    t.mock.timers.tick(60_000);
+    assert.equal(loginState.signedOut, false, "and the new one has its own");
+  } finally {
+    end();
+  }
+});
+
+test("a login window that finished with someone else signed in covers the page and says who, whatever answered before", () => {
+  const end = loginState.begin(anna);
+  try {
+    loginState.observe(signedIn(3600));
+    loginState.loginWindowDone();
+    assert.equal(loginState.observe(signedIn(3600, erik)), true);
+    assert.equal(loginState.signedOut, true);
+    assert.deepEqual(loginState.otherUser, erik);
+  } finally {
+    end();
+  }
+});
+
+test("a new login with the very same end, announced while the page is not covered, makes the old session's marked 401 obsolete", async (t) => {
+  const page = heldPage(t);
+  loginState.observe(signedIn(3600));
+  const reading = getRunStatus("flow-1", "run-1"); // out on the old session
+  await tick();
+  loginState.loginWindowDone(); // Eneo's ceiling is the end of both logins: the status cannot tell them apart
+  loginState.observe(signedIn(3600));
+  page.answer(0, sessionEnded());
+  await tick();
+  assert.equal(loginState.signedOut, false, "the renewed page is not covered");
+  assert.equal(page.calls.length, 2, "the read goes again under the new login");
+  page.answer(1, ok(running));
+  assert.equal((await reading).id, "run-1");
+});
+
+test("an old marked 401, to a fetch and to an upload, that arrives between the announcement and the fresh status covers nothing", async (t) => {
+  const page = heldPage(t);
+  const upload = answeringXhr(t, 401, { detail: "Session expired" }, true);
+  loginState.observe(signedIn(3600));
+  const reading = getRunStatus("flow-1", "run-1");
+  const uploading = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm").catch((error) => error);
+  await tick();
+
+  loginState.loginWindowDone(); // the status read after it has not answered yet
+  page.answer(0, sessionEnded());
+  upload.release();
+  await tick();
+  assert.equal(loginState.signedOut, false, "the old session's refusals are obsolete");
+  assert.equal(page.calls.length, 2, "the read goes again, with no user action");
+  assert.equal(loginState.observe(signedIn(3600)), true, "and the fresh status is accepted");
+  assert.equal(loginState.signedOut, false);
+  page.answer(1, ok(running));
+  assert.equal((await reading).id, "run-1");
+  assert.equal(((await uploading) as ApiError).status, 401, "the upload is the user's to send again");
 });
 
 test("an answer to an older status question never undoes a newer one", () => {

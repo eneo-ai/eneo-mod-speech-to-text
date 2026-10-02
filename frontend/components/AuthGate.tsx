@@ -135,8 +135,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         () => undefined,
       );
     // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel), or an
-    // access code was entered in the dialog: the status read that follows confirms the new login, also when the page
-    // was never covered (what went out on the old session is then stale).
+    // access code was entered in the dialog: a new login is announced, also when the page was never covered, so what
+    // went out on the old session is obsolete at once, and the status read that follows decides.
     const renewed = () => {
       loginState.loginWindowDone();
       recheck();
