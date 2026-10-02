@@ -575,8 +575,8 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
         self.assertEqual(
-            (run.call_args.kwargs["ws_max_size"], run.call_args.kwargs["ws_max_queue"]),
-            (WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE),
+            (run.call_args.kwargs["ws"], run.call_args.kwargs["ws_max_size"], run.call_args.kwargs["ws_max_queue"]),
+            ("websockets", WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE),
         )
 
     def test_production_limits_refuse_an_oversized_message_before_eneo(self) -> None:
@@ -601,7 +601,7 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                     await asyncio.wait_for(browser.recv(), 5)
                 return refused.exception.rcvd.code
 
-        with serve_module(ws_max_size=max_size, ws_max_queue=max_queue) as port:
+        with serve_module(ws="websockets", ws_max_size=max_size, ws_max_queue=max_queue) as port:
             self.assertEqual(asyncio.run(stream(port)), 1009)
         self.assertEqual([len(frame) for frame in self.eneo_socket.frames], [64 * 1024])
 

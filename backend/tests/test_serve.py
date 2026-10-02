@@ -30,6 +30,7 @@ FIXED = {
     "workers": 1,
     "access_log": False,
     "server_header": False,
+    "ws": "websockets",
     "ws_max_size": 128 * 1024,
     "ws_max_queue": 16,
     "timeout_graceful_shutdown": 8,
@@ -58,6 +59,13 @@ class ServeTests(unittest.TestCase):
         self.assertEqual(run.call_args.kwargs["ws_max_size"], limits.WS_MAX_MESSAGE_BYTES)
         self.assertEqual(run.call_args.kwargs["ws_max_queue"], limits.WS_MAX_QUEUE)
 
+    def test_the_websocket_implementation_is_the_one_that_applies_the_queue_limit(self) -> None:
+        # uvicorn's "auto" is websockets-sansio, which has no ws_max_queue: the limit would be set and do nothing.
+        with patch("uvicorn.run") as run:
+            launcher.serve("app.main:app", api_only=True)
+
+        self.assertEqual(run.call_args.kwargs["ws"], "websockets")
+
     def test_the_limits_satisfy_the_bounds_the_relay_depends_on(self) -> None:
         # Eneo's largest audio frame (64 KiB) fits, and a connection queues at most 2 MiB before Eneo sees a frame.
         self.assertGreaterEqual(limits.WS_MAX_MESSAGE_BYTES, 64 * 1024)
@@ -82,6 +90,7 @@ class ServeTests(unittest.TestCase):
             "workers": (2, 1),
             "access_log": (True, False),
             "server_header": (True, False),
+            "ws": ("wsproto", "websockets"),
             "ws_max_size": (1024**3, 128 * 1024),
             "ws_max_queue": (10_000, 16),
             "timeout_graceful_shutdown": (30, 8),

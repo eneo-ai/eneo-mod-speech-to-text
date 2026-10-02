@@ -9,7 +9,8 @@ It fixes what the running system depends on, in one place:
 - one worker: the session store is process-local (``ModuleSessionStore``), so a second worker would misroute people;
 - no access log: the callback URL carries a one-time ticket;
 - no ``Server: uvicorn`` banner;
-- the browser WebSocket limits of ``app.limits``;
+- the browser WebSocket limits of ``app.limits``, on the implementation that applies both (uvicorn's "auto" is
+  ``websockets-sansio``, which has no ``ws_max_queue``);
 - a stop that does not wait for open streams past 8 s (Docker kills a container ten seconds after SIGTERM, and a file that
   is still streaming never ends by itself).
 
@@ -66,6 +67,7 @@ def serve(
         "workers": 1,
         "access_log": False,
         "server_header": False,
+        "ws": "websockets",
         "ws_max_size": WS_MAX_MESSAGE_BYTES,
         "ws_max_queue": WS_MAX_QUEUE,
         "timeout_graceful_shutdown": GRACEFUL_SHUTDOWN_SECONDS,
