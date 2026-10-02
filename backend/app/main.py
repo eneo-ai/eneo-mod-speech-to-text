@@ -45,6 +45,11 @@ from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAn
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
+# httpx logs every request's full URL at INFO ("HTTP Request: GET <url>"), and the signed URL of a file carries its
+# bearer token in the query string. The libraries stay at WARNING; this app's own records name a path template or a
+# status, never a URL with a query.
+for _library in ("httpx", "httpcore"):
+    logging.getLogger(_library).setLevel(logging.WARNING)
 
 
 settings = load_settings()
