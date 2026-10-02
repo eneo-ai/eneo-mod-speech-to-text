@@ -12,6 +12,7 @@ import http.client
 import json
 import os
 import socket
+import struct
 import subprocess
 import sys
 import time
@@ -27,7 +28,7 @@ BACKEND = REPOSITORY / "backend"
 STUB = Path(__file__).with_name("stub-server.py")
 IDS = json.loads((REPOSITORY / "frontend" / "tests" / "fixtures" / "ids.json").read_text())
 FLOW, AUDIO_STEP, DONE = IDS["flows"]["flow1"], IDS["steps"]["audio"], IDS["runs"]["done"]
-AUDIO_FILE, PDF_FILE = IDS["files"]["audioA"], IDS["files"]["pdf"]
+AUDIO_FILE, PDF_FILE, AUDIO_LARGE = IDS["files"]["audioA"], IDS["files"]["pdf"], IDS["files"]["audioLarge"]
 MODULE_KEY, SERVICE_KEY = "speech-to-text", "stub-test-service-key"
 USER = "user-1"
 KB = 1024
@@ -75,7 +76,7 @@ class Stack(unittest.TestCase):
         cls.stub, cls.backend = free_ports(2)
         python = os.environ.get("BACKEND_PYTHON", sys.executable)
         environment = {**os.environ, "MODULE_KEY": MODULE_KEY, "ENEO_API_KEY": SERVICE_KEY}
-        cls.start([python, str(STUB), str(cls.stub)], environment, cwd=None)
+        cls.stub_process = cls.start([python, str(STUB), str(cls.stub)], environment, cwd=None)
         cls.origin = f"http://127.0.0.1:{cls.backend}"
         backend_environment = {
             **environment,
@@ -91,7 +92,7 @@ class Stack(unittest.TestCase):
         cls.wait_for(cls.backend, "/health")
 
     @classmethod
-    def start(cls, command: list[str], environment: dict[str, str], cwd: Path | None) -> None:
+    def start(cls, command: list[str], environment: dict[str, str], cwd: Path | None) -> subprocess.Popen:
         """A process of this test, stopped (by its PID, nothing else) when the class is done, even if its set-up fails."""
         process = subprocess.Popen(command, cwd=cwd, env=environment, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -100,6 +101,7 @@ class Stack(unittest.TestCase):
             process.wait(timeout=15)
 
         cls.addClassCleanup(stop)
+        return process
 
     @staticmethod
     def wait_for(port: int, path: str) -> None:
@@ -495,6 +497,57 @@ class DevProfileTests(Stack):
 
         self.assertEqual(status, 201)
         self.assertIn("id", json.loads(answer))
+
+
+class LargeAudioTests(SignedIn):
+    """files.audioLarge: 256 MiB of WAV that is made as it is read, 64 KiB at a time with a pause, so a stream can be left or stopped."""
+
+    SIZE = 256 * KB * KB
+    PATH = f"/api/eneo/flows/{FLOW}/runs/{DONE}/input-files/{AUDIO_LARGE}/audio"
+
+    def open(self, range_: str | None = None) -> tuple[http.client.HTTPConnection, http.client.HTTPResponse]:
+        """The page's request for the audio, through the backend, with the body left unread."""
+        connection = http.client.HTTPConnection("127.0.0.1", self.backend, timeout=30)
+        connection.request("GET", self.PATH, headers={"Cookie": self.cookie, **({"Range": range_} if range_ else {})})
+        return connection, connection.getresponse()
+
+    def read(self, range_: str) -> tuple[int, dict[str, str], bytes]:
+        connection, response = self.open(range_)
+        try:
+            return response.status, {k.lower(): v for k, v in response.getheaders()}, response.read()
+        finally:
+            connection.close()
+
+    def stub_rss_mib(self) -> float:
+        return int(subprocess.check_output(["ps", "-o", "rss=", "-p", str(self.stub_process.pid)])) / KB
+
+    def test_it_is_a_wav_of_256_mib_that_a_range_can_read_anywhere_in(self) -> None:
+        status, headers, head = self.read("bytes=0-43")
+        self.assertEqual((status, headers["content-range"]), (206, f"bytes 0-43/{self.SIZE}"))
+        self.assertEqual((head[:4], head[8:16]), (b"RIFF", b"WAVEfmt "))
+        self.assertEqual((struct.unpack("<I", head[4:8])[0], struct.unpack("<I", head[40:44])[0]), (self.SIZE - 8, self.SIZE - 44))
+
+        middle = 128 * KB * KB
+        status, headers, body = self.read(f"bytes={middle}-{middle + 63}")
+        self.assertEqual((status, headers["content-range"], body), (206, f"bytes {middle}-{middle + 63}/{self.SIZE}", bytes(64)))
+        status, headers, body = self.read("bytes=-10")
+        self.assertEqual((status, headers["content-range"], body), (206, f"bytes {self.SIZE - 10}-{self.SIZE - 1}/{self.SIZE}", bytes(10)))
+        self.assertEqual(self.read(f"bytes={self.SIZE}-")[0], 416)
+
+    def test_it_streams_at_a_pace_without_being_held_and_leaving_closes_its_stream(self) -> None:
+        before = self.stub_rss_mib()
+        connection, response = self.open()
+        try:
+            self.assertEqual((response.status, response.getheader("Content-Length")), (200, str(self.SIZE)))
+            started = time.monotonic()
+            self.assertEqual(len(response.read(KB * KB)), KB * KB)
+            elapsed = time.monotonic() - started
+            self.eventually(lambda: self.stats()["file_streams_open"] == 1, "the stream is open for as long as the client reads")
+            self.assertGreaterEqual(elapsed, 0.1, "1 MiB is 16 pieces of 64 KiB, each followed by a pause of 10 ms")
+            self.assertLess(self.stub_rss_mib() - before, 64, "the file is made as it is read: 256 MiB held would show here")
+        finally:
+            connection.close()
+        self.eventually(lambda: self.stats()["file_streams_open"] == 0, "a client that leaves must free its stream")
 
 
 if __name__ == "__main__":

@@ -180,7 +180,37 @@ def tone(seconds, freq):
     return buf.getvalue()
 
 
-AUDIO = {FILE["audioA"]: tone(12, 330), FILE["audioB"]: tone(8, 440)}
+class LargeWav:
+    """files.audioLarge: 256 MiB of 16-bit silence as a WAV, made as it is read and never held. It goes out in 64 KiB pieces
+    with a pause after each (about 6 MB/s), so a client that leaves half-way, and a server that stops with the stream open,
+    have something to interrupt."""
+
+    PIECE, PAUSE = 64 * 1024, 0.01
+
+    def __init__(self, size):
+        data = size - 44
+        self.size = size
+        self.head = (b"RIFF" + struct.pack("<I", size - 8) + b"WAVEfmt " + struct.pack("<IHHIIHH", 16, 1, 1, 16000, 32000, 2, 16)
+                     + b"data" + struct.pack("<I", data))
+
+    def __len__(self):
+        return self.size
+
+    def pieces(self, start, stop):
+        while start < stop:
+            end = min(start + self.PIECE, stop)
+            head = self.head[start:end]  # empty past the header
+            yield head + bytes(end - start - len(head))
+            start = end
+            time.sleep(self.PAUSE)
+
+
+def pieces(data, start, stop):
+    """The bytes [start, stop) of a file: one piece for a file in memory, the pieces of a LargeWav as it makes them."""
+    return data.pieces(start, stop) if isinstance(data, LargeWav) else [data[start:stop]]
+
+
+AUDIO = {FILE["audioA"]: tone(12, 330), FILE["audioB"]: tone(8, 440), FILE["audioLarge"]: LargeWav(256 * 1024 * 1024)}
 PDF = (b"%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
 
@@ -451,7 +481,10 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         STATE.count("file_streams_open")
         try:
-            self.wfile.write(data[start:end + 1])
+            for piece in pieces(data, start, end + 1):
+                self.wfile.write(piece)
+        except OSError:
+            self.close_connection = True  # the client left; a stream is left half-way on purpose
         finally:
             STATE.count("file_streams_open", -1)
 
