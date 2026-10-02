@@ -40,7 +40,7 @@ services:
       - ../../frontend/tests:/repo/frontend/tests:ro
       - ../../backend:/repo/backend:ro
     environment:
-      STUB_HOST: 0.0.0.0
+      UPSTREAM_HOST: 0.0.0.0
       MODULE_KEY: speech-to-text
       ENEO_API_KEY: acceptance-service-key
     command: ["python", "stub-server.py", "8481"]
