@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
 from app.accent import NO_ACCENT_CSS, Accent, etag, theme_css  # noqa: E402
-from app.config import DEFAULT_ORGANIZATION, LogoFile, Organization  # noqa: E402
+from app.config import DEFAULT_ORGANIZATION, LogoFile, LogoSize, LogoSizes, Organization  # noqa: E402
 
 SVG = b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
@@ -40,14 +40,42 @@ class BrandingRouteTests(unittest.TestCase):
         self.use(DEFAULT_ORGANIZATION)
         self.assertEqual(
             self.client.get("/api/branding").json(),
-            {"organization": {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}},
+            {"organization": {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}},
         )
         self.use(None)
         self.assertEqual(self.client.get("/api/branding").json(), {"organization": None})
 
+    def test_a_deployments_logos_come_with_their_sizes(self) -> None:
+        self.use(
+            Organization(
+                name="Umeå kommun",
+                logo="custom",
+                dark_logo=True,
+                logo_sizes=LogoSizes(light=LogoSize(width=160, height=40), dark=LogoSize(width=1, height=1)),
+            ),
+            LogoFile(media_type="image/svg+xml", content=SVG),
+            LogoFile(media_type="image/png", content=PNG),
+        )
+        self.assertEqual(
+            self.client.get("/api/branding").json(),
+            {
+                "organization": {
+                    "name": "Umeå kommun",
+                    "logo": "custom",
+                    "dark_logo": True,
+                    "logo_sizes": {"light": {"width": 160, "height": 40}, "dark": {"width": 1, "height": 1}},
+                }
+            },
+        )
+
     def test_a_deployments_logo_is_served_same_origin_as_what_it_is(self) -> None:
         self.use(
-            Organization(name="Umeå kommun", logo="custom", dark_logo=True),
+            Organization(
+                name="Umeå kommun",
+                logo="custom",
+                dark_logo=True,
+                logo_sizes=LogoSizes(light=LogoSize(width=10, height=4), dark=LogoSize(width=1, height=1)),
+            ),
             LogoFile(media_type="image/svg+xml", content=SVG),
             LogoFile(media_type="image/png", content=PNG),
         )
@@ -69,7 +97,7 @@ class BrandingRouteTests(unittest.TestCase):
         self.use(Organization(name="Umeå kommun", logo=None))
         self.assertEqual(self.client.get("/api/branding/logo/light").status_code, 404)
         self.use(
-            Organization(name="Umeå kommun", logo="custom"),
+            Organization(name="Umeå kommun", logo="custom", logo_sizes=LogoSizes(light=LogoSize(width=10, height=4))),
             LogoFile(media_type="image/svg+xml", content=SVG),
         )
         self.assertEqual(self.client.get("/api/branding/logo/dark").status_code, 404)

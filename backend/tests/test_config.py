@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.accent import Accent
-from app.config import FlowListScope, Organization, load_settings
+from app.config import FlowListScope, LogoSize, LogoSizes, Organization, load_settings
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
 SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
@@ -259,7 +259,15 @@ class OrganizationTests(unittest.TestCase):
             ORGANIZATION_LOGO=self.file("umea.svg", SVG),
             ORGANIZATION_LOGO_DARK=self.file("umea-dark.png", PNG),
         )
-        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=True))
+        self.assertEqual(
+            settings.organization,
+            Organization(
+                name="Umeå kommun",
+                logo="custom",
+                dark_logo=True,
+                logo_sizes=LogoSizes(light=LogoSize(width=10, height=4), dark=LogoSize(width=1, height=1)),
+            ),
+        )
         assert settings.organization_logo and settings.organization_logo_dark
         self.assertEqual(settings.organization_logo.media_type, "image/svg+xml")
         self.assertEqual(settings.organization_logo.content, SVG)
@@ -322,7 +330,80 @@ class OrganizationTests(unittest.TestCase):
                 ORGANIZATION_LOGO=self.file("umea.svg", SVG),
                 ORGANIZATION_LOGO_DARK=str(self.folder / "saknas.svg"),
             )
-        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=False))
+        self.assertEqual(
+            settings.organization,
+            Organization(name="Umeå kommun", logo="custom", logo_sizes=LogoSizes(light=LogoSize(width=10, height=4))),
+        )
+
+    def sizes_of(self, name: str, content: bytes):
+        return self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=self.file(name, content)).organization
+
+    def test_a_logo_carries_its_proportions_so_the_page_can_reserve_its_room(self) -> None:
+        svg = lambda attributes: b'<svg xmlns="http://www.w3.org/2000/svg" ' + attributes + b"></svg>"  # noqa: E731
+        for what, content, expected in (
+            ("a viewBox", svg(b'viewBox="0 0 160 40"'), (160, 40)),
+            ("a viewBox that does not start at zero", svg(b'viewBox="-5 -5, 160,40"'), (160, 40)),
+            ("a width and a height, unitless", svg(b'width="300" height="75"'), (300, 75)),
+            ("a width and a height in px, which win over the viewBox", svg(b'width="300px" height="60px" viewBox="0 0 10 10"'), (300, 60)),
+            ("single quotes", svg(b"width='300' height='75'"), (300, 75)),
+            ("a width and the viewBox's proportions", svg(b'width="200" viewBox="0 0 10 5"'), (200, 100)),
+            ("a height and the viewBox's proportions", svg(b'height="50" viewBox="0 0 10 5"'), (100, 50)),
+            ("a percentage, which says nothing, and a viewBox", svg(b'width="100%" height="100%" viewBox="0 0 90 30"'), (90, 30)),
+            ("fractions, scaled so the proportions survive a whole number", svg(b'viewBox="0 0 10.5 4.5"'), (1000, 429)),
+            ("Illustrator's decimals", svg(b'width="277.4px" height="110.3px"'), (1000, 398)),
+            ("a root tag that holds a > in a value", svg(b'data-x="a>b" viewBox="0 0 8 2"'), (8, 2)),
+        ):
+            with self.subTest(what):
+                organization = self.sizes_of("logo.svg", content)
+                assert organization is not None and organization.logo_sizes is not None
+                self.assertEqual((organization.logo_sizes.light.width, organization.logo_sizes.light.height), expected)
+                self.assertIsNone(organization.logo_sizes.dark)
+
+    def test_a_comment_before_the_svg_tag_is_not_its_size(self) -> None:
+        organization = self.sizes_of("logo.svg", b'<!-- <svg width="1" height="1"> -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 3"></svg>')
+        assert organization is not None and organization.logo_sizes is not None
+        self.assertEqual(organization.logo_sizes.light, LogoSize(width=12, height=3))
+
+    def test_a_png_is_as_large_as_its_header_says(self) -> None:
+        png = bytearray(PNG)
+        png[16:24] = (640).to_bytes(4, "big") + (96).to_bytes(4, "big")
+        organization = self.sizes_of("logo.png", bytes(png))
+        assert organization is not None and organization.logo_sizes is not None
+        self.assertEqual(organization.logo_sizes.light, LogoSize(width=640, height=96))
+
+    def test_a_logo_without_a_readable_size_says_so_once_and_the_name_stands_in(self) -> None:
+        svg = lambda attributes: b'<svg xmlns="http://www.w3.org/2000/svg" ' + attributes + b"></svg>"  # noqa: E731
+        truncated_png = PNG[:20]
+        zero_png = bytearray(PNG)
+        zero_png[16:20] = (0).to_bytes(4, "big")
+        for name, content in (
+            ("logo.svg", svg(b"")),
+            ("logo.svg", svg(b'width="100%" height="50%"')),
+            ("logo.svg", svg(b'viewBox="0 0 0 40"')),
+            ("logo.svg", svg(b'viewBox="0 0 160"')),
+            ("logo.svg", svg(b'viewBox="0 0 -160 40"')),
+            ("logo.svg", svg(b'viewBox="0 0 1e999 40"')),
+            ("logo.png", truncated_png),
+            ("logo.png", bytes(zero_png)),
+        ):
+            with self.subTest(name=name, content=content[:60]), self.assertLogs("eneo_config", level="ERROR") as logs:
+                organization = self.sizes_of(name, content)
+            self.assertEqual(organization, Organization(name="Umeå kommun", logo=None))
+            self.assertEqual(len(logs.output), 1)
+            self.assertIn("ORGANIZATION_LOGO", logs.output[0])
+            self.assertIn("size", logs.output[0])
+
+    def test_an_organisation_names_its_logos_sizes_exactly_when_it_has_logos(self) -> None:
+        size = LogoSize(width=2, height=1)
+        for attributes in (
+            {"logo": "custom"},  # no sizes
+            {"logo": "custom", "logo_sizes": LogoSizes(light=size), "dark_logo": True},  # a dark logo with no size
+            {"logo": "custom", "logo_sizes": LogoSizes(light=size, dark=size), "dark_logo": False},  # a size for no logo
+            {"logo": "default", "logo_sizes": LogoSizes(light=size)},
+            {"logo": None, "logo_sizes": LogoSizes(light=size)},
+        ):
+            with self.subTest(attributes), self.assertRaises(ValueError):
+                Organization(name="Umeå kommun", **attributes)
 
     def test_a_logo_needs_the_name_it_stands_for(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "ORGANIZATION_NAME"):

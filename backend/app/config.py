@@ -4,11 +4,12 @@ import logging
 import math
 import os
 import re
+import struct
 from pathlib import Path
-from typing import Literal, cast
+from typing import Literal, Self, cast
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, SecretStr
+from pydantic import BaseModel, Field, SecretStr, model_validator
 
 from app.accent import Accent, resolve_accent
 
@@ -24,17 +25,41 @@ class FlowListScope(BaseModel):
     space_id: str | None
 
 
+class LogoSize(BaseModel):
+    """A logo's proportions: the page gives its <img> this width and height, so the header does not move when the file arrives."""
+
+    width: int = Field(gt=0)
+    height: int = Field(gt=0)
+
+
+class LogoSizes(BaseModel):
+    light: LogoSize
+    dark: LogoSize | None = None
+
+
 class Organization(BaseModel):
     """The organisation beside "Tal till text": its name, and its logo.
 
     ``logo`` is ``default`` for Sundsvall's bundled logo, ``custom`` for the
     deployment's own (served by /api/branding/logo/{light,dark}), or None for
-    the name as text.
+    the name as text. A custom logo has its size, and so has its dark one when
+    there is one: the page cannot reserve room for a file it knows nothing of.
     """
 
     name: str
     logo: Literal["default", "custom"] | None
     dark_logo: bool = False
+    logo_sizes: LogoSizes | None = None
+
+    @model_validator(mode="after")
+    def _the_sizes_are_those_of_the_logos(self) -> Self:
+        sizes = self.logo_sizes
+        if self.logo == "custom":
+            if sizes is None or (sizes.dark is not None) != self.dark_logo:
+                raise ValueError("a custom logo has a size, and its dark logo has one exactly when there is a dark logo")
+        elif sizes is not None or self.dark_logo:
+            raise ValueError("only a custom logo has a size or a dark logo")
+        return self
 
 
 class LogoFile(BaseModel):
@@ -162,8 +187,69 @@ def _positive_seconds(name: str, default: float) -> float:
     return value
 
 
-def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
-    """The logo file at ``raw_path`` if it is an SVG or a PNG, as its name says; otherwise logs why and gives None."""
+_SVG_ROOT = re.compile(rb"<svg\b((?:[^>\"']|\"[^\"]*\"|'[^']*')*)>")
+_ATTRIBUTE = re.compile(rb"([\w:.-]+)\s*=\s*(?:\"([^\"]*)\"|'([^']*)')")
+_LENGTH = re.compile(rb"\s*((?:\d+\.?\d*|\.\d+))(?:px)?\s*")  # an absolute length; a percentage or an em says nothing
+_BOX_SIDE = 100_000
+
+
+def _positive(value: float) -> float | None:
+    return value if math.isfinite(value) and value > 0 else None
+
+
+def _svg_proportions(content: bytes) -> tuple[float, float] | None:
+    """What an <img> shows an SVG's root as: its width and height when both are plain lengths, else its viewBox's."""
+    root = _SVG_ROOT.search(re.sub(rb"<!--.*?-->", b"", content[:8192], flags=re.DOTALL))
+    if root is None:
+        return None
+    attributes = {name: double or single for name, double, single in _ATTRIBUTE.findall(root.group(1))}
+
+    def length(name: bytes) -> float | None:
+        found = _LENGTH.fullmatch(attributes.get(name, b""))
+        return _positive(float(found.group(1))) if found else None
+
+    box = None
+    parts = re.split(rb"[\s,]+", attributes.get(b"viewBox", b"").strip())
+    if len(parts) == 4:
+        try:
+            box = (_positive(float(parts[2])), _positive(float(parts[3])))
+        except ValueError:
+            pass
+    width, height = length(b"width"), length(b"height")
+    if width and height:
+        return width, height
+    if box and box[0] and box[1]:
+        if width:
+            return width, width * box[1] / box[0]
+        if height:
+            return height * box[0] / box[1], height
+        return box[0], box[1]
+    return None
+
+
+def _png_proportions(content: bytes) -> tuple[float, float] | None:
+    """The width and height in the PNG's header (IHDR, always the first chunk)."""
+    if len(content) < 24 or content[12:16] != b"IHDR":
+        return None
+    width, height = struct.unpack(">II", content[16:24])
+    return (width, height) if width and height else None
+
+
+def _logo_size(media_type: str, content: bytes) -> LogoSize | None:
+    """The proportions as whole numbers: as they are when they are, else the longer side 1000, which keeps them to 0.05 %."""
+    found = _png_proportions(content) if media_type == "image/png" else _svg_proportions(content)
+    if found is None:
+        return None
+    width, height = found
+    if width != int(width) or height != int(height) or max(width, height) > _BOX_SIDE:
+        scale = 1000 / max(width, height)
+        width, height = max(1, round(width * scale)), max(1, round(height * scale))
+    return LogoSize(width=int(width), height=int(height))
+
+
+def _read_logo(variable: str, raw_path: str) -> tuple[LogoFile, LogoSize] | None:
+    """The logo file at ``raw_path`` and its size, if it is an SVG or a PNG, as its name says and with a size the page can
+    use; otherwise logs why and gives None."""
     path = Path(raw_path)
     try:
         # Read at most one byte past the limit, so a large file mounted by mistake is never loaded whole.
@@ -174,14 +260,20 @@ def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
         return None
     head = content[:1024].lstrip(b"\xef\xbb\xbf \t\r\n")
     suffix = path.suffix.lower()
+    media_type: Literal["image/svg+xml", "image/png"] | None = None
     if len(content) > _LOGO_MAX_BYTES:
         problem = "is larger than 1 MiB"
     elif suffix == ".png" and content.startswith(b"\x89PNG\r\n\x1a\n"):
-        return LogoFile(media_type="image/png", content=content)
+        media_type = "image/png"
     elif suffix == ".svg" and head.startswith((b"<?xml", b"<svg", b"<!--", b"<!DOCTYPE")) and re.search(rb"<svg[\s>]", head):
-        return LogoFile(media_type="image/svg+xml", content=content)
+        media_type = "image/svg+xml"
     else:
         problem = "is not an SVG or PNG file (by its name and its content)"
+    if media_type is not None:
+        size = _logo_size(media_type, content)
+        if size is not None:
+            return LogoFile(media_type=media_type, content=content), size
+        problem = "has no size the page can use (an SVG needs a viewBox, or a width and a height in px; a PNG a readable header)"
     logger.error("%s=%s %s; the organisation's name is shown instead.", variable, raw_path, problem)
     return None
 
@@ -204,11 +296,16 @@ def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | No
         if logo_path or dark_path:
             raise RuntimeError("ORGANIZATION_LOGO needs ORGANIZATION_NAME: the name is the logo's text alternative")
         return DEFAULT_ORGANIZATION, None, None
-    logo = _read_logo("ORGANIZATION_LOGO", logo_path) if logo_path else None
-    if logo is None:
+    light = _read_logo("ORGANIZATION_LOGO", logo_path) if logo_path else None
+    if light is None:
         return Organization(name=name, logo=None), None, None
     dark = _read_logo("ORGANIZATION_LOGO_DARK", dark_path) if dark_path else None
-    return Organization(name=name, logo="custom", dark_logo=dark is not None), logo, dark
+    sizes = LogoSizes(light=light[1], dark=dark[1] if dark else None)
+    return (
+        Organization(name=name, logo="custom", dark_logo=dark is not None, logo_sizes=sizes),
+        light[0],
+        dark[0] if dark else None,
+    )
 
 
 def _accent() -> Accent | None:
