@@ -1,7 +1,30 @@
-"""A stand-in for the module backend (and Eneo behind it) for the accessibility
-gate: every screen of the app without Eneo. Dev and test only; never shipped.
+"""The one fake Eneo of Plan B, and a stand-in for the module backend in front of it. Dev and test only; never shipped.
 
-    python3 tests/e2e/stub-server.py [port]   # default 8401
+    python3 tests/e2e/stub-server.py [port]   # default 8401 (UPSTREAM_PORT, UPSTREAM_HOST)
+
+It plays two roles in one process, told apart by path prefix, over one set of data (every flow, run and file exists once):
+
+  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/config, /api/branding*,
+      /api/eneo/*, /api/live/*, every screen of the app without Eneo and without a backend;
+  Eneo for the real backend (python -m app.serve) and for the production-shaped tests: /api/v1/*, the module-login
+      handshake, signed files with Range, the live ticket and an eneo-live.v1 socket, and a sink for uploads.
+
+The Eneo role (MODULE_KEY and ENEO_API_KEY, the backend's own variables, say which module and key it knows):
+  GET  /module-login?module_key&redirect_uri&state        sends the browser back with a one-time ticket and the state
+  POST /api/v1/module-auth/token/                         the ticket, once, for a token (the service key)
+  GET  /api/v1/module-auth/<key>/session/                 who the token is (both credentials)
+  POST /api/v1/module-auth/<key>/token/refresh/           a new token (both credentials)
+  /api/v1/<anything the BFF role serves under /api/eneo/> the same answer; the service key is required, and a bearer
+                                                          token, when one is sent, must be one this stub gave
+  POST /api/v1/flows/<f>/runs/<r>/{input-files,artifacts}/<file>/signed-url/   a signed URL on the stub
+  GET  /api/v1/files/{audio,artifact}/<file>/download/    the file, with Range, 206, 416
+  POST /api/v1/flows/<f>/steps/<s>/live-transcription-sessions/                a ticket and the socket's path
+  GET  /api/v1/live-transcription                         the eneo-live.v1 socket, for a ticket the stub gave
+  POST .../runtime-files/, .../files/, .../template-files/  uploads: drained in 64 KB reads, one record each
+
+For tests (unauthenticated, never shipped): GET /__stub/stats, POST /__stub/reset, POST /__stub/end-session (every token
+is refused from now on, as when Eneo ends the login) and, in upstream.py's format of deploy/acceptance/upload/ (so that
+measure.py runs unchanged): GET /__log, GET /__reset. UPSTREAM_DELAY_MS pauses after each 64 KB read of an upload.
 
 Identifiers (flows, steps, runs, files) are the UUIDs of tests/fixtures/ids.json, named there as below.
 Runs the page can open with ?run=<id> (runs.<name>):
@@ -34,15 +57,30 @@ import itertools
 import json
 import math
 import os
+import secrets
 import struct
 import sys
+import threading
 import time
 import wave
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8401
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.environ.get("UPSTREAM_PORT", "8401"))
+HOST = os.environ.get("UPSTREAM_HOST", "127.0.0.1")
+UPLOAD_DELAY = float(os.environ.get("UPSTREAM_DELAY_MS", "0")) / 1000.0  # a slow Eneo: a pause after each 64 KB read
+# The Eneo role knows the module and the service key the real backend is started with, under the backend's own names.
+MODULE_KEY = os.environ.get("MODULE_KEY", "speech-to-text")
+SERVICE_KEY = os.environ.get("ENEO_API_KEY", "stub-service-key")
+KEY_HEADER = os.environ.get("ENEO_API_KEY_HEADER_NAME", "X-API-Key")
+USER = {"id": "user-1", "email": "erik.lund@sundsvall.se", "username": "Erik Lund"}
+TENANT = "tenant-1"
+TOKEN_SECONDS = int(os.environ.get("STUB_TOKEN_SECONDS", "900"))
+SESSION_SECONDS = 8 * 60 * 60
+LIVE_SUBPROTOCOL = "eneo-live.v1"
+LIVE_PATH = "/api/v1/live-transcription"
 
 # STUB_BRANDING is a deployment with an organisation of its own, for the gate's branding states
 # (`npm run test:a11y:branding`): a long name and a green accent, with a wide logo for each colour mode ("custom") or
@@ -295,6 +333,38 @@ LIVE_WORDS = ("Välkomna till kommunstyrelsens möte. Första punkten gäller bu
               "Ramen höjs med två procent och förvaltningen återkommer med en plan i oktober.").split(" ")
 
 
+class State:
+    """What the Eneo role remembers: tickets, tokens, signed URLs, and what the tests read back from /__stub/stats."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.reset()
+        self.login_tickets = {}  # ticket -> its deadline, until the token is asked for
+        self.tokens = set()
+        self.signatures = set()
+        self.live_tickets = set()
+
+    def reset(self):
+        with self.lock:
+            self.log = []  # upstream.py's records, one per upload
+            self.stats = {"file_streams_open": 0, "live_sockets_open": 0, "live_frames": 0, "live_bytes": 0, "live_tickets": 0,
+                          "last_live_handshake": None, "uploads": 0, "last_upload_bytes": 0}
+
+    def count(self, name, by=1):
+        with self.lock:
+            self.stats[name] += by
+
+    def new_token(self):
+        token = secrets.token_urlsafe(24)
+        self.tokens.add(token)
+        ceiling = datetime.now(timezone.utc) + timedelta(seconds=SESSION_SECONDS)
+        return {"access_token": token, "token_type": "bearer", "expires_in": TOKEN_SECONDS, "session_expires_at": ceiling.isoformat(),
+                "module_key": MODULE_KEY, "tenant_id": TENANT, "user": USER}
+
+
+STATE = State()
+
+
 def run_state(run_id, poll=False):
     """A started run counts its status polls: running for two, then done."""
     if run_id in STARTED:
@@ -326,6 +396,13 @@ def ws_recv(rfile):
     return head[0] & 0x0F, bytes(data)
 
 
+def is_upload(segments):
+    """flows/<f>/files, flows/<f>/template-files and flows/<f>/steps/<s>/runtime-files, under /api/eneo or /api/v1."""
+    rest = segments[4:]
+    return (segments[:2] in (["api", "eneo"], ["api", "v1"]) and segments[2:3] == ["flows"] and len(segments) >= 5
+            and (rest in (["files"], ["template-files"]) or (len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files")))
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
@@ -340,33 +417,63 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    def audio(self, data):
-        start, end, status = 0, len(data) - 1, 200
+    def ranged(self, data, ctype, extra=None):
+        """A file with Range semantics: 200 whole, 206 and Content-Range for a satisfiable range, 416 for one that is not.
+        A Range that cannot be read is ignored, as the RFC says."""
+        size, start, end, status = len(data), 0, len(data) - 1, 200
         wanted = self.headers.get("Range", "")
-        if wanted.startswith("bytes="):
+        if wanted.startswith("bytes=") and "," not in wanted:
             first, _, last = wanted[6:].partition("-")
-            start, end, status = int(first or 0), min(int(last), len(data) - 1) if last else len(data) - 1, 206
+            try:
+                if first == "" and last != "":  # the last n bytes
+                    start, end, status = max(size - int(last), 0), size - 1, 206
+                elif first != "":
+                    start, end, status = int(first), min(int(last), size - 1) if last else size - 1, 206
+            except ValueError:
+                start, end, status = 0, size - 1, 200
+            if status == 206 and (start >= size or start > end or size == 0):
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.send_header("Content-Type", "application/json")
+                body = json.dumps({"detail": "Range not satisfiable"}).encode()
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
         self.send_response(status)
-        self.send_header("Content-Type", "audio/wav")
+        self.send_header("Content-Type", ctype)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
+        for name, value in (extra or {}).items():
+            self.send_header(name, value)
         if status == 206:
-            self.send_header("Content-Range", f"bytes {start}-{end}/{len(data)}")
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()
-        self.wfile.write(data[start:end + 1])
+        STATE.count("file_streams_open")
+        try:
+            self.wfile.write(data[start:end + 1])
+        finally:
+            STATE.count("file_streams_open", -1)
 
-    def live(self):
+    def audio(self, data):
+        self.ranged(data, "audio/wav")
+
+    def live(self, subprotocol=None):
+        """The relay: ready, a word per four audio frames, the whole text at stop. As Eneo it speaks ``subprotocol``."""
         key = self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         self.send_response(101)
         self.send_header("Upgrade", "websocket")
         self.send_header("Connection", "Upgrade")
         self.send_header("Sec-WebSocket-Accept", base64.b64encode(hashlib.sha1(key.encode()).digest()).decode())
+        if subprotocol:
+            self.send_header("Sec-WebSocket-Protocol", subprotocol)
         self.end_headers()
         self.wfile.flush()
         self.close_connection = True
         text = lambda obj: ws_send(self.wfile, 1, json.dumps(obj).encode())
         text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000})
         said, frames = [], 0
+        STATE.count("live_sockets_open")
         try:
             while True:
                 opcode, data = ws_recv(self.rfile)
@@ -374,6 +481,8 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if opcode == 2:
                     frames += 1
+                    STATE.count("live_frames")
+                    STATE.count("live_bytes", len(data))
                     if frames % 4 == 0:
                         said.append(LIVE_WORDS[len(said) % len(LIVE_WORDS)])
                         text({"type": "transcript.delta", "text": (" " if len(said) > 1 else "") + said[-1]})
@@ -386,15 +495,230 @@ class Handler(BaseHTTPRequestHandler):
                     return
         except OSError:
             return
+        finally:
+            STATE.count("live_sockets_open", -1)
+
+    # ---- the Eneo role ----
+
+    def refuse(self, why):
+        if self.raw is None and self.command in ("POST", "PUT", "PATCH"):
+            self.drain()  # an upload nobody took: its body must not be left for the next request on this connection
+        self.send(401, {"detail": why})
+
+    def credentialed(self, bearer_required=False):
+        """The service key; and a bearer token this stub gave when one is sent (always, with bearer_required). Answers 401 if not."""
+        if not secrets.compare_digest(self.headers.get(KEY_HEADER, ""), SERVICE_KEY):
+            self.refuse("the service key is required")
+            return False
+        header = self.headers.get("Authorization", "")
+        token = header[7:] if header.startswith("Bearer ") else None
+        if (token is None and bearer_required) or (token is not None and token not in STATE.tokens):
+            self.refuse("a module-user token that this stub gave is required")
+            return False
+        return True
+
+    def json_body(self):
+        try:
+            return json.loads(self.raw or b"{}")
+        except ValueError:
+            return {}
+
+    def eneo_route(self):
+        """Eneo's own routes, and the control surface. Anything else under /api/v1/ is the BFF role's /api/eneo/ (one set of
+        data), once the credentials are checked: the path is rewritten and False returned. True: the request is answered."""
+        self.original_path = self.path
+        url = urlparse(self.path)
+        path, method = url.path, self.command
+        # The body is read before anything is answered, so a refusal never leaves it on a connection that is kept alive;
+        # an upload's is drained by upload() as it arrives.
+        self.raw = None if is_upload(path.strip("/").split("/")) else self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if path in ("/__log", "/__log/"):
+            with STATE.lock:
+                self.send(200, STATE.log)
+            return True
+        if path in ("/__reset", "/__reset/", "/__stub/reset"):
+            STATE.reset()
+            self.send(200, {})
+            return True
+        if path == "/__stub/stats":
+            with STATE.lock:
+                self.send(200, dict(STATE.stats))
+            return True
+        if path == "/__stub/end-session" and method == "POST":
+            STATE.tokens.clear()
+            self.send(200, {"ok": True})
+            return True
+        if path == "/module-login" and method == "GET":
+            query = {key: values[0] for key, values in parse_qs(url.query).items()}
+            if query.get("module_key") != MODULE_KEY or not query.get("redirect_uri") or not query.get("state"):
+                self.send(400, {"detail": "module_key, redirect_uri and state are required, and the module key must be this module's"})
+                return True
+            ticket = secrets.token_urlsafe(24)
+            STATE.login_tickets[ticket] = time.time() + 60
+            self.send_response(303)
+            self.send_header("Location", f"{query['redirect_uri']}?{urlencode({'ticket': ticket, 'state': query['state']})}")
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return True
+        if not path.startswith("/api/v1/"):
+            return False
+        parts = path.strip("/").split("/")[2:]  # after api/v1
+        if method == "GET" and path == LIVE_PATH and self.headers.get("Upgrade", "").lower() == "websocket":
+            offered = [p.strip() for p in self.headers.get("Sec-WebSocket-Protocol", "").split(",")]
+            ticket = next((p[len("ticket."):] for p in offered if p.startswith("ticket.")), None)
+            if LIVE_SUBPROTOCOL not in offered or ticket not in STATE.live_tickets:
+                self.send(403, {"detail": "no live ticket this stub gave"})
+                return True
+            STATE.live_tickets.discard(ticket)
+            with STATE.lock:
+                STATE.stats["last_live_handshake"] = {"subprotocols": offered, "origin": self.headers.get("Origin")}
+            self.live(subprotocol=LIVE_SUBPROTOCOL)
+            return True
+        if method == "GET" and len(parts) == 4 and parts[0] == "files" and parts[3] == "download":
+            return self.signed_file(parts[1], parts[2], parse_qs(url.query))
+        if method == "POST" and path == "/api/v1/module-auth/token/":
+            if not self.credentialed():
+                return True
+            ticket = self.json_body().get("ticket")
+            if STATE.login_tickets.pop(ticket, 0) < time.time() if isinstance(ticket, str) else True:
+                self.send(400, {"detail": "The ticket is unknown, used or expired."})
+            else:
+                self.send(200, STATE.new_token())
+            return True
+        if method == "GET" and parts == ["module-auth", MODULE_KEY, "session"]:
+            if self.credentialed(bearer_required=True):
+                self.send(200, {"module_key": MODULE_KEY, "tenant_id": TENANT, "user": USER})
+            return True
+        if method == "POST" and parts == ["module-auth", MODULE_KEY, "token", "refresh"]:
+            if self.credentialed(bearer_required=True):
+                self.send(200, STATE.new_token())
+            return True
+        if not self.credentialed():
+            return True
+        if method == "POST" and len(parts) == 7 and parts[0] == "flows" and parts[2] == "runs" and parts[4] in ("input-files", "artifacts") and parts[6] == "signed-url":
+            return self.mint(parts)
+        if method == "POST" and len(parts) == 5 and parts[0] == "flows" and parts[2] == "steps" and parts[4] == "live-transcription-sessions":
+            return self.live_ticket(parts)
+        self.path = "/api/eneo/" + self.path[len("/api/v1/"):]
+        return False
+
+    def mint(self, parts):
+        """A signed URL for a run's input file or artifact: on this stub, which the backend rebases to the host it reaches it on."""
+        fid, run_id, kind, file_id = parts[1], parts[3], parts[4], parts[5]
+        known = (AUDIO if kind == "input-files" else {f: PDF for f in FILE.values()})
+        if fid not in FLOWS or run_state(run_id) is None or file_id not in known:
+            self.send(404, {"code": "flow_run_file_not_found", "detail": "File not found."})
+            return True
+        signature = secrets.token_urlsafe(16)
+        STATE.signatures.add(signature)
+        disposition = self.json_body().get("content_disposition") or "attachment"
+        query = urlencode({"sig": signature, "disp": disposition})
+        route = "audio" if kind == "input-files" else "artifact"
+        self.send(200, {"url": f"http://{self.headers.get('Host')}/api/v1/files/{route}/{file_id}/download/?{query}", "expires_at": int(time.time()) + 900})
+        return True
+
+    def signed_file(self, route, file_id, query):
+        """The file a signed URL names, with Range; the signature is the credential, so no header is asked for."""
+        if query.get("sig", [""])[0] not in STATE.signatures:
+            self.send(403, {"detail": "The signed URL is not valid."})
+        elif route == "audio" and file_id in AUDIO:
+            disposition = query.get("disp", ["inline"])[0]
+            self.ranged(AUDIO[file_id], "audio/wav", {"Content-Disposition": f'{disposition}; filename="inspelning.wav"'})
+        elif route == "artifact" and file_id in FILE.values():
+            disposition = query.get("disp", ["inline"])[0]
+            self.ranged(PDF, "application/pdf", {"Content-Disposition": f'{disposition}; filename="Protokoll kommunstyrelsen 2026-09-24.pdf"'})
+        else:
+            self.send(404, {"detail": "File not found."})
+        return True
+
+    def live_ticket(self, parts):
+        if parts[1] not in FLOWS:
+            self.send(404, {"code": "flow_not_found", "detail": "Flow not found."})
+            return True
+        self.json_body()
+        ticket = secrets.token_urlsafe(16)
+        STATE.live_tickets.add(ticket)
+        STATE.count("live_tickets")
+        self.send(201, {"ticket": ticket, "websocket_path": LIVE_PATH, "subprotocol": LIVE_SUBPROTOCOL,
+                        "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(), "sample_rate": 16000,
+                        "max_seconds": 18000, "model": {"id": "7d0c7a8e-8b4c-4c1e-9d3e-2f4b6a1c9e10", "name": "Pianissimo"}})
+        return True
+
+    def drain(self):
+        """A request's body, read in 64 KB pieces and not kept but for its first 8 KB (the multipart head): (bytes, how, head)."""
+        total, head = 0, b""
+
+        def took(data):
+            nonlocal total, head
+            total += len(data)
+            if len(head) < 8192:
+                head += data[: 8192 - len(head)]
+            if UPLOAD_DELAY:
+                time.sleep(UPLOAD_DELAY)
+
+        if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
+            while True:
+                size = int(self.rfile.readline().split(b";")[0].strip() or b"0", 16)
+                if size == 0:
+                    while self.rfile.readline() not in (b"\r\n", b"\n", b""):
+                        pass
+                    return total, "chunked body complete", head
+                left = size
+                while left:
+                    data = self.rfile.read(min(65536, left))
+                    if not data:
+                        return total, "eof inside a chunk", head
+                    left -= len(data)
+                    took(data)
+                self.rfile.readline()
+        length = self.headers.get("Content-Length")
+        if length is None:
+            return 0, "no body framing", head
+        left = int(length)
+        while left:
+            data = self.rfile.read(min(65536, left))
+            if not data:
+                return total, "eof before Content-Length", head
+            left -= len(data)
+            took(data)
+        return total, "Content-Length body complete", head
+
+    def upload(self):
+        """An upload: drained, and one record of it in upstream.py's format (deploy/acceptance/upload/). (bytes, head)."""
+        started = time.time()
+        received, how, head = self.drain()
+        finished = time.time()
+        record = {
+            "request_line": f"{self.command} {self.original_path} {self.request_version}",
+            "content_length": self.headers.get("Content-Length"),
+            "transfer_encoding": self.headers.get("Transfer-Encoding"),
+            "expect": self.headers.get("Expect"),
+            "content_type": (self.headers.get("Content-Type") or "")[:60],
+            "connection": self.headers.get("Connection"),
+            "bytes_received": received,
+            "how": how,
+            "seconds": round(time.time() - started, 2),
+            "started_at": started,
+            "finished_at": finished,
+        }
+        with STATE.lock:
+            STATE.log.append(record)
+            STATE.stats["uploads"] += 1
+            STATE.stats["last_upload_bytes"] = received
+        return received, head
+
+    # ---- the BFF role ----
 
     def do_GET(self):
+        if self.eneo_route():
+            return
         url = urlparse(self.path)
         path = url.path.rstrip("/") + "/"
         if path.startswith("/api/live/") and self.headers.get("Upgrade", "").lower() == "websocket":
             return self.live()
         if path == "/api/auth/status/":
             return self.send(200, {"authenticated": True, "auth_mode": "eneo_sso",
-                                   "user": {"id": "user-1", "email": "erik.lund@sundsvall.se", "username": "Erik Lund"},
+                                   "user": USER,
                                    "session_ends_in": 8 * 60 * 60})
         if path == "/api/branding/":
             return self.send(200, {"organization": ORGANIZATION})
@@ -464,19 +788,22 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(404, {"detail": "stub: " + path})
 
     def do_POST(self):
-        body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if self.eneo_route():
+            return
         parts = urlparse(self.path).path.strip("/").split("/")
+        if is_upload(parts):
+            # An upload is drained as it arrives and never held: a gigabyte must not cost the stub a gigabyte.
+            received, head = self.upload()
+            if b'filename="langsam' in head:
+                time.sleep(6)  # holds the sending view on screen long enough to look at it
+            if b'filename="for-lang' in head:
+                return self.send(400, {"code": "flow_run_audio_exceeds_limit", "eneo_error_code": 9000,
+                                       "message": "Audio exceeds the longest recording"})
+            return self.send(201, {"id": new_file_id(received), "filename": "upload"})
         if parts[:2] == ["api", "auth"]:
             return self.send(200, {"ok": True})
         if len(parts) >= 5 and parts[:3] == ["api", "eneo", "flows"]:
             fid, rest = parts[3], parts[4:]
-            if len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files":
-                if b'filename="langsam' in body:
-                    time.sleep(6)  # holds the sending view on screen long enough to look at it
-                if b'filename="for-lang' in body:
-                    return self.send(400, {"code": "flow_run_audio_exceeds_limit", "eneo_error_code": 9000,
-                                           "message": "Audio exceeds the longest recording"})
-                return self.send(201, {"id": new_file_id(len(body)), "filename": "upload"})
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "steps" and rest[4] == "transcript-regenerations":
                 run_id = new_run_id(next(NEW_RUN))
                 STARTED[run_id] = 0
@@ -504,7 +831,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
     def do_PATCH(self):
-        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
+        if self.eneo_route():
+            return
+        body = json.loads(self.raw or b"{}")
         parts = urlparse(self.path).path.strip("/").split("/")
         # Saving a pause's edit (the names): the edited value comes back as the pause's own, one revision on.
         if len(parts) == 8 and parts[:3] == ["api", "eneo", "flows"] and parts[4] == "runs" and parts[6] == "review-checkpoints":
@@ -520,4 +849,5 @@ class Handler(BaseHTTPRequestHandler):
         return self.send(404, {"detail": "stub: " + self.path})
 
 
-ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+ThreadingHTTPServer.request_queue_size = 64
+ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
