@@ -3,11 +3,10 @@
  * weight-budget.json, and that the built theme is used instead of being generated in the browser.
  * Chromium only: it is the engine that reports each request's transfer size.
  *
- * This build carries app/dev/foundation (FOUNDATION_CHECK=1, for the smoke tests), and that page moves shared chunks:
- * about 6.5 KB more than the image, which is built without it (2026-10-01: /flows 291.7 KB, /flows/flow-1 424.1 KB
- * there, 298.1 and 430.7 here). The budgets follow this build. They go back to the baseline in Phase 8.
- * The budget is the foundation's numbers plus lucide-react 1.x's Icon runtime (+1 KB on /flows). Phase 8's reset
- * target (226 KB on /flows, 359 KB on /flows/flow-1) was measured with lucide-react 0.451: re-measure it with 1.x.
+ * Each budget is the measured value rounded up to the next 5 KB (2026-10-02: /flows 331.7 KB of JS and 44.1 KB of CSS,
+ * /flows/flow-1 432.6 and 45.9). A change that raises one says why in its pull request. This build carries
+ * app/dev/foundation (FOUNDATION_CHECK=1, for the smoke tests), and that page moves shared chunks: about 6.5 KB more
+ * than the image, which is built without it.
  */
 import { expect, test, type Page } from "@playwright/test";
 import budget from "./weight-budget.json";

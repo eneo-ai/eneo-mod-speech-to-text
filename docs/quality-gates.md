@@ -155,7 +155,7 @@ Sänk inte ett tröskelvärde, ta inte bort ett läge ur grinden och lägg inte 
 
 ### Viktbudgeten
 
-- Budgeten (`frontend/tests/prod/weight-budget.json`) ger ett tak i KB för JS och CSS per sida.
+- Budgeten (`frontend/tests/prod/weight-budget.json`) ger ett tak i KB för JS och CSS per sida: den uppmätta vikten avrundad uppåt till närmaste 5 KB.
 - En ändring som höjer den motiverar det i sin pull request. Budgeten mäts på ett bygge som också innehåller utvecklingssidan, vilket flyttar delade bitar något; detaljerna står överst i `weight.spec.ts`.
 - Ladda inget sidan inte använder: importera en språkfil, ikonuppsättning eller komponent där den används, inte via en gemensam samlingsfil. Kör `weight.spec.ts` efter att ha lagt till en import från `@astryxdesign/core`.
 
@@ -216,5 +216,4 @@ Var resultaten finns:
 
 ## Migration (temporary, removed by bead .24)
 
-- Viktbudgeten är tillfälligt högre medan båda systemen ligger i bygget. Mät före och efter en fas med `node docs/plans/page-cost.cjs <frontend-mapp> <bas-url> <etikett>` mot det byggda bygget som serveras med stubben.
 - Planens regler för grinden finns i `docs/plans/2026-10-01-astryx-port-plan.md`.
