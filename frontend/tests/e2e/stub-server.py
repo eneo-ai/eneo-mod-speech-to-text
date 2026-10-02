@@ -342,13 +342,13 @@ class State:
         self.login_tickets = {}  # ticket -> its deadline, until the token is asked for
         self.tokens = set()
         self.signatures = set()
-        self.live_tickets = set()
+        self.live_tickets = {}  # ticket -> the recording the page named when it asked, until the socket is opened
 
     def reset(self):
         with self.lock:
             self.log = []  # upstream.py's records, one per upload
             self.stats = {"file_streams_open": 0, "live_sockets_open": 0, "live_frames": 0, "live_bytes": 0, "live_tickets": 0,
-                          "last_live_handshake": None, "uploads": 0, "last_upload_bytes": 0}
+                          "live_sessions": {}, "uploads": 0, "last_upload_bytes": 0}  # live_sessions: per recording, so specs can run side by side
 
     def count(self, name, by=1):
         with self.lock:
@@ -458,8 +458,9 @@ class Handler(BaseHTTPRequestHandler):
     def audio(self, data):
         self.ranged(data, "audio/wav")
 
-    def live(self, subprotocol=None):
-        """The relay: ready, a word per four audio frames, the whole text at stop. As Eneo it speaks ``subprotocol``."""
+    def live(self, subprotocol=None, recording="", handshake=None):
+        """The relay: ready, a word per four audio frames, the whole text at stop. As Eneo it speaks ``subprotocol``.
+        What it receives is counted in total and under ``recording``, the id the page named."""
         key = self.headers["Sec-WebSocket-Key"] + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
         self.send_response(101)
         self.send_header("Upgrade", "websocket")
@@ -473,6 +474,8 @@ class Handler(BaseHTTPRequestHandler):
         text = lambda obj: ws_send(self.wfile, 1, json.dumps(obj).encode())
         text({"type": "ready", "sample_rate": 16000, "max_seconds": 18000})
         said, frames = [], 0
+        with STATE.lock:
+            seen = STATE.stats["live_sessions"][recording] = {"frames": 0, "bytes": 0, **(handshake or {})}
         STATE.count("live_sockets_open")
         try:
             while True:
@@ -481,8 +484,11 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 if opcode == 2:
                     frames += 1
-                    STATE.count("live_frames")
-                    STATE.count("live_bytes", len(data))
+                    with STATE.lock:
+                        STATE.stats["live_frames"] += 1
+                        STATE.stats["live_bytes"] += len(data)
+                        seen["frames"] += 1
+                        seen["bytes"] += len(data)
                     if frames % 4 == 0:
                         said.append(LIVE_WORDS[len(said) % len(LIVE_WORDS)])
                         text({"type": "transcript.delta", "text": (" " if len(said) > 1 else "") + said[-1]})
@@ -519,9 +525,10 @@ class Handler(BaseHTTPRequestHandler):
 
     def json_body(self):
         try:
-            return json.loads(self.raw or b"{}")
+            body = json.loads(self.raw or b"{}")
         except ValueError:
             return {}
+        return body if isinstance(body, dict) else {}
 
     def eneo_route(self):
         """Eneo's own routes, and the control surface. Anything else under /api/v1/ is the BFF role's /api/eneo/ (one set of
@@ -569,10 +576,9 @@ class Handler(BaseHTTPRequestHandler):
             if LIVE_SUBPROTOCOL not in offered or ticket not in STATE.live_tickets:
                 self.send(403, {"detail": "no live ticket this stub gave"})
                 return True
-            STATE.live_tickets.discard(ticket)
-            with STATE.lock:
-                STATE.stats["last_live_handshake"] = {"subprotocols": offered, "origin": self.headers.get("Origin")}
-            self.live(subprotocol=LIVE_SUBPROTOCOL)
+            recording = STATE.live_tickets.pop(ticket)
+            self.live(subprotocol=LIVE_SUBPROTOCOL, recording=recording,
+                      handshake={"subprotocols": offered, "origin": self.headers.get("Origin")})
             return True
         if method == "GET" and len(parts) == 4 and parts[0] == "files" and parts[3] == "download":
             return self.signed_file(parts[1], parts[2], parse_qs(url.query))
@@ -635,9 +641,9 @@ class Handler(BaseHTTPRequestHandler):
         if parts[1] not in FLOWS:
             self.send(404, {"code": "flow_not_found", "detail": "Flow not found."})
             return True
-        self.json_body()
+        recording = self.json_body().get("recording_id")
         ticket = secrets.token_urlsafe(16)
-        STATE.live_tickets.add(ticket)
+        STATE.live_tickets[ticket] = recording if isinstance(recording, str) else ""
         STATE.count("live_tickets")
         self.send(201, {"ticket": ticket, "websocket_path": LIVE_PATH, "subprotocol": LIVE_SUBPROTOCOL,
                         "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=60)).isoformat(), "sample_rate": 16000,
@@ -715,7 +721,7 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         path = url.path.rstrip("/") + "/"
         if path.startswith("/api/live/") and self.headers.get("Upgrade", "").lower() == "websocket":
-            return self.live()
+            return self.live(recording=parse_qs(url.query).get("recording_id", [""])[0])
         if path == "/api/auth/status/":
             return self.send(200, {"authenticated": True, "auth_mode": "eneo_sso",
                                    "user": USER,
