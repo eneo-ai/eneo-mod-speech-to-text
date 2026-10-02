@@ -140,53 +140,55 @@ export function RecordingBar({
     <div className={styles.bar} data-status={marker}>
       <VStack gap={3} className={styles.barStack}>
         {warnings.length > 0 && (
-          <VStack gap={2}>
+          <VStack gap={2} className={styles.warnings}>
             {warnings.map((warning) => (
               <ProblemAlert key={warning.title} problem={warning} />
             ))}
           </VStack>
         )}
-        <div className={styles.row} data-status={marker}>
-          {showStatus && (
-            <div className={styles.readout}>
-              <RecordingStatus phase={phase} />
-              <div className={styles.readoutLine}>
-                <Timer capture={capture} phase={phase} weight="medium" />
-                <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
+        <VStack gap={3} className={styles.controls}>
+          <div className={styles.row} data-status={marker}>
+            {showStatus && (
+              <div className={styles.readout}>
+                <RecordingStatus phase={phase} />
+                <div className={styles.readoutLine}>
+                  <Timer capture={capture} phase={phase} weight="medium" />
+                  <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
+                </div>
               </div>
+            )}
+            <div className={styles.actions}>
+              <Button
+                label={running ? "Pausa" : "Fortsätt"}
+                variant="secondary"
+                size="lg"
+                width="100%"
+                icon={<Icon icon={running ? Pause : Play} size="md" />}
+                onClick={settled(onPause)}
+              />
+              <Button
+                label="Stoppa"
+                variant="primary"
+                size="lg"
+                width="100%"
+                icon={<Icon icon="stop" size="md" />}
+                onClick={settled(onStop)}
+              />
             </div>
-          )}
-          <div className={styles.actions}>
-            <Button
-              label={running ? "Pausa" : "Fortsätt"}
-              variant="secondary"
-              size="lg"
-              width="100%"
-              icon={<Icon icon={running ? Pause : Play} size="md" />}
-              onClick={settled(onPause)}
-            />
-            <Button
-              label="Stoppa"
-              variant="primary"
-              size="lg"
-              width="100%"
-              icon={<Icon icon="stop" size="md" />}
-              onClick={settled(onStop)}
-            />
           </div>
-        </div>
-        <VStack gap={0.5} className={styles.notes} data-status={marker}>
-          {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
-          <VStack role="status" gap={0.5}>
-            {notes.map((note) => (
-              <Text as="p" type="supporting" key={note}>
-                {note}
-              </Text>
-            ))}
+          <VStack gap={0.5} className={styles.notes} data-status={marker}>
+            {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
+            <VStack role="status" gap={0.5}>
+              {notes.map((note) => (
+                <Text as="p" type="supporting" key={note}>
+                  {note}
+                </Text>
+              ))}
+            </VStack>
+            <Text as="p" type="supporting" className={styles.stopLine}>
+              {stopLine(makesText)}
+            </Text>
           </VStack>
-          <Text as="p" type="supporting" className={styles.stopLine}>
-            {stopLine(makesText)}
-          </Text>
         </VStack>
       </VStack>
     </div>
