@@ -64,6 +64,9 @@ class Settings(BaseModel):
     max_upload_bytes: int = 1024 * 1024 * 1024
     # The most the module reads of one answer from Eneo (app/upstream.py); a file that streams to the browser is not counted.
     max_response_bytes: int = 32 * 1024 * 1024
+    # The folder with the built UI, which the backend serves last (app/web.py); unset serves no page (a launch with
+    # --api-only, the tests). The launcher refuses to start without it unless it is told not to serve the UI.
+    static_dir: Path | None = None
     # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
@@ -306,6 +309,7 @@ def load_settings() -> Settings:
         max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
         max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
         max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", 32 * 1024 * 1024),
+        static_dir=Path(os.environ["STATIC_DIR"]) if os.environ.get("STATIC_DIR") else None,
         session_max_age_seconds=session_minutes * 60,
         organization=organization,
         organization_logo=organization_logo,
