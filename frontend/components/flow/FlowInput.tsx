@@ -42,6 +42,7 @@ import {
   type SessionPhase,
 } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
+import { useDock } from "@/lib/dock";
 import { createActionLabel, makesText } from "@/lib/flow-output";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
@@ -121,7 +122,7 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const [dockSlot, dockRef] = useDock();
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
@@ -238,7 +239,7 @@ export function FlowInput({
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
             form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
             it would let a recording scroll. On a short screen it stays at the page's end instead of covering it. */}
-        {group === "setup" && <div ref={setDockSlot} className={styles.dock} />}
+        {group === "setup" && <div ref={dockRef} className={styles.dock} />}
       </FlowFrame>
     </>
   );

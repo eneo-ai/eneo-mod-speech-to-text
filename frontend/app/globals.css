@@ -30,13 +30,6 @@
     min-height: 100vh;
   }
 
-  /* A phone's docked primary action never covers the control that has focus. */
-  @media (max-width: 767px) {
-    html:has([data-docked-action]) {
-      scroll-padding-bottom: 8rem;
-    }
-  }
-
   /* The page: full window width, so a bar's band spans it, on the design system's own page colours (the wrapper is
      inside its theme root, where they are defined). */
   [data-app-shell] {
@@ -63,10 +56,12 @@
   --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
-/* A player docked at the bottom of a phone's screen never hides what has the keyboard focus (WCAG 2.4.11):
-   focus scrolls stop above it. From a laptop's width the player sits in its card and hides nothing. */
-@media (max-width: 1023px) {
-  html:has([data-docked-player]) { scroll-padding-bottom: 7rem; }
+/* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the
+   keyboard focus (WCAG 2.4.11): focus scrolls stop above it. The height is the dock's own, kept in --dock-block-size by
+   lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
+   edge (a laptop, a short screen) the variable is unset and only the margin is left. */
+html:has([data-docked-action], [data-docked-player]) {
+  scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-2));
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -6,6 +6,10 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 
+/** WCAG 1.4.12: the spacing a reader may set. Nothing may be cut off, covered or moved out of reach by it. */
+export const TEXT_SPACING =
+  "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
+
 export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
