@@ -2,3 +2,13 @@
 .count {
   max-inline-size: 7rem;
 }
+
+/* A finger needs the calendar button as large as the field is high: the design system's is a 16 px icon, and it opens
+   the same picker as a tap on the field itself. */
+@media (pointer: coarse) {
+  .date > button {
+    min-inline-size: var(--size-element-md);
+    min-block-size: var(--size-element-md);
+    justify-content: center;
+  }
+}

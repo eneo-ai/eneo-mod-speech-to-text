@@ -10,12 +10,12 @@
       - text: Dokumentet skapades före dina rättningar Den nya versionen görs från det rättade transkriptet.
       - button "Skapa dokumentet igen med rättningarna"
     - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
-      - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=attachment
+      - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=attachment
     - link "Öppna PDF i en ny flik":
-      - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=inline
+      - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=inline
     - region "Dokumentet":
       - link /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf i en ny flik/:
-        - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-pdf/content?disposition=inline
+        - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=inline
       - text: /PDF, \d+ B/
       - region "Förhandsvisning av texten i filen":
         - paragraph: Förhandsvisning av texten i filen
@@ -35,5 +35,5 @@
         - listitem:
           - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx Word, \d+ kB/
           - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
-            - /url: /api/eneo/flows/flow-1/runs/run-corrected/artifacts/art-docx/content?disposition=attachment
+            - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/126f349f-46fc-461a-8876-bf8e8603767e/content?disposition=attachment
     - button "Hur resultatet togs fram 2 steg"

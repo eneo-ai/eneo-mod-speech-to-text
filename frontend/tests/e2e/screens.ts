@@ -3,6 +3,7 @@
  * (stub-server.py): each state is a name and the steps a user takes to get there.
  */
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import ids from "../fixtures/ids.json";
 
 /** Opens a page of the app, with Next's dev-only indicator hidden (it is not the app). */
 export async function open(page: Page, path: string) {
@@ -53,7 +54,7 @@ export async function flows(page: Page) {
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
 }
 
-export async function setup(page: Page, flow = "flow-1") {
+export async function setup(page: Page, flow = ids.flows.flow1) {
   await open(page, `/flows/${flow}`);
   await heading(page, "Hur vill du lägga till ljudet?");
 }
@@ -163,13 +164,13 @@ export async function sending(page: Page) {
   await expect(page.getByText("Laddar upp filen")).toBeVisible();
 }
 
-export async function run(page: Page, id: string, flow = "flow-1") {
+export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   await open(page, `/flows/${flow}?run=${id}`);
 }
 
 /** The finished run with its transcript loaded. */
 export async function result(page: Page) {
-  await run(page, "run-done");
+  await run(page, ids.runs.done);
   await heading(page, "Dokumentet är klart");
   // Below a laptop's width the transcript waits in its tab.
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
@@ -390,7 +391,7 @@ export const STATES: State[] = [
   {
     name: "setup-required-detail",
     go: async (page) => {
-      await setup(page, "flow-3");
+      await setup(page, ids.flows.flow3);
       await chooseFile(page);
       await page.getByRole("button", { name: "Skapa dokument" }).click();
       // The sentence is also in a live region of the design system, outside the page's main region.
@@ -400,7 +401,7 @@ export const STATES: State[] = [
   {
     name: "setup-own-count-invalid",
     go: async (page) => {
-      await setup(page, "flow-3");
+      await setup(page, ids.flows.flow3);
       await chooseFile(page);
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("textbox", { name: "Antal talare" }).fill("2,5");
@@ -410,9 +411,23 @@ export const STATES: State[] = [
     },
   },
   {
+    // A flow that asks a date: the calendar is its own chunk, loaded when the field is first shown, and here opened. A finger
+    // gets the browser's own date field instead, which is not the page's to open.
+    name: "setup-date",
+    go: async (page) => {
+      await setup(page, ids.flows.flow5);
+      if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches)) {
+        await expect(page.getByLabel("Mötesdatum")).toBeVisible();
+        return;
+      }
+      await page.getByRole("button", { name: "Öppna kalender" }).click();
+      await expect(page.getByRole("dialog", { name: "Välj datum" })).toBeVisible();
+    },
+  },
+  {
     name: "setup-republished",
     go: async (page) => {
-      await setup(page, "flow-3");
+      await setup(page, ids.flows.flow3);
       await chooseFile(page);
       await page.getByRole("textbox", { name: "Ärende" }).fill("Samråd om detaljplan");
       await page.getByRole("button", { name: "Skapa dokument" }).click();
@@ -615,7 +630,7 @@ export const STATES: State[] = [
   {
     name: "run-progress",
     go: async (page) => {
-      await run(page, "run-running");
+      await run(page, ids.runs.running);
       await heading(page, "Dokumentet skapas");
       await expect(page.getByRole("status").filter({ hasText: "Skriv rapporten" })).toBeVisible();
     },
@@ -630,6 +645,16 @@ export const STATES: State[] = [
     },
   },
   { name: "result", go: result },
+  {
+    // A report with a table: the Markdown component draws it, its header row and its cells.
+    name: "result-table",
+    go: async (page) => {
+      await run(page, ids.runs.table);
+      await heading(page, "Dokumentet är klart");
+      await expect(page.getByRole("table")).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Ärende" })).toBeVisible();
+    },
+  },
   {
     name: "result-steps-open",
     go: async (page) => {
@@ -671,14 +696,14 @@ export const STATES: State[] = [
   {
     name: "result-regenerate",
     go: async (page) => {
-      await run(page, "run-corrected");
+      await run(page, ids.runs.corrected);
       await expect(page.getByText("Dokumentet skapades före dina rättningar")).toBeVisible();
     },
   },
   {
     name: "result-pdf-preview-whole",
     go: async (page) => {
-      await run(page, "run-pdf-long");
+      await run(page, ids.runs.pdfLong);
       await heading(page, "Dokumentet är klart");
       await page.getByRole("button", { name: "Visa hela texten" }).click();
       await expect(page.getByRole("button", { name: "Visa mindre" })).toBeVisible();
@@ -687,7 +712,7 @@ export const STATES: State[] = [
   {
     name: "result-without-transcript",
     go: async (page) => {
-      await run(page, "run-plain");
+      await run(page, ids.runs.plain);
       // Its result is text, so the page says so.
       await heading(page, "Texten är klar");
     },
@@ -695,7 +720,7 @@ export const STATES: State[] = [
   {
     name: "failure",
     go: async (page) => {
-      await run(page, "run-failed");
+      await run(page, ids.runs.failed);
       await heading(page, "Dokumentet kunde inte skapas");
       await page.getByRole("button", { name: "Visa teknisk information" }).click();
     },
@@ -703,7 +728,7 @@ export const STATES: State[] = [
   {
     name: "review",
     go: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       await heading(page, "Vem är vem?");
       await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
     },
@@ -711,7 +736,7 @@ export const STATES: State[] = [
   {
     name: "naming-dialog",
     go: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       // With the transcript read, each speaker's sample can be played, so the dialog opens on the first one's button.
       await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
       await page.getByRole("button", { name: "Namnge talarna" }).click();
@@ -722,7 +747,7 @@ export const STATES: State[] = [
     // "Ändra talare" on a passage: the popover's rows, whose touch targets the gate measures where it is open.
     name: "review-change-speaker",
     go: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
       await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("radio").first()).toBeFocused();
     },
@@ -730,7 +755,7 @@ export const STATES: State[] = [
   {
     name: "review-reject",
     go: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       await page.getByRole("button", { name: "Avvisa" }).click();
       await expect(page.getByRole("button", { name: "Bekräfta avvisning" })).toBeVisible();
     },
@@ -738,7 +763,7 @@ export const STATES: State[] = [
   {
     name: "review-text-edit",
     go: async (page) => {
-      await run(page, "run-review-text");
+      await run(page, ids.runs.reviewText);
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
       await expect(page.getByRole("main").locator("textarea")).toBeVisible();
@@ -747,7 +772,7 @@ export const STATES: State[] = [
   {
     name: "review-din-version",
     go: async (page) => {
-      await run(page, "run-review-text");
+      await run(page, ids.runs.reviewText);
       await heading(page, "Sammanfattning");
       await page.getByRole("button", { name: "Redigera" }).click();
       await page.getByRole("main").locator("textarea").fill("Kommunstyrelsen beslutade att höja budgetramen med tre procent.");
@@ -821,7 +846,7 @@ export const STATES: State[] = [
   {
     name: "flow-republish-required",
     go: async (page) => {
-      await open(page, "/flows/flow-4");
+      await open(page, `/flows/${ids.flows.flow4}`);
       await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
     },
   },

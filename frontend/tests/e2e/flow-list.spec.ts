@@ -4,6 +4,7 @@
  */
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { axe, blocking, endlessAnimations, reflow, targetSizes, unnamedControls } from "./checks";
+import ids from "../fixtures/ids.json";
 import { open } from "./screens";
 
 test.beforeEach(({}, info) =>
@@ -14,6 +15,7 @@ test.beforeEach(({}, info) =>
 );
 
 const FLOWS = "**/api/eneo/flows/?*";
+const FLOW_1 = new RegExp(`/flows/${ids.flows.flow1}$`);
 const SPACE = { space_id: "space-1", space_name: "Kommunledningskontoret" };
 const flow = (id: string, name: string, extra: object = {}) => ({ id, name, is_published: true, input_type: "audio", ...SPACE, ...extra });
 const answer = (items: object[], hasMore = false) => (route: Route) =>
@@ -166,7 +168,7 @@ test("the whole row opens the flow: the icon, the chevron and the row's own padd
     await open(page, "/flows");
     await expect(first).toBeVisible();
     await page.mouse.click(...point);
-    await expect(page, what).toHaveURL(/\/flows\/flow-1$/);
+    await expect(page, what).toHaveURL(FLOW_1);
   }
 });
 
@@ -174,6 +176,6 @@ test("opening a flow is a navigation inside the page, not a page load", async ({
   await open(page, "/flows");
   await page.evaluate(() => ((window as unknown as { __marker: boolean }).__marker = true));
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
-  await expect(page).toHaveURL(/\/flows\/flow-1$/);
+  await expect(page).toHaveURL(FLOW_1);
   expect(await page.evaluate(() => (window as unknown as { __marker?: boolean }).__marker), "the page was not reloaded").toBe(true);
 });
