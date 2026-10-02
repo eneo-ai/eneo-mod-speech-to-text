@@ -1,14 +1,10 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Center } from "@astryxdesign/core/Center";
-import { Spinner } from "@astryxdesign/core/Spinner";
-import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useRouter } from "next/navigation";
-import { Brand } from "@/components/Brand";
+import { LoadingShell } from "@/components/LoadingShell";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
-import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, type Question } from "@/lib/login-state";
@@ -177,16 +173,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     };
   }, [router]);
 
-  if (!user) {
-    return (
-      <ModuleShell label="Tal till text" heading={<Brand />}>
-        <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
-        <Center minHeight="60dvh">
-          <Spinner size="lg" aria-label="Laddar" />
-        </Center>
-      </ModuleShell>
-    );
-  }
+  if (!user) return <LoadingShell />;
 
   return (
     <AuthenticatedUserContext.Provider value={user}>

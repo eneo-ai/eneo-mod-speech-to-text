@@ -9,6 +9,7 @@ node_modules/
 out/
 build/
 dist/
+dist-check/
 *.tsbuildinfo
 next-env.d.ts
 .test-build/

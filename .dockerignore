@@ -5,6 +5,8 @@
 !.env.example
 **/.DS_Store
 **/.next
+**/dist
+**/dist-check
 **/.test-build
 **/.venv
 **/__pycache__

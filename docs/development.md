@@ -60,7 +60,7 @@ docker compose --env-file .env.example config -q
 
 ## Utan Docker: devcontainer
 
-Projektet har en devcontainer med Python 3.12 och Node 22 (`.devcontainer/devcontainer.json`).
+Projektet har en devcontainer med Python 3.12 och Node 22 (`.devcontainer/devcontainer.json`). Frontend kräver Node 22.22.2 eller senare (`engines` i `frontend/package.json`: react-router 8.4 kräver 22.22 och jsdom 30, som enhetstesterna kör, 22.22.2); devcontainern, CI och imagen hämtar senaste 22.x, så bygg om en äldre devcontainer.
 
 1. Öppna repot i VS Code.
 2. Kör **Dev Containers: Reopen in Container** och öppna en **ny terminal i det VS Code-fönstret**. Kommandona nedan ska köras inne i containern, där repot ligger på `/workspaces/eneo-mod-speech-to-text`.
