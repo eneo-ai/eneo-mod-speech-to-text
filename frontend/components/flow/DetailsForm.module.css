@@ -3,8 +3,9 @@
   max-inline-size: 7rem;
 }
 
-/* A finger needs the calendar button as large as the field is high: the design system's is a 16 px icon, and it opens
-   the same picker as a tap on the field itself. */
+/* Under a coarse pointer the field is the browser's own date field with the design system's calendar button beside it, a
+   16 px icon (WCAG 2.5.8 asks 24, the house bar 44). The button stays, at the field's height: it is no hook of the theme
+   (the toggle carries no themeProps, and theme rules do not nest), so this rule is the one place its size is set. */
 @media (pointer: coarse) {
   .date > button {
     min-inline-size: var(--size-element-md);
