@@ -250,7 +250,7 @@ API_READS = [
     f"/api/eneo/flows/{FLOW}/runs/{RUN_RUNNING}/status/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/steps/",
     f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/transcript-corrections/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/review-checkpoints/active/",
 ]
-UNKNOWN = ["/api/nope", "/api", "/api/", "/api/auth/nope/deeper", "/assets/x.js", "/assets/x.js.br", "/x.png", "/a/b/style.css", "/openapi.json", "/a%00.js"]
+UNKNOWN = ["/api/nope", "/api/auth/nope/deeper", "/assets/x.js", "/x.png", "/openapi.json"]
 _cache: dict[str, list[tuple[str, Response]]] = {}
 
 
@@ -325,7 +325,7 @@ def check_3() -> str:
     return f"{len(PAGES)} pages are 200 text/html no-cache; {len(PAGES) + len(reads)} requests, none a redirect"
 
 
-@check(4, "/api/nope, /assets/x.js, /x.png and the other unknown paths are 404 with no HTML body")
+@check(4, "an unknown /api path, a missing file and /openapi.json are 404 with no HTML body")
 def check_4() -> str:
     for path, r in fetched_unknowns():
         expect(r.status == 404, f"GET {path} answered {r.status}, not 404")

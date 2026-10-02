@@ -110,7 +110,7 @@ class WebSocket:
         payload = buf[offset : offset + length]
         self.buffer = buf[offset + length :]
         if mask:
-            payload = _mask_large(payload, mask) if length >= 4096 else bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+            payload = bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
         return opcode, payload
 
     def recv(self, timeout: float = 10.0) -> tuple[int, bytes]:
@@ -162,9 +162,8 @@ class WebSocket:
         else:
             head += bytes([0x80 | 127]) + struct.pack(">Q", length)
         mask = os.urandom(4)
-        masked = bytes(b ^ mask[i % 4] for i, b in enumerate(payload)) if length < 4096 else _mask_large(payload, mask)
         self.sock.settimeout(30)
-        self.sock.sendall(head + mask + masked)
+        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
 
     def send_binary(self, payload: bytes) -> None:
         self._send(BINARY, payload)
@@ -172,19 +171,7 @@ class WebSocket:
     def send_text(self, text: str) -> None:
         self._send(TEXT, text.encode())
 
-    def close(self) -> None:
-        try:
-            self._send(CLOSE, struct.pack(">H", 1000))
-        except OSError:
-            pass
-        self.sock.close()
-
     def abort(self) -> None:
         """Drop the connection with no close frame, as a browser tab that is closed does."""
         self.sock.close()
 
-
-def _mask_large(payload: bytes, mask: bytes) -> bytes:
-    """XOR a long payload with a 4-byte mask without a Python loop per byte (an int XOR over the whole payload)."""
-    repeated = (mask * (len(payload) // 4 + 1))[: len(payload)]
-    return (int.from_bytes(payload, "big") ^ int.from_bytes(repeated, "big")).to_bytes(len(payload), "big")
