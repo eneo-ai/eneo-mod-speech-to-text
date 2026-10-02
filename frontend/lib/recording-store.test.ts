@@ -5,6 +5,7 @@ import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 import { fakeWebLocks } from "./fake-web-locks";
 import {
   INCOMPLETE_ON_DEVICE,
+  memoryBackend,
   openRecordingStore,
   type NewRecording,
   type RecordingFile,
@@ -715,6 +716,28 @@ test("the store learns from the browser whether it may delete the device's recor
 
   assert.equal((await openRecordingStore({ storage: browser(false, false) })).evictable, false, "a store in memory says so with persistent, not this");
   assert.equal((await openRecordingStore(device())).evictable, false, "a browser that says nothing is not claimed");
+});
+
+test("the RAM fallback appends a chunk in place, so a long recording is not copied again for every chunk", async () => {
+  const backend = memoryBackend();
+  const recording = { id: "r", parts: [] } as unknown as Parameters<typeof backend.put>[0];
+  // Spreading an array iterates it: a copy per append shows as one iteration per append.
+  const iterate = Array.prototype[Symbol.iterator];
+  let copies = 0;
+  Array.prototype[Symbol.iterator] = function (this: unknown[]) {
+    copies += 1;
+    return iterate.call(this);
+  } as typeof iterate;
+  const N = 2_000; // a 5-hour recording holds 9,000 chunks
+  try {
+    for (let seq = 0; seq < N; seq += 1) void backend.put(recording, { recordingId: "r", part: 0, seq, data: new ArrayBuffer(1) });
+  } finally {
+    Array.prototype[Symbol.iterator] = iterate;
+  }
+  assert.equal(copies, 0, "no append copies what is already held");
+  const kept = await backend.chunks("r", 0);
+  assert.deepEqual(kept.map((chunk) => chunk.seq), Array.from({ length: N }, (_, seq) => seq), "all of them, in order");
+  assert.deepEqual(await backend.chunks("r", 1), [], "and only the part asked for");
 });
 
 test("recording asks for persistent storage and warns when little space is left", async () => {

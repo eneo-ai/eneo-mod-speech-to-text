@@ -37,10 +37,33 @@ export const unstoredDrafts = {
   },
 };
 
-export function readDraft<T>(storage: DraftStorage | null | undefined, ownerId: string, what: string): T | null {
+/** An object that is neither a list nor null: the first thing a reader of a draft of named parts checks. */
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * A draft in the shape its reader needs, or null. The storage holds what an earlier page wrote, which may be of an older
+ * shape or not a draft at all: `isDraft` is the reader's own check of what it is about to use. A draft that fails it, or
+ * is not JSON, is removed and counts as none, so it does not fail again at the next reload.
+ */
+export function readDraft<T>(
+  storage: DraftStorage | null | undefined,
+  ownerId: string,
+  what: string,
+  isDraft: (value: unknown) => value is T,
+): T | null {
   try {
     const raw = storage?.getItem(key(ownerId, what));
-    return raw ? (JSON.parse(raw) as T) : null;
+    if (!storage || !raw) return null;
+    try {
+      const value: unknown = JSON.parse(raw);
+      if (isDraft(value)) return value;
+    } catch {
+      // Not JSON.
+    }
+    storage.removeItem(key(ownerId, what));
+    return null;
   } catch {
     return null;
   }
