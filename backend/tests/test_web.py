@@ -474,11 +474,6 @@ class StaticServingTests(BuiltUiCase):
             "/x/%2E%2E/%2E%2E/secret.txt",
             "/..%5Csecret.txt",
             "/assets/..%5C..%5Csecret.txt",
-            "/%00",
-            "/a%00.js",
-            "/assets/a%00.js",
-            "/a%5Cb.js",
-            "/%5Cb.js",
             "/" + "a" * 5000 + ".js",
             "/assets/" + "a" * 5000,
         ):
@@ -489,6 +484,20 @@ class StaticServingTests(BuiltUiCase):
                 self.assertIn(response.status_code, (200, 400, 404))
                 if response.status_code == 200:
                     self.assertEqual(response.text, self.page, "the only 200 is the page, for a path with no extension")
+
+    def test_a_control_character_or_a_backslash_anywhere_in_the_path_is_a_404_json_never_the_page(self) -> None:
+        for path in (
+            "/%00", "/a%00", "/flows/%00", "/a%00.js", "/assets/a%00.js",  # NUL
+            "/%01", "/flows/%1f", "/%0a", "/%0d", "/a%09b", "/flows/a%7f",  # the rest of C0, and DEL
+            "/%5Cb", "/flows/a%5Cb", "/a%5Cb.js",  # a backslash
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+        for path in ("/a%20b", "/fl%C3%B6de/%C3%A5", "/flows/abc"):  # a space, and letters outside ASCII, are names
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).text, self.page)
 
     def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
         (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")

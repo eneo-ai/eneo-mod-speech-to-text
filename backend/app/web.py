@@ -5,8 +5,8 @@ Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commi
 kit's ``@app.middleware`` is Starlette's BaseHTTPMiddleware, which wraps the body of a streamed answer: this app streams
 audio and PDFs and must close its upstream when the browser leaves) and not its ``Permissions-Policy`` (the kit's empty
 microphone allowlist would stop the recording). ``serve_web`` is the kit's with four changes: the headers come from the
-middleware, assets are immutable and the rest revalidated, a path with a NUL byte or too long a name is a 404 and never a
-500, and HEAD is answered like GET. Plan C (the module kit) deletes this copy.
+middleware, assets are immutable and the rest revalidated, a path with a control character or a backslash, or too long a
+name, is a 404 and never the page or a 500, and HEAD is answered like GET. Plan C (the module kit) deletes this copy.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import hashlib
 import html
 import json
 import mimetypes
+import re
 from pathlib import Path
 
 import httpx
@@ -85,6 +86,8 @@ ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
 ASSETS = "assets"
+# A path with one of these (NUL and the rest of C0, DEL, a backslash) names nothing: a 404, never the page.
+_NOT_A_NAME = re.compile(r"[\x00-\x1f\x7f\\]")
 
 
 def _etag(data: bytes) -> str:
@@ -160,10 +163,8 @@ def _branded_page(index: Path, branding: str) -> bytes:
 
 
 def _file_under(root: Path, relative: str) -> Path | None:
-    """The file ``relative`` names inside ``root``, or None: for a NUL byte, a backslash, a link or a ``..`` that leaves
-    ``root``, a name the system refuses (too long), and anything that is not a file. Never an exception."""
-    if "\x00" in relative or "\\" in relative:
-        return None
+    """The file ``relative`` names inside ``root``, or None: for a link or a ``..`` that leaves ``root``, a name the
+    system refuses (too long, or with a NUL), and anything that is not a file. Never an exception."""
     try:
         candidate = (root / relative).resolve()
         if root not in candidate.parents or not candidate.is_file():
@@ -198,7 +199,9 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve(path: str, request: Request) -> Response:
         last = path.rsplit("/", 1)[-1]
-        if path == "api" or path.startswith("api/"):
+        # The scope's path, not ``path``: the route's pattern ends in ``$``, which matches before a trailing newline, so
+        # ``path`` has lost it.
+        if path == "api" or path.startswith("api/") or _NOT_A_NAME.search(request.scope["path"]):
             raise HTTPException(status_code=404)
         # A compressed sibling is served by negotiation only, never by its own name.
         if last.endswith((".br", ".gz")):
