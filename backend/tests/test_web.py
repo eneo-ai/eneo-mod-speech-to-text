@@ -3,12 +3,15 @@
 The header set is ``app/security_headers.json``, the one definition; a header an endpoint sets itself wins.
 """
 
+import gzip
+import html
 import importlib.util
 import json
 import os
 import tempfile
 import time
 import unittest
+from html.parser import HTMLParser
 from pathlib import Path
 from unittest.mock import patch
 
@@ -308,23 +311,31 @@ class AbandonedStreamTests(unittest.TestCase):
         self.assertLess(self.eneo.sent, 64 * MiB, "the answer was read on after the browser left")
 
 
+MARKER = '<meta name="eneo-branding" content="">'
+
+
+def branded(page: str, answer: str) -> str:
+    """``page`` with its marker holding ``answer`` (the text GET /api/branding gives), escaped as an attribute value."""
+    return page.replace(MARKER, f'<meta name="eneo-branding" content="{html.escape(answer, quote=True)}">')
+
+
 INDEX = (
-    '<!doctype html><html lang="sv"><head><title>Tal till text</title><meta name="eneo-branding" content=""></head>'
+    '<!doctype html><html lang="sv"><head><title>Tal till text</title>' + MARKER + '</head>'
     '<body><div id="root"></div></body></html>'
 )
 
 
-def load_app(static_dir: Path | None):
+def load_app(static_dir: Path | None, **environment: str):
     """A second, complete copy of the app (``app.main`` run again) configured with STATIC_DIR, as the launcher runs it.
 
     The routes, the middleware and the fallback are the real ones; nothing is added to the app the other tests use.
     """
     spec = importlib.util.spec_from_file_location("app_main_with_ui", Path(main.__file__))
     module = importlib.util.module_from_spec(spec)
-    environment = {key: value for key, value in os.environ.items() if key != "STATIC_DIR"}
+    variables = {key: value for key, value in os.environ.items() if key not in ("STATIC_DIR", "ORGANIZATION_NAME", "SHOW_ORGANIZATION")}
     if static_dir is not None:
-        environment["STATIC_DIR"] = str(static_dir)
-    with patch.dict(os.environ, environment, clear=True):
+        variables["STATIC_DIR"] = str(static_dir)
+    with patch.dict(os.environ, {**variables, **environment}, clear=True):
         spec.loader.exec_module(module)
     return module
 
@@ -338,8 +349,9 @@ class BuiltUiCase(unittest.TestCase):
         (self.root / "brand").mkdir()
         (self.root / "index.html").write_text(INDEX)
         (self.root / "assets" / "app.js").write_text("console.log(1)")
+        # Siblings, as the build writes them (the .br is not real brotli: no test client here asks for it unasked).
         (self.root / "assets" / "app.js.br").write_bytes(b"not really brotli")
-        (self.root / "assets" / "app.js.gz").write_bytes(b"not really gzip")
+        (self.root / "assets" / "app.js.gz").write_bytes(gzip.compress(b"console.log(1)"))
         (self.root / "assets" / "app.css").write_text("body{}")
         (self.root / "favicon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
         (self.root / "live-pcm-worklet.js").write_text("registerProcessor('pcm', class {})")
@@ -348,6 +360,8 @@ class BuiltUiCase(unittest.TestCase):
         (Path(folder.name) / "secret.txt").write_text("secret")
         self.module = load_app(self.root)
         self.client = TestClient(self.module.app, raise_server_exceptions=False, follow_redirects=False)
+        # What the page is: the file with its marker holding what GET /api/branding answers.
+        self.page = branded(INDEX, self.client.get("/api/branding").text)
 
 
 class StaticServingTests(BuiltUiCase):
@@ -357,7 +371,7 @@ class StaticServingTests(BuiltUiCase):
                 response = self.client.get(path)
 
                 self.assertEqual(response.status_code, 200)
-                self.assertEqual(response.text, INDEX)
+                self.assertEqual(response.text, self.page)
                 self.assertTrue(response.headers["content-type"].startswith("text/html"))
                 self.assertEqual(response.headers["cache-control"], "no-cache")
                 self.assertRegex(response.headers["etag"], r'^"[0-9a-f]{16}"$')
@@ -434,6 +448,7 @@ class StaticServingTests(BuiltUiCase):
 
                 self.assertEqual(response.status_code, 404)
                 self.assertNotIn("not really", response.text)
+                self.assertNotIn("content-encoding", response.headers)
 
     def test_a_path_cannot_leave_the_built_ui_and_none_is_a_500(self) -> None:
         for path in (
@@ -460,7 +475,7 @@ class StaticServingTests(BuiltUiCase):
                 self.assertNotIn("secret", response.text)
                 self.assertIn(response.status_code, (200, 400, 404))
                 if response.status_code == 200:
-                    self.assertEqual(response.text, INDEX, "the only 200 is the page, for a path with no extension")
+                    self.assertEqual(response.text, self.page, "the only 200 is the page, for a path with no extension")
 
     def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
         (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")
@@ -516,6 +531,177 @@ class StaticServingTests(BuiltUiCase):
                 self.assertEqual(client.get(path).status_code, 404)
         self.assertEqual(client.get("/health").json(), {"ok": True})
         self.assertEqual(client.get("/api/nope").json(), {"detail": "Not Found"})
+
+
+PLAIN_JS = "console.log('plain')"
+
+
+class PrecompressedTests(BuiltUiCase):
+    """A file with a .br or .gz beside it is served compressed to a client that accepts it, by negotiation only."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        (self.root / "assets" / "app.js").write_text(PLAIN_JS)
+        (self.root / "assets" / "app.js.br").write_bytes(b"BROTLI-BYTES")
+        (self.root / "assets" / "app.js.gz").write_bytes(gzip.compress(PLAIN_JS.encode()))
+        (self.root / "assets" / "app.css").write_text("body{}")  # no compressed sibling
+        (self.root / "index.html.br").write_bytes(b"BROTLI-PAGE")
+        (self.root / "index.html.gz").write_bytes(gzip.compress(INDEX.encode()))
+        self.client = TestClient(load_app(self.root).app, raise_server_exceptions=False, follow_redirects=False)
+
+    def raw(self, path: str, **headers: str) -> tuple[httpx.Response, bytes]:
+        """The answer and its body exactly as it went over the wire (undecoded)."""
+        with self.client.stream("GET", path, headers=headers) as response:
+            return response, b"".join(response.iter_raw())
+
+    def test_brotli_is_served_to_a_client_that_accepts_it(self) -> None:
+        response, body = self.raw("/assets/app.js", **{"Accept-Encoding": "br, gzip"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body, b"BROTLI-BYTES")
+        self.assertEqual(response.headers["content-encoding"], "br")
+        self.assertEqual(response.headers["vary"], "Accept-Encoding")
+        self.assertTrue(response.headers["content-type"].startswith("text/javascript"))
+        self.assertEqual(response.headers["cache-control"], "public, max-age=31536000, immutable")
+
+    def test_gzip_is_served_when_it_is_all_that_is_accepted(self) -> None:
+        for accept in ("gzip", "gzip, deflate", "br;q=0, gzip", "identity, gzip;q=0.5"):
+            with self.subTest(accept=accept):
+                response, body = self.raw("/assets/app.js", **{"Accept-Encoding": accept})
+
+                self.assertEqual(response.headers["content-encoding"], "gzip")
+                self.assertEqual(gzip.decompress(body).decode(), PLAIN_JS)
+                self.assertEqual(response.headers["vary"], "Accept-Encoding")
+                self.assertTrue(response.headers["content-type"].startswith("text/javascript"))
+
+    def test_a_client_that_accepts_neither_gets_the_plain_file_and_the_caches_are_told_it_varies(self) -> None:
+        for accept in ("", "identity", "deflate", "br;q=0, gzip;q=0"):
+            with self.subTest(accept=accept):
+                response, body = self.raw("/assets/app.js", **{"Accept-Encoding": accept})
+
+                self.assertEqual(body.decode(), PLAIN_JS)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertEqual(response.headers["vary"], "Accept-Encoding")
+
+    def test_each_encoding_has_its_own_etag_and_a_revalidation_is_a_304_that_says_so(self) -> None:
+        brotli, _ = self.raw("/assets/app.js", **{"Accept-Encoding": "br"})
+        gzipped, _ = self.raw("/assets/app.js", **{"Accept-Encoding": "gzip"})
+        plain, _ = self.raw("/assets/app.js", **{"Accept-Encoding": "identity"})
+
+        self.assertEqual(len({brotli.headers["etag"], gzipped.headers["etag"], plain.headers["etag"]}), 3)
+        again = self.client.get("/assets/app.js", headers={"Accept-Encoding": "br", "If-None-Match": brotli.headers["etag"]})
+        self.assertEqual((again.status_code, again.content), (304, b""))
+        self.assertEqual(again.headers["vary"], "Accept-Encoding")
+
+    def test_a_range_of_a_compressed_file_is_answered_whole(self) -> None:
+        # A range of a compressed file is not a range of the file.
+        response, body = self.raw("/assets/app.js", **{"Accept-Encoding": "br", "Range": "bytes=0-3"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(body, b"BROTLI-BYTES")
+        self.assertNotIn("content-range", response.headers)
+
+    def test_a_file_without_a_compressed_sibling_is_served_as_it_is(self) -> None:
+        response, body = self.raw("/assets/app.css", **{"Accept-Encoding": "br, gzip"})
+
+        self.assertEqual((response.status_code, body), (200, b"body{}"))
+        self.assertNotIn("content-encoding", response.headers)
+        self.assertNotIn("vary", response.headers)
+
+    def test_the_page_itself_is_never_precompressed(self) -> None:
+        for path in ("/", "/flows/abc", "/index.html"):
+            with self.subTest(path=path):
+                response, body = self.raw(path, **{"Accept-Encoding": "br, gzip"})
+
+                self.assertEqual(response.status_code, 200)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertIn(b"<title>Tal till text</title>", body)
+
+    def test_the_sibling_is_never_served_by_its_own_name(self) -> None:
+        for path in ("/assets/app.js.br", "/assets/app.js.gz"):
+            self.assertEqual(self.client.get(path, headers={"Accept-Encoding": "br, gzip"}).status_code, 404)
+
+
+class BrandingMarkerTests(BuiltUiCase):
+    """The page holds the organisation, written into it once at start, so the first frame already shows the mark."""
+
+    def page_with(self, **environment: str) -> tuple[httpx.Response, str]:
+        client = TestClient(load_app(self.root, **environment).app, raise_server_exceptions=False)
+        return client.get("/"), client.get("/api/branding").text
+
+    @staticmethod
+    def read(response: httpx.Response) -> tuple[list[str], list[tuple[str, str]]]:
+        """What an HTML parser makes of the page: the tags in it, and the content of each branding meta."""
+
+        class Reader(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__()
+                self.tags: list[str] = []
+                self.contents: list[tuple[str, str]] = []
+
+            def handle_starttag(self, tag: str, attributes: list[tuple[str, str | None]]) -> None:
+                self.tags.append(tag)
+                found = dict(attributes)
+                if tag == "meta" and found.get("name") == "eneo-branding":
+                    self.contents.append(("eneo-branding", found.get("content") or ""))
+
+        reader = Reader()
+        reader.feed(response.text)
+        return reader.tags, reader.contents
+
+    def attribute(self, response: httpx.Response) -> str:
+        _, contents = self.read(response)
+        self.assertEqual(len(contents), 1)
+        return contents[0][1]
+
+    def test_the_default_organisation_is_in_the_page_as_the_branding_endpoint_answers_it(self) -> None:
+        response, answer = self.page_with()
+
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(json.loads(answer)["organization"]["name"], "Sundsvalls kommun")
+        self.assertEqual(response.text, branded(INDEX, answer))
+
+    def test_a_named_organisation_is_in_the_page(self) -> None:
+        response, answer = self.page_with(ORGANIZATION_NAME="Umeå kommun")
+
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(json.loads(self.attribute(response)), {"organization": {"name": "Umeå kommun", "logo": None, "dark_logo": False}})
+
+    def test_no_organisation_is_in_the_page_as_null(self) -> None:
+        response, answer = self.page_with(SHOW_ORGANIZATION="false")
+
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(json.loads(answer), {"organization": None})
+
+    def test_a_name_with_quotes_brackets_and_ampersands_cannot_break_out_of_the_attribute(self) -> None:
+        name = "A \"B\" <script>x</script> & 'C' </head>"
+        response, answer = self.page_with(ORGANIZATION_NAME=name)
+
+        tags, _ = self.read(response)
+        self.assertEqual(json.loads(self.attribute(response))["organization"]["name"], name)
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(tags, ["html", "head", "title", "meta", "body", "div"], "no element came out of the name")
+        self.assertNotIn("<script", response.text)
+        self.assertEqual(response.text.count("</head>"), 1)
+
+    def test_different_organisations_have_different_etags_and_the_same_one_the_same(self) -> None:
+        first, _ = self.page_with(ORGANIZATION_NAME="Umeå kommun")
+        second, _ = self.page_with(ORGANIZATION_NAME="Luleå kommun")
+        again, _ = self.page_with(ORGANIZATION_NAME="Umeå kommun")
+
+        self.assertNotEqual(first.headers["etag"], second.headers["etag"])
+        self.assertEqual(first.headers["etag"], again.headers["etag"])
+
+    def test_a_page_without_the_marker_or_with_two_stops_the_start_and_names_the_file(self) -> None:
+        for label, text in {"none": INDEX.replace(MARKER, ""), "two": INDEX.replace(MARKER, MARKER + MARKER), "filled": INDEX.replace('content=""', 'content="x"')}.items():
+            with self.subTest(label):
+                (self.root / "index.html").write_text(text)
+
+                with self.assertRaises(RuntimeError) as refused:
+                    load_app(self.root)
+
+                self.assertIn(str(self.root / "index.html"), str(refused.exception))
+                self.assertIn("eneo-branding", str(refused.exception))
 
 
 if __name__ == "__main__":

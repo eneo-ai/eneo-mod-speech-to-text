@@ -25,6 +25,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -131,9 +132,13 @@ async def get_config():
 # Settings.accent). No branding route asks for a session: the login page shows the organisation before there is one.
 
 
+def _branding() -> dict[str, object]:
+    return {"organization": settings.organization}
+
+
 @app.get("/api/branding")
 async def get_branding():
-    return {"organization": settings.organization}
+    return _branding()
 
 
 @app.get("/api/branding/logo/{variant}")
@@ -1218,4 +1223,5 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
 
 # Last, after every route: the built UI, its files, and the page for every address of the app.
 if settings.static_dir is not None:
-    serve_web(app, settings.static_dir)
+    # The page holds the organisation, as GET /api/branding answers it (the same JSON, rendered the same way).
+    serve_web(app, settings.static_dir, branding=JSONResponse(jsonable_encoder(_branding())).body.decode())

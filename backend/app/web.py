@@ -12,7 +12,9 @@ middleware, assets are immutable and the rest revalidated, a path with a NUL byt
 from __future__ import annotations
 
 import hashlib
+import html
 import json
+import mimetypes
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
@@ -69,6 +71,13 @@ def etag_matches(if_none_match: str | None, current: str) -> bool:
     return "*" in listed or current in listed
 
 
+# The page holds this empty marker; the backend writes what GET /api/branding answers into it, once, at start, so the
+# first frame already shows the organisation's mark (a fetch after the first render would pop it in and shift the
+# header). A meta element, not a script: the policy allows no inline script.
+BRANDING_MARKER = '<meta name="eneo-branding" content="">'
+# A file with one of these extensions that has a .br or .gz beside it is served compressed to a client that accepts it.
+COMPRESSIBLE = frozenset({".js", ".css", ".svg", ".json", ".html", ".txt"})
+ENCODINGS = (("br", ".br"), ("gzip", ".gz"))  # in order of preference
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
@@ -77,6 +86,35 @@ ASSETS = "assets"
 
 def _etag(data: bytes) -> str:
     return '"' + hashlib.sha256(data).hexdigest()[:16] + '"'
+
+
+def _accepted_encodings(accept_encoding: str | None) -> set[str]:
+    """The content codings a client names with a quality above zero (``gzip``, ``br;q=0`` is not one)."""
+    accepted = set()
+    for part in (accept_encoding or "").split(","):
+        name, *parameters = (piece.strip() for piece in part.split(";"))
+        quality = 1.0
+        for parameter in parameters:
+            key, _, value = parameter.partition("=")
+            if key.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+        if name and quality > 0:
+            accepted.add(name.lower())
+    return accepted
+
+
+def _branded_page(index: Path, branding: str) -> bytes:
+    """``index`` with its one marker holding ``branding`` (JSON), escaped as an attribute value; refuses any other page."""
+    text = index.read_text(encoding="utf-8")
+    found = text.count(BRANDING_MARKER)
+    if found != 1:
+        raise RuntimeError(
+            f"{index} must hold exactly one {BRANDING_MARKER} (the organisation is written into it at start); found {found}"
+        )
+    return text.replace(BRANDING_MARKER, f'<meta name="eneo-branding" content="{html.escape(branding, quote=True)}">').encode()
 
 
 def _file_under(root: Path, relative: str) -> Path | None:
@@ -93,18 +131,19 @@ def _file_under(root: Path, relative: str) -> Path | None:
     return candidate
 
 
-def serve_web(app: FastAPI, static_dir: Path) -> None:
+def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
     """The built UI: its files, and its one page for every address of the app. Register it after every route.
 
     ``/api`` and anything under it that no route answered is a 404 JSON; a path whose last segment has a dot names a
     file, and a missing one is a 404 JSON; anything else is ``index.html``. Never the page for a missing file or an
-    unknown API path, and never a 500 for a hostile path.
+    unknown API path, and never a 500 for a hostile path. ``branding`` is the JSON text GET /api/branding answers; it
+    goes into the page's marker, and a page without exactly one marker stops the start.
     """
     root = static_dir.resolve()
     index = root / "index.html"
     # Read once, here: the page is the same for every request. A folder with no index.html answers no page (the
     # launcher refuses to start in that case; the app does not fail to import for it).
-    page = index.read_bytes() if index.is_file() else None
+    page = _branded_page(index, branding) if index.is_file() else None
     page_headers = {"Cache-Control": REVALIDATE, "ETag": _etag(page)} if page is not None else {}
 
     def answer_page(request: Request) -> Response:
@@ -130,8 +169,22 @@ def serve_web(app: FastAPI, static_dir: Path) -> None:
         if file is None or file == index:
             raise HTTPException(status_code=404)
         headers = {"Cache-Control": ASSET_CACHE_CONTROL if in_assets else REVALIDATE}
-        stat = file.stat()
-        headers["ETag"] = _etag(f"{stat.st_mtime_ns}-{stat.st_size}".encode())
+        served, encoding = file, None
+        if file.suffix in COMPRESSIBLE:
+            siblings = {name: sibling for name, suffix in ENCODINGS if (sibling := _file_under(root, path + suffix)) is not None}
+            if siblings:
+                headers["Vary"] = "Accept-Encoding"
+                accepted = _accepted_encodings(request.headers.get("accept-encoding"))
+                encoding = next((name for name, _ in ENCODINGS if name in siblings and name in accepted), None)
+                if encoding is not None:
+                    served = siblings[encoding]
+                    headers["Content-Encoding"] = encoding
+        stat = served.stat()
+        # Each encoding of a file is a different body: its own validator.
+        headers["ETag"] = _etag(f"{stat.st_mtime_ns}-{stat.st_size}-{encoding}".encode())
         if etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
-            return Response(status_code=304, headers=headers)
+            return Response(status_code=304, headers={name: value for name, value in headers.items() if name != "Content-Encoding"})
+        if encoding is not None:
+            # Not a FileResponse: it would honour a Range, and a range of a compressed file is not a range of the file.
+            return Response(content=served.read_bytes(), media_type=mimetypes.guess_type(file.name)[0], headers=headers)
         return FileResponse(file, headers=headers)
