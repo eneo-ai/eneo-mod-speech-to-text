@@ -133,7 +133,7 @@ class ArtifactProxyTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-disposition"], ENEO_DISPOSITION)
-        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(response.headers["x-frame-options"], "DENY")  # no exception to the app-wide default: it is no inline PDF
 
     def test_eneo_names_the_file_and_the_page_cannot_rename_it(self) -> None:
         self.fake.disposition = 'attachment; filename="step_4_output.pdf"'
@@ -157,7 +157,7 @@ class ArtifactProxyTests(unittest.TestCase):
         response = self.client.get(CONTENT, params={"disposition": "inline"})
 
         self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
-        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(response.headers["x-frame-options"], "DENY")  # no exception to the app-wide default: it is no inline PDF
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def test_a_file_name_cannot_break_out_of_the_header(self) -> None:
