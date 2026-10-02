@@ -3,11 +3,14 @@
 The header set is ``app/security_headers.json``, the one definition; a header an endpoint sets itself wins.
 """
 
+import importlib.util
 import json
 import os
+import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
@@ -303,6 +306,216 @@ class AbandonedStreamTests(unittest.TestCase):
             time.sleep(0.02)
         self.assertEqual(self.eneo.outcomes, ["dropped"], "the module's request to Eneo was left open")
         self.assertLess(self.eneo.sent, 64 * MiB, "the answer was read on after the browser left")
+
+
+INDEX = (
+    '<!doctype html><html lang="sv"><head><title>Tal till text</title><meta name="eneo-branding" content=""></head>'
+    '<body><div id="root"></div></body></html>'
+)
+
+
+def load_app(static_dir: Path | None):
+    """A second, complete copy of the app (``app.main`` run again) configured with STATIC_DIR, as the launcher runs it.
+
+    The routes, the middleware and the fallback are the real ones; nothing is added to the app the other tests use.
+    """
+    spec = importlib.util.spec_from_file_location("app_main_with_ui", Path(main.__file__))
+    module = importlib.util.module_from_spec(spec)
+    environment = {key: value for key, value in os.environ.items() if key != "STATIC_DIR"}
+    if static_dir is not None:
+        environment["STATIC_DIR"] = str(static_dir)
+    with patch.dict(os.environ, environment, clear=True):
+        spec.loader.exec_module(module)
+    return module
+
+
+class BuiltUiCase(unittest.TestCase):
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.root = Path(folder.name) / "dist"
+        (self.root / "assets").mkdir(parents=True)
+        (self.root / "brand").mkdir()
+        (self.root / "index.html").write_text(INDEX)
+        (self.root / "assets" / "app.js").write_text("console.log(1)")
+        (self.root / "assets" / "app.js.br").write_bytes(b"not really brotli")
+        (self.root / "assets" / "app.js.gz").write_bytes(b"not really gzip")
+        (self.root / "assets" / "app.css").write_text("body{}")
+        (self.root / "favicon.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+        (self.root / "live-pcm-worklet.js").write_text("registerProcessor('pcm', class {})")
+        (self.root / "brand" / "mark.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+        # Beside the built UI, not in it: nothing may reach this.
+        (Path(folder.name) / "secret.txt").write_text("secret")
+        self.module = load_app(self.root)
+        self.client = TestClient(self.module.app, raise_server_exceptions=False, follow_redirects=False)
+
+
+class StaticServingTests(BuiltUiCase):
+    def test_every_route_of_the_app_is_the_page_revalidated_with_an_etag(self) -> None:
+        for path in ("/", "/flows", "/flows/", "/flows/abc", "/flows/abc/", "/flows/abc?run=r", "/inloggad", "/inloggad?fel=utgangen", "/a/b/c", "/assets"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.text, INDEX)
+                self.assertTrue(response.headers["content-type"].startswith("text/html"))
+                self.assertEqual(response.headers["cache-control"], "no-cache")
+                self.assertRegex(response.headers["etag"], r'^"[0-9a-f]{16}"$')
+
+    def test_a_revalidation_of_the_page_is_a_304_with_the_same_headers(self) -> None:
+        first = self.client.get("/flows/abc")
+
+        again = self.client.get("/flows/abc", headers={"If-None-Match": first.headers["etag"]})
+
+        self.assertEqual((again.status_code, again.content), (304, b""))
+        self.assertEqual(again.headers["etag"], first.headers["etag"])
+        self.assertEqual(again.headers["cache-control"], "no-cache")
+        for name, value in default_headers().items():
+            self.assertEqual(again.headers[name], value, name)
+        stale = self.client.get("/flows/abc", headers={"If-None-Match": '"0000000000000000"'})
+        self.assertEqual(stale.status_code, 200)
+
+    def test_index_html_is_the_same_processed_page(self) -> None:
+        page, index = self.client.get("/"), self.client.get("/index.html")
+
+        self.assertEqual((index.status_code, index.text, index.headers["etag"]), (200, page.text, page.headers["etag"]))
+        self.assertEqual(index.headers["cache-control"], "no-cache")
+
+    def test_the_api_and_every_unknown_api_path_is_404_json_never_the_page(self) -> None:
+        for path in ("/api", "/api/", "/api/nope", "/api/auth/nope/deeper", "/api/eneo", "/api/config/", "/api/live"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertTrue(response.headers["content-type"].startswith("application/json"))
+                self.assertEqual(response.json(), {"detail": "Not Found"})
+                self.assertNotIn("<title>", response.text)
+
+    def test_a_write_to_an_unknown_path_is_a_json_refusal_never_the_page(self) -> None:
+        for method, path in (("POST", "/api/nope"), ("POST", "/nope"), ("DELETE", "/flows/abc")):
+            with self.subTest(method=method, path=path):
+                response = self.client.request(method, path)
+
+                self.assertIn(response.status_code, (404, 405))
+                self.assertTrue(response.headers["content-type"].startswith("application/json"))
+
+    def test_an_asset_is_immutable_and_a_missing_one_is_404_json(self) -> None:
+        asset = self.client.get("/assets/app.js")
+
+        self.assertEqual(asset.status_code, 200)
+        self.assertEqual(asset.headers["cache-control"], "public, max-age=31536000, immutable")
+        self.assertTrue(asset.headers["content-type"].startswith("text/javascript"))
+        self.assertEqual(asset.text, "console.log(1)")
+        for path in ("/assets/x.js", "/assets/nope/x.js", "/logo.png", "/a/b/style.css", "/favicon.ico", "/x.js"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertTrue(response.headers["content-type"].startswith("application/json"))
+                self.assertNotIn("<title>", response.text)
+
+    def test_a_file_at_the_root_is_served_and_revalidated(self) -> None:
+        worklet = self.client.get("/live-pcm-worklet.js")
+
+        self.assertEqual(worklet.status_code, 200)
+        self.assertTrue(worklet.headers["content-type"].startswith("text/javascript"))
+        self.assertEqual(worklet.headers["cache-control"], "no-cache")
+        self.assertTrue(worklet.headers["etag"])
+        again = self.client.get("/live-pcm-worklet.js", headers={"If-None-Match": worklet.headers["etag"]})
+        self.assertEqual((again.status_code, again.content), (304, b""))
+        mark = self.client.get("/brand/mark.svg")
+        self.assertEqual((mark.status_code, mark.headers["content-type"].split(";")[0]), (200, "image/svg+xml"))
+        self.assertEqual(self.client.get("/favicon.svg").status_code, 200)
+
+    def test_precompressed_files_are_served_only_by_negotiation_never_by_name(self) -> None:
+        for path in ("/assets/app.js.br", "/assets/app.js.gz", "/index.html.br", "/favicon.svg.gz"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 404)
+                self.assertNotIn("not really", response.text)
+
+    def test_a_path_cannot_leave_the_built_ui_and_none_is_a_500(self) -> None:
+        for path in (
+            "/../secret.txt",
+            "/%2E%2E/secret.txt",
+            "/..%2Fsecret.txt",
+            "/%2E%2E%2Fsecret.txt",
+            "/assets/%2E%2E/secret.txt",
+            "/assets/..%2F..%2Fsecret.txt",
+            "/x/%2E%2E/%2E%2E/secret.txt",
+            "/..%5Csecret.txt",
+            "/assets/..%5C..%5Csecret.txt",
+            "/%00",
+            "/a%00.js",
+            "/assets/a%00.js",
+            "/a%5Cb.js",
+            "/%5Cb.js",
+            "/" + "a" * 5000 + ".js",
+            "/assets/" + "a" * 5000,
+        ):
+            with self.subTest(path=path[:60]):
+                response = self.client.get(path)
+
+                self.assertNotIn("secret", response.text)
+                self.assertIn(response.status_code, (200, 400, 404))
+                if response.status_code == 200:
+                    self.assertEqual(response.text, INDEX, "the only 200 is the page, for a path with no extension")
+
+    def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
+        (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")
+
+        response = self.client.get("/link.txt")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertNotIn("secret", response.text)
+
+    def test_head_is_answered_like_get_without_a_body(self) -> None:
+        for path in ("/", "/flows/abc", "/health", "/api/healthz", "/assets/app.js", "/live-pcm-worklet.js"):
+            with self.subTest(path=path):
+                got, head = self.client.get(path), self.client.head(path)
+
+                self.assertEqual(head.status_code, got.status_code)
+                self.assertEqual(head.content, b"")
+                self.assertEqual(head.headers.get("etag"), got.headers.get("etag"))
+
+    def test_the_modules_own_routes_win_over_the_fallback(self) -> None:
+        for path in ("/health", "/api/healthz"):
+            with self.subTest(path=path):
+                self.assertEqual(self.client.get(path).json(), {"ok": True})
+        self.assertIn("organization", self.client.get("/api/branding").json())
+        theme = self.client.get("/api/branding/theme.css")
+        self.assertEqual((theme.status_code, theme.headers["content-type"].split(";")[0]), (200, "text/css"))
+        # The route's own answers, not the fallback's: a session check, and "no logo is configured".
+        self.assertEqual(self.client.get("/api/config").status_code, 401)
+        self.assertEqual(self.client.get("/api/branding/logo/light").json(), {"detail": "No logo is configured"})
+
+    def test_every_answer_of_the_ui_carries_the_security_headers(self) -> None:
+        for path in ("/", "/flows/abc", "/assets/app.js", "/assets/nope.js", "/favicon.svg", "/nope.png", "/api/nope", "/health", "/..%2Fsecret.txt"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                for name, value in default_headers().items():
+                    self.assertEqual(response.headers.get_list(name), [value], f"{name} on {path}")
+
+    def test_health_answers_json_even_for_a_folder_with_no_page(self) -> None:
+        # The launcher refuses to start without index.html (B1.1); the route is not what checks it.
+        empty = tempfile.TemporaryDirectory()
+        self.addCleanup(empty.cleanup)
+        client = TestClient(load_app(Path(empty.name)).app, raise_server_exceptions=False)
+
+        self.assertEqual(client.get("/health").json(), {"ok": True})
+        self.assertEqual(client.get("/api/healthz").json(), {"ok": True})
+        self.assertEqual(client.get("/").status_code, 404)
+
+    def test_without_a_static_dir_the_app_serves_no_page_and_nothing_else_changes(self) -> None:
+        client = TestClient(load_app(None).app, raise_server_exceptions=False)
+
+        for path in ("/", "/flows/abc", "/index.html", "/assets/app.js"):
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path).status_code, 404)
+        self.assertEqual(client.get("/health").json(), {"ok": True})
+        self.assertEqual(client.get("/api/nope").json(), {"detail": "Not Found"})
 
 
 if __name__ == "__main__":

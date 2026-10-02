@@ -148,6 +148,13 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, valid_environment(), clear=True):
             self.assertEqual(load_settings().upload_proxy_timeout_seconds, 1800.0)
 
+    def test_static_dir_is_the_folder_of_the_built_ui_or_nothing(self) -> None:
+        for raw, expected in ((None, None), ("", None), ("/app/frontend/dist", Path("/app/frontend/dist"))):
+            with self.subTest(raw=raw):
+                environment = valid_environment() | ({} if raw is None else {"STATIC_DIR": raw})
+                with patch.dict(os.environ, environment, clear=True):
+                    self.assertEqual(load_settings().static_dir, expected)
+
     def test_rejects_unknown_auth_mode(self) -> None:
         environment = valid_environment()
         environment["AUTH_MODE"] = "automatic"
