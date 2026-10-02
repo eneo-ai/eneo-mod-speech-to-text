@@ -104,17 +104,8 @@ async def fetch(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, host
     headers = {k.strip().lower(): v.strip() for k, _, v in (line.partition(":") for line in lines[1:] if line)}
     if "content-length" in headers:
         body = await reader.readexactly(int(headers["content-length"]))
-    elif headers.get("transfer-encoding", "").lower() == "chunked":
-        body = b""
-        while True:
-            size = int((await reader.readline()).split(b";")[0], 16)
-            if size == 0:
-                await reader.readline()
-                break
-            body += await reader.readexactly(size)
-            await reader.readexactly(2)
     else:
-        body = b""
+        raise ValueError(f"{path}: an answer with no Content-Length")
     return status, len(body), body
 
 

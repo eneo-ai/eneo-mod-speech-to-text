@@ -54,7 +54,7 @@ services:
     command: ["--configFile=/etc/traefik/traefik.yml"]
     volumes:
       - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./routes.yml:/etc/traefik/routes.yml:ro
+      - ./traefik-routes.yml:/etc/traefik/traefik-routes.yml:ro
     ports:
       - "127.0.0.1:${ACCEPT_TRAEFIK_PORT:-8480}:80"
     depends_on:
