@@ -314,12 +314,6 @@ _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
         frozenset({"GET"}),
         re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
     ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/template-files/{_RESOURCE_ID}/signed-url/$"
-        ),
-    ),
 )
 
 
