@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
-import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveSocket } from "./live-transcriber";
+import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps, type LiveSocket } from "./live-transcriber";
+import { createLoginState } from "./login-state";
 
 class FakeSocket implements LiveSocket {
   binaryType = "blob";
@@ -53,14 +54,12 @@ function fakeLogin() {
   const listeners = new Set<() => void>();
   const cover = (on: boolean) => {
     login.signedOut = on;
+    login.revision += 1;
     listeners.forEach((listener) => listener());
   };
   const login = {
     signedOut: false,
-    ended: () => {
-      calls.ended += 1;
-      cover(true);
-    },
+    revision: 0,
     userChanged: () => {
       calls.userChanged += 1;
       cover(true);
@@ -70,11 +69,11 @@ function fakeLogin() {
       return () => void listeners.delete(listener);
     },
   };
-  const calls = { ended: 0, userChanged: 0 };
+  const calls = { userChanged: 0 };
   return { login, cover, calls };
 }
 
-function setup(options: { online?: boolean; login?: ReturnType<typeof fakeLogin>["login"] } = {}) {
+function setup(options: { online?: boolean; login?: LiveDeps["login"] } = {}) {
   const sockets: FakeSocket[] = [];
   const timers: Array<{ fn: () => void; ms: number; at: number; cleared: boolean }> = [];
   const browser = fakeBrowser(options.online ?? true);
@@ -460,7 +459,7 @@ test("a close that names another user covers the page as a login that ended, and
   sockets[0].ready();
   live.pushFrame(new Uint8Array([1]).buffer);
   sockets[0].drop(1008, "user_changed");
-  assert.deepEqual(calls, { ended: 0, userChanged: 1 }, "the page asks whose login it is");
+  assert.deepEqual(calls, { userChanged: 1 }, "the page asks whose login it is");
   assert.equal(live.getSnapshot().status, "reconnecting");
   live.pushFrame(new Uint8Array([2]).buffer);
   elapse(60_000);
@@ -490,13 +489,13 @@ test("refused for another user before live text was ever ready, it waits for the
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [7]);
 });
 
-test("a session that ended under the open socket covers the page too, and live text opens nothing until the page's own user is back", () => {
+test("a session that ended under the open socket covers the page and asks whose login it is, and live text opens nothing until the page's own user is back", () => {
   const { login, cover, calls } = fakeLogin();
   const { live, sockets, elapse } = setup({ login });
   live.start();
   sockets[0].ready();
   sockets[0].drop(1008, "session_ended");
-  assert.deepEqual(calls, { ended: 1, userChanged: 0 });
+  assert.deepEqual(calls, { userChanged: 1 }, "another user's login may have replaced it");
   assert.equal(live.getSnapshot().status, "reconnecting");
   live.pushFrame(new Uint8Array([3]).buffer);
   elapse(60_000);
@@ -514,7 +513,7 @@ test("a session that ended before live text was ever ready waits for the page's 
   live.start();
   live.pushFrame(new Uint8Array([5]).buffer);
   sockets[0].drop(1008, "session_ended"); // closed before any `ready`
-  assert.deepEqual(calls, { ended: 1, userChanged: 0 });
+  assert.deepEqual(calls, { userChanged: 1 });
   assert.equal(live.getSnapshot().status, "reconnecting", "not unavailable");
   elapse(60_000);
   assert.equal(sockets.length, 1, "nothing opens while covered, whatever the backoff says");
@@ -526,13 +525,32 @@ test("a session that ended before live text was ever ready waits for the page's 
   assert.deepEqual(sockets[1].frames().map((frame) => new Uint8Array(frame)[0]), [5], "the audio from before goes now");
 });
 
+test("a close from a socket opened before the login changed does not cover the page that is signed in again", () => {
+  const login = createLoginState();
+  const end = login.begin({ id: "user-1", email: "anna@example.se" });
+  try {
+    const { live, sockets } = setup({ login });
+    live.start();
+    sockets[0].ready();
+    login.ended(); // a request finds the login ended: the page is covered, the socket is retired
+    login.observe({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" } }, login.revision);
+    assert.equal(login.signedOut, false, "signed in again");
+
+    sockets[0].drop(1008, "session_ended"); // the old socket's close, from the old cookie, arrives late
+    assert.equal(login.signedOut, false, "does not cover the signed-in page again");
+    assert.equal(sockets.length, 1, "and live text tries again as after any break");
+  } finally {
+    end();
+  }
+});
+
 test("another policy close covers nothing", () => {
   const { login, calls } = fakeLogin();
   const { live, sockets } = setup({ login });
   live.start();
   sockets[0].ready();
   sockets[0].drop(1008, "something_else");
-  assert.deepEqual(calls, { ended: 0, userChanged: 0 });
+  assert.deepEqual(calls, { userChanged: 0 });
 });
 
 test("the socket is the page's own origin, with no subprotocol", () => {

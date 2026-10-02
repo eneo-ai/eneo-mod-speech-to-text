@@ -102,15 +102,17 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     let channel: BroadcastChannel | null = null;
 
     let endPage: (() => void) | undefined;
-    const observe = (s: AuthStatus) => {
-      // Signed in, until when, or signed out: the page asks for a new login in place, never navigates.
-      loginState.observe(s);
+    const observe = (s: AuthStatus, revision: number) => {
+      // Signed in, until when, or signed out: the page asks for a new login in place, never navigates. An answer to
+      // a read that went out before the login last changed describes a login that is gone: it is not used.
+      if (!loginState.observe(s, revision)) return false;
       if (s.authenticated && s.session_ends_in !== undefined) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
         setMode(s.auth_mode);
       }
+      return true;
     };
     // Answers can come back out of order (a slow check, then a renewal's): only an answer to a later question
     // than the last one used moves the end or the keepalive. A stopped keepalive's answers count the same way.
@@ -118,11 +120,12 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     let used = 0;
     const read = async (): Promise<AuthStatus | null> => {
       const question = ++asked;
+      // The login as it is when the read goes out (loginState.revision).
+      const revision = loginState.revision;
       const s = await authStatus();
       if (cancelled || question <= used) return null;
       used = question;
-      observe(s);
-      return s;
+      return observe(s, revision) ? s : null;
     };
     // The token keepalive follows the latest status: a renewed login brings a token of its own to refresh,
     // after the old one's keepalive stopped at the old end.
