@@ -7,8 +7,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
-import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
+import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
+import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
   "signin-access-code",
@@ -47,6 +47,21 @@ for (const name of WALKS) {
     if (!isLaptop(info)) {
       expect.soft(orderProblems(stops), "focus order follows the reading order (WCAG 2.4.3)").toEqual([]);
     }
+  });
+}
+
+// The docked action of a phone grows with its words and with the spacing a reader may set (WCAG 1.4.12): focus must
+// still stop above it, whatever its height is.
+for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
+  test(`tab through ${name} with the text spacing a reader may set`, async ({ page }, info) => {
+    test.skip(!isPhone(info), "the docked action is a phone's");
+    await STATES.find((s) => s.name === name)!.go(page, info);
+    await page.addStyleTag({ content: TEXT_SPACING });
+    const { stops, left } = await tabWalk(page);
+    writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
+    expect(stops.length, "something to focus").toBeGreaterThan(0);
+    expect.soft(left, `focus never leaves the page after ${stops.length} stops (WCAG 2.1.2)`).toBe(true);
+    expect.soft(stopProblems(stops), "focus visible and unobscured").toEqual([]);
   });
 }
 

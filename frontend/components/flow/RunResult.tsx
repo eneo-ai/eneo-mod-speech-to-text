@@ -11,6 +11,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
+import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
 import type { Playback } from "@/lib/playback";
 import { fileText, transcriptFileName, type ResultFileView } from "@/lib/run-files";
@@ -208,10 +209,11 @@ export function RunResult({
  */
 function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () => void }): ReactNode {
   const state = usePlaybackState(playback);
+  const [, dockRef] = useDock();
   if (!state.started) return null;
   const pauses = state.playing || state.starting;
   return (
-    <HStack data-docked-player className={styles.docked} vAlign="center" gap={3}>
+    <HStack ref={dockRef} data-docked-player className={styles.docked} vAlign="center" gap={3}>
       <Button
         isIconOnly
         icon={<Icon icon={pauses ? Pause : Play} />}

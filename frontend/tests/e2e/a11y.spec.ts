@@ -8,12 +8,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { TEXT_SPACING, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
-
-// WCAG 1.4.12: the spacing a user may set must not cut anything off.
-const TEXT_SPACING =
-  "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
 
 for (const state of STATES) {
   test(state.name, async ({ page }, info) => {

@@ -29,6 +29,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
+import { useDock } from "@/lib/dock";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -292,6 +293,7 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
+  const [, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -813,7 +815,7 @@ export function TranscriptPlayer(
       {hasAudio ? (
         // Docked under the text: on a phone it stays in view while the transcript is on screen; on a short screen it
         // would cover most of it, and stays at the end instead.
-        <div id={pastId} tabIndex={-1} data-docked-player className={styles.dock}>
+        <div id={pastId} ref={dockRef} tabIndex={-1} data-docked-player className={styles.dock}>
           {/* Above the player's row: in it, on a phone, they would leave the position slider a few pixels. Speed sits in the
               row from 640 px (below it the copy here is shown, and the one in the row is not). */}
           <div className={styles.dockTools}>
