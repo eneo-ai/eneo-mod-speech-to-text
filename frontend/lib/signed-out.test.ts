@@ -65,7 +65,7 @@ test("signed out: the dialog asks for a new login, says the page and a recording
 test("someone signing in here keeps only their own drafts: another person's typed details and review edits go", async (t) => {
   const { createElement } = await import("react");
   const { AuthGate } = await import("../components/AuthGate");
-  const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
+  const { browserDrafts, isRecord, readDraft, writeDraft } = await import("./drafts");
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
@@ -81,8 +81,8 @@ test("someone signing in here keeps only their own drafts: another person's type
   const { container, act } = await mount(withRouter(createElement(AuthGate, { children: "Sidan" })).tree);
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.match(container.textContent ?? "", /Sidan/);
-  assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1"), { motesnamn: "Byggnadsnämnden" });
-  assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1"), null);
+  assert.deepEqual(readDraft(browserDrafts(), "user-1", "flow:flow-1", isRecord), { motesnamn: "Byggnadsnämnden" });
+  assert.equal(readDraft(browserDrafts(), "user-2", "flow:flow-1", isRecord), null);
 });
 
 test("signed out, Logga in igen starts a new login; before the end, a renewal bound to the user signed in now", async (t) => {

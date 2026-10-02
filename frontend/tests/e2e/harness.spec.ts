@@ -111,7 +111,7 @@ test("a field's box counts as its control's target only for the control it activ
     <style>
       .astryx-text-input, .plain { display: flex; align-items: center; height: 44px; width: 240px; border: 1px solid #767676; }
       input { height: 20px; border: 0; }
-      button { width: 20px; height: 20px; padding: 0; margin-left: 40px; }
+      button { flex: none; width: 20px; height: 20px; padding: 0; margin-left: 40px; }
     </style>
     <div class="astryx-text-input"><input aria-label="I fältets ruta"><button aria-label="Rensa"></button></div>
     <div class="plain" style="margin-top: 40px"><input aria-label="I en vanlig ruta"></div>`);

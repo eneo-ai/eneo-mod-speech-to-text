@@ -20,6 +20,7 @@ os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
+import anyio  # noqa: E402
 import httpx  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -29,7 +30,7 @@ from websockets.asyncio.server import serve  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
 from app import main, serve as launcher  # noqa: E402
-from app.limits import WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE  # noqa: E402
+from app.limits import WS_MAX_MESSAGE_BYTES  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 from test_module_auth import token_payload  # noqa: E402
 
@@ -177,6 +178,10 @@ class FakeEneoSocket:
             self._server.close()
             await self._server.wait_closed()
 
+        # A connection still open here is one whose peer will not answer a close frame (its loop is gone), and wait_closed()
+        # would wait for it: end it, so a teardown never depends on a peer. A relay that leaves Eneo's socket open is
+        # caught by the tests that look at it, not by a hang here.
+        self.drop_connections()
         asyncio.run_coroutine_threadsafe(shutdown(), self._loop).result(5)
         self._loop.call_soon_threadsafe(self._loop.stop)
 
@@ -421,6 +426,55 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
         self.assertTrue(self.eneo_socket.closed.wait(5))
         self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
 
+    def test_a_relay_that_is_cancelled_still_closes_eneos_socket(self) -> None:
+        """The test client ends a `with` by sending the disconnect and, at once, cancelling the app's scope; anyio delivers
+        that cancellation again at every await, so a relay that has not yet seen the disconnect has its cleanup cancelled
+        too. Whatever cancels the handler, Eneo's socket must not be left open (it was, about once in a few hundred runs:
+        the fake's stop() then waited for a peer whose loop was gone)."""
+        connections = []
+        open_session = main._open_live_session
+
+        async def keep_the_connection(*args):
+            connections.append(await open_session(*args))
+            return connections[0]
+
+        async def run() -> None:
+            ready = anyio.Event()
+            sent_connect = False
+
+            async def receive():
+                nonlocal sent_connect
+                if not sent_connect:
+                    sent_connect = True
+                    return {"type": "websocket.connect"}
+                await anyio.sleep_forever()
+
+            async def send(message) -> None:
+                if message["type"] == "websocket.send":
+                    ready.set()
+
+            scope = {
+                "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws", "http_version": "1.1", "root_path": "",
+                "path": LIVE_PATH, "raw_path": LIVE_PATH.encode(), "query_string": b"expected_user=user-id", "subprotocols": [],
+                "headers": [
+                    (b"host", b"testserver"),
+                    (b"origin", MODULE_ORIGIN.encode()),
+                    (b"cookie", f"{SESSION_COOKIE}={self.client.cookies.get(SESSION_COOKIE)}".encode()),
+                ],
+                "client": ("testclient", 50000), "server": ("testserver", 80),
+            }
+            async with anyio.create_task_group() as group:
+                group.start_soon(main.app, scope, receive, send)
+                await ready.wait()
+                group.cancel_scope.cancel()
+            # Here, not after the loop is gone: the loop's own teardown closes what is left, and would hide it.
+            self.assertTrue(connections[0].transport.is_closing(), "the relay left Eneo's socket open")
+
+        with patch.object(main, "_open_live_session", keep_the_connection):
+            anyio.run(run)
+
+        self.assertTrue(self.eneo_socket.closed.wait(5), "Eneo did not see its socket close")
+
     def test_eneo_closing_closes_browser_socket(self) -> None:
         self.eneo_socket.mode = "close_after_ready"
 
@@ -545,9 +599,16 @@ def launch_commands() -> dict[str, list[str]]:
 @contextlib.contextmanager
 def serve_module(**options):
     """The module backend on uvicorn, as the image runs it; yields the port."""
+    with serving(main.app, **options) as (port, _):
+        yield port
+
+
+@contextlib.contextmanager
+def serving(app, **options):
+    """``app`` on uvicorn, as the image runs it; yields the port and the server."""
     server = uvicorn.Server(
         uvicorn.Config(
-            main.app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
+            app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
         )
     )
     thread = threading.Thread(target=server.run, daemon=True)
@@ -558,7 +619,7 @@ def serve_module(**options):
             if time.monotonic() > deadline:
                 raise RuntimeError("uvicorn did not start")
             time.sleep(0.01)
-        yield server.servers[0].sockets[0].getsockname()[1]
+        yield server.servers[0].sockets[0].getsockname()[1], server
     finally:
         server.should_exit = True
         thread.join(5)
@@ -575,15 +636,14 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
         self.assertEqual(
-            (run.call_args.kwargs["ws_max_size"], run.call_args.kwargs["ws_max_queue"]),
-            (WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE),
+            run.call_args.kwargs["ws_max_size"],
+            WS_MAX_MESSAGE_BYTES,
         )
 
     def test_production_limits_refuse_an_oversized_message_before_eneo(self) -> None:
-        max_size, max_queue = WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE
-        # Eneo's largest audio frame fits, and a connection queues at most 2 MiB.
+        max_size = WS_MAX_MESSAGE_BYTES
+        # Eneo's largest audio frame fits.
         self.assertGreaterEqual(max_size, 64 * 1024)
-        self.assertLessEqual(max_size * max_queue, 2 * 2**20)
         session_id = self.create_session(refresh_at=int(time.time()) + 30)
 
         async def stream(port: int) -> int:
@@ -601,9 +661,47 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                     await asyncio.wait_for(browser.recv(), 5)
                 return refused.exception.rcvd.code
 
-        with serve_module(ws_max_size=max_size, ws_max_queue=max_queue) as port:
+        with serve_module(ws_max_size=max_size) as port:
             self.assertEqual(asyncio.run(stream(port)), 1009)
         self.assertEqual([len(frame) for frame in self.eneo_socket.frames], [64 * 1024])
+
+    def test_a_connection_buffers_a_message_or_two_and_the_sender_is_held_back(self) -> None:
+        """What bounds a connection's queue is not a limit of ours: uvicorn's default implementation stops reading as soon
+        as a message is queued, until the app has taken it. This pins that, with an app that takes nothing. It reads the
+        implementation's own queue, so it names what a uvicorn upgrade (pinned) must keep."""
+        release = threading.Event()
+
+        async def takes_nothing(scope, receive, send) -> None:
+            if scope["type"] == "websocket":
+                await receive()  # the connect
+                await send({"type": "websocket.accept"})
+                while not release.is_set():
+                    await asyncio.sleep(0.05)
+
+        frame = bytes(64 * 1024)  # Eneo's largest audio frame
+
+        with serving(takes_nothing, ws_max_size=WS_MAX_MESSAGE_BYTES) as (port, server):
+
+            async def flood() -> tuple[int, int]:
+                sender = await websocket_connect(f"ws://127.0.0.1:{port}", compression=None)
+                try:
+                    sent = 0
+                    with contextlib.suppress(TimeoutError):
+                        for _ in range(2000):  # 128 MiB, more than every buffer on the way
+                            await asyncio.wait_for(sender.send(frame), 1)  # the wait is also what lets the server settle
+                            sent += 1
+                    (connection,) = server.server_state.connections
+                    return sent, connection.queue.qsize()
+                finally:
+                    sender.transport.abort()  # a close would wait for a server that is not reading
+
+            try:
+                sent, queued = asyncio.run(flood())
+            finally:
+                release.set()
+
+        self.assertLess(sent, 2000, "the sender was never held back")
+        self.assertLessEqual(queued * len(frame), 2 * WS_MAX_MESSAGE_BYTES, f"{queued} messages were queued")
 
 
 if __name__ == "__main__":

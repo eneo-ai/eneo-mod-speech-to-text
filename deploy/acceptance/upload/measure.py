@@ -12,7 +12,8 @@
                 started_at, finished_at) and GET /__reset clears the list
 
 Environment: PW_DIR (a frontend directory with node_modules, for xhr cases), UPLOAD_PATH (default
-/api/eneo/flows/flow-1/steps/step-1/runtime-files/), UPLOAD_FILES_DIR (default <tmp>/stt-upload-files), EXPECTED_USER (default user-1).
+/api/eneo/flows/flow-1/steps/step-1/runtime-files/), UPLOAD_FILES_DIR (default <tmp>/stt-upload-files), EXPECTED_USER (default user-1),
+UPLOAD_ORIGIN (the Origin the write names; default BASE_URL: set it to the module's public address when BASE_URL is the image's own port).
 Prints one JSON row per case. Start a fresh container per case for a clean "before"; the script stops nothing it did not start.
 """
 import http.client, json, os, statistics, subprocess, sys, tempfile, time
@@ -22,6 +23,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PATH = os.environ.get("UPLOAD_PATH", "/api/eneo/flows/flow-1/steps/step-1/runtime-files/")
 FILES = os.environ.get("UPLOAD_FILES_DIR", os.path.join(tempfile.gettempdir(), "stt-upload-files"))
 USER = os.environ.get("EXPECTED_USER", "user-1")
+ORIGIN = os.environ.get("UPLOAD_ORIGIN")
 MB = 1_000_000
 SIZES = {"58MB": 58 * MB, "300MB": 300 * 1024 * 1024, "1GB": 1024 * 1024 * 1024, "2200MB": 2_200_000_000}
 
@@ -129,7 +131,7 @@ def main():
             size, n = rest
             f = make_file(size, SIZES[size])
             command = ["curl", "-sS", "--max-time", "240", "-o", "/dev/null", "-w", "http=%{http_code} sent=%{size_upload} time=%{time_total}s",
-                       "-H", "Expect:", "-H", f"Cookie: {cookie}", "-H", f"Origin: {base}", "-H", f"X-Expected-User: {USER}",
+                       "-H", "Expect:", "-H", f"Cookie: {cookie}", "-H", f"Origin: {ORIGIN or base}", "-H", f"X-Expected-User: {USER}",
                        "-F", f"upload_file=@{f};filename=opptagning.webm;type=audio/webm", f"{base}{PATH}?case={name}"]
             run_case(container, base, eneo, name, [command for _ in range(int(n))])
         elif kind == "xhr":

@@ -78,7 +78,6 @@ Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`
 | PATCH | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/` |
 | POST | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/approve/`, `.../reject/`, `.../resume/` |
 | GET | `flows/{flow}/template-files/` |
-| POST | `flows/{flow}/template-files/{file}/signed-url/` |
 
 Källan är `_PROXY_ROUTE_RULES` i `backend/app/main.py`; testerna är `backend/tests/test_eneo_proxy_auth.py`.
 
@@ -111,7 +110,7 @@ Värdena ligger i `backend/app/config.py`; var och en sätts där den gäller.
 | `MAX_RESPONSE_BYTES` | 32 MiB | Ett enskilt svar från Eneo som modulen läser (proxyn och uppladdningens svar). En fil som strömmas till webbläsaren räknas inte. | `502 upstream_too_large` |
 | små svar | 1 MiB | Svar som bär en token eller en URL (ticketväxling, sessionskontroll, förnyelse, signerad URL, live-ticket) och kroppen i ett misslyckat filsvar. | ett misslyckat anrop: ticketväxlingen avslutas utan session, en signerad URL ger `502 upstream_invalid`, en live-ticket händelsen `upstream_unreachable`; ett misslyckat filsvar behåller sin status men får en standardtext i stället för Eneos kropp |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | 1800 s | Hela vidarebefordran av en uppladdning, inte bara varje läsning. | `504 upstream_upload_timeout` |
-| WebSocket-meddelande | 128 KiB, 16 i kö | Webbläsarens live-socket, i alla startsätt. | stängning |
+| WebSocket-meddelande | 128 KiB | Webbläsarens live-socket, i alla startsätt. | stängning (`1009`) |
 | logotyp | 1 MiB | `ORGANIZATION_LOGO`, bara SVG och PNG. | loggas, namnet visas |
 
 Taket för request-body sitter i en ren ASGI-middleware, `BodyLimitMiddleware` i `backend/app/limits.py`, före allt annat:
@@ -175,7 +174,7 @@ Tester: `backend/tests/test_audio_proxy.py`, `backend/tests/test_artifact_proxy.
 
 `/api/live/{flow_id}/{step_id}` är en WebSocket som vidarebefordrar live-text mellan webbläsaren och Eneo. Protokollet och fellägena står i [Eneo-integration](eneo-integration.md#live-text-strömma). Här gäller det som BFF:en själv avgör:
 
-- **Gränser:** varje startsätt för backend tar emot högst 128 KiB per WebSocket-meddelande och 16 meddelanden i kö (`--ws-max-size 131072 --ws-max-queue 16`), alltså högst 2 MiB per anslutning innan Eneo ser ramarna. Går en av sidorna inte att skriva till på 15 sekunder avslutar BFF:en sessionen. Meddelanden från Eneo kan vara högst 8 MiB (`transcript.done` upprepar hela texten). Startsätten är `deploy/supervisord.conf` (produktionsimagen), `backend/Dockerfile` (tvåcontainerfilen) och utvecklingskommandot i [README](../README.md); `backend/tests/test_live_relay.py` kräver att alla tre har samma gränser och läser därför utvecklingskommandot direkt ur `README.md`.
+- **Gränser:** varje startsätt för backend (`python -m app.serve`) tar emot högst 128 KiB per WebSocket-meddelande, och ett större stänger anslutningen med `1009`. Uvicorns standardimplementation slutar läsa från en anslutning så snart ett meddelande ligger i kö och fortsätter först när appen har tagit emot det, så en anslutning buffrar ungefär ett meddelande på högst 128 KiB (`test_live_relay.py` låser detta). Går en av sidorna inte att skriva till på 15 sekunder avslutar BFF:en sessionen. Meddelanden från Eneo kan vara högst 8 MiB (`transcript.done` upprepar hela texten). Startsätten är `deploy/supervisord.conf` (produktionsimagen), `backend/Dockerfile` (tvåcontainerfilen) och utvecklingskommandot i [README](../README.md); `backend/tests/test_live_relay.py` kräver att alla tre har samma gränser och läser därför utvecklingskommandot direkt ur `README.md`.
 - **Socketen följer sessionen.** Sessionen kontrolleras när socketen öppnas, men en socket lever lika länge som en inspelning, så den stängs med `1008` och skälet `session_ended` när sessionen tar slut, också när inget skickas: vid utloggning, utgång, en ny inloggning som ersätter sessionen och en förnyelse som Eneo nekar. En session som förnyas stängs inte vid sitt första slut utan vid det nya. Båda sockets stängs.
 - **Rätt användare:** socketen kontrollerar sidans användare innan någon biljett begärs hos Eneo, se [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik).
 - **Biljetten och anslutningen till Eneo:** biljetten måste vara en HTTP-token (1 till 1 024 tecken), eftersom den färdas som WebSocket-subprotokoll, och `websocket_path` en enda sökväg på Eneos värd; allt annat skulle skicka biljetten någon annanstans. Anslutningen följer ingen omdirigering, eftersom biblioteket annars skickar användarens engångsbiljett vidare till vem svaret än namnger. En biljett eller sökväg som inte går att använda ger händelsen `upstream_unreachable` med `retryable: true`, och biljetten loggas aldrig.

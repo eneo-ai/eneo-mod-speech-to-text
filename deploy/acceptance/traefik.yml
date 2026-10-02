@@ -1,0 +1,11 @@
+# The acceptance stack's Traefik (compose.yml): the ingress the module sits behind in production, reduced to what the module's contracts
+# depend on. Traefik v3, one HTTP entrypoint, the routes in traefik-routes.yml. No TLS (a hand check at B6.1), no dashboard, and no access log
+# (the sign-in callback's URL carries a one-time ticket). Traefik's own timeouts are its defaults: no read or write deadline, 180 s idle.
+entryPoints:
+  web:
+    address: ":80"
+providers:
+  file:
+    filename: /etc/traefik/traefik-routes.yml
+log:
+  level: WARN

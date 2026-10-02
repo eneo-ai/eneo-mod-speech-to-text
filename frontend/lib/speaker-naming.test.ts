@@ -460,3 +460,46 @@ test("with no storage to keep drafts in (a private window), the dialog works and
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.deepEqual(saved[0].map((r) => r.name), ["Anna Berg", "Erik Lund"]);
 });
+
+test("names kept through a reload come back only as a list of speakers with their names: any other shape is dropped from the storage and opens nothing", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement } = await import("react");
+  const { SpeakerNamingDialog, hasNamesDraft } = await import("../components/SpeakerNamingDialog");
+  const draftKey = { ownerId: "user-1", name: "names:run-1:cp-5" };
+  const key = `tal-till-text:draft:${draftKey.ownerId}:${draftKey.name}`;
+  const reloaded = () =>
+    mountInProviders(
+      createElement(SpeakerNamingDialog, {
+        rows,
+        participants: [],
+        passages: () => 1,
+        quote: () => null,
+        onSave: async () => null,
+        onSaveAndContinue: async () => null,
+        draftKey,
+        children: createElement("button", { type: "button" }, "Namnge talarna"),
+      }),
+    );
+  for (const [what, raw] of [
+    ["an object where a list is kept", "{}"],
+    ["null", "null"],
+    ["a list of the wrong things", '[1, {"label": 5}]'],
+    ["rows without a name", '[{"label": "SPEAKER_01"}]'],
+    ["a name that is a number", '[{"label": "SPEAKER_01", "name": 5}]'],
+  ]) {
+    window.sessionStorage.setItem(key, raw);
+    assert.equal(hasNamesDraft(draftKey), false, `${what} is no draft`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed, not left to fail again`);
+    window.sessionStorage.setItem(key, raw);
+    const view = await reloaded();
+    assert.ok(!document.querySelector("dialog[open]"), `${what}: the dialog does not open by itself`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed`);
+    await view.unmount();
+  }
+  window.sessionStorage.setItem(key, JSON.stringify([row("SPEAKER_01", "Erik Lund", 9)]));
+  assert.equal(hasNamesDraft(draftKey), true, "names of the right shape are a draft");
+  const view = await reloaded();
+  assert.equal(fieldNamed("Vem är Talare 2?")?.value, "Erik Lund", "and open the dialog with them");
+  assert.equal(fieldNamed("Vem är Talare 1?")?.value, "Anna Berg", "a speaker the draft has no row for keeps the review's name");
+  await view.unmount();
+});

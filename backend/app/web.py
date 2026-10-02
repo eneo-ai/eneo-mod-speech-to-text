@@ -5,8 +5,8 @@ Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commi
 kit's ``@app.middleware`` is Starlette's BaseHTTPMiddleware, which wraps the body of a streamed answer: this app streams
 audio and PDFs and must close its upstream when the browser leaves) and not its ``Permissions-Policy`` (the kit's empty
 microphone allowlist would stop the recording). ``serve_web`` is the kit's with four changes: the headers come from the
-middleware, assets are immutable and the rest revalidated, a path with a NUL byte or too long a name is a 404 and never a
-500, and HEAD is answered like GET. Plan C (the module kit) deletes this copy.
+middleware, assets are immutable and the rest revalidated, a path with a control character or a backslash, or too long a
+name, is a 404 and never the page or a 500, and HEAD is answered like GET. Plan C (the module kit) deletes this copy.
 """
 
 from __future__ import annotations
@@ -17,11 +17,13 @@ import hashlib
 import html
 import json
 import mimetypes
+import re
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 # The one definition of the headers every response carries; a header an endpoint sets itself wins (the inline PDF's
@@ -29,8 +31,13 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 SECURITY_HEADERS: dict[str, str] = json.loads(Path(__file__).with_name("security_headers.json").read_text())
 
 
+NO_STORE = (b"cache-control", b"no-store")
+
+
 class SecurityHeadersMiddleware:
     """Adds each header in ``headers`` that a response lacks, to every HTTP response, a streamed one and an error too.
+    An answer under ``/api`` also gets ``Cache-Control: no-store`` if it says nothing about caching: a transcript must
+    not land in a shared computer's disk cache. A route that sets its own (the theme, the logo) keeps it.
 
     Pure ASGI: the response is passed on as it is built, so a streamed body is not wrapped, a client that leaves ends
     the stream where it always did, and its upstream is closed by the response's own background task.
@@ -45,10 +52,13 @@ class SecurityHeadersMiddleware:
             await self.app(scope, receive, send)
             return
 
+        api = scope["path"] == "/api" or scope["path"].startswith("/api/")
+        added = [*self.headers, *([NO_STORE] if api else [])]
+
         async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
                 present = {name.lower() for name, _ in message.get("headers", [])}
-                message = {**message, "headers": [*message.get("headers", []), *(h for h in self.headers if h[0] not in present)]}
+                message = {**message, "headers": [*message.get("headers", []), *(h for h in added if h[0] not in present)]}
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
@@ -85,6 +95,9 @@ ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
 ASSETS = "assets"
+# A path with one of these (NUL and the rest of C0, DEL, a backslash), or a segment that starts with a dot (a dotfile, "."
+# and ".."), names nothing: a 404, never the page, a file or a way past the /api rule.
+_NOT_A_NAME = re.compile(r"[\x00-\x1f\x7f\\]|(?:^|/)\.")
 
 
 def _etag(data: bytes) -> str:
@@ -160,10 +173,8 @@ def _branded_page(index: Path, branding: str) -> bytes:
 
 
 def _file_under(root: Path, relative: str) -> Path | None:
-    """The file ``relative`` names inside ``root``, or None: for a NUL byte, a backslash, a link or a ``..`` that leaves
-    ``root``, a name the system refuses (too long), and anything that is not a file. Never an exception."""
-    if "\x00" in relative or "\\" in relative:
-        return None
+    """The file ``relative`` names inside ``root``, or None: for a link or a ``..`` that leaves ``root``, a name the
+    system refuses (too long, or with a NUL), and anything that is not a file. Never an exception."""
     try:
         candidate = (root / relative).resolve()
         if root not in candidate.parents or not candidate.is_file():
@@ -198,7 +209,10 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
     @app.api_route("/{path:path}", methods=["GET", "HEAD"], include_in_schema=False)
     async def serve(path: str, request: Request) -> Response:
         last = path.rsplit("/", 1)[-1]
-        if path == "api" or path.startswith("api/"):
+        # The scope's path, not ``path``: the route's pattern drops one leading slash (``//api/x`` is ``/api/x``) and, ending
+        # in ``$``, a trailing newline.
+        asked = request.scope["path"]
+        if _NOT_A_NAME.search(asked) or asked.lstrip("/") == "api" or asked.lstrip("/").startswith("api/"):
             raise HTTPException(status_code=404)
         # A compressed sibling is served by negotiation only, never by its own name.
         if last.endswith((".br", ".gz")):
@@ -207,8 +221,9 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
         if path == "index.html" or (not in_assets and "." not in last):
             return answer_page(request)
         file = _file_under(root, path)
-        # ``a/../index.html`` is the raw page, with its marker empty: the page is only ever the processed one.
-        if file is None or file == index:
+        # ``a/../index.html`` is the raw page, with its marker empty: the page is only ever the processed one. A file has one
+        # URL: ``/assets/app.js/`` is not it (and its ``.br`` twin with a slash is not a way past the check above).
+        if file is None or file == index or path.endswith("/"):
             raise HTTPException(status_code=404)
         headers = {"Cache-Control": ASSET_CACHE_CONTROL if in_assets else REVALIDATE}
         served, encoding = file, None
@@ -228,5 +243,6 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
             return Response(status_code=304, headers={name: value for name, value in headers.items() if name != "Content-Encoding"})
         if encoding is not None:
             # Not a FileResponse: it would honour a Range, and a range of a compressed file is not a range of the file.
-            return Response(content=served.read_bytes(), media_type=mimetypes.guess_type(file.name)[0], headers=headers)
+            content = await run_in_threadpool(served.read_bytes)  # off the loop: the live relay shares it
+            return Response(content=content, media_type=mimetypes.guess_type(file.name)[0], headers=headers)
         return FileResponse(file, headers=headers)

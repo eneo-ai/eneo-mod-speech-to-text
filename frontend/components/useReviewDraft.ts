@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { browserDrafts, clearDraft, isRecord, readDraft, writeDraft } from "@/lib/drafts";
 
 type Kept<T> = { revision: number; edit: T };
 type Edits<T> = { current: Kept<T> | null; yours: T | null };
@@ -10,15 +10,17 @@ type Edits<T> = { current: Kept<T> | null; yours: T | null };
  * A review's unsaved edit, given back on the revision it was made on. Once the review has changed since (a save
  * refused as out of date, a save from another tab), the edit is neither applied to the latest nor thrown away by
  * itself: it waits as "din version" until the user takes it or lets it go. The edits live in the page; the browser
- * keeps a copy for a reload where it can, and a kept copy goes only once what replaces it is written.
+ * keeps a copy for a reload where it can, and a kept copy goes only once what replaces it is written. `isEdit` is the
+ * page's check of an edit it reads back; a kept copy that fails it is dropped and counts as none.
  */
-export function useReviewDraft<T>(ownerId: string, name: string, revision: number) {
+export function useReviewDraft<T>(ownerId: string, name: string, revision: number, isEdit: (value: unknown) => value is T) {
   const [, setChanged] = useState(0);
   const storage = browserDrafts();
   const yoursName = `${name}:din`;
+  const isKept = (value: unknown): value is Kept<T> => isRecord(value) && typeof value.revision === "number" && isEdit(value.edit);
   const edits = useRef<(Edits<T> & { name: string }) | null>(null);
   if (edits.current?.name !== name) {
-    edits.current = { name, current: readDraft<Kept<T>>(storage, ownerId, name), yours: readDraft<T>(storage, ownerId, yoursName) };
+    edits.current = { name, current: readDraft(storage, ownerId, name, isKept), yours: readDraft(storage, ownerId, yoursName, isEdit) };
   }
   // An edit of an older revision is din version.
   const settled = (): Edits<T> => {
@@ -28,7 +30,7 @@ export function useReviewDraft<T>(ownerId: string, name: string, revision: numbe
   const change = (next: Edits<T>): boolean => {
     edits.current = { name, ...next };
     setChanged((count) => count + 1);
-    const stored = readDraft<Kept<T>>(storage, ownerId, name);
+    const stored = readDraft(storage, ownerId, name, isKept);
     // The kept edit of an older revision is din version's only kept copy until din version is written.
     const storedIsYours = stored !== null && stored.revision !== revision;
     if (next.yours !== null && !writeDraft(storage, ownerId, yoursName, next.yours) && storedIsYours) return false;

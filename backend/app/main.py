@@ -15,6 +15,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 from uuid import UUID
 
+import anyio
 import httpx
 from fastapi import (
     Depends,
@@ -28,8 +29,8 @@ from fastapi import (
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.background import BackgroundTask
 from starlette.datastructures import UploadFile
+from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
     ConnectionClosed,
@@ -47,6 +48,11 @@ from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
+# httpx logs every request's full URL at INFO ("HTTP Request: GET <url>"), and the signed URL of a file carries its
+# bearer token in the query string. The libraries stay at WARNING; this app's own records name a path template or a
+# status, never a URL with a query.
+for _library in ("httpx", "httpcore"):
+    logging.getLogger(_library).setLevel(logging.WARNING)
 
 
 settings = load_settings()
@@ -196,7 +202,9 @@ def _ascii_only(headers: dict[str, str]) -> dict[str, str]:
 
 # Headers we should not forward from upstream response back to client. Eneo's cookies are not the browser's:
 # several would be merged into one line, and one named like the module's session would replace it. Its Location
-# names Eneo's own host, which the browser cannot reach and which says how the network is laid out.
+# names Eneo's own host, which the browser cannot reach and which says how the network is laid out. The module's
+# own security headers are not Eneo's to replace (they are added only where an answer lacks them), and neither is its
+# caching policy: the module decides what its own origin lets a browser store (nothing under /api).
 _UNFORWARDED_RESPONSE_HEADERS = {
     "content-encoding",
     "transfer-encoding",
@@ -205,6 +213,11 @@ _UNFORWARDED_RESPONSE_HEADERS = {
     "content-length",
     "set-cookie",
     "location",
+    "content-security-policy",
+    "x-frame-options",
+    "permissions-policy",
+    "referrer-policy",
+    "cache-control",
 }
 
 # The module never follows a redirect, and no route of it is expected to redirect, so one from Eneo is an error,
@@ -323,12 +336,6 @@ _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
     (
         frozenset({"GET"}),
         re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/template-files/{_RESOURCE_ID}/signed-url/$"
-        ),
     ),
 )
 
@@ -716,6 +723,31 @@ async def _read_small(upstream: httpx.Response) -> bytes:
     return bytes(body)
 
 
+# How long closing Eneo's answer may take: a peer that does not answer the close does not hold the response.
+_STREAM_CLOSE_TIMEOUT_SECONDS = 2
+
+
+class _FileResponse(StreamingResponse):
+    """Eneo's file, streamed, with Eneo's answer closed however the response ends: whole, an error in the body, or the
+    browser going away. A BackgroundTask runs only after a stream that succeeded, and a generator is closed only if it
+    is resumed (it is left at its ``yield`` when a send fails or the response is cancelled), so the closing belongs to
+    the response's whole lifetime. It is shielded from the cancellation that may be ending that lifetime, and bounded."""
+
+    def __init__(self, upstream: httpx.Response, headers: dict[str, str]) -> None:
+        super().__init__(upstream.aiter_raw(), status_code=upstream.status_code, headers=headers)
+        self.upstream = upstream
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.move_on_after(_STREAM_CLOSE_TIMEOUT_SECONDS, shield=True):
+                try:
+                    await self.upstream.aclose()
+                except Exception:
+                    logger.warning("File stream: closing Eneo's answer failed", exc_info=True)
+
+
 async def _stream_signed(
     request: Request, *resource: str, mint_path: str, unavailable: str
 ) -> Response:
@@ -785,12 +817,7 @@ async def _stream_signed(
         resp_headers["content-disposition"] = _attachment(resp_headers.get("content-disposition"))
     resp_headers["x-content-type-options"] = "nosniff"
     resp_headers["Cache-Control"] = "private, no-store"
-    return StreamingResponse(
-        upstream.aiter_raw(),
-        status_code=upstream.status_code,
-        headers=resp_headers,
-        background=BackgroundTask(upstream.aclose),
-    )
+    return _FileResponse(upstream, resp_headers)
 
 
 async def _stream_input_file_audio(
@@ -1167,10 +1194,15 @@ async def _relay_live_session(browser: WebSocket, eneo: ClientConnection) -> tup
 
 async def _close_eneo_socket(eneo: ClientConnection) -> None:
     # close() first flushes its close frame, which a peer that stopped reading
-    # never takes, and only then applies its own timeout.
+    # never takes, and only then applies its own timeout. Whatever ends the wait
+    # (that timeout, or the handler being cancelled, which cancels this cleanup
+    # too) the transport is aborted: Eneo's socket is never left open. After a
+    # close that completed there is nothing left to abort.
     try:
         await asyncio.wait_for(eneo.close(), _LIVE_CLOSE_TIMEOUT_SECONDS)
     except TimeoutError:
+        pass
+    finally:
         eneo.transport.abort()
 
 

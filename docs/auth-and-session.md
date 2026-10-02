@@ -111,6 +111,7 @@ Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts
 - **En GET får sakna namn,** eftersom ett `<audio src>` och en navigering inte kan skicka en header, men ett namn den ger måste vara sessionens. GET av ljud och genererade filer kontrollerar inte sidans användare alls: en PDF-ram kan inte heller sätta headers, och Eneo auktoriserar själv körningen.
 - **En åtkomstkodssession** har ingen användare att jämföra med och godtas alltid.
 - Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
+- **Användaren räcker, tenant behövs inte:** i Eneo hör en användare till exakt en tenant, och det går inte att ändra. `users.tenant_id` är obligatorisk, det finns ingen medlemskapstabell och ingen väg som flyttar en användare. Användar-id:n skapas av servern som UUID:er. Modulens token bär användarens enda tenant och kontrolleras mot den vid varje anrop (Eneos `modules/module_auth.py`, verifierat 2026-10-02). Samma användar-id betyder därför samma tenant. Ändrar Eneo den regeln måste sidan börja skicka `X-Expected-Tenant` också.
 
 Frontend namnger användaren på varje anrop under `/api/eneo/` (uppladdningen inräknad) och på varje ny live-anslutning, ur den identitet sidan öppnades med; den skickar ingen tenant (`expectedUser` i `frontend/lib/login-state.ts`, `frontend/lib/api.ts`, `frontend/lib/live-transcriber.ts`).
 

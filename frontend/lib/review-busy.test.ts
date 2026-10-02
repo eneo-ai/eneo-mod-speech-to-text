@@ -157,7 +157,7 @@ test("the save's answer drops only the draft of the version it sent, never a new
   const { useReviewDraft } = await import("../components/useReviewDraft");
   let draft!: ReturnType<typeof useReviewDraft<{ text: string }>>;
   function Holder() {
-    draft = useReviewDraft<{ text: string }>("user-1", "review:run-1:cp-1", 1);
+    draft = useReviewDraft<{ text: string }>("user-1", "review:run-1:cp-1", 1, (value): value is { text: string } => typeof value === "object" && value !== null);
     return null;
   }
   const view = await mount(createElement(Holder));
@@ -310,4 +310,46 @@ test("while the transcript is being read, or cannot be read, the flow cannot go 
   const failed = await review(speakers);
   await failed.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
   assert.equal(button(failed.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the corrections cannot be read");
+});
+
+test("a review edit kept through a reload is restored only in the shape the review reads: any other is dropped from the storage and the review opens as the pause is", async (t) => {
+  eneo(t);
+  const key = "tal-till-text:draft:user-1:review:run-1:cp-1";
+  const fullRow = (label: string, name: string | null) => ({ label, lineCount: 3, samples: [], name, confidence: "medium", evidence: "" });
+  const opened = async (start: FlowRunReviewCheckpointPublic, raw: string) => {
+    window.sessionStorage.setItem(key, raw);
+    const view = await review(start);
+    const shown = { editing: view.container.querySelector("textarea")?.value ?? null, text: view.container.textContent ?? "" };
+    await view.unmount();
+    return shown;
+  };
+
+  // A pause of text: a kept edit is the text typed in the field.
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["an object without a revision", "{}"],
+    ["a list", '[{"revision": 1, "edit": {"text": "x"}}]'],
+    ["an edit of neither kind", '{"revision": 1, "edit": {}}'],
+    ["a text that is a number", '{"revision": 1, "edit": {"text": 5}}'],
+    ["a revision that is text", '{"revision": "1", "edit": {"text": "x"}}'],
+  ]) {
+    assert.equal((await opened(pause, raw)).editing, null, `${what}: the review is not in the middle of an edit`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed`);
+  }
+  assert.equal((await opened(pause, '{"revision": 1, "edit": {"text": "Min ändring"}}')).editing, "Min ändring", "an edit of the right shape comes back");
+  assert.notEqual(window.sessionStorage.getItem(key), null, "and stays");
+  window.sessionStorage.clear();
+
+  // A pause of speakers: a kept edit is their rows.
+  for (const [what, raw] of [
+    ["rows that are text", '{"revision": 1, "edit": {"speakerRows": "x"}}'],
+    ["rows without their parts", '{"revision": 1, "edit": {"speakerRows": [{"label": "SPEAKER_00"}]}}'],
+    ["a row with a confidence it does not have", JSON.stringify({ revision: 1, edit: { speakerRows: [{ ...fullRow("SPEAKER_00", "Bertil"), confidence: "certain" }] } })],
+  ]) {
+    const shown = await opened(speakers, raw);
+    assert.doesNotMatch(shown.text, /Bertil/, `${what}: no name from it`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed`);
+  }
+  const named = await opened(speakers, JSON.stringify({ revision: 1, edit: { speakerRows: [fullRow("SPEAKER_00", "Bertil"), fullRow("SPEAKER_01", null)] } }));
+  assert.match(named.text, /Bertil/, "rows of the right shape come back");
 });

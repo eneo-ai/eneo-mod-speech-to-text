@@ -25,11 +25,11 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import Settings
 
-# What the browser's live socket may send the module, in every way the module is started (app.serve passes them):
-# Eneo's PCM frames are at most 64 KiB, so a message of 128 KiB fits one, and 16 queued messages are at most 2 MiB a
-# connection before Eneo sees a frame. A larger frame closes the socket with 1009.
+# What the browser's live socket may send the module, in every way the module is started (app.serve passes it):
+# Eneo's PCM frames are at most 64 KiB, so a message of 128 KiB fits one. A larger frame closes the socket with 1009.
+# There is no limit on a connection's queue because uvicorn's default implementation needs none: it stops reading as soon
+# as a message is queued, until the app has taken it (test_live_relay.py pins that).
 WS_MAX_MESSAGE_BYTES = 128 * 1024
-WS_MAX_QUEUE = 16
 
 TOO_LARGE = "Request body too large"
 UPLOAD_TOO_LARGE = "Upload too large: the module accepts at most max_upload_bytes (MAX_UPLOAD_BYTES), which is not Eneo's own limit"

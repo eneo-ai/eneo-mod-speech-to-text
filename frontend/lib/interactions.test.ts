@@ -929,12 +929,13 @@ test("a review edit comes back on its revision; once the review changed it is ne
   const { createElement, useState } = await import("react");
   const { useReviewDraft } = await import("../components/useReviewDraft");
   type Edit = { text?: string };
+  const isEdit = (value: unknown): value is Edit => typeof value === "object" && value !== null && !Array.isArray(value);
   let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
   let setRevision: (revision: number) => void = () => {};
   function Review({ start }: { start: number }) {
     const [revision, set] = useState(start);
     setRevision = set;
-    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-1", revision);
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-1", revision, isEdit);
     return null;
   }
   const first = await mount(createElement(Review, { start: 3 }));
@@ -980,12 +981,13 @@ test("a review edit the browser will not keep is still the page's, through a ref
   const { createElement, useState } = await import("react");
   const { useReviewDraft } = await import("../components/useReviewDraft");
   type Edit = { text?: string };
+  const isEdit = (value: unknown): value is Edit => typeof value === "object" && value !== null && !Array.isArray(value);
   let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
   let setRevision: (revision: number) => void = () => {};
   function Review({ start }: { start: number }) {
     const [revision, set] = useState(start);
     setRevision = set;
-    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-9", revision);
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-9", revision, isEdit);
     return null;
   }
   const storage = Object.getPrototypeOf(window.sessionStorage) as Storage;
@@ -1196,4 +1198,52 @@ test("a browser without an audio context still gets a level meter, at rest", asy
   } finally {
     restore();
   }
+});
+
+test("a kept review edit comes back only in the shape the review reads: any other, and any din version of another shape, is dropped from the storage and counts as none", async (t) => {
+  t.after(() => window.sessionStorage.clear());
+  const { createElement } = await import("react");
+  const { useReviewDraft } = await import("../components/useReviewDraft");
+  type Edit = { text: string };
+  const isEdit = (value: unknown): value is Edit =>
+    typeof value === "object" && value !== null && !Array.isArray(value) && typeof (value as Edit).text === "string";
+  let draft = null as unknown as ReturnType<typeof useReviewDraft<Edit>>;
+  function Review() {
+    draft = useReviewDraft<Edit>("user-1", "review:run-1:cp-2", 3, isEdit);
+    return null;
+  }
+  const current = "tal-till-text:draft:user-1:review:run-1:cp-2";
+  const yours = `${current}:din`;
+  const opened = async (kept: Record<string, string>) => {
+    window.sessionStorage.clear();
+    for (const [key, raw] of Object.entries(kept)) window.sessionStorage.setItem(key, raw);
+    const view = await mount(createElement(Review));
+    const read = { initial: draft.initial, yours: draft.yours };
+    await view.unmount();
+    return read;
+  };
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["an object without a revision", "{}"],
+    ["a list", '[{"revision": 3}]'],
+    ["a revision that is text", '{"revision": "3", "edit": {"text": "x"}}'],
+    ["an edit that is a number", '{"revision": 3, "edit": 5}'],
+    ["an edit of another shape", '{"revision": 3, "edit": {"text": 5}}'],
+  ]) {
+    assert.deepEqual(await opened({ [current]: raw }), { initial: null, yours: null }, `${what} is no edit`);
+    assert.equal(window.sessionStorage.getItem(current), null, `${what} is removed`);
+  }
+  assert.deepEqual(await opened({ [current]: '{"revision": 3, "edit": {"text": "Min text"}}' }), { initial: { text: "Min text" }, yours: null });
+  assert.notEqual(window.sessionStorage.getItem(current), null, "an edit of the right shape stays");
+
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["an object without a text", "{}"],
+    ["a list", '[{"text": "x"}]'],
+    ["a text that is a number", '{"text": 5}'],
+  ]) {
+    assert.deepEqual(await opened({ [yours]: raw }), { initial: null, yours: null }, `${what} is no din version`);
+    assert.equal(window.sessionStorage.getItem(yours), null, `${what} is removed`);
+  }
+  assert.deepEqual(await opened({ [yours]: '{"text": "Min version"}' }), { initial: null, yours: { text: "Min version" } });
 });
