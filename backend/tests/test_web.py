@@ -57,12 +57,25 @@ class FakeStream:
         pass
 
 
+class FakeAnswer:
+    """What Eneo answers a proxied request with."""
+
+    def __init__(self, content: bytes, headers: dict[str, str] | None = None, status_code: int = 200) -> None:
+        self.content, self.status_code = content, status_code
+        self.headers = httpx.Headers(headers or {"content-type": "application/json"})
+
+
 class FakeEneoClient:
     """The module's client, in process: a signed-URL answer and a file with the headers a test chooses."""
 
     def __init__(self, headers: dict[str, str] | None = None, body: bytes = b"0123456789") -> None:
         self.file_headers = headers or {"content-type": "audio/webm"}
         self.body = body
+        self.answer: FakeAnswer | None = None  # what a proxied request gets, when a test sets one
+
+    async def request(self, **kwargs):
+        assert self.answer is not None
+        return self.answer
 
     async def post(self, url, **kwargs):
         class Minted:
@@ -534,6 +547,120 @@ class StaticServingTests(BuiltUiCase):
 
 
 PLAIN_JS = "console.log('plain')"
+
+
+class JsonCompressionTests(HeadersCase):
+    """Next gzipped a proxied JSON answer (880,050 bytes to 87,342, measured in B0.1) and the backend alone does not: a
+    large JSON answer of the proxy is compressed for a client that accepts it, and nothing else is ever touched."""
+
+    LARGE = json.dumps({"items": [{"id": f"flow-{n}", "name": "Nämndmöte till rapport", "description": "x" * 40} for n in range(2000)]}).encode()
+    FLOWS = "/api/eneo/flows/"
+
+    def proxied(self, answer: FakeAnswer) -> FakeEneoClient:
+        fake = self.serve_files()
+        fake.answer = answer
+        return fake
+
+    def raw(self, path: str, **headers: str) -> tuple[httpx.Response, bytes]:
+        """The answer and its body as it went over the wire (undecoded)."""
+        with self.client.stream("GET", path, headers=headers) as response:
+            return response, b"".join(response.iter_raw())
+
+    def test_a_large_json_answer_is_compressed_for_a_client_that_accepts_gzip(self) -> None:
+        self.proxied(FakeAnswer(self.LARGE, {"content-type": "application/json", "etag": '"v1"'}))
+
+        response, body = self.raw(self.FLOWS, **{"Accept-Encoding": "gzip"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.headers["content-encoding"], "gzip")
+        self.assertEqual(response.headers["vary"], "Accept-Encoding")
+        self.assertEqual(response.headers["content-type"], "application/json")
+        self.assertEqual(gzip.decompress(body), self.LARGE)
+        self.assertLess(len(body), len(self.LARGE) // 5, "it is not compressed in name only")
+        self.assertEqual(int(response.headers["content-length"]), len(body))
+        self.assertEqual(response.headers["etag"], 'W/"v1"', "a different body: its validator is weak")
+        self.assert_default_headers(response)
+
+    def test_the_browser_gets_the_json_back_whole(self) -> None:
+        self.proxied(FakeAnswer(self.LARGE))
+
+        response = self.client.get(self.FLOWS, headers={"Accept-Encoding": "gzip"})  # httpx decodes it
+
+        self.assertEqual(response.content, self.LARGE)
+
+    def test_a_json_answer_with_a_content_type_parameter_or_a_json_suffix_is_compressed_too(self) -> None:
+        for content_type in ("application/json; charset=utf-8", "Application/JSON", "application/problem+json"):
+            with self.subTest(content_type):
+                self.proxied(FakeAnswer(self.LARGE, {"content-type": content_type}))
+
+                response, body = self.raw(self.FLOWS, **{"Accept-Encoding": "gzip"})
+
+                self.assertEqual(response.headers["content-encoding"], "gzip")
+                self.assertEqual(gzip.decompress(body), self.LARGE)
+
+    def test_a_small_json_answer_is_plain(self) -> None:
+        small = b'{"ok": true}'
+        self.proxied(FakeAnswer(small))
+
+        response, body = self.raw(self.FLOWS, **{"Accept-Encoding": "gzip"})
+
+        self.assertEqual((response.status_code, body), (200, small))
+        self.assertNotIn("content-encoding", response.headers)
+
+    def test_a_client_that_accepts_neither_gets_the_plain_json_and_the_caches_are_told_it_varies(self) -> None:
+        self.proxied(FakeAnswer(self.LARGE))
+        for accept in ("", "identity", "deflate", "gzip;q=0", "br"):
+            with self.subTest(accept=accept):
+                response, body = self.raw(self.FLOWS, **{"Accept-Encoding": accept})
+
+                self.assertEqual(body, self.LARGE)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertEqual(response.headers["vary"], "Accept-Encoding")
+
+    def test_only_json_is_compressed(self) -> None:
+        for content_type in ("text/plain", "application/pdf", "audio/webm", "application/octet-stream", "text/html", "application/jsonlines-not"):
+            with self.subTest(content_type):
+                self.proxied(FakeAnswer(self.LARGE, {"content-type": content_type}))
+
+                response, body = self.raw(self.FLOWS, **{"Accept-Encoding": "gzip"})
+
+                self.assertEqual(body, self.LARGE)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertNotIn("vary", response.headers)
+
+    def test_a_partial_or_already_encoded_answer_and_a_range_request_are_left_alone(self) -> None:
+        cases = {
+            "a 206": (FakeAnswer(self.LARGE, status_code=206), {}),
+            "a Content-Range": (FakeAnswer(self.LARGE, {"content-type": "application/json", "content-range": "bytes 0-9/10"}), {}),
+            "already encoded": (FakeAnswer(self.LARGE, {"content-type": "application/json", "content-encoding": "br"}), {}),
+            "a Range request": (FakeAnswer(self.LARGE), {"Range": "bytes=0-99"}),
+            "a 304": (FakeAnswer(b"", {"content-type": "application/json", "etag": '"v1"'}, status_code=304), {}),
+        }
+        for label, (answer, extra) in cases.items():
+            with self.subTest(label):
+                self.proxied(answer)
+
+                response, body = self.raw(self.FLOWS, **{"Accept-Encoding": "gzip", **extra})
+
+                self.assertEqual(body, answer.content)
+                # (The proxy has never passed Eneo's Content-Encoding on: the client refuses an encoded answer.)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertNotIn("vary", response.headers)
+                self.assertEqual(response.headers.get("etag"), answer.headers.get("etag"))
+
+    def test_a_streamed_signed_file_is_never_compressed_and_keeps_its_range(self) -> None:
+        # Audio, a PDF and a file that happens to be JSON: the signed-file route streams them as Eneo sends them.
+        path = "/api/eneo/flows/f/runs/r/input-files/x/audio"
+        for content_type, body in (("audio/webm", b"A" * 5000), ("application/pdf", b"%PDF" + b"B" * 5000), ("application/json", self.LARGE)):
+            with self.subTest(content_type):
+                self.serve_files(headers={"content-type": content_type, "content-range": "bytes 0-9/99", "accept-ranges": "bytes"}, body=body)
+
+                response, raw = self.raw(path, **{"Accept-Encoding": "gzip", "Range": "bytes=0-9"})
+
+                self.assertEqual(raw, body)
+                self.assertNotIn("content-encoding", response.headers)
+                self.assertNotIn("vary", response.headers)
+                self.assertEqual((response.headers["content-range"], response.headers["accept-ranges"]), ("bytes 0-9/99", "bytes"))
 
 
 class PrecompressedTests(BuiltUiCase):

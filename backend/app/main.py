@@ -43,7 +43,7 @@ from app.config import load_settings
 from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
-from app.web import add_security_headers, etag_matches, serve_web
+from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -958,8 +958,9 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if k.lower() not in _UNFORWARDED_RESPONSE_HEADERS
     }
 
+    content = await compress_json(request, upstream, resp_headers)
     return Response(
-        content=upstream.content,
+        content=content,
         status_code=upstream.status_code,
         headers=resp_headers,
         media_type=upstream.headers.get("content-type"),
