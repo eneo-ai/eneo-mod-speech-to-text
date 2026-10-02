@@ -11,7 +11,7 @@ import styles from "@/components/AuthGate.module.css";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
-import { loginState } from "@/lib/login-state";
+import { loginState, NEW_LOGIN_MOVES_END_MS } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 
@@ -109,7 +109,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       if (s.authenticated && s.session_ends_in !== undefined) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
-        setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
+        setEndsAt((current) => (current !== null && Math.abs(next - current) < NEW_LOGIN_MOVES_END_MS ? current : next));
         setMode(s.auth_mode);
       }
       return true;

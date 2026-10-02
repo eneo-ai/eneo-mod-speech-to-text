@@ -248,6 +248,7 @@ function answeringXhr(t: import("node:test").TestContext, httpStatus: number, bo
     }
     abort() {}
     getResponseHeader(name: string) {
+      if (name.toLowerCase() === "x-auth-required") return httpStatus === 401 ? "session" : null;
       return name.toLowerCase() === "content-type" ? "application/json" : null;
     }
     send() {
@@ -432,4 +433,38 @@ test("a late 409 to an upload sent on the old cookie does not cover the page sig
   upload.release();
   assert.equal(((await uploading) as ApiError).status, 401, "the upload is the user's to send again");
   assert.equal(loginState.signedOut, false);
+});
+
+test("a new login by the same user, seen while the page is not covered, makes what is still out on the old one stale", async (t) => {
+  const page = heldPage(t);
+  const upload = answeringXhr(t, 401, { detail: "Session expired" }, true);
+  loginState.observe(signedIn(3600), loginState.revision); // the page's login ends in an hour
+  const reading = getRunStatus("flow-1", "run-1"); // both are out on the old session
+  const uploading = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm").catch((error) => error);
+  await tick();
+
+  // The same person signs in again early, in a window of their own, which replaces the session; the page was never
+  // covered, and reads the status: a login that ends 7 hours later than the old one did.
+  loginState.observe(signedIn(8 * 3600), loginState.revision);
+  assert.equal(loginState.signedOut, false);
+  // The old session is gone: the marked 401s of what went out on it arrive.
+  page.answer(0, sessionEnded());
+  upload.release();
+  await tick();
+  assert.equal(loginState.signedOut, false, "the renewed page is not covered, and not asked to sign in again");
+  assert.equal(page.calls.length, 2, "the read goes again under the new login, with no user action");
+  page.answer(1, ok(running));
+  assert.equal((await reading).id, "run-1");
+  assert.equal(((await uploading) as ApiError).status, 401, "the upload is the user's to send again");
+  assert.equal(loginState.signedOut, false);
+});
+
+test("the login read again, its end moved by a second or two, is the same login; one that ends much later is a new one", (t) => {
+  t.after(loginState.begin(anna));
+  loginState.observe(signedIn(3600), loginState.revision);
+  const started = loginState.revision;
+  assert.equal(loginState.observe(signedIn(3598), started), true, "the token's refresh, or the next read, keeps the session's end");
+  assert.equal(loginState.revision, started, "and what is out on it stays current");
+  assert.equal(loginState.observe(signedIn(8 * 3600), started), true);
+  assert.ok(loginState.revision > started, "a new login moves the end, and what is out on the old one is stale");
 });

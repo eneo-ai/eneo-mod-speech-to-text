@@ -12,15 +12,25 @@
  * back with what it found: a result from an older revision describes a login
  * that has changed since (the late 401 of a request sent on the old cookie, a
  * status read that went out while signed in), and never changes the state.
- * This is the only ordering of results against the login.
+ * This is the only ordering of results against the login. A new login by the
+ * same person while the page is not covered (an early renewal replaces the
+ * session, and the backend deletes the old one) is no cover and no uncover,
+ * so it is told by the session's end moving: what was sent on the old session
+ * is stale from then on.
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";
 import { ACCESS_CODE_USER, sessionUser } from "./user-identity";
 
+/**
+ * How far a new login moves the end of the session: the backend fixes it at the login (the token's refresh leaves it),
+ * so the same session read again moves it by the request's second or so.
+ */
+export const NEW_LOGIN_MOVES_END_MS = 60_000;
+
 export interface LoginState {
   readonly signedOut: boolean;
-  /** Counts the changes of the login: covered, uncovered, or another user signed in instead. */
+  /** Counts the changes of the login: covered, uncovered, another user signed in instead, or a new login by the same one. */
   readonly revision: number;
   /**
    * The user the page was opened for, which the page names in what it sends to Eneo (api.ts) and to the live relay:
@@ -60,6 +70,8 @@ export function createLoginState(): LoginState {
   let reread: (() => void) | undefined;
   let signedOut = false;
   let revision = 0;
+  // When the login last read ends, from its status; a later status that moves it far is a new login.
+  let endsAt: number | null = null;
   let otherUser: AuthenticatedUser | null = null;
   let endTimer: ReturnType<typeof setTimeout> | undefined;
   let waiting: Array<(renewed: boolean) => void> = [];
@@ -113,6 +125,7 @@ export function createLoginState(): LoginState {
         if (pages > 0) return;
         owner = null;
         reread = undefined;
+        endsAt = null;
         clearTimeout(endTimer);
         settle(false);
         setSignedOut(false);
@@ -123,6 +136,7 @@ export function createLoginState(): LoginState {
       clearTimeout(endTimer);
       const user = sessionUser(status);
       if (!user) {
+        endsAt = null;
         ended();
         return true;
       }
@@ -133,7 +147,14 @@ export function createLoginState(): LoginState {
       }
       setSignedOut(false);
       // The login ends at this time whatever the page does; only a new login moves it.
-      if (status.session_ends_in !== undefined) endTimer = setTimeout(() => ended(), status.session_ends_in * 1000);
+      if (status.session_ends_in !== undefined) {
+        const end = Date.now() + status.session_ends_in * 1000;
+        // A new login by the same person, seen while the page was not covered: what went out on the old session is
+        // stale (its answers are the old session's, which the backend deleted).
+        if (endsAt !== null && Math.abs(end - endsAt) >= NEW_LOGIN_MOVES_END_MS) revision += 1;
+        endsAt = end;
+        endTimer = setTimeout(() => ended(), status.session_ends_in * 1000);
+      }
       return true;
     },
     ended,
