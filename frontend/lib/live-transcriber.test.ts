@@ -54,15 +54,18 @@ function fakeLogin() {
   const listeners = new Set<() => void>();
   const cover = (on: boolean) => {
     login.signedOut = on;
-    login.revision += 1;
+    revision += 1;
     listeners.forEach((listener) => listener());
   };
+  let revision = 0;
+  let asked = 0;
   const login = {
     signedOut: false,
-    revision: 0,
+    ask: () => ({ revision, order: ++asked }),
     userChanged: () => {
       calls.userChanged += 1;
       cover(true);
+      return true;
     },
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -533,7 +536,7 @@ test("a close from a socket opened before the login changed does not cover the p
     live.start();
     sockets[0].ready();
     login.ended(); // a request finds the login ended: the page is covered, the socket is retired
-    login.observe({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" } }, login.revision);
+    login.observe({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" } });
     assert.equal(login.signedOut, false, "signed in again");
 
     sockets[0].drop(1008, "session_ended"); // the old socket's close, from the old cookie, arrives late
