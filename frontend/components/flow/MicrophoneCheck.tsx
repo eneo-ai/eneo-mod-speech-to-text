@@ -8,7 +8,8 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { LevelMeter, useInputLevel } from "@/components/flow/LevelMeter";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { browserStorage, microphoneProblem, type Problem } from "@/lib/flow-session";
+import { microphoneProblem, type Problem } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
 import { SPEECH_RECORDING } from "@/lib/recording-session";
 import {
   audioConstraints,

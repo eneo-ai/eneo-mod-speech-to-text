@@ -8,7 +8,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { FlowSparsePublic } from "@/lib/api";
 import type { FlowSpaceGroup } from "@/lib/flow-discovery";
-import { withLastUsedFirst } from "@/lib/flow-session";
+import { withLastUsedFirst } from "@/lib/last-used-flow";
 import styles from "./FlowList.module.css";
 
 /** How the flow takes its input (Eneo's `input_type`); a flow with no file or audio asks only for details. */

@@ -24,7 +24,8 @@ import {
   listCreateLabels,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
-import { browserStorage, lastUsedFlow } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
+import { lastUsedFlow } from "@/lib/last-used-flow";
 
 export default function FlowsPage() {
   return (

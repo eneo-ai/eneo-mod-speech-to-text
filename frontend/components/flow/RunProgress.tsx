@@ -35,7 +35,7 @@ export function RunProgress({
   /** When Eneo created the run; unknown until its first status read. */
   startedAt?: string | null;
   error?: string | null;
-  /** The flow ends in text, not a file (lib/flow-session makesText). */
+  /** The flow ends in text, not a file (lib/flow-output makesText). */
   makesText?: boolean;
   onCancel: () => Promise<void>;
 }) {

@@ -35,15 +35,14 @@ import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/co
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
-  browserStorage,
-  createActionLabel,
   labelsSpeakers,
-  makesText,
   primaryActionLabel,
   readSpeakerCount,
   storageLine,
   type SessionPhase,
 } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
+import { createActionLabel, makesText } from "@/lib/flow-output";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {

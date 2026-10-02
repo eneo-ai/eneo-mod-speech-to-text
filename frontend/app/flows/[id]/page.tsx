@@ -45,7 +45,8 @@ import {
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
-import { makesText, type SubmitRequest } from "@/lib/flow-session";
+import type { SubmitRequest } from "@/lib/flow-session";
+import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";

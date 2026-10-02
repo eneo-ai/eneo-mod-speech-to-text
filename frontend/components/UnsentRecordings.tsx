@@ -101,7 +101,7 @@ export function UnsentRecordings({
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
-  /** What a recording's send says: what its flow makes (lib/flow-session createActionLabel). */
+  /** What a recording's send says: what its flow makes (lib/flow-output createActionLabel). */
   sendLabel?: (recording: StoredRecording) => string;
   /** The browser may delete the recordings (useEvictable): the list then does not promise they stay. */
   evictable?: boolean;

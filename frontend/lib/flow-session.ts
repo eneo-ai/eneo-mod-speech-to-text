@@ -22,11 +22,13 @@ import { ALREADY_SENT, IN_USE_ELSEWHERE, type RecordingStore, type StoredRecordi
 import { formatBytes, formatDuration } from "./format";
 import type { LivePiece, LiveSnapshot } from "./live-transcriber";
 import { baseMimetype, isMimeAllowed, isRuntimeFileInput, selectRuntimeInputStep } from "./upload";
+import type { KeyValueStorage } from "./browser-storage";
+import { createActionLabel, makesText } from "./flow-output";
+import { lastFlowKey } from "./last-used-flow";
 
 export type InputMode = "stromma" | "spela-in" | "ladda-upp";
 export type SessionPhase = "setup" | "starting" | "recording" | "paused" | "interrupted" | "ready";
 export type DetailValue = string | string[];
-export type KeyValueStorage = Pick<Storage, "getItem" | "setItem">;
 
 /** What happened, and what to do next. */
 export interface Problem {
@@ -315,20 +317,6 @@ export function captureLimits(contract: RunContract | null, step: RunContractSte
   };
 }
 
-/**
- * Whether the flow's result is text rather than a document: exactly when Eneo gives it back in the run (delivery
- * "payload"), which the result view shows. A file, a result sent on to a receiver, and an Eneo or flow that does not
- * say are a document, as they always were.
- */
-export function makesText(output: Pick<NonNullable<RunContract["final_output"]>, "delivery"> | null | undefined): boolean {
-  return output?.delivery === "payload";
-}
-
-/** The action that makes the run, by what the flow ends in (`makesText`). */
-export function createActionLabel(text: boolean): string {
-  return text ? "Skapa text" : "Skapa dokument";
-}
-
 export function primaryActionLabel(mode: InputMode, hasFile: boolean, text = false): string {
   if (mode === "stromma") return "Starta strömning";
   if (mode === "spela-in") return "Starta inspelning";
@@ -423,33 +411,7 @@ export function detailsPayload(
   return payload;
 }
 
-/** The browser's localStorage, or null where the page may not use it. */
-export function browserStorage(): KeyValueStorage | null {
-  try {
-    return typeof window === "undefined" ? null : window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 const modeKey = (flowId: string) => `tal-till-text:mode:${flowId}`;
-
-const lastFlowKey = (ownerId: string) => `tal-till-text:${ownerId}:last-flow`;
-
-/** The flow this user last recorded, streamed or uploaded with in this browser. */
-export function lastUsedFlow(storage: KeyValueStorage | null | undefined, ownerId: string): string | null {
-  try {
-    return storage?.getItem(lastFlowKey(ownerId)) ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** The flow list with the last used flow first; the rest keep their order. */
-export function withLastUsedFirst<T extends { id: string }>(flows: T[], lastId: string | null): T[] {
-  const last = flows.find((flow) => flow.id === lastId);
-  return last ? [last, ...flows.filter((flow) => flow !== last)] : flows;
-}
 
 /** Strömma's live text for one recording, as the session drives it. */
 export interface LiveSession {

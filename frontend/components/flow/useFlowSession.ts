@@ -3,7 +3,8 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RunContract } from "@/lib/api";
 import { browserDrafts } from "@/lib/drafts";
-import { browserStorage, FlowSession } from "@/lib/flow-session";
+import { FlowSession } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
 import type { CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, sealed } from "@/lib/recording-store";

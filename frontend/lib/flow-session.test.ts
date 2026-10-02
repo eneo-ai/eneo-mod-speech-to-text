@@ -13,21 +13,19 @@ import {
   availableModes,
   acceptedFormats,
   fileAccept,
-  lastUsedFlow,
-  createActionLabel,
-  makesText,
   primaryActionLabel,
   readSpeakerCount,
   oneRecordingLimitSeconds,
   captureLimits,
   speakerLabelsFor,
   storageLine,
-  withLastUsedFirst,
   type DetailValue,
-  type KeyValueStorage,
   type LiveClient,
   type SubmitRequest,
 } from "./flow-session";
+import type { KeyValueStorage } from "./browser-storage";
+import { createActionLabel, makesText } from "./flow-output";
+import { lastUsedFlow, withLastUsedFirst } from "./last-used-flow";
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
