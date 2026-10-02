@@ -22,7 +22,7 @@ docker compose up --build
 open http://localhost:3000
 ```
 
-Utan Docker (devcontainer): backend från `backend/` med miljön inläst från `.env`, frontend från `frontend/` med `npm run dev` på http://localhost:3002. Alla steg: [Lokal utveckling](docs/development.md).
+Utan Docker (devcontainer): backend från `backend/` med miljön inläst från `.env`, frontend från `frontend/` med `npm run dev` (Vite) på http://localhost:3002, som vidarebefordrar `/api` till backend. Alla steg: [Lokal utveckling](docs/development.md).
 
 ```bash
 .venv/bin/python -m app.serve --api-only --host 0.0.0.0 --port 8000 --reload
