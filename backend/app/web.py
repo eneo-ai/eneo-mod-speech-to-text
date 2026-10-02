@@ -11,12 +11,15 @@ middleware, assets are immutable and the rest revalidated, a path with a NUL byt
 
 from __future__ import annotations
 
+import asyncio
+import gzip
 import hashlib
 import html
 import json
 import mimetypes
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -104,6 +107,45 @@ def _accepted_encodings(accept_encoding: str | None) -> set[str]:
         if name and quality > 0:
             accepted.add(name.lower())
     return accepted
+
+
+# A JSON answer of the proxy of at least this many bytes is gzipped for a client that accepts it. Smaller ones cost more
+# to compress than they save. Next gzipped a proxied answer (880,050 bytes to 87,342, measured in B0.1) and the backend
+# alone does not, so the module does it now that Next is gone; only here, never for a streamed file (audio, a PDF).
+JSON_COMPRESSION_MIN_BYTES = 1024
+
+
+def _is_json(content_type: str | None) -> bool:
+    media_type = (content_type or "").split(";")[0].strip().lower()
+    return media_type == "application/json" or (media_type.startswith("application/") and media_type.endswith("+json"))
+
+
+async def compress_json(request: Request, upstream: httpx.Response, headers: dict[str, str]) -> bytes:
+    """The body to send for a proxied answer: Eneo's content gzipped when that is allowed, with ``headers`` changed to say so.
+
+    Only a whole JSON answer (2xx but not 204 or 206, no Content-Range, not already encoded, to a request without a
+    Range) of at least JSON_COMPRESSION_MIN_BYTES, and only for a client that accepts gzip. An answer that could be
+    compressed gets ``Vary: Accept-Encoding`` either way, so a cache keeps the two apart. The compression runs off the
+    event loop (zlib lets go of the GIL): the live relay shares it.
+    """
+    content = upstream.content
+    if (
+        not 200 <= upstream.status_code < 300
+        or upstream.status_code in {204, 206}
+        or len(content) < JSON_COMPRESSION_MIN_BYTES
+        or not _is_json(upstream.headers.get("content-type"))
+        or "content-range" in upstream.headers
+        or "content-encoding" in upstream.headers
+        or "range" in request.headers
+    ):
+        return content
+    headers["Vary"] = "Accept-Encoding"
+    if "gzip" not in _accepted_encodings(request.headers.get("accept-encoding")):
+        return content
+    headers["Content-Encoding"] = "gzip"
+    for name in [name for name in headers if name.lower() == "etag" and not headers[name].startswith("W/")]:
+        headers[name] = "W/" + headers[name]  # another body of the same resource: no longer a strong validator
+    return await asyncio.to_thread(gzip.compress, content, 6)
 
 
 def _branded_page(index: Path, branding: str) -> bytes:
