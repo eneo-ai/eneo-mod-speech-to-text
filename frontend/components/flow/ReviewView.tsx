@@ -63,10 +63,29 @@ import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { isRecord } from "@/lib/drafts";
 import { formatDeadline } from "@/lib/format";
 import styles from "./ReviewView.module.css";
 
 type ReviewEdit = { text?: string; speakerRows?: SpeakerMappingRow[] };
+
+/** A speaker row as the review keeps it in an edit: every part the page then shows or sends. */
+const isSpeakerRow = (value: unknown): value is SpeakerMappingRow =>
+  isRecord(value) &&
+  typeof value.label === "string" &&
+  typeof value.lineCount === "number" &&
+  Array.isArray(value.samples) && value.samples.every((sample) => typeof sample === "string") &&
+  (typeof value.name === "string" || value.name === null) &&
+  (value.confidence === "low" || value.confidence === "medium" || value.confidence === "high") &&
+  typeof value.evidence === "string" &&
+  (value.split === undefined || typeof value.split === "boolean");
+
+/** What a kept edit is read as: the text or the speakers' rows, as the page keeps them, each of its own type. */
+const isReviewEdit = (value: unknown): value is ReviewEdit =>
+  isRecord(value) &&
+  (value.text !== undefined || value.speakerRows !== undefined) &&
+  (value.text === undefined || typeof value.text === "string") &&
+  (value.speakerRows === undefined || (Array.isArray(value.speakerRows) && value.speakerRows.every(isSpeakerRow)));
 
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
 export function ReviewView({
@@ -122,7 +141,7 @@ export function ReviewView({
   // Unsaved edits outlast a reload (a lost login, a tab put to sleep) for this person; see useReviewDraft.
   const user = useAuthenticatedUser();
   const draftName = `review:${runState.run.id}:${checkpoint.id}`;
-  const draft = useReviewDraft<ReviewEdit>(user.id, draftName, checkpoint.revision);
+  const draft = useReviewDraft(user.id, draftName, checkpoint.revision, isReviewEdit);
   const namesDraftKey = { ownerId: user.id, name: `names:${draftName}` };
 
   const initialText = extractCheckpointText(payload);

@@ -14,7 +14,7 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, isRecord, readDraft, writeDraft, type DraftStorage } from "./drafts";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
@@ -457,6 +457,17 @@ interface SpeakerChoices {
   edited: boolean;
 }
 
+// What a draft kept before a reload must be to be read: the details as the form's fields take them, and each speaker
+// choice, when it is there, of its own type. Any other is dropped by readDraft.
+const isDetails = (value: unknown): value is Record<string, DetailValue> =>
+  isRecord(value) &&
+  Object.values(value).every((detail) => typeof detail === "string" || (Array.isArray(detail) && detail.every((item) => typeof item === "string")));
+const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
+  isRecord(value) &&
+  (value.labels === undefined || value.labels === null || typeof value.labels === "boolean") &&
+  (value.count === undefined || typeof value.count === "string") &&
+  (value.edited === undefined || typeof value.edited === "boolean");
+
 export interface FlowSessionOptions {
   flowId: string;
   flowName: string;
@@ -517,9 +528,9 @@ export class FlowSession {
   constructor(private readonly options: FlowSessionOptions) {
     this.flowName = options.flowName;
     // What this person typed before a reload (a lost login, a tab put to sleep); the contract decides what fits.
-    this.details = readDraft<Record<string, DetailValue>>(options.drafts, options.ownerId, this.draftName()) ?? {};
+    this.details = readDraft(options.drafts, options.ownerId, this.draftName(), isDetails) ?? {};
     // And their speaker choices, so a recording sent after the reload gets the labels and the bound they saw.
-    const choices = readDraft<Partial<SpeakerChoices>>(options.drafts, options.ownerId, this.choicesDraftName());
+    const choices = readDraft(options.drafts, options.ownerId, this.choicesDraftName(), isSpeakerChoices);
     if (typeof choices?.labels === "boolean") this.explicitSpeakerLabels = choices.labels;
     if (typeof choices?.count === "string") this.speakerCountText = choices.count;
     if (choices?.edited === true) this.countFollowsNames = false;
