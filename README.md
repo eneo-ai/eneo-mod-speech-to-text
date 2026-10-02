@@ -25,10 +25,10 @@ open http://localhost:3000
 Utan Docker (devcontainer): backend från `backend/` med miljön inläst från `.env`, frontend från `frontend/` med `npm run dev` på http://localhost:3002. Alla steg: [Lokal utveckling](docs/development.md).
 
 ```bash
-.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log --ws-max-size 131072 --ws-max-queue 16
+.venv/bin/python -m app.serve --api-only --host 0.0.0.0 --port 8000 --reload
 ```
 
-Raden ovan läses av `backend/tests/test_live_relay.py` och måste ha samma WebSocket-gränser som produktionsimagen. Ändra den inte utan att ändra testet.
+Raden ovan läses av `backend/tests/test_live_relay.py`, som kräver att varje startsätt kör startprogrammet `app.serve` (det som sätter WebSocket-gränserna). Ändra den inte utan att ändra testet.
 
 ## Egen organisation
 
