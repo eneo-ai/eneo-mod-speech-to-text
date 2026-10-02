@@ -74,7 +74,7 @@ set -a
 source .env
 set +a
 cd backend
-.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log --ws-max-size 131072 --ws-max-queue 16
+.venv/bin/python -m app.serve --api-only --host 0.0.0.0 --port 8000 --reload
 ```
 
 6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:

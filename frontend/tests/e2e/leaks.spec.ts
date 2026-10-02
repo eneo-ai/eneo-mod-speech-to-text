@@ -6,6 +6,7 @@
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
 import { backLink, chooseMode, open, record, result, reviewEditor, run, setup, stop } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -39,7 +40,7 @@ let loginEndsIn = 200;
 
 /** A run paused for review, its transcript read: where the naming dialog opens. */
 async function reviewPage(page: Page) {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
 }
 
@@ -146,7 +147,7 @@ const OVERLAYS: Record<string, Overlay> = {
     go: async (page) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
-      await run(page, "run-plain");
+      await run(page, ids.runs.plain);
       await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
     },
     show: (page) => page.getByRole("button", { name: "Fler alternativ" }).click(),
@@ -219,7 +220,7 @@ const OVERLAYS: Record<string, Overlay> = {
   },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {
-    go: (page) => run(page, "run-running"),
+    go: (page) => run(page, ids.runs.running),
     show: (page) => page.getByRole("button", { name: "Avbryt körningen" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
     hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),

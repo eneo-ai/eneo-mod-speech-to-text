@@ -5,11 +5,12 @@
  */
 import { expect, test } from "@playwright/test";
 import { run } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.skip(process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED !== "true", "needs the app started with the speaker review on");
 
 test("names typed but not saved come back as a dialog you can see and reach", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await page.getByRole("button", { name: /^Talare/ }).first().click();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });

@@ -25,6 +25,7 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.background import BackgroundTask
@@ -42,6 +43,7 @@ from app.config import load_settings
 from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
+from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -60,9 +62,22 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await http_client.aclose()
 
 
-app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
+# No documentation routes: the schema describes a surface that is not for browsers, and /docs and /openapi.json are not
+# something to leave open on the module's origin (an ordinary unknown path answers instead).
+app = FastAPI(
+    title="Eneo Speech-to-Text Module Backend",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+    # A slash twin of a route is a 404, never a 307 whose Location says http:// behind a proxy that ends TLS (a fetch on
+    # an https page refuses it as mixed content). The page sends the exact path and the backend matches it as spelled.
+    redirect_slashes=False,
+)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
 app.add_exception_handler(BodyTooLarge, body_too_large_handler)
+# Last of the middleware, so the outermost: the 413 above and every answer below carry the security headers.
+add_security_headers(app)
 
 http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
@@ -95,7 +110,10 @@ def _requested_upload_timeout_seconds(request: Request) -> float | None:
     return value if value > 0 else None
 
 
-@app.get("/api/healthz")
+# One handler for both paths, and HEAD too: the image's health probe (/health) and the module's own (/api/healthz) are
+# real routes, so a broken build of the UI cannot answer them with a page.
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/healthz", methods=["GET", "HEAD"])
 async def healthz():
     return {"ok": True}
 
@@ -114,9 +132,13 @@ async def get_config():
 # Settings.accent). No branding route asks for a session: the login page shows the organisation before there is one.
 
 
+def _branding() -> dict[str, object]:
+    return {"organization": settings.organization}
+
+
 @app.get("/api/branding")
 async def get_branding():
-    return {"organization": settings.organization}
+    return _branding()
 
 
 @app.get("/api/branding/logo/{variant}")
@@ -137,13 +159,6 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
     )
 
 
-def _etag_matches(if_none_match: str | None, current: str) -> bool:
-    if if_none_match is None:
-        return False
-    listed = {value.strip().removeprefix("W/") for value in if_none_match.split(",")}
-    return "*" in listed or current in listed
-
-
 @app.get("/api/branding/theme.css")
 async def get_branding_theme(request: Request) -> Response:
     """The accent override the page links after its built theme; empty (a comment) without ORGANIZATION_ACCENT."""
@@ -153,7 +168,7 @@ async def get_branding_theme(request: Request) -> Response:
         "ETag": etag(css),
         "X-Content-Type-Options": "nosniff",
     }
-    if _etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
+    if etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
         return Response(status_code=304, headers=headers)
     return Response(content=css, media_type="text/css", headers=headers)
 
@@ -323,24 +338,6 @@ def _proxy_route_is_allowed(method: str, path: str) -> bool:
         method in methods and pattern.fullmatch(path) is not None
         for methods, pattern in _PROXY_ROUTE_RULES
     )
-
-
-def _resolve_proxy_path(method: str, path: str) -> str | None:
-    """Return the allowlisted upstream path for ``path`` or None if not exposed.
-
-    Eneo's routes carry a trailing slash, and the allowlist spells them that
-    way. Next.js strips the trailing slash from rewritten paths in ``next
-    dev`` (the dedicated upload routes already register both variants for the
-    same reason), so a slash-stripped path is accepted when — and only when —
-    its slash-suffixed form is allowlisted. Sending the canonical form upstream
-    also avoids Eneo answering with a redirect the proxy would not follow.
-    """
-    if _proxy_route_is_allowed(method, path):
-        return path
-    canonical = f"{path}/"
-    if not path.endswith("/") and _proxy_route_is_allowed(method, canonical):
-        return canonical
-    return None
 
 
 _UNSAFE_CHARACTER = re.compile(r"[\x00-\x1f\x7f\\]")
@@ -901,12 +898,11 @@ async def eneo_run_artifact_content(
     ],
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
-    resolved_path = (
-        None if _leaves_route(path) else _resolve_proxy_path(request.method, path)
-    )
-    if resolved_path is None:
+    # The path as the browser spelled it: Eneo's routes carry a trailing slash and so does the allowlist, so the
+    # slashless form of a listed path is not on the list either.
+    if _leaves_route(path) or not _proxy_route_is_allowed(request.method, path):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
-    upstream_url = _upstream_url(resolved_path)
+    upstream_url = _upstream_url(path)
     # Forward request headers, but replace browser-controlled credentials with
     # the credentials owned by the configured module-auth session.
     # The header that carries the service key is configured, so it is excluded here by its name.
@@ -962,8 +958,9 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if k.lower() not in _UNFORWARDED_RESPONSE_HEADERS
     }
 
+    content = await compress_json(request, upstream, resp_headers)
     return Response(
-        content=upstream.content,
+        content=content,
         status_code=upstream.status_code,
         headers=resp_headers,
         media_type=upstream.headers.get("content-type"),
@@ -1223,3 +1220,9 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
     finally:
         await _close_eneo_socket(eneo)
     await _close_browser_socket(websocket, code=code, reason=reason)
+
+
+# Last, after every route: the built UI, its files, and the page for every address of the app.
+if settings.static_dir is not None:
+    # The page holds the organisation, as GET /api/branding answers it (the same JSON, rendered the same way).
+    serve_web(app, settings.static_dir, branding=JSONResponse(jsonable_encoder(_branding())).body.decode())

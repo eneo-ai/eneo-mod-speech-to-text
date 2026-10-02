@@ -1,0 +1,6 @@
+- main:
+  - heading "Nämndmöte med mötesdatum" [level=1]
+  - paragraph: Frågar efter dagen mötet hölls.
+  - text: Mötesdatum Valfritt
+  - button "Öppna kalender"
+  - textbox "Mötesdatum Valfritt"

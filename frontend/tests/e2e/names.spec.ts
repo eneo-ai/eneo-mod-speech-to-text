@@ -6,6 +6,7 @@
 import { expect, test, type Route } from "@playwright/test";
 import { axNode } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
@@ -47,7 +48,7 @@ test("the sending view is a page with a heading that takes focus, a named progre
 });
 
 test("a run opened while it runs keeps the flow's page: the way back, and the details it was started with", async ({ page }, info) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeFocused();
   await expect(backLink(page)).toBeVisible();
   if (isLaptop(info)) {
@@ -61,8 +62,8 @@ test("a run opened while it runs keeps the flow's page: the way back, and the de
 });
 
 test("a step that will stop for the person says what it asks while it is ahead, and not once it is done", async ({ page }) => {
-  await run(page, "run-before-review", "flow-2");
-  // flow-2 gives its result back in the run (delivery "payload"): it makes text, not a document.
+  await run(page, ids.runs.beforeReview, ids.flows.flow2);
+  // Flow 2 gives its result back in the run (delivery "payload"): it makes text, not a document.
   await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   const review = page.getByRole("listitem").filter({ hasText: "Talare" });
   await expect(review).toContainText("Väntar");
@@ -109,7 +110,7 @@ test("the name list opens with its chevron and closes with it again; a press out
 
 test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
   await page.unroute("**/input-files/*/audio");
   await page.getByRole("button", { name: "Försök igen" }).click();
@@ -145,7 +146,7 @@ test("the player's row keeps the position slider a usable width on a phone, with
 });
 
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
-  await run(page, "run-review-approved", "flow-2");
+  await run(page, ids.runs.reviewApproved, ids.flows.flow2);
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
   // Approval has folded the transcript's corrections in; nothing corrected now would reach the document.
@@ -169,11 +170,14 @@ test("an approved pause whose resume did not go through shows the saved names re
 
 test("an approved text review shows the saved decision; a draft from before it is only a note, and Fortsätt only resumes", async ({ page }) => {
   const draft = "Kommunstyrelsen beslutade att sänka budgetramen.";
-  await page.addInitScript((text) => {
-    const key = "tal-till-text:draft:user-1:review:run-review-text-approved:cp-2";
-    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify({ revision: 2, edit: { text } }));
-  }, draft);
-  await run(page, "run-review-text-approved");
+  const key = `tal-till-text:draft:user-1:review:${ids.runs.reviewTextApproved}:${ids.checkpoints.reviewText}`;
+  await page.addInitScript(
+    ({ text, key }) => {
+      if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify({ revision: 2, edit: { text } }));
+    },
+    { text: draft, key },
+  );
+  await run(page, ids.runs.reviewTextApproved);
   await expect(page.getByText("Granskningen är redan godkänd. Välj Fortsätt så går flödet vidare.")).toBeVisible();
   await expect(page.getByRole("article")).toHaveText("Kommunstyrelsen beslutade att höja budgetramen med två procent.");
   await expect(page.getByRole("button", { name: "Använd din version" })).toHaveCount(0);
@@ -229,7 +233,7 @@ test("the folded panels keep their content out of sight until their trigger is p
   await expect(page.getByText("Flödets version 3")).toBeHidden();
   await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
   await expect(page.getByText("Flödets version 3")).toBeVisible();
-  await run(page, "run-failed");
+  await run(page, ids.runs.failed);
   await expect(page.getByText(/^Step 2 failed/)).toBeHidden();
   await page.getByRole("button", { name: "Visa teknisk information" }).click();
   await expect(page.getByText(/^Step 2 failed/)).toBeVisible();
@@ -434,7 +438,7 @@ test("a correction's save is said from its first word: the live region waits in 
     await new Promise((resolve) => setTimeout(resolve, 300));
     return route.fulfill({
       json: {
-        flow_run_id: "run-done", step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
+        flow_run_id: ids.runs.done, step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
         segments_hash: body.segments_hash, occurrences: body.occurrences ?? [], speaker_edits: body.speaker_edits ?? [],
         revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z",
       },

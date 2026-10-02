@@ -88,8 +88,10 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
           });
         }
         // A field's box takes the click for the control inside it (the design system's inputs and pickers).
+        // The date field's box does too on a touch device: a tap inside it above the input focuses the input (measured on the
+        // stub's date flow, 390 px wide), so the 44 px box, not the 24 px input line, is what a finger meets.
         const fieldBox = el.matches('input, textarea, [role="combobox"]')
-          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
+          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-date-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
           : null;
         if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
         const labels = (el as HTMLInputElement).labels;

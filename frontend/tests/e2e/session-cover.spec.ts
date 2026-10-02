@@ -6,6 +6,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
 import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -27,7 +28,7 @@ async function tabStaysInSignIn(page: Page) {
 }
 
 test("a page dialog open when the login ends is covered with the page, and is back with its edit after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -52,7 +53,7 @@ test("a page dialog open when the login ends is covered with the page, and is ba
 });
 
 test("a name list open when the login ends goes with its dialog, and the focus is inside the dialog again after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -72,7 +73,7 @@ test("a name list open when the login ends goes with its dialog, and the focus i
 });
 
 test("a change-speaker popover open when the login ends is covered with the page, and the page works after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   const trigger = page.getByRole("button", { name: "Anna Berg, ändra talare" }).first();
   await trigger.click();
@@ -266,7 +267,7 @@ test("with the access code, signed out, the code is entered in the dialog and th
   let signedIn = true;
   const answer = () => ({ authenticated: signedIn, auth_mode: "access_code", user: null, ...(signedIn ? { session_ends_in: 3600 } : {}) });
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: answer() }));
-  await open(page, "/flows/flow-1");
+  await open(page, `/flows/${ids.flows.flow1}`);
   const setupHeading = page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" });
   await expect(setupHeading).toBeVisible();
   signedIn = false;
@@ -331,7 +332,7 @@ test("the leave question can be answered with a mouse while a dialog of the old 
 });
 
 test("the sign-in button answers a mouse while a dialog of the old design system is open on the page, and the edit in that dialog is kept", async ({ page, context }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -357,7 +358,7 @@ test("the sign-in button answers a mouse while a dialog of the old design system
 });
 
 test("the cancel question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   const trigger = page.getByRole("button", { name: "Avbryt körningen" });
   await trigger.click();
   const question = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
@@ -502,7 +503,7 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
   {
     name: "the speaker naming dialog, with an edit in it",
     open: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
       await page.getByRole("button", { name: "Namnge talarna" }).click();
       const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -526,7 +527,7 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
   {
     name: "the cancel question",
     open: async (page) => {
-      await run(page, "run-running");
+      await run(page, ids.runs.running);
       await page.getByRole("button", { name: "Avbryt körningen" }).click();
       const dialog = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
       await expect(dialog).toBeVisible();

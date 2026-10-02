@@ -134,19 +134,16 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertNotIn("origin", forwarded)
         self.assertNotIn("referer", forwarded)
 
-    def test_proxy_accepts_slash_stripped_allowlisted_path(self) -> None:
-        # Next.js `next dev` strips the trailing slash from rewritten paths.
+    def test_the_slashless_form_of_an_allowlisted_path_is_refused(self) -> None:
+        # The path is matched as the browser spelled it: nothing strips a slash on the way any more, so the allowlist
+        # does not make up for one that is missing.
         response = self.client.get(
             "/api/eneo/flows",
             params={"space_id": "space-id"},
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(self.proxy_client.calls), 1)
-        self.assertEqual(
-            self.proxy_client.calls[0]["url"],
-            "https://eneo.example.test/api/v1/flows/",
-        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
 
     def test_proxy_exposes_transcript_review_routes(self) -> None:
         base = "/api/eneo/flows/flow-1/runs/run-1"
@@ -242,7 +239,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/flow-1/runs/run-1/retry/")
         self.assertEqual(call["headers"]["idempotency-key"], "flow-run-retry:run-1")
 
-    def test_proxy_slash_tolerance_does_not_widen_allowlist(self) -> None:
+    def test_proxy_refuses_a_path_that_is_not_listed_whatever_its_slash(self) -> None:
         response = self.client.get("/api/eneo/users")
 
         self.assertEqual(response.status_code, 403)

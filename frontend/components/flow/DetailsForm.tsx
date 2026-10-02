@@ -31,6 +31,8 @@ const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, st
 
 type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "description" | "isOptional" | "isRequired" | "status" | "statusVariant"> & {
   "data-detail-field": string;
+  /** The calendar's own styling (its button at the field's height for a finger); the plain field has none to match. */
+  className: string;
   name: string;
   text: string;
   onChange: (next: string) => void;
@@ -42,9 +44,9 @@ type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "descript
  * (2026-09-24); if the code is gone a line says so and a press fetches only the calendar. No boundary and no reload:
  * nothing can unmount the form and what has been typed in it.
  */
-function DateField({ name, text, onChange, ...common }: DateFieldProps) {
+function DateField({ name, text, onChange, className, ...common }: DateFieldProps) {
   const { value: DateInput, failed, retry } = useLoaded(calendar);
-  if (DateInput) return <DateInput {...common} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
+  if (DateInput) return <DateInput {...common} className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
   return (
     <>
       <TextInput {...common} htmlName={name} autoComplete="off" value={text} onChange={onChange} />
@@ -196,6 +198,7 @@ export function DetailsForm({
               <DateField
                 key={field.name}
                 {...common}
+                className={styles.date}
                 name={field.name}
                 text={text}
                 onChange={(next) => onChange(field.name, next)}

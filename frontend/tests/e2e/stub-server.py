@@ -3,23 +3,24 @@ gate: every screen of the app without Eneo. Dev and test only; never shipped.
 
     python3 tests/e2e/stub-server.py [port]   # default 8401
 
-Runs the page can open with ?run=<id>:
-  run-done      finished, a report, two files and a transcript with audio
-  run-plain     finished, text only, no transcript
-  run-failed    failed in step 2, retryable
-  run-running   never ends, for the progress view
-  run-review    paused for "who is who" (flow-2)
-  run-review-text  paused for a text step's output to be checked
-  run-corrected finished like run-done, its transcript corrected after the document
-  run-pdf       finished, the document only its PDF, previewed from the step's text
-  run-pdf-long  like run-pdf, a document long enough to fold
-The paused run-review has a passage split off to a third speaker, and its
+Identifiers (flows, steps, runs, files) are the UUIDs of tests/fixtures/ids.json, named there as below.
+Runs the page can open with ?run=<id> (runs.<name>):
+  done          finished, a report, two files and a transcript with audio
+  plain         finished, text only, no transcript
+  failed        failed in step 2, retryable
+  running       never ends, for the progress view
+  review        paused for "who is who" (flow2)
+  reviewText    paused for a text step's output to be checked
+  corrected     finished like done, its transcript corrected after the document
+  pdf           finished, the document only its PDF, previewed from the step's text
+  pdfLong       like pdf, a document long enough to fold
+The paused review run has a passage split off to a third speaker, and its
 checkpoint keeps the naming step's own proposal (original_payload_json).
-A run the page starts itself runs for two polls, then finishes like run-done.
+A run the page starts itself runs for two polls, then finishes like done.
 An upload whose file name starts with "langsam" is answered after 6 s; one
 starting with "for-lang" is refused as longer than the flow takes.
-flow-3 refuses a new run as a newer published version (409); flow-4 needs
-republishing (409 on the contract); any unknown flow is gone (404). flow-2
+flow3 refuses a new run as a newer published version (409); flow4 needs
+republishing (409 on the contract); any unknown flow is gone (404). flow2
 ends in text (Skapa text) and, labelling speakers, asks Antal talare; flows 1
 and 3 ask it once Märk upp talare is on, filled from Deltagare, which their
 contract names as the participants field. The live
@@ -59,8 +60,21 @@ ORGANIZATION = (
 )
 ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
 LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
-AUDIO_STEP_ID = "00000000-0000-0000-0000-00000000a001"
-REVIEW_STEP_ID = "00000000-0000-0000-0000-00000000b002"
+# Every identifier the stub hands out is one of tests/fixtures/ids.json, which the gate's specs read too: the backend's live
+# route takes UUIDs for the flow and the step, and Eneo's own ids are UUIDs.
+IDS = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "ids.json").read_text())
+F1, F2, F3, F4, F5 = (IDS["flows"][f"flow{n}"] for n in range(1, 6))
+AUDIO_STEP_ID, REVIEW_STEP_ID, REPORT_STEP_ID = IDS["steps"]["audio"], IDS["steps"]["review"], IDS["steps"]["report"]
+RUN, FILE, CHECKPOINT_ID, RESULT = IDS["runs"], IDS["files"], IDS["checkpoints"], IDS["results"]
+
+
+def new_run_id(n):
+    """The n-th run the page starts, a UUID of its own."""
+    return f"00000000-0000-4000-9000-{n:012d}"
+
+
+def new_file_id(n):
+    return f"00000000-0000-4000-a000-{n:012d}"
 
 AUDIO_STEP = {
     "step_id": AUDIO_STEP_ID,
@@ -75,10 +89,12 @@ LIVE_ON = {"live": {"available": True, "reason": None}, "speaker_labels": {"sele
            "max_speakers": {"form_field": None, "participants_field": "deltagare"}}
 
 
-def flow(fid, name, description, version, space, fields, **contract):
+def flow(fid, name, description, version, space, fields, listed=True, **contract):
     return {
         "published": {"id": fid, "name": name, "description": description, "published_version": version},
         "space": space,
+        # The flow list names the flows it shows; a flow that is not listed is only reached by its address.
+        "listed": listed,
         "contract": {"flow_id": fid, "published_flow_version": version, "form_fields": fields,
                      "steps_requiring_input": [AUDIO_STEP], **contract},
     }
@@ -86,12 +102,12 @@ def flow(fid, name, description, version, space, fields, **contract):
 
 PARTICIPANTS = {"name": "deltagare", "label": "Deltagare", "type": "list", "required": False, "order": 1}
 FLOWS = {f["published"]["id"]: f for f in [
-    flow("flow-1", "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
+    flow(F1, "Nämndmöte till rapport", "Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.",
          3, ("space-1", "Kommunledningskontoret"), [PARTICIPANTS], transcription=LIVE_ON,
-         final_output={"step_id": "s2", "step_order": 2, "output_type": "pdf", "output_mode": "pass_through", "delivery": "artifact"},
+         final_output={"step_id": REPORT_STEP_ID, "step_order": 2, "output_type": "pdf", "output_mode": "pass_through", "delivery": "artifact"},
          security_classification={"name": "Öppen information", "security_level": 1,
                                   "description": "Använd bara information som får lämnas ut till vem som helst."}),
-    flow("flow-2", "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,
+    flow(F2, "Intervju till sammanfattning", "Sammanfattar en intervju med citat och teman.", 7,
          ("space-1", "Kommunledningskontoret"),
          [{"name": "intervjuperson", "label": "Intervjuperson", "type": "text", "required": True, "order": 1},
           {"name": "typ", "label": "Typ av intervju", "type": "select", "options": ["Medborgare", "Personal"], "required": False, "order": 2}],
@@ -103,12 +119,15 @@ FLOWS = {f["published"]["id"]: f for f in [
                                   "output_contract": {"properties": {"speakers": {"items": {"properties": {
                                       "label": {"pattern": "^SPEAKER_\\d{2,}$"}}}}}}}]),
     # The flow asks the speaker count itself, as a number detail.
-    flow("flow-3", "Samråd till protokoll", "Gör ett protokoll av ett samrådsmöte.", 2, ("space-2", "Socialtjänsten"),
+    flow(F3, "Samråd till protokoll", "Gör ett protokoll av ett samrådsmöte.", 2, ("space-2", "Socialtjänsten"),
          [PARTICIPANTS, {"name": "arende", "label": "Ärende", "type": "text", "required": True, "order": 2},
           {"name": "antal_talare", "label": "Antal talare", "type": "number", "required": False, "order": 3}],
          transcription={**LIVE_ON, "max_speakers": {"form_field": "antal_talare", "participants_field": "deltagare"}}),
-    flow("flow-4", "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor", "Behöver publiceras om.",
+    flow(F4, "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor", "Behöver publiceras om.",
          5, ("space-2", "Socialtjänsten"), []),
+    # A flow that asks a date (the lazy calendar of the details form), kept out of the list: no state of the list changes.
+    flow(F5, "Nämndmöte med mötesdatum", "Frågar efter dagen mötet hölls.", 1, ("space-1", "Kommunledningskontoret"),
+         [{"name": "motesdatum", "label": "Mötesdatum", "type": "date", "required": False, "order": 1}], listed=False),
 ]}
 
 
@@ -123,7 +142,7 @@ def tone(seconds, freq):
     return buf.getvalue()
 
 
-AUDIO = {"file-a": tone(12, 330), "file-b": tone(8, 440)}
+AUDIO = {FILE["audioA"]: tone(12, 330), FILE["audioB"]: tone(8, 440)}
 PDF = (b"%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 144]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n")
 
@@ -143,36 +162,41 @@ SEGMENTS = [
 ]
 SEGMENTS_HASH = hashlib.sha256(json.dumps(SEGMENTS, ensure_ascii=False).encode()).hexdigest()
 TRANSCRIBE_STEP = {
-    "id": "result-1", "step_id": AUDIO_STEP_ID, "step_order": 1, "status": "completed",
+    "id": RESULT["transcribe"], "step_id": AUDIO_STEP_ID, "step_order": 1, "status": "completed",
     "started_at": "2026-09-24T09:00:00Z", "finished_at": "2026-09-24T09:01:00Z",
-    "input_payload_json": {"transcription": {"file_ids": ["file-a", "file-b"], "segments": [
+    "input_payload_json": {"transcription": {"file_ids": [FILE["audioA"], FILE["audioB"]], "segments": [
         {"file_index": f, "start": a, "end": b, "speaker": sp, "text": t, "words": words(t, a, b)} for f, a, b, sp, t in SEGMENTS],
         "segments_hash": SEGMENTS_HASH}},
     "output_payload_json": {"text": "Transkript"},
 }
 REPORT = ("## Protokoll\n\nKommunstyrelsen beslutade att **höja budgetramen** med två procent.\n\n"
           "- Förvaltningen återkommer i oktober.\n- Nya skolskjutsturer gäller efter höstlovet.")
-REPORT_STEP = {"id": "result-2", "step_id": "s2", "step_order": 2, "status": "completed",
+REPORT_STEP = {"id": RESULT["report"], "step_id": REPORT_STEP_ID, "step_order": 2, "status": "completed",
                "started_at": "2026-09-24T09:01:00Z", "finished_at": "2026-09-24T09:02:00Z",
                "input_payload_json": {}, "output_payload_json": {"text": REPORT},
                "model_parameters_json": {"model_id": "model-1", "model_name": "Modell"}}
+# A report with a table, as a model writes one in GitHub-flavoured Markdown: a header row, a right-aligned column, body cells.
+TABLE_REPORT = ("## Beslut\n\nKommunstyrelsen fattade tre beslut.\n\n"
+                "| Ärende | Beslut | Belopp, tkr |\n| --- | --- | ---: |\n"
+                "| Budget 2027 | Ramen höjs | 1 200 |\n| Skolskjutsar | Nya turer | 450 |\n| Bredband | Utbyggnad norrut | 800 |\n\n"
+                "Förvaltningen återkommer i oktober.")
 GRAPH = {
     "nodes": [
         {"id": AUDIO_STEP_ID, "label": "Transkribera", "type": "llm", "step_order": 1, "input_source": "flow_input",
          "input_type": "audio", "output_type": "text", "output_mode": None},
-        {"id": "s2", "label": "Skriv rapporten", "type": "llm", "step_order": 2, "input_source": "previous_step",
+        {"id": REPORT_STEP_ID, "label": "Skriv rapporten", "type": "llm", "step_order": 2, "input_source": "previous_step",
          "input_type": "text", "output_type": "pdf", "output_mode": None},
     ],
-    "edges": [{"source": "s2", "target": "out", "kind": "flow_output", "label": None}],
+    "edges": [{"source": REPORT_STEP_ID, "target": "out", "kind": "flow_output", "label": None}],
 }
-# flow-2 stops for the person after transcribing: its second step is the speaker review.
+# flow2 stops for the person after transcribing: its second step is the speaker review.
 GRAPH_WITH_REVIEW = {**GRAPH, "nodes": [GRAPH["nodes"][0], dict(GRAPH["nodes"][1], id=REVIEW_STEP_ID, label="Talare",
                                                                output_type="json")]}
 FILES = [
-    {"file_id": "art-pdf", "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF),
-     "step_id": "s2"},
-    {"file_id": "art-docx", "name": "Protokoll kommunstyrelsen 2026-09-24.docx",
-     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432, "step_id": "s2"},
+    {"file_id": FILE["pdf"], "name": "Protokoll kommunstyrelsen 2026-09-24.pdf", "mimetype": "application/pdf", "size": len(PDF),
+     "step_id": REPORT_STEP_ID},
+    {"file_id": FILE["docx"], "name": "Protokoll kommunstyrelsen 2026-09-24.docx",
+     "mimetype": "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "size": 18_432, "step_id": REPORT_STEP_ID},
 ]
 # The report step's PDF and Word file are the run's result, as Eneo projects a final step's files.
 DONE = {"status": "completed", "result": {"kind": "artifact", "files": FILES}, "result_files": FILES,
@@ -187,7 +211,7 @@ LONG_REPORT = REPORT + "".join(
 
 def only_pdf(text):
     """A document that is only its PDF (Eneo's artifact result), made from the report step's text."""
-    pdf = dict(FILES[0], step_id="s2")
+    pdf = dict(FILES[0], step_id=REPORT_STEP_ID)
     return {"status": "completed", "result": {"kind": "artifact", "files": [pdf]}, "result_files": [pdf],
             # A model wrote the report: its parameters name the model, as Eneo records them.
             "steps": [TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": text},
@@ -196,31 +220,33 @@ def only_pdf(text):
 
 
 RUNS = {
-    "run-done": DONE,
-    "run-plain": {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
+    RUN["done"]: DONE,
+    # Finished like done, its report with a table.
+    RUN["table"]: dict(DONE, steps=[TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": TABLE_REPORT})]),
+    RUN["plain"]: {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
                   "steps": [dict(REPORT_STEP, step_id=AUDIO_STEP_ID, input_payload_json={})], "step_status": ["completed", "completed"]},
-    "run-failed": {"status": "failed", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", "failed"],
-                   "error": {"code": "flow_step_failed", "retryable": True, "step_id": "s2", "step_order": 2,
+    RUN["failed"]: {"status": "failed", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", "failed"],
+                   "error": {"code": "flow_step_failed", "retryable": True, "step_id": REPORT_STEP_ID, "step_order": 2,
                              "message": "Step 2 failed: the model provider returned 503 Service Unavailable."}},
-    "run-running": {"status": "running", "steps": [], "step_status": ["completed", "running"]},
-    # Still transcribing, with the speaker review ahead (flow-2).
-    "run-before-review": {"status": "running", "steps": [], "step_status": ["running", None]},
-    "run-review": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
-    "run-review-text": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    RUN["running"]: {"status": "running", "steps": [], "step_status": ["completed", "running"]},
+    # Still transcribing, with the speaker review ahead (flow2).
+    RUN["beforeReview"]: {"status": "running", "steps": [], "step_status": ["running", None]},
+    RUN["review"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    RUN["reviewText"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
     # Approved, and its resume did not go through: the saved names stand and the run only has to go on.
-    "run-review-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
-    "run-review-text-approved": {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
-    "run-corrected": DONE,
-    "run-pdf": only_pdf(REPORT),
-    "run-pdf-long": only_pdf(LONG_REPORT),
+    RUN["reviewApproved"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    RUN["reviewTextApproved"]: {"status": "awaiting_review", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", None]},
+    RUN["corrected"]: DONE,
+    RUN["pdf"]: only_pdf(REPORT),
+    RUN["pdfLong"]: only_pdf(LONG_REPORT),
 }
 SPLIT = "Ramen höjs med två procent"
 CORRECTIONS = {
     # The reviewer gave the start of a passage to a speaker of its own, who then needs a name.
-    "run-review": {"speaker_edits": [{"segment_index": 2, "char_start": 0, "char_end": len(SPLIT), "original": SPLIT,
+    RUN["review"]: {"speaker_edits": [{"segment_index": 2, "char_start": 0, "char_end": len(SPLIT), "original": SPLIT,
                                       "original_speaker": "SPEAKER_00", "speaker": "SPEAKER_02", "decision": "confirmed"}]},
     # Saved after the document (finished 09:02), so the result offers to make it again.
-    "run-corrected": {"occurrences": [{"segment_index": 4, "char_start": 0, "char_end": 3, "original": "Nya", "corrected": "Fler"}]},
+    RUN["corrected"]: {"occurrences": [{"segment_index": 4, "char_start": 0, "char_end": 3, "original": "Nya", "corrected": "Fler"}]},
 }
 
 
@@ -231,7 +257,7 @@ def corrections(run_id):
              "occurrences": [], "speaker_edits": [], "revision": 1, "stale": False, "updated_at": "2026-09-24T09:30:00Z",
              **CORRECTIONS[run_id]}]
 CHECKPOINT = {
-    "id": "cp-1", "flow_id": "flow-2", "flow_run_id": "run-review", "step_id": REVIEW_STEP_ID, "step_order": 2,
+    "id": CHECKPOINT_ID["review"], "flow_id": F2, "flow_run_id": RUN["review"], "step_id": REVIEW_STEP_ID, "step_order": 2,
     "attempt_no": 1, "schema_version": 1, "step_label": "Talare", "state": "awaiting_review", "revision": 1,
     "review_mode": "edit", "output_type": "json", "created_at": "2026-09-24T09:01:00Z", "updated_at": "2026-09-24T09:01:00Z",
     "expires_at": "2026-10-08T09:01:00Z",
@@ -248,20 +274,20 @@ CHECKPOINT = {
 }
 # What the naming step proposed, before anyone edited it: the naming dialog's evidence.
 CHECKPOINT["original_payload_json"] = json.loads(json.dumps(CHECKPOINT["current_payload_json"]))
-# A text step paused for review (run-review-text): its output can be edited before the flow goes on.
+# A text step paused for review (runs.reviewText): its output can be edited before the flow goes on.
 # Paused in December, its deadline falls in the next year.
 TEXT_CHECKPOINT = {
     **{k: v for k, v in CHECKPOINT.items() if k not in ("current_payload_json", "original_payload_json")},
     "created_at": "2026-12-20T08:01:00Z", "updated_at": "2026-12-20T08:01:00Z", "expires_at": "2027-01-03T08:01:00Z",
-    "id": "cp-2", "flow_id": "flow-1", "flow_run_id": "run-review-text", "step_id": "s2", "step_label": "Sammanfattning",
+    "id": CHECKPOINT_ID["reviewText"], "flow_id": F1, "flow_run_id": RUN["reviewText"], "step_id": REPORT_STEP_ID, "step_label": "Sammanfattning",
     "output_type": "text", "current_payload_json": {"text": "Kommunstyrelsen beslutade att höja budgetramen med två procent."},
 }
-APPROVED_CHECKPOINT = dict(CHECKPOINT, flow_run_id="run-review-approved", state="approved", revision=3,
+APPROVED_CHECKPOINT = dict(CHECKPOINT, flow_run_id=RUN["reviewApproved"], state="approved", revision=3,
                           approved_at="2026-09-24T09:05:00Z")
-APPROVED_TEXT_CHECKPOINT = dict(TEXT_CHECKPOINT, flow_run_id="run-review-text-approved", state="approved", revision=3,
+APPROVED_TEXT_CHECKPOINT = dict(TEXT_CHECKPOINT, flow_run_id=RUN["reviewTextApproved"], state="approved", revision=3,
                                approved_at="2026-12-20T08:05:00Z")
-PAUSES = {"run-review": CHECKPOINT, "run-review-text": TEXT_CHECKPOINT, "run-review-approved": APPROVED_CHECKPOINT,
-          "run-review-text-approved": APPROVED_TEXT_CHECKPOINT}
+PAUSES = {RUN["review"]: CHECKPOINT, RUN["reviewText"]: TEXT_CHECKPOINT, RUN["reviewApproved"]: APPROVED_CHECKPOINT,
+          RUN["reviewTextApproved"]: APPROVED_TEXT_CHECKPOINT}
 # Runs started through the page: id -> status reads so far.
 STARTED = {}
 NEW_RUN = itertools.count(1)
@@ -273,7 +299,7 @@ def run_state(run_id, poll=False):
     """A started run counts its status polls: running for two, then done."""
     if run_id in STARTED:
         STARTED[run_id] += poll
-        return DONE if STARTED[run_id] > 2 else RUNS["run-running"]
+        return DONE if STARTED[run_id] > 2 else RUNS[RUN["running"]]
     return RUNS.get(run_id)
 
 
@@ -379,10 +405,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config/":
             return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":
-            return self.send(200, {"has_more": False, "count": len(FLOWS), "items": [
+            listed = [f for f in FLOWS.values() if f["listed"]]
+            return self.send(200, {"has_more": False, "count": len(listed), "items": [
                 {**f["published"], "is_published": True, "space_id": f["space"][0], "space_name": f["space"][1],
                  "input_type": "audio", "delivery": (f["contract"].get("final_output") or {}).get("delivery")}
-                for f in FLOWS.values()]})
+                for f in listed]})
         parts = path.strip("/").split("/")
         if len(parts) < 5 or parts[:3] != ["api", "eneo", "flows"]:
             return self.send(404, {"detail": "stub: " + path})
@@ -390,7 +417,7 @@ class Handler(BaseHTTPRequestHandler):
         f = FLOWS.get(fid)
         if f is None:
             return self.send(404, {"code": "flow_not_found", "detail": "Flow not found."})
-        if fid == "flow-4" and rest in (["published"], ["run-contract"]):
+        if fid == F4 and rest in (["published"], ["run-contract"]):
             return self.send(409, {"code": "flow_assistant_snapshot_republish_required", "eneo_error_code": 9000,
                                    "message": "Step 1 (Transkribera ljud): Assistant snapshot is missing or uses an "
                                               "unsupported schema_version. Republish the flow before running it."})
@@ -399,15 +426,15 @@ class Handler(BaseHTTPRequestHandler):
         if rest == ["run-contract"]:
             return self.send(200, f["contract"])
         if rest == ["graph"]:
-            graph = GRAPH_WITH_REVIEW if fid == "flow-2" else GRAPH
+            graph = GRAPH_WITH_REVIEW if fid == F2 else GRAPH
             run = run_state(parse_qs(url.query).get("run_id", [""])[0])
             if run is None:
                 return self.send(200, graph)
             return self.send(200, {**graph, "nodes": [dict(n, run_status=s) for n, s in zip(graph["nodes"], run["step_status"])]})
         if rest == ["runs"]:
-            earlier = [] if fid != "flow-1" else [
-                {"id": "run-done", "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},
-                {"id": "run-failed", "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}]
+            earlier = [] if fid != F1 else [
+                {"id": RUN["done"], "flow_id": fid, "status": "completed", "created_at": "2026-09-23T09:00:00Z"},
+                {"id": RUN["failed"], "flow_id": fid, "status": "failed", "created_at": "2026-09-22T14:30:00Z"}]
             return self.send(200, {"items": earlier, "has_more": False, "count": len(earlier)})
         if len(rest) < 2 or rest[0] != "runs":
             return self.send(404, {"detail": "stub: " + path})
@@ -426,7 +453,7 @@ class Handler(BaseHTTPRequestHandler):
                 # The details the run was started with, which the flow's page shows beside the run.
                 body.update(finished_at="2026-09-24T09:02:00Z", result=run.get("result"),
                             result_files=run.get("result_files", []), error=run.get("error"),
-                            input_payload_json={"deltagare": ["Anna Berg", "Erik Lund"]} if fid == "flow-1" else {})
+                            input_payload_json={"deltagare": ["Anna Berg", "Erik Lund"]} if fid == F1 else {})
             return self.send(200, body)
         if what == ["steps"]:
             return self.send(200, run["steps"])
@@ -449,27 +476,27 @@ class Handler(BaseHTTPRequestHandler):
                 if b'filename="for-lang' in body:
                     return self.send(400, {"code": "flow_run_audio_exceeds_limit", "eneo_error_code": 9000,
                                            "message": "Audio exceeds the longest recording"})
-                return self.send(201, {"id": "file-%d" % len(body), "filename": "upload"})
+                return self.send(201, {"id": new_file_id(len(body)), "filename": "upload"})
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "steps" and rest[4] == "transcript-regenerations":
-                run_id = "run-new-%d" % next(NEW_RUN)
+                run_id = new_run_id(next(NEW_RUN))
                 STARTED[run_id] = 0
                 return self.send(201, {"run": {"id": run_id, "flow_id": fid, "status": "queued", "revision": 1},
                                        "created": True, "source_run_id": rest[1], "correction_revision": 1,
-                                       "first_regenerated_step_id": "s2"})
+                                       "first_regenerated_step_id": REPORT_STEP_ID})
             # Approving and resuming a pause: answered from copies, so a parallel test still sees the pause as it was.
             if len(rest) == 5 and rest[0] == "runs" and rest[2] == "review-checkpoints" and rest[4] in ("approve", "resume"):
                 checkpoint = dict(PAUSES[rest[1]], state="approved")
                 if rest[4] == "approve":
                     return self.send(200, checkpoint)
-                run_id = "run-new-%d" % next(NEW_RUN)
+                run_id = new_run_id(next(NEW_RUN))
                 STARTED[run_id] = 0
                 return self.send(200, {"checkpoint": dict(checkpoint, state="resumed"),
                                        "run": {"id": run_id, "flow_id": fid, "status": "running", "revision": 2,
                                                "flow_version": FLOWS[fid]["published"]["published_version"]}})
             if rest == ["runs"]:
-                if fid == "flow-3":
+                if fid == F3:
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})
-                run_id = "run-new-%d" % next(NEW_RUN)
+                run_id = new_run_id(next(NEW_RUN))
                 STARTED[run_id] = 0
                 return self.send(201, {"id": run_id, "flow_id": fid, "status": "queued",
                                        "flow_version": FLOWS[fid]["published"]["published_version"]})

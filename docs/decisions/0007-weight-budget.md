@@ -10,7 +10,7 @@ Status: Accepterat, infört. Datum: 2026-10-01 (`9bd5542`, och `60cc1c3` för ut
 
 ## Sammanhang
 
-Byte av UI-system kan göra modulen tyngre, särskilt medan två system ligger i bygget. Mätt på ett produktionsbygge av `main` den 2026-10-01 (Chromium, komprimerad överföring): `/flows` 226 KB JS och 15,6 KB CSS, `/flows/flow-1` 359 KB JS och 15,6 KB CSS. På en strypt telefon (4x CPU, 1,6 Mbit/s, 150 ms): LCP 2,4 s respektive 2,8 s, total blockeringstid 100–134 ms, JS-minne 4–6 MB.
+Byte av UI-system kan göra modulen tyngre, särskilt medan två system ligger i bygget. Mätt på ett produktionsbygge av `main` den 2026-10-01 (Chromium, komprimerad överföring): `/flows` 226 KB JS och 15,6 KB CSS, `/flows/:id` 359 KB JS och 15,6 KB CSS. På en strypt telefon (4x CPU, 1,6 Mbit/s, 150 ms): LCP 2,4 s respektive 2,8 s, total blockeringstid 100–134 ms, JS-minne 4–6 MB.
 
 ## Beslut
 
@@ -24,7 +24,7 @@ Vikt och läckor mäts i produktionsbygget, och ett test stoppar när mätvärde
 
 ## Konsekvenser
 
-- Budgeten följer testbygget, som innehåller utvecklingssidan och därför är omkring 6,5 KB över imagen (2026-10-01: imagen `/flows` 291,7 KB, `/flows/flow-1` 424,1 KB; testbygget 298,1 och 430,7).
+- Budgeten följer testbygget, som innehåller utvecklingssidan och därför är omkring 6,5 KB över imagen (2026-10-01: imagen `/flows` 291,7 KB, `/flows/:id` 424,1 KB; testbygget 298,1 och 430,7).
 - En ändring som höjer budgeten säger varför i sin pull request. Slacken i läckkontrollen höjs aldrig för att få ett test att passera.
 - Ett nytt överlägg läggs i `leaks.spec.ts` i samma ändring.
 
