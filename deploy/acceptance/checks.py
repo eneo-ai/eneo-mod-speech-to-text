@@ -19,10 +19,9 @@ A client that acts as the page names its user: X-Expected-User on a write, ?expe
 frontend/tests/fixtures/ids.json, which the stub serves; the headers are those of backend/app/security_headers.json; the numbers the
 image is measured against are baseline.json (B0.1). Checks that stop or recreate the image leave it running when they end.
 
-What the stub must answer, besides the module-login handshake and the data of the gate (B3.1): GET /__stub/stats with open_streams,
-streams_started, live_frames, live_bytes and uploads_received; GET /__log and /__reset (upload/upstream.py's record format, one record per
-upload); and a file in ids.json under files.audioLarge that never finishes by itself (a long WAV served in small pieces, with a pause),
-which checks 7, 10 and 16 hold open.
+What the checks read of the stub (frontend/tests/e2e/stub-server.py, B3.1): GET /__stub/stats (file_streams_open, live_frames, live_bytes),
+GET /__log and /__reset (upload/upstream.py's record format, one record per upload), and a file in ids.json under files.audioLarge that
+never finishes by itself (a long WAV served in small pieces, with a pause), which checks 7, 10 and 16 hold open.
 """
 
 from __future__ import annotations
@@ -208,7 +207,7 @@ def stub_stats() -> dict[str, int]:
     r = get(f"{STACK.eneo}/__stub/stats")
     expect(r.status == 200, f"GET /__stub/stats answered {r.status}")
     stats = r.json()
-    missing = {"open_streams", "streams_started", "live_frames", "live_bytes", "uploads_received"} - set(stats)  # type: ignore[arg-type]
+    missing = {"file_streams_open", "live_frames", "live_bytes"} - set(stats)  # type: ignore[arg-type]
     expect(not missing, f"/__stub/stats lacks {sorted(missing)}")
     return stats  # type: ignore[return-value]
 
@@ -250,7 +249,7 @@ API_READS = [
     f"/api/eneo/flows/{FLOW}/runs/{RUN_RUNNING}/status/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/steps/",
     f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/transcript-corrections/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/review-checkpoints/active/",
 ]
-UNKNOWN = ["/api/nope", "/api/auth/nope/deeper", "/assets/x.js", "/x.png", "/openapi.json"]
+UNKNOWN = ["/api/nope", "/api/auth/nope/deeper", "/assets/x.js", "/x.png", "/openapi.json", "/%00"]
 _cache: dict[str, list[tuple[str, Response]]] = {}
 
 
@@ -325,7 +324,7 @@ def check_3() -> str:
     return f"{len(PAGES)} pages are 200 text/html no-cache; {len(PAGES) + len(reads)} requests, none a redirect"
 
 
-@check(4, "an unknown /api path, a missing file and /openapi.json are 404 with no HTML body")
+@check(4, "an unknown /api path, a missing file, /openapi.json and a path with a NUL are 404 with no HTML body")
 def check_4() -> str:
     for path, r in fetched_unknowns():
         expect(r.status == 404, f"GET {path} answered {r.status}, not 404")
@@ -378,12 +377,10 @@ def check_7() -> str:
     beyond = get(STACK.direct + path, headers={**session.read(), "Range": f"bytes={size + 1000}-"})
     expect(beyond.status == 416, f"a range past the end answered {beyond.status}, not 416")
     expect(AUDIO_LARGE, "ids.json has no files.audioLarge: nothing can be held open to leave half-way (B3.1's stub)")
-    before = stub_stats()
     sock = open_stream(STACK.direct, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
-    wait_until(lambda: stub_stats()["open_streams"] >= 1, 10, "the stub sees the stream open")
+    wait_until(lambda: stub_stats()["file_streams_open"] >= 1, 10, "the stub sees the stream open")
     reset(sock)
-    wait_until(lambda: stub_stats()["open_streams"] == 0, 10, "the upstream closes after the client leaves")
-    expect(stub_stats()["streams_started"] > before["streams_started"], "the stub counted no stream started")
+    wait_until(lambda: stub_stats()["file_streams_open"] == 0, 10, "the upstream closes after the client leaves")
     return f"206 for two ranges of {size} bytes, 416 past the end; a stream left with a reset closed its upstream"
 
 
@@ -520,7 +517,7 @@ def check_10() -> str:
 @check(11, "the inline PDF carries frame-ancestors 'self' and SAMEORIGIN")
 def check_11() -> str:
     session = sign_in()
-    r = get(f"{STACK.direct}/api/eneo/flows/{FLOW}/runs/{RUN_PDF}/artifacts/{PDF_FILE}/content", headers=session.read())
+    r = get(f"{STACK.direct}/api/eneo/flows/{FLOW}/runs/{RUN_PDF}/artifacts/{PDF_FILE}/content?disposition=inline", headers=session.read())
     expect(r.status == 200 and r.headers.get("content-type", "").startswith("application/pdf"), f"the PDF route answered {r.status} {r.headers.get('content-type')}")
     expect(r.headers.get("x-frame-options") == "SAMEORIGIN", f"X-Frame-Options is {r.headers.get('x-frame-options')!r}")
     expect(r.headers.get("content-security-policy") == "frame-ancestors 'self'", f"Content-Security-Policy is {r.headers.get('content-security-policy')!r}")
@@ -684,6 +681,10 @@ def check_16() -> str:
         b = get(STACK.direct + audio_path(), headers={**session.read(), "Range": header})
         expect((a.status, a.headers.get("content-range"), a.body) == (b.status, b.headers.get("content-range"), b.body), f"Range {header}: Traefik {a.status} {a.headers.get('content-range')}, direct {b.status} {b.headers.get('content-range')}")
     lines.append("Range 206, 206 and 416 are the same through Traefik as direct")
+    # a path with a NUL: the module answers 404 (check 4); Traefik refuses it before the module is asked
+    nul = get(f"{STACK.module}/%00")
+    expect(nul.status == 400, f"GET /%00 through Traefik answered {nul.status}, not Traefik's 400")
+    lines.append("a path with a NUL is a 400 from Traefik, before the module (direct it is the module's 404, check 4)")
     # uploads through Traefik, as direct
     lines.append(upload_row("curl-300MB-1", STACK.module, SIZES["300MB"], 1, 32) + " (through Traefik)")
     lines.append(upload_row("curl-1GB-1", STACK.module, SIZES["1GB"], 1, 32) + " (through Traefik)")
