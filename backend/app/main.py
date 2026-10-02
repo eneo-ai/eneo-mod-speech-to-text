@@ -42,6 +42,7 @@ from app.config import load_settings
 from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
 from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
+from app.web import add_security_headers
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -60,9 +61,13 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     await http_client.aclose()
 
 
-app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
+# No documentation routes: the schema describes a surface that is not for browsers, and /docs and /openapi.json are not
+# something to leave open on the module's origin (an ordinary unknown path answers instead).
+app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
 app.add_exception_handler(BodyTooLarge, body_too_large_handler)
+# Last of the middleware, so the outermost: the 413 above and every answer below carry the security headers.
+add_security_headers(app)
 
 http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
@@ -95,7 +100,10 @@ def _requested_upload_timeout_seconds(request: Request) -> float | None:
     return value if value > 0 else None
 
 
-@app.get("/api/healthz")
+# One handler for both paths, and HEAD too: the image's health probe (/health) and the module's own (/api/healthz) are
+# real routes, so a broken build of the UI cannot answer them with a page.
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/healthz", methods=["GET", "HEAD"])
 async def healthz():
     return {"ok": True}
 
