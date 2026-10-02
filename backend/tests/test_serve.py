@@ -3,6 +3,7 @@
 Model: the module kit's packages/bff/tests/test_serve.py (copied with its launcher; see app/serve.py).
 """
 
+import ast
 import os
 import subprocess
 import sys
@@ -14,6 +15,15 @@ from unittest.mock import patch
 from app import limits, serve as launcher
 
 BACKEND = Path(__file__).resolve().parents[1]
+# What the launcher needs to read Settings, which is where STATIC_DIR is read (and nowhere else).
+CONFIGURATION = {
+    "ENEO_BACKEND_URL": "http://backend:8000",
+    "ENEO_PUBLIC_URL": "https://eneo.example.test",
+    "MODULE_PUBLIC_URL": "https://module.example.test",
+    "MODULE_KEY": "speech-to-text",
+    "ENEO_API_KEY": "test-key",
+    "SESSION_SECRET": "x" * 48,
+}
 FIXED = {
     "host": "0.0.0.0",
     "port": 3001,
@@ -99,8 +109,8 @@ class ServeTests(unittest.TestCase):
 class BuiltUiTests(unittest.TestCase):
     """Without --api-only the launcher serves the UI, and refuses to start where there is none to serve."""
 
-    def refused(self, environment: dict[str, str]) -> str:
-        with patch.dict(os.environ, environment, clear=True), patch("uvicorn.run") as run:
+    def refused(self, **environment: str) -> str:
+        with patch.dict(os.environ, {**CONFIGURATION, **environment}, clear=True), patch("uvicorn.run") as run:
             with self.assertRaises(SystemExit) as refused:
                 launcher.serve("app.main:app")
             run.assert_not_called()
@@ -108,30 +118,32 @@ class BuiltUiTests(unittest.TestCase):
         return str(refused.exception.code)
 
     def test_a_missing_folder_is_refused_with_its_name(self) -> None:
-        message = self.refused({"STATIC_DIR": "/nowhere/dist"})
+        message = self.refused(STATIC_DIR="/nowhere/dist")
 
         self.assertIn("/nowhere/dist", message)
         self.assertIn("index.html", message)
 
     def test_a_folder_without_index_html_is_refused_with_its_name(self) -> None:
         with tempfile.TemporaryDirectory() as folder:
-            message = self.refused({"STATIC_DIR": folder})
+            message = self.refused(STATIC_DIR=folder)
 
         self.assertIn(folder, message)
 
     def test_no_folder_at_all_is_refused_and_the_message_names_the_setting(self) -> None:
-        message = self.refused({})
+        for environment in ({}, {"STATIC_DIR": ""}):
+            with self.subTest(environment=environment):
+                message = self.refused(**environment)
 
-        self.assertIn("STATIC_DIR", message)
-        self.assertIn("--api-only", message)
+                self.assertIn("STATIC_DIR", message)
+                self.assertIn("--api-only", message)
 
     def test_a_built_ui_starts(self) -> None:
-        with built_ui() as folder, patch.dict(os.environ, {"STATIC_DIR": folder}, clear=True), patch("uvicorn.run") as run:
+        with built_ui() as folder, patch.dict(os.environ, {**CONFIGURATION, "STATIC_DIR": folder}, clear=True), patch("uvicorn.run") as run:
             launcher.serve("app.main:app")
 
         run.assert_called_once_with("app.main:app", **FIXED)
 
-    def test_api_only_starts_with_no_ui(self) -> None:
+    def test_api_only_starts_with_no_ui_and_reads_no_settings(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
 
@@ -141,16 +153,31 @@ class BuiltUiTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             done = subprocess.run(
                 [sys.executable, "-m", "app.serve", "--port", "1"],
-                cwd=BACKEND, env={**os.environ, "STATIC_DIR": folder}, capture_output=True, text=True, timeout=60,
+                cwd=BACKEND, env={**os.environ, **CONFIGURATION, "STATIC_DIR": folder}, capture_output=True, text=True, timeout=60,
             )
 
         self.assertNotEqual(done.returncode, 0)
         self.assertIn(folder, done.stderr)
 
+    def test_settings_is_the_only_reader_of_static_dir(self) -> None:
+        # The launcher and the app must agree on the folder: one reader, so that they cannot disagree about it.
+        readers = set()
+        for source in sorted((BACKEND / "app").glob("*.py")):
+            for node in ast.walk(ast.parse(source.read_text())):
+                call_of_get = isinstance(node, ast.Call) and node.args and (
+                    (isinstance(node.func, ast.Attribute) and node.func.attr in {"get", "getenv", "pop"})
+                )
+                subscript = isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant)
+                constant = node.args[0] if call_of_get else node.slice if subscript else None
+                if isinstance(constant, ast.Constant) and constant.value == "STATIC_DIR":
+                    readers.add(source.name)
+
+        self.assertEqual(readers, {"config.py"})
+
 
 class CommandLineTests(unittest.TestCase):
     def test_the_defaults_are_the_app_on_all_interfaces_at_3001(self) -> None:
-        with built_ui() as folder, patch.dict(os.environ, {"STATIC_DIR": folder}, clear=True), patch("uvicorn.run") as run:
+        with built_ui() as folder, patch.dict(os.environ, {**CONFIGURATION, "STATIC_DIR": folder}, clear=True), patch("uvicorn.run") as run:
             launcher.main([])
 
         run.assert_called_once_with("app.main:app", **FIXED)

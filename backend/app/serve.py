@@ -13,19 +13,18 @@ It fixes what the running system depends on, in one place:
 - a stop that does not wait for open streams past 8 s (Docker kills a container ten seconds after SIGTERM, and a file that
   is still streaming never ends by itself).
 
-Without ``--api-only`` the launcher serves the built UI, and refuses to start unless ``STATIC_DIR`` holds its
-``index.html``: a deployment with no page is a failed start, not a running API that answers 404 to every visit.
+Without ``--api-only`` the launcher serves the built UI, and refuses to start unless ``STATIC_DIR`` (read by
+``Settings``, the one reader) holds its ``index.html``: a deployment with no page is a failed start, not a running API that answers 404 to every visit.
 """
 
 from __future__ import annotations
 
 import argparse
-import os
 from collections.abc import Sequence
-from pathlib import Path
 
 import uvicorn
 
+from app.config import load_settings
 from app.limits import WS_MAX_MESSAGE_BYTES, WS_MAX_QUEUE
 
 APP = "app.main:app"
@@ -35,13 +34,15 @@ PORT = 3001
 
 
 def _refuse_without_a_built_ui() -> None:
-    folder = os.environ.get("STATIC_DIR")
-    if not folder:
+    # Settings is the one reader of STATIC_DIR, so the launcher and the app cannot disagree about the folder (and a
+    # missing or wrong setting stops the launch here, before the app is imported, as any other bad setting does).
+    folder = load_settings().static_dir
+    if folder is None:
         raise SystemExit(
             "STATIC_DIR is not set: it must name the folder with the built UI (its index.html). "
             "Build the UI, or pass --api-only to run the API alone."
         )
-    if not (Path(folder) / "index.html").is_file():
+    if not (folder / "index.html").is_file():
         raise SystemExit(
             f"{folder} has no index.html: STATIC_DIR must name the folder with the built UI. "
             "Build the UI, or pass --api-only to run the API alone."
