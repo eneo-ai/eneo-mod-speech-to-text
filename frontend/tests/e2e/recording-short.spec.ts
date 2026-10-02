@@ -131,11 +131,14 @@ for (const size of SIZES) {
   }
 }
 
-// With the words set far wider than a font does: no text room is promised, the controls and the first and last notice are.
+// With the words set far wider than a font does: no text room is promised, the controls and the first and last notice are,
+// and the controls' words are whole (the status beside them is what gives way).
 for (const [mode, how] of STATES) {
   test(`${mode} ${how} at 568 x 320 with the words set far wider: the controls are in reach whatever the text does`, async ({ page }) => {
     await wider(page);
     const now = await recording(page, mode, how, SIZES[2]);
-    expect(now.problems, `what a person must see (${JSON.stringify(now)})`).toEqual([]);
+    const said = JSON.stringify(now);
+    expect(now.problems, `what a person must see (${said})`).toEqual([]);
+    expect(now.cut, `a button's word is whole (${said})`).toEqual([]);
   });
 }
