@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { createContext, useEffect, useRef, useState, type MouseEvent } from "react";
+import { useNavigate } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 import { guardHistory } from "@/lib/leave-guard";
 
@@ -16,7 +16,7 @@ export const LeaveContext = createContext<{ onLeave(event: MouseEvent): void; le
  * guard, and the page's links through `onLeave`. beforeunload keeps the browser's.
  */
 export function useLeaveQuestion(active: boolean, warning: string) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [leave, setLeave] = useState<(() => void) | null>(null);
   const ask = (goOn: () => void) => setLeave(() => goOn);
   const attempt = useRef(ask);
@@ -29,7 +29,7 @@ export function useLeaveQuestion(active: boolean, warning: string) {
   const onLeave = (event: MouseEvent) => {
     if (!active) return;
     event.preventDefault();
-    ask(() => router.push("/flows"));
+    ask(() => void navigate("/flows"));
   };
 
   // A native dialog: the browser keeps it above the covered page, and above the sign-in dialog when it was asked

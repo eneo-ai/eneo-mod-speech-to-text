@@ -3,12 +3,22 @@ import test from "node:test";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 
-// What the flow list loads for every visit: the modules its page and the root layout import, followed statically
-// (an `import()` loads later, a type import is erased). The recording session and the flow page's state machine are
-// the flow page's own: reaching them from here puts about 9 KB of the recorder in every list's first load
-// (tests/prod/weight.spec.ts measures the whole).
-const ENTRIES = ["app/flows/page.tsx", "app/layout.tsx"];
+// What a page loads for every visit: the modules its route and the frame around every route import, followed
+// statically (an `import()` loads later, which is how routes.tsx hands out the pages, and a type import is erased).
+// The recording session and the flow page's state machine are the flow page's own: reaching them from the list puts
+// about 9 KB of the recorder in every list's first load (tests/prod/weight.spec.ts measures the whole).
+const FRAME = ["main.tsx", "routes.tsx", "routes/Root.tsx"];
+const ENTRIES = ["routes/FlowsPage.tsx", ...FRAME];
 const FLOW_PAGE_ONLY = ["lib/flow-session.ts", "lib/recording-session.ts"];
+// What only the flow page shows: the recording, its playback and the review. The sign-in page loads none of it.
+const RECORDING_AND_REVIEW = [
+  ...FLOW_PAGE_ONLY,
+  "lib/recording-store.ts",
+  "components/flow/FlowInput.tsx",
+  "components/flow/ReviewView.tsx",
+  "components/TranscriptEditor.tsx",
+  "components/TranscriptPlayer.tsx",
+];
 // The list shows the recordings a device still holds, so it reads the store, and nothing else of the recorder.
 const STORE_READERS = ["components/UnsentRecordings.tsx", "components/save-recording.ts"];
 
@@ -47,7 +57,7 @@ function closure(entries: string[]): Map<string, string | null> {
 
 test("the flow list's first load does not reach the recorder or the flow page's session", () => {
   const reached = closure(ENTRIES);
-  assert.ok(reached.has("app/flows/FlowsPage.tsx"), "the walk finds the list's own page");
+  assert.ok(reached.has("routes/FlowsPage.tsx"), "the walk finds the list's own page");
   for (const module of FLOW_PAGE_ONLY) {
     const path: string[] = [];
     for (let file: string | null | undefined = module; file; file = reached.get(file)) path.push(file);
@@ -55,4 +65,22 @@ test("the flow list's first load does not reach the recorder or the flow page's 
   }
   const readers = [...reached.keys()].filter((file) => staticImports(file).includes("lib/recording-store.ts"));
   assert.deepEqual(readers.sort(), STORE_READERS.sort(), "only the unsent list reads the recording store");
+});
+
+test("the sign-in page's first load does not reach the recorder, the playback or the review", () => {
+  const reached = closure(["routes/LoginPage.tsx", ...FRAME]);
+  assert.ok(reached.has("routes/LoginPage.tsx"), "the walk finds the sign-in page");
+  assert.ok(reached.has("routes/Root.tsx"), "and the frame");
+  for (const module of RECORDING_AND_REVIEW) {
+    const path: string[] = [];
+    for (let file: string | null | undefined = module; file; file = reached.get(file)) path.push(file);
+    assert.equal(reached.has(module), false, `${module} is in the sign-in page's first load, through ${path.slice(1).join(" <- ")}`);
+  }
+});
+
+test("routes.tsx hands every page out by import(), so no page is in the frame's first load", () => {
+  const frame = closure(FRAME);
+  for (const page of ["routes/LoginPage.tsx", "routes/FlowsPage.tsx", "routes/FlowPage.tsx", "routes/SignedInAgain.tsx"]) {
+    assert.equal(frame.has(page), false, `${page} is loaded statically by the frame`);
+  }
 });

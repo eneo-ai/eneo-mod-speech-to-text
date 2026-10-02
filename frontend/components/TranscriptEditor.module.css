@@ -2,7 +2,7 @@
  * The speaker-review editor: bespoke, because the text is content-editable and every word, passage and speaker change is
  * a span the code reads back (data-text-span, data-word-start, data-turn-index, data-segment-index). Semantic HTML and
  * design-system tokens only; the controls in the toolbar are the design system's own.
- * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in app/globals.css), never an inline style.
+ * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in styles/globals.css), never an inline style.
  */
 
 .editor {

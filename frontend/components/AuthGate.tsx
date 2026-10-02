@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { LoadingShell } from "@/components/LoadingShell";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
@@ -81,7 +81,7 @@ export function SignedOutCover({
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   // When the login ends, and how a new login moves that.
   const [endsAt, setEndsAt] = useState<number | null>(null);
@@ -147,7 +147,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
         const sessionIdentity = sessionUser(s);
         if (!sessionIdentity) {
-          router.replace("/");
+          void navigate("/", { replace: true });
           return;
         }
         setUser(sessionIdentity);
@@ -161,7 +161,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
-        if (!cancelled) router.replace("/");
+        if (!cancelled) void navigate("/", { replace: true });
       });
 
     return () => {
@@ -171,7 +171,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       channel?.close();
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [router]);
+  }, [navigate]);
 
   if (!user) return <LoadingShell />;
 

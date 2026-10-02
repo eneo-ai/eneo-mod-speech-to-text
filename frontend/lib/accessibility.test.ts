@@ -41,7 +41,7 @@ function hue([r, g, b]: RGBA) {
   return (h * 60 + 360) % 360;
 }
 
-const css = readFileSync("app/globals.css", "utf8");
+const css = readFileSync("styles/globals.css", "utf8");
 // A colour the module defines once for both modes: `--name: light-dark(<light>, <dark>)`.
 function pair(name: string): [string, string] {
   const match = new RegExp(`--${name}:\\s*light-dark\\(\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*,\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*\\)`, "i").exec(css);

@@ -30,7 +30,7 @@ const code = (file: string) =>
     .replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
 
 test("no network call goes out from the page except through the code that names its user", () => {
-  const found = ["app", "components", "lib", "kit"].flatMap(sources).filter((file) => networkCall.test(code(file)));
+  const found = [...["routes", "components", "lib", "kit"].flatMap(sources), "main.tsx", "routes.tsx"].filter((file) => networkCall.test(code(file)));
   const unlisted = found.filter((file) => !(file in allowed));
   assert.deepEqual(
     unlisted,

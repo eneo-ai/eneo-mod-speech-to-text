@@ -18,7 +18,7 @@ const sources = (dir: string): string[] =>
   });
 
 test("the old UI system stays gone: no import of what it was made of, no class string", () => {
-  const files = ["app", "components", "kit", "lib"].flatMap(sources).filter((file) => !file.endsWith("legacy-ui.test.ts"));
+  const files = [...["routes", "components", "kit", "lib"].flatMap(sources), "main.tsx", "routes.tsx"].filter((file) => !file.endsWith("legacy-ui.test.ts"));
   assert.deepEqual(files.filter((file) => GONE.test(readFileSync(file, "utf8"))), [], "an import of the removed UI libraries");
   assert.deepEqual(files.filter((file) => CLASS_STRING.test(readFileSync(file, "utf8"))), [], "a class string: use the design system's props or a CSS Module");
 });

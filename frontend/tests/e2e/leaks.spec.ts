@@ -28,7 +28,7 @@ type Overlay = {
   hide: (page: Page) => Promise<unknown>;
 };
 
-/** How a page mounts a confirmation (app/dev/dialog-leak): once, for each opening, and a dialog that really leaks. */
+/** How a page mounts a confirmation (routes/dev/DialogLeakFixture): once, for each opening, and a dialog that really leaks. */
 const dialogLeaks = async (page: Page) => {
   await open(page, "/dev/dialog-leak");
   await expect(page.getByRole("heading", { name: "Dialogläckor" })).toBeVisible();

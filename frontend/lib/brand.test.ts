@@ -69,7 +69,7 @@ test("without a destination the lockup is not a link", () => {
 });
 
 test("the stylesheet shows the logo of the colour mode and inverts Sundsvall's", () => {
-  const css = readFileSync("app/globals.css", "utf8");
+  const css = readFileSync("styles/globals.css", "utf8");
   assert.match(css, /html\.dark \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the black mark turns white in the dark mode");
   assert.match(css, /html\.dark \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/, "the light logo gives way to the dark one");
   assert.match(css, /html:not\(\.dark\) \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*none/, "and the dark one stays out of the light mode");

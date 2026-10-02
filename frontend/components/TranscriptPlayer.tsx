@@ -30,6 +30,7 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -116,21 +117,27 @@ type EditorProps = ComponentProps<typeof TranscriptEditor>;
 // The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
 // page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
 // and the server and the browser's first render agree, since neither has the code yet.
-let loadedEditor: ComponentType<EditorProps> | null = null;
+const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components/TranscriptEditor").then((module) => module.TranscriptEditor));
 /** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
-export const preloadTranscriptEditor = () => import("@/components/TranscriptEditor").then((module) => (loadedEditor = module.TranscriptEditor));
+export const preloadTranscriptEditor = () => editor.load();
 
 function LazyTranscriptEditor(props: EditorProps) {
-  const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(() => loadedEditor);
-  useEffect(() => {
-    if (Editor) return;
-    let current = true;
-    void preloadTranscriptEditor().then((component) => current && setEditor(() => component));
-    return () => {
-      current = false;
-    };
-  }, [Editor]);
+  const { value: Editor, failed, retry } = useLoaded(editor);
   if (Editor) return <Editor {...props} />;
+  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and a
+  // press tries again: the page is not reloaded, since it may hold a recording or an edit that is not saved.
+  if (failed) {
+    return (
+      <div className={styles.editorPending}>
+        <HStack vAlign="center" wrap="wrap" gap={2}>
+          <Text as="p" type="supporting" role="status">
+            Granskningsverktygen kunde inte läsas in.
+          </Text>
+          <Button size="sm" label="Försök igen" onClick={retry} />
+        </HStack>
+      </div>
+    );
+  }
   return (
     <div className={styles.editorPending} aria-busy="true">
       <VisuallyHidden as="p" role="status">

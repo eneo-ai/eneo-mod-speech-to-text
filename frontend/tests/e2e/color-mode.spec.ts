@@ -1,6 +1,6 @@
 /**
  * The stored colour mode is the page's from its first paint, on the design system's components as on the old ones:
- * next-themes sets the class on <html> before the page shows, and the theme root follows it (app/globals.css).
+ * next-themes sets the class on <html> before the page shows, and the theme root follows it (styles/globals.css).
  */
 import { expect, test } from "@playwright/test";
 

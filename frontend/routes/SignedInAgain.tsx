@@ -1,16 +1,33 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { SESSION_CHANNEL } from "@/components/SessionEndWarning";
 import { authStatus } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
 /** Why the backend refused a renewal (`?fel=`); the page's own login stays as it was. */
-export type Refusal = "annan-anvandare" | "utgangen";
+type Refusal = "annan-anvandare" | "utgangen";
+
+/** Any other value of `fel` is no refusal: the page is the plain "inloggad igen". */
+const refusalOf = (fel: string | null): Refusal | null => (fel === "annan-anvandare" || fel === "utgangen" ? fel : null);
+
+const TITLE: Record<Refusal | "ok", string> = {
+  ok: "Inloggad igen · Tal till text",
+  "annan-anvandare": "Fel användare · Tal till text",
+  utgangen: "Inloggningen har gått ut · Tal till text",
+};
+
+/** The route /inloggad, where a login window lands. It is outside every gate: no AuthGate, and no way off the page when nobody is signed in. */
+export default function SignedInAgainPage() {
+  const [params] = useSearchParams();
+  return <SignedInAgain refusal={refusalOf(params.get("fel"))} />;
+}
 
 /**
  * Where a login renewed in its own window lands ("Fortsätt arbeta" before
@@ -19,8 +36,9 @@ export type Refusal = "annan-anvandare" | "utgangen";
  * when it signed in someone else, `utgangen` when the login had already
  * ended, so there was no user left to renew.
  */
-export function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
+function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
   const [name, setName] = useState<string | null>(null);
+  useDocumentTitle(TITLE[refusal ?? "ok"]);
 
   useEffect(() => {
     if (refusal === "annan-anvandare") {

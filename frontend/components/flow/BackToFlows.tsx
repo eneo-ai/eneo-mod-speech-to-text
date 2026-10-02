@@ -1,10 +1,10 @@
 "use client";
 
 import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
 import type { MouseEvent } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
+import { RouterLink } from "@/kit/RouterLink";
 
 // The old buttons' names for the design system's: the filled one is the page's main action.
 const VARIANT = { default: "primary", secondary: "secondary", outline: "secondary" } as const;
@@ -28,7 +28,7 @@ export function BackToFlows({
 }) {
   return (
     <Button
-      as={Link}
+      as={RouterLink}
       href="/flows"
       label="Alla flöden"
       icon={<Icon icon={ArrowLeft} />}

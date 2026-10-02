@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useContext, type MouseEvent, type ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -10,6 +9,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { HeaderBrand } from "@/components/AppHeader";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";
 
 /**
@@ -53,7 +53,7 @@ export function FlowFrame({
     <>
       {!locked && (
         <Button
-          as={Link}
+          as={RouterLink}
           href="/flows"
           label="Alla flöden"
           isIconOnly

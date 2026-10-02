@@ -207,7 +207,7 @@ export interface State {
 
 /** Every screen and state the gate visits. */
 export const STATES: State[] = [
-  // The design system's parts beside the old ones (app/dev/foundation).
+  // The design system's parts beside the old ones (routes/dev/FoundationCheck).
   { name: "foundation", go: (page) => foundation(page) },
   {
     name: "foundation-dialog",

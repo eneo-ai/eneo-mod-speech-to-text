@@ -21,16 +21,15 @@ function page(where: { path: string } | { index: true }, title: string, load: ()
 const fixtures: RouteObject[] = [
   ...(import.meta.env.DEV || import.meta.env.MODE === "check"
     ? [
-        page({ path: "dev/foundation" }, "Tal till text", async () => (await import("./app/dev/foundation/FoundationCheck")).FoundationCheck),
-        page({ path: "dev/speaker-review" }, "Tal till text", async () => (await import("./app/dev/speaker-review/ReviewFixtures")).ReviewFixtures),
+        page({ path: "dev/foundation" }, "Tal till text", async () => (await import("./routes/dev/FoundationCheck")).FoundationCheck),
+        page({ path: "dev/speaker-review" }, "Tal till text", async () => (await import("./routes/dev/ReviewFixtures")).ReviewFixtures),
       ]
     : []),
   ...(import.meta.env.DEV
-    ? [page({ path: "dev/dialog-leak" }, "Tal till text", async () => (await import("./app/dev/dialog-leak/DialogLeakFixture")).DialogLeakFixture)]
+    ? [page({ path: "dev/dialog-leak" }, "Tal till text", async () => (await import("./routes/dev/DialogLeakFixture")).DialogLeakFixture)]
     : []),
 ];
 
-// B2.2 makes the last two route components; until then they still take Next's props, hence the casts.
 export const router = createBrowserRouter([
   {
     Component: Root,
@@ -40,11 +39,11 @@ export const router = createBrowserRouter([
         // A page that cannot be shown (its code is gone, or it threw) is replaced by this, inside the frame.
         ErrorBoundary: RouteError,
         children: [
-          page({ index: true }, "Logga in · Tal till text", async () => (await import("./app/LoginPage")).default),
-          page({ path: "flows" }, "Välj ett flöde · Tal till text", async () => (await import("./app/flows/FlowsPage")).default),
+          page({ index: true }, "Logga in · Tal till text", async () => (await import("./routes/LoginPage")).default),
+          page({ path: "flows" }, "Välj ett flöde · Tal till text", async () => (await import("./routes/FlowsPage")).default),
           // The page sets its own titles as it loads; this is what stands until then.
-          page({ path: "flows/:id" }, "Tal till text", async () => (await import("./app/flows/[id]/page")).default as unknown as ComponentType),
-          page({ path: "inloggad" }, "Inloggad igen · Tal till text", async () => (await import("./app/inloggad/page")).default as unknown as ComponentType),
+          page({ path: "flows/:id" }, "Tal till text", async () => (await import("./routes/FlowPage")).default),
+          page({ path: "inloggad" }, "Inloggad igen · Tal till text", async () => (await import("./routes/SignedInAgain")).default),
           ...fixtures,
           { path: "*", element: <Navigate to="/" replace /> },
         ],

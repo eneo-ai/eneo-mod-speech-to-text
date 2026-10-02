@@ -18,7 +18,7 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
   const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
-  const { default: LoginPage } = await import("../app/LoginPage");
+  const { default: LoginPage } = await import("../routes/LoginPage");
   const requests: string[] = [];
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {

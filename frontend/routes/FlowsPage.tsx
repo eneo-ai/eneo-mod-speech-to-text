@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -36,7 +36,7 @@ export default function FlowsPage() {
 }
 
 function FlowsListPage() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const user = useAuthenticatedUser();
   const unsent = useUnsentRecordings(user.id);
   const evictable = useEvictable();
@@ -86,7 +86,7 @@ function FlowsListPage() {
                 withFlowName
                 evictable={evictable}
                 sendLabel={(recording) => createLabel(recording.flowId)}
-                onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
+                onSend={(recording) => void navigate(`/flows/${recording.flowId}?recording=${recording.id}`)}
               />
             )}
 

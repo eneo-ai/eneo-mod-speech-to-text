@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "react-router";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -28,7 +28,7 @@ const CODE_FIELD_LIMITS = { required: true, maxLength: 256 };
 const ERROR_ID = "login-error";
 
 export default function LoginPage() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
@@ -40,11 +40,11 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     if (params.has("auth_error")) {
       setAuthError("Inloggningen kunde inte slutföras. Försök igen.");
-      window.history.replaceState(null, "", "/");
+      void navigate("/", { replace: true });
     }
     authStatus()
       .then((s) => {
-        if (s.authenticated) router.replace("/flows");
+        if (s.authenticated) void navigate("/flows", { replace: true });
         else {
           setAuthMode(s.auth_mode);
           setChecking(false);
@@ -54,7 +54,7 @@ export default function LoginPage() {
         setAuthError("Kunde inte kontakta modulen. Försök igen.");
         setChecking(false);
       });
-  }, [router]);
+  }, [navigate]);
 
   // The field is locked while a code is checked, which drops focus: a refused code gives it back, to type again.
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function LoginPage() {
     setAuthError(null);
     try {
       await loginWithAccessCode(accessCode);
-      router.replace("/flows");
+      void navigate("/flows", { replace: true });
     } catch (error) {
       setAuthError(
         error instanceof ApiError && error.status === 401

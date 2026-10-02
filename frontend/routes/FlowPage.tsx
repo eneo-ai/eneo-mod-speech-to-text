@@ -2,13 +2,13 @@
 
 
 import {
-  use,
   useEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { useNavigate, useParams } from "react-router";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
@@ -72,14 +72,9 @@ import {
 } from "@/lib/submit-run";
 import { selectRuntimeInputStep } from "@/lib/upload";
 
-/** A review's unsaved edit: the text, or the speakers' names. */
-interface PageProps {
-  // App Router levererar params som en Promise och packar upp dem med React.use().
-  params: Promise<{ id: string }>;
-}
-
-export default function FlowDetailPage({ params }: PageProps) {
-  const { id } = use(params);
+export default function FlowDetailPage() {
+  // The route is flows/:id.
+  const { id } = useParams() as { id: string };
   return (
     <AuthGate>
       {/* One page per flow: its session and its earlier runs belong to that flow. */}
@@ -115,15 +110,18 @@ function readRunIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
 }
 
-function writeRunIdToUrl(runId: string | null) {
-  if (typeof window === "undefined") return;
-  const url = new URL(window.location.href);
-  if (runId) url.searchParams.set(RUN_QUERY_PARAM, runId);
-  else url.searchParams.delete(RUN_QUERY_PARAM);
-  window.history.replaceState(window.history.state, "", url);
-}
-
 function FlowDetail({ flowId }: { flowId: string }) {
+  const navigate = useNavigate();
+  // The page's own state in the address: written through the router, which keeps the entry (replace), so it is no
+  // departure and Back goes where it went before. The router has written it when this returns, so a read of
+  // window.location.search sees it.
+  const writeSearch = (change: (search: URLSearchParams) => void) => {
+    const search = new URLSearchParams(window.location.search);
+    change(search);
+    void navigate({ search: search.toString() }, { replace: true });
+  };
+  const writeRunIdToUrl = (runId: string | null) =>
+    writeSearch((search) => (runId ? search.set(RUN_QUERY_PARAM, runId) : search.delete(RUN_QUERY_PARAM)));
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
@@ -241,11 +239,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
   // Öppnad från "Skapa dokument" i flödeslistan: skicka inspelningen när flödet har laddats.
   useEffect(() => {
     if (!contract) return;
-    const url = new URL(window.location.href);
-    const recordingId = url.searchParams.get(RECORDING_QUERY_PARAM);
+    const recordingId = new URLSearchParams(window.location.search).get(RECORDING_QUERY_PARAM);
     if (!recordingId) return;
-    url.searchParams.delete(RECORDING_QUERY_PARAM);
-    window.history.replaceState(window.history.state, "", url);
+    writeSearch((search) => search.delete(RECORDING_QUERY_PARAM));
     recordingStore()
       .then((store) => store.get(recordingId))
       .then((recording) => {

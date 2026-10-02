@@ -1,9 +1,9 @@
 "use client";
 
 import { Laptop, LogOut, Moon, Sun } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useContext, useEffect, useState } from "react";
+import { useNavigate } from "react-router";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import {
   DropdownMenu,
@@ -22,7 +22,7 @@ import { logout } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
 export function AccountMenu() {
-  const router = useRouter();
+  const navigate = useNavigate();
   const user = useAuthenticatedUser();
   const { theme, setTheme } = useTheme();
   const [themeReady, setThemeReady] = useState(false);
@@ -40,7 +40,7 @@ export function AccountMenu() {
     } catch {
       // However the answer came, the page is left: the sign-in page says who is signed in.
     } finally {
-      router.replace("/");
+      void navigate("/", { replace: true });
     }
   }
 

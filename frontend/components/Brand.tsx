@@ -1,11 +1,11 @@
 "use client";
 
-import Link from "next/link";
 import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
 import { TopNavHeading } from "@astryxdesign/core/TopNav";
+import { RouterLink } from "@/kit/RouterLink";
 import type { Branding } from "@/lib/api";
 
 // Without a provider there is no organisation to name: the backend's branding (readBranding) is the one owner of who is shown.
@@ -25,7 +25,7 @@ interface BrandProps {
 
 /**
  * The organisation's mark: its logo (plain <img>, same-origin), or its name as text. Sizing and the colour mode's
- * choice of logo are the stylesheet's, by data-brand-logo (app/globals.css): default is Sundsvall's black mark, light
+ * choice of logo are the stylesheet's, by data-brand-logo (styles/globals.css): default is Sundsvall's black mark, light
  * and dark are an organisation's two logos, plain one logo that serves both modes, name no logo at all.
  */
 function OrganizationMark({ organization }: { organization: NonNullable<Branding["organization"]> }) {
@@ -67,7 +67,7 @@ export function Brand({ href, onClickCapture }: BrandProps) {
   );
   return (
     <TopNavHeading
-      as={Link}
+      as={RouterLink}
       logo={mark}
       heading="Tal till text"
       headingHref={href}
