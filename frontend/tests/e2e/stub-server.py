@@ -63,7 +63,7 @@ LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-
 # Every identifier the stub hands out is one of tests/fixtures/ids.json, which the gate's specs read too: the backend's live
 # route takes UUIDs for the flow and the step, and Eneo's own ids are UUIDs.
 IDS = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "ids.json").read_text())
-F1, F2, F3, F4 = (IDS["flows"][f"flow{n}"] for n in range(1, 5))
+F1, F2, F3, F4, F5 = (IDS["flows"][f"flow{n}"] for n in range(1, 6))
 AUDIO_STEP_ID, REVIEW_STEP_ID, REPORT_STEP_ID = IDS["steps"]["audio"], IDS["steps"]["review"], IDS["steps"]["report"]
 RUN, FILE, CHECKPOINT_ID, RESULT = IDS["runs"], IDS["files"], IDS["checkpoints"], IDS["results"]
 
@@ -89,10 +89,12 @@ LIVE_ON = {"live": {"available": True, "reason": None}, "speaker_labels": {"sele
            "max_speakers": {"form_field": None, "participants_field": "deltagare"}}
 
 
-def flow(fid, name, description, version, space, fields, **contract):
+def flow(fid, name, description, version, space, fields, listed=True, **contract):
     return {
         "published": {"id": fid, "name": name, "description": description, "published_version": version},
         "space": space,
+        # The flow list names the flows it shows; a flow that is not listed is only reached by its address.
+        "listed": listed,
         "contract": {"flow_id": fid, "published_flow_version": version, "form_fields": fields,
                      "steps_requiring_input": [AUDIO_STEP], **contract},
     }
@@ -123,6 +125,9 @@ FLOWS = {f["published"]["id"]: f for f in [
          transcription={**LIVE_ON, "max_speakers": {"form_field": "antal_talare", "participants_field": "deltagare"}}),
     flow(F4, "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor", "Behöver publiceras om.",
          5, ("space-2", "Socialtjänsten"), []),
+    # A flow that asks a date (the lazy calendar of the details form), kept out of the list: no state of the list changes.
+    flow(F5, "Nämndmöte med mötesdatum", "Frågar efter dagen mötet hölls.", 1, ("space-1", "Kommunledningskontoret"),
+         [{"name": "motesdatum", "label": "Mötesdatum", "type": "date", "required": False, "order": 1}], listed=False),
 ]}
 
 
@@ -170,6 +175,11 @@ REPORT_STEP = {"id": RESULT["report"], "step_id": REPORT_STEP_ID, "step_order": 
                "started_at": "2026-09-24T09:01:00Z", "finished_at": "2026-09-24T09:02:00Z",
                "input_payload_json": {}, "output_payload_json": {"text": REPORT},
                "model_parameters_json": {"model_id": "model-1", "model_name": "Modell"}}
+# A report with a table, as a model writes one in GitHub-flavoured Markdown: a header row, a right-aligned column, body cells.
+TABLE_REPORT = ("## Beslut\n\nKommunstyrelsen fattade tre beslut.\n\n"
+                "| Ärende | Beslut | Belopp, tkr |\n| --- | --- | ---: |\n"
+                "| Budget 2027 | Ramen höjs | 1 200 |\n| Skolskjutsar | Nya turer | 450 |\n| Bredband | Utbyggnad norrut | 800 |\n\n"
+                "Förvaltningen återkommer i oktober.")
 GRAPH = {
     "nodes": [
         {"id": AUDIO_STEP_ID, "label": "Transkribera", "type": "llm", "step_order": 1, "input_source": "flow_input",
@@ -211,6 +221,8 @@ def only_pdf(text):
 
 RUNS = {
     RUN["done"]: DONE,
+    # Finished like done, its report with a table.
+    RUN["table"]: dict(DONE, steps=[TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": TABLE_REPORT})]),
     RUN["plain"]: {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
                   "steps": [dict(REPORT_STEP, step_id=AUDIO_STEP_ID, input_payload_json={})], "step_status": ["completed", "completed"]},
     RUN["failed"]: {"status": "failed", "steps": [TRANSCRIBE_STEP], "step_status": ["completed", "failed"],
@@ -393,10 +405,11 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/config/":
             return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":
-            return self.send(200, {"has_more": False, "count": len(FLOWS), "items": [
+            listed = [f for f in FLOWS.values() if f["listed"]]
+            return self.send(200, {"has_more": False, "count": len(listed), "items": [
                 {**f["published"], "is_published": True, "space_id": f["space"][0], "space_name": f["space"][1],
                  "input_type": "audio", "delivery": (f["contract"].get("final_output") or {}).get("delivery")}
-                for f in FLOWS.values()]})
+                for f in listed]})
         parts = path.strip("/").split("/")
         if len(parts) < 5 or parts[:3] != ["api", "eneo", "flows"]:
             return self.send(404, {"detail": "stub: " + path})

@@ -1,0 +1,20 @@
+- main:
+  - heading "Nämndmöte med mötesdatum" [level=1]
+  - paragraph: Frågar efter dagen mötet hölls.
+  - text: Mötesdatum Valfritt
+  - button "Stäng kalender"
+  - combobox "Mötesdatum Valfritt" [expanded]
+  - dialog "Välj datum":
+    - button "Föregående månad"
+    - text: /september \d+/
+    - button "Nästa månad"
+    - grid /september \d+/:
+      - row "sö må ti on to fr lö":
+        - columnheader "sö"
+        - columnheader "må"
+        - columnheader "ti"
+        - columnheader "on"
+        - columnheader "to"
+        - columnheader "fr"
+        - columnheader "lö"
+      - row /söndag \d+ september \d+ måndag \d+ september \d+ tisdag \d+ september \d+ onsdag \d+ september \d+ torsdag \d+ september \d+ fredag \d+ september \d+ lördag \d+ september \d+/

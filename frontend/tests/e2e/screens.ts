@@ -411,6 +411,20 @@ export const STATES: State[] = [
     },
   },
   {
+    // A flow that asks a date: the calendar is its own chunk, loaded when the field is first shown, and here opened. A finger
+    // gets the browser's own date field instead, which is not the page's to open.
+    name: "setup-date",
+    go: async (page) => {
+      await setup(page, ids.flows.flow5);
+      if (await page.evaluate(() => matchMedia("(pointer: coarse)").matches)) {
+        await expect(page.getByLabel("Mötesdatum")).toBeVisible();
+        return;
+      }
+      await page.getByRole("button", { name: "Öppna kalender" }).click();
+      await expect(page.getByRole("dialog", { name: "Välj datum" })).toBeVisible();
+    },
+  },
+  {
     name: "setup-republished",
     go: async (page) => {
       await setup(page, ids.flows.flow3);
@@ -631,6 +645,16 @@ export const STATES: State[] = [
     },
   },
   { name: "result", go: result },
+  {
+    // A report with a table: the Markdown component draws it, its header row and its cells.
+    name: "result-table",
+    go: async (page) => {
+      await run(page, ids.runs.table);
+      await heading(page, "Dokumentet är klart");
+      await expect(page.getByRole("table")).toBeVisible();
+      await expect(page.getByRole("columnheader", { name: "Ärende" })).toBeVisible();
+    },
+  },
   {
     name: "result-steps-open",
     go: async (page) => {
