@@ -89,7 +89,7 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
         }
         // A field's box takes the click for the control inside it (the design system's inputs and pickers).
         const fieldBox = el.matches('input, textarea, [role="combobox"]')
-          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
+          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-date-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
           : null;
         if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
         const labels = (el as HTMLInputElement).labels;
