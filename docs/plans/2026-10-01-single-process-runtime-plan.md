@@ -802,7 +802,7 @@ For the owner's information; none of it needs a decision.
 | Keep-alive: uvicorn closes an idle connection after 5 s; Traefik reuses connections | Next's Node server has the same 5 s: parity. A 502 rate in production is the signal to set `timeout_keep_alive` above Traefik's idle timeout |
 | Deployment configuration outside the repository (service, Traefik) | B6.1 Step 3 |
 | Two containers up at once | Deploy by stop then start; documented in `docs/operations.md` (sessions are process-local) |
-| A burst of first-time visitors delays the live relay (one event loop) | B4.2 check 15; static files are small, precompressed, immutable; a static sidecar only if the check fails |
+| A burst of first-time visitors delays the live relay (one event loop) | B4.2 check 15: the relay is unaffected up to 45 real visits/s and only the saturating stress exceeds 2× idle; the owner accepted that on 2026-10-04 (deploy/acceptance/waivers.json), so no sidecar. Files are indexed once at start, so a request does no file-system lookup |
 | A path the browser sends was only working because Next stripped its slash | `test_slashes.py` and the sentinel's redirect check (B3.2); the tolerance is deleted, not kept |
 
 **Stop and ask the owner if** a stop condition under "How to work" holds, or a step's expected result does not appear after one honest attempt to fix the cause.
@@ -853,7 +853,7 @@ Not taken, or taken differently:
 
 - *The kit's branding fetch as the default (Codex "SHOULD copy ... branding-fetch behavior").* Kept the backend's write of the answer into `index.html` (D4, B1.4, B2.7). The fetch shifts the header on every load; Next does not. B4.2 check 14 records the layout shift; if the fetch version shows none, the marker half of B1.4 is deleted.
 - *Bounded retention of earlier hashed assets.* Not taken (the lead's ruling): it needs storage that outlives a deploy and keeps old code served, and local recovery is needed anyway.
-- *A static-serving sidecar.* Not planned; B4.2 check 15 decides.
+- *A static-serving sidecar.* Not built: B4.2 check 15 was measured and the owner accepted the result (deploy/acceptance/waivers.json).
 - *Prefer the ingress's compression.* Precompressed static files cost nothing at run time and need no ingress knowledge; the API is not compressed (never Range, audio or PDF) unless B0.1 shows Next does (D5).
 - *The kit's `BrowserRouter`.* Not adopted: `useBlocker` needs a data router.
 
