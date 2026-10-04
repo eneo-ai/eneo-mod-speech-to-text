@@ -1,20 +1,14 @@
 # Byt organisation
 
-Syfte: Beskriva hur en annan kommun eller myndighet byter modulens namn, logga och accentfärg med miljövariabler, vilka krav som gäller och hur man kontrollerar resultatet.
-
-Läs detta när: Du ska ta modulen i drift för en annan organisation, en accentfärg stoppar start, eller du vill veta vad som kan och inte kan ändras utan kod.
-
-Hör ihop med: [Drift](operations.md#egen-organisation-i-sidhuvudet), [Backend (inställningar)](backend.md#inställningar), [Arkitektur](architecture.md#var-organisationens-märke-och-accent-kommer-in), [Beslut 0006](decisions/0006-white-label-branding.md), [Kvalitetsgrindar](quality-gates.md#branding-tillstånden)
-
 En annan kommun eller myndighet kan använda modulen som sin egen utan att ändra kod och utan att bygga om
-avbilderna. Namn, logga och färg är inställningar på backend-tjänsten: ändra dem och starta om tjänsterna.
+imagen. Namn, logga och färg är inställningar på tjänsten: ändra dem och starta om den.
 Backend skriver organisationen in i sidan när den startar, så märket finns med i första bildrutan.
 
 Utan inställningar visar modulen Sundsvalls kommun och modulens standardblå (`#004595`).
 
 ## Inställningar
 
-Alla sätts som miljövariabler på tjänsten `speech-to-text-backend` (`docker-compose.yml` för dem vidare från din
+Alla sätts som miljövariabler på tjänsten `speech-to-text` (`docker-compose.yml` för dem vidare från din
 `.env`).
 
 | Variabel | Standard | Vad den gör |
@@ -76,7 +70,7 @@ nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrol
 ### Felmeddelanden vid start
 
 Ett fel stoppar backend, som startar om tills det är rättat. Läs meddelandet med `docker compose logs
-speech-to-text-backend`. Det är alltid ett enda meddelande som anger vad som mättes och det lägsta tillåtna.
+speech-to-text`. Det är alltid ett enda meddelande som anger vad som mättes och det lägsta tillåtna.
 
 | Meddelande | Orsak och åtgärd |
 | --- | --- |
@@ -89,14 +83,15 @@ speech-to-text-backend`. Det är alltid ett enda meddelande som anger vad som m�
 
 ## Exempel med docker compose
 
-Lägg filerna i en mapp bredvid `docker-compose.yml` och montera den skrivskyddat i backend-tjänsten. Dokploy läser
-bara `docker-compose.yml` (inte `docker-compose.override.yml`), så raden hör hemma där, under
-`speech-to-text-backend` (en utkommenterad `volumes`-rad står redan där):
+Lägg filerna i en mapp bredvid `docker-compose.yml` och montera den skrivskyddat i tjänsten. Dokploy och Portainer
+läser bara `docker-compose.yml` (inte `docker-compose.override.yml`), så raden hör hemma där, bland tjänstens
+`volumes` bredvid uppladdningarnas `spool` (en utkommenterad rad står redan där):
 
 ```yaml
 services:
-  speech-to-text-backend:
+  speech-to-text:
     volumes:
+      - spool:/tmp
       - ./branding:/branding:ro
 ```
 
@@ -111,7 +106,7 @@ ORGANIZATION_ACCENT=#1E7B34
 ```
 
 Starta om: `docker compose up -d`. Ändrar du bara en fil som redan är monterad räcker `docker compose restart
-speech-to-text-backend`, eftersom loggorna läses vid start.
+speech-to-text`, eftersom loggorna läses vid start.
 
 Webbläsare och mellanlager får behålla accentfärgens stilmall i fem minuter (`Cache-Control: max-age=300`) och
 frågar sedan om den ändrats. Efter ett byte kan en gammal flik alltså visa den gamla färgen en kort stund. Ladda
