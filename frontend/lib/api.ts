@@ -5,6 +5,7 @@ import { correctionWriteProblem } from "./transcript-corrections";
 // HttpOnly session.
 
 import { loginState } from "./login-state";
+import { limitedToModule } from "./upload-limit";
 import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -152,6 +153,8 @@ export interface AuthStatus {
   refresh_in?: number;
   /** Sekunder tills inloggningen tar slut (Eneos tak eller modulens eget); en ny inloggning flyttar det. */
   session_ends_in?: number;
+  /** Det mesta modulen tar emot i en uppladdning; en större fil nekas medan den skickas. Bara för en inloggad sida. */
+  max_upload_bytes?: number;
 }
 
 export async function logout() {
@@ -834,7 +837,7 @@ export async function getPublishedFlow(flowId: string) {
 }
 
 export async function getRunContract(flowId: string) {
-  return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
+  return limitedToModule(await request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`), loginState.maxUploadBytes);
 }
 
 // ---------- Flow graph ----------

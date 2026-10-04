@@ -403,6 +403,22 @@ test("while a chosen file's length is read, the wait is said, not only written o
   await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
 });
 
+test("a file above what the module takes is refused before it is sent, in the words of a flow's own limit", async ({ page }) => {
+  // The status says the module takes one MiB (and the envelope's room); the flow takes 200.
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 3600, max_upload_bytes: 1024 * 1024 + 4096 },
+    }),
+  );
+  const uploads: string[] = [];
+  page.on("request", (request) => request.method() === "POST" && uploads.push(request.url()));
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(2 * 1024 * 1024) });
+  await expect(page.getByText(/Filen är större än flödet tar emot \(högst 1\s+MB\)\./)).toBeVisible();
+  expect(uploads, "nothing was sent").toEqual([]);
+});
+
 test("a correction's save is said from its first word: the live region waits in the page before it", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
   // The stub keeps no corrections: the save is answered here, as Eneo would, one revision on.

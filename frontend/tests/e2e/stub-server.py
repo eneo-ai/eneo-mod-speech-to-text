@@ -770,7 +770,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/live/") and self.headers.get("Upgrade", "").lower() == "websocket":
             return self.live(recording=parse_qs(url.query).get("recording_id", [""])[0])
         if path == "/api/auth/status/":
-            return self.send(200, {"authenticated": True, "user": USER, "session_ends_in": 8 * 60 * 60})
+            return self.send(200, {"authenticated": True, "user": USER, "session_ends_in": 8 * 60 * 60, "max_upload_bytes": 1024**3})
         if path == "/api/branding/":
             return self.send(200, {"organization": ORGANIZATION})
         if path == "/api/branding/theme.css/":
