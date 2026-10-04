@@ -1,8 +1,7 @@
 "use client";
 
 import { Laptop, LogOut, Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
-import { useContext, useEffect, useState } from "react";
+import { useContext, useState } from "react";
 import { useNavigate } from "react-router";
 import { Avatar } from "@astryxdesign/core/Avatar";
 import {
@@ -18,20 +17,18 @@ import { Text } from "@astryxdesign/core/Text";
 
 import { useAuthenticatedUser } from "@/components/AuthGate";
 import { LeaveContext } from "@/components/flow/useLeaveQuestion";
+import { useColorMode, type ColorMode } from "@/kit/ColorModeProvider";
 import { logout } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
 export function AccountMenu() {
   const navigate = useNavigate();
   const user = useAuthenticatedUser();
-  const { theme, setTheme } = useTheme();
-  const [themeReady, setThemeReady] = useState(false);
+  const { mode, setMode } = useColorMode();
   const [loggingOut, setLoggingOut] = useState(false);
   const displayName = userDisplayName(user);
   // Signing out leaves the page: asked first where that would lose something.
   const { leaveFirst } = useContext(LeaveContext);
-
-  useEffect(() => setThemeReady(true), []);
 
   async function onLogout() {
     setLoggingOut(true);
@@ -75,10 +72,10 @@ export function AccountMenu() {
       <Text type="supporting" aria-hidden>
         Tema
       </Text>
-      <DropdownMenuRadioGroup label="Tema" value={themeReady ? theme : undefined} onChange={setTheme}>
-        <DropdownMenuRadioItem value="light" icon={Sun} label="Ljust" isDisabled={!themeReady} />
-        <DropdownMenuRadioItem value="dark" icon={Moon} label="Mörkt" isDisabled={!themeReady} />
-        <DropdownMenuRadioItem value="system" icon={Laptop} label="System" isDisabled={!themeReady} />
+      <DropdownMenuRadioGroup label="Tema" value={mode} onChange={(next) => setMode(next as ColorMode)}>
+        <DropdownMenuRadioItem value="light" icon={Sun} label="Ljust" />
+        <DropdownMenuRadioItem value="dark" icon={Moon} label="Mörkt" />
+        <DropdownMenuRadioItem value="system" icon={Laptop} label="System" />
       </DropdownMenuRadioGroup>
 
       <DropdownMenuDivider />

@@ -1,9 +1,7 @@
 "use client";
 
 import type { ComponentType } from "react";
-import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
-import { Text } from "@astryxdesign/core/Text";
+import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import styles from "./Markdown.module.css";
 
@@ -39,22 +37,15 @@ const formatter = lazyLoader<Formatted>(() => import("./MarkdownFormatted").then
  * Until the code that formats it has arrived the text is there, as it was written: nothing is missing and nothing is
  * announced twice, and the server and the first render of the browser agree, since neither has the code yet. If it
  * cannot be fetched (a page older than the deploy that replaced its files, a connection that dropped) the text stays
- * and a press tries again: only that code is fetched again, never the page, which may hold work not yet saved.
+ * and a line offers the person's reload; nothing reloads by itself, since the page may hold work not yet saved.
  */
 export function Markdown({ children }: { children: string }) {
-  const { value: Formatted, failed, retries, retry } = useLoaded(formatter);
+  const { value: Formatted, failed } = useLoaded(formatter);
   if (Formatted) return <Formatted>{children}</Formatted>;
   return (
     <>
       <p className={styles.plain}>{children}</p>
-      {(failed || retries > 0) && (
-        <HStack vAlign="center" wrap="wrap" gap={2}>
-          <Text as="p" type="supporting" role="status">
-            {failed ? "Texten visas utan formatering, den kunde inte läsas in." : "Läser in formateringen…"}
-          </Text>
-          <Button size="sm" label="Visa formaterat igen" onClick={retry} />
-        </HStack>
-      )}
+      {failed && <LoadFailure>Texten visas utan formatering, den kunde inte läsas in.</LoadFailure>}
     </>
   );
 }

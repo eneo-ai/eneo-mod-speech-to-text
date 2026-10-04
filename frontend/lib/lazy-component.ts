@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 export interface Loader<T> {
   /** The code, if it has arrived. */
   readonly loaded: T | null;
-  /** Gets it. Pages that ask while it is on its way share the one request; a failed one is not kept, so the next asks again. */
+  /**
+   * Gets it. Pages that ask while it is on its way share the one request. A failure is kept too: a browser keeps a failed
+   * fetch of a module per address, so asking again could not fetch it.
+   */
   load(): Promise<T>;
 }
 
@@ -16,13 +19,7 @@ export function lazyLoader<T>(get: () => Promise<T>): Loader<T> {
       return loaded;
     },
     load() {
-      pending ??= get().then(
-        (code) => (loaded = code),
-        (error) => {
-          pending = null;
-          throw error;
-        },
-      );
+      pending ??= get().then((code) => (loaded = code));
       return pending;
     },
   };
@@ -31,12 +28,11 @@ export function lazyLoader<T>(get: () => Promise<T>): Loader<T> {
 /**
  * The code of a loader, for a page that shows something else until it has arrived (a plain field, the text as it was
  * written). If the code cannot be fetched (a tab older than the deploy that replaced its files, a connection that
- * dropped) `failed` says so and `retry` fetches only that code again: never the page, which may hold work that is not
- * saved yet, and never a boundary that would unmount it.
+ * dropped) `failed` says so, and the page offers the person's own reload (LoadFailure): never a reload by itself, since
+ * the page may hold work that is not saved yet, and never a boundary that would unmount it.
  */
 export function useLoaded<T>(loader: Loader<T>) {
   const [value, setValue] = useState<T | null>(() => loader.loaded);
-  const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (value) return;
@@ -50,15 +46,6 @@ export function useLoaded<T>(loader: Loader<T>) {
     return () => {
       current = false;
     };
-  }, [loader, value, attempt]);
-  return {
-    value,
-    failed,
-    /** How many presses of retry the page has had: a first load is not one. */
-    retries: attempt,
-    /** Fetches the code again, if it failed. */
-    retry: () => {
-      if (failed) setAttempt(attempt + 1);
-    },
-  };
+  }, [loader, value]);
+  return { value, failed };
 }

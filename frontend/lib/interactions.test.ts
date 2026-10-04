@@ -504,12 +504,13 @@ test("upload: a file dropped on the zone is chosen, the first of several; someth
   await view.unmount();
 });
 
-/** A page's router and signed-in user, as the app gives them; `visited` is where the router went. */
+/** A page's router, colour mode and signed-in user, as the app gives them; `visited` is where the router went. */
 async function signedIn(element: import("react").ReactElement, where?: { path?: string; entries?: string[] }) {
   const { createElement } = await import("react");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
+  const { ColorModeProvider } = await import("@/kit/ColorModeProvider");
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element), where);
+  return withRouter(createElement(ColorModeProvider, null, createElement(AuthenticatedUserContext.Provider, { value: user }, element)), where);
 }
 
 const exits = (container: HTMLElement) => ({
