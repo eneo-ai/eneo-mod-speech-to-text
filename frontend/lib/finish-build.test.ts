@@ -113,6 +113,29 @@ test("the build fails unless exactly one marker is left: none, two, or one that 
   }
 });
 
+test("a bundle that asks for /api/branding fails the build: the page reads the organisation from its marker", () => {
+  for (const [what, code] of [
+    ["fetch with double quotes", 'fetch("/api/branding",{cache:"no-store"})'],
+    ["fetch with single quotes", "fetch('/api/branding')"],
+    ["a template literal", "fetch(`/api/branding`)"],
+  ] as const) {
+    const dir = built();
+    writeFileSync(join(dir, "assets", "branding-Abc12345.js"), `export const read=()=>${code};\n`);
+    const result = run(dir);
+    assert.notEqual(result.status, 0, what);
+    assert.match(result.stderr, /api\/branding/, `${what}: says what it found`);
+    assert.ok(result.stderr.includes("branding-Abc12345.js"), `${what}: names the file`);
+    assert.equal(existsSync(join(dir, "assets", "app-Abc12345.js.br")), false, `${what}: nothing is compressed for a build that fails`);
+  }
+});
+
+test("the logo files and the stylesheet the page points at are not a branding fetch", () => {
+  const dir = built();
+  writeFileSync(join(dir, "assets", "brand-Abc12345.js"), 'export const a="/api/branding/logo/light",b="/api/branding/logo/dark",c="/api/branding/theme.css";\n');
+  const result = run(dir);
+  assert.equal(result.status, 0, result.stderr);
+});
+
 test("a file under assets/ without a content hash in its name fails the build: the backend serves assets/ as immutable for a year", () => {
   for (const [what, name] of [
     ["a script with no hash", "app.js"],

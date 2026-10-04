@@ -916,7 +916,26 @@ class BrandingMarkerTests(BuiltUiCase):
         response, answer = self.page_with(ORGANIZATION_NAME="Umeå kommun")
 
         self.assertEqual(self.attribute(response), answer)
-        self.assertEqual(json.loads(self.attribute(response)), {"organization": {"name": "Umeå kommun", "logo": None, "dark_logo": False}})
+        self.assertEqual(json.loads(self.attribute(response)), {"organization": {"name": "Umeå kommun", "logo": None, "dark_logo": False, "logo_sizes": None}})
+
+    def test_the_logos_sizes_are_in_the_page_so_the_header_does_not_move_when_they_arrive(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            light, dark = Path(folder, "logo.svg"), Path(folder, "logo-dark.svg")
+            light.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 48"></svg>')
+            dark.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"></svg>')
+
+            response, answer = self.page_with(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=str(light), ORGANIZATION_LOGO_DARK=str(dark))
+
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(
+            json.loads(answer)["organization"],
+            {
+                "name": "Umeå kommun",
+                "logo": "custom",
+                "dark_logo": True,
+                "logo_sizes": {"light": {"width": 600, "height": 48}, "dark": {"width": 160, "height": 40}},
+            },
+        )
 
     def test_no_organisation_is_in_the_page_as_null(self) -> None:
         response, answer = self.page_with(SHOW_ORGANIZATION="false")

@@ -10,7 +10,9 @@ const PROJECTS = ["phone-320-light", "phone-390-dark", "laptop-1440-light", "zoo
 export default defineConfig({
   ...base,
   outputDir: "test-results/branding",
-  grep: /branding-/,
+  // Playwright tests this against "project file title": the states are named branding-*, and every test of branding.spec.ts
+  // is the branded deployment's own.
+  grep: /branding[-.]/,
   workers: 2,
   reporter: [["list"]],
   projects: (base.projects ?? []).filter((project) => PROJECTS.includes(project.name ?? "")),

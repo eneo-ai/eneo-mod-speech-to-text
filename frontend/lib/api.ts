@@ -137,17 +137,6 @@ async function request<T>(
   return (await res.text()) as unknown as T;
 }
 
-/**
- * The organisation beside "Tal till text", a deployment setting of the
- * module's backend (GET /api/branding): the bundled default logo
- * ("default"), the deployment's own ("custom", with a dark variant when
- * `dark_logo`), or the name as text (null). No organisation shows the
- * product name alone.
- */
-export interface Branding {
-  organization: { name: string; logo: "default" | "custom" | null; dark_logo: boolean } | null;
-}
-
 // ---------- Auth ----------
 
 export interface AuthenticatedUser {

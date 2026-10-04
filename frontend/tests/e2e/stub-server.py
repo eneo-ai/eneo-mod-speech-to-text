@@ -57,6 +57,7 @@ import itertools
 import json
 import math
 import os
+import re
 import secrets
 import struct
 import sys
@@ -91,13 +92,26 @@ from app.accent import resolve_accent, theme_css  # noqa: E402
 
 BRANDING = os.environ.get("STUB_BRANDING")
 CUSTOM_LOGO = BRANDING == "custom"
+LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
+
+
+def logo_size(svg: bytes) -> dict:
+    """What the backend reads from a logo at start (backend/app/config.py), for the fixtures' own viewBox."""
+    width, height = re.search(rb'viewBox="0 0 (\d+) (\d+)"', svg).groups()
+    return {"width": int(width), "height": int(height)}
+
+
 ORGANIZATION = (
-    {"name": "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län", "logo": "custom" if CUSTOM_LOGO else None, "dark_logo": CUSTOM_LOGO}
+    {
+        "name": "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län",
+        "logo": "custom" if CUSTOM_LOGO else None,
+        "dark_logo": CUSTOM_LOGO,
+        "logo_sizes": {"light": logo_size(LOGOS["light"]), "dark": logo_size(LOGOS["dark"])} if CUSTOM_LOGO else None,
+    }
     if BRANDING
-    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}
+    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}
 )
 ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
-LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
 # Every identifier the stub hands out is one of tests/fixtures/ids.json, which the gate's specs read too: the backend's live
 # route takes UUIDs for the flow and the step, and Eneo's own ids are UUIDs.
 IDS = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "ids.json").read_text())
