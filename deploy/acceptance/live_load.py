@@ -222,6 +222,8 @@ async def run_load(
 ) -> dict[str, float | int]:
     """Load the module for ``seconds``: ``clients`` that visit over and over, or ``rate`` visits a second (open loop), each of ``visit``."""
     url = urlsplit(base)
+    if url.hostname is None:
+        raise ValueError(f"no host in {base}")
     host, port = url.hostname, url.port or 80
     totals = {"requests": 0, "bytes": 0, "errors": 0, "visits": 0, "dropped": 0}
     until = time.monotonic() + seconds
@@ -248,7 +250,7 @@ async def run_load(
             _, stuck = await asyncio.wait(running, timeout=REQUEST_DEADLINE * 2)
             for task in stuck:
                 task.cancel()
-    shape = {"clients": clients} if rate is None else {"rate": rate}
+    shape: dict[str, float | int] = {"clients": clients or 1} if rate is None else {"rate": rate}
     return {**totals, **shape, "seconds": seconds, "requests_per_second": round(totals["requests"] / seconds, 1), "mbit_per_second": round(totals["bytes"] * 8 / 1e6 / seconds, 1)}
 
 

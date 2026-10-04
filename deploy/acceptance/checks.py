@@ -107,9 +107,16 @@ class Response:
         return self.body.decode(errors="replace")
 
 
+def connect(url: str, timeout: float) -> http.client.HTTPConnection:
+    parts = urlsplit(url)
+    if parts.hostname is None:
+        raise Failed(f"no host in {url}")
+    return http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=timeout)
+
+
 def http_request(method: str, url: str, *, headers: dict[str, str] | None = None, body: bytes | None = None, timeout: float = 60) -> Response:
     parts = urlsplit(url)
-    connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=timeout)
+    connection = connect(url, timeout)
     try:
         connection.request(method, parts.path + (f"?{parts.query}" if parts.query else ""), body=body, headers=headers or {})
         r = connection.getresponse()
@@ -370,7 +377,8 @@ def check_7() -> str:
     path = audio_path()
     first = get(STACK.direct + path, headers={**session.read(), "Range": "bytes=0-99"})
     total = re.fullmatch(r"bytes 0-99/(\d+)", first.headers.get("content-range", ""))
-    expect(first.status == 206 and total and len(first.body) == 100, f"bytes=0-99 answered {first.status} {first.headers.get('content-range')}")
+    expect(first.status == 206 and total is not None and len(first.body) == 100, f"bytes=0-99 answered {first.status} {first.headers.get('content-range')}")
+    assert total is not None  # expect() raised otherwise; this is for the type checker
     size = int(total.group(1))
     second = get(STACK.direct + path, headers={**session.read(), "Range": "bytes=100-199"})
     expect(second.status == 206 and second.headers.get("content-range") == f"bytes 100-199/{size}", f"bytes=100-199 answered {second.status} {second.headers.get('content-range')}")
@@ -444,8 +452,7 @@ def over_cap(base: str, cap: int) -> str:
     three times the cap, sent in full by a client, costs no memory."""
     fresh_module(cap)
     session = sign_in(base)
-    parts = urlsplit(base)
-    connection = http.client.HTTPConnection(parts.hostname, parts.port or 80, timeout=30)
+    connection = connect(base, 30)
     connection.putrequest("POST", UPLOAD_PATH)
     for name, value in {**session.write(), "Content-Type": "multipart/form-data; boundary=x", "Content-Length": str(cap + 1)}.items():
         connection.putheader(name, value)
