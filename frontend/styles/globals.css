@@ -70,13 +70,6 @@ html:has([data-docked-action], [data-docked-player]) {
   .astryx-spinner circle, .astryx-progress-bar-fill { animation: none; }
 }
 
-/* The colour mode is next-themes' (the class on <html>, set before the first paint). The design system's theme root
-   sets its own colour scheme, so it follows that class here; unlayered, this wins over the system's layered styles. */
-html.dark,
-html.dark [data-astryx-theme] { color-scheme: dark; }
-html.light,
-html.light [data-astryx-theme] { color-scheme: light; }
-
 /* A heading takes the focus when its state appears, so a screen reader starts there; it is not a control, and a ring
    on it would only look like one. */
 [data-phase-heading]:focus { outline: none; }
@@ -122,9 +115,24 @@ img[data-brand-logo] {
   [data-brand-logo]:not([data-brand-logo="default"]) { max-inline-size: 10rem; }
   [data-brand-logo="name"] { max-inline-size: 12rem; }
 }
-html.dark [data-brand-logo="default"] { filter: invert(1); }
-html.dark [data-brand-logo="light"] { display: none; }
-html:not(.dark) [data-brand-logo="dark"] { display: none; }
+/* While the colour mode changes (kit/ColorModeProvider marks <html> for the frames that apply it) nothing fades: the
+   surfaces and the text change at once, and a control that faded behind them would look late. */
+[data-theme-switching] *,
+[data-theme-switching] *::before,
+[data-theme-switching] *::after { transition: none !important; }
+
+/* The colour mode is `data-theme` on <html>: light or dark when the person chose, none when the system's own applies
+   (public/color-mode.js sets it before the first paint, the design system's <Theme> keeps it). A logo made for one mode
+   stays out of the other; the dark one shows for a dark choice, and for no choice on a dark system. */
+:root [data-brand-logo="dark"] { display: none; }
+:root[data-theme="dark"] [data-brand-logo="default"] { filter: invert(1); }
+:root[data-theme="dark"] [data-brand-logo="light"] { display: none; }
+:root[data-theme="dark"] [data-brand-logo="dark"] { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) [data-brand-logo="default"] { filter: invert(1); }
+  :root:not([data-theme]) [data-brand-logo="light"] { display: none; }
+  :root:not([data-theme]) [data-brand-logo="dark"] { display: block; }
+}
 
 /* The shell's bar scrolls away with the page, as the old header did. Stuck to the top of the window it would take a
    tenth of a phone's height for good, hide a focused control under it (WCAG 2.4.11, which scroll-padding only half

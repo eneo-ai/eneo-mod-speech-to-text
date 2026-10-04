@@ -16,7 +16,14 @@ test.beforeEach(({}, info) =>
   test.skip(!VARIANT, "needs the stub as a deployment with its own organisation: npm run test:a11y:branding"),
 );
 
-const mode = (page: Page) => page.evaluate(() => (document.documentElement.classList.contains("dark") ? "dark" : "light") as "dark" | "light");
+// The mode shown: `data-theme` on <html> when the person chose, the system's own when there is none.
+const mode = (page: Page) =>
+  page.evaluate(
+    () =>
+      (document.documentElement.getAttribute("data-theme") ?? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) as
+        | "dark"
+        | "light",
+  );
 
 for (const state of states) {
   test(`${state.name}: nothing keeps the default blue`, async ({ page }, info) => {

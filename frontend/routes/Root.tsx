@@ -7,7 +7,6 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { LoadingShell } from "@/components/LoadingShell";
 import { Brand, BrandingProvider } from "@/components/Brand";
-import { ThemeProvider } from "@/components/theme-provider";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import type { Branding } from "@/lib/api";
@@ -16,11 +15,7 @@ import { RouteEffects } from "@/routes/RouteEffects";
 
 /** What every screen stands in: the colour mode and the design system's providers. */
 function Providers({ children }: { children: ReactNode }) {
-  return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <ModuleProviders>{children}</ModuleProviders>
-    </ThemeProvider>
-  );
+  return <ModuleProviders>{children}</ModuleProviders>;
 }
 
 /** Who the deployment is for, asked of the backend once; until it answers, or if it cannot, the product name alone. */

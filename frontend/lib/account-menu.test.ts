@@ -8,7 +8,7 @@ installDom();
 afterEach(async () => {
   await cleanup();
   window.localStorage.clear();
-  document.documentElement.className = "";
+  document.documentElement.removeAttribute("data-theme");
 });
 
 type User = import("./api").AuthenticatedUser;
@@ -22,7 +22,6 @@ async function openAccountMenu(
   options: { user?: User; leaveFirst?: (goOn: () => void) => void; logout?: () => Promise<Response> } = {},
 ) {
   const { createElement } = await import("react");
-  const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const { LeaveContext } = await import("../components/flow/useLeaveQuestion");
@@ -40,16 +39,12 @@ async function openAccountMenu(
   // The page is the flow list; signing out leaves it for the sign-in page ("/").
   const { router, tree } = withRouter(
     createElement(
-      ThemeProvider,
-      { attribute: "class", defaultTheme: "system", enableSystem: true },
+      ModuleProviders,
+      null,
       createElement(
-        ModuleProviders,
-        null,
-        createElement(
-          AuthenticatedUserContext.Provider,
-          { value: options.user ?? ANNA },
-          createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
-        ),
+        AuthenticatedUserContext.Provider,
+        { value: options.user ?? ANNA },
+        createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
       ),
     ),
     { path: "/flows" },
@@ -123,22 +118,25 @@ test("Ljust, Mörkt and System are one group named Tema, with the stored choice 
   assert.deepEqual(radios.map((radio) => radio.getAttribute("aria-checked")), ["false", "true", "false"]);
 });
 
-test("choosing a colour mode sets next-themes' mode: the class of the page, kept for the next visit", async (t) => {
+test("choosing a colour mode sets the page's mode: data-theme on <html> for light and dark, none for the system's, kept for the next visit", async (t) => {
   const { open, item, act } = await openAccountMenu(t);
-  await open();
-  await act(async () => {
-    item("Mörkt").click();
-    await settle();
-  });
-  assert.equal(document.documentElement.classList.contains("dark"), true);
+  const dataTheme = () => document.documentElement.getAttribute("data-theme");
+  const choose = async (name: string) => {
+    await open();
+    await act(async () => {
+      item(name).click();
+      await settle();
+    });
+  };
+  await choose("Mörkt");
+  assert.equal(dataTheme(), "dark");
   assert.equal(window.localStorage.getItem("theme"), "dark");
-  await open();
-  await act(async () => {
-    item("Ljust").click();
-    await settle();
-  });
-  assert.equal(document.documentElement.classList.contains("dark"), false);
+  await choose("Ljust");
+  assert.equal(dataTheme(), "light");
   assert.equal(window.localStorage.getItem("theme"), "light");
+  await choose("System");
+  assert.equal(dataTheme(), null, "the system's own preference paints it");
+  assert.equal(window.localStorage.getItem("theme"), "system");
 });
 
 test("Logga ut asks the page's leave question first, and does nothing until the answer is to go on", async (t) => {
