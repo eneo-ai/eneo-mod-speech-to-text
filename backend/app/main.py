@@ -491,14 +491,6 @@ async def _proxy_multipart_upload(
 
 
 @app.post(
-    "/api/eneo/flows/{flow_id}/files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
     "/api/eneo/flows/{flow_id}/files/",
     dependencies=[
         Depends(module_auth.require_session),
@@ -511,14 +503,6 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
 
 
 @app.post(
-    "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
     dependencies=[
         Depends(module_auth.require_session),
@@ -530,14 +514,6 @@ async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Req
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
 
 
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
 @app.post(
     "/api/eneo/flows/{flow_id}/template-files/",
     dependencies=[
@@ -811,7 +787,11 @@ async def _stream_signed(
     return _FileResponse(upstream, resp_headers)
 
 
-async def _stream_input_file_audio(
+@app.get(
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
+    dependencies=[Depends(module_auth.require_session)],
+)
+async def eneo_input_file_audio(
     flow_id: str, run_id: str, file_id: str, request: Request
 ) -> Response:
     return await _stream_signed(
@@ -822,26 +802,6 @@ async def _stream_input_file_audio(
         mint_path=f"flows/{flow_id}/runs/{run_id}/input-files/{file_id}/signed-url/",
         unavailable="Audio is not available for this run.",
     )
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio/",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio_slash(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
 
 
 _UNSAFE_FILENAME = re.compile(r'[\x00-\x1f\x7f"\\/]+')

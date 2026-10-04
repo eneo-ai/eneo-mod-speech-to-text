@@ -180,6 +180,13 @@ class AudioProxyTests(AudioProxyCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.fake.signed_url_calls, [])
 
+    def test_the_slash_twin_of_the_audio_route_is_not_a_route(self) -> None:
+        response = self.client.get("/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/audio/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+        self.assertEqual(self.fake.signed_url_calls, [])
+
     def test_audio_route_requires_session(self) -> None:
         anonymous = TestClient(main.app)
         response = anonymous.get(

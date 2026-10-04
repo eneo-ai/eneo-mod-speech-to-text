@@ -362,20 +362,30 @@ class UploadTests(Case):
         self.assertEqual(os.listdir(self.temporary), [])
         self.assertEqual(self.open_files(), files_before)
 
-    async def test_each_upload_route_answers_on_both_paths_and_forwards_to_its_own_eneo_route(self) -> None:
+    async def test_each_upload_route_answers_on_the_path_the_page_sends_and_forwards_to_its_own_eneo_route(self) -> None:
         routes = {
-            "/api/eneo/flows/f1/files": "flows/f1/files/",
-            "/api/eneo/flows/f1/steps/s1/runtime-files": "flows/f1/steps/s1/runtime-files/",
-            "/api/eneo/flows/f1/template-files": "flows/f1/template-files/",
+            "/api/eneo/flows/f1/files/": "flows/f1/files/",
+            "/api/eneo/flows/f1/steps/s1/runtime-files/": "flows/f1/steps/s1/runtime-files/",
+            "/api/eneo/flows/f1/template-files/": "flows/f1/template-files/",
         }
         for path, upstream in routes.items():
-            for suffix in ("", "/"):
-                with self.subTest(path=path + suffix):
-                    response = await self.post(path + suffix, multipart_of(1), headers=MULTIPART)
+            with self.subTest(path=path):
+                response = await self.post(path, multipart_of(1), headers=MULTIPART)
 
-                    self.assertEqual(response.status_code, 200)
-                    self.assertEqual(self.eneo.calls[-1]["url"], f"https://eneo.example.test/api/v1/{upstream}")
-                    self.assertEqual(self.eneo.calls[-1]["size"], MiB)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self.eneo.calls[-1]["url"], f"https://eneo.example.test/api/v1/{upstream}")
+                self.assertEqual(self.eneo.calls[-1]["size"], MiB)
+
+    async def test_the_slashless_twin_of_an_upload_route_is_not_a_route_and_sends_nothing_to_eneo(self) -> None:
+        for path in ("/api/eneo/flows/f1/files", "/api/eneo/flows/f1/steps/s1/runtime-files", "/api/eneo/flows/f1/template-files"):
+            with self.subTest(path=path):
+                calls = len(self.eneo.calls)
+
+                response = await self.post(path, multipart_of(1), headers=MULTIPART)
+
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+                self.assertEqual(len(self.eneo.calls), calls)
 
     async def test_a_flow_id_that_leaves_its_route_is_403_before_the_body_is_read(self) -> None:
         body = multipart_of(6)
