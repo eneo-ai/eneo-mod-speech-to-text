@@ -1,26 +1,66 @@
-import type { Branding } from "./api";
+/**
+ * The one owner of the branding's shape and of how the page learns it: the backend writes the answer of
+ * `GET /api/branding` into `<meta name="eneo-branding">` when it starts (and the dev server does the same for each
+ * page, lib/branding-marker.ts), so the organisation's mark is in the first frame and there is nothing to fetch.
+ */
 
-/** How long the page waits for the optional branding before it shows the product name alone. */
-export const BRANDING_DEADLINE_MS = 2_000;
+/** A logo's proportions (a width and a height in whole numbers): the <img> keeps its room before the file arrives. */
+export interface LogoSize {
+  width: number;
+  height: number;
+}
 
 /**
- * The deployment's branding from the module's backend; without a timely answer, the product name alone.
- * It is optional, so a backend that stalls must not hold the page: the whole read has one deadline.
+ * The organisation beside "Tal till text": the bundled default logo ("default"), the deployment's own ("custom", with a
+ * size for each of its files, and a dark one when `dark_logo`), or the name as text (null).
  */
-export async function readBranding(
-  base: string,
-  fetchImpl: typeof fetch = fetch,
-  deadlineMs: number = BRANDING_DEADLINE_MS,
-): Promise<Branding> {
-  try {
-    const response = await fetchImpl(`${base}/api/branding`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(deadlineMs),
-    });
-    if (response.ok) return (await response.json()) as Branding;
-    console.error(`GET /api/branding answered ${response.status}; the header shows "Tal till text" alone.`);
-  } catch (error) {
-    console.error(`GET /api/branding failed (${String(error)}); the header shows "Tal till text" alone.`);
+export interface Organization {
+  name: string;
+  logo: "default" | "custom" | null;
+  dark_logo: boolean;
+  logo_sizes: { light: LogoSize; dark: LogoSize | null } | null;
+}
+
+/** No organisation shows the product name alone. */
+export interface Branding {
+  organization: Organization | null;
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isSize = (value: unknown): value is LogoSize =>
+  isRecord(value) && Number.isInteger(value.width) && (value.width as number) > 0 && Number.isInteger(value.height) && (value.height as number) > 0;
+
+/** The organisation a branding names, or an Error that says what is wrong with it. */
+function parseOrganization(value: unknown): Organization {
+  if (!isRecord(value) || typeof value.name !== "string" || value.name === "" || typeof value.dark_logo !== "boolean") {
+    throw new Error("an organization needs a name and dark_logo");
   }
-  return { organization: null };
+  const { name, logo, dark_logo: darkLogo, logo_sizes: sizes } = value;
+  if (logo === "custom") {
+    if (!isRecord(sizes) || !isSize(sizes.light) || !(sizes.dark === null || isSize(sizes.dark)) || (sizes.dark !== null) !== darkLogo) {
+      throw new Error("a custom logo has a size, and its dark logo has one exactly when there is a dark logo");
+    }
+    return { name, logo, dark_logo: darkLogo, logo_sizes: { light: sizes.light, dark: sizes.dark } };
+  }
+  if (logo !== null && logo !== "default") throw new Error(`unknown logo ${JSON.stringify(logo)}`);
+  if (sizes !== null || darkLogo) throw new Error("only a custom logo has a size or a dark logo");
+  return { name, logo, dark_logo: false, logo_sizes: null };
+}
+
+/**
+ * Who the deployment is for, from the page itself and at once: it is read before the first render. A marker that is
+ * missing, empty or not the answer is a fault of the deployment, said once; the page then shows the product name alone,
+ * never another organisation's mark.
+ */
+export function readBranding(root: ParentNode = document): Branding {
+  try {
+    const content = root.querySelector('meta[name="eneo-branding"]')?.getAttribute("content");
+    if (!content) throw new Error(content === undefined ? "the page has no marker" : "nothing wrote the organisation into the marker");
+    const answer: unknown = JSON.parse(content);
+    if (!isRecord(answer) || !("organization" in answer)) throw new Error("the content is not a branding answer");
+    return { organization: answer.organization === null ? null : parseOrganization(answer.organization) };
+  } catch (error) {
+    console.error(`<meta name="eneo-branding"> is unusable (${error instanceof Error ? error.message : String(error)}); the header shows "Tal till text" alone.`);
+    return { organization: null };
+  }
 }
