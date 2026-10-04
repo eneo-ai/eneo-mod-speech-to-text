@@ -11,6 +11,8 @@ WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --engine-strict
 COPY frontend/ ./
+# The build type-checks the production tests, and tests/prod/headers.spec.ts reads the backend's header definition from its place in the repository.
+COPY backend/app/security_headers.json /build/backend/app/security_headers.json
 ARG SPEAKER_REVIEW_ENABLED=false
 ENV SPEAKER_REVIEW_ENABLED=$SPEAKER_REVIEW_ENABLED
 RUN npm run build
