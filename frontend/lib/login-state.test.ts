@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, authStatus, cancelRun, getConfig, getRunStatus, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
-import { ACCESS_CODE_USER } from "./user-identity";
 
 const sessionEnded = () =>
   new Response(JSON.stringify({ detail: "Session expired" }), {
@@ -14,11 +13,10 @@ const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
 const erik = { id: "user-2", email: "erik@example.se", username: "Erik Lund" };
 const signedIn = (sessionEndsIn = 8 * 3600, user = anna): AuthStatus => ({
   authenticated: true,
-  auth_mode: "eneo_sso",
   user,
   session_ends_in: sessionEndsIn,
 });
-const signedOut: AuthStatus = { authenticated: false, auth_mode: "eneo_sso", user: null };
+const signedOut: AuthStatus = { authenticated: false, user: null };
 const ok = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
@@ -277,18 +275,12 @@ test("every request to Eneo names the page's user, and the module's own requests
   const { calls } = signedInPage(t, []);
   await getRunStatus("flow-1", "run-1");
   await startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
-  await getConfig();
+  await logout();
   await authStatus();
   assert.deepEqual(
     calls.map((call) => call.headers.get("X-Expected-User")),
     ["user-1", "user-1", null, null],
   );
-});
-
-test("the access code has no user to name", async (t) => {
-  const { calls } = signedInPage(t, [], ACCESS_CODE_USER);
-  await getRunStatus("flow-1", "run-1");
-  assert.equal(calls[0].headers.has("X-Expected-User"), false);
 });
 
 test("an upload names the page's user", async (t) => {

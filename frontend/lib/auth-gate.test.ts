@@ -11,7 +11,7 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 const json = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
-const signedIn = { authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 };
+const signedIn = { authenticated: true, user: anna, session_ends_in: 8 * 3600 };
 
 test("a status read that went out while signed in, answered after a request found the login ended, does not uncover the page", async (t) => {
   const { createElement } = await import("react");

@@ -4,7 +4,7 @@
  * on the space each flow belongs to.
  */
 
-import { listPublishedFlows, type AppConfig, type FlowSparsePublic } from "./api";
+import { listPublishedFlows, type FlowSparsePublic } from "./api";
 import { createActionLabel, makesText } from "./flow-output";
 
 export const DISCOVERY_PAGE_SIZE = 200;
@@ -38,22 +38,15 @@ export function groupBySpace(flows: readonly FlowSparsePublic[]): FlowSpaceGroup
 
 type ListPage = typeof listPublishedFlows;
 
-async function readAll(list: ListPage, spaceId?: string): Promise<FlowDiscovery> {
+/** Every published flow the user can run, in every space they belong to. */
+export async function discoverFlows({ list = listPublishedFlows }: { list?: ListPage } = {}): Promise<FlowDiscovery> {
   const flows: FlowSparsePublic[] = [];
   for (let page = 0; page < DISCOVERY_PAGE_CAP; page += 1) {
-    const result = await list({ limit: DISCOVERY_PAGE_SIZE, offset: flows.length, spaceId });
+    const result = await list({ limit: DISCOVERY_PAGE_SIZE, offset: flows.length });
     flows.push(...result.items);
     if (!result.has_more) return { groups: groupBySpace(flows), truncated: false };
   }
   return { groups: groupBySpace(flows), truncated: true };
-}
-
-/** Every published flow the user can run, or those of one space when `spaceId` names it. */
-export async function discoverFlows({
-  spaceId,
-  list = listPublishedFlows,
-}: { spaceId?: string; list?: ListPage } = {}): Promise<FlowDiscovery> {
-  return readAll(list, spaceId);
 }
 
 /**
@@ -63,17 +56,4 @@ export async function discoverFlows({
 export function listCreateLabels(groups: readonly FlowSpaceGroup[] | null): (flowId: string) => string {
   const byFlow = new Map(groups?.flatMap((group) => group.flows.map((flow) => [flow.id, flow] as const)));
   return (flowId) => createActionLabel(makesText(byFlow.get(flowId)));
-}
-
-export const FLOW_LIST_NOT_CONFIGURED =
-  "Flödena kan inte visas eftersom tjänsten saknar en inställning. Kontakta den som ansvarar för Tal till text.";
-
-/**
- * The list as the module is configured: /api/config says, from the auth mode,
- * whether the list names a space (the module key alone must) or asks across
- * the user's spaces (Eneo SSO). Without a scope nothing is asked of Eneo.
- */
-export async function discoverConfiguredFlows(config: AppConfig, list: ListPage = listPublishedFlows) {
-  if (!config.flow_list) throw new Error(FLOW_LIST_NOT_CONFIGURED);
-  return discoverFlows({ spaceId: config.flow_list.space_id ?? undefined, list });
 }

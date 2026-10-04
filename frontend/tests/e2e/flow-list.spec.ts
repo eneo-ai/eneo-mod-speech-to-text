@@ -74,10 +74,10 @@ test("a list Eneo cut at the cap says how many are shown", async ({ page }) => {
 });
 
 test("a list that cannot be shown says what and why, and offers no retry where trying again cannot help", async ({ page }) => {
-  await page.route("**/api/config", (route) => route.fulfill({ json: { flow_list: null } }));
+  await page.route(FLOWS, (route) => route.fulfill({ status: 403, json: { detail: "Forbidden" } }));
   await open(page, "/flows");
   await expect(alert(page)).toContainText("Flödena kunde inte visas.");
-  await expect(alert(page)).toContainText("Flödena kan inte visas eftersom tjänsten saknar en inställning.");
+  await expect(alert(page)).toContainText("Du har inte behörighet till det här.");
   await expect(page.getByRole("button", { name: "Försök igen" })).toHaveCount(0);
   await clean(page);
   expect((await reflow(page)).horizontalScroll).toBe(false);

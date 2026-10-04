@@ -15,12 +15,11 @@ from pathlib import Path
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 from fastapi.routing import APIRoute, APIWebSocketRoute  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -116,7 +115,7 @@ class NoRedirectTests(SlashCase):
                             self.assertNotIn(response.status_code, REDIRECTS, response.headers.get("location"))
                             checked += 1
         paths = {route.path for route in main.app.routes if isinstance(route, APIRoute)}
-        for expected in ("/health", "/api/config", "/api/eneo/flows/{flow_id}/files/", "/api/eneo/{path:path}"):
+        for expected in ("/health", "/api/branding", "/api/eneo/flows/{flow_id}/files/", "/api/eneo/{path:path}"):
             self.assertIn(expected, paths)
         self.assertGreater(checked, 2 * len(paths))
 
@@ -140,7 +139,7 @@ class NoRedirectTests(SlashCase):
                         self.assertNotIn(response.status_code, REDIRECTS)
 
     def test_a_twin_that_is_not_a_route_is_a_json_404(self) -> None:
-        for path in ("/api/config/", "/api/branding/", "/api/auth/status/", "/api/auth/login/", "/api/healthz/", "/health/"):
+        for path in ("/api/branding/", "/api/auth/status/", "/api/auth/login/", "/api/healthz/", "/health/"):
             with self.subTest(path=path):
                 response = self.anonymous.get(path)
 
@@ -155,10 +154,11 @@ class FrontendPathTests(SlashCase):
     def test_the_frontend_builds_the_paths_this_test_reads(self) -> None:
         paths = frontend_paths()
 
-        self.assertIn("/api/config", paths)
+        self.assertIn("/api/auth/status", paths)
+        self.assertNotIn("/api/config", paths, "the route that named the demo space is gone")
         self.assertIn("/api/eneo/flows/x/runs/x/artifacts/x/content", paths)
         self.assertIn("/api/eneo/flows/x/runs/", paths)
-        self.assertGreater(len(paths), 30)
+        self.assertGreater(len(paths), 27)  # 30 now; the two the access code needed (/api/config and its login POST) are gone
 
     def test_each_one_reaches_its_handler_as_written(self) -> None:
         for path in sorted(frontend_paths()):

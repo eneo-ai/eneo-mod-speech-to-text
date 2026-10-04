@@ -72,7 +72,7 @@ for (const state of states) {
   });
 }
 
-for (const name of ["signin-access-code", "flow-list"]) {
+for (const name of ["signin-sso", "flow-list"]) {
   test(`branding-${VARIANT}-${name}: every stop shows its focus indicator`, async ({ page }, info) => {
     const state = states.find((candidate) => candidate.name === `branding-${VARIANT}-${name}`)!;
     await state.go(page, info);
@@ -85,16 +85,19 @@ for (const name of ["signin-access-code", "flow-list"]) {
 
 test("the accent is the colour of the primary button and of every focus ring", async ({ page }, info) => {
   test.skip(info.project.name === "forced-colors", "system colours there");
-  await states.find((state) => state.name === `branding-${VARIANT}-signin-access-code`)!.go(page, info);
-  const accent = ACCENT[await mode(page)];
-  const field = page.getByLabel("Åtkomstkod");
-  await field.focus();
   const ring = (selector: string) => page.evaluate((s) => getComputedStyle(document.activeElement!.closest(s)!).outlineColor, selector);
-  expect(await ring(".astryx-text-input"), "the field's ring").toBe(accent);
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "Fortsätt" })).toBeFocused();
+  await states.find((state) => state.name === `branding-${VARIANT}-signin-sso`)!.go(page, info);
+  const accent = ACCENT[await mode(page)];
+  const login = page.getByRole("button", { name: "Logga in med Eneo" });
+  await login.focus();
   expect(await ring("button"), "the button's ring").toBe(accent);
-  expect(await page.getByRole("button", { name: "Fortsätt" }).evaluate((button) => getComputedStyle(button).backgroundColor), "the button").toBe(accent);
+  expect(await login.evaluate((button) => getComputedStyle(button).backgroundColor), "the button").toBe(accent);
+  // A field has its own ring: the setup page's, where a person types.
+  await states.find((state) => state.name === `branding-${VARIANT}-setup`)!.go(page, info);
+  const field = page.locator(".astryx-text-input input:visible").first();
+  await expect(field, "a field to focus on the setup page").toBeVisible();
+  await field.focus();
+  expect(await ring(".astryx-text-input"), "the field's ring").toBe(accent);
 });
 
 test("the stylesheet is in the head, holds the first paint and is the colour with scripts blocked", async ({ browser, baseURL }, info) => {

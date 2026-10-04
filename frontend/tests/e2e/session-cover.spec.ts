@@ -207,7 +207,7 @@ test("the leave question opens above the warning that came while recording, and 
   // The warning opens five minutes before the end: here a few seconds into a recording.
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 305 },
+      json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 305 },
     }),
   );
   await setup(page);
@@ -229,7 +229,7 @@ test("someone else signing in leaves the page covered, and the dialog says whom 
   await page.unroute("**/api/auth/status");
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
+      json: { authenticated: true, user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
     }),
   );
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -261,40 +261,6 @@ test("the new login in a window of its own gives the page and the focus back", a
   expect(logins, "after the end it is a new login, not a renewal bound to a user").toEqual(["?next=%2Finloggad"]);
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await expect(mode, "focus is back where it was on the page").toBeFocused();
-});
-
-test("with the access code, signed out, the code is entered in the dialog and the page comes back", async ({ page }) => {
-  let signedIn = true;
-  const answer = () => ({ authenticated: signedIn, auth_mode: "access_code", user: null, ...(signedIn ? { session_ends_in: 3600 } : {}) });
-  await page.route("**/api/auth/status", (route) => route.fulfill({ json: answer() }));
-  await open(page, `/flows/${ids.flows.flow1}`);
-  const setupHeading = page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" });
-  await expect(setupHeading).toBeVisible();
-  signedIn = false;
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-  const dialog = page.getByRole("alertdialog", signIn);
-  await expect(dialog).toBeVisible();
-  const code = dialog.getByLabel("Åtkomstkod");
-  await code.focus();
-  expect(await clippedFocus(page), "the field's focus ring is whole").toBeNull();
-
-  let accepted = false;
-  await page.route("**/api/auth/login", (route) => {
-    if (!accepted) return route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } });
-    signedIn = true;
-    return route.fulfill({ json: { ok: true } });
-  });
-  await code.fill("fel-kod");
-  await code.press("Enter");
-  await expect(dialog.getByText("Felaktig åtkomstkod.")).toBeVisible();
-  await expect(code, "a wrong code leaves the field to type it again").toBeFocused();
-  await expect(setupHeading, "and the page as it was, covered").toBeHidden();
-
-  accepted = true;
-  await code.fill("test-access-code-1234");
-  await dialog.getByRole("button", { name: "Logga in igen" }).click();
-  await expect(dialog).toBeHidden();
-  await expect(setupHeading).toBeVisible();
 });
 
 test("signed out, a recording is stopped from the sign-in dialog, and is done when the page is back", async ({ page }) => {

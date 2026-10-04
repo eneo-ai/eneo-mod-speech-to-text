@@ -695,7 +695,7 @@ test("the cancel question is closed while the login has ended and asked again af
     assert.equal(question().hasAttribute("open"), true);
     await view.act(async () => loginState.ended());
     assert.equal(question().hasAttribute("open"), false, "a native dialog would stay above the covered page");
-    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    await view.act(async () => loginState.observe({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }));
     assert.equal(question().hasAttribute("open"), true, "back, as it was asked");
   } finally {
     end();

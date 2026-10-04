@@ -4,7 +4,7 @@
 
 It plays two roles in one process, told apart by path prefix, over one set of data (every flow, run and file exists once):
 
-  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/config, /api/branding*,
+  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/branding*,
       /api/eneo/*, /api/live/*, every screen of the app without Eneo and without a backend;
   Eneo for the real backend (python -m app.serve) and for the production-shaped tests: /api/v1/*, the module-login
       handshake, signed files with Range, the live ticket and an eneo-live.v1 socket, and a sink for uploads.
@@ -756,17 +756,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/live/") and self.headers.get("Upgrade", "").lower() == "websocket":
             return self.live(recording=parse_qs(url.query).get("recording_id", [""])[0])
         if path == "/api/auth/status/":
-            return self.send(200, {"authenticated": True, "auth_mode": "eneo_sso",
-                                   "user": USER,
-                                   "session_ends_in": 8 * 60 * 60})
+            return self.send(200, {"authenticated": True, "user": USER, "session_ends_in": 8 * 60 * 60})
         if path == "/api/branding/":
             return self.send(200, {"organization": ORGANIZATION})
         if path == "/api/branding/theme.css/":
             return self.send(200, theme_css(ACCENT).encode(), "text/css; charset=utf-8")
         if path in ("/api/branding/logo/light/", "/api/branding/logo/dark/") and CUSTOM_LOGO:
             return self.send(200, LOGOS[path.split("/")[-2]], "image/svg+xml")
-        if path == "/api/config/":
-            return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":
             listed = [f for f in FLOWS.values() if f["listed"]]
             return self.send(200, {"has_more": False, "count": len(listed), "items": [

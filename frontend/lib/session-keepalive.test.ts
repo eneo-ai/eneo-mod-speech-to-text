@@ -6,7 +6,6 @@ import { keepSessionAlive } from "./session-keepalive";
 
 const signedIn = (refresh_in?: number): AuthStatus => ({
   authenticated: true,
-  auth_mode: "eneo_sso",
   user: { id: "user-id", email: "user@example.test" },
   ...(refresh_in === undefined ? {} : { refresh_in }),
 });

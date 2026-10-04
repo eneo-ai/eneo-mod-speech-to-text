@@ -10,7 +10,7 @@ afterEach(cleanup);
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
 
 /** /inloggad as the router renders it at an address, with the backend's answers recorded and the window's closing stubbed. */
-async function open(t: TestContext, address: string, answers: (url: string) => Response = () => json({ authenticated: true, auth_mode: "eneo_sso", user: { id: "u1", username: "Anna Berg", email: "anna@example.se" } })) {
+async function open(t: TestContext, address: string, answers: (url: string) => Response = () => json({ authenticated: true, user: { id: "u1", username: "Anna Berg", email: "anna@example.se" } })) {
   const { createElement } = await import("react");
   const { default: SignedInAgain } = await import("../routes/SignedInAgain");
   const requests: string[] = [];
