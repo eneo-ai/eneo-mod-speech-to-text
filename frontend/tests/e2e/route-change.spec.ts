@@ -213,7 +213,9 @@ test("the three /inloggad states keep their own titles, and a navigation to one 
     await expect.poll(() => said(page), { timeout: 5_000, message: `${query || "plain"}: the title is said` }).toEqual([title]);
     expect(await page.title(), `${query || "plain"}: the page's own title stands`).toBe(title);
     await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true });
+    // Back on the list, and said, before the next round starts counting.
     await clientNavigate(page, "/flows");
+    await expect.poll(() => said(page), { timeout: 5_000 }).toContain(LIST_TITLE);
   }
 });
 
