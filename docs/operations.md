@@ -89,13 +89,21 @@ Produktionsimagen exponerar port 3001 och en hälsokontroll på `/health`. Eneos
 
 Supervisor övervakar och startar om processerna vid oväntade fel; en omstart av backend ger ny login (se nedan).
 
+## Uppladdningens tillfälliga lagring
+
+En uppladdning tas emot hel av modulen innan den skickas vidare till Eneo: Starlette lägger den i en tillfällig fil så fort den är större än 1 MB. Containern är skrivskyddad, så `/tmp` är den enda skrivbara platsen, och i `docker-compose.yml` är den en volym (`spool`), alltså disk, inte en tmpfs. Volymen innehåller inga data att spara: filerna tas bort direkt när de skapas och försvinner när uppladdningen tar slut eller avbryts.
+
+Skälet är mätt. En 1 GiB-uppladdning till en container med 300 MB minne: med en tmpfs på `/tmp` dödas containern av minnesbristen (OOM, exitkod 137) och klienten får inget svar; med en volym går uppladdningen igenom (201) och processens eget minne växer med 4 MB. Samma uppladdning med mer minne lägger 1 GiB i `shmem` med tmpfs, minne som inte går att frigöra, och 1 GiB i sidcache med volymen, som kärnan släpper vid behov.
+
+Dimensionera därför disken, inte minnet: den ska rymma samtidiga uppladdningar × `MAX_UPLOAD_BYTES` (standard 1 GiB; modulen begränsar inte antalet samtidiga uppladdningar). Det finns ingen gräns i Compose som kan sätta en storlek på en volym; en full disk ger ett fel på uppladdningen, inte på de andra anropen.
+
 ## Sessionslagret är processlokalt
 
 Sessionslagret ligger i backendprocessens minne, avsiktligt, eftersom produktionsimagen kör en backendprocess. En omstart kräver ny login. Innan flera backend-repliker används måste lagret flyttas till en delad store; annars kan en request landa hos en replik som inte äger sessionen. Det gäller även cachen med signerade fil-URL:er. Se [Inloggning och session](auth-and-session.md#sessionslagret).
 
 ## Inget att säkerhetskopiera
 
-Modulen har ingen databas och inga volymer; den enda monteringen är en valfri, skrivskyddad mapp med en logotyp. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
+Modulen har ingen databas och ingen volym med data; monteringarna är en valfri, skrivskyddad mapp med en logotyp och uppladdningens tillfälliga lagring (se ovan), som är tom mellan uppladdningar. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
 
 ## Dokploy (exempel: `transkribering.sundsvall.dev`)
 
