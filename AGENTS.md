@@ -78,7 +78,6 @@ checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop
 | `deploy/`, `Dockerfile`, `docker-compose*.yml` | The production image (supervisord) and Compose. |
 | `.github/workflows/` | CI and publishing. |
 | `docs/` | The documentation (Swedish). `docs/README.md` is the index, `docs/decisions/` the decisions. |
-| `design/` | An old design prototype (obsolete, never shipped). |
 
 ## How to find things
 

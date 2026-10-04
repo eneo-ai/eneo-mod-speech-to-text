@@ -102,7 +102,7 @@ CLI-kommandon (från `frontend/`, alltid via `npm run astryx --`):
 | `theme targets <filter>` | Vilka komponentdelar ett tema kan åsidosätta. |
 | `doctor` | Kontrollerar uppsättningen (körs i CI). |
 
-Regler: komponenter först; inga hexfärger eller pixelavstånd (använd tokens); överstyr aldrig `--color-*` i `:root`; skriv inte StyleX (`stylex.create`, `xstyle`) och kör inte `astryx swizzle`; tät data är rader (`Table`, `List`), aldrig kort runt listobjekt; status är `StatusDot` eller `Token`, `Badge` är bara antal. Astryx egna ord (till exempel "Hoppa till innehåll") kommer ur `@astryxdesign/core/locales/sv-SE.json`.
+Dessutom: överstyr aldrig `--color-*` i `:root`; skriv inte StyleX (`stylex.create`, `xstyle`) och kör inte `astryx swizzle`; tät data är rader (`Table`, `List`), aldrig kort runt listobjekt; status är `StatusDot` eller `Token`, `Badge` är bara antal. Astryx egna ord (till exempel "Hoppa till innehåll") kommer ur `@astryxdesign/core/locales/sv-SE.json`.
 
 ### Eneo-temat
 

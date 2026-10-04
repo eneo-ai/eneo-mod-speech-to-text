@@ -59,7 +59,7 @@ Skälet är mätt. En 1 GiB-uppladdning till en container med 300 MB minne: med 
 
 ## Kapacitet för live-texten
 
-Statiska filer, uppladdningar och live-reläets WebSocket delar en process och en händelseslinga. Mätt på en bärbar dator med OrbStack och lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop): vid 45 besök i sekunden (1 440 anrop/s) är reläets p95-fördröjning 1,1 till 1,2 ms, mot 2,7 till 3,8 ms utan last. Vid 100 besök i sekunden är modulen vid mättnad och p95 22 till 63 ms. Med 200 klienter som hämtar utan paus klarar modulen 4 000 till 4 400 anrop/s och p95 är 3,6 till 6,7 gånger så hög som utan last; ägaren har godtagit det (`deploy/acceptance/waivers.json`). Det är en observation på en dator, inget löfte för en annan maskin. Mer kapacitet än en process kräver ett delat sessionslager.
+Statiska filer, uppladdningar och live-reläets WebSocket delar en process och en händelseslinga. Mätt på en bärbar dator med OrbStack och lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop): vid 45 besök i sekunden (1 440 anrop/s) är reläets p95-fördröjning 1,1 till 1,2 ms, mot 2,7 till 3,8 ms utan last. Vid 100 besök i sekunden är modulen vid mättnad och p95 22 till 63 ms. Med 200 klienter som hämtar utan paus klarar modulen 4 000 till 4 400 anrop/s och p95 är 3,6 till 6,7 gånger så hög som utan last; det är en observation på en dator, inget löfte för en annan maskin. Mer kapacitet än en process kräver ett delat sessionslager.
 
 ## Inget att säkerhetskopiera
 
@@ -67,7 +67,7 @@ Modulen har ingen databas och ingen volym med data; monteringarna är en valfri,
 
 ## Eneos modul-overlay
 
-I en Eneo-installation ger Eneos Compose-overlay modulen endast `module_net` och variablerna `ENEO_BACKEND_URL` (`http://backend:8000`), `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `MODULE_KEY`, `ENEO_API_KEY` (en modulspecifik `sk_`-nyckel), `ENEO_API_KEY_HEADER_NAME` och `SESSION_SECRET`. Modulen exponerar port 3001 och hälsokontrollen `/health`. Overlay-filen mappar operatörens secret till `ENEO_API_KEY`: det finns ett canonical konfigurationskontrakt i modulprocessen.
+I en Eneo-installation ger Eneos Compose-overlay modulen endast `module_net` och variablerna `ENEO_BACKEND_URL` (`http://backend:8000`), `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `MODULE_KEY`, `ENEO_API_KEY` (en modulspecifik `sk_`-nyckel), `ENEO_API_KEY_HEADER_NAME` och `SESSION_SECRET`. Modulen exponerar port 3001 och hälsokontrollen `/health`. Overlay-filen mappar operatörens secret till `ENEO_API_KEY`.
 
 ## Loggar
 

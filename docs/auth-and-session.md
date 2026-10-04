@@ -1,11 +1,5 @@
 # Inloggning och session
 
-Syfte: Beskriva hur en användare loggar in, vad som lagras var, hur sessionen förnyas och vad som aldrig lämnar backend.
-
-Läs detta när: Du felsöker inloggning, ändrar något i `backend/app/module_auth.py` eller sessionshanteringen i frontend, eller ska svara på en säkerhetsfråga om credentials.
-
-Hör ihop med: [Arkitektur](architecture.md#inloggningen), [Backend](backend.md), [Drift](operations.md), [Ordlista](glossary.md)
-
 ## Ett sätt in
 
 Eneo SSO är det enda sättet att logga in. Varje session är en `EneoSsoSession` (`backend/app/module_auth.py`): en användare, en tenant och en modultoken, och varje anrop till Eneo bär både servicenyckeln och den token.
@@ -53,7 +47,7 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 - Sessionen innehåller användaren, tenant, modultoken, när token går ut, när den ska förnyas och inloggningens fasta slut.
 - Logout (`POST /api/auth/logout`, same-origin) tar bort sessionen direkt och raderar cookien.
 - En ny inloggning (callbacken) tar bort den session webbläsaren hade, och med den allt som hänger på den. En öppen live-socket stängs när sessionen tar slut på något sätt (utloggning, utgång, ersättning, nekad förnyelse), se [Backend](backend.md#live-reläet).
-- En omstart av backend ger ny login för alla. Mer än en backendreplik kräver att lagret flyttas till en delad store, se [Drift](operations.md#sessionslagret-är-processlokalt).
+- En omstart av backend ger ny login för alla. Därför körs modulen som en container och byts genom stopp och start ([Drift](operations.md#driftsätt-med-dokploy-eller-portainer)).
 
 ### Hur länge en inloggning gäller
 
@@ -104,27 +98,23 @@ Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts
 - **Krävs:** namnet måste finnas på varje request under `/api/eneo/` som ändrar något (inte GET, HEAD eller OPTIONS: uppladdningar, start av körning, PATCH, avbryt) och på live-socketen. Ett namn som saknas ger samma `user_changed` som ett fel namn.
 - **En GET får sakna namn,** eftersom ett `<audio src>` och en navigering inte kan skicka en header, men ett namn den ger måste vara sessionens. GET av ljud och genererade filer kontrollerar inte sidans användare alls: en PDF-ram kan inte heller sätta headers, och Eneo auktoriserar själv körningen.
 - Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
-- **Användaren räcker, tenant behövs inte:** i Eneo hör en användare till exakt en tenant, och det går inte att ändra. `users.tenant_id` är obligatorisk, det finns ingen medlemskapstabell och ingen väg som flyttar en användare. Användar-id:n skapas av servern som UUID:er. Modulens token bär användarens enda tenant och kontrolleras mot den vid varje anrop (Eneos `modules/module_auth.py`, verifierat 2026-10-02). Samma användar-id betyder därför samma tenant. Ändrar Eneo den regeln måste sidan börja skicka `X-Expected-Tenant` också.
+- **Användaren räcker, tenant behövs inte:** i Eneo hör en användare till exakt en tenant, och det går inte att ändra. `users.tenant_id` är obligatorisk, det finns ingen medlemskapstabell och ingen väg som flyttar en användare. Användar-id:n skapas av servern som UUID:er. Modulens token bär användarens enda tenant och kontrolleras mot den vid varje anrop (Eneos `modules/module_auth.py`). Samma användar-id betyder därför samma tenant. Ändrar Eneo den regeln måste sidan börja skicka `X-Expected-Tenant` också.
 
 Frontend namnger användaren på varje anrop under `/api/eneo/` (uppladdningen inräknad) och på varje ny live-anslutning, ur den identitet sidan öppnades med; den skickar ingen tenant (`expectedUser` i `frontend/lib/login-state.ts`, `frontend/lib/api.ts`, `frontend/lib/live-transcriber.ts`).
 
 - **409 eller 1008 `user_changed`:** sidan skickar aldrig om en förfrågan som fått 409 `user_changed`, vem som än loggar in härnäst. Den visar täckskiktet som när en inloggning gått ut ([ovan](#när-inloggningen-har-gått-ut)) och läser om sessionsstatus, så att täckskiktet säger vem man ska logga in som. En uppladdning misslyckas som en utgången session, och inspelningen ligger kvar på enheten.
 - **1008 `session_ended`** (sessionen tog slut under en öppen live-socket) täcker också sidan. Live-texten öppnar ingenting förrän sidans egen användare är tillbaka, och fortsätter då som efter ett avbrott.
 
-Tester: `ExpectedUserTests` och `LiveExpectedUserTests` i `backend/tests/test_boundary.py`.
-
 ## Vad som aldrig når webbläsaren
 
 | Hemlighet | Var den finns | Hur den hålls borta |
 |---|---|---|
-| Servicenyckeln (`ENEO_API_KEY`) | Backendens miljö | Läggs på i BFF:en. Bara ett fåtal request-headers går vidare från webbläsaren ([Backend](backend.md#headers)), så ingen `Authorization`, `Cookie`, `X-API-Key` eller konfigurerad nyckelheader kommer med. Uppladdningar och filströmmar tar inga av webbläsarens headers med, utom `Range`, `If-Range` och `Accept` för filer. |
+| Servicenyckeln (`ENEO_API_KEY`) | Backendens miljö | Läggs på i BFF:en. Bara ett fåtal request-headers går vidare från webbläsaren ([Backend](backend.md#tillåtelselistan-för-eneo-anrop)), så ingen `Authorization`, `Cookie`, `X-API-Key` eller konfigurerad nyckelheader kommer med. Uppladdningar och filströmmar tar inga av webbläsarens headers med, utom `Range`, `If-Range` och `Accept` för filer. |
 | Modultoken | Backendens minne, i sessionen | Webbläsaren har bara sessions-ID. |
 | Login-ticketen | Passerar en gång i callbackens URL | Callbacken redirectar till en ren URL, ingen referrer, ingen accesslogg. |
 | Signerade fil-URL:er | Backendens cache, per session | BFF:en hämtar och strömmar filen; CSP:n tillåter bara same-origin media och ramar. |
 | Live-transkriptionens ticket | Backend | Öppnar Eneos WebSocket server-side; webbläsaren ser aldrig ticketen. |
 | Eneos cookies och `Location` | Eneos svar | Klienten mot Eneo lagrar och skickar inga cookies, `Set-Cookie` och `Location` skickas inte vidare, och en omdirigering från Eneo är ett 502. |
-
-Testerna som håller detta: `backend/tests/test_module_auth.py`, `backend/tests/test_eneo_proxy_auth.py`, `backend/tests/test_audio_proxy.py` och `CookieJarTests` och `RedirectFromEneoTests` i `backend/tests/test_boundary.py`.
 
 ## Kontrollen av origin
 

@@ -1,17 +1,11 @@
 # Inspelaren
 
-Syfte: Beskriva hur inspelningen fångas, sparas på enheten, fortsätts och skickas, så att ett möte inte går förlorat.
-
-Läs detta när: Du ändrar något i `frontend/lib/recording-*.ts`, uppladdningen, de osända inspelningarna, eller ska förklara varför en inspelning finns kvar eller nekas.
-
-Hör ihop med: [Eneo-integration](eneo-integration.md), [Frontend](frontend.md#var-tillståndet-bor), [Inloggning och session](auth-and-session.md#när-inloggningen-har-gått-ut), [Granska transkriptet](transcript-review.md)
-
 ## Format och buffring
 
 - Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus när flödet accepterar det, och ber `MediaRecorder` om korta chunks (2 sekunder, `CHUNK_MS`). Det minskar risken att långa möten bygger upp en enda stor intern recorder-buffer.
 - Tal spelas in i mono med 32 kbit/s (`SPEECH_RECORDING` i `frontend/lib/recording-session.ts`), med Opus när webbläsaren kan och annars webbläsarens eget format (Safari: `audio/mp4`). Där webbläsaren följer det (Chrome) blir ett möte på fem timmar ungefär 72 MB. WebKit 26.6 ignorerade både mono och 32 kbit/s och gav stereo med ungefär 50–54 kbit/s, så där blir samma möte ungefär 110–120 MB. Gränserna räknas därför från den bithastighet webbläsaren faktiskt ger, inte från den som begärdes (`largestChunk` i `frontend/lib/recording-session.ts`).
 - Chromes WebM-filer saknar längd i sitt huvud. När en del sätts ihop till en fil skrivs den inspelade längden dit (`frontend/lib/webm-duration.ts`), så att uppspelningen visar rätt längd och går att spola i.
-- Eneo-körningen startar fortfarande först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
+- Eneo-körningen startar först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
 
 ## Inspelningen sparas på enheten
 
@@ -50,7 +44,7 @@ Uppladdning och start av körning försöker igen vid nätverksfel, 408, 429 och
 
 - Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte): då visas "Det gick inte att skicka". Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen".
 - Ett avbrott i nätet väntas ut hur länge som helst. Själva körningsbegäran och uppföljningen av en körning ger aldrig upp på serverfel.
-- Upload-timeouten räknas från `runtime_upload_policy` i flödets kontrakt och uppladdningen hålls vid liv så länge progress fortsätter, i stället för en hårdkodad gräns.
+- Upload-timeouten räknas från `runtime_upload_policy` i flödets kontrakt och uppladdningen hålls vid liv så länge progress fortsätter.
 - Medan webbläsaren är offline eller inte når modulen säger sidan det och väntar (`frontend/lib/online-status.ts`).
 
 ## Mikrofonen
