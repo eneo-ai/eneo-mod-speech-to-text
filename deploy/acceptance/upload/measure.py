@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Memory of a running image under big multipart uploads: the method the baseline (B0.1) used and the acceptance (B4.2, check 9) repeats.
+"""Memory of a running image under big multipart uploads: the method of baseline.json and of check 9.
 
     measure.py CONTAINER BASE_URL ENEO_URL CASE [CASE ...]
 

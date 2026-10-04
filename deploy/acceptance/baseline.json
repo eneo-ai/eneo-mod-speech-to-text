@@ -1,5 +1,5 @@
 {
-  "source": "The image before Plan B, `stt-before`: feat/one-process 246033e (Next 16.3.8 on Node 22.23.3, uvicorn, supervisord), measured in B0.1 on 2026-10-02 (macOS arm64, OrbStack, Docker 29.4.0, linux/arm64). The numbers, the commands and the setup are in the comment on bead stt-plan-b-one-process-runtime-bbs.4. checks.py reads this file for check 14 (and prints the upload baselines beside check 9); change it only by measuring `stt-before` again.",
+  "source": "The measurements the image is held to: the Next, Node and uvicorn image `stt-before` at feat/one-process 246033e, measured on 2026-10-02 (macOS arm64, OrbStack, Docker 29.4.0, linux/arm64). checks.py reads this file for check 14 (and prints the upload baselines beside check 9); change it only by measuring again.",
   "image_bytes": 393607417,
   "start_seconds": {
     "first_health_200": [

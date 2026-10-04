@@ -1,5 +1,4 @@
-// What a flow page costs a server while browsers sit on it: the load of "10 browsers polling a run" that B0.1 measured on the image before
-// Plan B (bead stt-plan-b-one-process-runtime-bbs.4 has the numbers) and that B4.2 check 14 repeats on the new one.
+// What a flow page costs a server while browsers sit on it: the load of "10 browsers polling a run", which check 14 holds against baseline.json.
 //
 // usage: node poll.cjs <frontend dir with node_modules> <base url> <browsers> <seconds> [run id [flow id]]
 //   <frontend dir>  any directory whose node_modules hold @playwright/test (1.63.0, its Chromium installed)

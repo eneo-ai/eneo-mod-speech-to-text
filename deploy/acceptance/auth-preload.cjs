@@ -7,10 +7,10 @@
 //
 // usage, from the repository root:
 //   PW_DIR=<frontend dir with node_modules> BASE_URL=<base url> node -r ./deploy/acceptance/auth-preload.cjs deploy/acceptance/page-cost.cjs \
-//     <frontend dir> <base url> <label> /flows /flows/flow-1
+//     <frontend dir> <base url> <label> /flows /flows/<flow id>
 //   <base url> is the image as a browser reaches it (its MODULE_PUBLIC_URL); its Eneo must be reachable from this machine as well.
 //   PW_DIR and the frontend dir given to page-cost.cjs are the same directory: any one whose node_modules hold @playwright/test.
-// Without the preload page-cost.cjs measures the sign-in screen for every path (B0.1 measured both; the bead has the numbers).
+// Without the preload page-cost.cjs measures the sign-in screen for every path.
 const { chromium } = require(process.env.PW_DIR + "/node_modules/@playwright/test");
 const base = process.env.BASE_URL.replace(/\/$/, "");
 const launch = chromium.launch.bind(chromium);
