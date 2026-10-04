@@ -128,7 +128,7 @@ SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") 
 cd frontend && npm run dev
 ```
 
-Öppna `http://localhost:3002` och välj "Logga in med Eneo": stubben loggar in Erik Lund. Det är samma inloggning som i produktion, steg för steg, och stubbens flöden, körningar och filer är de som grinden använder.
+Öppna `http://localhost:3002` och välj "Logga in med Eneo": stubben loggar in Erik Lund. Stubbens flöden, körningar och filer är de som grinden använder.
 
 ## Se en skärm utan Eneo
 
