@@ -74,7 +74,7 @@ checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop
 | `frontend/kit/` | Theme, providers and shell. Imports nothing from `app/`, `components/` or `lib/`. |
 | `frontend/lib/` | Logic without UI, one owner per concern, with its tests beside it (unit and component tests both live here). Imports no UI code. |
 | `frontend/tests/e2e/` | The accessibility gate. `screens.ts` lists every state it visits; `stub-server.py` stands in for the backend. |
-| `frontend/tests/prod/` | The production smoke test and the weight budget. |
+| `frontend/tests/prod/` | The production tests (headers, routes, first paint, stale chunks, a recording while chunks are gone, upstream, branding), the smoke test and the weight budget. |
 | `deploy/`, `Dockerfile`, `docker-compose*.yml` | The production image (supervisord) and Compose. |
 | `.github/workflows/` | CI and publishing. |
 | `docs/` | The documentation (Swedish). `docs/README.md` is the index, `docs/decisions/` the decisions. |
