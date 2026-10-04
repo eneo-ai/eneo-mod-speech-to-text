@@ -464,6 +464,9 @@ class ModuleAuth:
             "user": session.user.model_dump(exclude_none=True),
             # The login's fixed end (Eneo's ceiling or the module's own), so the page can warn before it.
             "session_ends_in": max(0, session.session_expires_at - int(time.time())),
+            # What the page may send in one upload (the whole request, so a file takes a little less): a larger one is
+            # refused with a 413 while it is still being sent, which a proxy in front may turn into a 502. Not a secret.
+            "max_upload_bytes": self.settings.max_upload_bytes,
         }
         refresh_in = session.refresh_in()
         if refresh_in is not None:

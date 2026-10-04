@@ -165,6 +165,7 @@ class HandshakeTests(SignedIn):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["user"]["id"], USER)
         self.assertNotIn("auth_mode", json.loads(body), "there is one way to sign in")
+        self.assertEqual(json.loads(body)["max_upload_bytes"], 1024**3, "the page is told what the module takes, so it never sends more")
 
     def test_two_sign_ins_are_two_sessions_and_ending_one_leaves_the_other(self) -> None:
         other = self.sign_in()

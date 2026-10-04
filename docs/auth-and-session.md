@@ -8,9 +8,9 @@ Hör ihop med: [Arkitektur](architecture.md#inloggningen), [Backend](backend.md)
 
 ## Ett sätt in
 
-Eneo SSO är det enda sättet att logga in. Det finns ingen åtkomstkod, inget inloggningsläge att välja och ingen session utan en Eneo-användare: varje session är en `EneoSsoSession` (`backend/app/module_auth.py`) med en användare, en tenant och en modultoken, och varje anrop till Eneo bär både servicenyckeln och den token.
+Eneo SSO är det enda sättet att logga in. Varje session är en `EneoSsoSession` (`backend/app/module_auth.py`): en användare, en tenant och en modultoken, och varje anrop till Eneo bär både servicenyckeln och den token.
 
-För lokal utveckling godtas `http` för modulens och Eneos publika adresser, och en cookie utan `Secure`, bara när värden är `localhost`, `127.0.0.1` eller `[::1]` (`MODULE_PUBLIC_URL`, `ENEO_PUBLIC_URL`, `COOKIE_SECURE=false`). Värden jämförs som den tolkas ur adressen, inte som ett prefix eller ett suffix: `http://localhost.example.org` och `http://localhost@example.org` räknas inte. Annars stoppas starten med ett meddelande som säger vilken variabel det gäller (`backend/app/config.py`). Eneos adress inom tjänstenätet (`ENEO_BACKEND_URL`) får vara `http`. Det finns ingen produktionsflagga: samma regel gäller överallt.
+`http` för `MODULE_PUBLIC_URL` och `ENEO_PUBLIC_URL`, och `COOKIE_SECURE=false`, godtas bara för värden `localhost`, `127.0.0.1` eller `[::1]`, jämförda som den tolkas ur adressen (inte `localhost.example.org`, inte `localhost@example.org`). Annars stoppas starten och meddelandet säger vilken variabel det gäller (`backend/app/config.py`). `ENEO_BACKEND_URL` är tjänstenätets adress och får vara `http`. Samma regel gäller i alla miljöer.
 
 ## Eneo SSO
 

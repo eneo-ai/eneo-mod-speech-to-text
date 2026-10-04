@@ -37,10 +37,10 @@ Alla rutter ligger under `/api`. "Session" betyder giltig modulsession (annars 4
 | `/api/branding` | GET | nej | nej | Organisationen som visas i sidhuvudet. |
 | `/api/branding/logo/{light\|dark}` | GET | nej | nej | Organisationens logotyp, 404 om ingen är konfigurerad. |
 | `/api/branding/theme.css` | GET | nej | nej | Accentfärgens stilmall; en tom kommentar utan `ORGANIZATION_ACCENT`. Se [Branding](#branding). |
-| `/api/auth/login` | GET | nej | nej | Startar Eneo SSO. Frågeparametrar: `next`, `renew`. Svarar bara på GET: ingen kod loggar in någon (POST ger 405). |
+| `/api/auth/login` | GET | nej | nej | Startar Eneo SSO. Frågeparametrar: `next`, `renew`. |
 | `/api/auth/callback` | GET | nej | nej | Tar emot ticket och state från Eneo. |
 | `/api/auth/logout` | POST | nej | ja | Tar bort sessionen. |
-| `/api/auth/status` | GET | nej | nej | Inloggad eller inte, användare, `session_ends_in`, `refresh_in`. |
+| `/api/auth/status` | GET | nej | nej | Inloggad eller inte, användare, `session_ends_in`, `refresh_in` och, för en inloggad sida, `max_upload_bytes` (se [Uppladdningar](#uppladdningar)). |
 | `/api/eneo/flows/{flow_id}/files` | POST | ja | ja | Uppladdning, se [Uppladdningar](#uppladdningar). Med och utan avslutande snedstreck. |
 | `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files` | POST | ja | ja | Uppladdning till flödets ljudsteg. |
 | `/api/eneo/flows/{flow_id}/template-files` | POST | ja | ja | Uppladdning av mallfil. |
@@ -116,7 +116,7 @@ Taket för request-body sitter i en ren ASGI-middleware, `BodyLimitMiddleware` i
 - Den deklarerade längden över taket ger 413 direkt, och strömmen ger 413 så snart den passerar det. Antalet är de bytes som faktiskt kommer: en `Content-Length` som ljuger, eller en body i delar, kommer inte längre.
 - Den kräver ingen session, så den gäller också innan en användare är inloggad, och den svarar innan FastAPI läser en JSON-body (en innehållstyp är klientens påstående, så ingen är undantagen).
 - En `multipart/form-data` får deklarera upp till `MAX_UPLOAD_BYTES`, men taket höjs för just den requesten först efter att uppladdningsrutten kontrollerat session, origin och sidans användare (se [Uppladdningar](#uppladdningar)). En multipart till en annan rutt får inget större tak.
-- 413-svaret har `Connection: close`, så att en klient som fortfarande skickar stannar. Eneo har egna gränser (ett flödes `max_file_size_bytes`, också 413); `max_body_bytes` eller `max_upload_bytes` i svaret visar att det är modulens.
+- 413-svaret har `Connection: close`, så att en klient som fortfarande skickar stannar. En proxy framför (Traefik) kan göra om det till ett 502 medan klienten skickar, så sidan skickar aldrig något modulen nekar. Status-svaret bär `max_upload_bytes`, och `getRunContract` (`frontend/lib/api.ts`, `frontend/lib/upload-limit.ts`) håller varje filsteg i kontraktet till det minsta av flödets `max_file_size_bytes` och modulens tak minus kuvertet runt filen (4 KiB). Gränsen säger sig med samma ord som flödets egen, och inspelningen delas efter den. Eneo har egna gränser (ett flödes `max_file_size_bytes`, också 413); `max_body_bytes` eller `max_upload_bytes` i svaret visar att det är modulens.
 
 ## Uppladdningar
 
@@ -234,7 +234,7 @@ Testfilerna ligger i `backend/tests/`; `test_boundary.py` är gränsen mot Eneo 
 | Same-origin för mutationer och WebSocket | `Origin` måste vara `MODULE_PUBLIC_URL`. Webbläsarens egen origin skickas aldrig till Eneo. | `test_eneo_proxy_auth.py`, `test_live_relay.py` |
 | Rätt användare i en gammal flik | En sida som hör till en annan användare än sessionens, eller som inte namnger någon när den ändrar något, nekas med 409 `user_changed`, eller stängs med 1008, innan något når Eneo. | `test_boundary.py` (`ExpectedUserTests`, `LiveExpectedUserTests`) |
 | Inloggningens state och återvändande | Slumpmässigt, signerat, förbrukas vid callbacken och jämförs som bytes (ett icke-ASCII-tecken ger inget 500); en förnyelse binds till samma användare och tenant; en inloggning återvänder bara till en sökväg på modulens egen origin. | `test_module_auth.py`, `test_boundary.py` (`CallbackStateTests`, `RedirectTests`) |
-| Bara Eneo SSO, och osäkra inställningar bara lokalt | Ingen kod eller annan väg skapar en session än Eneos callback (en POST till `/api/auth/login` är 405). En publik adress är `https`, utom för `localhost`, `127.0.0.1` och `[::1]`, och en cookie utan `Secure` godtas bara där; annars stoppas starten. | `test_module_auth.py`, `test_config.py` |
+| Sessionen skapas bara av Eneos callback | Callbacken skapar den ur en ticket som Eneo godtagit. En publik adress är `https`, utom för `localhost`, `127.0.0.1` och `[::1]`, och en cookie utan `Secure` godtas bara där; annars stoppas starten. | `test_module_auth.py`, `test_config.py` |
 | Sessionen avslutar det som hänger på den | En ny inloggning tar bort den gamla sessionen, och live-sockets stängs med 1008 `session_ended` när sessionen tar slut. | `test_boundary.py` (`LiveSessionEndTests`) |
 | Tak för request-body | 413 över `MAX_BODY_BYTES` utan session, uppladdningar läses först efter sessionskontrollen och nekas med 411, 413 eller 400. | `test_body_limits.py`, `test_config.py`, `test_deployment_compose.py` |
 | Begränsade svar från Eneo | Inget svar läses förbi sin gräns, och ett kodat svar avvisas. | `test_boundary.py` (`UpstreamAnswerTests`) |
