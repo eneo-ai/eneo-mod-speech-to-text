@@ -555,14 +555,24 @@ def abandoned(base: str) -> str:
     boundary = "acceptanceboundary"
     head = f'--{boundary}\r\nContent-Disposition: form-data; name="upload_file"; filename="opptagning.webm"\r\nContent-Type: audio/webm\r\n\r\n'.encode()
     total = len(head) + 300 * MB + len(f"\r\n--{boundary}--\r\n")
-    parts = urlsplit(base)
-    sock = socket.create_connection((parts.hostname, parts.port or 80), timeout=60)
-    headers = {**session.write(), "Host": parts.netloc, "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(total)}
-    sock.sendall((f"POST {UPLOAD_PATH} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n").encode() + head)
-    chunk = bytes(MB)
-    for _ in range(150):
-        sock.sendall(chunk)
-    reset(sock)
+    headers = {**session.write(), "Host": "127.0.0.1:3001", "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(total)}
+    request = f"POST {UPLOAD_PATH} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n"
+    # From inside the image, over loopback: the reset of a client on the host has to cross the host's port forwarder, which does not always
+    # pass it on, and the module cannot release an upload it was never told was abandoned (its socket stays ESTABLISHED, its spool file open).
+    left = subprocess.Popen(
+        ["docker", "exec", "-i", STACK.container, "python", "-", json.dumps({"port": 3001, "send": request + head.decode(), "chunks": 150, "hold": 5})],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    assert left.stdin is not None
+    left.stdin.write((HERE / "upload/abandon_upload.py").read_text())
+    left.stdin.close()
+    try:
+        # The upload is in flight while the client holds the connection: the module has its spool file open (deleted at once, so not in /tmp's listing).
+        wait_until(lambda: any(f.startswith("/tmp/") and f.endswith("(deleted)") for f in open_files() - files_before), 15, "the module holds the spool file of the upload it is receiving")
+    finally:
+        left.wait(timeout=120)  # the client leaves with a reset after its hold
+    error_output = left.stderr.read() if left.stderr else ""
+    expect(left.returncode == 0, f"the client that leaves failed: {error_output.strip()[-200:]}")
     try:
         wait_until(lambda: fds() <= before[0] and tmp() <= before[1], 20, "the image releases the abandoned upload's file descriptor and temp file")
     except Failed as error:
