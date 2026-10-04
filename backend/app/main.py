@@ -185,9 +185,9 @@ async def get_branding_theme(request: Request) -> Response:
 # so a browser's Transfer-Encoding, Forwarded, X-Forwarded-For or X-Real-IP must not arrive: a header a browser, a
 # proxy or a script adds is not Eneo's to receive. The credentials are set by the module from the session, never
 # taken from the browser. The frontend sends Accept, Content-Type (a JSON body) and Idempotency-Key through
-# /api/eneo/*; the rest is the kit's list (Accept-Language, If-Match, If-None-Match). X-Upload-Timeout-Seconds is
-# read by the upload routes and never forwarded; the signed-file routes forward Range, If-Range and Accept on their
-# own (_STREAM_FORWARD_REQUEST_HEADERS).
+# /api/eneo/*, with Accept-Language, If-Match and If-None-Match. X-Upload-Timeout-Seconds is read by the upload routes
+# and never forwarded; the signed-file routes forward Range, If-Range and Accept on their own
+# (_STREAM_FORWARD_REQUEST_HEADERS).
 _FORWARDED_REQUEST_HEADERS = frozenset(
     {"accept", "accept-language", "content-type", "idempotency-key", "if-match", "if-none-match"}
 )

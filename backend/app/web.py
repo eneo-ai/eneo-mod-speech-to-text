@@ -1,13 +1,8 @@
 """The backend as a web server: the security headers on every response, and the built UI.
 
-Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commit 6621163). The headers keep the kit's
-``setdefault`` precedence and the shape of its header set, but not its mechanism (a pure-ASGI middleware, because the
-kit's ``@app.middleware`` is Starlette's BaseHTTPMiddleware, which wraps the body of a streamed answer: this app streams
-audio and PDFs and must close its upstream when the browser leaves) and not its ``Permissions-Policy`` (the kit's empty
-microphone allowlist would stop the recording). ``serve_web`` is the kit's with four changes: the headers come from the
-middleware, assets are immutable and the rest revalidated, a path with a control character or a backslash, or too long a
-name, is a 404 and never the page or a 500, and HEAD is answered like GET. The files of dist/ are indexed once, at start,
-and a request looks its path up (``index_files``). Plan C (the module kit) deletes this copy.
+Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commit 6621163): the header set's shape and the
+``setdefault`` precedence are the kit's, its ``Permissions-Policy`` is not (an empty microphone allowlist would stop the
+recording). The files of dist/ are indexed once, at start, and a request looks its path up (``index_files``).
 """
 
 from __future__ import annotations
@@ -126,9 +121,9 @@ def _accepted_encodings(accept_encoding: str | None) -> set[str]:
     return accepted
 
 
-# A JSON answer of the proxy of at least this many bytes is gzipped for a client that accepts it. Smaller ones cost more
-# to compress than they save. Next gzipped a proxied answer (880,050 bytes to 87,342, measured in B0.1) and the backend
-# alone does not, so the module does it now that Next is gone; only here, never for a streamed file (audio, a PDF).
+# A JSON answer of the proxy of at least this many bytes is gzipped for a client that accepts it: a run's steps are
+# 880,050 bytes and 87,342 gzipped, and a smaller answer costs more to compress than it saves. Only here, never for a
+# streamed file (audio, a PDF).
 JSON_COMPRESSION_MIN_BYTES = 1024
 
 
