@@ -1,5 +1,4 @@
 import asyncio
-import configparser
 import contextlib
 import json
 import os
@@ -583,13 +582,10 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 
 def launch_commands() -> dict[str, list[str]]:
     """Every way the repository starts the module backend."""
-    supervisord = configparser.ConfigParser(interpolation=None)
-    supervisord.read(REPOSITORY / "deploy" / "supervisord.conf")
-    dockerfile = (REPOSITORY / "backend" / "Dockerfile").read_text()
+    dockerfile = (REPOSITORY / "Dockerfile").read_text()
     readme = (REPOSITORY / "README.md").read_text()
     return {
-        "production image": shlex.split(supervisord["program:backend"]["command"]),
-        "backend image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
+        "production image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
         "README dev server": shlex.split(
             re.search(r"^(\.venv/bin/python -m app\.serve .+)$", readme, re.M)[1]
         ),
@@ -633,6 +629,8 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                 self.assertEqual(command[command.index("-m") + 1], "app.serve")
                 self.assertNotIn("uvicorn", " ".join(command))
                 launcher.parse_args(command[command.index("app.serve") + 1 :])  # the arguments are the launcher's own
+        # The image serves the built UI: only the development server runs the API alone.
+        self.assertNotIn("--api-only", launch_commands()["production image"])
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
         self.assertEqual(

@@ -1,6 +1,6 @@
 # Auto-merged by `docker compose up` for local development.
 # Dokploy explicitly uses `-f docker-compose.yml`, so this file is ignored there.
 services:
-  frontend:
+  speech-to-text:
     ports:
-      - "3000:3000"
+      - "3001:3001"

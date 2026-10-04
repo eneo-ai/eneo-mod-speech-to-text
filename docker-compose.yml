@@ -1,6 +1,12 @@
+# En modul, en image, en process: tjänsten bygger rotens Dockerfile och serverar både gränssnittet och API:t på port 3001.
+# Containern är låst så långt modulen tillåter: skrivskyddad rotfilsystem, inga Linux-capabilities, inga nya privilegier.
 services:
-  speech-to-text-backend:
-    build: ./backend
+  speech-to-text:
+    build:
+      context: .
+      args:
+        # Ett byggargument, inte en körningsinställning: en publicerad image har alltid granskningsläget avstängt.
+        SPEAKER_REVIEW_ENABLED: ${SPEAKER_REVIEW_ENABLED:-false}
     environment:
       ENEO_BACKEND_URL: ${ENEO_BACKEND_URL}
       ENEO_PUBLIC_URL: ${ENEO_PUBLIC_URL}
@@ -25,40 +31,30 @@ services:
       # Accentfärgen (#RRGGBB); tomt behåller modulens standardfärg. Mörkt läge härleds om den mörka utelämnas.
       ORGANIZATION_ACCENT: ${ORGANIZATION_ACCENT:-}
       ORGANIZATION_ACCENT_DARK: ${ORGANIZATION_ACCENT_DARK:-}
-    # En egen logga monteras in och ORGANIZATION_LOGO pekar dit, till exempel:
-    # volumes:
-    #   - ./branding:/branding:ro
+    volumes:
+      # Det enda skrivbara stället: här mellanlagras en uppladdning (på disk, inte i minnet; en tmpfs skulle hålla varje
+      # uppladdning i RAM). Disken ska rymma samtidiga uppladdningar × MAX_UPLOAD_BYTES (docs/operations.md).
+      - spool:/tmp
+      # En egen logga monteras in skrivskyddad och ORGANIZATION_LOGO pekar dit, till exempel:
+      #   - ./branding:/branding:ro
     expose:
-      - "8000"
+      - "3001"
     healthcheck:
       test:
-        - CMD-SHELL
-        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/healthz', timeout=2).status==200 else 1)\""
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=2)"
       interval: 15s
       timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 15s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED: ${NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED:-false}
-    environment:
-      INTERNAL_API_BASE: http://speech-to-text-backend:8000
-      NODE_ENV: production
-    expose:
-      - "3000"
-    depends_on:
-      speech-to-text-backend:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - "node -e \"require('http').get('http://127.0.0.1:3000/api/healthz', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))\""
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
+volumes:
+  spool:
