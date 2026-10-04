@@ -75,7 +75,7 @@ class DeploymentComposeTests(unittest.TestCase):
         self.assertEqual(service["expose"], ["3001"])
         self.assertNotIn("ports", service)  # published only by docker-compose.override.yml, for development; Dokploy routes to the port
         self.assertIn("http://127.0.0.1:3001/health", " ".join(service["healthcheck"]["test"]))
-        # No supervisor any more: restarting a process that died is the container's job.
+        # One process, no supervisor: restarting it when it dies is the container's job.
         self.assertEqual(service["restart"], "unless-stopped")
 
     def test_the_container_has_no_more_than_it_needs(self) -> None:
@@ -86,7 +86,7 @@ class DeploymentComposeTests(unittest.TestCase):
         self.assertNotIn("cap_add", service)
         self.assertIn("no-new-privileges:true", service["security_opt"])
         # The one writable place is where an upload is spooled (Starlette's SpooledTemporaryFile, past 1 MB). A volume,
-        # which is the disk: a tmpfs would hold every upload in memory, which is what the hop through Next did.
+        # which is the disk: a tmpfs would hold every upload in memory.
         temp = [mount for mount in service["volumes"] if mount["target"] == "/tmp"]
         self.assertEqual([(mount["type"], mount.get("read_only", False)) for mount in temp], [("volume", False)])
         self.assertNotIn("tmpfs", service)
