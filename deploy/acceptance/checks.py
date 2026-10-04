@@ -47,6 +47,7 @@ from urllib.parse import urlsplit
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 sys.path.insert(0, str(HERE))
+import live_load  # noqa: E402
 from wsclient import HandshakeRefused, WebSocket  # noqa: E402
 
 IDS = json.loads((ROOT / "frontend/tests/fixtures/ids.json").read_text())
@@ -649,20 +650,70 @@ def check_14() -> str:
     return "\n    ".join(out)
 
 
+RATES = (10, 45, 100)  # visits a second, for the arrival-rate envelope of check 15
+
+
 @check(15, "the live relay under static load: the loaded p95 round trip is at most twice the idle p95")
 def check_15() -> str:
     session = sign_in()
-    r = subprocess.run(
-        [sys.executable, str(HERE / "live_load.py"), STACK.direct, FLOW, AUDIO_STEP, session.user, "--cookie", session.cookie, "--origin", STACK.module, "--seconds", "30", "--clients", "200"],
-        capture_output=True, text=True, timeout=300,
-    )
-    expect(r.returncode == 0, f"live_load.py failed: {(r.stderr or r.stdout).strip()[-300:]}")
-    result = json.loads(r.stdout.strip().splitlines()[-1])
-    idle, loaded, load = result["idle"], result["loaded"], result["load"]
-    expect(idle.get("samples", 0) >= 100 and loaded.get("samples", 0) >= 100, f"too few round trips: idle {idle}, loaded {loaded}")
-    expect(load["errors"] == 0, f"the load had {load['errors']} errors in {load['requests']} requests")
-    detail = f"idle {idle}, loaded {loaded}; load {load['clients']} clients, {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors"
-    expect(loaded["p95_ms"] <= 2 * idle["p95_ms"], f"the loaded p95 {loaded['p95_ms']} ms is more than twice the idle p95 {idle['p95_ms']} ms (stop condition): {detail}")
+    path = f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-load"
+    headers = {"Origin": STACK.module, "Cookie": session.cookie}  # the load and the socket go to the image's own port: the browser's Origin, no Traefik
+    lines, problems = [], []
+
+    def relay(name: str, load_args: list[str]) -> tuple[dict, dict | None]:
+        """The round trips while the load runs: what was owed and received, the percentiles, the load's own totals."""
+        try:
+            trips, load = live_load.measure_under_load(STACK.direct, path, headers, 30, 20, ["--cookie", session.cookie, *load_args])
+        except live_load.RelayError as error:
+            problems.append(f"{name}: {error}")
+            return {}, None
+        try:
+            live_load.require_complete((name, trips))
+        except live_load.Shortfall as error:
+            problems.append(str(error))
+        if load["errors"] or load["dropped"]:
+            problems.append(f"{name}: the load had {load['errors']} errors and {load['dropped']} visits dropped in {load['requests']} requests")
+        return live_load.percentiles(trips), load
+
+    # what a browser fetches on one cold visit of a flow, and what the stress test below fetches of it
+    requests = json.loads(node(str(HERE / "visit_resources.cjs"), STACK.module, f"/flows/{FLOW}"))["requests"]
+    visit = [r["path"] for r in requests if r["method"] == "GET"]
+    files = {r["path"] for r in requests if r["method"] == "GET" and r["type"] not in ("document", "fetch", "xhr")}
+    stress_files = set(live_load.assets_named(get(STACK.direct + "/", headers={"Cookie": session.cookie}).body))
+    by_type = {t: sum(r["type"] == t for r in requests) for t in sorted({r["type"] for r in requests})}
+    lines.append(f"one cold visit of /flows/<id> in Chromium: {len(requests)} requests {by_type}; the stress test fetches the page and {len(stress_files)} files, {len(stress_files & files)} of them among the browser's {len(files)}; the browser also fetched {len(files - stress_files)} more files")
+    if stress_files - files:
+        problems.append(f"the stress test fetches files the browser does not on a visit: {sorted(stress_files - files)}")
+
+    # the plan's measurement: 200 clients fetching the shell and its files over and over with no pause, against the idle relay
+    try:
+        idle_trips = live_load.measure_round_trips(STACK.direct, path, headers, 30, 20)
+    except live_load.RelayError as error:
+        raise Failed(f"idle: {error}")
+    idle = live_load.percentiles(idle_trips)
+    try:
+        live_load.require_complete(("idle", idle_trips))
+    except live_load.Shortfall as error:
+        problems.append(str(error))
+    stress, load = relay("stress, 200 clients", ["--clients", "200"])
+    lines.append(f"idle: {idle}")
+    if load:
+        lines.append(f"stress test, shell and assets, 200 clients with no pause: {stress}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors")
+    if stress.get("p95_ms") is not None and idle.get("p95_ms") is not None and stress["p95_ms"] > 2 * idle["p95_ms"]:
+        problems.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice")
+
+    # an envelope, not a verdict: the visit above at a controlled arrival rate (open loop)
+    with tempfile.NamedTemporaryFile("w", suffix=".json") as visit_file:
+        json.dump(visit, visit_file)
+        visit_file.flush()
+        for rate in RATES:
+            report, load = relay(f"{rate} visits/s", ["--rate", str(rate), "--visit", visit_file.name])
+            if load:
+                ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
+                lines.append(f"arrival rate {rate} visits/s ({len(visit)} requests each): {report}{ratio}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors, {load['dropped']} dropped")
+    lines.append("one machine: the load generator, the relay's client and the image share the host's CPUs (a second host is not available)")
+    detail = "\n    ".join(lines)
+    expect(not problems, "; ".join(problems) + "\n    " + detail)
     return detail
 
 
