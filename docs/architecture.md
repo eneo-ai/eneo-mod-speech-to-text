@@ -21,6 +21,19 @@ Bilden är illustrativ och ger överblicken. Mermaid-diagrammen längre ned är 
 | BFF (FastAPI) | Håller modulsessionen, loggar in mot Eneo, lägger servicenyckel och modultoken på varje anrop, släpper bara igenom tillåtna Eneo-rutter, strömmar filer, relayar live-text. | `backend/app/` |
 | Eneo | Autentiserar användaren och äger flöden, körningar och filer. | utanför det här repot |
 
+## Begrepp
+
+| Term | Betydelse |
+|---|---|
+| modul | Den här webbapplikationen, Tal till text (`MODULE_KEY=speech-to-text`), som Eneo länkar till. |
+| BFF | Modulens backend i FastAPI (`backend/app/`): håller inloggningen, lägger credentials på och släpper bara igenom tillåtna anrop till Eneo. |
+| modulsession | Modulens inloggning i webbläsaren: en HttpOnly-cookie med ett opakt ID. Allt som hör till sessionen ligger i BFF:ens minne. |
+| servicenyckel | Modulens `sk_`-nyckel i Eneo (`ENEO_API_KEY`). Når aldrig webbläsaren. |
+| modultoken | Kortlivad token Eneo ger BFF:en för den inloggade användaren. Skickas med servicenyckeln. |
+| flöde, körning | Ett publicerat arbetsflöde i Eneo, och en enskild exekvering av det med en användares indata. |
+| granskning | En paus i en körning där en människa kontrollerar ett stegs resultat (`awaiting_review`). Talarmappning är en granskning. |
+| Strömma, Spela in, Ladda upp | Flödessidans tre inmatningslägen: live-text medan man spelar in, inspelning med transkribering efteråt, och en vald fil. |
+
 ## Läget i dag
 
 | Status | Vad |
