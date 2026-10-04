@@ -4,12 +4,11 @@ import unittest
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -194,7 +193,7 @@ class ArtifactProxyTests(unittest.TestCase):
         # The URL is a bearer credential for the file; only the module backend mints it now.
         response = self.client.post(
             "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/signed-url/",
-            headers={"Origin": "https://module.example.test"},
+            headers={"Origin": "http://localhost:3002"},
             json={"expires_in": 3600},
         )
         self.assertEqual(response.status_code, 403)

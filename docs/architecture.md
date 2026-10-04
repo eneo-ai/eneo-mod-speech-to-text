@@ -70,7 +70,7 @@ sequenceDiagram
     M-->>B: 303 till modulens sida och HttpOnly-sessionscookie
 ```
 
-Stegen i ord, felkoder, förnyelse och åtkomstkodsläget står i [Inloggning och session](auth-and-session.md).
+Stegen i ord, felkoder, och förnyelse står i [Inloggning och session](auth-and-session.md).
 
 ## Ett proxat anrop
 

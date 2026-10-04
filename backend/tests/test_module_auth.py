@@ -10,22 +10,18 @@ from urllib.parse import parse_qs, urlparse
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
-from fastapi import Depends, FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
-from app.config import Settings  # noqa: E402
 from app.module_auth import (  # noqa: E402
     EneoSsoSession,
-    ModuleAuth,
     ModuleUser,
     SESSION_COOKIE,
     STATE_COOKIE,
@@ -102,7 +98,7 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertEqual(query["module_key"], ["speech-to-text"])
         self.assertEqual(
             query["redirect_uri"],
-            ["https://module.example.test/api/auth/callback"],
+            ["http://localhost:3002/api/auth/callback"],
         )
         self.assertIn("eneo_module_login_state", response.cookies)
         return query["state"][0], location
@@ -161,7 +157,6 @@ class ModuleAuthTests(unittest.TestCase):
             body,
             {
                 "authenticated": True,
-                "auth_mode": "eneo_sso",
                 "user": {
                     "id": "user-id",
                     "email": "user@example.test",
@@ -318,7 +313,6 @@ class ModuleAuthTests(unittest.TestCase):
             self.client.get("/api/auth/status").json(),
             {
                 "authenticated": False,
-                "auth_mode": "eneo_sso",
                 "user": None,
             },
         )
@@ -337,20 +331,34 @@ class ModuleAuthTests(unittest.TestCase):
         self.assertEqual(len(self.exchange_client.calls), 2)
 
     def test_protected_endpoint_rejects_missing_session(self) -> None:
-        response = self.client.get("/api/config")
+        response = self.client.get("/api/eneo/flows/")
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.headers["x-auth-required"], "session")
 
-    def test_access_code_login_is_not_available_in_sso_mode(self) -> None:
-        response = self.client.post(
-            "/api/auth/login",
-            json={"access_code": "test-code"},
-            headers={"Origin": "https://module.example.test"},
-        )
+    def test_there_is_no_access_code_login_whatever_the_request_carries(self) -> None:
+        # The login route answers GET (the start of Eneo's handshake) and nothing else: no code signs anyone in.
+        for body in ({"access_code": "test-code"}, {"access_code": "test-access-code-1234"}, {}):
+            with self.subTest(body=body):
+                response = self.client.post("/api/auth/login", json=body, headers={"Origin": "http://localhost:3002"})
 
-        self.assertEqual(response.status_code, 404)
-        self.assertNotIn(SESSION_COOKIE, response.cookies)
+                self.assertEqual(response.status_code, 405)
+                self.assertEqual(response.headers["allow"], "GET")
+                self.assertNotIn(SESSION_COOKIE, response.cookies)
+                self.assertEqual(main.module_auth.sessions._sessions, {})
+
+    def test_the_config_route_that_named_the_demo_space_is_gone(self) -> None:
+        self.assertEqual(self.client.get("/api/config").status_code, 404)
+
+    def test_no_session_is_made_outside_eneos_handshake(self) -> None:
+        # The one place a session is created is the callback, from a ticket Eneo accepted.
+        state, _ = self.start_login()
+        self.exchange_client.response = FakeResponse(status_code=400)
+
+        callback = self.client.get("/api/auth/callback", params={"ticket": "bad-ticket", "state": state})
+
+        self.assertNotIn(SESSION_COOKIE, callback.cookies)
+        self.assertEqual(main.module_auth.sessions._sessions, {})
 
     def test_logout_rejects_cross_origin_request(self) -> None:
         response = self.client.post(
@@ -370,7 +378,7 @@ class ModuleAuthTests(unittest.TestCase):
 
         response = self.client.post(
             "/api/auth/logout",
-            headers={"Origin": "https://module.example.test"},
+            headers={"Origin": "http://localhost:3002"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -379,7 +387,6 @@ class ModuleAuthTests(unittest.TestCase):
             self.client.get("/api/auth/status").json(),
             {
                 "authenticated": False,
-                "auth_mode": "eneo_sso",
                 "user": None,
             },
         )
@@ -661,127 +668,6 @@ class ConcurrentTokenRefreshTests(TokenRefreshFixture, unittest.IsolatedAsyncioT
         self.assertEqual(len(eneo.refresh_calls), 1)
         # Nothing outlives the refresh that it coordinated.
         self.assertEqual(main.module_auth._refreshes, {})
-
-
-class AccessCodeAuthTests(unittest.TestCase):
-    def setUp(self) -> None:
-        settings = Settings(
-            eneo_backend_url="https://eneo.example.test",
-            eneo_public_url=None,
-            module_public_url="https://module.example.test",
-            module_key="speech-to-text",
-            eneo_api_key="test-key",
-            session_secret="x" * 48,
-            auth_mode="access_code",
-            app_access_code="test-access-code-1234",
-            cookie_secure=True,
-            session_max_age_seconds=90 * 60,
-        )
-        self.module_auth = ModuleAuth(
-            settings=settings,
-            http_client=FakeExchangeClient(),
-        )
-        app = FastAPI()
-        app.include_router(self.module_auth.router, prefix="/api/auth")
-
-        @app.get(
-            "/protected",
-            dependencies=[Depends(self.module_auth.require_session)],
-        )
-        async def protected() -> dict[str, bool]:
-            return {"ok": True}
-
-        self.client = TestClient(
-            app,
-            base_url="https://module.example.test",
-            follow_redirects=False,
-        )
-
-    def login(self, access_code: str = "test-access-code-1234"):
-        return self.client.post(
-            "/api/auth/login",
-            json={"access_code": access_code},
-            headers={"Origin": "https://module.example.test"},
-        )
-
-    def test_correct_code_creates_opaque_session_and_exposes_mode(self) -> None:
-        response = self.login()
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"ok": True})
-        self.assertEqual(response.headers["cache-control"], "no-store")
-        self.assertIn(SESSION_COOKIE, response.cookies)
-        self.assertNotIn("test-access-code-1234", response.cookies[SESSION_COOKIE])
-        self.assertIn("HttpOnly", response.headers["set-cookie"])
-        self.assertIn("Secure", response.headers["set-cookie"])
-        self.assertIn("SameSite=lax", response.headers["set-cookie"])
-        self.assertIn("Max-Age=5400", response.headers["set-cookie"])
-        self.assertEqual(self.client.get("/protected").status_code, 200)
-        status = self.client.get("/api/auth/status").json()
-        self.assertTrue(0 < status.pop("session_ends_in") <= 90 * 60)
-        self.assertEqual(
-            status,
-            {
-                "authenticated": True,
-                "auth_mode": "access_code",
-                "user": None,
-            },
-        )
-
-    def test_status_says_when_the_access_code_session_ends(self) -> None:
-        self.login()
-
-        body = self.client.get("/api/auth/status").json()
-
-        self.assertTrue(90 * 60 - 5 <= body["session_ends_in"] <= 90 * 60)
-
-    def test_wrong_code_returns_generic_unauthorized_without_session(self) -> None:
-        response = self.login("wrong-code")
-
-        self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Invalid access code"})
-        self.assertNotIn(SESSION_COOKIE, response.cookies)
-        self.assertEqual(self.client.get("/protected").status_code, 401)
-
-    def test_login_rejects_cross_origin_request_before_checking_code(self) -> None:
-        response = self.client.post(
-            "/api/auth/login",
-            json={"access_code": "test-access-code-1234"},
-            headers={"Origin": "https://attacker.example.test"},
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertNotIn(SESSION_COOKIE, response.cookies)
-
-    def test_sso_routes_are_not_available_in_access_code_mode(self) -> None:
-        login = self.client.get("/api/auth/login")
-        callback = self.client.get(
-            "/api/auth/callback",
-            params={"ticket": "ticket", "state": "state"},
-        )
-
-        self.assertEqual(login.status_code, 404)
-        self.assertEqual(callback.status_code, 404)
-
-    def test_logout_revokes_access_code_session(self) -> None:
-        login = self.login()
-        session_id = login.cookies[SESSION_COOKIE]
-
-        response = self.client.post(
-            "/api/auth/logout",
-            headers={"Origin": "https://module.example.test"},
-        )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNone(self.module_auth.sessions.get(session_id))
-        self.assertEqual(
-            self.client.get("/api/auth/status").json(),
-            {
-                "authenticated": False,
-                "auth_mode": "access_code",
-                "user": None,
-            },
-        )
 
 
 if __name__ == "__main__":

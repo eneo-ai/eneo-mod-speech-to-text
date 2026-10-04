@@ -25,18 +25,15 @@ Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Bac
 | Variabel | Läses av | Exempelvärde (Sundsvalls fristående miljö) | Anmärkning |
 |---|---|---|---|
 | `ENEO_BACKEND_URL` | backend | `https://flow.sundsvall.dev` | `http://backend:8000` bara på Eneos `module_net` (imagen), aldrig i tvåcontainer-Compose, där `backend` inte finns. |
-| `ENEO_PUBLIC_URL` | backend | `https://flow.sundsvall.dev` | Krävs i `eneo_sso`. |
-| `MODULE_PUBLIC_URL` | backend | `https://transkribering.sundsvall.dev` | |
+| `ENEO_PUBLIC_URL` | backend | `https://flow.sundsvall.dev` | `https` krävs; `http` bara för `localhost`, `127.0.0.1` och `[::1]`, annars stoppas starten. |
+| `MODULE_PUBLIC_URL` | backend | `https://transkribering.sundsvall.dev` | Samma regel som `ENEO_PUBLIC_URL`. |
 | `MODULE_KEY` | backend | `speech-to-text` | |
 | `ENEO_API_KEY` | backend | en `sk_…`-nyckel från Eneo med rätt space-scope | Secret. |
 | `ENEO_API_KEY_HEADER_NAME` | backend | samma som Eneos `API_KEY_HEADER_NAME` (standard `X-API-Key`) | |
 | `SESSION_SECRET` | backend | minst 32 slumpmässiga tecken | Secret. Generering: [Lokal utveckling](development.md#med-docker-compose). |
-| `AUTH_MODE` | backend | `eneo_sso` (standard) eller tillfälligt `access_code` | |
-| `APP_ACCESS_CODE` | backend | endast i `access_code`; en separat, slumpmässig Dokploy-secret | Aldrig incheckad. |
-| `COOKIE_SECURE` | backend | `true` | `false` bara för lokal `http://localhost`. `true` kräver HTTPS. |
-| `DEMO_SPACE_ID` | backend | krävs i `access_code` | Se [Backend](backend.md#inställningar). |
+| `COOKIE_SECURE` | backend | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]`; annars stoppas starten. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | backend | valfri, standard `1800` | Ett ändligt antal sekunder, över 0 och högst 86400. Tidsgräns för hela vidarebefordran av en uppladdning. Höj aldrig över Nexts tystnadsgräns utan att höja den också (`frontend/next.config.mjs`, `experimental.proxyTimeout`, 31 minuter). |
-| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
+| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | Det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS` gäller. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
 | `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. Heltal från 1 till 2^40, ett tomt värde nekas (Compose använder standardvärdet). Se [Backend](backend.md#gränser). |
 | `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | Tak för en uppladdad fil. Samma regel. Höj den om Eneos flöden tar emot större ljudfiler. |
 | `MAX_RESPONSE_BYTES` | backend | valfri, standard `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo; längre svar blir 502. Samma regel. En fil som strömmas till webbläsaren räknas inte. |
@@ -63,9 +60,8 @@ Produktionsimagen exponerar port 3001 och en hälsokontroll på `/health`. Eneos
 | `ENEO_API_KEY` | modulspecifik `sk_`-nyckel |
 | `ENEO_API_KEY_HEADER_NAME` | Eneos `API_KEY_HEADER_NAME`, standard `X-API-Key` |
 | `SESSION_SECRET` | slumpmässiga 32+ tecken |
-| `AUTH_MODE` | `eneo_sso` |
 
-`ENEO_PUBLIC_URL` krävs bara i `eneo_sso`. `APP_ACCESS_CODE` får bara sättas med `AUTH_MODE=access_code` och ska då tillföras som secret, aldrig checkas in. Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`, så att det finns ett canonical konfigurationskontrakt i modulprocessen.
+Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`, så att det finns ett canonical konfigurationskontrakt i modulprocessen.
 
 ## Compose
 
@@ -104,10 +100,10 @@ Modulen har ingen databas och inga volymer; den enda monteringen är en valfri, 
 3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy och Traefik sköter HTTPS-certifikatet.
 4. **Deploya.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt, bara internt mot `frontend` på `http://speech-to-text-backend:8000`.
 5. **Verifiera:**
-   - `https://transkribering.sundsvall.dev/` visar Eneo-login eller kodformulär enligt `AUTH_MODE`.
+   - `https://transkribering.sundsvall.dev/` visar sidan med knappen "Logga in med Eneo".
    - `https://transkribering.sundsvall.dev/api/healthz` svarar `{"ok":true}`.
-   - I `eneo_sso`: callback-URL:en blir ren efter lyckad login.
-   - I båda lägen: flödeslistan visas och ett riktigt Flow-anrop lyckas.
+   - Callback-URL:en blir ren efter lyckad login.
+   - Flödeslistan visas och ett riktigt Flow-anrop lyckas.
 
 Ingress- eller Traefik-loggning måste utesluta callbackens query string.
 
@@ -164,9 +160,8 @@ CI granskar dessutom backendens installerade Python-paket med `pip-audit` och mi
 
 | Symptom | Trolig orsak och åtgärd |
 |---|---|
-| Backend kraschar vid start | Kontrollera basvariablerna samt `ENEO_PUBLIC_URL` i SSO-läge eller `APP_ACCESS_CODE` i kodläge. `ENEO_API_KEY` krävs i båda. Felet säger vilken variabel. |
+| Backend kraschar vid start | Kontrollera basvariablerna, `ENEO_PUBLIC_URL` och `ENEO_API_KEY`. Felet säger vilken variabel. En `http`-adress för `MODULE_PUBLIC_URL` eller `ENEO_PUBLIC_URL`, eller `COOKIE_SECURE=false`, stoppar starten om värden inte är `localhost`, `127.0.0.1` eller `[::1]`: använd `https` och `COOKIE_SECURE=true`. |
 | Login misslyckas efter callback | Kontrollera exakt registrerad callback-URL, module key, bunden servicenyckel och att `COOKIE_SECURE=true` endast används bakom HTTPS. Felkoderna står i [Inloggning och session](auth-and-session.md#om-callbacken-misslyckas). |
-| Kodlogin fungerar men Flow-anrop nekas | Eneo-routen kräver sannolikt modultoken. Byt till `eneo_sso` när handoff-kontraktet är deployat. |
 | 502 vid uppladdning | Svaret säger varför: `upstream_unreachable` (Eneo nåddes inte, ofta ett lastbalanserarproblem: kolla `docker compose logs speech-to-text-backend` efter det exakta httpx-felet), `upstream_too_large` (Eneos svar var längre än `MAX_RESPONSE_BYTES` eller kodat) eller `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer). |
 | 502 `upstream_invalid` på en fil | Eneos svar på begäran om en signerad URL gick inte att använda. Loggen har vägen. |
 | 504 vid uppladdning | Backendens upload-vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. |
@@ -174,8 +169,7 @@ CI granskar dessutom backendens installerade Python-paket med `pip-audit` och mi
 | "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Se [Inspelaren](recording.md#uppladdning-och-nya-försök). |
 | 413 | Ett tak för body nåddes. Svaret säger vilket: `max_body_bytes` (`MAX_BODY_BYTES`, JSON-anrop) eller `max_upload_bytes` (`MAX_UPLOAD_BYTES`, uppladdning). Höj rätt variabel om gränsen är för snäv. Ett 413 utan det namnet är Eneos egen gräns. |
 | 411 vid uppladdning | En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient, eller en proxy som skickar bodyn i delar, är orsaken. |
-| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space. |
-| Flödeslistan säger att flödena inte kan visas | I `access_code` saknas `DEMO_SPACE_ID`; backend loggade ett fel vid start. |
+| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). |
 | Backend startar om i en slinga efter en ändrad accentfärg | `ORGANIZATION_ACCENT` eller `ORGANIZATION_ACCENT_DARK` är inte läsbar nog (under 4,5:1) eller har fel form, och backend vägrar starta. Felmeddelandet i loggen (`docker compose logs speech-to-text-backend`) säger vad som mättes och vad som ska göras: [Byt organisation](branding.md#felmeddelanden-vid-start). |
 | En gammal färg visas efter ett byte | Accentens stilmall får cachas i fem minuter (`Cache-Control: max-age=300`). Ladda om sidan eller öppna den i ett privat fönster. |
 | Alla blir utloggade | Backend startade om: sessionslagret är processlokalt. |
