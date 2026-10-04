@@ -97,6 +97,10 @@ Dimensionera därför disken, inte minnet: den ska rymma samtidiga uppladdningar
 
 Sessionslagret ligger i backendprocessens minne, avsiktligt, eftersom produktionsimagen kör en backendprocess. En omstart kräver ny login. Innan flera backend-repliker används måste lagret flyttas till en delad store; annars kan en request landa hos en replik som inte äger sessionen. Det gäller även cachen med signerade fil-URL:er. Se [Inloggning och session](auth-and-session.md#sessionslagret).
 
+## Kapacitet för liveöversättningen (mätt, ingen garanti)
+
+Statiska filer, uppladdningar och liveöversättningens WebSocket delar en process och en händelseslinga. Mätningen gjordes på en bärbar dator med OrbStack, med lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop). Vid 10 besök i sekunden (320 anrop/s) var reläets p95-fördröjning 1,8 till 2,6 ms och vid 45 besök i sekunden (1 440 anrop/s) 1,0 till 1,4 ms, mot 3,3 till 3,5 ms utan last. Modulen mättas vid ungefär 100 besök i sekunden (omkring 3 200 anrop/s): då är p95 22 till 76 ms. Med 200 klienter som hämtar skalet och filerna utan paus är p95 4,8 till 6,5 gånger så hög som utan last (16,7 till 22,3 ms, fyra körningar); ägaren har godtagit det resultatet (`deploy/acceptance/waivers.json`). Det är en observation på en dator, inte ett löfte för en annan maskin. Fler än en arbetsprocess är utesluten av det processlokala sessionslagret (se ovan); mer kapacitet kräver att lagret först flyttas till en delad store.
+
 ## Inget att säkerhetskopiera
 
 Modulen har ingen databas och ingen volym med data; monteringarna är en valfri, skrivskyddad mapp med en logotyp och uppladdningens tillfälliga lagring (se ovan), som är tom mellan uppladdningar. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
