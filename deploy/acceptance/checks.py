@@ -406,6 +406,13 @@ def check_8() -> str:
     return "64 KiB relayed (+1 frame, +65536 bytes); 128 KiB + 1 closed with 1009 and the stub saw nothing of it"
 
 
+def grew_mb(row: dict) -> tuple[int, int]:
+    """What the upload cost in resident memory, of every process of the image together (the baseline's cost was in Next, beside the
+    backend's): the growth of each process and the sum of their peaks."""
+    memory = row["memory"].values()
+    return sum(m["growth_MB"] for m in memory), sum(m["peak_MB"] for m in memory)
+
+
 def measure(case: str, base: str, *, fresh: bool = True) -> dict:
     """upload/measure.py for one case, in a fresh container unless the image already runs as the check needs it; returns its row."""
     if fresh:
@@ -423,9 +430,9 @@ def upload_row(case: str, base: str, file_bytes: int, files: int, growth_limit_m
     expect(all("http=201" in c for c in client), f"{case}: the client got {client}")
     got = [s["bytes_received"] for s in row["sink"]]
     expect(len(got) == files and all(file_bytes <= g <= file_bytes + 4096 for g in got), f"{case}: the stub received {got} bytes for {files} file(s) of {file_bytes}")
-    grew = row["memory"]["backend"]["growth_MB"]
-    expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {row['memory']['backend']['peak_MB']}")
-    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {row['memory']['backend']['peak_MB']}, {row['seconds']} s)"
+    grew, peak = grew_mb(row)
+    expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {peak}")
+    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {peak}, {row['seconds']} s)"
 
 
 SIZES = {"300MB": 300 * MB, "1GB": 1024 * MB}
@@ -447,8 +454,7 @@ def over_cap(base: str, cap: int) -> str:
     body = r.read()
     connection.close()
     expect(r.status == 413 and json.loads(body).get("max_upload_bytes") == cap, f"a declared length over the cap answered {r.status} {body[:100]!r}")
-    row = measure("curl-300MB-1", base, fresh=False)
-    grew = row["memory"]["backend"]["growth_MB"]
+    grew, _ = grew_mb(measure("curl-300MB-1", base, fresh=False))
     expect(grew <= 32, f"the refused upload grew the image's memory {grew} MB")
     return f"over the cap of {cap} bytes: 413 with max_upload_bytes at once for a declared length, and an upload of 300 MiB costs +{grew} MB"
 
