@@ -30,3 +30,35 @@ test("names typed but not saved come back as a dialog you can see and reach", as
   await dialog.getByRole("button", { name: "Stäng", exact: true }).click();
   await expect(dialog).toBeHidden();
 });
+
+test("the editor's code that cannot be fetched leaves the transcript with a way to try again, and one press fetches only that code", async ({ page }) => {
+  // The editor's chunk is the script that holds its own words. It is refused, as to a tab that is older than the deploy
+  // that replaced its files (the dev server's StrictMode asks twice), until the test lets it through.
+  let refusing = true;
+  let refused = 0;
+  let served = 0;
+  await page.route(/\/_next\/static\/chunks\/.*\.js(\?|$)/, async (route) => {
+    const response = await route.fetch();
+    if (!(await response.text()).includes("Nästa passage som behöver talarbeslut")) return route.fulfill({ response });
+    if (refusing) {
+      refused += 1;
+      return route.abort();
+    }
+    served += 1;
+    return route.fulfill({ response });
+  });
+  await run(page, "run-review", "flow-2");
+  const problem = page.getByText("Granskningsverktygen kunde inte läsas in.");
+  await expect(problem).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toHaveCount(0);
+  expect(refused, "the editor's code was asked for").toBeGreaterThan(0);
+
+  // The page holds what its reader has not saved: it is not reloaded, only the editor's code is fetched again.
+  await page.evaluate(() => ((window as unknown as { kept: boolean }).kept = true));
+  refusing = false;
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
+  await expect(problem).toHaveCount(0);
+  expect(served, "one fetch of the editor's code, by the press").toBe(1);
+  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept), "the page was not reloaded").toBe(true);
+});
