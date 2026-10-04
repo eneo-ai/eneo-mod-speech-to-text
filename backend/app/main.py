@@ -235,6 +235,13 @@ def _upstream_redirect() -> JSONResponse:
         },
     )
 
+
+def _upstream_unreachable() -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
+    )
+
 _RESOURCE_ID = r"[^/]+"
 _PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
     (frozenset({"GET"}), re.compile(r"flows/$")),
@@ -471,13 +478,7 @@ async def _proxy_multipart_upload(
         )
     except httpx.RequestError:
         logger.exception("Upload failed: url=%s", upstream_url)
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error("Upload was answered with a redirect: url=%s status=%s", upstream_url, upstream.status_code)
@@ -606,6 +607,10 @@ class _InvalidMintAnswer(Exception):
     """Eneo answered the mint request with something the module cannot use."""
 
 
+class _MintUnreachable(Exception):
+    """The mint request did not reach Eneo."""
+
+
 def _read_mint_answer(upstream: httpx.Response, base_url: str, now: float) -> tuple[str, float]:
     """The signed URL (on the host the module reaches Eneo on) and when it expires, from Eneo's answer.
 
@@ -657,7 +662,7 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
         raise _InvalidMintAnswer from None
     except httpx.RequestError:
         logger.exception("Signed URL request failed: path=%s", mint_path)
-        raise HTTPException(status_code=502, detail="Eneo could not be reached.")
+        raise _MintUnreachable from None
     if upstream.status_code >= 400:
         try:
             detail = upstream.json()
@@ -732,6 +737,8 @@ async def _stream_signed(
     key = (request.cookies.get(SESSION_COOKIE) or "", mint_path)
     try:
         url = await _signed_url(request, key, unavailable)
+    except _MintUnreachable:
+        return _upstream_unreachable()
     except _InvalidMintAnswer:
         return JSONResponse(
             status_code=502,
@@ -743,10 +750,7 @@ async def _stream_signed(
         upstream = await http_client.send(upstream_request, stream=True)
     except httpx.RequestError:
         logger.exception("File stream request failed: path=%s", mint_path)
-        return JSONResponse(
-            status_code=502,
-            content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         # Not a file: the URL is not worth keeping either, and the stream is closed unread.
@@ -762,10 +766,7 @@ async def _stream_signed(
             body = await _read_small(upstream)
         except httpx.RequestError:  # the error's own body broke off, or stalled
             logger.exception("File stream error body failed: path=%s", mint_path)
-            return JSONResponse(
-                status_code=502,
-                content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-            )
+            return _upstream_unreachable()
         detail: object = unavailable
         if upstream.headers.get("content-type", "").startswith("application/json"):
             try:
@@ -913,13 +914,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             request.method,
             upstream_url,
         )
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error(

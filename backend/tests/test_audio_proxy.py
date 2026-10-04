@@ -180,6 +180,18 @@ class AudioProxyTests(AudioProxyCase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(self.fake.signed_url_calls, [])
 
+    def test_an_eneo_that_cannot_be_reached_for_the_signed_url_is_the_same_502_as_everywhere_else(self) -> None:
+        async def unreachable(url, **kwargs):
+            raise httpx.ConnectError("connection refused")
+
+        self.fake.post = unreachable
+
+        response = self.client.get("/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/audio")
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json(), {"error": "upstream_unreachable", "detail": "Eneo could not be reached."})
+        self.assertEqual(self.fake.stream_requests, [])
+
     def test_the_slash_twin_of_the_audio_route_is_not_a_route(self) -> None:
         response = self.client.get("/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/audio/")
 
