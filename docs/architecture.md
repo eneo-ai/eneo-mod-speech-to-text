@@ -180,7 +180,7 @@ Konventionerna per lager står i [Frontend](frontend.md) och [Designsystem](desi
 
 ## Var organisationens märke och accent kommer in
 
-Märket och accentfärgen är driftsinställningar, inte byggparametrar. Namn och logga läses av backend och renderas in i första HTML:en för varje sida; accentfärgen kontrolleras vid start och når sidan som en stilmall som ersätter temats blå. Allt annat i utseendet följer modulens tema.
+Märket och accentfärgen är driftsinställningar, inte byggparametrar. Namn och logga läses av backend vid start och skrivs in i sidans markör (`<meta name="eneo-branding">`), som sidan läser före första renderingen; accentfärgen kontrolleras vid start och når sidan som en stilmall som ersätter temats blå. Allt annat i utseendet följer modulens tema.
 
 ```mermaid
 flowchart LR
@@ -188,10 +188,11 @@ flowchart LR
     envA["ORGANIZATION_ACCENT och ORGANIZATION_ACCENT_DARK"] --> acc["backend/app/accent.py: kontrast minst 4,5:1, annars stoppas start"]
     cfg --> api["/api/branding och /api/branding/logo/light eller dark"]
     acc --> css["/api/branding/theme.css"]
-    api --> layout["frontend/app/layout.tsx: läser märket per request, 2 s tidsgräns"]
+    api --> marker["index.html: backend skriver svaret i markören vid start"]
+    marker --> layout["frontend/routes/Root.tsx: läser markören före första renderingen"]
     layout --> ctx["BrandingProvider"]
     ctx --> mark["Brand: logotyp, eller namnet som text"]
-    css --> head["layout.tsx: länk i head, ersätter temats accent"]
+    css --> head["index.html: länk i head, ersätter temats accent"]
     theme["kit/theme: standardaccenten #004595"] --> head
 ```
 

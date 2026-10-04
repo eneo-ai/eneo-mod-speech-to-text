@@ -8,13 +8,14 @@ Hör ihop med: [Drift](operations.md#egen-organisation-i-sidhuvudet), [Backend (
 
 En annan kommun eller myndighet kan använda modulen som sin egen utan att ändra kod och utan att bygga om
 avbilderna. Namn, logga och färg är inställningar på backend-tjänsten: ändra dem och starta om tjänsterna.
+Backend skriver organisationen in i sidan när den startar, så märket finns med i första bildrutan.
 
 Utan inställningar visar modulen Sundsvalls kommun och modulens standardblå (`#004595`).
 
 ## Inställningar
 
 Alla sätts som miljövariabler på tjänsten `speech-to-text-backend` (`docker-compose.yml` för dem vidare från din
-`.env`). Frontend läser dem från backend vid varje sidvisning.
+`.env`).
 
 | Variabel | Standard | Vad den gör |
 | --- | --- | --- |
@@ -31,6 +32,9 @@ Ett namn utan logga visas som text. En organisation kan alltså byta enbart namn
 
 - **Format:** SVG eller PNG, högst 1 MiB. Filens ändelse och innehåll måste stämma med varandra. En fil som saknas
   eller inte duger loggas en gång vid start, och namnet visas som text i stället för loggan.
+- **Storleken måste gå att läsa:** en SVG behöver en `viewBox`, eller både `width` och `height` i px. En PNG har den i
+  sitt huvud. Backend läser den vid start och sidan reserverar loggans plats med den, så att sidhuvudet inte flyttar sig
+  när filen kommer. En logga utan läsbar storlek räknas som en logga som inte duger.
 - **Storlek:** loggan visas 40 px hög. En bred logga krymper så att den ryms i 104 px (telefon) eller 160 px (dator)
   bredd. Bäst är därför ett liggande märke på ungefär 4:1 eller smalare, till exempel 160 × 40 px. En logga som är
   10:1 syns på en telefon bara som ett smalt streck.
