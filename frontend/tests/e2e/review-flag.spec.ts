@@ -32,15 +32,10 @@ test("names typed but not saved come back as a dialog you can see and reach", as
   await expect(dialog).toBeHidden();
 });
 
-test("the editor's code that cannot be fetched leaves the transcript with a way to try again, and one press fetches only that code", async ({ page }) => {
-  // Known gap: Chromium keeps a failed dynamic import per URL, so the press's second import() of the same module makes no
-  // request and cannot recover (a bare import() of a refused URL fails again at once; the same URL with a query string
-  // is fetched). The status line and the button are what holds; when the retry can refetch, this stops failing and the
-  // test says so.
-  test.fail(true, "a failed module fetch is not retried for the same URL in Chromium");
+test("the editor's code that cannot be fetched leaves the transcript with the person's own reload, and what was typed is back after it, with the editor", async ({ page }) => {
   // The editor's code is the script that holds its own words, whatever the bundler names it. It is refused, as to a tab
-  // that is older than the deploy that replaced its files (the dev server's StrictMode asks twice), until the test lets
-  // it through.
+  // that is older than the deploy that replaced its files, until the test lets it through. A browser keeps a failed
+  // module fetch per address, so a second import() would make no request: the recovery is a reload, and the person's.
   let refusing = true;
   let refused = 0;
   let served = 0;
@@ -56,17 +51,34 @@ test("the editor's code that cannot be fetched leaves the transcript with a way 
     return route.fulfill({ response });
   });
   await run(page, ids.runs.review, ids.flows.flow2);
+  const editor = page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" });
   const problem = page.getByText("Granskningsverktygen kunde inte läsas in.");
-  await expect(problem).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toHaveCount(0);
-  expect(refused, "the editor's code was asked for").toBeGreaterThan(0);
+  await expect(problem).toContainText("Det du har skrivit finns kvar.");
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Försök igen" }), "no retry that cannot work").toHaveCount(0);
 
-  // The page holds what its reader has not saved: it is not reloaded, only the editor's code is fetched again.
-  await page.evaluate(() => ((window as unknown as { kept: boolean }).kept = true));
+  // What the reader types meanwhile is a draft: names, kept when the dialog is closed.
+  await page.getByRole("button", { name: /^Talare/ }).first().click();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Karin Holm");
+  await dialog.getByRole("button", { name: "Stäng", exact: true }).click();
+  await expect(dialog).toBeHidden();
+
+  // Nothing reloads by itself: it is the same page, and the editor's code was not asked for again.
+  await page.evaluate(() => ((window as unknown as { samePage: boolean }).samePage = true));
+  const asked = refused;
+  await page.waitForTimeout(1_000);
+  expect(refused, "nothing asked again by itself").toBe(asked);
+  expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage)).toBe(true);
+
+  // The press reloads the page; the code is served now, and the typed names come back with the editor.
   refusing = false;
-  await page.getByRole("button", { name: "Försök igen" }).click();
-  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
+  await page.getByRole("button", { name: "Ladda om sidan" }).click();
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toHaveValue("Karin Holm");
+  await dialog.getByRole("button", { name: "Stäng", exact: true }).click();
+  await expect(editor).toBeVisible();
   await expect(problem).toHaveCount(0);
-  expect(served, "one fetch of the editor's code, by the press").toBe(1);
-  expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept), "the page was not reloaded").toBe(true);
+  expect(served, "the editor's code was fetched once, by the new page").toBe(1);
+  expect(await page.evaluate(() => (window as unknown as { samePage?: boolean }).samePage), "the page was reloaded").toBeUndefined();
 });
