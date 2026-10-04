@@ -97,6 +97,11 @@ class Settings(BaseModel):
         return f"{parsed.scheme}://{parsed.netloc}"
 
 
+def _default(field: str):
+    """What ``Settings`` gives ``field`` when nothing sets it: the one place a default is written."""
+    return Settings.model_fields[field].default
+
+
 def _parse_bool(raw: str | None, *, default: bool, name: str) -> bool:
     if raw is None:
         return default
@@ -339,7 +344,7 @@ def load_settings() -> Settings:
     if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", module_key) is None:
         raise RuntimeError("MODULE_KEY must use lowercase kebab-case")
 
-    api_key_header_name = os.environ.get("ENEO_API_KEY_HEADER_NAME", "X-API-Key")
+    api_key_header_name = os.environ.get("ENEO_API_KEY_HEADER_NAME", _default("eneo_api_key_header_name"))
     if re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", api_key_header_name) is None:
         raise RuntimeError("ENEO_API_KEY_HEADER_NAME must be a valid HTTP header name")
     if api_key_header_name.lower() in _RESERVED_HEADER_NAMES:
@@ -348,9 +353,9 @@ def load_settings() -> Settings:
             f"({', '.join(sorted(_RESERVED_HEADER_NAMES))}): the module sets those itself"
         )
 
-    upload_timeout = _positive_seconds("UPLOAD_PROXY_TIMEOUT_SECONDS", 1800.0)
+    upload_timeout = _positive_seconds("UPLOAD_PROXY_TIMEOUT_SECONDS", _default("upload_proxy_timeout_seconds"))
 
-    raw_session_minutes = os.environ.get("SESSION_MAX_AGE_MINUTES", "480")
+    raw_session_minutes = os.environ.get("SESSION_MAX_AGE_MINUTES", str(_default("session_max_age_seconds") // 60))
     try:
         session_minutes = int(raw_session_minutes)
     except ValueError:
@@ -363,11 +368,11 @@ def load_settings() -> Settings:
 
     # The backend's own URL is on the service network, where http is how it is reached. The two a browser is sent to are not.
     module_public_url = _required_url("MODULE_PUBLIC_URL", public=True)
-    cookie_secure = _parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE")
+    cookie_secure = _parse_bool(os.environ.get("COOKIE_SECURE"), default=_default("cookie_secure"), name="COOKIE_SECURE")
     if not cookie_secure and not _is_loopback(module_public_url):
         raise RuntimeError(f"COOKIE_SECURE=false is accepted only when MODULE_PUBLIC_URL is {_LOOPBACK_SPELLING} (local development)")
 
-    settings = Settings(
+    return Settings(
         eneo_backend_url=_required_url("ENEO_BACKEND_URL"),
         eneo_public_url=_required_url("ENEO_PUBLIC_URL", public=True),
         module_public_url=module_public_url,
@@ -377,9 +382,9 @@ def load_settings() -> Settings:
         session_secret=session_secret,
         cookie_secure=cookie_secure,
         upload_proxy_timeout_seconds=upload_timeout,
-        max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
-        max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
-        max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", 32 * 1024 * 1024),
+        max_body_bytes=_positive_int("MAX_BODY_BYTES", _default("max_body_bytes")),
+        max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", _default("max_upload_bytes")),
+        max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", _default("max_response_bytes")),
         static_dir=Path(os.environ["STATIC_DIR"]) if os.environ.get("STATIC_DIR") else None,
         session_max_age_seconds=session_minutes * 60,
         organization=organization,
@@ -387,4 +392,3 @@ def load_settings() -> Settings:
         organization_logo_dark=organization_logo_dark,
         accent=accent,
     )
-    return settings
