@@ -120,5 +120,15 @@ class WaiverFileTests(unittest.TestCase):
         self.assertEqual(set(checks.WAIVERS), {15})
 
 
+class StandsOnItsOwnTests(unittest.TestCase):
+    def test_nothing_the_acceptance_runs_or_reads_lives_in_the_plans_or_the_board(self) -> None:
+        # docs/plans/ and .beads/ are removed when the work they track is done; a check that ran a script from there would break with them.
+        folder = Path(__file__).resolve().parent
+        sources = [path for path in (*folder.rglob("*"), folder.parent / "acceptance.sh") if path.is_file() and path.suffix in {".py", ".cjs", ".sh", ".yml", ".json", ".env"}]
+        named = [f"{path.relative_to(folder.parent)}:{number}" for path in sources if path != Path(__file__) for number, line in enumerate(path.read_text().splitlines(), 1) if "docs/plans" in line or ".beads" in line]
+
+        self.assertEqual(named, [])
+
+
 if __name__ == "__main__":
     unittest.main()

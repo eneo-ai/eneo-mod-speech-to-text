@@ -707,7 +707,7 @@ def check_14() -> str:
         problems.append(f"CPU under polling {cpu:.1f} % is above the baseline's {BASELINE['polling']['cpu_percent']['all']} %")
     # what a page costs a visitor: page-cost.cjs, signed in, three runs, median
     paths = {"flows": "/flows", "flow": f"/flows/{FLOW}"}
-    runs = [json.loads(node(str(ROOT / "docs/plans/page-cost.cjs"), pw, STACK.module, f"b42-{n}", *paths.values(), preload=True)) for n in (1, 2, 3)]
+    runs = [json.loads(node(str(HERE / "page-cost.cjs"), pw, STACK.module, f"b42-{n}", *paths.values(), preload=True)) for n in (1, 2, 3)]
     for key, path in paths.items():
         base = BASELINE["pages"][key]
         for profile in ("desktop", "phone-4x-cpu"):

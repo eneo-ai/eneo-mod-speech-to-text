@@ -1,4 +1,4 @@
-// Makes docs/plans/page-cost.cjs measure the pages behind the sign-in: the flow list and a flow, not the sign-in screen it would see without a
+// Makes page-cost.cjs measure the pages behind the sign-in: the flow list and a flow, not the sign-in screen it would see without a
 // session. page-cost.cjs has no option for a session, so this file is preloaded (node -r) and wraps chromium.launch: every context the
 // script opens first signs in through the module's SSO handshake (GET /api/auth/login -> the Eneo's /module-login -> /api/auth/callback,
 // run by the context's own request client, which shares the context's cookies). Each context has its own session; the page-cost.cjs
@@ -6,7 +6,7 @@
 // the run instead of measuring the sign-in screen.
 //
 // usage, from the repository root:
-//   PW_DIR=<frontend dir with node_modules> BASE_URL=<base url> node -r ./deploy/acceptance/auth-preload.cjs docs/plans/page-cost.cjs \
+//   PW_DIR=<frontend dir with node_modules> BASE_URL=<base url> node -r ./deploy/acceptance/auth-preload.cjs deploy/acceptance/page-cost.cjs \
 //     <frontend dir> <base url> <label> /flows /flows/flow-1
 //   <base url> is the image as a browser reaches it (its MODULE_PUBLIC_URL); its Eneo must be reachable from this machine as well.
 //   PW_DIR and the frontend dir given to page-cost.cjs are the same directory: any one whose node_modules hold @playwright/test.

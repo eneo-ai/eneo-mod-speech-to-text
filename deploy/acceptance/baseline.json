@@ -34,7 +34,7 @@
     }
   },
   "pages": {
-    "note": "docs/plans/page-cost.cjs, signed in (auth-preload.cjs), median of three runs; KB are compressed bytes with headers. LCP and TBT move with the machine's load: compare them against a run of stt-before made in the same session, not against these. The sizes and request counts do not move. CLS was 0 on every page.",
+    "note": "deploy/acceptance/page-cost.cjs, signed in (auth-preload.cjs), median of three runs; KB are compressed bytes with headers. LCP and TBT move with the machine's load: compare them against a run of stt-before made in the same session, not against these. The sizes and request counts do not move. CLS was 0 on every page.",
     "flows": {
       "js_kb": 318.7,
       "css_kb": 43.3,
