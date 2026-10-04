@@ -6,8 +6,8 @@
 //                   too: the sign-in handshake redirects there and back (GET /api/auth/login -> Eneo /module-login -> /api/auth/callback)
 //   <browsers>      signed-in contexts in one headless Chromium, each with its own session (the baseline: 10)
 //   <seconds>       length of the steady window, which starts 5 s after the last browser is on the run page (the baseline: 60)
-//   [run id]        a run that never finishes, so the page keeps polling; default run-running (frontend/tests/e2e/stub-server.py)
-//   [flow id]       the flow it belongs to; default flow-1, the baseline's (the stub's flows have UUIDs since: tests/fixtures/ids.json)
+//   <run id>        a run that never finishes, so the page keeps polling: runs.running in frontend/tests/fixtures/ids.json
+//   <flow id>       the flow it belongs to: flows.flow1 in the same file
 //
 // Every context opens /flows/<flow id>?run=<run id>. While the page is visible the app asks the run's status every 2 s, so 10 browsers make
 // about 5 requests a second. Prints one JSON line: the window's start and end (epoch seconds), the status polls the pages made in it, per
@@ -23,7 +23,7 @@
 // by 100 and by the seconds between those samples: a share of one core. Its RSS is the summed rss_kb of the role at the start of the
 // window, the maximum in it and the end. For the idle row, take a window of the same container with no browser. The baseline used a
 // container that had been up 40 s.
-const [, , pwDir, base, n, seconds, runId = "run-running", flowId = "flow-1"] = process.argv;
+const [, , pwDir, base, n, seconds, runId, flowId] = process.argv;
 const { chromium } = require(pwDir + "/node_modules/@playwright/test");
 (async () => {
   const browser = await chromium.launch();

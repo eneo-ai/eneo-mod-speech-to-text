@@ -1,7 +1,6 @@
-// Usage: node page-cost.cjs <playwright-module-dir> <baseUrl> <label> [path ...]
+// Usage: node page-cost.cjs <playwright-module-dir> <baseUrl> <label> <path> [path ...]
 // What a page costs: JS and CSS as they travel (compressed), requests, long tasks, DOM nodes, JS heap, LCP/CLS.
-const [, , pwDir, base, label, ...rest] = process.argv;
-const paths = rest.length ? rest : ["/flows", "/flows/flow-1", "/flows?run=none"];
+const [, , pwDir, base, label, ...paths] = process.argv;
 const { chromium } = require(pwDir + "/node_modules/@playwright/test");
 
 (async () => {

@@ -66,7 +66,7 @@ AUDIO_LARGE = IDS["files"].get("audioLarge")
 UPLOAD_PATH = f"/api/eneo/flows/{FLOW}/steps/{AUDIO_STEP}/runtime-files/"
 # The speaker review's own text, in the part of an ASCII-escaped bundle before its first non-ASCII character: it is in dist/ only when
 # the flag was on at build time (frontend/components/flow/ReviewView.tsx).
-SPEAKER_REVIEW_MARKER = os.environ.get("ACCEPT_SPEAKER_REVIEW_MARKER", "Lyssna, markera ord och v")
+SPEAKER_REVIEW_MARKER = "Lyssna, markera ord och v"
 DEV_MARKERS = ("Grundkontroll", "/dev/foundation", "/dev/speaker-review", "/dev/dialog-leak")
 
 
