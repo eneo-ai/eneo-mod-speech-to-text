@@ -21,7 +21,7 @@ Appen bygger körningen från Eneos publicerade flödeskontrakt:
 }
 ```
 
-Uppladdning och start går genom `frontend/lib/submit-run.ts`: nätverksfel, 408, 429 och 5xx provas igen med en väntetid som börjar på 1 s och fördubblas upp till 60 s, och direkt när anslutningen är tillbaka. Körningen startas med samma idempotensnyckel vid varje försök. Andra 4xx-fel stoppar med Eneos felmeddelande. Mer om det på användarens sida i [Inspelaren](recording.md#uppladdning-och-nya-försök).
+Uppladdning och start går genom `frontend/lib/submit-run.ts`, som provar om vid tillfälliga fel och startar körningen med samma idempotensnyckel vid varje försök: [Inspelaren](recording.md#uppladdning-och-nya-försök).
 
 Webbläsaren anropar alltid modulens `/api/eneo/...`; vilka rutter som finns står i [Backend](backend.md#tillåtelselistan-för-eneo-anrop).
 
@@ -140,4 +140,4 @@ Har `transcript.done` ett `transcript_id` sparas det med inspelningen på enhete
 
 - Gränserna för meddelandestorlek, kö och skrivtid, och hur socketen följer sessionen, står i [Backend](backend.md#live-reläet).
 - Traefik (v3.7) släpper igenom uppgraderingen och webbläsarens `Origin` utan extra konfiguration; imagens acceptans kör `/api/live` genom Traefik v3.7.13 ([Tester](quality-gates.md#imagens-acceptans)).
-- Går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom WebSocket-uppgraderingar till Eneo.
+- Vad som står framför modulen och Eneo: [Drift](operations.md#vad-som-står-framför-modulen).
