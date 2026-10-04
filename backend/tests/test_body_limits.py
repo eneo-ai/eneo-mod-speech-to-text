@@ -529,35 +529,54 @@ class UploadTests(Case):
         # The client goes away after 4 MiB, which is more than a spooled file keeps in memory.
         files_before = self.open_files()
         for _ in range(8):
-            await self.abort_upload(4)
+            statuses, taken, offered = await self.abort_upload(4)
+
+            # The parser really ran: the route let the upload in (not a 401, 403 or 409 before it read a byte) and read
+            # every piece the client sent before it was dropped. A refused upload would leave nothing to clean up.
+            self.assertFalse(set(statuses) & {401, 403, 409}, f"the upload was refused before it was read: {statuses}")
+            self.assertEqual(taken, offered, "the multipart parser did not read what the client sent")
 
         self.assertEqual(os.listdir(self.temporary), [])
         self.assertEqual(self.open_files(), files_before, "no collection of garbage was needed to close them")
 
-    async def abort_upload(self, total_mib: int) -> None:
-        """One upload, fed straight to the app, that is dropped after ``total_mib``."""
+    async def abort_upload(self, total_mib: int) -> tuple[list[int], int, int]:
+        """One upload, fed straight to the app, that is dropped after ``total_mib``.
+
+        Returns the statuses the app answered with, how many pieces it took from the client and how many there were.
+        """
         pieces = [multipart_head()] + [b"0" * MiB] * total_mib
-        headers = {**MULTIPART, "Content-Length": str(len(pieces[0]) + (total_mib + 3) * MiB), "Cookie": f"{SESSION_COOKIE}={self.session_id}"}
+        headers = {
+            **MULTIPART,
+            "Content-Length": str(len(pieces[0]) + (total_mib + 3) * MiB),
+            "Cookie": f"{SESSION_COOKIE}={self.session_id}",
+            "X-Expected-User": "user-id",  # the page names the user it was opened for: without it the route answers 409
+        }
         scope = {
             "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "POST", "scheme": "http", "path": self.PATH,
             "raw_path": self.PATH.encode(), "query_string": b"", "root_path": "", "client": ("127.0.0.1", 1), "server": ("module.example.test", 80),
             "headers": [(k.lower().encode(), v.encode()) for k, v in headers.items()],
         }
         queue = iter(pieces)
+        statuses: list[int] = []
+        taken = 0
 
         async def receive():
+            nonlocal taken
             piece = next(queue, None)
             if piece is None:
                 return {"type": "http.disconnect"}
+            taken += 1
             return {"type": "http.request", "body": piece, "more_body": True}
 
         async def send(message) -> None:
-            pass
+            if message["type"] == "http.response.start":
+                statuses.append(message["status"])
 
         try:
             await main.app(scope, receive, send)
         except Exception:  # the dropped connection surfaces as an error the server logs; what matters is what is left
             pass
+        return statuses, taken, len(pieces)
 
 
 if __name__ == "__main__":
