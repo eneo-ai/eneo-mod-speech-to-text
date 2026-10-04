@@ -413,6 +413,11 @@ class BuiltUiCase(unittest.TestCase):
         # What the page is: the file with its marker holding what GET /api/branding answers.
         self.page = branded(INDEX, self.client.get("/api/branding").text)
 
+    def restarted(self) -> TestClient:
+        """The app started again on the folder as it is now: the files are indexed once, at start, so a test that adds
+        a file and expects it to be refused (or served) starts the app after adding it."""
+        return TestClient(load_app(self.root).app, raise_server_exceptions=False, follow_redirects=False)
+
     def raw_get(self, path: str) -> httpx.Response:
         """A GET with ``path`` as the server receives it. The test client's URL parser reads ``//api/x`` as a host and
         resolves ``/./``, so a path that is not canonical goes to the app directly."""
@@ -512,6 +517,63 @@ class StaticServingTests(BuiltUiCase):
         self.assertEqual((mark.status_code, mark.headers["content-type"].split(";")[0]), (200, "image/svg+xml"))
         self.assertEqual(self.client.get("/favicon.svg").status_code, 200)
 
+    def test_a_file_added_after_the_start_is_a_404(self) -> None:
+        # dist/ is immutable per image: the files are indexed once, when the app starts, and nothing else is served.
+        (self.root / "late.js").write_text("late")
+        (self.root / "assets" / "late.js").write_text("late")
+        (self.root / "brand" / "late.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+        for path in ("/late.js", "/assets/late.js", "/brand/late.svg"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+        # A compressed sibling that arrives later is not offered either: the file is what it was.
+        (self.root / "assets" / "app.css.gz").write_bytes(gzip.compress(b"body{}"))
+        response = self.client.get("/assets/app.css", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(response.text, "body{}")
+        self.assertNotIn("content-encoding", response.headers)
+        self.assertNotIn("vary", response.headers)
+
+    def test_a_request_does_no_stat_and_no_resolve(self) -> None:
+        # The files are known from the start: a request looks its path up and touches the file system for nothing else
+        # than reading what it serves. (It was a resolve, an is_file and the sibling checks per request, on the loop.)
+        requests = (
+            ("/", {}), ("/flows/abc", {}), ("/index.html", {}), ("/assets/app.js", {}), ("/assets/app.css", {}), ("/favicon.svg", {}),
+            ("/live-pcm-worklet.js", {}), ("/brand/mark.svg", {}), ("/assets/app.js", {"Accept-Encoding": "br"}),
+            ("/assets/app.js", {"Accept-Encoding": "gzip"}), ("/assets/missing.js", {}), ("/assets/app.js.br", {}), ("/.env", {}),
+        )
+        for path, headers in requests:  # once before the spies: the first use of a library may stat for itself
+            self.client.get(path, headers=headers)
+        tags = {path: self.client.get(path).headers["etag"] for path in ("/", "/assets/app.js", "/favicon.svg")}
+        calls: list[tuple[str, str]] = []
+        resolve, stat = Path.resolve, os.stat
+
+        def spy_resolve(path, *args, **kwargs):
+            calls.append(("resolve", str(path)))
+            return resolve(path, *args, **kwargs)
+
+        def spy_stat(path, *args, **kwargs):
+            calls.append(("stat", str(path)))
+            return stat(path, *args, **kwargs)
+
+        with patch.object(Path, "resolve", spy_resolve), patch("os.stat", spy_stat):
+            for path, headers in requests:
+                self.client.get(path, headers=headers)
+            for path, tag in tags.items():
+                self.assertEqual(self.client.get(path, headers={"If-None-Match": tag}).status_code, 304)
+                self.assertEqual(self.client.head(path).status_code, 200)
+
+        self.assertEqual(calls, [])
+
+    def test_a_folder_with_no_page_serves_its_files_and_no_page(self) -> None:
+        # The launcher is what refuses to start without index.html (test_serve.py); the app itself answers what it has.
+        (self.root / "index.html").unlink()
+        client = self.restarted()
+
+        self.assertEqual(client.get("/assets/app.js").text, "console.log(1)")
+        for path in ("/", "/flows/abc", "/index.html"):
+            self.assertEqual(client.get(path).status_code, 404, path)
+
     def test_precompressed_files_are_served_only_by_negotiation_never_by_name(self) -> None:
         for path in ("/assets/app.js.br", "/assets/app.js.gz", "/index.html.br", "/favicon.svg.gz"):
             with self.subTest(path=path):
@@ -568,9 +630,10 @@ class StaticServingTests(BuiltUiCase):
     def test_a_dotfile_is_never_served(self) -> None:
         (self.root / ".hidden").write_text("hidden-content")
         (self.root / "assets" / ".DS_Store").write_text("hidden-content")
+        client = self.restarted()  # the dotfiles are there when the app starts, and still never served
         for path in ("/.hidden", "/assets/.DS_Store", "/.env", "/.git/config", "/assets/.hidden.js", "/a/.b"):
             with self.subTest(path=path):
-                response = self.client.get(path)
+                response = client.get(path)
 
                 self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
                 self.assertNotIn("hidden-content", response.text)
@@ -594,7 +657,7 @@ class StaticServingTests(BuiltUiCase):
     def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
         (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")
 
-        response = self.client.get("/link.txt")
+        response = self.restarted().get("/link.txt")  # the link is there when the app starts, and still never followed
 
         self.assertEqual(response.status_code, 404)
         self.assertNotIn("secret", response.text)
