@@ -65,7 +65,8 @@ function listen() {
       );
       const changed = target?.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], [role="timer"]');
       for (const live of changed ? [changed, ...alerts] : alerts) {
-        if (live.id === "__next-route-announcer__") continue;
+        // The route's announcement is RouteEffects' own and has its own test (route-change.spec.ts).
+        if (live.hasAttribute("data-astryx-live-region")) continue;
         const text = spoken(live).replace(/\s+/g, " ").trim();
         if (!text || last.get(live) === text) continue;
         last.set(live, text);

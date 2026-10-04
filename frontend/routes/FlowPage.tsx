@@ -71,6 +71,7 @@ import {
   type SubmitProgress,
 } from "@/lib/submit-run";
 import { selectRuntimeInputStep } from "@/lib/upload";
+import { useRouteReady } from "@/routes/RouteEffects";
 
 export default function FlowDetailPage() {
   // The route is flows/:id.
@@ -564,6 +565,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRun({ kind: "idle" });
   }
 
+  // The page has its content when the flow has loaded, or could not.
+  useRouteReady(loadError !== null || (published !== null && contract !== null));
   if (loadError) return <FlowUnavailable error={loadError} />;
   if (!published || !contract) return <FlowSkeleton />;
 

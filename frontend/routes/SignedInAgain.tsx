@@ -10,6 +10,7 @@ import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { SESSION_CHANNEL } from "@/components/SessionEndWarning";
 import { authStatus } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
+import { useRouteReady } from "@/routes/RouteEffects";
 
 /** Why the backend refused a renewal (`?fel=`); the page's own login stays as it was. */
 type Refusal = "annan-anvandare" | "utgangen";
@@ -39,6 +40,8 @@ export default function SignedInAgainPage() {
 function SignedInAgain({ refusal }: { refusal: Refusal | null }) {
   const [name, setName] = useState<string | null>(null);
   useDocumentTitle(TITLE[refusal ?? "ok"]);
+  // Nothing here is waited for.
+  useRouteReady(true);
 
   useEffect(() => {
     if (refusal === "annan-anvandare") {
