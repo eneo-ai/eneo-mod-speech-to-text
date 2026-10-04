@@ -94,6 +94,7 @@ BRANDING_MARKER = '<meta name="eneo-branding" content="">'
 # A file with one of these extensions that has a .br or .gz beside it is served compressed to a client that accepts it.
 COMPRESSIBLE = frozenset({".js", ".css", ".svg", ".json", ".html", ".txt"})
 ENCODINGS = (("br", ".br"), ("gzip", ".gz"))  # in order of preference
+COMPRESSED_SUFFIXES = tuple(suffix for _, suffix in ENCODINGS)
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
@@ -226,7 +227,7 @@ def index_files(root: Path, page: Path) -> dict[str, _Asset]:
                 found[relative] = target
     assets: dict[str, _Asset] = {}
     for relative, target in found.items():
-        if relative.endswith((".br", ".gz")) or target == page:
+        if relative.endswith(COMPRESSED_SUFFIXES) or target == page:
             continue
         siblings = {}
         if target.suffix in COMPRESSIBLE:
@@ -268,7 +269,7 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
         if _NOT_A_NAME.search(asked) or asked.lstrip("/") == "api" or asked.lstrip("/").startswith("api/"):
             raise HTTPException(status_code=404)
         # A compressed sibling is served by negotiation only, never by its own name.
-        if last.endswith((".br", ".gz")):
+        if last.endswith(COMPRESSED_SUFFIXES):
             raise HTTPException(status_code=404)
         in_assets = path.startswith(ASSETS + "/")
         if path == "index.html" or (not in_assets and "." not in last):
