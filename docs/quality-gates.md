@@ -56,7 +56,7 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 | Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
 | ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
 
-**Specarna** i `frontend/tests/e2e/`: `a11y.spec.ts` (mätningarna, för varje läge och projekt), `keyboard.spec.ts` (tangentbordsvandringar), `aria.spec.ts`, `names.spec.ts`, `harness.spec.ts` (gatens egna kontroller mot sidor byggda för att fela), `color-mode.spec.ts`, `session-cover.spec.ts` (inget av sidan eller av en dialog den hade öppen syns eller nås medan inloggningen är slut), `route-change.spec.ts` och `leave-guard.spec.ts` (titel, fokus och scroll efter en navigering; att lämna en sida med en inspelning), `flow-list.spec.ts`, `result-tabs.spec.ts`, `header-fit.spec.ts`, `live-sheet.spec.ts`, `recording-short.spec.ts`, `review-editor.spec.ts`, `leaks.spec.ts` (se nedan), `branding.spec.ts` och `review-flag.spec.ts` (bara i sina profiler). Specerna väljer själva vilka projekt de gäller.
+**Specarna** ligger i `frontend/tests/e2e/`, en per ansvar och döpta efter det. `a11y.spec.ts` är mätningarna för varje läge och projekt, `keyboard.spec.ts`, `aria.spec.ts` och `names.spec.ts` tangentbord, ögonblicksbilder och namn, `harness.spec.ts` gatens egna kontroller mot sidor byggda för att fela, och `session-cover.spec.ts` att inget av sidan eller av en dialog den hade öppen syns eller nås medan inloggningen är slut. Specerna väljer själva vilka projekt de gäller; `branding.spec.ts` och `review-flag.spec.ts` körs bara i sina profiler.
 
 **Projekten** (19, i `playwright.config.ts`): telefoner (320 och 390 px, ljust och mörkt), surfplattor (768 och 1024 px), laptop (1280 och 1440 px), `zoom-200`, `forced-colors`, `ultrawide` (1920, 2560 och 3440 px) och `reduced-motion`. `a11y.spec.ts` körs i alla; tangentbord, ARIA och namn där de skiljer sig (`testIgnore` i konfigurationen).
 
@@ -122,9 +122,4 @@ Flera utcheckningar (git worktrees) kan köra testerna samtidigt på egna portpa
 
 Resultaten finns i `frontend/test-results/a11y/*/findings.json` och i HTML-rapporten (`npx playwright show-report test-results/a11y-report`), där `manual check` listas. Ett spår behålls för misslyckade tester (`npx playwright show-trace <mapp>/trace.zip`). Skärmbilder: `SHOTS=1 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-390-light` skriver `test-results/shots/<projekt>/<läge>.png`. Se ett enskilt läge i en webbläsare med fönster: `npm run state -- "<läge>"`.
 
-## Lägga till en skärm eller ett överlägg
-
-1. Lägg lägen för skärmen i `frontend/tests/e2e/screens.ts`; `a11y.spec.ts` besöker dem i alla projekt.
-2. Behöver den en tangentbordsvandring eller en ARIA-ögonblicksbild, lägg den i `keyboard.spec.ts` respektive `aria.spec.ts`.
-3. Är det ett överlägg, lägg det i `OVERLAYS` i `leaks.spec.ts`.
-4. Kör läget i `phone-320-light` och `zoom-200` före hela gaten.
+En ny skärm eller ett nytt överlägg: [Frontend](frontend.md#lägga-till-en-skärm).
