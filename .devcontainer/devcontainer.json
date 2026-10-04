@@ -14,7 +14,7 @@
   "forwardPorts": [3002, 8000],
   "portsAttributes": {
     "3002": {
-      "label": "Next.js frontend",
+      "label": "Vite dev server (frontend)",
       "onAutoForward": "notify"
     },
     "8000": {

@@ -12,10 +12,10 @@ Hör ihop med: [Drift](operations.md), [Kvalitetsgrindar](quality-gates.md), [Ba
 |---|---|
 | 3000 | Compose: `frontend`-tjänsten (`docker-compose.override.yml` publicerar den lokalt). |
 | 3001 | Produktionsimagen: allt i en container. |
-| 3002 | `npm run dev` (Next.js utvecklingsserver). |
-| 8000 | Backend (FastAPI), internt. |
+| 3002 | `npm run dev` (Vite-utvecklingsserver, som vidarebefordrar `/api` och `/health` till backend på 8000). |
+| 8000 | Backend (FastAPI), internt; i utveckling med `--api-only`, alltså utan gränssnitt. |
 | 3401 och 8401 | Tillgänglighetsgrinden och `npm run dev:stub`: app och stubbackend. |
-| 3411 och 8411 | `npm run test:prod`: byggd app och stubbackend. |
+| 3411 till 3413 och 8411 | `npm run test:prod`: tre riktiga backends med varsitt bygge, och stubben som Eneo. |
 
 Dev-servern lyssnar avsiktligt på 3002: Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Grindens portar kan flyttas med `A11Y_APP_PORT` och `A11Y_STUB_PORT`, se [Kvalitetsgrindar](quality-gates.md#portar-och-flera-utcheckningar).
 
@@ -77,7 +77,7 @@ cd backend
 .venv/bin/python -m app.serve --api-only --host 0.0.0.0 --port 8000 --reload
 ```
 
-6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:
+6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här; byggkonstanten `SPEAKER_REVIEW_ENABLED=true` slår på granskningen (`frontend/vite.config.mts`):
 
 ```bash
 cd /workspaces/eneo-mod-speech-to-text
@@ -88,9 +88,9 @@ cd frontend
 npm run dev
 ```
 
-Starta om frontend efter att ha ändrat `NEXT_PUBLIC_`-inställningar. Öppna sedan `http://localhost:3002`; VS Code vidarebefordrar portarna 3002 och 8000.
+Starta om dev-servern efter att ha ändrat `SPEAKER_REVIEW_ENABLED`. Öppna sedan `http://localhost:3002`; VS Code vidarebefordrar portarna 3002 och 8000.
 
-I `next dev` proxas `/api` automatiskt till `http://127.0.0.1:8000`. Sätt `INTERNAL_API_BASE` om backend körs någon annanstans (`frontend/lib/backend-base.mjs`).
+Vite-servern vidarebefordrar `/api` (också WebSocket, som live-texten använder) och `/health` till backend på `http://127.0.0.1:8000`. Sätt `DEV_API_BASE` om backend körs någon annanstans (`frontend/vite.config.mts`). Webbläsarens `Origin` går oförändrad till backend, vars kontroll av den kräver att `MODULE_PUBLIC_URL` är `http://localhost:3002`. Flaggan `--api-only` behövs eftersom startprogrammet annars vägrar starta utan ett byggt gränssnitt (`STATIC_DIR`); Vite visar sidorna.
 
 Backendens startkommando ovan har samma WebSocket-gränser som produktionsimagen, och `backend/tests/test_live_relay.py` kontrollerar det genom att läsa raden i [README](../README.md). Ändra dem tillsammans.
 
