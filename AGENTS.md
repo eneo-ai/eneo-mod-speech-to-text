@@ -59,7 +59,7 @@ From `backend/`: `.venv/bin/python -m unittest discover -s tests`.
 From the repository root: `docker compose --env-file .env.example config -q`.
 What each proves and how to read a failure: `docs/quality-gates.md`.
 
-Ports: the gate and `npm run dev:stub` use 3401 (app) and 8401 (stub); `npm run test:prod` uses 3411 and 8411. Several
+Ports: the gate and `npm run dev:stub` use 3401 (app) and 8401 (stub); `npm run test:prod` uses 3411 to 3413 (its three backends) and 8411. Several
 worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STUB_PORT`. Next allows one dev server per
 checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop only what you started, by PID or port.
 
