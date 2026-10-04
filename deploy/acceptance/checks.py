@@ -12,7 +12,7 @@ the stack and then runs this. The stack is the one the environment names; the de
     ACCEPT_MODULE_URL    http://127.0.0.1:8480   the module as a browser reaches it: Traefik, and the image's MODULE_PUBLIC_URL
     ACCEPT_DIRECT_URL    http://127.0.0.1:8482   the image's own port
     ACCEPT_ENEO_URL      http://127.0.0.1:8481   the stub as Eneo: the sign-in handshake, /__log, /__reset and /__stub/stats
-    ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   <that>-review (built with SPEAKER_REVIEW_ENABLED=true)
+    ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   eneo-mod-speech-to-text:acceptance-review (built with SPEAKER_REVIEW_ENABLED=true)
     ACCEPT_CONTAINER     stt-acceptance-module                     ACCEPT_TRAEFIK_CONTAINER   stt-acceptance-traefik
 
 A client that acts as the page names its user: X-Expected-User on a write, ?expected_user= on the live socket. Identifiers are those of
@@ -82,11 +82,10 @@ class Stack:
     image: str = os.environ.get("ACCEPT_IMAGE", "eneo-mod-speech-to-text:acceptance")
     container: str = os.environ.get("ACCEPT_CONTAINER", "stt-acceptance-module")
     traefik: str = os.environ.get("ACCEPT_TRAEFIK_CONTAINER", "stt-acceptance-traefik")
-    traefik_image: str = "traefik:v3.7.13"
 
     @property
     def review_image(self) -> str:
-        return os.environ.get("ACCEPT_REVIEW_IMAGE", f"{self.image}-review")
+        return os.environ.get("ACCEPT_REVIEW_IMAGE", "eneo-mod-speech-to-text:acceptance-review")
 
 
 STACK = Stack()
@@ -161,12 +160,12 @@ def fresh_module(max_upload_bytes: int | None = None) -> None:
     """Recreate the image (a fresh process, no sessions, an empty /tmp), optionally with another MAX_UPLOAD_BYTES; wait until healthy."""
     env = dict(os.environ)
     if max_upload_bytes is not None:
-        env["ACCEPT_MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
+        env["MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
     else:
-        env.pop("ACCEPT_MAX_UPLOAD_BYTES", None)
+        env.pop("MAX_UPLOAD_BYTES", None)  # acceptance.env's
     result = subprocess.run(
-        ["docker", "compose", "-f", str(HERE / "compose.yml"), "-p", "stt-acceptance", "up", "-d", "--force-recreate", "--no-deps", "speech-to-text"],
-        capture_output=True, text=True, env=env, timeout=300,
+        ["docker", "compose", "--env-file", str(HERE / "acceptance.env"), "-f", str(ROOT / "docker-compose.yml"), "-f", str(HERE / "compose.yml"), "-p", "stt-acceptance", "up", "-d", "--force-recreate", "--no-deps", "speech-to-text"],
+        capture_output=True, text=True, env=env, timeout=300, cwd=ROOT,
     )
     if result.returncode != 0:
         raise Failed(f"could not recreate the image: {result.stderr.strip()[:300]}")
@@ -645,8 +644,7 @@ def check_15() -> str:
 @check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed and docker stop")
 def check_16() -> str:
     lines = []
-    digest = docker("image", "inspect", "-f", "{{index .RepoDigests 0}}", STACK.traefik_image).stdout.strip()
-    lines.append(f"Traefik {STACK.traefik_image}, {digest}")
+    lines.append(f"Traefik {docker('inspect', '-f', '{{.Config.Image}}', STACK.traefik).stdout.strip()}")
     session = sign_in(STACK.module)
     # the cookie the BFF sets reaches the client, and comes back
     login = get(f"{STACK.module}/api/auth/login?next=/flows")

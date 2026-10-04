@@ -1,5 +1,12 @@
-# The image acceptance stack (deploy/acceptance.sh): the image under test, the stub as its Eneo, and a Traefik in front. Everything is
-# published on 127.0.0.1 only. The ports and the image come from the environment (acceptance.sh sets them; the defaults are its own).
+# The image acceptance stack (deploy/acceptance.sh): the image under test, the stub as its Eneo, and a Traefik in front. It is laid over
+# the repository's docker-compose.yml, with this folder's acceptance.env as the settings:
+#
+#   docker compose --env-file deploy/acceptance/acceptance.env -f docker-compose.yml -f deploy/acceptance/compose.yml -p stt-acceptance up -d
+#
+# The module's service is that file's: its settings, read-only root, no capabilities and writable /tmp volume, so the uploads the checks
+# send run in the container production runs. This file adds the image, the ports and the two other services; paths in it are relative to
+# the repository root, where the first file is. Everything is published on 127.0.0.1 only. The ports come from the environment
+# (acceptance.sh sets them; the defaults are its own).
 #
 #   browser, checks ----> traefik (ACCEPT_TRAEFIK_PORT) ----> speech-to-text:3001      MODULE_PUBLIC_URL is the Traefik address
 #   checks (direct) -----------------------------------------> speech-to-text (ACCEPT_DIRECT_PORT)
@@ -11,50 +18,40 @@ name: stt-acceptance
 services:
   speech-to-text:
     image: ${ACCEPT_IMAGE:-eneo-mod-speech-to-text:acceptance}
+    # The image is the one that was built and named; a missing one is an error, not a build from the repository.
+    build: !reset null
     container_name: stt-acceptance-module
-    environment:
-      ENEO_BACKEND_URL: http://eneo:8481
-      ENEO_PUBLIC_URL: http://127.0.0.1:${ACCEPT_ENEO_PORT:-8481}
-      MODULE_PUBLIC_URL: http://127.0.0.1:${ACCEPT_TRAEFIK_PORT:-8480}
-      MODULE_KEY: speech-to-text
-      ENEO_API_KEY: acceptance-service-key
-      SESSION_SECRET: acceptance-session-secret-at-least-32-characters
-      COOKIE_SECURE: "false"
-      # MAX_UPLOAD_BYTES caps the whole request body, multipart overhead included: a benchmark that must complete sets it above
-      # the largest file's encoded body (the default of 1 GiB is below a 1 GiB file's body, so flat memory there would only
-      # show an early rejection). checks.py starts the image with a small cap for the rejection.
-      MAX_UPLOAD_BYTES: ${ACCEPT_MAX_UPLOAD_BYTES:-3221225472}
     ports:
       - "127.0.0.1:${ACCEPT_DIRECT_PORT:-8482}:3001"
     depends_on:
       - eneo
 
   eneo:
-    image: python:3.12-slim
+    image: python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
     container_name: stt-acceptance-eneo
     # A plain python as PID 1 ignores SIGTERM; an init stops it at once.
     init: true
     working_dir: /repo/frontend/tests/e2e
     volumes:
       # The stub reads its fixtures (ids.json) and the backend's accent code from the repository, as it does outside Docker.
-      - ../../frontend/tests:/repo/frontend/tests:ro
-      - ../../backend:/repo/backend:ro
+      - ./frontend/tests:/repo/frontend/tests:ro
+      - ./backend:/repo/backend:ro
     environment:
       UPSTREAM_HOST: 0.0.0.0
-      MODULE_KEY: speech-to-text
-      ENEO_API_KEY: acceptance-service-key
+      MODULE_KEY: ${MODULE_KEY}
+      ENEO_API_KEY: ${ENEO_API_KEY}
     command: ["python", "stub-server.py", "8481"]
     ports:
       - "127.0.0.1:${ACCEPT_ENEO_PORT:-8481}:8481"
 
   traefik:
-    # Exact v3.7 patch release, the line the module's WebSocket check was verified on (docs/eneo-integration.md); checks.py prints the digest.
-    image: traefik:v3.7.13
+    # Exact v3.7 patch release, the line the module's WebSocket check was verified on (docs/eneo-integration.md).
+    image: traefik:v3.7.13@sha256:24841fe2de7304c149343d877d2923b4c8800a38ba015dea9174c23b20e344a0
     container_name: stt-acceptance-traefik
     command: ["--configFile=/etc/traefik/traefik.yml"]
     volumes:
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
-      - ./traefik-routes.yml:/etc/traefik/traefik-routes.yml:ro
+      - ./deploy/acceptance/traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./deploy/acceptance/traefik-routes.yml:/etc/traefik/traefik-routes.yml:ro
     ports:
       - "127.0.0.1:${ACCEPT_TRAEFIK_PORT:-8480}:80"
     depends_on:
