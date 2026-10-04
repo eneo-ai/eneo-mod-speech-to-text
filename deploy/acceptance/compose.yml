@@ -17,9 +17,8 @@ name: stt-acceptance
 
 services:
   speech-to-text:
+    # The image is the one that was built and named; a missing one is an error, not a pull of the published one.
     image: ${ACCEPT_IMAGE:-eneo-mod-speech-to-text:acceptance}
-    # The image is the one that was built and named; a missing one is an error, not a build from the repository.
-    build: !reset null
     container_name: stt-acceptance-module
     ports:
       - "127.0.0.1:${ACCEPT_DIRECT_PORT:-8482}:3001"

@@ -1,6 +1,13 @@
-# Auto-merged by `docker compose up` for local development.
-# Dokploy explicitly uses `-f docker-compose.yml`, so this file is ignored there.
+# Auto-merged by `docker compose up` for local development: the image is built from this repository and port 3001 is published.
+# Dokploy and Portainer use `-f docker-compose.yml` (or the file alone), so this file is ignored there.
 services:
   speech-to-text:
+    # A name of its own: a pulled release is never mistaken for the local build.
+    image: eneo-mod-speech-to-text:local
+    build:
+      context: .
+      args:
+        # A build argument, not a run-time setting: a published image always has the speaker review off.
+        SPEAKER_REVIEW_ENABLED: ${SPEAKER_REVIEW_ENABLED:-false}
     ports:
       - "3001:3001"
