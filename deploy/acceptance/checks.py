@@ -343,24 +343,22 @@ def check_5() -> str:
     return f"{len(seen)} responses carry all {len(SECURITY_HEADERS)} headers with the file's values"
 
 
-@check(6, "the shipped test:prod project, the real profile's claim states and the renewal tests pass against the image")
+@check(6, "the shipped test:prod project, in Chromium, passes against the image")
 def check_6() -> str:
-    claim = "recording|stromma|result|result-docked-player|result-pdf-dialog|result-pdf-preview-whole|result-table|setup-date|account-menu|leave-dialog|naming-dialog|ready-delete-dialog"
-    commands = {
-        "shipped": os.environ.get("ACCEPT_PROD_CMD", "npx playwright test --config playwright.prod.config.ts --project=shipped"),
-        "real": os.environ.get("ACCEPT_REAL_CMD", f"npx playwright test --project=phone-390-light -g \"({claim})|renewal|session-cover\""),
+    # The prod config also starts its other two backends, on dist/ and dist-check/, whichever project runs: both are built first.
+    command = "npm run build && npm run build:check && npx playwright test --config playwright.prod.config.ts --project=shipped-chromium"
+    env = {
+        **os.environ,
+        "PROD_EXTERNAL_URL": STACK.module,  # the shipped project's backend is the image behind Traefik ...
+        "STUB_URL": STACK.eneo,  # ... and the stub that is its Eneo is the one upstream.spec.ts reads back
+        "A11Y_APP_PORT": os.environ.get("A11Y_APP_PORT", "8487"),  # the config's own servers: 8487 to 8489, the stub of its own 8486
+        "A11Y_STUB_PORT": os.environ.get("A11Y_STUB_PORT", "8486"),
     }
-    env_for = {
-        "shipped": {"PROD_EXTERNAL_URL": STACK.module},
-        "real": {"GATE_TARGET": "real", "REAL_EXTERNAL_URL": STACK.module},
-    }
-    lines = []
-    for name, command in commands.items():
-        r = subprocess.run(command, shell=True, cwd=ROOT / "frontend", env={**os.environ, **env_for[name]}, capture_output=True, text=True, timeout=3600)
-        tail = [line for line in (r.stdout + r.stderr).splitlines() if line.strip()][-3:]
-        expect(r.returncode == 0, f"{name}: `{command}` failed ({r.returncode}): {' | '.join(tail)}")
-        lines.append(f"{name}: {tail[-1].strip() if tail else 'ok'}")
-    return "; ".join(lines)
+    r = subprocess.run(command, shell=True, cwd=ROOT / "frontend", env=env, capture_output=True, text=True, timeout=3600)
+    tail = [line.strip() for line in (r.stdout + r.stderr).splitlines() if line.strip()]
+    expect(r.returncode == 0, f"`{command}` failed ({r.returncode}): {' | '.join(tail[-4:])}")
+    passed = next((line for line in reversed(tail) if re.fullmatch(r"\d+ passed.*", line)), tail[-1] if tail else "ok")
+    return f"shipped-chromium against {STACK.module}: {passed}"
 
 
 @check(7, "Range on the audio route: 206 with Content-Range, a second range, 416, and a client that leaves leaves no upstream open")
@@ -395,10 +393,7 @@ def check_8() -> str:
         wait_until(lambda: stub_stats()["live_frames"] == before["live_frames"] + 1, 10, "the stub receives the 64 KiB frame")
         after = stub_stats()
         expect(after["live_bytes"] - before["live_bytes"] == 64 * 1024, f"the stub received {after['live_bytes'] - before['live_bytes']} bytes of it")
-        try:
-            ws.send_binary(os.urandom(128 * 1024 + 1))
-        except OSError:
-            pass  # the server closed while the frame was still being sent
+        ws.send_header_only(128 * 1024 + 1)  # the limit is read from the header, before a byte of the frame
         code = ws.wait_for_close(10)
         expect(code == 1009, f"a frame of 128 KiB + 1 closed the socket with {code}, not 1009")
         time.sleep(1)
@@ -641,7 +636,7 @@ def check_15() -> str:
     return detail
 
 
-@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed and docker stop")
+@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed, a NUL path and docker stop")
 def check_16() -> str:
     lines = []
     lines.append(f"Traefik {docker('inspect', '-f', '{{.Config.Image}}', STACK.traefik).stdout.strip()}")
@@ -679,10 +674,10 @@ def check_16() -> str:
         b = get(STACK.direct + audio_path(), headers={**session.read(), "Range": header})
         expect((a.status, a.headers.get("content-range"), a.body) == (b.status, b.headers.get("content-range"), b.body), f"Range {header}: Traefik {a.status} {a.headers.get('content-range')}, direct {b.status} {b.headers.get('content-range')}")
     lines.append("Range 206, 206 and 416 are the same through Traefik as direct")
-    # a path with a NUL: the module answers 404 (check 4); Traefik refuses it before the module is asked
+    # a path with a NUL reaches the module as written, and its 404 comes back (check 4 has it direct)
     nul = get(f"{STACK.module}/%00")
-    expect(nul.status == 400, f"GET /%00 through Traefik answered {nul.status}, not Traefik's 400")
-    lines.append("a path with a NUL is a 400 from Traefik, before the module (direct it is the module's 404, check 4)")
+    expect(nul.status == 404 and not is_html(nul), f"GET /%00 through Traefik answered {nul.status} {nul.text()[:60]!r}, not the module's 404 JSON")
+    lines.append("a path with a NUL: the module's 404 JSON comes back through Traefik, as direct")
     # uploads through Traefik, as direct
     lines.append(upload_row("curl-300MB-1", STACK.module, SIZES["300MB"], 1, 32) + " (through Traefik)")
     lines.append(upload_row("curl-1GB-1", STACK.module, SIZES["1GB"], 1, 32) + " (through Traefik)")

@@ -26,5 +26,5 @@ if [ "${ACCEPT_SKIP_BUILD:-}" != 1 ]; then
   docker build -t "$ACCEPT_IMAGE" .
   docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t "$ACCEPT_REVIEW_IMAGE" .
 fi
-"${compose[@]}" up -d
+"${compose[@]}" up -d --wait
 python3 deploy/acceptance/checks.py "$@"
