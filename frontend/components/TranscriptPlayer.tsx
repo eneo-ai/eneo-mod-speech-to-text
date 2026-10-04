@@ -122,15 +122,35 @@ export const preloadTranscriptEditor = () => import("@/components/TranscriptEdit
 
 function LazyTranscriptEditor(props: EditorProps) {
   const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(() => loadedEditor);
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (Editor) return;
     let current = true;
-    void preloadTranscriptEditor().then((component) => current && setEditor(() => component));
+    setFailed(false);
+    preloadTranscriptEditor().then(
+      (component) => current && setEditor(() => component),
+      () => current && setFailed(true),
+    );
     return () => {
       current = false;
     };
-  }, [Editor]);
+  }, [Editor, attempt]);
   if (Editor) return <Editor {...props} />;
+  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and a
+  // press tries again: the page is not reloaded, since it may hold a recording or an edit that is not saved.
+  if (failed) {
+    return (
+      <div className={styles.editorPending}>
+        <HStack vAlign="center" wrap="wrap" gap={2}>
+          <Text as="p" type="supporting" role="status">
+            Granskningsverktygen kunde inte läsas in.
+          </Text>
+          <Button size="sm" label="Försök igen" onClick={() => setAttempt(attempt + 1)} />
+        </HStack>
+      </div>
+    );
+  }
   return (
     <div className={styles.editorPending} aria-busy="true">
       <VisuallyHidden as="p" role="status">
