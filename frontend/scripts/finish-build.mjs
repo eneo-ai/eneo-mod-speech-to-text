@@ -71,6 +71,14 @@ if (unhashed.length > 0) {
   fail(`Files under ${assets} without a content hash in their name, which the backend would cache for a year:\n${unhashed.map((file) => `  ${relative(assets, file)}`).join("\n")}`);
 }
 
+// The organisation is in the page's marker and the app never asks for it: a bundle that fetches /api/branding has a
+// second source of truth (the logo files and the stylesheet under /api/branding/ are addressed, not fetched).
+const FETCH_OF_BRANDING = /["'`]\/api\/branding["'`]/;
+const asking = files.filter((file) => extname(file) === ".js" && FETCH_OF_BRANDING.test(readFileSync(file, "utf8")));
+if (asking.length > 0) {
+  fail(`These files ask for /api/branding, which the page reads from its marker:\n${asking.map((file) => `  ${relative(assets, file)}`).join("\n")}`);
+}
+
 for (const file of files) {
   if (!COMPRESSIBLE.has(extname(file))) continue;
   const content = readFileSync(file);

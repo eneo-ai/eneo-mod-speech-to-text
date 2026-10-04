@@ -25,18 +25,15 @@ Reglerna för varje backendvariabel (krav, format, standardvärden) står i [Bac
 | Variabel | Läses av | Exempelvärde (Sundsvalls fristående miljö) | Anmärkning |
 |---|---|---|---|
 | `ENEO_BACKEND_URL` | backend | `https://flow.sundsvall.dev` | `http://backend:8000` bara på Eneos `module_net` (imagen), aldrig i tvåcontainer-Compose, där `backend` inte finns. |
-| `ENEO_PUBLIC_URL` | backend | `https://flow.sundsvall.dev` | Krävs i `eneo_sso`. |
-| `MODULE_PUBLIC_URL` | backend | `https://transkribering.sundsvall.dev` | |
+| `ENEO_PUBLIC_URL` | backend | `https://flow.sundsvall.dev` | `https` krävs; `http` bara för `localhost`, `127.0.0.1` och `[::1]`, annars stoppas starten. |
+| `MODULE_PUBLIC_URL` | backend | `https://transkribering.sundsvall.dev` | Samma regel som `ENEO_PUBLIC_URL`. |
 | `MODULE_KEY` | backend | `speech-to-text` | |
 | `ENEO_API_KEY` | backend | en `sk_…`-nyckel från Eneo med rätt space-scope | Secret. |
 | `ENEO_API_KEY_HEADER_NAME` | backend | samma som Eneos `API_KEY_HEADER_NAME` (standard `X-API-Key`) | |
 | `SESSION_SECRET` | backend | minst 32 slumpmässiga tecken | Secret. Generering: [Lokal utveckling](development.md#med-docker-compose). |
-| `AUTH_MODE` | backend | `eneo_sso` (standard) eller tillfälligt `access_code` | |
-| `APP_ACCESS_CODE` | backend | endast i `access_code`; en separat, slumpmässig Dokploy-secret | Aldrig incheckad. |
-| `COOKIE_SECURE` | backend | `true` | `false` bara för lokal `http://localhost`. `true` kräver HTTPS. |
-| `DEMO_SPACE_ID` | backend | krävs i `access_code` | Se [Backend](backend.md#inställningar). |
+| `COOKIE_SECURE` | backend | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]`; annars stoppas starten. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | backend | valfri, standard `1800` | Ett ändligt antal sekunder, över 0 och högst 86400. Tidsgräns för hela vidarebefordran av en uppladdning. Höj aldrig över Nexts tystnadsgräns utan att höja den också (`frontend/next.config.mjs`, `experimental.proxyTimeout`, 31 minuter). |
-| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | I `eneo_sso` gäller det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS`. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
+| `SESSION_MAX_AGE_MINUTES` | backend | valfri, standard `480` | Det tidigaste av detta och Eneos `MODULE_AUTH_MAX_SESSION_HOURS` gäller. Går inte att sätta via Compose, se [Kända luckor](#kända-luckor). |
 | `MAX_BODY_BYTES` | backend | valfri, standard `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. Heltal från 1 till 2^40, ett tomt värde nekas (Compose använder standardvärdet). Se [Backend](backend.md#gränser). |
 | `MAX_UPLOAD_BYTES` | backend | valfri, standard `1073741824` (1 GiB) | Tak för en uppladdad fil. Samma regel. Höj den om Eneos flöden tar emot större ljudfiler. |
 | `MAX_RESPONSE_BYTES` | backend | valfri, standard `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo; längre svar blir 502. Samma regel. En fil som strömmas till webbläsaren räknas inte. |
@@ -63,9 +60,8 @@ Produktionsimagen exponerar port 3001 och en hälsokontroll på `/health`. Eneos
 | `ENEO_API_KEY` | modulspecifik `sk_`-nyckel |
 | `ENEO_API_KEY_HEADER_NAME` | Eneos `API_KEY_HEADER_NAME`, standard `X-API-Key` |
 | `SESSION_SECRET` | slumpmässiga 32+ tecken |
-| `AUTH_MODE` | `eneo_sso` |
 
-`ENEO_PUBLIC_URL` krävs bara i `eneo_sso`. `APP_ACCESS_CODE` får bara sättas med `AUTH_MODE=access_code` och ska då tillföras som secret, aldrig checkas in. Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`, så att det finns ett canonical konfigurationskontrakt i modulprocessen.
+Overlay-filen ska mappa operatörens secret till `ENEO_API_KEY`, så att det finns ett canonical konfigurationskontrakt i modulprocessen.
 
 ## Compose
 
@@ -89,27 +85,37 @@ Produktionsimagen exponerar port 3001 och en hälsokontroll på `/health`. Eneos
 
 Supervisor övervakar och startar om processerna vid oväntade fel; en omstart av backend ger ny login (se nedan).
 
+## Uppladdningens tillfälliga lagring
+
+En uppladdning tas emot hel av modulen innan den skickas vidare till Eneo: Starlette lägger den i en tillfällig fil så fort den är större än 1 MB. Containern är skrivskyddad, så `/tmp` är den enda skrivbara platsen, och i `docker-compose.yml` är den en volym (`spool`), alltså disk, inte en tmpfs. Volymen innehåller inga data att spara: filerna tas bort direkt när de skapas och försvinner när uppladdningen tar slut eller avbryts.
+
+Skälet är mätt. En 1 GiB-uppladdning till en container med 300 MB minne: med en tmpfs på `/tmp` dödas containern av minnesbristen (OOM, exitkod 137) och klienten får inget svar; med en volym går uppladdningen igenom (201) och processens eget minne växer med 4 MB. Samma uppladdning med mer minne lägger 1 GiB i `shmem` med tmpfs, minne som inte går att frigöra, och 1 GiB i sidcache med volymen, som kärnan släpper vid behov.
+
+Dimensionera därför disken, inte minnet: den ska rymma samtidiga uppladdningar × `MAX_UPLOAD_BYTES` (standard 1 GiB; modulen begränsar inte antalet samtidiga uppladdningar). Det finns ingen gräns i Compose som kan sätta en storlek på en volym; en full disk ger ett fel på uppladdningen, inte på de andra anropen.
+
 ## Sessionslagret är processlokalt
 
 Sessionslagret ligger i backendprocessens minne, avsiktligt, eftersom produktionsimagen kör en backendprocess. En omstart kräver ny login. Innan flera backend-repliker används måste lagret flyttas till en delad store; annars kan en request landa hos en replik som inte äger sessionen. Det gäller även cachen med signerade fil-URL:er. Se [Inloggning och session](auth-and-session.md#sessionslagret).
 
+## Kapacitet för liveöversättningen (mätt, ingen garanti)
+
+Statiska filer, uppladdningar och liveöversättningens WebSocket delar en process och en händelseslinga. Mätningen gjordes på en bärbar dator med OrbStack, med lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop). Vid 10 besök i sekunden (320 anrop/s) var reläets p95-fördröjning 1,8 till 2,2 ms och vid 45 besök i sekunden (1 440 anrop/s) 1,1 till 1,2 ms, mot 2,7 till 3,8 ms utan last. Vid 100 besök i sekunden (3 100 till 3 200 anrop/s) är modulen vid mättnad och p95 22 till 63 ms. Med 200 klienter som hämtar skalet och filerna utan paus klarar modulen 4 000 till 4 400 anrop/s, och p95 är då 3,6 till 6,7 gånger så hög som utan last (11,9 till 18,3 ms, fem körningar); ägaren har godtagit det resultatet (`deploy/acceptance/waivers.json`). Det är en observation på en dator, inte ett löfte för en annan maskin. Fler än en arbetsprocess är utesluten av det processlokala sessionslagret (se ovan); mer kapacitet kräver att lagret först flyttas till en delad store.
+
 ## Inget att säkerhetskopiera
 
-Modulen har ingen databas och inga volymer; den enda monteringen är en valfri, skrivskyddad mapp med en logotyp. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
+Modulen har ingen databas och ingen volym med data; monteringarna är en valfri, skrivskyddad mapp med en logotyp och uppladdningens tillfälliga lagring (se ovan), som är tom mellan uppladdningar. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
 
-## Dokploy (exempel: `transkribering.sundsvall.dev`)
+## Driftsätt med Dokploy eller Portainer
 
-1. **Skapa ett Compose-projekt** i Dokploy och peka på det här repot.
-2. **Sätt miljövariablerna** i Dokploy-gränssnittet enligt tabellen ovan (motsvarar `.env`).
-3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy och Traefik sköter HTTPS-certifikatet.
-4. **Deploya.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt, bara internt mot `frontend` på `http://speech-to-text-backend:8000`.
-5. **Verifiera:**
-   - `https://transkribering.sundsvall.dev/` visar Eneo-login eller kodformulär enligt `AUTH_MODE`.
-   - `https://transkribering.sundsvall.dev/api/healthz` svarar `{"ok":true}`.
-   - I `eneo_sso`: callback-URL:en blir ren efter lyckad login.
-   - I båda lägen: flödeslistan visas och ett riktigt Flow-anrop lyckas.
+Modulen körs som en färdig image och byggs inte på plats. Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
 
-Ingress- eller Traefik-loggning måste utesluta callbackens query string.
+- **Image:** `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, taggen väljs med `MODULE_VERSION` (en tagg `vX.Y.Z`, eller `latest` för den senaste utgåvan). Paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
+- **Variabler:** de i `.env`. `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` måste fyllas i (se tabellen ovan); resten har standardvärden.
+- **Dokploy:** skapa ett Compose-projekt, klistra in innehållet i `docker-compose.yml` och variablerna under Environment, lägg domänen (till exempel `transkribering.sundsvall.dev`) på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
+- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på port 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
+- **Container:** `docker-compose.yml` ger den skrivskyddad, utan Linux-capabilities och med en skrivbar volym för uppladdningar (se Uppladdningens tillfälliga lagring), och startar om den om den dör. Hälsokontrollen frågar `/health`.
+- **Verifiera:** `https://<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Ingress- eller Traefik-loggning måste utesluta callbackens query string.
+- **Uppgradera:** byt `MODULE_VERSION` till den nya taggen och driftsätt igen; en ny tagg hämtas av sig själv, men med `latest` hämtas ingen ny image om en med det namnet redan finns på värden, så fäst en version. Att gå tillbaka är att byta tillbaka. En ny version startar om processen, så alla loggar in igen (se Sessionslagret är processlokalt).
 
 ## Egen organisation i sidhuvudet
 
@@ -142,31 +148,67 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 ## CI och publicering
 
-`.github/workflows/ci.yml` körs vid pull request och push till `main`:
+`.github/workflows/ci.yml` körs vid pull request och vid push till `main` (en tagg kör ingen CI, se Utgåva nedan):
 
 | Jobb | Vad |
 |---|---|
-| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). Därefter `pip-audit` på de installerade paketen. |
+| `backend` | Installerar `backend/requirements.lock` med dess hashar (`pip install --require-hashes --no-deps`), `python -m unittest discover -s tests` i `backend/` (Python 3.12), den falska Eneos egna tester (`frontend/tests/e2e/test_stub_eneo.py`) och `pip-audit` på låsfilen. |
 | `frontend` | `npm ci`, `npm test`, `npm run lint`, `npm run astryx -- doctor`, kontroll att det byggda temat är aktuellt (`npm run theme:build` och `git diff --exit-code -- kit/theme/built`), `npm audit --omit=dev --audit-level=high`, `npm run build` (Node 22). |
 | `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`, och branding-tillstånden (`STUB_BRANDING=custom`) i `laptop-1440-light` och `phone-390-dark`. |
 | `compose` | `docker compose --env-file .env.example config -q`. |
-| `image` | Bygger produktionsimagen. |
+| `image` | Bygger produktionsimagen en gång, med SBOM och provenance, och lägger den i ett register som bara finns i jobbet. Kör `deploy/acceptance.sh` på just det bygget (efter digest, `ACCEPT_SKIP_BUILD=1`), och sparar den testade imagen som arkiv tillsammans med dess digest. |
+| `publish` | Anropar `.github/workflows/publish.yml`, bara när alla jobb ovan gått igenom på samma commit och bara för `main`. |
 
-`.github/workflows/publish.yml` publicerar imagen till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` vid push till `main` (taggen `latest`) och vid taggar `v*`, och taggar varje bygge med commitens sha.
+`publish.yml` har ingen egen trigger. Den bygger aldrig: den kopierar det arkiv som `image` sparade, med SBOM, provenance och samma digest som acceptansen såg, till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` under taggen `sha-<commit>` (commitens hela sha), och kontrollerar att det registret håller under taggen är den testade digesten. En misslyckad acceptans når därför aldrig registret.
+
+**Utgåva.** `.github/workflows/release.yml` körs när en tagg `vX.Y.Z` pushas, och bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade och `publish.yml` pushade till taggarna `vX.Y.Z` och `latest`, med samma digest, kontrollerar digesten efter varje kopiering och skapar en GitHub-utgåva med korta anteckningar, där `docker-compose.yml` och `env.example` är bifogade (GitHub byter namn på en fil som börjar med punkt, så exemplet heter `env.example`). En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart. En utgåva görs så här:
+
+```
+git tag v1.2.3 <commit på main>
+git push origin v1.2.3
+```
+
+## Uppdatera beroenden och fästa versioner
+
+Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, basimagerna vid digest, GitHub Actions vid commit-sha. Inget uppdateras av sig självt (se [Beroendesäkerhet](#beroendesäkerhet)); gör så här, till exempel varje månad och när en sårbarhet rapporteras. Ändra ett steg i taget, kör CI och godkänn imagens acceptans innan nästa.
+
+**Backendens paket.** `backend/requirements.txt` nämner de direkta paketen med exakta versioner; `backend/requirements.lock` är alla paket, med hashar, genererad ur den. Ändra en version i `requirements.txt` och generera om låsfilen från repots rot:
+
+```
+uv pip compile backend/requirements.txt --python-version 3.12 --universal --generate-hashes \
+  --exclude-newer <dagens datum>T00:00:00Z -o backend/requirements.lock
+```
+
+Checka in båda filerna. `backend/tests/test_dependency_lock.py` stoppar en ändring av den ena utan den andra, och en Dockerfile eller ett CI-steg som inte installerar låsfilen med `--require-hashes`.
+
+**Basimagerna.** `node:22-bookworm-slim` och `python:3.12-slim` (i `Dockerfile`, och `python:3.12-slim` även i `deploy/acceptance/compose.yml`), `traefik` (`deploy/acceptance/compose.yml`), `registry` och skopeo (`.github/workflows/ci.yml`, `publish.yml` och `release.yml`). Hämta taggens nya digest och byt den där den står:
+
+```
+docker buildx imagetools inspect node:22-bookworm-slim --format '{{.Manifest.Digest}}'
+```
+
+Node-bygget kör `npm ci --engine-strict`, så en bas som inte når `engines` i `frontend/package.json` stoppar bygget. Byt versionsraden (till exempel `traefik:v3.7.13`) bara efter att ha läst versionens ändringslista.
+
+**GitHub Actions.** Varje `uses:` är ett commit-sha med versionen i kommentaren. Hitta den senaste utgåvan av samma huvudversion, och commit-shan som taggen pekar på (för en annoterad tagg raden med `^{}`):
+
+```
+git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v7.*'
+```
+
+Byt sha och kommentar. En ny huvudversion är ett eget beslut: läs dess ändringslista först.
 
 ## Beroendesäkerhet
 
-GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends installerade Python-paket (alla kända sårbarheter).
+GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends låsfil, det vill säga de Python-paket imagen innehåller (alla kända sårbarheter).
 
-CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`), och FastAPI-stacken i `backend/requirements.txt` är höjd förbi 14 säkerhetsmeddelanden.
+CI granskar dessutom backendens låsfil med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`), och FastAPI-stacken i `backend/requirements.txt` är höjd förbi 14 säkerhetsmeddelanden.
 
 ## Vid problem
 
 | Symptom | Trolig orsak och åtgärd |
 |---|---|
-| Backend kraschar vid start | Kontrollera basvariablerna samt `ENEO_PUBLIC_URL` i SSO-läge eller `APP_ACCESS_CODE` i kodläge. `ENEO_API_KEY` krävs i båda. Felet säger vilken variabel. |
+| Backend kraschar vid start | Kontrollera basvariablerna, `ENEO_PUBLIC_URL` och `ENEO_API_KEY`. Felet säger vilken variabel. En `http`-adress för `MODULE_PUBLIC_URL` eller `ENEO_PUBLIC_URL`, eller `COOKIE_SECURE=false`, stoppar starten om värden inte är `localhost`, `127.0.0.1` eller `[::1]`: använd `https` och `COOKIE_SECURE=true`. |
 | Login misslyckas efter callback | Kontrollera exakt registrerad callback-URL, module key, bunden servicenyckel och att `COOKIE_SECURE=true` endast används bakom HTTPS. Felkoderna står i [Inloggning och session](auth-and-session.md#om-callbacken-misslyckas). |
-| Kodlogin fungerar men Flow-anrop nekas | Eneo-routen kräver sannolikt modultoken. Byt till `eneo_sso` när handoff-kontraktet är deployat. |
 | 502 vid uppladdning | Svaret säger varför: `upstream_unreachable` (Eneo nåddes inte, ofta ett lastbalanserarproblem: kolla `docker compose logs speech-to-text-backend` efter det exakta httpx-felet), `upstream_too_large` (Eneos svar var längre än `MAX_RESPONSE_BYTES` eller kodat) eller `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer). |
 | 502 `upstream_invalid` på en fil | Eneos svar på begäran om en signerad URL gick inte att använda. Loggen har vägen. |
 | 504 vid uppladdning | Backendens upload-vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. |
@@ -174,8 +216,7 @@ CI granskar dessutom backendens installerade Python-paket med `pip-audit` och mi
 | "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen". Se [Inspelaren](recording.md#uppladdning-och-nya-försök). |
 | 413 | Ett tak för body nåddes. Svaret säger vilket: `max_body_bytes` (`MAX_BODY_BYTES`, JSON-anrop) eller `max_upload_bytes` (`MAX_UPLOAD_BYTES`, uppladdning). Höj rätt variabel om gränsen är för snäv. Ett 413 utan det namnet är Eneos egen gräns. |
 | 411 vid uppladdning | En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient, eller en proxy som skickar bodyn i delar, är orsaken. |
-| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). I `access_code` med en tjänstenyckel: kontrollera att `DEMO_SPACE_ID` pekar på rätt space. |
-| Flödeslistan säger att flödena inte kan visas | I `access_code` saknas `DEMO_SPACE_ID`; backend loggade ett fel vid start. |
+| Tom flödeslista | Användaren är inte medlem i något space med publicerade flöden, eller modulnyckelns space scope utesluter dem (en nyckel som är scopad till ett space användaren inte är med i ger en tom lista). |
 | Backend startar om i en slinga efter en ändrad accentfärg | `ORGANIZATION_ACCENT` eller `ORGANIZATION_ACCENT_DARK` är inte läsbar nog (under 4,5:1) eller har fel form, och backend vägrar starta. Felmeddelandet i loggen (`docker compose logs speech-to-text-backend`) säger vad som mättes och vad som ska göras: [Byt organisation](branding.md#felmeddelanden-vid-start). |
 | En gammal färg visas efter ett byte | Accentens stilmall får cachas i fem minuter (`Cache-Control: max-age=300`). Ladda om sidan eller öppna den i ett privat fönster. |
 | Alla blir utloggade | Backend startade om: sessionslagret är processlokalt. |

@@ -44,7 +44,7 @@ Importriktningen visas i [diagrammet](architecture.md#frontendens-lager).
 | Inloggningens giltighet, och vilken användare sidan öppnades för | `lib/login-state.ts` (`loginState`, `expectedUser`), matas av `AuthGate` | Sidan ligger kvar när inloggningen slutar eller en annan person loggat in. Se [Inloggning och session](auth-and-session.md#när-inloggningen-har-gått-ut). |
 | Sessionsstatus från backend | `authStatus()` i `lib/api.ts`, hållen vid liv av `lib/session-keepalive.ts` | `refresh_in` och `session_ends_in` styr nästa fråga och varningen. |
 | Färgläge | next-themes (klass på `<html>`, `localStorage`) | `kit/ModuleProviders.tsx` läser det, skriver aldrig. |
-| Organisationens märke | Läses i `app/layout.tsx` per request, ligger i `BrandingProvider` (`components/Brand.tsx`) | Accentfärgen är inget tillstånd: den kommer som en stilmall, `/api/branding/theme.css`, länkad i `<head>`. Se [Byt organisation](branding.md). |
+| Organisationens märke | Läses ur sidans egen markör, `<meta name="eneo-branding">`, en gång före första renderingen (`lib/read-branding.ts`); ligger i `BrandingProvider` (`components/Brand.tsx`). Sidan frågar aldrig efter det | Accentfärgen är inget tillstånd: den kommer som en stilmall, `/api/branding/theme.css`, länkad i `<head>`. Markören fylls av backend vid start, och av utvecklingsservern för varje sida (`lib/branding-marker.ts`). Se [Byt organisation](branding.md). |
 | Flödessidans inmatningssida (läge, uppgifter, talarval, fas) | `lib/flow-session.ts` (klassen `FlowSession`), bunden till React av `components/flow/useFlowSession.ts` | Faserna är `setup`, `starting`, `recording`, `paused`, `interrupted`, `ready`. Fasen läses ur inspelaren, kopieras aldrig. |
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` | Se [Inspelaren](recording.md). |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) | Överlever omladdning och utgången session. |
@@ -52,7 +52,7 @@ Importriktningen visas i [diagrammet](architecture.md#frontendens-lager).
 | Körningens tillstånd | `run` i `app/flows/[id]/page.tsx` | Se nedan. |
 | Uppföljning av en körning | `lib/follow-run.ts` | Frågar bara efter det som är gjort för polling; frågar sällan medan sidan är dold. |
 | Om vi är uppkopplade | `lib/online-status.ts` | Webbläsarens händelser plus våra egna anrop. |
-| Lämna sidan | `lib/leave-guard.ts`, `components/flow/useLeaveQuestion.tsx` | Webbläsarens bakåtknapp förlorar aldrig en inspelning. |
+| Lämna sidan | `components/flow/useLeaveQuestion.tsx`, `beforeunload` i `routes/FlowPage.tsx` | Routerns spärr frågar före varje avsked den ser (Tillbaka, Framåt, en länk, märket) medan sidan håller en inspelning, en sändning eller skrivet som webbläsaren inte kunde spara; Logga ut frågar före utloggningen. Omladdning, stängd flik och Tillbaka från besökets första sida är webbläsarens egen fråga. |
 | Mikrofonval | `lib/microphone.ts` | Kommer ihåg per webbläsare. |
 
 Frågar du dig "var hör det här hemma": kan det göras utan React hör det hemma i `lib/` med ett test bredvid.
@@ -63,7 +63,7 @@ Varje tillstånd är en skärm som grinden besöker. Namnen nedan är namn i `fr
 
 | Sida | Tillstånd |
 |---|---|
-| Inloggning (`/`) | laddar (`signin-loading`), Eneo SSO (`signin-sso`), åtkomstkod (`signin-access-code`), fel (`signin-error`), modulen nås inte (`signin-unreachable`). Ett `auth_error` i adressen ger ett meddelande och tas bort ur adressen. |
+| Inloggning (`/`) | laddar (`signin-loading`), Eneo SSO (`signin-sso`), fel (`signin-error`), modulen nås inte (`signin-unreachable`). Ett `auth_error` i adressen ger ett meddelande och tas bort ur adressen. |
 | Flödeslistan (`/flows`) | laddar (skelett), problem med försök igen, tom, lista grupperad per space, avkortad vid sidtaket, osända inspelningar överst. |
 | Ett flöde (`/flows/[id]`) | flödet laddar (skelett), flödet kan inte användas (`FlowUnavailable`), och därefter körningens `run.kind`: |
 | | `idle`: inmatningen, med faserna `setup`, `starting`, `recording`, `paused`, `interrupted` och `ready`. |

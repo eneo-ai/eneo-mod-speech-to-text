@@ -5,7 +5,7 @@ import { useNavigate } from "react-router";
 import { LoadingShell } from "@/components/LoadingShell";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
-import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
@@ -85,8 +85,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   // When the login ends, and how a new login moves that.
   const [endsAt, setEndsAt] = useState<number | null>(null);
-  const [mode, setMode] = useState<AuthMode | null>(null);
-  const renewedRef = useRef(() => {});
   const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
@@ -107,7 +105,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
-        setMode(s.auth_mode);
       }
       return true;
     };
@@ -130,21 +127,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         (s) => s && keepAlive(s),
         () => undefined,
       );
-    // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel), or an
-    // access code was entered in the dialog: a new login is announced, also when the page was never covered, so what
-    // went out on the old session is obsolete at once, and the status read that follows decides.
+    // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel): a new
+    // login is announced, also when the page was never covered, so what went out on the old session is obsolete at
+    // once, and the status read that follows decides.
     const renewed = () => {
       loginState.loginWindowDone();
       recheck();
     };
-    renewedRef.current = renewed;
     const onVisible = () => document.visibilityState === "visible" && recheck();
 
     read()
       .then((s) => {
         if (!s) return;
-        // I access_code-läget saknar sessionen användare; sessionUser ger då
-        // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
         const sessionIdentity = sessionUser(s);
         if (!sessionIdentity) {
           void navigate("/", { replace: true });
@@ -184,13 +178,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </SignedOutSlot.Provider>
       <SessionEndWarning
         endsAt={endsAt}
-        mode={mode}
         signedOut={signedOut}
         owner={user}
         otherUser={otherUser}
         controlsRef={setControls}
         onFocusBack={(before) => focusBack.current?.(before)}
-        onRenewed={() => renewedRef.current()}
       />
     </AuthenticatedUserContext.Provider>
   );

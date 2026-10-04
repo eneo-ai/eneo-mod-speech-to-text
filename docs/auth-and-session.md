@@ -6,18 +6,13 @@ Läs detta när: Du felsöker inloggning, ändrar något i `backend/app/module_a
 
 Hör ihop med: [Arkitektur](architecture.md#inloggningen), [Backend](backend.md), [Drift](operations.md), [Ordlista](glossary.md)
 
-## Två lägen, aldrig blandade
+## Ett sätt in
 
-`AUTH_MODE` väljer exakt ett inloggningsflöde. Okända värden, eller en konfiguration som blandar SSO med `APP_ACCESS_CODE`, stoppar backend vid start (`backend/app/config.py`).
+Eneo SSO är det enda sättet att logga in. Varje session är en `EneoSsoSession` (`backend/app/module_auth.py`): en användare, en tenant och en modultoken, och varje anrop till Eneo bär både servicenyckeln och den token.
 
-| Läge | Användning | Identitet | Upstream-credentials |
-|---|---|---|---|
-| `eneo_sso` | Standard och permanent. | Eneos användare och tenant. | Servicenyckel och modultoken. |
-| `access_code` | Tillfällig testgrind tills Eneos modulhandoff är deployad. | Ingen: en delad kod. | Bara servicenyckeln. |
+`http` för `MODULE_PUBLIC_URL` och `ENEO_PUBLIC_URL`, och `COOKIE_SECURE=false`, godtas bara för värden `localhost`, `127.0.0.1` eller `[::1]`, jämförda som den tolkas ur adressen (inte `localhost.example.org`, inte `localhost@example.org`). Annars stoppas starten och meddelandet säger vilken variabel det gäller (`backend/app/config.py`). `ENEO_BACKEND_URL` är tjänstenätets adress och får vara `http`. Samma regel gäller i alla miljöer.
 
-En session som skapats i ett läge godtas aldrig i det andra (`backend/app/module_auth.py`, `_live_session`).
-
-## Eneo SSO (`AUTH_MODE=eneo_sso`)
+## Eneo SSO
 
 Modulen är ingen egen OIDC-klient. Eneo förblir installationens autentiseringsauktoritet och `ENEO_PUBLIC_URL` måste vara satt. Sekvensdiagram: [Inloggningen](architecture.md#inloggningen).
 
@@ -57,7 +52,7 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 - Lagret är en process-lokal ordbok i backendminnet (`ModuleSessionStore` i `backend/app/module_auth.py`) med ett lås. Utgångna sessioner städas bort vid varje skapande och uppslag.
 - Sessionen innehåller användaren, tenant, modultoken, när token går ut, när den ska förnyas och inloggningens fasta slut.
 - Logout (`POST /api/auth/logout`, same-origin) tar bort sessionen direkt och raderar cookien.
-- En ny inloggning (callbacken eller åtkomstkodsinloggningen) tar bort den session webbläsaren hade, och med den allt som hänger på den. En öppen live-socket stängs när sessionen tar slut på något sätt (utloggning, utgång, ersättning, nekad förnyelse), se [Backend](backend.md#live-reläet).
+- En ny inloggning (callbacken) tar bort den session webbläsaren hade, och med den allt som hänger på den. En öppen live-socket stängs när sessionen tar slut på något sätt (utloggning, utgång, ersättning, nekad förnyelse), se [Backend](backend.md#live-reläet).
 - En omstart av backend ger ny login för alla. Mer än en backendreplik kräver att lagret flyttas till en delad store, se [Drift](operations.md#sessionslagret-är-processlokalt).
 
 ### Hur länge en inloggning gäller
@@ -88,9 +83,8 @@ flowchart TD
 
 Fem minuter före slutet varnar sidan (`frontend/components/SessionEndWarning.tsx`) och erbjuder en ny inloggning utan att lämna sidan, så att inget går förlorat (WCAG 2.2.1):
 
-- I `eneo_sso` öppnas ett eget fönster med `GET /api/auth/login?renew=1&next=/inloggad`. Förnyelsen binds till användaren som är inloggad nu: loggar någon annan in avslutas inte sessionen, utan sidan skickas till `/inloggad?fel=annan-anvandare`.
+- Ett eget fönster öppnas med `GET /api/auth/login?renew=1&next=/inloggad`. Förnyelsen binds till användaren som är inloggad nu: loggar någon annan in avslutas inte sessionen, utan sidan skickas till `/inloggad?fel=annan-anvandare`.
 - Har inloggningen redan gått ut finns ingen att binda till. `renew=1` utan live-session avvisas till `/inloggad?fel=utgangen`; en vanlig ny inloggning låser upp sidan bara för sidans egen användare.
-- Med åtkomstkod skriver användaren koden i dialogen.
 - Sidans övriga flikar får veta att inloggningen förnyats över `BroadcastChannel` med namnet `tal-till-text:session`.
 - `next` accepteras bara som en sökväg på modulens egen origin (börjar med `/`, inte `//`, inget bakstreck); annars `/flows`.
 
@@ -107,9 +101,8 @@ Webbläsaren har en cookie för alla flikar. Loggar någon in i en flik ersätts
 | Uppladdningarna och `/api/eneo/{path}` | Headrarna `X-Expected-User` och `X-Expected-Tenant` | `409` med `{"detail": "user_changed"}`, innan bodyn läses. Ingenting når Eneo. |
 | Live-socketen | Frågeparametrarna `?expected_user=` och `expected_tenant` (en webbläsare kan inte sätta en header på en WebSocket) | Stängs med `1008` och skälet `user_changed`, innan någon biljett begärs hos Eneo. |
 
-- **Krävs för `eneo_sso`:** namnet måste finnas på varje request under `/api/eneo/` som ändrar något (inte GET, HEAD eller OPTIONS: uppladdningar, start av körning, PATCH, avbryt) och på live-socketen. Ett namn som saknas ger samma `user_changed` som ett fel namn.
+- **Krävs:** namnet måste finnas på varje request under `/api/eneo/` som ändrar något (inte GET, HEAD eller OPTIONS: uppladdningar, start av körning, PATCH, avbryt) och på live-socketen. Ett namn som saknas ger samma `user_changed` som ett fel namn.
 - **En GET får sakna namn,** eftersom ett `<audio src>` och en navigering inte kan skicka en header, men ett namn den ger måste vara sessionens. GET av ljud och genererade filer kontrollerar inte sidans användare alls: en PDF-ram kan inte heller sätta headers, och Eneo auktoriserar själv körningen.
-- **En åtkomstkodssession** har ingen användare att jämföra med och godtas alltid.
 - Namnet är ett id, ingen hemlighet, och skickas aldrig vidare till Eneo.
 - **Användaren räcker, tenant behövs inte:** i Eneo hör en användare till exakt en tenant, och det går inte att ändra. `users.tenant_id` är obligatorisk, det finns ingen medlemskapstabell och ingen väg som flyttar en användare. Användar-id:n skapas av servern som UUID:er. Modulens token bär användarens enda tenant och kontrolleras mot den vid varje anrop (Eneos `modules/module_auth.py`, verifierat 2026-10-02). Samma användar-id betyder därför samma tenant. Ändrar Eneo den regeln måste sidan börja skicka `X-Expected-Tenant` också.
 
@@ -119,25 +112,6 @@ Frontend namnger användaren på varje anrop under `/api/eneo/` (uppladdningen i
 - **1008 `session_ended`** (sessionen tog slut under en öppen live-socket) täcker också sidan. Live-texten öppnar ingenting förrän sidans egen användare är tillbaka, och fortsätter då som efter ett avbrott.
 
 Tester: `ExpectedUserTests` och `LiveExpectedUserTests` i `backend/tests/test_boundary.py`.
-
-## Åtkomstkod (`AUTH_MODE=access_code`, tillfällig)
-
-Läget finns endast för fristående test innan hela SSO-handoffen är deployad. Det är ingen permanent reserv.
-
-- `APP_ACCESS_CODE` sätts som Dokploy-secret med 16–256 tecken. Generera den med `python -c "import secrets; print(secrets.token_urlsafe(24))"` och rotera vid behov.
-- Koden jämförs i konstant tid i backend, skickas aldrig i URL:en (`POST /api/auth/login`, same-origin) och persisteras inte. Vid lyckad login skapas samma sorts slumpmässiga, opaka HttpOnly-session som i SSO-läget. Fel kod ger ett generiskt 401.
-- Korta koder som `komin` nekas redan vid start.
-
-Begränsningar:
-
-- åtkomstkoden är en delad grind, inte en användaridentitet; den ger ingen per-person- eller tenant-audit;
-- `ENEO_API_KEY` är fortfarande obligatorisk och används för anrop till Eneo;
-- upstream-anrop skickar endast servicenyckeln, aldrig en påhittad Bearer-token;
-- när Eneo kräver både servicenyckel och modultoken nekas därför Flow-anrop;
-- sessionen löper ut efter `SESSION_MAX_AGE_MINUTES` och försvinner vid omstart;
-- skydda publika testmiljöer med ingress-rate-limit; testgrinden ersätter inte riktig användarautentisering.
-
-Avvecklingspunkt: när [eneo#536](https://github.com/eneo-ai/eneo/pull/536) är deployad och ett live-smoke-test har verifierat `/module-login`, callback och ticketväxling, `/api/v1/module-auth/speech-to-text/session/` samt ett Flow-anrop med dubbla credentials, byt till `AUTH_MODE=eneo_sso`, radera `APP_ACCESS_CODE` i Dokploy och ta bort access-code-koden, gränssnittet, dokumentationen och testerna i nästa cleanup-PR.
 
 ## Vad som aldrig når webbläsaren
 
@@ -149,7 +123,6 @@ Avvecklingspunkt: när [eneo#536](https://github.com/eneo-ai/eneo/pull/536) är 
 | Signerade fil-URL:er | Backendens cache, per session | BFF:en hämtar och strömmar filen; CSP:n tillåter bara same-origin media och ramar. |
 | Live-transkriptionens ticket | Backend | Öppnar Eneos WebSocket server-side; webbläsaren ser aldrig ticketen. |
 | Eneos cookies och `Location` | Eneos svar | Klienten mot Eneo lagrar och skickar inga cookies, `Set-Cookie` och `Location` skickas inte vidare, och en omdirigering från Eneo är ett 502. |
-| Åtkomstkoden | Backendens miljö | Skickas av användaren en gång i en POST-body, jämförs i konstant tid, sparas inte. |
 
 Testerna som håller detta: `backend/tests/test_module_auth.py`, `backend/tests/test_eneo_proxy_auth.py`, `backend/tests/test_audio_proxy.py` och `CookieJarTests` och `RedirectFromEneoTests` i `backend/tests/test_boundary.py`.
 

@@ -9,39 +9,31 @@ import { LoadingShell } from "@/components/LoadingShell";
 import { Brand, BrandingProvider } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
-import type { Branding } from "@/lib/api";
 import { readBranding } from "@/lib/read-branding";
 import { RouteEffects } from "@/routes/RouteEffects";
 
-/** What every screen stands in: the colour mode and the design system's providers. */
+/**
+ * What every screen stands in: the colour mode, the design system's providers and who the deployment is for. The
+ * organisation is read from the page before the first render, so the frame that shows while the first page's code
+ * arrives already has its mark.
+ */
 function Providers({ children }: { children: ReactNode }) {
-  return <ModuleProviders>{children}</ModuleProviders>;
+  const [branding] = useState(readBranding);
+  return (
+    <ModuleProviders>
+      <BrandingProvider value={branding}>{children}</BrandingProvider>
+    </ModuleProviders>
+  );
 }
 
-/** Who the deployment is for, asked of the backend once; until it answers, or if it cannot, the product name alone. */
-function useBranding(): Branding {
-  const [branding, setBranding] = useState<Branding>({ organization: null });
-  useEffect(() => {
-    let current = true;
-    void readBranding("").then((answer) => current && setBranding(answer));
-    return () => {
-      current = false;
-    };
-  }, []);
-  return branding;
-}
-
-/** The frame of every page: its providers, the organisation, and the page the route names. */
+/** The frame of every page: its providers and the page the route names. */
 export function Root() {
-  const branding = useBranding();
   return (
     <Providers>
-      <BrandingProvider value={branding}>
-        <RouteEffects />
-        <div data-app-shell>
-          <Outlet />
-        </div>
-      </BrandingProvider>
+      <RouteEffects />
+      <div data-app-shell>
+        <Outlet />
+      </div>
     </Providers>
   );
 }

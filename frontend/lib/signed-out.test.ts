@@ -47,7 +47,7 @@ test("signed out: the dialog asks for a new login, says the page and a recording
   const { createElement } = await import("react");
   const { SessionEndWarning } = await import("../components/SessionEndWarning");
   const { act } = await mount(
-    await inProviders(createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "eneo_sso", signedOut: true, onRenewed: () => {} })),
+    await inProviders(createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, signedOut: true })),
   );
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
   assert.equal(dialog()?.tagName, "DIALOG", "a native dialog: the browser keeps it above whatever the page has open");
@@ -68,7 +68,7 @@ test("someone signing in here keeps only their own drafts: another person's type
   const { browserDrafts, isRecord, readDraft, writeDraft } = await import("./drafts");
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
+    new Response(JSON.stringify({ authenticated: true, user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
       status: 200,
       headers: { "content-type": "application/json" },
     })) as typeof fetch;
@@ -94,7 +94,7 @@ test("signed out, Logga in igen starts a new login; before the end, a renewal bo
     return {} as Window;
   });
   const endsAt = Date.now() + 60_000; // the warning is open: less than five minutes left
-  const warning = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} }));
+  const warning = await mount(createElement(SessionEndWarning, { endsAt }));
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
   // It opens on a timer, which a busy machine fires late.
   await warning.act(async () => {
@@ -102,7 +102,7 @@ test("signed out, Logga in igen starts a new login; before the end, a renewal bo
   });
   await warning.act(async () => button(dialog(), "Fortsätt arbeta")!.click());
   await warning.unmount();
-  const ended = await mount(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", signedOut: true, onRenewed: () => {} }));
+  const ended = await mount(createElement(SessionEndWarning, { endsAt, signedOut: true }));
   await ended.act(async () => button(dialog(), "Logga in igen")!.click());
   // The backend refuses a renewal once there is no login left to bind it to.
   assert.deepEqual(opened, ["/api/auth/login?renew=1&next=%2Finloggad", "/api/auth/login?next=%2Finloggad"]);
@@ -115,11 +115,9 @@ test("someone else signed in: the dialog says who, and whom to sign in as, and s
     await inProviders(
       createElement(SessionEndWarning, {
         endsAt: Date.now() + 3_600_000,
-        mode: "eneo_sso",
         signedOut: true,
         owner: { id: "user-1", email: "anna@example.se", username: "Anna Berg" },
         otherUser: { id: "user-2", email: "erik@example.se", username: "Erik Lund" },
-        onRenewed: () => {},
       }),
     ),
   );
@@ -139,10 +137,8 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
   const warning = await mount(
     createElement(SessionEndWarning, {
       endsAt: Date.now() + 3_600_000,
-      mode: "eneo_sso",
       signedOut: true,
       controlsRef: (element: HTMLElement | null) => (slot = element),
-      onRenewed: () => {},
     }),
   );
   const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
@@ -207,7 +203,7 @@ test("after the new login the focus is back where it was, or on the page's headi
   const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
-    new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }), {
+    new Response(JSON.stringify({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }), {
       status: 200,
       headers: { "content-type": "application/json" },
     })) as typeof fetch;
@@ -228,11 +224,11 @@ test("after the new login the focus is back where it was, or on the page's headi
   const { container, act } = await mount(withRouter(createElement(AuthGate, { children: createElement(Recorder) })).tree);
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const signOutAndBack = async (whileOut = () => {}) => {
-    await act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
+    await act(async () => loginState.observe({ authenticated: false, user: null }));
     // As Chromium does once the page under the focus turns inert.
     await act(async () => (document.activeElement as HTMLElement | null)?.blur());
     await act(async () => whileOut());
-    await act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    await act(async () => loginState.observe({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }));
     // The sign-in dialog hands the focus back once it has closed.
     await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   };
@@ -269,7 +265,7 @@ test("the 5-minute warning open when the login ends: after the new login the foc
   for (const keep of [false, true]) {
     // A second past the warning's five minutes: the warning opens a second after the page.
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 5 * 60 + 1 }), {
+      new Response(JSON.stringify({ authenticated: true, user: anna, session_ends_in: 5 * 60 + 1 }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })) as typeof fetch;
@@ -290,11 +286,11 @@ test("the 5-minute warning open when the login ends: after the new login the foc
     pausa.focus();
     await view.act(async () => wait(1_100));
     assert.ok(document.body.querySelector('[role="alertdialog"][open]'), "the warning is open");
-    await view.act(async () => loginState.observe({ authenticated: false, auth_mode: "eneo_sso", user: null }));
+    await view.act(async () => loginState.observe({ authenticated: false, user: null }));
     if (!keep) await view.act(async () => setShown(false));
     // The new login: the page reads the status again, with its new end.
     globalThis.fetch = (async () =>
-      new Response(JSON.stringify({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }), {
+      new Response(JSON.stringify({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }), {
         status: 200,
         headers: { "content-type": "application/json" },
       })) as typeof fetch;
@@ -321,7 +317,7 @@ test("when the login ends the focus moves into the sign-in dialog, onto its head
       "div",
       null,
       createElement("button", { type: "button" }, "Pausa på sidan"),
-      createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "eneo_sso", signedOut, onRenewed: () => {} }),
+      createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, signedOut }),
     );
   }
   const { container, act } = await mount(createElement(Page));
@@ -342,7 +338,7 @@ test("before the end the warning can be closed, with Stäng or Escape; the page 
     for (let waited = 0; !dialog() && waited < 2_000; waited += 10) await new Promise((resolve) => setTimeout(resolve, 10));
   };
   const endsAt = Date.now() + 60_000;
-  const first = await mount(await inProviders(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} })));
+  const first = await mount(await inProviders(createElement(SessionEndWarning, { endsAt })));
   await first.act(opens);
   assert.ok(dialog()!.hasAttribute("open"));
   assert.match(dialog()!.textContent ?? "", /Du loggas snart ut/);
@@ -350,70 +346,11 @@ test("before the end the warning can be closed, with Stäng or Escape; the page 
   assert.ok(!dialog(), "Stäng closes it");
   await first.unmount();
 
-  const second = await mount(await inProviders(createElement(SessionEndWarning, { endsAt, mode: "eneo_sso", onRenewed: () => {} })));
+  const second = await mount(await inProviders(createElement(SessionEndWarning, { endsAt })));
   await second.act(opens);
   assert.ok(dialog());
   await second.act(async () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   });
   assert.ok(!dialog(), "Escape closes it");
-});
-
-test("with the access code the dialog takes the code, sends it once, and says a wrong or an empty one", async (t) => {
-  const { createElement } = await import("react");
-  const { SessionEndWarning } = await import("../components/SessionEndWarning");
-  const { type } = await import("./test-dom");
-  const sent: string[] = [];
-  let status = 401;
-  const browserFetch = globalThis.fetch;
-  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
-    sent.push((JSON.parse(String(init?.body)) as { access_code: string }).access_code);
-    return new Response(JSON.stringify(status === 200 ? { ok: true } : { detail: "Felaktig åtkomstkod" }), {
-      status,
-      headers: { "content-type": "application/json" },
-    });
-  }) as typeof fetch;
-  t.after(() => {
-    globalThis.fetch = browserFetch;
-  });
-  const wait = () => new Promise((resolve) => setTimeout(resolve, 10));
-  let renewed = 0;
-  const view = await mount(
-    createElement(SessionEndWarning, { endsAt: Date.now() + 3_600_000, mode: "access_code", signedOut: true, onRenewed: () => renewed++ }),
-  );
-  const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"]')!;
-  const field = dialog.querySelector<HTMLInputElement>('input[type="password"]')!;
-  assert.equal(field.autocomplete, "current-password", "a password manager can fill it in");
-  const send = () => button(dialog, "Logga in igen")!;
-  assert.equal(field.getAttribute("aria-errormessage"), null, "nothing to point at before there is a problem");
-
-  await view.act(async () => send().click());
-  assert.equal(sent.length, 0, "an empty code is not sent");
-  assert.match(dialog.textContent ?? "", /Felaktig åtkomstkod\./);
-  assert.equal(field.getAttribute("aria-invalid"), "true");
-  // The field in error names its message: the alert, which says it once when it appears (aria-describedby is the
-  // field's own, the design system overwrites a given one).
-  const message = document.getElementById(field.getAttribute("aria-errormessage") ?? "");
-  assert.ok(message, "the field in error points at an element");
-  assert.equal(message.getAttribute("role"), "alert");
-  assert.match(message.textContent ?? "", /Felaktig åtkomstkod\./);
-
-  await view.act(async () => type(field, "k".repeat(300)));
-  assert.equal(field.value.length, 256, "the backend takes no more than 256 characters");
-  await view.act(async () => {
-    send().click();
-    await wait();
-  });
-  assert.deepEqual(sent.map((code) => code.length), [256]);
-  assert.equal(renewed, 0);
-  assert.match(dialog.textContent ?? "", /Felaktig åtkomstkod\./);
-
-  status = 200;
-  await view.act(async () => type(field, "rätt-kod"));
-  await view.act(async () => {
-    send().click();
-    await wait();
-  });
-  assert.equal(sent.at(-1), "rätt-kod");
-  assert.equal(renewed, 1, "the new login is read once");
 });

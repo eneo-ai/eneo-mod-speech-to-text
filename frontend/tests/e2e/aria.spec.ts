@@ -12,7 +12,6 @@ import { STATES } from "./screens";
 const NOW = new Date("2026-09-24T12:00:00+02:00");
 
 const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean }[] = [
-  { state: "signin-access-code", region: (page) => page.locator("[data-app-shell]") },
   { state: "flow-list", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
   { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },

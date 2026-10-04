@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getConfig } from "./api";
+import { authStatus } from "./api";
 import { createOnlineStatus, onlineStatus, type OnlineTarget } from "./online-status";
 
 /** A browser window whose connection the test switches. */
@@ -48,10 +48,10 @@ test("requests report whether the module can be reached", async (t) => {
   t.mock.method(globalThis, "fetch", async () => {
     throw new TypeError("Failed to fetch");
   });
-  await assert.rejects(getConfig());
+  await assert.rejects(authStatus());
   assert.equal(onlineStatus.online, false);
 
   t.mock.method(globalThis, "fetch", async () => new Response("upstream down", { status: 502 }));
-  await assert.rejects(getConfig());
+  await assert.rejects(authStatus());
   assert.equal(onlineStatus.online, true, "an error response still means the module answered");
 });

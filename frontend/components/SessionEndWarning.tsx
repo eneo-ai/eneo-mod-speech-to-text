@@ -1,14 +1,13 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { HStack, Layout, LayoutContent, VStack } from "@astryxdesign/core/Layout";
 import { Text } from "@astryxdesign/core/Text";
-import { TextInput } from "@astryxdesign/core/TextInput";
 import styles from "@/components/SessionEndWarning.module.css";
-import { ApiError, loginWithAccessCode, type AuthMode, type AuthenticatedUser } from "@/lib/api";
+import type { AuthenticatedUser } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
 /** Where the login window says it has signed in again; every tab of the module listens. */
@@ -16,29 +15,23 @@ export const SESSION_CHANNEL = "tal-till-text:session";
 
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
-// What the backend takes of an access code.
-const ACCESS_CODE_MAX = 256;
 
 /**
  * The login ends at a fixed time, which only a new login can move. Five
  * minutes before, a dialog says so and offers that new login without leaving
- * the page, so nothing on it is lost (WCAG 2.2.1, extend): with Eneo SSO in a
- * window of its own, with the access code by entering it here. Once it has
- * ended (`signedOut`) the same dialog stays open until that new login, over a
+ * the page, so nothing on it is lost (WCAG 2.2.1, extend): Eneo's login, in a
+ * window of its own. Once it has ended (`signedOut`) the same dialog stays open until that new login, over a
  * page that keeps everything, a recording included.
  */
 export function SessionEndWarning({
   endsAt,
-  mode,
   signedOut = false,
   owner = null,
   otherUser = null,
   controlsRef,
   onFocusBack,
-  onRenewed,
 }: {
   endsAt: number | null;
-  mode: AuthMode | null;
   /** The login has ended: nothing on the page is within reach until the new login. */
   signedOut?: boolean;
   /** The page's user, the one to sign in as. */
@@ -47,18 +40,12 @@ export function SessionEndWarning({
   otherUser?: AuthenticatedUser | null;
   /** Signed out, the place where the page puts a recording's Pausa and Stoppa, which need no login. */
   controlsRef?: (element: HTMLElement | null) => void;
-  /** The access code signed in again: read the new end. */
-  onRenewed: () => void;
   /** After the dialog that covered an ended login has closed: the page gives the focus back, `before` the warning. */
   onFocusBack?: (before: HTMLElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [code, setCode] = useState("");
-  const [sending, setSending] = useState(false);
-  const formId = useId();
   const descriptionId = useId();
-  const problemId = useId();
   const dialogRef = useRef<HTMLDialogElement>(null);
   // Where the focus was when the warning opened: the page's, once the dialog has covered an ended login.
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -67,7 +54,6 @@ export function SessionEndWarning({
   useEffect(() => {
     setOpen(false);
     setProblem(null);
-    setCode("");
     if (endsAt === null) return;
     const timer = setTimeout(() => {
       returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -84,30 +70,7 @@ export function SessionEndWarning({
     setProblem(login === null ? "Fönstret kunde inte öppnas. Tillåt popup-fönster för Tal till text och försök igen." : null);
   }
 
-  async function renewWithCode(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    // The field cannot refuse an empty code itself, and the backend would answer it with something other than
-    // "wrong": an empty code is a wrong one.
-    if (code === "") return setProblem("Felaktig åtkomstkod.");
-    setSending(true);
-    setProblem(null);
-    try {
-      // A new access-code login is a new session with a full lifetime.
-      await loginWithAccessCode(code);
-      onRenewed();
-    } catch (error) {
-      setProblem(
-        error instanceof ApiError && error.status === 401
-          ? "Felaktig åtkomstkod."
-          : "Inloggningen kunde inte förnyas. Försök igen.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }
-
   const time = endsAt === null ? "" : new Date(endsAt).toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit" });
-  const byCode = mode === "access_code";
   // This dialog covered an ended login until it has closed, however it was opened: its words stay, and the
   // focus goes back through the page (onFocusBack) once it is closed, not before.
   const coveredEnd = useRef(false);
@@ -190,37 +153,15 @@ export function SessionEndWarning({
                   : ended
                     ? "Inloggningen har upphört. "
                     : `Inloggningen upphör kl. ${time}. `}
-                {byCode
-                  ? `Ange åtkomstkoden och välj ${action} för att fortsätta.`
-                  : `${action} loggar in dig igen i ett nytt fönster.`}{" "}
+                {`${action} loggar in dig igen i ett nytt fönster.`}{" "}
                 {ended
                   ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
                   : "Allt på den här sidan finns kvar."}
               </Text>
               {signedOut && <div ref={controlsRef} />}
-              {byCode && (
-                <form id={formId} onSubmit={(event) => void renewWithCode(event)}>
-                  <TextInput
-                    label="Åtkomstkod"
-                    type="password"
-                    autoComplete="current-password"
-                    isRequired
-                    value={code}
-                    onChange={(value) => setCode(value.slice(0, ACCESS_CODE_MAX))}
-                    // The words are the alert below: the design system's own announcements sit outside a modal dialog.
-                    status={problem ? { type: "error" } : undefined}
-                    // Named by aria-errormessage: TextInput computes aria-describedby itself and would overwrite one given here.
-                    aria-errormessage={problem ? problemId : undefined}
-                  />
-                </form>
-              )}
-              {problem && <Banner id={problemId} status="error" title={problem} collapsible={false} />}
+              {problem && <Banner status="error" title={problem} collapsible={false} />}
               <HStack gap={2} hAlign="end">
-                {byCode ? (
-                  <Button type="submit" form={formId} label={action} variant="primary" size="lg" isLoading={sending} />
-                ) : (
-                  <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
-                )}
+                <Button label={action} variant="primary" size="lg" onClick={renewInWindow} />
               </HStack>
             </VStack>
           </LayoutContent>

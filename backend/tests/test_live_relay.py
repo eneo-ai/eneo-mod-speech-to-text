@@ -1,5 +1,4 @@
 import asyncio
-import configparser
 import contextlib
 import json
 import os
@@ -13,12 +12,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import anyio  # noqa: E402
 import httpx  # noqa: E402
@@ -37,7 +35,7 @@ from test_module_auth import token_payload  # noqa: E402
 FLOW_ID = "0b6f1c9e-3d2a-4c55-9a51-7f0e2b1d4c10"
 STEP_ID = "5e2d8a41-9c07-4b3f-8e6a-1d2c3b4a5f60"
 LIVE_PATH = f"/api/live/{FLOW_ID}/{STEP_ID}"
-MODULE_ORIGIN = "https://module.example.test"
+MODULE_ORIGIN = "http://localhost:3002"
 TICKET = "ticket-1"
 STOP = '{"type":"stop"}'
 READY = {"type": "ready", "sample_rate": 16000, "max_seconds": 18000}
@@ -583,13 +581,10 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 
 def launch_commands() -> dict[str, list[str]]:
     """Every way the repository starts the module backend."""
-    supervisord = configparser.ConfigParser(interpolation=None)
-    supervisord.read(REPOSITORY / "deploy" / "supervisord.conf")
-    dockerfile = (REPOSITORY / "backend" / "Dockerfile").read_text()
+    dockerfile = (REPOSITORY / "Dockerfile").read_text()
     readme = (REPOSITORY / "README.md").read_text()
     return {
-        "production image": shlex.split(supervisord["program:backend"]["command"]),
-        "backend image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
+        "production image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
         "README dev server": shlex.split(
             re.search(r"^(\.venv/bin/python -m app\.serve .+)$", readme, re.M)[1]
         ),
@@ -633,6 +628,8 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                 self.assertEqual(command[command.index("-m") + 1], "app.serve")
                 self.assertNotIn("uvicorn", " ".join(command))
                 launcher.parse_args(command[command.index("app.serve") + 1 :])  # the arguments are the launcher's own
+        # The image serves the built UI: only the development server runs the API alone.
+        self.assertNotIn("--api-only", launch_commands()["production image"])
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
         self.assertEqual(

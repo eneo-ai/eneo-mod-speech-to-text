@@ -85,7 +85,6 @@ class Stack(unittest.TestCase):
             "MODULE_PUBLIC_URL": cls.origin,
             "SESSION_SECRET": "s" * 48,
             "COOKIE_SECURE": "false",
-            "AUTH_MODE": "eneo_sso",
         }
         cls.start([python, "-m", "app.serve", "--api-only", "--host", "127.0.0.1", "--port", str(cls.backend)], backend_environment, cwd=BACKEND)
         cls.wait_for(cls.stub, "/api/auth/status")
@@ -165,7 +164,8 @@ class HandshakeTests(SignedIn):
 
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(body)["user"]["id"], USER)
-        self.assertEqual(json.loads(body)["auth_mode"], "eneo_sso")
+        self.assertNotIn("auth_mode", json.loads(body), "there is one way to sign in")
+        self.assertEqual(json.loads(body)["max_upload_bytes"], 1024**3, "the page is told what the module takes, so it never sends more")
 
     def test_two_sign_ins_are_two_sessions_and_ending_one_leaves_the_other(self) -> None:
         other = self.sign_in()
@@ -175,7 +175,7 @@ class HandshakeTests(SignedIn):
 
         status, _, body, _ = call(self.backend, "GET", "/api/auth/status", headers={"Cookie": other})
         self.assertEqual((status, json.loads(body)["authenticated"]), (200, True))
-        self.assertEqual(self.api("GET", "/api/config")[0], 401, "the session that logged out is gone")
+        self.assertEqual(self.api("GET", "/api/eneo/flows/")[0], 401, "the session that logged out is gone")
 
     def test_the_stub_refuses_what_eneo_refuses(self) -> None:
         token = "/api/v1/module-auth/token/"
@@ -185,7 +185,7 @@ class HandshakeTests(SignedIn):
         self.assertEqual(call(self.stub, "GET", "/module-login?module_key=other&redirect_uri=http://x/&state=s")[0], 400)
         self.assertEqual(call(self.stub, "GET", "/api/v1/flows/")[0], 401, "no service key")
         self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers={**key, "Authorization": "Bearer not-a-token"})[0], 401)
-        self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers=key)[0], 200, "the service key alone: the access-code mode")
+        self.assertEqual(call(self.stub, "GET", "/api/v1/flows/", headers=key)[0], 200, "the service key alone is enough for Eneo, as it is for the real one")
 
     def test_a_ticket_is_good_once(self) -> None:
         status, headers, _, _ = call(self.stub, "GET", f"/module-login?module_key={MODULE_KEY}&redirect_uri=http://x/cb&state=s1")
@@ -460,7 +460,6 @@ class DevProfileTests(Stack):
     def test_the_bff_role_answers_without_a_session_or_a_key(self) -> None:
         for path, check in (
             ("/api/auth/status", lambda body: body["authenticated"] is True and body["user"]["id"] == USER),
-            ("/api/config", lambda body: "flow_list" in body),
             ("/api/branding", lambda body: body["organization"]["name"] == "Sundsvalls kommun"),
             ("/api/eneo/flows/", lambda body: FLOW in {item["id"] for item in body["items"]}),
             (f"/api/eneo/flows/{FLOW}/published/", lambda body: body["id"] == FLOW),

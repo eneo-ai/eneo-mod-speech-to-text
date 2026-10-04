@@ -1,0 +1,8 @@
+{
+  "15": {
+    "code": "stress-over-twice-idle",
+    "decision": "owner, 2026-10-04 (godta)",
+    "reason": "the relay is unaffected up to 45 real visits a second; only the saturating stress, 200 clients with no pause, takes its p95 over twice the idle p95",
+    "measured": "Image 35ec5c44 (feat/one-process 480e135, with the startup index of dist/), one laptop with OrbStack, the load generator on the same host. Idle relay p95 2.74 to 3.82 ms. Stress, 200 clients fetching the page and 15 files with no pause (4,042 to 4,426 requests/s, 150 of 150 replies each time): loaded p95 11.86 to 18.29 ms, 3.6 to 6.7 times idle in 5 runs (median 4.2). One cold visit of /flows/<id> in Chromium is 32 requests. Arrival rate, relay p95 in 2 runs: 10 visits/s (320 requests/s) 1.82 to 2.20 ms, 0.5 to 0.6 times idle; 45 visits/s (1,440 requests/s, 132 Mbit/s) 1.14 to 1.24 ms, 0.3 times idle; 100 visits/s (3,080 to 3,200 requests/s, at saturation: 0 and 138 visits not started) 22.07 and 62.87 ms, 6.5 and 16.5 times idle. The check keeps failing. It is waived only while the rows up to 45 visits/s stay within twice idle; if one does not, check 15 fails with no waiver."
+  }
+}

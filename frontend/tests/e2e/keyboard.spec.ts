@@ -12,7 +12,6 @@ import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from ".
 import ids from "../fixtures/ids.json";
 
 const WALKS = [
-  "signin-access-code",
   "flow-list",
   "unsent-recordings",
   "setup-participants",
@@ -251,7 +250,7 @@ test("the account menu holds focus and gives it back", async ({ page }) => {
 test("the warning before the login ends takes focus, holds it, and gives it back on Escape", async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
+      json: { authenticated: true, user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
     }),
   );
   await open(page, "/flows");
@@ -347,24 +346,6 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
-});
-
-test("a wrong access code is said, and focus stays in the field to type it again", async ({ page }) => {
-  await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } }));
-  await signIn(page, "access_code");
-  const field = page.getByLabel("Åtkomstkod");
-  await field.fill("fel-kod");
-  await field.press("Enter");
-  await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
-  // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
-  await expect(field).toBeFocused();
-  // The field in error names its message, which is the one alert that said it.
-  await expect(field).toHaveAttribute("aria-invalid", "true");
-  const message = await field.getAttribute("aria-errormessage");
-  expect(message, "the field names its error message").toBeTruthy();
-  const alert = page.locator(`[id="${message}"]`);
-  await expect(alert).toHaveAttribute("role", "alert");
-  await expect(alert).toHaveText("Felaktig åtkomstkod.");
 });
 
 test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {

@@ -58,7 +58,7 @@ Första gången: `npx playwright install chromium` för grinden och `npx playwri
 
 `npm run test:a11y` startar stubbackenden (`frontend/tests/e2e/stub-server.py`, bara för test) och `next dev` (`frontend/playwright.config.ts`), och besöker varje skärm och läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Varje läge är ett namn och stegen som leder dit.
 
-Stubbens alla id:n (flöden, steg, körningar, filer, granskningspunkter) är UUID:n ur `frontend/tests/fixtures/ids.json`, som stubben och specarna läser: modulens live-väg tar bara UUID:n, så ett id som `flow-1` kunde aldrig gå genom den riktiga backenden. Två lägen har data för sig: `setup-date` (ett flöde med datumfält som flödeslistan inte visar; kalendern är en egen chunk) och `result-table` (en körning vars rapport har en tabell).
+Stubbens alla id:n (flöden, steg, körningar, filer, granskningspunkter) är UUID:n ur `frontend/tests/fixtures/ids.json`, som stubben och specarna läser, eftersom modulens live-väg bara tar UUID:n. Två lägen har data för sig: `setup-date` (ett flöde med datumfält som flödeslistan inte visar; kalendern är en egen chunk) och `result-table` (en körning vars rapport har en tabell).
 
 ### Vad som mäts
 

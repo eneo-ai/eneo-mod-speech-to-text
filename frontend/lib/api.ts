@@ -5,6 +5,7 @@ import { correctionWriteProblem } from "./transcript-corrections";
 // HttpOnly session.
 
 import { loginState } from "./login-state";
+import { limitedToModule } from "./upload-limit";
 import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -137,32 +138,6 @@ async function request<T>(
   return (await res.text()) as unknown as T;
 }
 
-// ---------- Config ----------
-
-export interface AppConfig {
-  /**
-   * Hur flödeslistan frågar Eneo, avgjort av modulens inloggningsläge: med
-   * Eneo SSO alla användarens spaces (space_id null), med åtkomstkod det
-   * konfigurerade spacet; null när åtkomstkodsläget saknar ett space.
-   */
-  flow_list: { space_id: string | null } | null;
-}
-
-export async function getConfig() {
-  return request<AppConfig>("/api/config");
-}
-
-/**
- * The organisation beside "Tal till text", a deployment setting of the
- * module's backend (GET /api/branding): the bundled default logo
- * ("default"), the deployment's own ("custom", with a dark variant when
- * `dark_logo`), or the name as text (null). No organisation shows the
- * product name alone.
- */
-export interface Branding {
-  organization: { name: string; logo: "default" | "custom" | null; dark_logo: boolean } | null;
-}
-
 // ---------- Auth ----------
 
 export interface AuthenticatedUser {
@@ -171,23 +146,15 @@ export interface AuthenticatedUser {
   username?: string;
 }
 
-export type AuthMode = "eneo_sso" | "access_code";
-
 export interface AuthStatus {
   authenticated: boolean;
-  auth_mode: AuthMode;
   user: AuthenticatedUser | null;
   /** Sekunder tills backend vill förnya Eneo-token; saknas när inget ska förnyas. */
   refresh_in?: number;
   /** Sekunder tills inloggningen tar slut (Eneos tak eller modulens eget); en ny inloggning flyttar det. */
   session_ends_in?: number;
-}
-
-export async function loginWithAccessCode(accessCode: string) {
-  return request<{ ok: true }>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ access_code: accessCode }),
-  });
+  /** Det mesta modulen tar emot i en uppladdning; en större fil nekas medan den skickas. Bara för en inloggad sida. */
+  max_upload_bytes?: number;
 }
 
 export async function logout() {
@@ -856,13 +823,12 @@ async function sha256Hex(value: string): Promise<string> {
 // ---------- API-anrop ----------
 
 /**
- * One page of the published flows the user can run. Without `spaceId` Eneo
- * lists every space the user belongs to, narrowed by the module key's scope;
- * items come oldest first and `has_more` says whether another page follows.
+ * One page of the published flows the user can run, across every space they
+ * belong to; items come oldest first and `has_more` says whether another page
+ * follows.
  */
-export async function listPublishedFlows({ limit, offset, spaceId }: { limit: number; offset: number; spaceId?: string }) {
+export async function listPublishedFlows({ limit, offset }: { limit: number; offset: number }) {
   const query = new URLSearchParams({ published_only: "true", limit: String(limit), offset: String(offset) });
-  if (spaceId) query.set("space_id", spaceId);
   return request<OffsetPaginatedResponse<FlowSparsePublic>>(`/api/eneo/flows/?${query}`);
 }
 
@@ -871,7 +837,7 @@ export async function getPublishedFlow(flowId: string) {
 }
 
 export async function getRunContract(flowId: string) {
-  return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
+  return limitedToModule(await request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`), loginState.maxUploadBytes);
 }
 
 // ---------- Flow graph ----------

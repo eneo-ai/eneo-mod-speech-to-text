@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowLeft } from "lucide-react";
-import type { MouseEvent } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { RouterLink } from "@/kit/RouterLink";
@@ -15,13 +14,10 @@ const SIZE = { default: "md", sm: "sm" } as const;
  * may give it more weight.
  */
 export function BackToFlows({
-  onLeave,
   variant = "secondary",
   size = "sm",
   className,
 }: {
-  /** Asked before leaving; call preventDefault to stay. */
-  onLeave?: (event: MouseEvent) => void;
   variant?: keyof typeof VARIANT;
   size?: keyof typeof SIZE;
   className?: string;
@@ -35,7 +31,6 @@ export function BackToFlows({
       variant={VARIANT[variant]}
       size={SIZE[size]}
       className={className}
-      onClick={onLeave}
     >
       {/* A fragment, not the label's string: that makes the button name itself with aria-label. Its words are
           otherwise in a part a modal's aria-hiding (the old dialogs') leaves empty, because the button holds a live

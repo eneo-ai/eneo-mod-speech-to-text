@@ -4,7 +4,7 @@
 
 It plays two roles in one process, told apart by path prefix, over one set of data (every flow, run and file exists once):
 
-  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/config, /api/branding*,
+  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/branding*,
       /api/eneo/*, /api/live/*, every screen of the app without Eneo and without a backend;
   Eneo for the real backend (python -m app.serve) and for the production-shaped tests: /api/v1/*, the module-login
       handshake, signed files with Range, the live ticket and an eneo-live.v1 socket, and a sink for uploads.
@@ -57,6 +57,7 @@ import itertools
 import json
 import math
 import os
+import re
 import secrets
 import struct
 import sys
@@ -91,13 +92,26 @@ from app.accent import resolve_accent, theme_css  # noqa: E402
 
 BRANDING = os.environ.get("STUB_BRANDING")
 CUSTOM_LOGO = BRANDING == "custom"
+LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
+
+
+def logo_size(svg: bytes) -> dict:
+    """What the backend reads from a logo at start (backend/app/config.py), for the fixtures' own viewBox."""
+    width, height = re.search(rb'viewBox="0 0 (\d+) (\d+)"', svg).groups()
+    return {"width": int(width), "height": int(height)}
+
+
 ORGANIZATION = (
-    {"name": "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län", "logo": "custom" if CUSTOM_LOGO else None, "dark_logo": CUSTOM_LOGO}
+    {
+        "name": "Förvaltningen för kultur, fritid och samhällsbyggnad i Västernorrlands län",
+        "logo": "custom" if CUSTOM_LOGO else None,
+        "dark_logo": CUSTOM_LOGO,
+        "logo_sizes": {"light": logo_size(LOGOS["light"]), "dark": logo_size(LOGOS["dark"])} if CUSTOM_LOGO else None,
+    }
     if BRANDING
-    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False}
+    else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}
 )
 ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
-LOGOS = {name: (Path(__file__).resolve().parents[1] / "fixtures" / f"brand-wide-{name}.svg").read_bytes() for name in ("light", "dark")}
 # Every identifier the stub hands out is one of tests/fixtures/ids.json, which the gate's specs read too: the backend's live
 # route takes UUIDs for the flow and the step, and Eneo's own ids are UUIDs.
 IDS = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "ids.json").read_text())
@@ -756,17 +770,13 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/live/") and self.headers.get("Upgrade", "").lower() == "websocket":
             return self.live(recording=parse_qs(url.query).get("recording_id", [""])[0])
         if path == "/api/auth/status/":
-            return self.send(200, {"authenticated": True, "auth_mode": "eneo_sso",
-                                   "user": USER,
-                                   "session_ends_in": 8 * 60 * 60})
+            return self.send(200, {"authenticated": True, "user": USER, "session_ends_in": 8 * 60 * 60, "max_upload_bytes": 1024**3})
         if path == "/api/branding/":
             return self.send(200, {"organization": ORGANIZATION})
         if path == "/api/branding/theme.css/":
             return self.send(200, theme_css(ACCENT).encode(), "text/css; charset=utf-8")
         if path in ("/api/branding/logo/light/", "/api/branding/logo/dark/") and CUSTOM_LOGO:
             return self.send(200, LOGOS[path.split("/")[-2]], "image/svg+xml")
-        if path == "/api/config/":
-            return self.send(200, {"flow_list": {"space_id": None}})
         if path == "/api/eneo/flows/":
             listed = [f for f in FLOWS.values() if f["listed"]]
             return self.send(200, {"has_more": False, "count": len(listed), "items": [

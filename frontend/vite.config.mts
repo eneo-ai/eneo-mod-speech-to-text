@@ -1,11 +1,13 @@
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
+import { brandingMarker } from "./lib/branding-marker";
 
 const API = process.env.DEV_API_BASE ?? "http://127.0.0.1:8000";
 
 export default defineConfig(({ mode }) => ({
-  plugins: [react()],
+  // The dev server fills the organisation's marker as the backend does in production (lib/branding-marker.ts).
+  plugins: [react(), brandingMarker(API)],
   // `@/x` is `<frontend>/x`, as tsconfig "paths" says; the regex consumes the slash, so no `//` is left in the path.
   resolve: { alias: [{ find: /^@\//, replacement: fileURLToPath(new URL("./", import.meta.url)) }] },
   // Build-time flags. Undefined in the unit tests, which is false there as process.env was.

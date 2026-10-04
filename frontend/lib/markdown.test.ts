@@ -11,7 +11,7 @@ const settle = (view: { act: (callback: () => Promise<void>) => Promise<void> })
 
 // The process keeps the formatting code once it has loaded, as the page does: this test is first in its file, and the
 // only one to see a load fail.
-test("when the formatting code cannot be loaded the text stays, with a way to try again that reloads only that code", async (t) => {
+test("when the formatting code cannot be loaded the text stays, with one action: the person's own reload", async (t) => {
   const { Markdown } = await import("../components/flow/Markdown");
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown) => void unhandled.push(reason);
@@ -32,15 +32,7 @@ test("when the formatting code cannot be loaded the text stays, with a way to tr
   const article = view.container.querySelector("article")!;
   assert.equal(unhandled.length, 0, "the failure is caught, not left to the page");
   assert.ok(article.textContent?.includes(text), "the text is still there, as written");
-  assert.match(article.textContent ?? "", /utan formatering/, "and it says why it is plain");
-  const retry = button(article, "Visa formaterat igen");
-  assert.ok(retry, "a way to try again");
-
-  // The chunk can be fetched now: one press loads it, the page is not reloaded.
-  delete require.cache[path];
-  await view.act(async () => retry.click());
-  await settle(view);
-  assert.deepEqual([...article.querySelectorAll("h2")].map((h) => h.textContent), ["Protokoll"], "formatted");
-  assert.equal(button(article, "Visa formaterat igen"), null, "and nothing left to retry");
-  assert.equal(unhandled.length, 0);
+  assert.match(article.textContent ?? "", /utan formatering, den kunde inte läsas in\./, "and it says why it is plain");
+  assert.deepEqual([...article.querySelectorAll("button")].map((b) => b.textContent?.trim()), ["Ladda om sidan"], "one action, which nothing presses by itself");
+  assert.doesNotMatch(article.textContent ?? "", /Det du har skrivit/, "nothing is promised: there is nothing typed in a result's text");
 });

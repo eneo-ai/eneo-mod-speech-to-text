@@ -8,21 +8,15 @@ from fastapi import Request
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 from app import main  # noqa: E402
-from app.module_auth import (  # noqa: E402
-    AccessCodeSession,
-    EneoSsoSession,
-    ModuleSession,
-    ModuleUser,
-)
+from app.module_auth import EneoSsoSession, ModuleUser  # noqa: E402
 
 
 class UploadTimeoutTests(unittest.TestCase):
@@ -97,7 +91,7 @@ class RaisingHttpClient:
         raise self.exc
 
 
-def authenticated_request(session: ModuleSession | None = None) -> Request:
+def authenticated_request(session: EneoSsoSession | None = None) -> Request:
     request = Request({"type": "http", "method": "POST", "path": "/"})
     request.state.module_session = session or EneoSsoSession(
         access_token="module-user-token",
@@ -139,25 +133,6 @@ class UploadProxyTests(unittest.IsolatedAsyncioTestCase):
             "Bearer module-user-token",
         )
         self.assertEqual(client.timeout.read, 120.0)
-
-    async def test_access_code_upload_uses_only_module_service_key(self) -> None:
-        upload = FakeUploadFile()
-        client = FakeHttpClient()
-        original_client = main.http_client
-        main.http_client = client
-        try:
-            response = await main._proxy_multipart_upload(
-                "https://eneo.example.test/api/v1/flows/flow/files/",
-                upload,
-                authenticated_request(
-                    AccessCodeSession(expires_at=int(time.time()) + 60)
-                ),
-            )
-        finally:
-            main.http_client = original_client
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(client.headers, {"X-API-Key": "test-key"})
 
     async def test_proxy_upload_maps_upstream_timeout_to_504(self) -> None:
         original_client = main.http_client

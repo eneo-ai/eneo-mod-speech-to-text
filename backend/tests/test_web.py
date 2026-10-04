@@ -18,12 +18,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
@@ -135,8 +134,8 @@ class SecurityHeadersTests(HeadersCase):
         self.addCleanup(setattr, main.settings, "max_body_bytes", main.settings.max_body_bytes)
         main.settings.max_body_bytes = 10
         requests = {
-            "an API JSON answer": (self.client, "GET", "/api/config", 200),
-            "a 401": (self.anonymous, "GET", "/api/config", 401),
+            "an API JSON answer": (self.client, "GET", "/api/auth/status", 200),
+            "a 401": (self.anonymous, "GET", "/api/eneo/flows/", 401),
             "a refused proxy path": (self.client, "GET", "/api/eneo/x", 403),
             "an unknown path": (self.client, "GET", "/api/nope", 404),
             "a 303 redirect": (self.anonymous, "GET", "/api/auth/login", 303),
@@ -236,7 +235,7 @@ class EndpointHeadersWinTests(HeadersCase):
         self.assertEqual(pdf.headers.get_list("x-frame-options"), ["SAMEORIGIN"])
         self.assertEqual(pdf.headers.get_list("content-security-policy"), ["frame-ancestors 'self'"])
         self.assert_default_headers(pdf, except_for=("X-Frame-Options", "Content-Security-Policy"))
-        for other in (self.client.get("/api/config"), self.client.get(self.ARTIFACT), self.client.get("/api/nope")):
+        for other in (self.client.get("/api/auth/status"), self.client.get(self.ARTIFACT), self.client.get("/api/nope")):
             self.assertEqual(other.headers.get_list("x-frame-options"), ["DENY"])
             self.assertNotIn("frame-ancestors 'self'", other.headers["content-security-policy"])
 
@@ -303,7 +302,7 @@ class ProxiedAnswerTests(HeadersCase):
 
     def test_a_proxied_answer_is_not_stored_and_a_route_that_says_how_long_keeps_its_say(self) -> None:
         self.assertEqual(self.proxied({}).headers["cache-control"], "no-store")
-        self.assertEqual(self.client.get("/api/config").headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/api/healthz").headers["cache-control"], "no-store")
         self.assertEqual(self.client.get("/api/nope").headers["cache-control"], "no-store")
         theme = self.anonymous.get("/api/branding/theme.css")
         self.assertEqual(theme.headers["cache-control"], "public, max-age=300")
@@ -414,6 +413,11 @@ class BuiltUiCase(unittest.TestCase):
         # What the page is: the file with its marker holding what GET /api/branding answers.
         self.page = branded(INDEX, self.client.get("/api/branding").text)
 
+    def restarted(self) -> TestClient:
+        """The app started again on the folder as it is now: the files are indexed once, at start, so a test that adds
+        a file and expects it to be refused (or served) starts the app after adding it."""
+        return TestClient(load_app(self.root).app, raise_server_exceptions=False, follow_redirects=False)
+
     def raw_get(self, path: str) -> httpx.Response:
         """A GET with ``path`` as the server receives it. The test client's URL parser reads ``//api/x`` as a host and
         resolves ``/./``, so a path that is not canonical goes to the app directly."""
@@ -468,7 +472,7 @@ class StaticServingTests(BuiltUiCase):
         self.assertEqual(index.headers["cache-control"], "no-cache")
 
     def test_the_api_and_every_unknown_api_path_is_404_json_never_the_page(self) -> None:
-        for path in ("/api", "/api/", "/api/nope", "/api/auth/nope/deeper", "/api/eneo", "/api/config/", "/api/live"):
+        for path in ("/api", "/api/", "/api/nope", "/api/auth/nope/deeper", "/api/eneo", "/api/config", "/api/live"):
             with self.subTest(path=path):
                 response = self.client.get(path)
 
@@ -512,6 +516,63 @@ class StaticServingTests(BuiltUiCase):
         mark = self.client.get("/brand/mark.svg")
         self.assertEqual((mark.status_code, mark.headers["content-type"].split(";")[0]), (200, "image/svg+xml"))
         self.assertEqual(self.client.get("/favicon.svg").status_code, 200)
+
+    def test_a_file_added_after_the_start_is_a_404(self) -> None:
+        # dist/ is immutable per image: the files are indexed once, when the app starts, and nothing else is served.
+        (self.root / "late.js").write_text("late")
+        (self.root / "assets" / "late.js").write_text("late")
+        (self.root / "brand" / "late.svg").write_text('<svg xmlns="http://www.w3.org/2000/svg"></svg>')
+        for path in ("/late.js", "/assets/late.js", "/brand/late.svg"):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
+        # A compressed sibling that arrives later is not offered either: the file is what it was.
+        (self.root / "assets" / "app.css.gz").write_bytes(gzip.compress(b"body{}"))
+        response = self.client.get("/assets/app.css", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(response.text, "body{}")
+        self.assertNotIn("content-encoding", response.headers)
+        self.assertNotIn("vary", response.headers)
+
+    def test_a_request_does_no_stat_and_no_resolve(self) -> None:
+        # The files are known from the start: a request looks its path up and touches the file system for nothing else
+        # than reading what it serves. (It was a resolve, an is_file and the sibling checks per request, on the loop.)
+        requests = (
+            ("/", {}), ("/flows/abc", {}), ("/index.html", {}), ("/assets/app.js", {}), ("/assets/app.css", {}), ("/favicon.svg", {}),
+            ("/live-pcm-worklet.js", {}), ("/brand/mark.svg", {}), ("/assets/app.js", {"Accept-Encoding": "br"}),
+            ("/assets/app.js", {"Accept-Encoding": "gzip"}), ("/assets/missing.js", {}), ("/assets/app.js.br", {}), ("/.env", {}),
+        )
+        for path, headers in requests:  # once before the spies: the first use of a library may stat for itself
+            self.client.get(path, headers=headers)
+        tags = {path: self.client.get(path).headers["etag"] for path in ("/", "/assets/app.js", "/favicon.svg")}
+        calls: list[tuple[str, str]] = []
+        resolve, stat = Path.resolve, os.stat
+
+        def spy_resolve(path, *args, **kwargs):
+            calls.append(("resolve", str(path)))
+            return resolve(path, *args, **kwargs)
+
+        def spy_stat(path, *args, **kwargs):
+            calls.append(("stat", str(path)))
+            return stat(path, *args, **kwargs)
+
+        with patch.object(Path, "resolve", spy_resolve), patch("os.stat", spy_stat):
+            for path, headers in requests:
+                self.client.get(path, headers=headers)
+            for path, tag in tags.items():
+                self.assertEqual(self.client.get(path, headers={"If-None-Match": tag}).status_code, 304)
+                self.assertEqual(self.client.head(path).status_code, 200)
+
+        self.assertEqual(calls, [])
+
+    def test_a_folder_with_no_page_serves_its_files_and_no_page(self) -> None:
+        # The launcher is what refuses to start without index.html (test_serve.py); the app itself answers what it has.
+        (self.root / "index.html").unlink()
+        client = self.restarted()
+
+        self.assertEqual(client.get("/assets/app.js").text, "console.log(1)")
+        for path in ("/", "/flows/abc", "/index.html"):
+            self.assertEqual(client.get(path).status_code, 404, path)
 
     def test_precompressed_files_are_served_only_by_negotiation_never_by_name(self) -> None:
         for path in ("/assets/app.js.br", "/assets/app.js.gz", "/index.html.br", "/favicon.svg.gz"):
@@ -569,9 +630,10 @@ class StaticServingTests(BuiltUiCase):
     def test_a_dotfile_is_never_served(self) -> None:
         (self.root / ".hidden").write_text("hidden-content")
         (self.root / "assets" / ".DS_Store").write_text("hidden-content")
+        client = self.restarted()  # the dotfiles are there when the app starts, and still never served
         for path in ("/.hidden", "/assets/.DS_Store", "/.env", "/.git/config", "/assets/.hidden.js", "/a/.b"):
             with self.subTest(path=path):
-                response = self.client.get(path)
+                response = client.get(path)
 
                 self.assertEqual((response.status_code, response.json()), (404, {"detail": "Not Found"}))
                 self.assertNotIn("hidden-content", response.text)
@@ -595,7 +657,7 @@ class StaticServingTests(BuiltUiCase):
     def test_a_path_that_resolves_outside_through_a_link_is_404(self) -> None:
         (self.root / "link.txt").symlink_to(self.root.parent / "secret.txt")
 
-        response = self.client.get("/link.txt")
+        response = self.restarted().get("/link.txt")  # the link is there when the app starts, and still never followed
 
         self.assertEqual(response.status_code, 404)
         self.assertNotIn("secret", response.text)
@@ -617,7 +679,7 @@ class StaticServingTests(BuiltUiCase):
         theme = self.client.get("/api/branding/theme.css")
         self.assertEqual((theme.status_code, theme.headers["content-type"].split(";")[0]), (200, "text/css"))
         # The route's own answers, not the fallback's: a session check, and "no logo is configured".
-        self.assertEqual(self.client.get("/api/config").status_code, 401)
+        self.assertEqual(self.client.get("/api/eneo/flows/").status_code, 401)
         self.assertEqual(self.client.get("/api/branding/logo/light").json(), {"detail": "No logo is configured"})
 
     def test_every_answer_of_the_ui_carries_the_security_headers(self) -> None:
@@ -917,7 +979,26 @@ class BrandingMarkerTests(BuiltUiCase):
         response, answer = self.page_with(ORGANIZATION_NAME="Umeå kommun")
 
         self.assertEqual(self.attribute(response), answer)
-        self.assertEqual(json.loads(self.attribute(response)), {"organization": {"name": "Umeå kommun", "logo": None, "dark_logo": False}})
+        self.assertEqual(json.loads(self.attribute(response)), {"organization": {"name": "Umeå kommun", "logo": None, "dark_logo": False, "logo_sizes": None}})
+
+    def test_the_logos_sizes_are_in_the_page_so_the_header_does_not_move_when_they_arrive(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            light, dark = Path(folder, "logo.svg"), Path(folder, "logo-dark.svg")
+            light.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 48"></svg>')
+            dark.write_bytes(b'<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"></svg>')
+
+            response, answer = self.page_with(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=str(light), ORGANIZATION_LOGO_DARK=str(dark))
+
+        self.assertEqual(self.attribute(response), answer)
+        self.assertEqual(
+            json.loads(answer)["organization"],
+            {
+                "name": "Umeå kommun",
+                "logo": "custom",
+                "dark_logo": True,
+                "logo_sizes": {"light": {"width": 600, "height": 48}, "dark": {"width": 160, "height": 40}},
+            },
+        )
 
     def test_no_organisation_is_in_the_page_as_null(self) -> None:
         response, answer = self.page_with(SHOW_ORGANIZATION="false")

@@ -239,11 +239,6 @@ test("the folded panels keep their content out of sight until their trigger is p
   await expect(page.getByText(/^Step 2 failed/)).toBeVisible();
 });
 
-test("the access code can be filled in by a password manager", async ({ page }, info) => {
-  await STATES.find((s) => s.name === "signin-access-code")!.go(page, info);
-  await expect(page.getByLabel("Åtkomstkod")).toHaveAttribute("autocomplete", "current-password");
-});
-
 for (const [state, title] of [
   ["signin-sso", "Logga in · Tal till text"],
   ["flow-list", "Välj ett flöde · Tal till text"],
@@ -280,7 +275,6 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
     return route.fulfill({
       json: {
         authenticated: true,
-        auth_mode: "eneo_sso",
         user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
         session_ends_in: endsIn,
         ...(refreshIn === undefined ? {} : { refresh_in: refreshIn }),
@@ -314,7 +308,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
 });
 
 test("an old status answer that arrives after the renewal's moves neither the end nor the keepalive", async ({ page }) => {
-  const signedIn = { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
+  const signedIn = { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
   const before = { ...signedIn, session_ends_in: 200 };
   const renewed = { ...signedIn, session_ends_in: 8 * 60 * 60, refresh_in: 1 };
   let answer: object = before;
@@ -397,27 +391,6 @@ test("a renewal after the login ended is refused: the window says so, stays, and
   expect(await page.evaluate(() => (window as unknown as { said: unknown[] }).said)).toEqual([]);
 });
 
-test("with the access code, the warning renews the login by the code, on the page", async ({ page }) => {
-  let endsIn = 200;
-  await page.route("**/api/auth/status", (route) =>
-    route.fulfill({ json: { authenticated: true, auth_mode: "access_code", user: null, session_ends_in: endsIn } }),
-  );
-  const codes: string[] = [];
-  await page.route("**/api/auth/login", (route) => {
-    codes.push((route.request().postDataJSON() as { access_code: string }).access_code);
-    endsIn = 90 * 60;
-    return route.fulfill({ json: { ok: true } });
-  });
-  await open(page, "/flows");
-  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
-  await expect(warning).toBeVisible();
-  await warning.getByLabel("Åtkomstkod").fill("test-access-code-1234");
-  await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
-  await expect(warning).toBeHidden();
-  expect(codes).toEqual(["test-access-code-1234"]);
-  await expect(page).toHaveURL(/\/flows$/);
-});
-
 test("while a chosen file's length is read, the wait is said, not only written on the button", async ({ page }) => {
   // A file whose header the browser takes its time with: its length never arrives, so the check holds.
   await page.addInitScript(() => {
@@ -428,6 +401,22 @@ test("while a chosen file's length is read, the wait is said, not only written o
   await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(64) });
   await expect(page.getByRole("button", { name: "Kontrollerar filen…" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
+});
+
+test("a file above what the module takes is refused before it is sent, in the words of a flow's own limit", async ({ page }) => {
+  // The status says the module takes one MiB (and the envelope's room); the flow takes 200.
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 3600, max_upload_bytes: 1024 * 1024 + 4096 },
+    }),
+  );
+  const uploads: string[] = [];
+  page.on("request", (request) => request.method() === "POST" && uploads.push(request.url()));
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(2 * 1024 * 1024) });
+  await expect(page.getByText(/Filen är större än flödet tar emot \(högst 1\s+MB\)\./)).toBeVisible();
+  expect(uploads, "nothing was sent").toEqual([]);
 });
 
 test("a correction's save is said from its first word: the live region waits in the page before it", async ({ page }, info) => {

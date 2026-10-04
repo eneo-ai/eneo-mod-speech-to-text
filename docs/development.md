@@ -25,8 +25,8 @@ Från repots rot:
 
 ```bash
 cp .env.example .env
-# Fyll i auth-läge, Eneo- och modul-URL:er, ENEO_API_KEY och SESSION_SECRET
-# (samt DEMO_SPACE_ID i access_code-läget). Sätt COOKIE_SECURE=false för lokal http://localhost.
+# Fyll i Eneo- och modul-URL:er, ENEO_API_KEY och SESSION_SECRET. Sätt COOKIE_SECURE=false och en http-adress
+# för MODULE_PUBLIC_URL bara för lokal http://localhost: backend stoppar starten för alla andra värdar.
 docker compose up --build
 open http://localhost:3000
 ```
@@ -107,7 +107,28 @@ Mot ett lokalt Eneo i devcontainer:
 | `MODULE_PUBLIC_URL` | `http://localhost:3002` |
 | `COOKIE_SECURE` | `false` |
 
-Snabbaste vägen är `AUTH_MODE=access_code` med en `sk_`-nyckel (service, `flows = write`) skapad i Eneos admin. För riktig SSO installeras modulen i Eneo med callback `http://localhost:3002/api/auth/callback`.
+Inloggningen är Eneo SSO: modulen installeras i Eneo med callback `http://localhost:3002/api/auth/callback`, och servicenyckeln (`sk_`, service, `flows = write`) skapas i Eneos admin. `http` godtas för de två publika adresserna och `COOKIE_SECURE=false` bara när värden är `localhost`, `127.0.0.1` eller `[::1]`.
+
+## Den riktiga backenden utan ett Eneo
+
+Stubben kan också spela Eneo, inloggningen (`/module-login`) inräknad, så att den riktiga backenden och Vite-servern går att köra utan ett Eneo. Från repots rot, i tre terminaler:
+
+```bash
+# 1. Stubben som Eneo
+cd frontend && python3 tests/e2e/stub-server.py 8401
+
+# 2. Backend, som loggar in genom stubben
+cd backend
+ENEO_BACKEND_URL=http://127.0.0.1:8401 ENEO_PUBLIC_URL=http://127.0.0.1:8401 \
+MODULE_PUBLIC_URL=http://localhost:3002 MODULE_KEY=speech-to-text ENEO_API_KEY=stub-service-key \
+SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") COOKIE_SECURE=false \
+.venv/bin/python -m app.serve --api-only --port 8000 --reload
+
+# 3. Vite-servern, som vidarebefordrar /api till backend
+cd frontend && npm run dev
+```
+
+Öppna `http://localhost:3002` och välj "Logga in med Eneo": stubben loggar in Erik Lund. Stubbens flöden, körningar och filer är de som grinden använder.
 
 ## Se en skärm utan Eneo
 

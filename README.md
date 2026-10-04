@@ -34,14 +34,6 @@ Raden ovan läses av `backend/tests/test_live_relay.py`, som kräver att varje s
 
 En annan kommun eller myndighet byter namn, logga och accentfärg utan att ändra kod eller bygga om imagen: sex miljövariabler på backend-tjänsten (`ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION`, `ORGANIZATION_ACCENT`, `ORGANIZATION_ACCENT_DARK`). Utan dem visas Sundsvalls kommun och modulens standardblå. Guiden med kraven och felmeddelandena: [Byt organisation](docs/branding.md).
 
-## Status
-
-| Status | Vad |
-|---|---|
-| Nuvarande | Next.js 16 är frontend-servern och FastAPI ligger internt bakom den: båda i en image under supervisord (port 3001), eller som två containrar i Compose. Inloggning med Eneo SSO; `access_code` är en tillfällig testgrind. |
-| Under arbete | Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx. Se [Arkitektur](docs/architecture.md#migration-temporary-removed-by-bead-24). |
-| Planerat | Plan B: en process där FastAPI serverar gränssnittet som statiska filer (en Vite-app) i stället för Next.js. Det är inte påbörjat och väntar på ägarens besked. Därtill ett delat modulkit i ett eget repo. Se [Arkitektur](docs/architecture.md#läget-i-dag). |
-
 ## Karta över dokumentationen
 
 Hela indexet med status finns i [docs/README.md](docs/README.md).
@@ -61,3 +53,7 @@ Hela indexet med status finns i [docs/README.md](docs/README.md).
 | förstå en term | [Ordlista](docs/glossary.md) |
 
 Arbetar du som AI-agent, börja med [`AGENTS.md`](AGENTS.md) (engelska).
+
+## Licens
+
+GNU Affero General Public License v3.0 (`AGPL-3.0-only`), samma licens som Eneo. Se [LICENSE](LICENSE).

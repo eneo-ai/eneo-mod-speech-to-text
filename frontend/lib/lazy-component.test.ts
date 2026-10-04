@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createElement } from "react";
 
-import { cleanup, installDom, mount } from "./test-dom";
+import { button, cleanup, installDom, mount } from "./test-dom";
 
 installDom();
 afterEach(cleanup);
@@ -14,7 +14,7 @@ function gate<T>() {
   return { get, calls };
 }
 
-/** What a page that uses the code sees, as text: the value, the failure, how many presses it has had. */
+/** What a page that uses the code sees, as text: the value, or the failure. */
 async function show<T extends string>(loader: import("./lazy-component").Loader<T>) {
   const { useLoaded } = await import("./lazy-component");
   let latest!: ReturnType<typeof useLoaded<T>>;
@@ -53,34 +53,19 @@ test("two pages that ask while it is on its way share one fetch", async () => {
   assert.equal(b.text(), "kod");
 });
 
-test("when the code cannot be fetched the page says so, and a press fetches it again", async () => {
+test("when the code cannot be fetched the page says so, and asks nothing more: a browser keeps a failed fetch, so the only way is the person's reload", async () => {
   const { lazyLoader } = await import("./lazy-component");
   const { get, calls } = gate<string>();
   const loader = lazyLoader(get);
   const view = await show(loader);
   await view.act(async () => calls[0].reject(new TypeError("Failed to fetch dynamically imported module")));
   assert.equal(view.text(), "failed");
-  assert.equal(view.state().retries, 0);
-  await view.act(async () => view.state().retry());
-  assert.equal(calls.length, 2, "asked again");
-  assert.equal(view.text(), "waiting", "the failure is withdrawn while it tries");
-  assert.equal(view.state().retries, 1);
-  await view.act(async () => calls[1].resolve("kod"));
-  assert.equal(view.text(), "kod");
+  await settle(view);
+  assert.equal(calls.length, 1, "no second fetch, by itself or by a press");
+  assert.deepEqual(Object.keys(view.state()).sort(), ["failed", "value"], "there is no retry to press");
 });
 
-test("a press while the code is on its way, or has arrived, fetches nothing", async () => {
-  const { lazyLoader } = await import("./lazy-component");
-  const { get, calls } = gate<string>();
-  const view = await show(lazyLoader(get));
-  await view.act(async () => view.state().retry());
-  assert.equal(calls.length, 1);
-  await view.act(async () => calls[0].resolve("kod"));
-  await view.act(async () => view.state().retry());
-  assert.equal(calls.length, 1);
-});
-
-test("a failure is not kept: another page that asks later gets a new fetch", async () => {
+test("a failure is kept: another page that asks later has it at once, and nothing is fetched again", async () => {
   const { lazyLoader } = await import("./lazy-component");
   const { get, calls } = gate<string>();
   const loader = lazyLoader(get);
@@ -88,9 +73,24 @@ test("a failure is not kept: another page that asks later gets a new fetch", asy
   await first.act(async () => calls[0].reject(new Error("gone")));
   await first.unmount();
   const second = await show(loader);
-  assert.equal(calls.length, 2);
-  await second.act(async () => calls[1].resolve("kod"));
-  assert.equal(second.text(), "kod");
+  await settle(second);
+  assert.equal(second.text(), "failed");
+  assert.equal(calls.length, 1);
+});
+
+test("where code could not be fetched there is one action, the person's own reload, and nothing reloads by itself", async () => {
+  const { LoadFailure } = await import("../components/LoadFailure");
+  let reloads = 0;
+  const view = await mount(createElement(LoadFailure, { reload: () => void (reloads += 1), keeps: "Det du har skrivit finns kvar.", children: "Granskningsverktygen kunde inte läsas in." }));
+  assert.equal(view.container.querySelector('[role="status"]')?.textContent, "Granskningsverktygen kunde inte läsas in. Det du har skrivit finns kvar.");
+  assert.deepEqual([...view.container.querySelectorAll("button")].map((b) => b.textContent?.trim()), ["Ladda om sidan"], "one action");
+  await settle(view);
+  assert.equal(reloads, 0, "not by itself");
+  await view.act(async () => button(view.container, "Ladda om sidan")!.click());
+  assert.equal(reloads, 1, "on the press");
+
+  const plain = await mount(createElement(LoadFailure, { reload: () => undefined, children: "Kalendern kunde inte läsas in." }));
+  assert.equal(plain.container.querySelector('[role="status"]')?.textContent, "Kalendern kunde inte läsas in.", "no promise where there is none to make");
 });
 
 test("code that arrives for a loader the page no longer asks is not shown as the new one's", async () => {

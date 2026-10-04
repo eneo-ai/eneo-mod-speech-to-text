@@ -1,17 +1,15 @@
 "use client";
 
 import type { ComponentProps } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Selector } from "@astryxdesign/core/Selector";
-import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import styles from "@/components/flow/DetailsForm.module.css";
 import type { FormField } from "@/lib/api";
 import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
+import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 
 // A calendar is rarely asked for and costs a popover: it loads when a flow has a date.
@@ -41,23 +39,16 @@ type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "descript
 /**
  * A date: the design system's calendar once its code has arrived. Until then, and if it never does (a tab older than
  * the deploy that replaced its files), a plain text field with the same label and value, which takes a date as well
- * (2026-09-24); if the code is gone a line says so and a press fetches only the calendar. No boundary and no reload:
- * nothing can unmount the form and what has been typed in it.
+ * (2026-09-24); if the code is gone a line says so and offers the person's reload, which gives back the details draft.
+ * No boundary and no reload by itself: nothing can unmount the form and what has been typed in it.
  */
 function DateField({ name, text, onChange, className, ...common }: DateFieldProps) {
-  const { value: DateInput, failed, retry } = useLoaded(calendar);
+  const { value: DateInput, failed } = useLoaded(calendar);
   if (DateInput) return <DateInput {...common} className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
   return (
     <>
       <TextInput {...common} htmlName={name} autoComplete="off" value={text} onChange={onChange} />
-      {failed && (
-        <HStack vAlign="center" wrap="wrap" gap={2}>
-          <Text as="p" type="supporting" role="status">
-            Kalendern kunde inte läsas in.
-          </Text>
-          <Button size="sm" label="Försök igen" onClick={retry} />
-        </HStack>
-      )}
+      {failed && <LoadFailure keeps="Det du har skrivit finns kvar.">Kalendern kunde inte läsas in.</LoadFailure>}
     </>
   );
 }

@@ -218,9 +218,13 @@ test("no style or component reads the old colour mode, a class on <html>", async
       if (statSync(join(root, path)).isDirectory()) return sources(path);
       return /\.(css|tsx?)$/.test(name) && !/\.test\./.test(name) ? [path] : [];
     });
-  // `.dark` and `html.light` as selectors, and Tailwind's `dark:` variant: the mode is data-theme now.
-  const OLD = /\.dark\b|html\.light|:root\.dark|\[class~=['"]?dark|\bdark:[a-z-]/;
-  const found = ["styles", "components", "kit", "routes"].flatMap(sources).filter((file) => OLD.test(readFileSync(join(root, file), "utf8")));
+  // A class on <html> as a selector (`.dark`, `html.light`, `:root.dark`), and as code: the class list of the document,
+  // Tailwind's `dark:` variant. A property called `dark` (a logo's) is none of these.
+  const OLD_SELECTOR = /\.dark\b|html\.light|:root\.dark|\[class~=['"]?dark/;
+  const OLD_CODE = /classList\.\w+\(\s*["'](dark|light)["']|\bdark:[a-z-]/;
+  const found = ["styles", "components", "kit", "routes"]
+    .flatMap(sources)
+    .filter((file) => (file.endsWith(".css") ? OLD_SELECTOR : OLD_CODE).test(readFileSync(join(root, file), "utf8")));
   assert.deepEqual(found, []);
 });
 

@@ -241,7 +241,7 @@ test("the PDF preview is closed while the login has ended, and is back with its 
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const { loginState } = await import("./login-state");
   const anna = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  const status = (authenticated: boolean) => ({ authenticated, auth_mode: "eneo_sso" as const, user: authenticated ? anna : null });
+  const status = (authenticated: boolean) => ({ authenticated, user: authenticated ? anna : null });
   const end = loginState.begin(anna);
   t.after(end);
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));

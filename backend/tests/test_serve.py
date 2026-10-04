@@ -19,7 +19,7 @@ BACKEND = Path(__file__).resolve().parents[1]
 CONFIGURATION = {
     "ENEO_BACKEND_URL": "http://backend:8000",
     "ENEO_PUBLIC_URL": "https://eneo.example.test",
-    "MODULE_PUBLIC_URL": "https://module.example.test",
+    "MODULE_PUBLIC_URL": "http://localhost:3002",
     "MODULE_KEY": "speech-to-text",
     "ENEO_API_KEY": "test-key",
     "SESSION_SECRET": "x" * 48,

@@ -1,5 +1,8 @@
 name: CI
 
+# Every action is pinned to the commit of a release, the release in the comment; every image a job runs is pinned to a digest.
+# The update routine is in docs/operations.md.
+
 on:
   pull_request:
   push:
@@ -8,32 +11,36 @@ on:
 permissions:
   contents: read
 
+# A newer push to a pull request replaces the older run; a run on main is never cancelled, so a publish that has begun ends. A tag runs
+# no CI: release.yml gives the image that passed here, for the tagged commit, its version.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   backend:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements.lock
+      # The lock the image installs, with its hashes: what is tested and audited here is what ships.
       - name: Install backend dependencies
-        run: python -m pip install -r backend/requirements.txt
+        run: python -m pip install --require-hashes --no-deps -r backend/requirements.lock
       - name: Run backend tests
         working-directory: backend
         run: python -m unittest discover -s tests
-      # Freeze before pip-audit is installed: the audit covers what the image
-      # ships, not pip-audit's own dependencies or the runner's pip.
+      - name: Run the fake Eneo's own tests
+        run: python -m unittest frontend/tests/e2e/test_stub_eneo.py
+      - name: Run the acceptance scripts' own tests
+        run: python -m unittest deploy/acceptance/test_live_load.py deploy/acceptance/test_checks.py
       - name: Audit production dependencies
         run: |
-          python -m pip freeze > "$RUNNER_TEMP/backend-installed.txt"
-          python -m pip install pip-audit
-          pip-audit --requirement "$RUNNER_TEMP/backend-installed.txt" --no-deps --disable-pip
+          python -m pip install pip-audit==2.10.1
+          pip-audit --requirement backend/requirements.lock --require-hashes --disable-pip
 
   frontend:
     runs-on: ubuntu-latest
@@ -41,8 +48,8 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
@@ -68,12 +75,20 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # The production tests start the real backend (python -m app.serve) in front of the fake Eneo: it needs its packages.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - name: Install backend dependencies
+        run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit firefox
       - name: Production build in three engines
@@ -82,7 +97,7 @@ jobs:
         run: npx playwright test --project=phone-390-light --project=laptop-1440-light --workers=2
       - name: Branding gate, a deployment with its own organisation and accent
         run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: frontend-browser-results
@@ -91,13 +106,85 @@ jobs:
   compose:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # The file an operator pastes into Dokploy or Portainer, alone; and merged with the developer's override, as `docker compose up` runs it.
       - name: Validate Compose configuration
-        run: docker compose --env-file .env.example config -q
+        run: |
+          docker compose -f docker-compose.yml --env-file .env.example config -q
+          docker compose --env-file .env.example config -q
 
+  # The image is built once. The acceptance runs on that build, by its digest, and those same bytes are what publish pushes:
+  # nothing is rebuilt after the acceptance, and nothing reaches a registry before it. The candidate lives in this job's own registry.
   image:
     runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:3@sha256:ddf754342cfc8acc51a56d5d0ab6af06826461864460636d8bd5c546dab2a7b8
+        ports:
+          - 5000:5000
+    env:
+      CANDIDATE: localhost:5000/eneo-mod-speech-to-text
+      # skopeo 1.22.3 in a container pinned by digest: it copies an image with its attestations and its digest intact.
+      SKOPEO: quay.io/skopeo/stable@sha256:249b92db7297e5c801e19172dbb3b56fde88094a49740a5ededac8c2958bf2c0
     steps:
-      - uses: actions/checkout@v7
-      - name: Build production module image
-        run: docker build --tag eneo-mod-speech-to-text:test .
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        with:
+          driver-opts: network=host
+      - name: Build the image, with its SBOM and provenance
+        id: build
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          push: true
+          tags: ${{ env.CANDIDATE }}:ci
+          sbom: true
+          provenance: mode=max
+      # Check 12 of the acceptance looks for the speaker review's text in a build with it on. This image is not published.
+      - name: Build the speaker-review image
+        run: docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t eneo-mod-speech-to-text:acceptance-review .
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      # The production tests start the real backend (python -m app.serve) in front of the fake Eneo: it needs its packages.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - name: Install backend dependencies
+        run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
+      - name: Install what the acceptance's browser checks need
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Accept the image
+        env:
+          ACCEPT_IMAGE: ${{ env.CANDIDATE }}@${{ steps.build.outputs.digest }}
+          ACCEPT_SKIP_BUILD: "1"
+        run: deploy/acceptance.sh
+      - name: Keep the tested image, exactly
+        run: |
+          docker run --rm --network host -v "$PWD:/out" "$SKOPEO" copy --all --preserve-digests --src-tls-verify=false \
+            "docker://$CANDIDATE@${{ steps.build.outputs.digest }}" oci-archive:/out/image.tar
+          echo "${{ steps.build.outputs.digest }}" > digest.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: module-image
+          path: |
+            image.tar
+            digest.txt
+          retention-days: 7
+          compression-level: 0
+
+  # Only after every job above passed on this commit, and only for main.
+  publish:
+    needs: [backend, frontend, frontend-browser, compose, image]
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/publish.yml

@@ -34,15 +34,13 @@ Alla rutter ligger under `/api`. "Session" betyder giltig modulsession (annars 4
 | Rutt | Metod | Session | Origin | Vad |
 |---|---|---|---|---|
 | `/api/healthz` | GET | nej | nej | `{"ok": true}`. Webbläsaren når den som `/health` via Next-rewriten. |
-| `/api/config` | GET | ja | nej | Flödeslistans omfång: `{"flow_list": {"space_id": ...}}` eller `null`. |
 | `/api/branding` | GET | nej | nej | Organisationen som visas i sidhuvudet. |
 | `/api/branding/logo/{light\|dark}` | GET | nej | nej | Organisationens logotyp, 404 om ingen är konfigurerad. |
 | `/api/branding/theme.css` | GET | nej | nej | Accentfärgens stilmall; en tom kommentar utan `ORGANIZATION_ACCENT`. Se [Branding](#branding). |
-| `/api/auth/login` | GET | nej | nej | Startar Eneo SSO. Frågeparametrar: `next`, `renew`. Bara `eneo_sso`. |
-| `/api/auth/login` | POST | nej | ja | Åtkomstkodsinloggning. Bara `access_code`. |
-| `/api/auth/callback` | GET | nej | nej | Tar emot ticket och state från Eneo. Bara `eneo_sso`. |
+| `/api/auth/login` | GET | nej | nej | Startar Eneo SSO. Frågeparametrar: `next`, `renew`. |
+| `/api/auth/callback` | GET | nej | nej | Tar emot ticket och state från Eneo. |
 | `/api/auth/logout` | POST | nej | ja | Tar bort sessionen. |
-| `/api/auth/status` | GET | nej | nej | Inloggad eller inte, läge, användare, `session_ends_in`, `refresh_in`. |
+| `/api/auth/status` | GET | nej | nej | Inloggad eller inte, användare, `session_ends_in`, `refresh_in` och, för en inloggad sida, `max_upload_bytes` (se [Uppladdningar](#uppladdningar)). |
 | `/api/eneo/flows/{flow_id}/files` | POST | ja | ja | Uppladdning, se [Uppladdningar](#uppladdningar). Med och utan avslutande snedstreck. |
 | `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files` | POST | ja | ja | Uppladdning till flödets ljudsteg. |
 | `/api/eneo/flows/{flow_id}/template-files` | POST | ja | ja | Uppladdning av mallfil. |
@@ -118,7 +116,7 @@ Taket för request-body sitter i en ren ASGI-middleware, `BodyLimitMiddleware` i
 - Den deklarerade längden över taket ger 413 direkt, och strömmen ger 413 så snart den passerar det. Antalet är de bytes som faktiskt kommer: en `Content-Length` som ljuger, eller en body i delar, kommer inte längre.
 - Den kräver ingen session, så den gäller också innan en användare är inloggad, och den svarar innan FastAPI läser en JSON-body (en innehållstyp är klientens påstående, så ingen är undantagen).
 - En `multipart/form-data` får deklarera upp till `MAX_UPLOAD_BYTES`, men taket höjs för just den requesten först efter att uppladdningsrutten kontrollerat session, origin och sidans användare (se [Uppladdningar](#uppladdningar)). En multipart till en annan rutt får inget större tak.
-- 413-svaret har `Connection: close`, så att en klient som fortfarande skickar stannar. Eneo har egna gränser (ett flödes `max_file_size_bytes`, också 413); `max_body_bytes` eller `max_upload_bytes` i svaret visar att det är modulens.
+- 413-svaret har `Connection: close`, så att en klient som fortfarande skickar stannar. En proxy framför (Traefik) kan göra om det till ett 502 medan klienten skickar, så sidan skickar aldrig något modulen nekar. Status-svaret bär `max_upload_bytes`, och `getRunContract` (`frontend/lib/api.ts`, `frontend/lib/upload-limit.ts`) håller varje filsteg i kontraktet till det minsta av flödets `max_file_size_bytes` och modulens tak minus kuvertet runt filen (4 KiB). Gränsen säger sig med samma ord som flödets egen, och inspelningen delas efter den. Eneo har egna gränser (ett flödes `max_file_size_bytes`, också 413); `max_body_bytes` eller `max_upload_bytes` i svaret visar att det är modulens.
 
 ## Uppladdningar
 
@@ -183,11 +181,11 @@ Tester: `backend/tests/test_live_relay.py`, och `LiveSocketTests`, `LiveSessionE
 
 ## Branding
 
-`/api/branding` och logotyperna kräver ingen session, eftersom inloggningssidan visar organisationen innan det finns en. Logon serveras från samma origin eftersom sidans CSP bara tillåter egna bilder, med `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kan köra något i modulens origin. Inställningarna står i tabellen nedan; hur en annan organisation ställer in dem står i [Byt organisation](branding.md).
+`/api/branding` och logotyperna kräver ingen session, eftersom inloggningssidan visar organisationen innan det finns en. Logon serveras från samma origin eftersom sidans CSP bara tillåter egna bilder, med `X-Content-Type-Options: nosniff`, `Cache-Control: no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kan köra något i modulens origin. Svaret på `/api/branding` ger varje egen logga med dess storlek (`logo_sizes`, för ljus och mörk), läst vid start ur SVG:ns `viewBox` eller `width` och `height` eller ur PNG:ns huvud, så att sidan kan ge bilden bredd och höjd och sidhuvudet inte flyttar sig när filen kommer. En logga vars storlek inte går att läsa räknas som en logga som inte duger: den loggas en gång och namnet visas i stället. Samma svar skrivs in i sidans markör (`<meta name="eneo-branding">`). Inställningarna står i tabellen nedan; hur en annan organisation ställer in dem står i [Byt organisation](branding.md).
 
 **Accentfärgen** (`backend/app/accent.py`) kontrolleras när backend startar: en färg som inte är `#RRGGBB`, eller som inte når 4,5:1 mot sidans ytor i båda lägena, stoppar start med ett enda svenskt felmeddelande som anger vad som mättes. Utan `ORGANIZATION_ACCENT_DARK` härleds den mörka färgen ur den ljusa. Kraven och felmeddelandena står i [Byt organisation](branding.md#accentfärgen), skälen i [beslut 0006](decisions/0006-white-label-branding.md).
 
-`GET /api/branding/theme.css` formaterar bara en redan kontrollerad accent in i en fast mall, och är en tom kommentar när ingen accent är satt. Svaret har `Cache-Control: public, max-age=300`, en `ETag` (304 vid matchande `If-None-Match`) och `X-Content-Type-Options: nosniff`. Rotlayouten länkar stilmallen i `<head>` (`frontend/app/layout.tsx`): en vanlig same-origin-länk håller första målningen tills den är hämtad, så ingen bildruta visar den gamla färgen, och en strikt `style-src 'self'` släpper in den.
+`GET /api/branding/theme.css` formaterar bara en redan kontrollerad accent in i en fast mall, och är en tom kommentar när ingen accent är satt. Svaret har `Cache-Control: public, max-age=300`, en `ETag` (304 vid matchande `If-None-Match`) och `X-Content-Type-Options: nosniff`. Sidan länkar stilmallen i `<head>` (`frontend/index.html`): en vanlig same-origin-länk håller första målningen tills den är hämtad, så ingen bildruta visar den gamla färgen, och en strikt `style-src 'self'` släpper in den.
 
 ## Inställningar
 
@@ -199,22 +197,19 @@ grep -ohE '"[A-Z][A-Z_]+"' backend/app/config.py | tr -d '"' | sort -u
 
 | Variabel | Krävs | Standard | Regel och betydelse |
 |---|---|---|---|
-| `AUTH_MODE` | nej | `eneo_sso` | `eneo_sso` eller `access_code`. Annat stoppar start. |
-| `ENEO_BACKEND_URL` | ja | | Absolut http(s)-URL utan query eller fragment. Dit BFF:en når Eneos API. |
-| `ENEO_PUBLIC_URL` | i `eneo_sso` | | Samma URL-regel. Eneos publika adress, dit webbläsaren skickas för inloggning. Läses inte i `access_code`. |
-| `MODULE_PUBLIC_URL` | ja | | Samma URL-regel. Modulens publika adress. Ger callback-URL:en och den tillåtna `Origin`. |
+| `ENEO_BACKEND_URL` | ja | | Absolut http(s)-URL utan query eller fragment. Dit BFF:en når Eneos API; `http` är tillåtet, eftersom det är tjänstenätets adress. |
+| `ENEO_PUBLIC_URL` | ja | | Absolut URL utan query eller fragment, `https`; `http` bara för `localhost`, `127.0.0.1` eller `[::1]`, annars stoppas starten. Eneos publika adress, dit webbläsaren skickas för inloggning. |
+| `MODULE_PUBLIC_URL` | ja | | Samma regel som `ENEO_PUBLIC_URL`. Modulens publika adress. Ger callback-URL:en och den tillåtna `Origin`. |
 | `MODULE_KEY` | ja | | Gemener i kebab-case (`[a-z0-9]+(-[a-z0-9]+)*`). Modulens nyckel i Eneo, i praktiken `speech-to-text`. |
-| `ENEO_API_KEY` | ja | | Modulens servicenyckel (`sk_…`). Krävs i båda lägena. |
+| `ENEO_API_KEY` | ja | | Modulens servicenyckel (`sk_…`). |
 | `ENEO_API_KEY_HEADER_NAME` | nej | `X-API-Key` | Giltigt HTTP-headernamn som inte är ett credential- eller ramhuvud som modulen sätter själv (`Authorization`, `Cookie`, `Content-Type` och de andra i `_RESERVED_HEADER_NAMES`). Ska vara samma som Eneos `API_KEY_HEADER_NAME`. |
 | `SESSION_SECRET` | ja | | Minst 32 tecken. Signerar login-state. Sessionen i sig är opak. |
-| `APP_ACCESS_CODE` | i `access_code` | | 16–256 tecken. Får inte sättas i `eneo_sso`. |
-| `COOKIE_SECURE` | nej | `true` | `true`, `false`, `1`, `0`, `yes`, `no`, `on` eller `off`; annat stoppar start. `false` bara för lokal `http://localhost`. |
-| `DEMO_SPACE_ID` | i `access_code` för flödeslistan | | Modulnyckeln listar bara flöden i detta space. Utan den loggar backend ett fel vid start och sidan säger att flödena inte kan visas. Används inte i `eneo_sso`, där listan omfattar alla användarens spaces. |
+| `COOKIE_SECURE` | nej | `true` | `true`, `false`, `1`, `0`, `yes`, `no`, `on` eller `off`; annat stoppar start. `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]`; annars stoppas starten. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | nej | `1800` | Ett ändligt antal sekunder, över 0 och högst 86400. Tidsgräns för hela vidarebefordran av en uppladdning till Eneo, inte bara per läsning. |
 | `MAX_BODY_BYTES` | nej | `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar. Se [Gränser](#gränser). |
 | `MAX_UPLOAD_BYTES` | nej | `1073741824` (1 GiB) | Tak för en uppladdad fil. Höj den om Eneos flöden tar emot större ljudfiler. |
 | `MAX_RESPONSE_BYTES` | nej | `33554432` (32 MiB) | Mest som läses av ett enskilt svar från Eneo. Längre svar blir 502. |
-| `SESSION_MAX_AGE_MINUTES` | nej | `480` | Heltal större än noll. Övre gräns för en inloggning; i `eneo_sso` gäller det tidigaste av detta och Eneos sessionstak. |
+| `SESSION_MAX_AGE_MINUTES` | nej | `480` | Heltal större än noll. Övre gräns för en inloggning; det tidigaste av detta och Eneos sessionstak gäller. |
 | `SHOW_ORGANIZATION` | nej | `true` | Boolean som `COOKIE_SECURE`. `false` visar bara "Tal till text". |
 | `ORGANIZATION_NAME` | nej | tomt | Högst 100 tecken. Tomt ger Sundsvalls kommun med dess medföljande logotyp. Är också logons alternativtext. |
 | `ORGANIZATION_LOGO` | nej | tomt | Sökväg till en SVG- eller PNG-fil, högst 1 MiB. Kräver `ORGANIZATION_NAME`. |
@@ -239,14 +234,14 @@ Testfilerna ligger i `backend/tests/`; `test_boundary.py` är gränsen mot Eneo 
 | Same-origin för mutationer och WebSocket | `Origin` måste vara `MODULE_PUBLIC_URL`. Webbläsarens egen origin skickas aldrig till Eneo. | `test_eneo_proxy_auth.py`, `test_live_relay.py` |
 | Rätt användare i en gammal flik | En sida som hör till en annan användare än sessionens, eller som inte namnger någon när den ändrar något, nekas med 409 `user_changed`, eller stängs med 1008, innan något når Eneo. | `test_boundary.py` (`ExpectedUserTests`, `LiveExpectedUserTests`) |
 | Inloggningens state och återvändande | Slumpmässigt, signerat, förbrukas vid callbacken och jämförs som bytes (ett icke-ASCII-tecken ger inget 500); en förnyelse binds till samma användare och tenant; en inloggning återvänder bara till en sökväg på modulens egen origin. | `test_module_auth.py`, `test_boundary.py` (`CallbackStateTests`, `RedirectTests`) |
-| Fel läge, fel session | En session från det andra läget godtas inte; rutter för det andra läget ger 404. | `test_module_auth.py` |
+| Sessionen skapas bara av Eneos callback | Callbacken skapar den ur en ticket som Eneo godtagit. En publik adress är `https`, utom för `localhost`, `127.0.0.1` och `[::1]`, och en cookie utan `Secure` godtas bara där; annars stoppas starten. | `test_module_auth.py`, `test_config.py` |
 | Sessionen avslutar det som hänger på den | En ny inloggning tar bort den gamla sessionen, och live-sockets stängs med 1008 `session_ended` när sessionen tar slut. | `test_boundary.py` (`LiveSessionEndTests`) |
 | Tak för request-body | 413 över `MAX_BODY_BYTES` utan session, uppladdningar läses först efter sessionskontrollen och nekas med 411, 413 eller 400. | `test_body_limits.py`, `test_config.py`, `test_deployment_compose.py` |
 | Begränsade svar från Eneo | Inget svar läses förbi sin gräns, och ett kodat svar avvisas. | `test_boundary.py` (`UpstreamAnswerTests`) |
 | Eneos cookies och omdirigeringar når inte webbläsaren | Klienten lagrar och skickar inga cookies, `Set-Cookie` och `Location` skickas inte vidare och en omdirigering är 502. | `test_boundary.py` (`CookieJarTests`, `RedirectFromEneoTests`) |
 | Signerade filer | Webbläsaren kan inte själv skapa en signerad URL; svaret på mintanropet kontrolleras innan det cachas; bara typer som inte kan köra skript öppnas inline och allt skickas med `nosniff`; filnamn kan inte bryta sig ur headern; bara en PDF kan visas i en ram. | `test_artifact_proxy.py`, `test_audio_proxy.py`, `test_boundary.py` (`MintAnswerTests`, `SignedFileHeadersTests`) |
 | Uppladdningar | En tidsgräns för hela vidarebefordran, och en fil som blivit hel skickas klart även om webbläsaren går. | `test_upload_proxy.py`, `test_boundary.py` (`UploadDeadlineTests`, `AbandonedUploadTests`) |
-| Begränsade WebSocket-ramar | 128 KiB och 16 i kö i alla startsätt; 15 s skrivtidsgräns. | `test_live_relay.py` |
+| Begränsade WebSocket-ramar | 128 KiB per meddelande i alla startsätt, och en anslutning buffrar ett meddelande eller två eftersom uvicorn slutar läsa när ett ligger i kö; 15 s skrivtidsgräns. | `test_live_relay.py` |
 | Biljetten stannar hos BFF:en | Live-biljetten valideras som HTTP-token, anslutningen till Eneo följer ingen omdirigering, och biljetten når aldrig webbläsaren. | `test_boundary.py` (`LiveSocketTests`), `test_live_relay.py` |
 | Inga hemligheter i loggar | Ett svar som inte klarar valideringen loggas utan undantaget, eftersom ett valideringsfel citerar det det nekade, och det är en åtkomsttoken (ticketväxling, sessionskontroll, förnyelse). | `test_boundary.py` (`SecretsInLogsTests`) |
 | Giltig konfiguration | Se tabellen ovan: fel stoppar start. | `test_config.py` |

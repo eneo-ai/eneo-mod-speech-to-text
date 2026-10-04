@@ -15,12 +15,11 @@ import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { ModuleShell } from "@/kit/ModuleShell";
-import { getConfig } from "@/lib/api";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
 import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
-  discoverConfiguredFlows,
+  discoverFlows,
   listCreateLabels,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
@@ -57,8 +56,7 @@ function FlowsListPage() {
   useEffect(() => {
     let cancelled = false;
     setGroups(null);
-    getConfig()
-      .then((config) => discoverConfiguredFlows(config))
+    discoverFlows()
       .then(({ groups: found, truncated: cut }) => {
         if (cancelled) return;
         setTruncated(cut);

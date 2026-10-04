@@ -430,7 +430,7 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(!document.querySelector("dialog[open]"), "closed while the login is ended");
   assert.equal(document.querySelector("dialog[open] input"), null, "its fields leave with it");
   assert.deepEqual(listened, [], "nothing plays because of it");
-  await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+  await view.act(async () => loginState.observe({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }));
   assert.ok(document.querySelector("dialog[open]"), "back after the new login");
   assert.equal(field("Talare 2").value, "Erik Lund", "with the typed name");
   assert.ok(trigger.isConnected);

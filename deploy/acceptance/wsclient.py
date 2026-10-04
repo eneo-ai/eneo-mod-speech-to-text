@@ -165,6 +165,12 @@ class WebSocket:
         self.sock.settimeout(30)
         self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
 
+    def send_header_only(self, payload_length: int) -> None:
+        """The header of a binary frame that declares ``payload_length`` bytes, and none of its payload. A server that limits the size of
+        a frame refuses on the header; one that closes with the payload still on its way resets the connection, and the close frame it sent
+        can be lost on the way, so a check that reads the close code sends the header alone."""
+        self.sock.sendall(bytes([0x80 | BINARY, 0x80 | 127]) + struct.pack(">Q", payload_length) + os.urandom(4))
+
     def send_binary(self, payload: bytes) -> None:
         self._send(BINARY, payload)
 
