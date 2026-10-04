@@ -108,16 +108,45 @@ test("the stylesheet is in the head, holds the first paint and is the colour wit
     return element && { blocking: !element.media && !element.disabled && !element.hasAttribute("async") && element.sheet !== null };
   });
   expect(link, "a plain stylesheet link in the head, already applied").toEqual({ blocking: true });
-  // The same colour as a probe on the theme root, where the design system's tokens live.
+  // The colour the stylesheet gives the design system's theme root. With no script nothing renders that root: the probe
+  // is an element that carries its attribute, which is all the stylesheet's selector asks.
   const painted = await page.evaluate(() => {
-    const root = document.querySelector('[data-astryx-theme="eneo"]')!;
     const probe = document.createElement("span");
+    probe.setAttribute("data-astryx-theme", "eneo");
     probe.style.background = "var(--color-accent)";
-    root.append(probe);
+    document.body.append(probe);
     const colour = getComputedStyle(probe).backgroundColor;
     probe.remove();
     return colour;
   });
   expect(painted).toBe(ACCENT.light);
   await context.close();
+});
+
+test("the mark does not move when its logo arrives: the page kept its room", async ({ page }) => {
+  test.skip(VARIANT !== "custom", "needs the wide logos");
+  // The files are held back, as on a slow connection, until the test lets them go.
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/branding/logo/**", async (route) => {
+    await held;
+    await route.continue();
+  });
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: "access_code", user: null } }));
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const name = page.getByRole("navigation", { name: "Tal till text" }).getByText("Tal till text", { exact: true });
+  const logo = page.locator("img[data-brand-logo]:visible");
+  await expect(name).toBeVisible();
+  // A logo with no width and height has no box until its file arrives, which is not visible.
+  await expect(logo, "the logo has room of its own before its file arrives").toHaveCount(1);
+  const before = { name: await name.boundingBox(), logo: await logo.boundingBox() };
+  expect(before.logo?.width, "a logo that has not arrived already has its width").toBeGreaterThan(40);
+
+  release();
+  await expect.poll(() => logo.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0), "the logo arrives").toBe(true);
+  const after = { name: await name.boundingBox(), logo: await logo.boundingBox() };
+  for (const key of ["x", "y", "width", "height"] as const) {
+    expect(after.name?.[key], `the name's ${key}`).toBeCloseTo(before.name![key], 1);
+    expect(after.logo?.[key], `the logo's ${key}`).toBeCloseTo(before.logo![key], 1);
+  }
 });
