@@ -2,15 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "module": "commonjs",
-    "moduleResolution": "node",
     "target": "es2022",
     "noEmit": false,
     "incremental": false,
     "outDir": ".test-build",
     "rootDir": "."
   },
+  "files": [
+    "node_modules/next/types/global.d.ts"
+  ],
   "include": [
-    "lib/*.test.ts"
+    "lib/*.test.ts",
+    "tests/next-types.d.ts"
   ],
   "exclude": [
     "node_modules",

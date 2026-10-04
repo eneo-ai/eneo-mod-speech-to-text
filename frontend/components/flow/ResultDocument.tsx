@@ -1,39 +1,25 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { ChevronDown, Copy, Download, ExternalLink, MoreHorizontal, Share2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { Divider } from "@astryxdesign/core/Divider";
+import { DropdownMenu, DropdownMenuItem } from "@astryxdesign/core/DropdownMenu";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Item } from "@astryxdesign/core/Item";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
-import { cn } from "@/lib/utils";
 import { CopyStatus, useCopy } from "./CopyButton";
-import { FILE_ICONS, OpenFile } from "./ResultFiles";
+import { Markdown } from "./Markdown";
+import styles from "./ResultDocument.module.css";
+import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 
-type MarkdownNode = { type: string; depth?: number; children?: MarkdownNode[] };
-
-/**
- * A remark step that puts a result's headings under the page's h1: its top heading is an h2 whatever its Markdown
- * level, and deeper ones keep their distance to it, down to h6. It reads the parsed document, so an underlined
- * title counts and nothing in a code block does.
- */
-export function remarkResultHeadings() {
-  return (tree: MarkdownNode) => {
-    const headings: MarkdownNode[] = [];
-    const walk = (node: MarkdownNode) => {
-      if (node.type === "heading") headings.push(node);
-      node.children?.forEach(walk);
-    };
-    walk(tree);
-    const top = Math.min(...headings.map((heading) => heading.depth ?? 1));
-    for (const heading of headings) heading.depth = Math.min(6, Math.max(2, (heading.depth ?? 1) - top + 2));
-  };
-}
-
-export const RESULT_PROSE =
-  "prose max-w-none [&>:first-child]:mt-0 prose-headings:tracking-tight prose-h2:text-[22px] prose-h3:text-[20px] prose-h4:text-[17px] prose-p:text-[16px] prose-p:leading-relaxed prose-li:text-[16px] prose-a:underline-offset-4 prose-code:before:hidden prose-code:after:hidden";
+// A result's headings go under the page's h1; the review's text does the same (ReviewView).
+export { remarkResultHeadings } from "./Markdown";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -90,24 +76,26 @@ function FilePreview({ text }: { text: string }) {
     if (whole) requestAnimationFrame(() => more.current?.scrollIntoView({ block: "nearest" }));
   };
   return (
-    <section aria-labelledby={`${id}-name`} className="flex flex-col gap-4 border-t border-border px-5 py-6 md:px-10 md:py-8">
-      <p id={`${id}-name`} className="text-[13px] font-medium text-ink-mute">
+    <VStack as="section" aria-labelledby={`${id}-name`} gap={4} padding={6}>
+      <Text as="p" id={`${id}-name`} type="supporting">
         Förhandsvisning av texten i filen
-      </p>
-      <article id={`${id}-text`} className={RESULT_PROSE}>
-        <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{whole || !first ? text : first}</ReactMarkdown>
+      </Text>
+      <article id={`${id}-text`} className={styles.prose}>
+        <Markdown>{whole || !first ? text : first}</Markdown>
       </article>
       {first && (
-        <Button ref={more} type="button" variant="outline" className="self-start" aria-expanded={whole} aria-controls={`${id}-text`} onClick={toggle}>
-          <ChevronDown
-            data-icon="inline-start"
-            aria-hidden
-            className={cn("transition-transform duration-150 motion-reduce:transition-none", whole && "rotate-180")}
+        <HStack>
+          <Button
+            ref={more}
+            aria-expanded={whole}
+            aria-controls={`${id}-text`}
+            icon={<Icon icon={whole ? ChevronUp : ChevronDown} />}
+            label={whole ? "Visa mindre" : "Visa hela texten"}
+            onClick={toggle}
           />
-          {whole ? "Visa mindre" : "Visa hela texten"}
-        </Button>
+        </HStack>
       )}
-    </section>
+    </VStack>
   );
 }
 
@@ -190,15 +178,19 @@ export function ResultDocument({
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
   const share = useShare(file, download, text);
   const [copyState, copy] = useCopy(text ?? "");
-  const Icon = file ? FILE_ICONS[file.kind] : null;
+  const Kind = file ? FILE_ICONS[file.kind] : null;
+  // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
+  const wide = useMediaMatch(LAPTOP);
 
   const primaryDownload = file && download && (
-    <Button asChild>
-      <a href={download} download>
-        <Download data-icon="inline-start" aria-hidden />
-        Ladda ner {file.typeLabel}
-        <span className="sr-only">, {file.name}</span>
-      </a>
+    <Button
+      as={DownloadLink}
+      href={download}
+      variant="primary"
+      icon={<Icon icon={Download} />}
+      label={`Ladda ner ${file.typeLabel}, ${file.name}`}
+    >
+      {`Ladda ner ${file.typeLabel}`}
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
@@ -206,87 +198,84 @@ export function ResultDocument({
   return (
     <>
       {/* Narrower: above the document, the download first, opening the file beside it, the rest under Fler alternativ. */}
-      <div className="flex flex-wrap items-center gap-2 lg:hidden">
-        {primaryDownload}
-        {file?.previewable && inline && (
-          <Button asChild variant="outline">
-            <a href={inline} target="_blank" rel="noopener noreferrer">
-              <ExternalLink data-icon="inline-start" aria-hidden />
-              Öppna {file.typeLabel}
-              <span className="sr-only"> i en ny flik</span>
-            </a>
-          </Button>
-        )}
-        {text && !file && (
-          <Button type="button" onClick={copy}>
-            <Copy data-icon="inline-start" aria-hidden />
-            {copyLabel ?? "Kopiera texten"}
-          </Button>
-        )}
-        {((text && file) || share) && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" aria-label="Fler alternativ">
-                <MoreHorizontal aria-hidden />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {text && file && (
-                <DropdownMenuItem onSelect={() => void copy()}>
-                  <Copy aria-hidden />
-                  Kopiera texten
-                </DropdownMenuItem>
-              )}
-              {share && (
-                <DropdownMenuItem onSelect={() => void runShare(share, title, text)}>
-                  <Share2 aria-hidden />
-                  Dela
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
+      {!wide && (
+        <HStack wrap="wrap" vAlign="center" gap={2}>
+          {primaryDownload}
+          {file?.previewable && inline && (
+            <Button
+              href={inline}
+              target="_blank"
+              rel="noopener noreferrer"
+              icon={<Icon icon="externalLink" />}
+              label={`Öppna ${file.typeLabel} i en ny flik`}
+            >
+              {`Öppna ${file.typeLabel}`}
+            </Button>
+          )}
+          {text && !file && (
+            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
+          )}
+          {((text && file) || share) && (
+            <DropdownMenu
+              button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
+              hasChevron={false}
+              alignment="end"
+            >
+              {text && file && <DropdownMenuItem icon="copy" label="Kopiera texten" onClick={() => void copy()} />}
+              {share && <DropdownMenuItem icon={Share2} label="Dela" onClick={() => void runShare(share, title, text)} />}
+            </DropdownMenu>
+          )}
+        </HStack>
+      )}
 
-    <section aria-label={label} className="flex flex-col rounded-xl border bg-card">
-      {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
-      <div className="hidden items-center justify-end gap-1 border-b border-border px-4 py-2.5 lg:flex">
+      <Card padding={0} role="region" aria-label={label}>
+        {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
+        {wide && (
+          <>
+            <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
+              {text && (
+                <Button
+                  variant={file ? "ghost" : "primary"}
+                  icon={<Icon icon="copy" />}
+                  label={copyLabel ?? "Kopiera texten"}
+                  onClick={copy}
+                >
+                  {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
+                </Button>
+              )}
+              {primaryDownload}
+            </HStack>
+            <Divider />
+          </>
+        )}
+
         {text && (
-          <Button type="button" variant={file ? "ghost" : "default"} onClick={copy}>
-            <Copy data-icon="inline-start" aria-hidden />
-            {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
-            {!copyLabel && file && <span className="sr-only"> texten</span>}
-          </Button>
+          <VStack as="article" padding={6} className={styles.prose}>
+            <Markdown>{text}</Markdown>
+          </VStack>
         )}
-        {primaryDownload}
-      </div>
 
-      {text && (
-        <article className={cn(RESULT_PROSE, "px-5 py-6 md:px-10 md:py-9")}>
-          <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]}>{text}</ReactMarkdown>
-        </article>
-      )}
-
-      {/* The file, under Eneo's name: its type and size, and the name opens it where the browser can show it. No
-          second download. */}
-      {file && Icon && (
-        <div data-file-row className={cn("relative flex items-center gap-3 px-5 py-3", text && "border-t border-border")}>
-          <span aria-hidden className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary-soft text-primary">
-            <Icon className="size-[18px]" strokeWidth={2} />
-          </span>
-          <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-            {file.previewable && download && inline ? (
-              <OpenFile file={file} url={inline} download={download} name />
-            ) : (
-              <p className="text-[14px] font-medium leading-snug text-ink [overflow-wrap:anywhere]">{file.name}</p>
-            )}
-            <p className="text-[13px] text-ink-mute">{file.meta}</p>
-          </div>
-        </div>
-      )}
-      {preview && <FilePreview text={preview} />}
-      <CopyStatus state={copyState} />
-    </section>
+        {/* The file, under Eneo's name: its type and size, and the name opens it where the browser can show it. No
+            second download. */}
+        {file && Kind && (
+          <>
+            {text && <Divider />}
+            <Item
+              data-file-row
+              startContent={<Icon icon={Kind} />}
+              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name /> : <Text>{file.name}</Text>}
+              description={file.meta}
+            />
+          </>
+        )}
+        {preview && (
+          <>
+            <Divider />
+            <FilePreview text={preview} />
+          </>
+        )}
+        <CopyStatus state={copyState} />
+      </Card>
     </>
   );
 }

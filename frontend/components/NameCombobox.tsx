@@ -1,9 +1,11 @@
 "use client";
 
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
-import { useCallback, useId, useMemo, useRef, useState } from "react";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import { cn } from "@/lib/utils";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { usePopover } from "@astryxdesign/core/Popover";
+import { TextInput } from "@astryxdesign/core/TextInput";
+import styles from "@/components/NameCombobox.module.css";
 
 const NONE_ID = "none";
 const ADD_ID = "add";
@@ -19,6 +21,9 @@ type Option =
  * Ett fält som både är rullista och fritext: välj bland kända namn eller
  * skriv ett nytt. Fältets text är namnet självt — varje tangenttryckning
  * blir ett namn, så "Lägg till" i listan bekräftar bara det som står.
+ *
+ * Designsystemets Typeahead väljer ett objekt ur sökträffar; här är texten i fältet själva värdet, så fältet
+ * och listan är egna, byggda av designsystemets inmatning, ikonknapp och ytskikt (usePopover, som Typeahead).
  */
 export function NameCombobox({
   value,
@@ -29,8 +34,8 @@ export function NameCombobox({
   noneLabel = "Ingen (behåll etiketten)",
   writeLabel,
   optionNote,
-  "aria-label": ariaLabel,
-  className,
+  label,
+  problem,
 }: {
   /** Valt/skrivet namn, eller null för "ingen". */
   value: string | null;
@@ -44,14 +49,27 @@ export function NameCombobox({
   writeLabel?: string;
   /** A quiet note after a name, e.g. whom it is already given to; never a check. */
   optionNote?: (name: string) => string | null;
-  "aria-label"?: string;
-  className?: string;
+  /** The field's name, for a screen reader; the list's is "Förslag: <label>". */
+  label: string;
+  /** Why the name is refused, said under the field. */
+  problem?: string;
 }) {
   const id = useId();
   const listId = `${id}-list`;
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const [open, setOpen] = useState(false);
+  // The list is a popover in the top layer, anchored to the field: a dialog's scrolling body never cuts it off. The
+  // focus stays in the field; a press outside the field and the list closes it (the browser's light dismiss), and
+  // so does Escape, one layer at a time.
+  const popover = usePopover({ hasCloseButton: false, hasAutoFocus: false, role: "none" });
+  const open = popover.isOpen;
+  const { triggerRef } = popover;
+  useEffect(() => {
+    triggerRef(rootRef.current);
+    return () => triggerRef(null);
+  }, [triggerRef]);
+  // A name is no word to spell-check; the design system's input takes no spellCheck prop.
+  useEffect(() => inputRef.current?.setAttribute("spellcheck", "false"), []);
   // The row the arrow keys or a moving pointer marked; until then the list marks the field's own name, so Enter
   // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
@@ -88,7 +106,7 @@ export function NameCombobox({
     if (option.kind === "write") {
       // What is typed next replaces the name.
       setTyping(true);
-      setOpen(false);
+      popover.hide();
       inputRef.current?.focus();
       inputRef.current?.select();
       return;
@@ -96,7 +114,7 @@ export function NameCombobox({
     if (option.kind === "none") onChange(null);
     else onChange(option.name);
     setTyping(false);
-    setOpen(false);
+    popover.hide();
     inputRef.current?.focus();
   }
 
@@ -104,7 +122,7 @@ export function NameCombobox({
   function openList(marked: number | null = null) {
     setTyping(false);
     setMoved(marked);
-    setOpen(true);
+    popover.show({ skipAutoFocus: true });
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -121,14 +139,11 @@ export function NameCombobox({
       e.preventDefault();
       const option = items[active];
       if (option) choose(option);
-      else setOpen(false);
-    } else if (e.key === "Escape") {
-      if (open) {
-        e.preventDefault();
-        setOpen(false);
-      }
+      else popover.hide();
     } else if (e.key === "Tab") {
-      setOpen(false);
+      // Closed here, not by the blur this press causes: a list hidden during the focus move makes the browser drop
+      // the focus. Escape is the layer stack's: it closes the list and leaves a dialog around it open.
+      popover.hide();
     }
   }
 
@@ -137,118 +152,95 @@ export function NameCombobox({
 
   const activeId = open && active >= 0 && items[active] ? `${listId}-${active}` : undefined;
 
-  // The list floats over the page in its own layer, so a dialog's scrolling body never cuts it off;
-  // the focus stays in the field, and a press outside the field and the list closes it. It closes at
-  // once, without the fade: Tab moves on as it closes, and a fading list would cover the next control.
   return (
-    <Popover open={open} onOpenChange={(next) => !next && setOpen(false)}>
-    <PopoverAnchor asChild>
-    <div ref={rootRef} className={cn("relative min-w-0", className)}>
-      <input
+    <div ref={rootRef} className={styles.root}>
+      <TextInput
         ref={inputRef}
-        type="text"
+        label={label}
+        isLabelHidden
         role="combobox"
-        aria-label={ariaLabel}
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={activeId}
         autoComplete="off"
-        spellCheck={false}
         value={text}
         placeholder={placeholder}
-        disabled={disabled}
-        onChange={(e) => {
-          const next = e.target.value;
+        isDisabled={disabled}
+        status={problem ? { type: "error", message: problem } : undefined}
+        statusVariant="detached"
+        className={styles.field}
+        onChange={(next) => {
           onChange(next === "" ? null : next);
           setTyping(true);
-          setOpen(true);
           setMoved(null);
+          popover.show({ skipAutoFocus: true });
         }}
         // Not on focus: a list that opens on every Tab covers the next field.
         onClick={() => openList()}
         onKeyDown={onKeyDown}
-        className="h-9 w-full min-w-0 rounded-md border border-rule bg-paper pl-2.5 pr-8 text-[13px] coarse:h-11 coarse:pr-11 coarse:text-base text-ink shadow-sm transition-colors placeholder:text-ink-mute focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50"
       />
-      <button
-        type="button"
+      <IconButton
+        variant="ghost"
+        label={open ? "Stäng listan" : "Visa namn"}
+        icon={<ChevronDown aria-hidden className={open ? styles.chevronOpen : styles.chevron} />}
         tabIndex={-1}
-        aria-label={open ? "Stäng listan" : "Visa namn"}
-        disabled={disabled}
+        isDisabled={disabled}
+        className={styles.chevronButton}
         onClick={(e) => {
           e.preventDefault();
           const wasOpen = open;
           inputRef.current?.focus();
-          if (wasOpen) setOpen(false);
+          if (wasOpen) popover.hide();
           else openList();
         }}
-        className="absolute inset-y-0 right-0 grid w-8 place-items-center coarse:w-11 text-ink-mute hover:text-ink disabled:opacity-50"
-      >
-        <ChevronDown className={cn("h-4 w-4 transition-transform", open && "rotate-180")} />
-      </button>
+      />
+      {popover.render(
+        open ? (
+          <ul id={listId} role="listbox" aria-label={`Förslag: ${label}`} className={styles.list}>
+            {items.map((option, i) => {
+              const selected = isSelected(option);
+              const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;
+              return (
+                <li
+                  key={option.id}
+                  id={`${listId}-${i}`}
+                  ref={i === active ? reveal : undefined}
+                  role="option"
+                  // The row Enter would take; the name in the field keeps its check beside it.
+                  aria-selected={i === active}
+                  data-kind={option.kind}
+                  // A pointer that moves marks its row; a list opening under a resting one marks nothing.
+                  onPointerMove={() => setMoved(i)}
+                  onPointerDown={(e) => e.preventDefault()}
+                  onClick={() => choose(option)}
+                  className={styles.option}
+                >
+                  {option.kind === "add" && <Plus aria-hidden className={styles.optionIcon} />}
+                  {option.kind === "write" && <Pencil aria-hidden className={styles.optionIcon} />}
+                  {option.kind === "none" && <UserX aria-hidden className={styles.optionIcon} />}
+                  <span className={styles.optionText}>
+                    {option.kind === "add" ? (
+                      <>
+                        Lägg till <strong>“{option.name}”</strong>
+                      </>
+                    ) : option.kind === "none" ? (
+                      noneLabel
+                    ) : option.kind === "write" ? (
+                      writeLabel
+                    ) : (
+                      option.name
+                    )}
+                  </span>
+                  {note && <span className={styles.optionNote}>{note}</span>}
+                  {selected && <Check aria-hidden className={styles.optionIcon} />}
+                </li>
+              );
+            })}
+          </ul>
+        ) : null,
+        { placement: "below", alignment: "start", offset: "var(--spacing-1)", className: styles.layer },
+      )}
     </div>
-    </PopoverAnchor>
-    <PopoverContent
-      align="start"
-      sideOffset={4}
-      role="presentation"
-      onOpenAutoFocus={(e) => e.preventDefault()}
-      onCloseAutoFocus={(e) => e.preventDefault()}
-      onInteractOutside={(e) => {
-        if (rootRef.current?.contains(e.target as Node)) e.preventDefault();
-      }}
-      className="max-h-60 w-[var(--radix-popper-anchor-width)] min-w-[12rem] overflow-y-auto rounded-md p-1 data-[state=closed]:!animate-none"
-    >
-      <ul
-        id={listId}
-        role="listbox"
-        aria-label={ariaLabel ? `Förslag: ${ariaLabel}` : "Namnförslag"}
-      >
-        {items.map((option, i) => {
-          const selected = isSelected(option);
-          const note = option.kind === "name" && !selected ? optionNote?.(option.name) : null;
-          return (
-            <li
-              key={option.id}
-              id={`${listId}-${i}`}
-              ref={i === active ? reveal : undefined}
-              role="option"
-              // The row Enter would take; the name in the field keeps its check beside it.
-              aria-selected={i === active}
-              // A pointer that moves marks its row; a list opening under a resting one marks nothing.
-              onPointerMove={() => setMoved(i)}
-              onPointerDown={(e) => e.preventDefault()}
-              onClick={() => choose(option)}
-              className={cn(
-                "flex min-h-8 cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-[13px] coarse:min-h-11 coarse:text-base",
-                i === active ? "bg-bg-2 text-ink shadow-[inset_3px_0_0_hsl(var(--primary))]" : "text-ink",
-                option.kind === "none" && "text-ink-soft",
-                option.kind === "none" && items.length > 1 && "mt-1 border-t border-rule-soft pt-2",
-              )}
-            >
-              {option.kind === "add" && <Plus className="h-3.5 w-3.5 shrink-0 text-primary" />}
-              {option.kind === "write" && <Pencil className="h-3.5 w-3.5 shrink-0 text-ink-soft" />}
-              {option.kind === "none" && <UserX className="h-3.5 w-3.5 shrink-0" />}
-              <span className="min-w-0 flex-1 whitespace-normal [overflow-wrap:anywhere]">
-                {option.kind === "add" ? (
-                  <>
-                    Lägg till <span className="font-semibold">“{option.name}”</span>
-                  </>
-                ) : option.kind === "none" ? (
-                  noneLabel
-                ) : option.kind === "write" ? (
-                  writeLabel
-                ) : (
-                  option.name
-                )}
-              </span>
-              {note && <span className="shrink-0 text-[12px] text-ink-mute">{note}</span>}
-              {selected && <Check className="h-3.5 w-3.5 shrink-0 text-primary" />}
-            </li>
-          );
-        })}
-      </ul>
-    </PopoverContent>
-    </Popover>
   );
 }

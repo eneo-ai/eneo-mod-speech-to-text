@@ -10,12 +10,12 @@ import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sen
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  for (const [id, name, description, checked] of [
-    ["satt-stromma", "Strömma", "Se texten medan du pratar.", false],
-    ["satt-spela-in", "Spela in", "Spela in nu och transkribera efteråt.", true],
-    ["satt-ladda-upp", "Ladda upp", "Välj en ljudfil från din enhet.", false],
+  for (const [name, description, checked] of [
+    ["Strömma", "Se texten medan du pratar.", false],
+    ["Spela in", "Spela in nu och transkribera efteråt.", true],
+    ["Ladda upp", "Välj en ljudfil från din enhet.", false],
   ] as const) {
-    expect(await axNode(page.locator(`#${id}`))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
+    expect(await axNode(page.getByRole("radio", { name: new RegExp(`^${name}`) }))).toEqual({ role: "radio", name, description, state: `checked=${checked}` });
   }
   expect(await axNode(page.getByRole("radiogroup"))).toMatchObject({ role: "radiogroup", name: "Hur vill du lägga till ljudet?" });
 });
@@ -23,7 +23,9 @@ test("the input modes are named by their title, described by their line, and say
 test("a field is not an unnamed group", async ({ page }) => {
   await setup(page);
   await chooseMode(page, "Spela in");
-  await expect(page.locator('[data-slot="field"][role="group"]')).toHaveCount(0);
+  // A group of the setup (the participants' field, say) is named by its label; none is left without a name.
+  await expect(page.getByRole("main").locator('[role="group"]:not([aria-label]):not([aria-labelledby])')).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("group", { name: /^Deltagare/ })).toHaveCount(1);
 });
 
 test("the added names are a named list the field points to", async ({ page }) => {
@@ -82,6 +84,66 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
 });
 
+test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const field = dialog.getByRole("combobox", { name: "Vem är Talare 3?" });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 3?" });
+  const row = dialog.getByRole("listitem").filter({ has: page.getByRole("combobox", { name: "Vem är Talare 3?" }) });
+  await row.getByRole("button", { name: "Visa namn" }).click();
+  await expect(list).toBeVisible();
+  await expect(field, "the focus stays in the field").toBeFocused();
+  await row.getByRole("button", { name: "Stäng listan" }).click();
+  await expect(list).toBeHidden();
+  await field.click();
+  await expect(list).toBeVisible();
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await expect(list, "a press outside the field and the list").toBeHidden();
+  await expect(dialog).toBeVisible();
+  // Choosing a row names the speaker and gives the focus back to the field.
+  await field.click();
+  await list.getByRole("option", { name: "Anna Berg" }).click();
+  await expect(field).toHaveValue("Anna Berg");
+  await expect(field).toBeFocused();
+});
+
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+  await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
+  await run(page, "run-review", "flow-2");
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  await page.unroute("**/input-files/*/audio");
+  await page.getByRole("button", { name: "Försök igen" }).click();
+  await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
+});
+
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
+  await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
+  await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
+  const picker = page.getByRole("dialog", { name: "Ändra talare" });
+  await picker.getByText("Erik Lund", { exact: true }).click();
+  await picker.getByRole("button", { name: "Spara" }).click();
+  await expect(page.getByRole("button", { name: "Försök spara igen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+});
+
+test("the player's row keeps the position slider a usable width on a phone, with Följ shown", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
+  await STATES.find((s) => s.name === "review")!.go(page, info);
+  // Looking for a word stops the transcript following the playback: Följ is offered.
+  await page.getByRole("textbox", { name: "Sök i transkriptet" }).fill("punkten");
+  await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
+  const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
+    const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
+    return track.getBoundingClientRect().width;
+  });
+  expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
+  const player = await page.getByRole("region", { name: "Inspelning och transkript" }).boundingBox();
+  const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
+  expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
+});
+
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
   await run(page, "run-review-approved", "flow-2");
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
@@ -129,14 +191,14 @@ test("an approved text review shows the saved decision; a draft from before it i
 
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toEqual({
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
     role: "textbox",
     name: "Avvisa körningen",
     description: "Ange en kort motivering. Körningen kommer att avbrytas.",
   });
 
   await STATES.find((s) => s.name === "review-text-edit")!.go(page, info);
-  expect(await axNode(page.locator("main textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
+  expect(await axNode(page.getByRole("main").locator("textarea"))).toMatchObject({ role: "textbox", name: "Innehåll för granskning" });
 });
 
 test("a page that is still loading says so, under the page's heading", async ({ page }) => {
@@ -160,6 +222,17 @@ test("while recording, the top bar names the mode and the folded details say wha
 test("Eneo's own words on the failure view are marked as English", async ({ page }, info) => {
   await STATES.find((s) => s.name === "failure")!.go(page, info);
   await expect(page.getByText(/^Step 2 failed/)).toHaveAttribute("lang", "en");
+});
+
+test("the folded panels keep their content out of sight until their trigger is pressed", async ({ page }) => {
+  await result(page);
+  await expect(page.getByText("Flödets version 3")).toBeHidden();
+  await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
+  await expect(page.getByText("Flödets version 3")).toBeVisible();
+  await run(page, "run-failed");
+  await expect(page.getByText(/^Step 2 failed/)).toBeHidden();
+  await page.getByRole("button", { name: "Visa teknisk information" }).click();
+  await expect(page.getByText(/^Step 2 failed/)).toBeVisible();
 });
 
 test("the access code can be filled in by a password manager", async ({ page }, info) => {
@@ -388,4 +461,32 @@ test("a passage's actions say which part they are in, as its play button does, s
   await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 1", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Rätta repliken från 0:00 i del 2", exact: true })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Rätta repliken från 0:00", exact: true })).toHaveCount(0);
+});
+
+test.describe("with reduced motion", () => {
+  test.use({ reducedMotion: "reduce" });
+  // The reduced-motion project ignores this spec, so the preference is set here.
+  for (const [state, meter] of [
+    ["recording", "the stage's waveform"],
+    ["stromma", "the bar's level"],
+  ] as const) {
+    test(`${meter} does not glide between levels`, async ({ page }, info) => {
+      test.skip(info.project.name !== "phone-390-light", "one width is enough: the rule is not width-bound");
+      await STATES.find((s) => s.name === state)!.go(page, info);
+      const bars = page.getByRole("region", { name: "Ljudet" }).locator("[data-lit]");
+      expect(await bars.count()).toBeGreaterThan(0);
+      const transitions = await bars.evaluateAll((all) => all.map((bar) => getComputedStyle(bar).transitionDuration));
+      expect(new Set(transitions)).toEqual(new Set(["0s"]));
+    });
+  }
+});
+
+test("one long word in the live text wraps inside the sheet instead of widening it", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-390-light", "a phone's width");
+  await STATES.find((s) => s.name === "stromma")!.go(page, info);
+  const log = page.getByRole("log", { name: "Preliminär text" });
+  // Words as the live text brings them, in one of its paragraphs.
+  await log.evaluate((element) => element.querySelector("p")!.append(" " + "Sammanträdesprotokollsjusteringsförfarandeanteckningar".repeat(6)));
+  const { scrollWidth, clientWidth } = await log.evaluate((element) => ({ scrollWidth: element.scrollWidth, clientWidth: element.clientWidth }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
 });

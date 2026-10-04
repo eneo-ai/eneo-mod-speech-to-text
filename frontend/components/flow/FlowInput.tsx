@@ -3,22 +3,24 @@
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Field, FieldContent, FieldDescription, FieldLabel } from "@/components/ui/field";
-import { Spinner } from "@/components/ui/spinner";
-import { Switch } from "@/components/ui/switch";
+import { Button } from "@astryxdesign/core/Button";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { Switch } from "@astryxdesign/core/Switch";
+import { Text } from "@astryxdesign/core/Text";
+import { Token } from "@astryxdesign/core/Token";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { FlowAside } from "@/components/flow/FlowAside";
 import {
   COUNT_FROM_NAMES,
   createDocument,
   DetailsForm,
-  SPEAKER_COUNT_ID,
+  focusSpeakerCount,
   SpeakerCountField,
 } from "@/components/flow/DetailsForm";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
-import { FlowTopBar } from "@/components/flow/FlowTopBar";
-import { FLOW_GRID, FRAME } from "@/components/frame";
+import { FlowFrame } from "@/components/flow/FlowFrame";
 import { MicrophoneCheck } from "@/components/flow/MicrophoneCheck";
 import { MODE_TEXT, ModeCards } from "@/components/flow/ModeCards";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -33,15 +35,15 @@ import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/co
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
-  browserStorage,
-  createActionLabel,
   labelsSpeakers,
-  makesText,
   primaryActionLabel,
   readSpeakerCount,
   storageLine,
   type SessionPhase,
 } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
+import { useDock } from "@/lib/dock";
+import { createActionLabel, makesText } from "@/lib/flow-output";
 import { recentNames, rememberNames } from "@/lib/participants";
 import type { StoredRecording } from "@/lib/recording-store";
 import {
@@ -52,7 +54,7 @@ import {
   recordingNotices,
 } from "@/lib/recording-view";
 import { selectRuntimeInputStep } from "@/lib/upload";
-import { cn } from "@/lib/utils";
+import styles from "./FlowSetup.module.css";
 
 type Session = ReturnType<typeof useFlowSession>;
 
@@ -120,7 +122,7 @@ export function FlowInput({
   const shownGroup = useRef(group);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const [dockSlot, dockRef] = useDock();
   const phone = useSyncExternalStore(subscribePhone, isPhone, () => false);
   // Unfolded by a required detail the send found missing, and kept so while it is filled in.
   const openDetails = keepDetailsOpen(detailsOpen, snapshot.invalid);
@@ -159,60 +161,45 @@ export function FlowInput({
   );
 
   return (
-    <div className={cn("flex flex-col", group === "capture" ? "h-dvh" : "min-h-dvh")}>
+    <>
       <TabTitle input={input} flowName={published.name} />
-      <FlowTopBar
-        title={published.name}
+      <FlowFrame
+        fill={group === "capture"}
         onLeave={onLeave}
         trailing={
           holdsAudio && mode ? (
-            <Badge variant="soft" className="h-8 px-3 text-[14px] font-medium">
+            <HStack gap={1}>
               {/* Alone, "Spela in" reads like a command. */}
-              <span className="sr-only">Läge: </span>
-              {MODE_TEXT[mode].name}
-            </Badge>
+              <VisuallyHidden>Läge: </VisuallyHidden>
+              <Token label={MODE_TEXT[mode].name} color="blue" />
+            </HStack>
           ) : undefined
         }
-      />
-      {/* Recording state changes are said once here; the timer never is. */}
-      <p role="status" className="sr-only">
-        {recordingAnnouncement(phase)}
-      </p>
-      <main
-        id="innehall"
-        className={cn(
-          FRAME,
-          FLOW_GRID,
-          "flex-1 pt-3 lg:pt-8",
-          group === "capture"
-            ? "flex min-h-0 flex-col overflow-y-auto lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden lg:pb-6"
-            : "pb-12 lg:items-start",
-        )}
+        // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
+        aside={
+          <FlowAside
+            published={published}
+            classification={contract.security_classification}
+            onLeave={onLeave}
+            compact={holdsAudio}
+            details={details}
+            summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
+            open={openDetails}
+            onOpenChange={setDetailsOpen}
+            className={group === "capture" ? styles.capturePane : undefined}
+          />
+        }
       >
-        {/* While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box. */}
-        <FlowAside
-          published={published}
-          classification={contract.security_classification}
-          onLeave={onLeave}
-          compact={holdsAudio}
-          details={details}
-          summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
-          open={openDetails}
-          onOpenChange={setDetailsOpen}
-          className={cn(group === "capture" && "lg:-mx-2 lg:min-h-0 lg:overflow-y-auto lg:px-2 lg:pb-2")}
-        />
-
-        <section
+        {/* Recording state changes are said once here; the timer never is. */}
+        <VisuallyHidden as="p" role="status">
+          {recordingAnnouncement(phase)}
+        </VisuallyHidden>
+        <VStack
+          as="section"
           ref={workspace}
           aria-label="Ljudet"
-          className={cn(
-            "flex min-w-0 flex-col gap-4",
-            group === "capture"
-              ? // Scrolls on its own when the bar's warnings or larger text spacing need more room than the
-                // window has; the side room keeps a focused control's outline inside the scroll box.
-                "mt-4 min-h-[22rem] flex-1 lg:-mx-2 lg:mt-0 lg:min-h-0 lg:overflow-y-auto lg:px-2 short:min-h-0"
-              : cn("gap-6 lg:mt-0", group === "ready" ? "mt-4" : "mt-8"),
-          )}
+          gap={group === "capture" ? 4 : 6}
+          className={group === "capture" ? [styles.capturePane, styles.capture].join(" ") : group === "setup" ? styles.setup : undefined}
         >
           <OfflineBanner waiting={group === "capture" ? "recording" : null} />
           {notice && <ProblemAlert problem={{ title: notice }} />}
@@ -248,19 +235,19 @@ export function FlowInput({
               makesText={text}
             />
           )}
-        </section>
+        </VStack>
         {/* The page's own bottom edge, so a docked action stays in reach over the whole setup, however long its
             form; inside main (it is the page's action), over main's side and bottom padding. Only in setup: empty,
             it would let a recording scroll. On a short screen it stays at the page's end instead of covering it. */}
-        {group === "setup" && <div ref={setDockSlot} className="sticky bottom-0 -mx-4 mt-12 -mb-12 md:hidden short:static" />}
-      </main>
-    </div>
+        {group === "setup" && <div ref={dockRef} className={styles.dock} />}
+      </FlowFrame>
+    </>
   );
 }
 
 /** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
 function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
-  const { session, snapshot, capture, persistent } = input;
+  const { session, snapshot, capture, persistent, evictable } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
@@ -287,7 +274,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
           capture={session.capture}
           phase={phase}
           stream={capture.stream}
-          storageNote={persistent ? storageLine(true) : null}
+          storageNote={persistent ? storageLine(true, evictable) : null}
         />
       )}
       <SignedOutControls
@@ -344,13 +331,13 @@ function SetupWorkspace({
   const audio = step?.input_format?.toLowerCase() === "audio";
   // The flow runs without a file too: Skapa dokument sends the details alone, and choosing a file stays offered.
   const optionalFile = step?.required === false;
-  const Icon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
+  const ActionIcon = mode === "ladda-upp" && (file || optionalFile) ? FileText : mode ? MODE_TEXT[mode].icon : null;
   const reviewsSpeakers = speakerMappingReviewSteps(contract).length > 0;
   const text = makesText(contract.final_output);
   const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
-  const focusCount = () => document.getElementById(SPEAKER_COUNT_ID)?.focus();
+  const focusCount = focusSpeakerCount;
   const onContinue = modes.includes("spela-in")
     ? (recording: StoredRecording) => (countInvalid ? focusCount() : void session.continueCutOff(recording))
     : undefined;
@@ -372,36 +359,28 @@ function SetupWorkspace({
 
   const speakerChoice =
     speakerOption?.selectable && snapshot.speakerLabels !== null ? (
-      <Field orientation="horizontal" className="min-h-11 gap-4 has-[>[data-slot=field-content]]:items-center">
-        <FieldContent className="gap-0.5">
-          <FieldLabel htmlFor="talare" className="text-[17px] font-semibold text-ink">
-            Märk upp talare
-          </FieldLabel>
-          <FieldDescription id="talare-hjalp" className="text-[15px]">
-            Tar längre tid efter inspelningen.
-          </FieldDescription>
-        </FieldContent>
-        <Switch
-          id="talare"
-          checked={snapshot.speakerLabels}
-          onCheckedChange={(on) => session.setSpeakerLabels(on)}
-          aria-describedby="talare-hjalp"
-          // A finger's hit area is 44 px tall: 12 px above and below the switch's padding box, over its own 10.
-          className="coarse:after:-inset-y-3"
-        />
-      </Field>
+      <Switch
+        label="Märk upp talare"
+        description="Tar längre tid efter inspelningen."
+        value={snapshot.speakerLabels}
+        onChange={(on) => session.setSpeakerLabels(on)}
+        labelPosition="start"
+        labelSpacing="spread"
+        width="100%"
+      />
     ) : speakerOption?.required || reviewsSpeakers ? (
-      <p className="text-[15px] text-ink-soft">
+      <Text as="p" color="secondary">
         Flödet märker upp talare.
         {reviewsSpeakers && " Efter transkriberingen bekräftar du vem som är vem."}
-      </p>
+      </Text>
     ) : null;
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <VStack gap={6}>
       <UnsentRecordings
         recordings={unsentRecordings}
         sendLabel={() => create}
+        evictable={input.evictable}
         onSend={(recording) => {
           if (countInvalid) return focusCount();
           session.adopt(recording);
@@ -414,14 +393,14 @@ function SetupWorkspace({
         <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
       ) : (
         // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
-        <h2 data-phase-heading tabIndex={-1} className="sr-only">
+        <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
           {modes[0] ? MODE_TEXT[modes[0]].name : create}
-        </h2>
+        </VisuallyHidden>
       )}
 
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
       {(speakerChoice || snapshot.speakerCount !== null) && (
-        <div className="flex flex-col gap-4">
+        <VStack gap={4}>
           {speakerChoice}
           {snapshot.speakerCount !== null && (
             <SpeakerCountField
@@ -430,7 +409,7 @@ function SetupWorkspace({
               onChange={(text) => session.setSpeakerCount(text)}
             />
           )}
-        </div>
+        </VStack>
       )}
 
       {recordingMode && <MicrophoneCheck active={phase === "setup"} />}
@@ -451,41 +430,33 @@ function SetupWorkspace({
       {(mode || modes.length === 0) &&
         docked(
           dock,
-          <div
-            data-docked-action={dock ? true : undefined}
-            className={cn(
-              "flex flex-col",
-              // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
-              dock
-                ? "gap-2 border-t border-border bg-background px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
-                : "gap-3",
-            )}
-          >
+          // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
+          <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
             <Button
-              type="button"
-              variant={resuming ? "outline" : "default"}
-              size="xl"
-              className="w-full"
-              // Not disabled: that would drop keyboard focus while the browser asks for the microphone.
-              aria-disabled={phase === "starting" || checkingUpload || undefined}
+              label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
+              variant={resuming ? "secondary" : "primary"}
+              size="lg"
+              width="100%"
+              icon={ActionIcon ? <Icon icon={ActionIcon} /> : undefined}
+              // Busy, not disabled: that would drop keyboard focus while the browser asks for the microphone, and a
+              // second press is refused by the session.
+              isLoading={phase === "starting" || checkingUpload}
+              isInterruptible
               onClick={primary}
-            >
-              {phase === "starting" || checkingUpload ? (
-                <Spinner data-icon="inline-start" aria-hidden />
-              ) : Icon ? (
-                <Icon data-icon="inline-start" aria-hidden />
-              ) : null}
-              {phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
-            </Button>
+            />
             {/* The wait for a chosen file's length is said, not only written on the button. */}
-            <p role="status" className="sr-only">
+            <VisuallyHidden as="p" role="status">
               {checkingUpload ? "Kontrollerar filen…" : ""}
-            </p>
-            {recordingMode && <p className="text-center text-[13px] text-ink-mute">{storageLine(persistent)}</p>}
-          </div>,
+            </VisuallyHidden>
+            {recordingMode && (
+              <Text as="p" type="supporting" justify="center">
+                {storageLine(persistent, input.evictable)}
+              </Text>
+            )}
+          </VStack>,
         )}
 
-      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className="pt-4" />
-    </div>
+      <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+    </VStack>
   );
 }

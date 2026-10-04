@@ -1,8 +1,8 @@
 - region "Ljudet":
   - status
   - heading "Inspelningen är klar" [level=2]
-  - paragraph: /Inspelning \d+ sep \d+:\d+ · \d+ s/
-  - 'group /Uppspelning: Inspelning \d+ sep \d+:\d+/':
+  - paragraph: /Inspelning \d+ [a-zåäö]+ \d+:\d+ · \d+ s/
+  - 'group /Uppspelning: Inspelning \d+ [a-zåäö]+ \d+:\d+/':
     - button "Spela upp"
     - slider "Position i inspelningen"
     - text: /0:\d+ \/ 0:\d+/

@@ -7,8 +7,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, type Rect } from "./checks";
-import { backLink, isLaptop, open, run, setup, signIn, STATES } from "./screens";
+import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
+import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
 
 const WALKS = [
   "signin-access-code",
@@ -50,6 +50,27 @@ for (const name of WALKS) {
   });
 }
 
+// The docked action of a phone grows with its words and with the spacing a reader may set (WCAG 1.4.12): focus must
+// still stop above it, whatever its height is.
+for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
+  test(`tab through ${name} with the text spacing a reader may set`, async ({ page }, info) => {
+    test.skip(!isPhone(info), "the docked action is a phone's");
+    await STATES.find((s) => s.name === name)!.go(page, info);
+    await page.addStyleTag({ content: TEXT_SPACING });
+    const { stops, left } = await tabWalk(page);
+    writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
+    expect(stops.length, "something to focus").toBeGreaterThan(0);
+    expect.soft(left, `focus never leaves the page after ${stops.length} stops (WCAG 2.1.2)`).toBe(true);
+    expect.soft(stopProblems(stops), "focus visible and unobscured").toEqual([]);
+  });
+}
+
+/**
+ * Tab has left the page for the browser's own controls (the document has no focus). A native modal dialog lets Tab
+ * do that, as a trap would break WCAG 2.1.2; it never lets Tab reach the page behind it.
+ */
+const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
@@ -61,10 +82,14 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
   const problems: string[] = [];
   const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
   for (let i = 0; i <= keys.length; i++) {
-    const stop = await focusStop(page);
-    const inside = await popup.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
-    else problems.push(...stopProblems([stop]));
+    if (!(await inBrowser(page))) {
+      // At rest: the tooltip of the control that has the focus enters over a few frames, and in them overlaps it.
+      await settle(page);
+      const stop = await focusStop(page);
+      const inside = await popup.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
+      else problems.push(...stopProblems([stop]));
+    }
     if (keys[i]) await page.keyboard.press(keys[i]);
   }
   expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
@@ -120,7 +145,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
         const clip = await screenClip(page, box);
         if (clip) frame = { clip, focused: await shot(page, clip), perimeter: 2 * (box.width + box.height) };
       }
-    } else {
+    } else if (!(await inBrowser(page))) {
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
@@ -162,12 +187,16 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
   const problems: string[] = [];
   const reached = new Set<string>();
   for (let i = 0; i < 8; i++) {
-    const stop = await focusStop(page);
-    const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
-    if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
-    else {
-      problems.push(...stopProblems([stop]));
-      reached.add(stop.label);
+    if (!(await inBrowser(page))) {
+      const stop = await focusStop(page);
+      const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
+      if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
+      else {
+        problems.push(...stopProblems([stop]));
+        const clipped = await clippedFocus(page);
+        if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+        reached.add(stop.label);
+      }
     }
     await page.keyboard.press("Tab");
   }
@@ -178,6 +207,39 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
 test("the naming dialog holds focus and gives it back", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review")!.go(page, info);
   await holdsFocus(page, page.getByRole("button", { name: "Namnge talarna" }), page.getByRole("dialog", { name: "Namnge talarna" }));
+});
+
+test("Escape closes the name list and leaves the naming dialog open; the next one closes the dialog, with the names kept", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const field = dialog.getByRole("combobox", { name: "Vem är Talare 3?" });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 3?" });
+  await field.fill("Bertil Eklund");
+  await expect(list, "typing opens the list").toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(dialog, "the list was the top layer: the dialog stays").toBeVisible();
+  await expect(field, "and the focus stays in the field").toBeFocused();
+  await expect(field).toHaveValue("Bertil Eklund");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(dialog.getByRole("combobox", { name: "Vem är Talare 3?" }), "closed with Escape, the typed name is kept").toHaveValue("Bertil Eklund");
+});
+
+test("Tab closes the name list at once, and the next control is reached and not covered", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
+  const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
+  const field = dialog.getByRole("combobox", { name: "Vem är Talare 2?" });
+  const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" });
+  await field.click();
+  await expect(list).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(list).toBeHidden();
+  const stop = await focusStop(page);
+  expect(stop, "focus moved on, inside the dialog").not.toBeNull();
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  expect(stopProblems(stop ? [stop] : []), "visible and not covered").toEqual([]);
 });
 
 test("the account menu holds focus and gives it back", async ({ page }) => {
@@ -198,23 +260,59 @@ test("the warning before the login ends takes focus, holds it, and gives it back
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible({ timeout: 15_000 });
   await settle(page);
+  // The dialog takes focus on its title, which names it (it is no Tab stop, so it needs no ring); Tab then walks
+  // the close button and the action.
+  await expect(warning.getByRole("heading", { name: "Du loggas snart ut" })).toBeFocused();
   const problems: string[] = [];
-  for (const key of ["Tab", "Tab", "Shift+Tab"]) {
+  // Down to the close button, the action, back up, and down again: the walk ends on the action.
+  for (const key of ["Tab", "Tab", "Shift+Tab", "Tab"]) {
+    await page.keyboard.press(key);
+    if (await inBrowser(page)) continue;
+    // A tooltip is measured at rest, as a dialog is: not on its way in.
+    await settle(page);
     const stop = await focusStop(page);
     if (!stop || !(await warning.evaluate((element) => element.contains(document.activeElement)))) problems.push("focus left the warning");
-    else problems.push(...stopProblems([stop]));
-    await page.keyboard.press(key);
+    else {
+      problems.push(...stopProblems([stop]));
+      const clipped = await clippedFocus(page);
+      if (clipped) problems.push(`${stop.label}: its focus ring is cut by ${clipped}`);
+    }
   }
   expect.soft(problems).toEqual([]);
+  // The close button's tooltip leaves a moment after focus does, and takes the first Escape if it is still there.
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(warning).toBeHidden();
   await expect(link, "focus goes back to where it was").toBeFocused();
 });
 
-test("the microphone picker holds focus and gives it back", async ({ page }) => {
+// A combobox keeps the position in its list in aria-activedescendant: the focus stays on the combobox while the list
+// is open (a list that holds the focus itself is allowed too). The arrow keys move the active option, Enter chooses,
+// and Escape closes the list and gives the focus back to the combobox.
+test("the microphone picker is operated with the keyboard and gives the focus back", async ({ page }) => {
   await setup(page);
   await page.getByRole("radio", { name: /^Spela in/ }).click();
-  await holdsFocus(page, page.getByRole("combobox", { name: "Mikrofon" }), page.getByRole("listbox"), 0);
+  const picker = page.getByRole("combobox", { name: "Mikrofon" });
+  await picker.focus();
+  await page.keyboard.press("Enter");
+  const list = page.getByRole("listbox");
+  await expect(list).toBeVisible();
+  await settle(page);
+  expect.soft(await page.evaluate(() => document.activeElement?.tagName), "focus does not start in a frame").not.toBe("IFRAME");
+  const active = () =>
+    page.evaluate(() => {
+      const owner = document.activeElement as HTMLElement | null;
+      const id = owner?.getAttribute("aria-activedescendant");
+      return { owner: owner?.getAttribute("role"), option: id ? (document.getElementById(id)?.textContent ?? null) : null };
+    });
+  const first = await active();
+  expect(["combobox", "listbox"], "focus is on the combobox or its list").toContain(first.owner);
+  expect(first.option, "an option is active").toBeTruthy();
+  await page.keyboard.press("ArrowDown");
+  expect((await active()).option, "the arrow key moves the active option").not.toBe(first.option);
+  await page.keyboard.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(picker, "Escape gives focus back to the combobox").toBeFocused();
 });
 
 test("the input modes change with the arrow keys", async ({ page }) => {
@@ -242,7 +340,8 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
-  await page.keyboard.press("Shift+Tab");
+  // The names follow the field, and "Lägg till" is only there while a name is typed: Tab reaches the first name's button.
+  await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
@@ -258,6 +357,13 @@ test("a wrong access code is said, and focus stays in the field to type it again
   await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
   // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
   await expect(field).toBeFocused();
+  // The field in error names its message, which is the one alert that said it.
+  await expect(field).toHaveAttribute("aria-invalid", "true");
+  const message = await field.getAttribute("aria-errormessage");
+  expect(message, "the field names its error message").toBeTruthy();
+  const alert = page.locator(`[id="${message}"]`);
+  await expect(alert).toHaveAttribute("role", "alert");
+  await expect(alert).toHaveText("Felaktig åtkomstkod.");
 });
 
 test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {

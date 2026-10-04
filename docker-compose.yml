@@ -14,11 +14,17 @@ services:
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       DEMO_SPACE_ID: ${DEMO_SPACE_ID:-}
       UPLOAD_PROXY_TIMEOUT_SECONDS: ${UPLOAD_PROXY_TIMEOUT_SECONDS:-1800}
-      # Organisationen i sidhuvudet; tomt visar Sundsvalls kommun (se README).
+      MAX_BODY_BYTES: ${MAX_BODY_BYTES:-10485760}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
+      MAX_RESPONSE_BYTES: ${MAX_RESPONSE_BYTES:-33554432}
+      # Organisationen i sidhuvudet; tomt visar modulens standardorganisation (se docs/branding.md).
       ORGANIZATION_NAME: ${ORGANIZATION_NAME:-}
       ORGANIZATION_LOGO: ${ORGANIZATION_LOGO:-}
       ORGANIZATION_LOGO_DARK: ${ORGANIZATION_LOGO_DARK:-}
       SHOW_ORGANIZATION: ${SHOW_ORGANIZATION:-true}
+      # Accentfärgen (#RRGGBB); tomt behåller modulens standardfärg. Mörkt läge härleds om den mörka utelämnas.
+      ORGANIZATION_ACCENT: ${ORGANIZATION_ACCENT:-}
+      ORGANIZATION_ACCENT_DARK: ${ORGANIZATION_ACCENT_DARK:-}
     # En egen logga monteras in och ORGANIZATION_LOGO pekar dit, till exempel:
     # volumes:
     #   - ./branding:/branding:ro

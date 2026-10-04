@@ -3,6 +3,7 @@ import test, { afterEach } from "node:test";
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import {
+  NOT_ON_DEVICE,
   openRecordingStore,
   type NewRecording,
   type RecordingFile,
@@ -604,6 +605,7 @@ test("a page left while the store opens starts no recorder and leaves no recordi
   const starting = capture.start(meeting);
   await settle(); // the microphone is granted; the store is still opening
   capture.dispose();
+  assert.equal(stream.track.readyState, "ended", "the microphone is let go before the store has opened");
   open();
   await starting;
 
@@ -643,11 +645,131 @@ test("a page left while the store opens starts no recorder and leaves no recordi
   const continuing = later.continueStopped(made.id);
   await until(() => asked, "the microphone asked for");
   later.dispose();
+  assert.equal(second.track.readyState, "ended", "the microphone is let go before the space is checked");
   estimate();
   await continuing;
   assert.equal(recorders, 0);
   assert.equal(second.track.readyState, "ended");
   assert.equal(await slow.lease(made.id), true, "nothing holds the recording");
+});
+
+/** Holds one store call pending until the returned function runs: the device's storage being slow, or never answering. */
+function slowStore<Name extends "create" | "lowOnSpace" | "setState" | "append">(store: RecordingStore, method: Name) {
+  let release = () => {};
+  const gate = new Promise<void>((resolve) => (release = resolve));
+  const original = store[method].bind(store) as (...args: unknown[]) => Promise<unknown>;
+  (store as unknown as Record<string, unknown>)[method] = async (...args: unknown[]) => {
+    await gate;
+    return original(...args);
+  };
+  return release;
+}
+
+test("leaving during start-up lets the microphone go at once, whatever the device's storage is doing", async () => {
+  for (const stalled of ["opening", "create", "lowOnSpace"] as const) {
+    const store = await openRecordingStore({});
+    let open = () => {};
+    const opening = new Promise<void>((resolve) => (open = resolve));
+    const release = stalled === "opening" ? open : stalled === "create" ? slowStore(store, "create") : slowStore(store, "lowOnSpace");
+    const stream = new FakeStream();
+    let recorders = 0;
+    const capture = new RecordingCapture(
+      async () => {
+        if (stalled === "opening") await opening;
+        return store;
+      },
+      {
+        getStream: async () => stream as unknown as MediaStream,
+        createRecorder: () => {
+          recorders += 1;
+          return new FakeRecorder(stream, { mimeType: "audio/webm" }) as unknown as MediaRecorder;
+        },
+      },
+    );
+    const starting = capture.start(meeting);
+    await settle();
+    await settle(); // the microphone is granted; the storage is the thing that is pending
+    assert.equal(stream.track.readyState, "live", `${stalled}: the microphone is on while it starts`);
+
+    capture.dispose();
+    assert.equal(stream.track.readyState, "ended", `${stalled}: leaving lets the microphone go before the storage has answered`);
+
+    release();
+    await starting;
+    assert.equal(recorders, 0, `${stalled}: no recorder starts afterwards`);
+    assert.deepEqual(await store.listUnsent("user-1"), [], `${stalled}: and no empty recording is left`);
+  }
+});
+
+test("Stoppa during start-up lets the microphone go at once too", async () => {
+  const store = await openRecordingStore({});
+  const release = slowStore(store, "lowOnSpace");
+  const { capture, streams, recorders } = await setup({ store });
+  const starting = capture.start(meeting);
+  await until(() => streams.length === 1, "the microphone granted");
+  await settle();
+  await capture.stop();
+  assert.equal(streams[0].track.readyState, "ended", "the microphone is let go while the storage is pending");
+  release();
+  await starting;
+  assert.equal(recorders.length, 0);
+  assert.deepEqual(await store.listUnsent("user-1"), []);
+});
+
+test("Stoppa lets the microphone go without waiting for the database, and the last chunk still lands", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  const release = slowStore(store, "setState");
+  const stopping = capture.stop();
+  await settle();
+  await settle();
+  assert.equal(streams[0].track.readyState, "ended", "the hardware is released while the storage is still pending");
+  release();
+  const stopped = await stopping;
+  assert.equal(stopped?.state, "stopped");
+  assert.deepEqual(await texts(await store.readParts(stopped!.id)), ["a."], "the recorder's last data is kept");
+});
+
+test("Stoppa on a recording that has vanished from the device still ends: the microphone goes, and the page is not left recording", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  const { id } = capture.getSnapshot().recording!;
+  await store.discard(id); // another tab without Web Locks, a cleared store
+  const stopped = await capture.stop();
+  assert.equal(stopped, null);
+  assert.equal(streams[0].track.readyState, "ended");
+  const { status, stopping, error } = capture.getSnapshot();
+  assert.equal(status, "stopped", "not left recording");
+  assert.equal(stopping, false);
+  assert.equal(error, NOT_ON_DEVICE, "and it says why");
+});
+
+test("Stoppa when the device cannot say the recording is stopped ends too, and says so", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  store.setState = () => Promise.reject(new DOMException("The database connection is closing.", "InvalidStateError"));
+  assert.equal(await capture.stop(), null);
+  assert.equal(streams[0].track.readyState, "ended");
+  const { status, stopping, error } = capture.getSnapshot();
+  assert.deepEqual([status, stopping], ["stopped", false]);
+  assert.equal(error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
+});
+
+test("leaving a running recording lets the microphone go without waiting for the database, and keeps what was recorded", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  const id = capture.getSnapshot().recording!.id;
+  const release = slowStore(store, "setState");
+  capture.dispose();
+  await settle();
+  assert.equal(streams[0].track.readyState, "ended", "the hardware is released while the storage is still pending");
+  release();
+  await until(async () => (await store.get(id))?.state === "paused", "the recording kept, paused");
+  assert.deepEqual(await texts(await store.readParts(id)), ["a."]);
 });
 
 test("without Web Locks, another tab cannot send a stopped recording while its own tab continues it", async () => {

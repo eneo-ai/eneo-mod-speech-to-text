@@ -12,8 +12,13 @@
  * (signed out, wrong origin) shows only as close 1006; 1011 means Eneo's
  * socket broke. The address may name the recording (?recording_id=): Eneo
  * then keeps the text of a session that heard all of it, as transcript_id.
+ * It names the user the page was opened for (?expected_user=), as a browser
+ * cannot set a header on a socket: for another user's session the relay
+ * accepts the socket and closes it 1008 "user_changed"; a session that ends
+ * under an open socket closes it 1008 "session_ended".
  */
 
+import type { Question } from "./login-state";
 import type { OnlineStatus } from "./online-status";
 
 /**
@@ -55,7 +60,7 @@ export interface LiveSocket {
   close(code?: number): void;
   onopen: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: ((event: { code: number }) => void) | null;
+  onclose: ((event: { code: number; reason?: string }) => void) | null;
   onerror: (() => void) | null;
 }
 
@@ -67,9 +72,16 @@ export interface LiveDeps {
   /**
    * The page's login (loginState): covered while signed out or someone else is signed in. The relay takes
    * whoever's cookie the browser has then, so live text sends nothing and connects to nothing until the page's
-   * own user is back; the recording goes on meanwhile.
+   * own user is back; the recording goes on meanwhile. The relay's closes for another user's session and for a session
+   * that ended under an open socket cover the page the way a request's refusal does (userChanged, and the status is
+   * read again), unless the socket was opened under an older login (ask).
    */
-  login?: { readonly signedOut: boolean; subscribe(listener: () => void): () => void };
+  login?: {
+    readonly signedOut: boolean;
+    ask(): Question;
+    subscribe(listener: () => void): () => void;
+    userChanged(question?: Question): boolean;
+  };
   now?: () => number;
 }
 
@@ -93,16 +105,20 @@ const FINAL_TEXT_WAIT_MS = 60_000;
 const SENTENCE_END = /[.!?…]["”'’)\]]*\s*$/;
 const SENTENCE_ENDS = /[.!?…]["”'’)\]]*(?=\s|$)/g;
 
-/** wss://host/api/live/{flowId}/{stepId} on the page's own origin, naming the recording when there is one. */
+/** wss://host/api/live/{flowId}/{stepId} on the page's own origin, naming the recording and the page's user when there are. */
 export function liveSocketUrl(
   location: { protocol: string; host: string },
   flowId: string,
   stepId: string,
   recordingId?: string,
+  expectedUser?: string,
 ): string {
   const scheme = location.protocol === "https:" ? "wss:" : "ws:";
-  const query = recordingId ? `?recording_id=${encodeURIComponent(recordingId)}` : "";
-  return `${scheme}//${location.host}/api/live/${encodeURIComponent(flowId)}/${encodeURIComponent(stepId)}${query}`;
+  const params = new URLSearchParams();
+  if (recordingId) params.set("recording_id", recordingId);
+  if (expectedUser) params.set("expected_user", expectedUser);
+  const query = params.toString();
+  return `${scheme}//${location.host}/api/live/${encodeURIComponent(flowId)}/${encodeURIComponent(stepId)}${query && `?${query}`}`;
 }
 
 /** No subprotocol: the BFF selects none, and a browser fails a handshake that offered one. */
@@ -281,6 +297,8 @@ export class LiveTranscriber {
     this.failure = null;
     this.attempts += 1;
     let socket: LiveSocket;
+    // Asked as it connects: a close about an older login never changes the login (loginState.ask).
+    const question = this.deps.login?.ask();
     try {
       socket = this.deps.openSocket();
     } catch {
@@ -290,7 +308,7 @@ export class LiveTranscriber {
     }
     socket.binaryType = "arraybuffer";
     socket.onmessage = (event) => this.onMessage(socket, event.data);
-    socket.onclose = () => this.onClose(socket);
+    socket.onclose = (event) => this.onClose(socket, event, question);
     // A failed socket also closes; the close says what to do.
     socket.onerror = () => undefined;
     this.socket = socket;
@@ -338,12 +356,18 @@ export class LiveTranscriber {
     }
   }
 
-  private onClose(socket: LiveSocket) {
+  private onClose(socket: LiveSocket, event: { code: number; reason?: string }, question: Question | undefined) {
     if (socket !== this.socket) return;
     this.socket = null;
     const wasReady = this.ready;
     this.ready = false;
     this.commit();
+    if (event.code === 1008 && (event.reason === "user_changed" || event.reason === "session_ended")) {
+      // The login is not the page's user's any more: the page is covered, and live text goes on as after a break
+      // once the page's own user is back (connect() waits for it); it opens nothing on its own meanwhile.
+      this.failure = "retry";
+      this.deps.login?.userChanged(question);
+    }
     if (this.stopping) {
       this.finish();
       return;

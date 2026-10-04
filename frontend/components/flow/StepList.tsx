@@ -1,44 +1,41 @@
-import {
-  CheckCircle2,
-  Circle,
-  CircleDashed,
-  CircleDot,
-  MinusCircle,
-  XCircle,
-  type LucideIcon,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { CheckCircle2, Circle, CircleDashed, CircleDot, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
+import { Icon } from "@astryxdesign/core/Icon";
+import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { stepStateLabel, type StepState, type StepView } from "@/lib/run-progress";
 
-const ICONS: Record<StepState, [LucideIcon, string]> = {
-  done: [CheckCircle2, "text-ok"],
+const ICONS: Record<StepState, [LucideIcon, "success" | "accent" | "secondary" | "error"]> = {
+  done: [CheckCircle2, "success"],
   // Static: the stage line above already shows that something is moving.
-  running: [CircleDot, "text-primary"],
-  waiting: [Circle, "text-muted-foreground"],
-  failed: [XCircle, "text-destructive"],
-  cancelled: [MinusCircle, "text-muted-foreground"],
-  not_run: [CircleDashed, "text-muted-foreground"],
+  running: [CircleDot, "accent"],
+  waiting: [Circle, "secondary"],
+  failed: [XCircle, "error"],
+  cancelled: [MinusCircle, "secondary"],
+  not_run: [CircleDashed, "secondary"],
 };
 
 /** Each step with its state in words; the icon only repeats the word. */
 export function StepList({ steps }: { steps: readonly StepView[] }) {
   return (
-    <ol className="flex flex-col gap-4">
+    // role="list": a list the reset has stripped of its bullets keeps its list semantics in Safari.
+    <VStack as="ol" role="list" gap={4}>
       {steps.map((step) => {
-        const [Icon, tone] = ICONS[step.state];
+        const [glyph, color] = ICONS[step.state];
         return (
-          <li key={step.order} className="flex items-start gap-3">
-            <Icon aria-hidden className={cn("mt-0.5 size-5 shrink-0", tone)} />
-            <div className="flex min-w-0 flex-1 flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-              <span className={cn("min-w-0 text-[15px] leading-snug [overflow-wrap:anywhere]", step.state === "running" && "font-semibold")}>
-                {step.label}
-              </span>
-              <span className="text-sm text-muted-foreground">{stepStateLabel(step.state)}</span>
-              {step.note && <span className="basis-full text-sm text-muted-foreground">{step.note}</span>}
-            </div>
-          </li>
+          <HStack as="li" key={step.order} gap={3} align="start">
+            <Icon icon={glyph} size="md" color={color} />
+            <StackItem size="fill">
+              <VStack gap={0.5}>
+                <HStack wrap="wrap" justify="between" gap={2}>
+                  <Text weight={step.state === "running" ? "semibold" : undefined}>{step.label}</Text>
+                  <Text type="supporting">{stepStateLabel(step.state)}</Text>
+                </HStack>
+                {step.note && <Text type="supporting">{step.note}</Text>}
+              </VStack>
+            </StackItem>
+          </HStack>
         );
       })}
-    </ol>
+    </VStack>
   );
 }

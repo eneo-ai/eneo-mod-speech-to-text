@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { before } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { TranscriptPlayer } from "../components/TranscriptPlayer";
+import { preloadTranscriptEditor, TranscriptPlayer } from "../components/TranscriptPlayer";
 import { saveTranscriptCorrections } from "./api";
 import { applyCorrections, correctionsFromResponse, correctionRequest, correctionWriteProblem, EMPTY_CORRECTIONS, renderReviewedTranscript, withSpeakerDecision, type CorrectionSet } from "./transcript-corrections";
 import { locateWords, type TranscriptSegment } from "./transcript";
 import { reviewPassages, speakerReviewsFromTranscription } from "./speaker-review";
+
+// The editor loads when it is first shown; markup rendered at once has it only once it has been loaded.
+before(async () => void (await preloadTranscriptEditor()));
 
 const raw: TranscriptSegment = { fileIndex: 0, start: 0, end: 4, text: "ett två tre", speaker: "SPEAKER_00", modelSpeaker: "SPEAKER_00", speakerAttribution: "provisional", overlapIds: ["file-a:overlap_0000"],
   words: locateWords("ett två tre", [{ word: "ett", start: 0, end: 1 }, { word: "två", start: 1, end: 2 }, { word: "tre", start: 2, end: 3 }], null) };

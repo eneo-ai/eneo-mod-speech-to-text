@@ -4,6 +4,8 @@ import { IDBFactory, IDBKeyRange, IDBObjectStore } from "fake-indexeddb";
 
 import { fakeWebLocks } from "./fake-web-locks";
 import {
+  INCOMPLETE_ON_DEVICE,
+  memoryBackend,
   openRecordingStore,
   type NewRecording,
   type RecordingFile,
@@ -486,6 +488,159 @@ test("a chunk the device refuses stays in this tab, in order, and the store stop
   assert.equal(store.refused(other.id), "failed", "a refusal that is not a full device");
 });
 
+/**
+ * A device whose open connections a test can close for real, as a browser does when it drops one, and whose next opens it
+ * can refuse. The database underneath is fake-indexeddb's: a closed connection throws InvalidStateError on its next
+ * transaction, as a browser's does.
+ */
+function closable() {
+  let underneath = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const state = { refuse: false };
+  const factory = {
+    open(name: string, version?: number) {
+      if (state.refuse) throw new DOMException("The browser will not open the database.", "UnknownError");
+      const request = underneath.open(name, version);
+      request.addEventListener("success", () => connections.push(request.result));
+      return request;
+    },
+  } as unknown as IDBFactory;
+  return {
+    env: device({ indexedDB: factory }),
+    state,
+    /** Every connection the store has open is closed now. */
+    closeConnections: () => connections.splice(0).forEach((connection) => connection.close()),
+    /** The browser cleared the site's storage: the next connection is to an empty database. */
+    wipe: () => void (underneath = new IDBFactory()),
+  };
+}
+
+test("a database connection the browser closed is reopened: what was kept is read, and recording goes on being kept", async () => {
+  const { env, closeConnections } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+
+  closeConnections();
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["ab"], "playback, upload and Spara som fil read it");
+  assert.equal((await store.get(recording.id))?.parts[0].chunks, 2);
+
+  closeConnections();
+  await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+  assert.equal(store.persistent, true, "a connection that can be reopened is no reason to keep the audio in this tab");
+  assert.equal(store.refused(recording.id), null);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+  closeConnections();
+  assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [], "this tab's own, still leased");
+});
+
+test("audio the device refused and audio it kept are read together, in order, also after the connection was closed", async () => {
+  const { env, closeConnections } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    await store.append(recording.id, 0, new Blob(["d"]), 4_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  assert.equal(store.refused(recording.id), "full");
+
+  closeConnections(); // and then the connection the earlier chunks are on goes too
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abcd"], "kept chunks first, then the ones only this tab has");
+});
+
+test("audio only this tab has is never read as if it were all there is: an unreadable stored prefix is an error, and both copies stay", async () => {
+  const { env, closeConnections, state } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+
+  closeConnections();
+  state.refuse = true; // the browser will not give the connection back
+  await assert.rejects(store.readParts(recording.id), "not 'c' alone, as if 'ab' had never been recorded");
+  await assert.rejects(store.readParts(recording.id), "and not on a second try either");
+
+  state.refuse = false; // it does, later: nothing was lost on the way
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
+});
+
+test("a recording whose stored chunks are gone is read as far as it survived, but is never offered as whole for sending", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["a"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["b"]), 2_000);
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 0, new Blob(["c"]), 3_000);
+    await store.append(recording.id, 0, new Blob(["d"]), 4_000);
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+
+  closeConnections();
+  wipe(); // the reopened database is a new, empty one: "ab" is gone, "cd" is all this tab has
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["cd"], "what survived is still read: Spara som fil and playback keep it");
+  await assert.rejects(store.readPartsToSend(recording.id), { message: INCOMPLETE_ON_DEVICE });
+  assert.equal((await store.get(recording.id))?.parts[0].chunks, 4, "the recording says what it should hold");
+});
+
+test("every part whole is sent; an earlier part with no chunk left at all is a gap too, not a part to leave out", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["ab"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["cd"]), 2_000);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 1, new Blob(["ef"]), 1_000);
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["abcd", "ef"]);
+
+  const put = IDBObjectStore.prototype.put;
+  IDBObjectStore.prototype.put = function (this: IDBObjectStore, ...args: Parameters<IDBObjectStore["put"]>) {
+    if (this.name === "chunks") throw new DOMException("Disk full", "QuotaExceededError");
+    return put.apply(this, args);
+  };
+  try {
+    await store.append(recording.id, 1, new Blob(["gh"]), 2_000); // only this tab has it
+  } finally {
+    IDBObjectStore.prototype.put = put;
+  }
+  closeConnections();
+  wipe(); // the first part's chunks are gone altogether, the second part's "gh" is in this tab
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["gh"]);
+  await assert.rejects(store.readPartsToSend(recording.id), { message: INCOMPLETE_ON_DEVICE });
+});
+
 test("audio only this tab has keeps the recording from other tabs after Stoppa, until this tab sends or deletes it", async () => {
   const env = device();
   const recordingTab = await openRecordingStore(env);
@@ -524,6 +679,65 @@ test("audio only this tab has keeps the recording from other tabs after Stoppa, 
   recordingTab.release(recording.id);
   await settle();
   assert.equal(await otherTab.lease(recording.id), true, "sent: nothing is held any more");
+});
+
+test("the store learns from the browser whether it may delete the device's recordings: at open without asking, and from the answer to the ask", async () => {
+  const calls = { persisted: 0, persist: 0 };
+  const browser = (persistent: boolean, grants: boolean): NonNullable<StoreEnv["storage"]> => ({
+    estimate: async () => ({ usage: 0, quota: 1_000 * MB }),
+    persisted: async () => {
+      calls.persisted += 1;
+      return persistent;
+    },
+    persist: async () => {
+      calls.persist += 1;
+      return grants;
+    },
+  });
+
+  const kept = await openRecordingStore(device({ storage: browser(true, false) }));
+  assert.equal(kept.evictable, false);
+  await kept.requestPersistence();
+  assert.equal(calls.persist, 0, "nothing is asked of a browser that already keeps it");
+
+  const refused = await openRecordingStore(device({ storage: browser(false, false) }));
+  assert.equal(refused.evictable, true, "known at open");
+  assert.equal(calls.persist, 0, "opening asks for nothing");
+  await refused.requestPersistence();
+  assert.equal(refused.evictable, true, "and still, once refused");
+
+  const granted = await openRecordingStore(device({ storage: browser(false, true) }));
+  let heard = 0;
+  granted.subscribe(() => (heard += 1));
+  assert.equal(granted.evictable, true);
+  await granted.requestPersistence();
+  assert.equal(granted.evictable, false, "the answer to the ask is kept");
+  assert.equal(heard, 1, "and said to those who follow the store");
+
+  assert.equal((await openRecordingStore({ storage: browser(false, false) })).evictable, false, "a store in memory says so with persistent, not this");
+  assert.equal((await openRecordingStore(device())).evictable, false, "a browser that says nothing is not claimed");
+});
+
+test("the RAM fallback appends a chunk in place, so a long recording is not copied again for every chunk", async () => {
+  const backend = memoryBackend();
+  const recording = { id: "r", parts: [] } as unknown as Parameters<typeof backend.put>[0];
+  // Spreading an array iterates it: a copy per append shows as one iteration per append.
+  const iterate = Array.prototype[Symbol.iterator];
+  let copies = 0;
+  Array.prototype[Symbol.iterator] = function (this: unknown[]) {
+    copies += 1;
+    return iterate.call(this);
+  } as typeof iterate;
+  const N = 2_000; // a 5-hour recording holds 9,000 chunks
+  try {
+    for (let seq = 0; seq < N; seq += 1) void backend.put(recording, { recordingId: "r", part: 0, seq, data: new ArrayBuffer(1) });
+  } finally {
+    Array.prototype[Symbol.iterator] = iterate;
+  }
+  assert.equal(copies, 0, "no append copies what is already held");
+  const kept = await backend.chunks("r", 0);
+  assert.deepEqual(kept.map((chunk) => chunk.seq), Array.from({ length: N }, (_, seq) => seq), "all of them, in order");
+  assert.deepEqual(await backend.chunks("r", 1), [], "and only the part asked for");
 });
 
 test("recording asks for persistent storage and warns when little space is left", async () => {

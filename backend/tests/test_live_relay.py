@@ -20,6 +20,7 @@ os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
+import anyio  # noqa: E402
 import httpx  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -177,6 +178,10 @@ class FakeEneoSocket:
             self._server.close()
             await self._server.wait_closed()
 
+        # A connection still open here is one whose peer will not answer a close frame (its loop is gone), and wait_closed()
+        # would wait for it: end it, so a teardown never depends on a peer. A relay that leaves Eneo's socket open is
+        # caught by the tests that look at it, not by a hang here.
+        self.drop_connections()
         asyncio.run_coroutine_threadsafe(shutdown(), self._loop).result(5)
         self._loop.call_soon_threadsafe(self._loop.stop)
 
@@ -247,6 +252,8 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 
     def connect(self, origin: str | None = MODULE_ORIGIN, query: str = ""):
         headers = {} if origin is None else {"Origin": origin}
+        # The page names the user it was opened for, as the frontend does: a socket that names nobody is refused.
+        query += ("&" if "?" in query else "?") + "expected_user=user-id"
         return self.client.websocket_connect(LIVE_PATH + query, headers=headers)
 
     def assert_closed(self, browser, code: int = 1000) -> None:
@@ -418,6 +425,55 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 
         self.assertTrue(self.eneo_socket.closed.wait(5))
         self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
+
+    def test_a_relay_that_is_cancelled_still_closes_eneos_socket(self) -> None:
+        """The test client ends a `with` by sending the disconnect and, at once, cancelling the app's scope; anyio delivers
+        that cancellation again at every await, so a relay that has not yet seen the disconnect has its cleanup cancelled
+        too. Whatever cancels the handler, Eneo's socket must not be left open (it was, about once in a few hundred runs:
+        the fake's stop() then waited for a peer whose loop was gone)."""
+        connections = []
+        open_session = main._open_live_session
+
+        async def keep_the_connection(*args):
+            connections.append(await open_session(*args))
+            return connections[0]
+
+        async def run() -> None:
+            ready = anyio.Event()
+            sent_connect = False
+
+            async def receive():
+                nonlocal sent_connect
+                if not sent_connect:
+                    sent_connect = True
+                    return {"type": "websocket.connect"}
+                await anyio.sleep_forever()
+
+            async def send(message) -> None:
+                if message["type"] == "websocket.send":
+                    ready.set()
+
+            scope = {
+                "type": "websocket", "asgi": {"version": "3.0"}, "scheme": "ws", "http_version": "1.1", "root_path": "",
+                "path": LIVE_PATH, "raw_path": LIVE_PATH.encode(), "query_string": b"expected_user=user-id", "subprotocols": [],
+                "headers": [
+                    (b"host", b"testserver"),
+                    (b"origin", MODULE_ORIGIN.encode()),
+                    (b"cookie", f"{SESSION_COOKIE}={self.client.cookies.get(SESSION_COOKIE)}".encode()),
+                ],
+                "client": ("testclient", 50000), "server": ("testserver", 80),
+            }
+            async with anyio.create_task_group() as group:
+                group.start_soon(main.app, scope, receive, send)
+                await ready.wait()
+                group.cancel_scope.cancel()
+            # Here, not after the loop is gone: the loop's own teardown closes what is left, and would hide it.
+            self.assertTrue(connections[0].transport.is_closing(), "the relay left Eneo's socket open")
+
+        with patch.object(main, "_open_live_session", keep_the_connection):
+            anyio.run(run)
+
+        self.assertTrue(self.eneo_socket.closed.wait(5), "Eneo did not see its socket close")
 
     def test_eneo_closing_closes_browser_socket(self) -> None:
         self.eneo_socket.mode = "close_after_ready"
@@ -592,7 +648,7 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
 
         async def stream(port: int) -> int:
             async with websocket_connect(
-                f"ws://127.0.0.1:{port}{LIVE_PATH}",
+                f"ws://127.0.0.1:{port}{LIVE_PATH}?expected_user=user-id",
                 origin=MODULE_ORIGIN,
                 additional_headers={"Cookie": f"{SESSION_COOKIE}={session_id}"},
             ) as browser:

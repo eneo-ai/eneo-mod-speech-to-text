@@ -2,8 +2,13 @@
 
 import { Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
-import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Icon } from "@astryxdesign/core/Icon";
+import { IconButton } from "@astryxdesign/core/IconButton";
+import { Slider } from "@astryxdesign/core/Slider";
+import { Spinner } from "@astryxdesign/core/Spinner";
+import { StackItem } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import { formatClock } from "@/lib/format";
 import { Playback, type PlaybackSnapshot, type PlayerSource } from "@/lib/playback";
 
@@ -39,11 +44,11 @@ export function AudioPlayer({
   const pauses = state.playing || state.starting;
 
   return (
-    <div role="group" aria-label={`Uppspelning: ${label}`} className="flex items-center gap-3">
+    <HStack role="group" aria-label={`Uppspelning: ${label}`} gap={3} align="center">
       <audio
         ref={attach}
         preload="metadata"
-        className="hidden"
+        hidden
         onPlay={playback.onPlay}
         onPause={playback.onPause}
         onLoadedMetadata={playback.onLoadedMetadata}
@@ -52,46 +57,44 @@ export function AudioPlayer({
         onEnded={playback.onEnded}
         onError={playback.onError}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="icon"
-        className="relative shrink-0 rounded-full"
-        aria-label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+      {/* Not isLoading, which disables the button: a press while the audio loads pauses that start. */}
+      <IconButton
+        label={pauses ? "Pausa uppspelningen" : "Spela upp"}
+        variant="secondary"
         data-loading={state.starting || undefined}
+        icon={
+          state.starting ? (
+            // The audio loads: a spinner takes the place of the pause sign.
+            <span aria-hidden>
+              <Spinner size="sm" shade="inherit" />
+            </span>
+          ) : (
+            <Icon icon={pauses ? Pause : Play} size="sm" />
+          )
+        }
         onClick={() => playback.toggle()}
-      >
-        {pauses ? (
-          <Pause aria-hidden />
-        ) : (
-          <Play aria-hidden className="translate-x-px" />
-        )}
-        {state.starting && (
-          // The audio loads: a ring turns around the pause sign.
-          <span
-            aria-hidden
-            className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-current motion-reduce:animate-none"
-          />
-        )}
-      </Button>
-      <Slider
-        className="h-9 min-w-0 flex-1 coarse:h-11"
-        min={0}
-        max={Math.max(1, Math.round(state.totalMs / 1_000))}
-        step={1}
-        value={[Math.round(state.atMs / 1_000)]}
-        // Seek on every change: a local file seeks at once, and a keyboard
-        // change reports its commit before its change.
-        onValueChange={([seconds]) => playback.seekAt(seconds * 1_000)}
-        thumbProps={{
-          "aria-label": "Position i inspelningen",
-          "aria-valuetext": `${formatClock(state.atMs)} av ${formatClock(state.totalMs)}`,
-        }}
       />
-      <span className="shrink-0 text-[14px] tabular-nums text-ink-soft">
+      <StackItem size="fill">
+        <Slider
+          label="Position i inspelningen"
+          isLabelHidden
+          width="100%"
+          min={0}
+          max={Math.max(1, Math.round(state.totalMs / 1_000))}
+          step={1}
+          value={Math.round(state.atMs / 1_000)}
+          // Seek on every change: a local file seeks at once, and a keyboard
+          // change reports its commit before its change.
+          onChange={(seconds: number) => playback.seekAt(seconds * 1_000)}
+          // No value bubble following the playhead; the time beside it says where it is.
+          valueDisplay="none"
+          formatValue={(seconds) => `${formatClock(seconds * 1_000)} av ${formatClock(state.totalMs)}`}
+        />
+      </StackItem>
+      <Text type="supporting" hasTabularNumbers textWrap="nowrap">
         {formatClock(state.atMs)} / {formatClock(state.totalMs)}
-      </span>
+      </Text>
       {children}
-    </div>
+    </HStack>
   );
 }

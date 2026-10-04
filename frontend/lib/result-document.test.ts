@@ -1,11 +1,41 @@
 import assert from "node:assert/strict";
-import test, { afterEach } from "node:test";
+import test, { afterEach, type TestContext } from "node:test";
+import type { ReactElement } from "react";
 
 import { button, cleanup, installDom, mount } from "./test-dom";
 import type { ResultFileView } from "./run-files";
 
 installDom();
 afterEach(cleanup);
+
+/** What a page is rendered in: the design system's providers, so its own words are Swedish ("Stäng"). */
+async function inProviders(element: ReactElement) {
+  const { createElement } = await import("react");
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  return mount(createElement(ModuleProviders, null, element));
+}
+
+/** A window this many pixels wide, as far as `(min-width: …px)` can tell; a phone's by default (the test document's). */
+function widthOf(t: TestContext, pixels: number) {
+  const real = window.matchMedia;
+  let current = pixels;
+  const listeners = new Set<() => void>();
+  const matchMedia = (query: string) => ({
+    get matches() {
+      return current >= Number(/min-width: (\d+)px/.exec(query)?.[1] ?? Infinity);
+    },
+    media: query, onchange: null, dispatchEvent: () => false, addListener() {}, removeListener() {},
+    addEventListener: (_: string, listener: () => void) => void listeners.add(listener),
+    removeEventListener: (_: string, listener: () => void) => void listeners.delete(listener),
+  });
+  Object.defineProperty(window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
+  t.after(() => void Object.defineProperty(window, "matchMedia", { value: real, configurable: true, writable: true }));
+  /** The window is resized to this width, telling whoever listens (run it inside the view's `act`). */
+  return (next: number) => {
+    current = next;
+    listeners.forEach((listener) => listener());
+  };
+}
 
 const pdf: ResultFileView = {
   fileId: "file-1",
@@ -21,42 +51,105 @@ const pdf: ResultFileView = {
 };
 const text = "## Protokoll\n\nKommunstyrelsen godkänner förslaget.";
 
+/** Until the code that formats Markdown has arrived (Markdown.tsx): the page is read after it has. */
+const formatted = (view: { act: (callback: () => Promise<void>) => Promise<void> }) => view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, 20)));
+
 async function document_(props: { text: string | null; file: ResultFileView | null; preview?: string | null }) {
   const { createElement } = await import("react");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
-  return mount(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
+  const view = await inProviders(createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", ...props }));
+  await formatted(view);
+  return view;
 }
 
-/** The distinct filled actions (the wide and the narrow bar each show one): the primary variant, on a button or a link. */
+/** What a screen reader hears from a control: the label the design system sets where the words say less, else the words. */
+const nameOf = (el: Element) => el.getAttribute("aria-label") ?? el.textContent?.trim();
+
+/** The words of a tab. The design system draws a tab's label twice, the second one hidden (it keeps the tab's width when chosen). */
+const tabLabel = (tab: Element) => tab.querySelector("span > span:not([aria-hidden])")?.textContent;
+const tabsIn = (within: ParentNode) => [...within.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+
+/** The distinct filled actions: the primary variant, on a button or a link. */
 const filled = (within: ParentNode) => [
   ...new Set(
-    [...within.querySelectorAll<HTMLElement>("a, button")]
-      .filter((el) => /(^| )bg-primary( |$)/.test(el.className))
-      .map((el) => el.textContent?.trim()),
+    [...within.querySelectorAll<HTMLElement>("a, button")].filter((el) => el.getAttribute("data-variant") === "primary").map(nameOf),
   ),
 ];
+
+test("a document's text is there as it was written until the code that formats it has arrived, and is formatted then", async () => {
+  const { createElement } = await import("react");
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { ResultDocument } = await import("../components/flow/ResultDocument");
+  const props = { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text, file: null };
+  // What the server renders, and the browser's first render, which must agree: the formatting code is not there yet.
+  const before = renderToStaticMarkup(createElement(ResultDocument, props));
+  assert.match(before, /## Protokoll\n\nKommunstyrelsen godkänner förslaget\./, "the text as written, nothing missing");
+  assert.doesNotMatch(before, /<h2/, "not formatted yet");
+
+  const view = await inProviders(createElement(ResultDocument, props));
+  await formatted(view);
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual([...article.querySelectorAll("h2")].map((h) => h.textContent), ["Protokoll"]);
+  assert.doesNotMatch(article.textContent ?? "", /##/);
+});
+
+test("an address the page will not follow is shown as its words, not as a link that reloads the page", async () => {
+  const view = await document_({
+    text: "Se [klicka här](javascript:alert(1)), [kommunen](https://sundsvall.se) och ![en bild](javascript:alert(2)).",
+    file: null,
+  });
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual([...article.querySelectorAll("a")].map((a) => a.getAttribute("href")), ["https://sundsvall.se"], "the safe link only; no href=\"\"");
+  assert.equal(article.querySelector("img"), null, "no image with an empty source, which asks for the page itself");
+  assert.match(article.textContent ?? "", /Se klicka här, kommunen och en bild\./, "every word of it is still there");
+});
+
+test("footnotes are named in Swedish, and their heading is hidden by the module's own rule, not by Tailwind's sr-only", async () => {
+  const view = await document_({ text: "Beslutet togs.[^1]\n\n[^1]: Enligt protokollet.", file: null });
+  const article = view.container.querySelector("article")!;
+  const heading = article.querySelector("section[data-footnotes] h2")!;
+  assert.equal(heading.textContent, "Fotnoter", "the footnotes' own label, which a screen reader reads");
+  assert.doesNotMatch(heading.className, /sr-only/, "a class only Tailwind defines turns the heading visible once Tailwind is gone");
+  assert.match(heading.className, /visuallyHidden/, "the module's own rule hides it");
+  assert.match(article.querySelector("a[data-footnote-backref]")?.getAttribute("aria-label") ?? "", /^Tillbaka till referens 1/);
+});
 
 test("the document's one filled action is its file's download; without a file it is copying the text", async () => {
   const withFile = await document_({ text, file: pdf });
   assert.deepEqual(filled(withFile.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"]);
-  // The file row names the file, and the name opens it; it never offers the same download again.
+  // The file row names the file, and the name opens it; it never offers the same download again. On a phone's width
+  // that is a tab of its own, as Öppna PDF above the document.
   const inline = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
   const name = withFile.container.querySelector<HTMLAnchorElement>(`[data-file-row] a[href="${inline}"]`);
   assert.ok(name, "the file's name is a link to the file");
   assert.equal(name.target, "_blank", "as Öppna PDF: in a new tab");
-  assert.equal(name.textContent, `Öppna ${pdf.name} i en ny flik`);
+  assert.equal(nameOf(name), `Öppna ${pdf.name} i en ny flik`);
+  assert.equal(name.textContent, pdf.name, "the words it shows are the file's name, in its accessible name");
   const row = name.closest("[data-file-row]")!;
   assert.match(row.textContent ?? "", /PDF, 47,1\u00a0kB/);
-  assert.ok(!row.querySelector("a[download]"), "no second download in the file row");
-  // From a laptop's width the name opens the preview instead; no Öppna beside it does the same again.
-  const controls = [...row.querySelectorAll("a, button")].map((el) => el.textContent);
-  assert.deepEqual(controls, [`Öppna ${pdf.name} i en ny flik`, `Öppna ${pdf.name}`]);
-  assert.equal(row.querySelector("button")!.getAttribute("aria-haspopup"), "dialog");
+  // The dialog's own controls are in the row's markup, closed: what is on the page is the one link.
+  const onPage = [...row.querySelectorAll("a, button")].filter((el) => !el.closest("dialog"));
+  assert.ok(!onPage.some((el) => el.matches("a[download]")), "no second download in the file row");
+  assert.deepEqual(onPage.map(nameOf), [`Öppna ${pdf.name} i en ny flik`], "no second way to open it");
   await withFile.unmount();
 
   const textOnly = await document_({ text, file: null });
   assert.deepEqual(filled(textOnly.container), ["Kopiera texten"]);
   await textOnly.unmount();
+});
+
+test("from a laptop's width the file's name opens the preview instead, and no Öppna beside it does the same again", async (t) => {
+  widthOf(t, 1280);
+  const view = await document_({ text, file: pdf });
+  const row = view.container.querySelector("[data-file-row]")!;
+  // The dialog's own controls are in the row's markup, closed: what is on the page is the one trigger.
+  const controls = [...row.querySelectorAll("a, button")].filter((el) => !el.closest("dialog"));
+  assert.deepEqual(controls.map(nameOf), [`Öppna ${pdf.name}`]);
+  assert.equal(controls[0].getAttribute("aria-haspopup"), "dialog");
+  assert.ok(!row.querySelector("a[href][target]:not(dialog a)"), "no link to a tab of its own beside it");
+  assert.ok(!row.querySelector("a[download]:not(dialog a)"), "no second download in the file row");
+  assert.deepEqual(filled(view.container), ["Ladda ner PDF, Protokoll kommunstyrelsen 2026-09-24.pdf"], "one filled action on the document's top edge");
+  assert.ok(![...view.container.querySelectorAll("button")].some((b) => b.getAttribute("aria-label") === "Fler alternativ"), "no menu on a wide window");
 });
 
 test("the result's own headings sit under the page's h1: its top heading is an h2 whatever its Markdown level", async () => {
@@ -117,18 +210,101 @@ test("Dela only where the browser can share, and then the file itself when the d
   }
 });
 
-test("the PDF opens on its title, with its actions and Stäng before the viewer", async () => {
+test("the PDF opens on its title, with its actions and Stäng before the viewer, and is fetched only then", async (t) => {
+  widthOf(t, 1280);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
-  const view = await mount(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
   const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
+  assert.equal(document.querySelector("iframe"), null, "closed: no PDF is fetched");
   await view.act(async () => open.click());
-  const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
+  const dialog = document.querySelector<HTMLElement>("dialog[open]")!;
+  assert.ok(dialog, "an open dialog");
+  assert.equal(dialog.getAttribute("aria-labelledby") && document.getElementById(dialog.getAttribute("aria-labelledby")!)?.textContent, pdf.name, "named by its title");
   assert.equal(document.activeElement?.textContent, pdf.name, "focus on the title, not in the viewer");
-  const order = [...dialog.querySelectorAll("button, a, iframe")].map((el) => el.tagName === "IFRAME" ? "viewer" : el.textContent?.trim());
+  const order = [...dialog.querySelectorAll("button, a, iframe")].map((el) => (el.tagName === "IFRAME" ? "viewer" : nameOf(el)));
   assert.deepEqual(order, ["Öppna i ny flik", "Ladda ner", "Stäng", "viewer"]);
   // Tab never enters the browser's PDF frame, which keeps Escape and shows no focus; "Öppna i ny flik" reads it.
   assert.equal(dialog.querySelector("iframe")!.tabIndex, -1, "the viewer is not a Tab stop");
+
+  // Stäng closes it, the viewer goes with it, and focus is back on what opened it.
+  await view.act(async () => button(dialog, "Stäng")!.click());
+  assert.equal(document.querySelector("dialog[open]"), null);
+  assert.equal(document.querySelector("iframe"), null, "closed again: nothing fetched");
+  assert.equal(document.activeElement, open, "focus is back on the trigger");
+});
+
+test("the PDF preview is closed while the login has ended, and is back with its viewer when it is", async (t) => {
+  widthOf(t, 1280);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const { loginState } = await import("./login-state");
+  const anna = { id: "user-1", email: "anna@example.se", username: "Anna" };
+  const status = (authenticated: boolean) => ({ authenticated, auth_mode: "eneo_sso" as const, user: authenticated ? anna : null });
+  const end = loginState.begin(anna);
+  t.after(end);
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
+  await view.act(async () => open.click());
+  assert.ok(document.querySelector("dialog[open]"));
+  const viewer = document.querySelector("iframe");
+
+  // A native dialog is no part of what the cover makes inert: the page closes it, and keeps its viewer to come back to.
+  await view.act(async () => loginState.observe(status(false)));
+  assert.equal(document.querySelector("dialog[open]"), null, "nothing of it shown while signed out");
+  assert.equal(document.querySelector("iframe"), viewer, "the viewer is kept, not fetched again");
+  await view.act(async () => loginState.observe(status(true)));
+  assert.ok(document.querySelector("dialog[open]"), "back after the new login");
+  assert.equal(document.querySelector("iframe"), viewer);
+});
+
+test("the PDF preview stays open, with its viewer, when the window crosses the breakpoint, and focus stays in it", async (t) => {
+  const resize = widthOf(t, 1280);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
+  await view.act(async () => open.click());
+  const dialog = document.querySelector<HTMLElement>("dialog[open]")!;
+  const viewer = dialog.querySelector("iframe")!;
+  assert.ok(dialog.contains(document.activeElement), "focus starts in the dialog");
+
+  // The page is made narrow while the dialog is open: it is the same dialog and the same viewer, not a reload.
+  await view.act(async () => resize(390));
+  assert.equal(document.querySelector("dialog[open]"), dialog, "still open, the same element");
+  assert.equal(dialog.querySelector("iframe"), viewer, "the viewer is not fetched again");
+  assert.ok(dialog.contains(document.activeElement), "focus has not dropped to the page");
+  await view.act(async () => resize(1280));
+  assert.equal(document.querySelector("dialog[open]"), dialog);
+  assert.equal(dialog.querySelector("iframe"), viewer);
+
+  // Closed on the narrow page, focus is given to what opens the preview there.
+  await view.act(async () => resize(390));
+  await view.act(async () => button(dialog, "Stäng")!.click());
+  assert.equal(document.querySelector("dialog[open]"), null);
+  assert.equal(document.activeElement, view.container.querySelector('a[target="_blank"]'), "the link that opens it in a tab has focus");
+});
+
+test("narrower than a laptop a PDF opens in a tab of its own, and says so", async (t) => {
+  widthOf(t, 390);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  assert.ok(!document.querySelector("dialog[open]") && !document.querySelector("iframe"), "a closed dialog, so nothing is fetched ahead");
+  const open = view.container.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
+  assert.equal(nameOf(open), `Öppna ${pdf.name} i en ny flik`);
+  assert.equal(open.rel, "noopener noreferrer");
+  assert.equal(open.textContent, "Öppna");
+});
+
+test("a file that cannot be fetched shows its name and size and nothing to press", async () => {
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [{ ...pdf, available: false }] }));
+  const row = view.container.querySelector("li")!;
+  assert.match(row.textContent ?? "", /Protokoll kommunstyrelsen 2026-09-24\.pdf/);
+  assert.match(row.textContent ?? "", /PDF, 47,1\u00a0kB/);
+  assert.equal(row.querySelectorAll("a, button").length, 0);
 });
 
 test("narrower than a laptop, Dokument and Transkript are tabs that keep each other's state", async (t) => {
@@ -166,20 +342,28 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
     }),
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
-  const tab = (name: string) => [...view.container.querySelectorAll<HTMLButtonElement>('[role="tab"]')].find((b) => b.textContent === name)!;
+  const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
   assert.equal(tab("Dokument").getAttribute("aria-selected"), "true", "the document first");
-  const panels = view.container.querySelectorAll('[role="tabpanel"]');
+  const panels = [...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
   assert.equal(panels.length, 2, "both views stay mounted");
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
-  assert.deepEqual([...panels].map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
+  assert.deepEqual(panels.map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
+  // Each panel is named by its tab and its tab points at it; only the chosen one is shown.
+  assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkript"]);
+  assert.deepEqual(tabsIn(view.container).map((t) => t.getAttribute("aria-controls")), panels.map((p) => p.id));
+  assert.deepEqual(panels.map((p) => p.hidden), [false, true]);
 
-  const search = view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!;
-  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
+  const { computeAccessibleName } = await import("dom-accessibility-api");
+  // The search is found by the name a screen reader gives it: the design system's input is named by its label.
+  const searchBox = () => [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
+  const search = searchBox();
+  await view.act(async () => tab("Transkript").click());
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
-  await view.act(async () => tab("Dokument").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  await view.act(async () => tab("Transkript").dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, button: 0 })));
-  assert.equal(view.container.querySelector<HTMLInputElement>('input[aria-label="Sök i transkriptet"]')!.value, "punkten", "the search is kept");
+  await view.act(async () => tab("Dokument").click());
+  assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hidden), [false, true], "the document is back");
+  await view.act(async () => tab("Transkript").click());
+  assert.equal(searchBox().value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
   // Nothing has played: no pause beside the document yet.
   assert.ok(!view.container.querySelector("[data-docked-player] button[aria-label='Pausa uppspelningen']"));
@@ -232,7 +416,7 @@ test("a failed later save keeps the note that the document is older, and says wh
 
   // A later correction fails to save.
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => document.querySelector<HTMLButtonElement>('[role="dialog"] button[role="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
   await view.act(async () => button(document.body, "Spara")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.ok(note(), "still said: the document is older than the saved corrections");
@@ -456,8 +640,8 @@ test("a flow that makes text says the text is ready, and offers to make the text
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
   assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
-  assert.deepEqual([...view.container.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent), ["Text", "Transkript"]);
-  assert.ok(view.container.querySelector('section[aria-label="Texten"]'), "the text, named as such");
+  assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkript"]);
+  assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
   assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);
 });
 

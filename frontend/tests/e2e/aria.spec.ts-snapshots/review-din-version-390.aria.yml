@@ -5,11 +5,20 @@
   - text: Innehåll för granskning Redigerbart
   - article:
     - paragraph: Kommunstyrelsen beslutade att höja budgetramen med två procent.
-  - button "Redigera"
+  - button "Redigera":
+    - text: ""
+    - status
   - alert:
-    - text: Din ändring sparades inte
-    - paragraph: Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.
-    - button "Använd din version"
-    - button "Behåll den senaste"
-  - button "Avvisa"
-  - button "Godkänn och fortsätt"
+    - text: Din ändring sparades inte Granskningen har ändrats sedan du började. Här visas den senaste versionen, och din version finns kvar.
+    - button "Använd din version":
+      - text: ""
+      - status
+    - button "Behåll den senaste":
+      - text: ""
+      - status
+  - button "Avvisa":
+    - text: ""
+    - status
+  - button "Godkänn och fortsätt":
+    - text: ""
+    - status

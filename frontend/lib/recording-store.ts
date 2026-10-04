@@ -82,7 +82,7 @@ export interface RecordingFile {
 export interface StoreEnv {
   indexedDB?: IDBFactory;
   keyRange?: typeof IDBKeyRange;
-  storage?: Pick<StorageManager, "estimate" | "persist">;
+  storage?: Pick<StorageManager, "estimate" | "persist"> & Partial<Pick<StorageManager, "persisted">>;
   locks?: Pick<LockManager, "request" | "query">;
   now?: () => number;
 }
@@ -138,48 +138,82 @@ function openDatabase(factory: IDBFactory): Promise<IDBDatabase> {
   });
 }
 
-function idbBackend(db: IDBDatabase, keyRange: typeof IDBKeyRange): Backend {
+/** The browser closed the connection (it may, to free memory or clean a profile): the next transaction throws this. */
+function connectionClosed(error: unknown): boolean {
+  return (error as { name?: string } | null)?.name === "InvalidStateError";
+}
+
+/**
+ * The database, over a connection that is reopened when the browser has closed it. A call that finds it closed reopens it
+ * once (one reopening for every call that finds it at the same time) and tries again; every call here can be repeated,
+ * and a reopening that fails is the call's own failure, never an empty answer.
+ */
+function idbBackend(initial: IDBDatabase, keyRange: typeof IDBKeyRange, reopen: () => Promise<IDBDatabase>): Backend {
+  let db = initial;
+  let reopening: Promise<IDBDatabase> | null = null;
+  async function use<T>(work: (db: IDBDatabase) => Promise<T>): Promise<T> {
+    try {
+      return await work(db);
+    } catch (error) {
+      if (!connectionClosed(error)) throw error;
+      reopening ??= reopen().finally(() => {
+        reopening = null;
+      });
+      db = await reopening;
+      return work(db);
+    }
+  }
   return {
     async put(recording, chunk) {
       // Safari cannot always store a Blob in IndexedDB; an ArrayBuffer works everywhere.
       const data = chunk?.data instanceof Blob ? await chunk.data.arrayBuffer() : chunk?.data;
-      const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
-      const done = completion(tx);
-      try {
-        tx.objectStore(RECORDINGS).put(recording);
-        if (chunk) tx.objectStore(CHUNKS).put({ ...chunk, data });
-      } catch (error) {
-        done.catch(() => undefined);
-        tx.abort();
-        throw error;
-      }
-      await done;
+      await use(async (db) => {
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        const done = completion(tx);
+        try {
+          tx.objectStore(RECORDINGS).put(recording);
+          if (chunk) tx.objectStore(CHUNKS).put({ ...chunk, data });
+        } catch (error) {
+          done.catch(() => undefined);
+          tx.abort();
+          throw error;
+        }
+        await done;
+      });
     },
-    get: (id) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id)),
-    list: () => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll()),
+    get: (id) => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).get(id))),
+    list: () => use(async (db) => result(db.transaction(RECORDINGS).objectStore(RECORDINGS).getAll())),
     chunks: (id, part) =>
-      result(
-        db
-          .transaction(CHUNKS)
-          .objectStore(CHUNKS)
-          .getAll(keyRange.bound([id, part, 0], [id, part, Infinity])),
+      use(async (db) =>
+        result(
+          db
+            .transaction(CHUNKS)
+            .objectStore(CHUNKS)
+            .getAll(keyRange.bound([id, part, 0], [id, part, Infinity])),
+        ),
       ),
-    async delete(id) {
-      const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
-      tx.objectStore(CHUNKS).delete(keyRange.bound([id, 0, 0], [id, Infinity, Infinity]));
-      tx.objectStore(RECORDINGS).delete(id);
-      await completion(tx);
-    },
+    delete: (id) =>
+      use(async (db) => {
+        const tx = db.transaction([RECORDINGS, CHUNKS], "readwrite");
+        tx.objectStore(CHUNKS).delete(keyRange.bound([id, 0, 0], [id, Infinity, Infinity]));
+        tx.objectStore(RECORDINGS).delete(id);
+        await completion(tx);
+      }),
   };
 }
 
-function memoryBackend(): Backend {
+export function memoryBackend(): Backend {
   const recordings = new Map<string, StoredRecording>();
   const chunks = new Map<string, Chunk[]>();
   return {
     async put(recording, chunk) {
       recordings.set(recording.id, recording);
-      if (chunk) chunks.set(recording.id, [...(chunks.get(recording.id) ?? []), chunk]);
+      if (!chunk) return;
+      // In place: the array is this backend's own (chunks() hands out copies), and a copy per chunk is quadratic over
+      // a recording of thousands of chunks.
+      const held = chunks.get(recording.id);
+      if (held) held.push(chunk);
+      else chunks.set(recording.id, [chunk]);
     },
     get: async (id) => recordings.get(id),
     list: async () => [...recordings.values()],
@@ -195,6 +229,9 @@ const lockName = (id: string) => `tal-till-text-recording:${id}`;
 
 export const IN_USE_ELSEWHERE = "Inspelningen används i en annan flik.";
 export const NOT_ON_DEVICE = "Inspelningen finns inte längre på enheten.";
+/** Chunks of the recording are gone from the device (it cleared its storage, or lost the database): it would go shorter. */
+export const INCOMPLETE_ON_DEVICE =
+  "Inspelningen är ofullständig på enheten: en del av ljudet saknas, så den skickas inte. Välj Spara som fil för att behålla det som finns kvar.";
 /** Eneo has a run under the recording's key: sent, from this send or an earlier one. */
 export const ALREADY_SENT = "Inspelningen har redan skickats. Körningen finns under Tidigare körningar.";
 
@@ -250,6 +287,8 @@ export class RecordingStore {
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, or it refused the write.
   private overflowed = new Map<string, DeviceRefusal>();
+  // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
+  private kept: boolean | null = null;
 
   constructor(
     private backend: Backend,
@@ -260,6 +299,14 @@ export class RecordingStore {
   /** False when the audio (or part of it) lives only in this tab. */
   get persistent(): boolean {
     return this.durable && this.overflowed.size === 0;
+  }
+
+  /**
+   * True when the browser says it may delete this device's recordings (its storage is not persistent): Safari clears
+   * a site's storage after a week without a visit, and any browser may under pressure. False while it has not said.
+   */
+  get evictable(): boolean {
+    return this.durable && this.kept === false;
   }
 
   /** Why the device stopped keeping this recording partway, or null while it keeps it. */
@@ -409,32 +456,53 @@ export class RecordingStore {
     });
   }
 
-  /** Each part with audio as one file, in part order; WebM carries its recorded duration. */
+  /** Each part with audio as one file, in part order; WebM carries its recorded duration. What survived, whole or not. */
   readParts(id: string): Promise<RecordingFile[]> {
+    return this.serial(async () => (await this.readEach(id)).filter((file) => file.blob.size > 0));
+  }
+
+  /**
+   * The parts to send: each part with every chunk the recording counted (sequence 0 up to its last, and as many bytes),
+   * or the integrity error, so that what is left on the device never goes to Eneo as if it were all of it, and the local
+   * copy is never deleted for it. A part with no chunk left is a gap too, not a part to leave out.
+   */
+  readPartsToSend(id: string): Promise<RecordingFile[]> {
     return this.serial(async () => {
-      const recording = await this.load(id);
-      if (!recording) return [];
-      const type = baseMimetype(recording.mimeType);
-      const files = await Promise.all(
-        recording.parts.map(async (part) => {
-          // Overflow is sticky, so its chunks always follow the database's.
-          const data: Array<Blob | ArrayBuffer | Uint8Array> = [
-            ...(await this.backend.chunks(id, part.index)),
-            ...(await this.overflow.chunks(id, part.index)),
-          ].map((chunk) => chunk.data);
-          // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
-          if (data.length > 0) {
-            data[0] = await withRecordedDuration(data[0], part.durationMs, type);
-          }
-          return {
-            index: part.index,
-            blob: new Blob(data, { type }),
-            filename: recordingFilename(recording, part.index),
-          };
-        }),
-      );
+      const files = await this.readEach(id);
+      if (files.some((file) => !file.whole)) throw new Error(INCOMPLETE_ON_DEVICE);
       return files.filter((file) => file.blob.size > 0);
     });
+  }
+
+  private async readEach(id: string): Promise<Array<RecordingFile & { whole: boolean }>> {
+    const recording = await this.load(id);
+    if (!recording) return [];
+    const type = baseMimetype(recording.mimeType);
+    return Promise.all(
+      recording.parts.map(async (part) => {
+        // Overflow is sticky, so its chunks follow the database's. The database's are read first and an unreadable
+        // database is the read's failure: audio held in this tab is never taken for all there is, and both copies stay.
+        const stored = await this.backend.chunks(id, part.index);
+        const here = await this.overflow.chunks(id, part.index);
+        // By sequence number, once each: a chunk the device reported as refused but did keep is not played twice.
+        const bySeq = new Map<number, Chunk>();
+        for (const chunk of [...here, ...stored]) bySeq.set(chunk.seq, chunk);
+        const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
+        const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
+        const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
+        const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = chunks.map((chunk) => chunk.data);
+        // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
+        if (data.length > 0) {
+          data[0] = await withRecordedDuration(data[0], part.durationMs, type);
+        }
+        return {
+          index: part.index,
+          blob: new Blob(data, { type }),
+          filename: recordingFilename(recording, part.index),
+          whole,
+        };
+      }),
+    );
   }
 
   /** Eneo accepted the run: the local copy is no longer needed. */
@@ -530,9 +598,22 @@ export class RecordingStore {
     this.notify();
   }
 
-  async requestPersistence(): Promise<void> {
+  /** What the browser already says of keeping this device's storage; nothing is asked of the user. */
+  async readPersisted(): Promise<void> {
     try {
-      await this.env.storage?.persist();
+      this.kept = (await this.env.storage?.persisted?.()) ?? this.kept;
+    } catch {
+      // Not said: not claimed.
+    }
+  }
+
+  async requestPersistence(): Promise<void> {
+    if (this.kept) return;
+    try {
+      const granted = await this.env.storage?.persist();
+      if (granted === undefined || granted === this.kept) return;
+      this.kept = granted;
+      this.notify();
     } catch {
       // The browser may refuse; the recording is still stored.
     }
@@ -640,9 +721,11 @@ export class RecordingStore {
 export async function openRecordingStore(env: StoreEnv): Promise<RecordingStore> {
   if (env.indexedDB && env.keyRange) {
     try {
-      const db = await openDatabase(env.indexedDB);
-      const store = new RecordingStore(idbBackend(db, env.keyRange), true, env);
+      const factory = env.indexedDB;
+      const db = await openDatabase(factory);
+      const store = new RecordingStore(idbBackend(db, env.keyRange, () => openDatabase(factory)), true, env);
       await store.removeAccepted().catch(() => undefined);
+      await store.readPersisted();
       return store;
     } catch {
       // Private mode or blocked storage: fall through to memory.

@@ -1,19 +1,23 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
-import { buttonVariants } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { ClassificationNote } from "@/components/flow/ClassificationNote";
 import type { FlowPublished, FlowSecurityClassification } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import styles from "./FlowFrame.module.css";
 
 /**
  * A flow's page, its first column: the way back, the flow's name and description, and its details. The same
  * in every state, so only the working card beside it changes. Compact (audio held, a run under way), the
  * description is for laptops only and the details fold into one line on a phone or tablet, keeping the card
- * near the top.
+ * near the top. The flow's name is here on every width: the top bar holds only the way back and the account.
  */
 export function FlowAside({
   published,
@@ -43,40 +47,47 @@ export function FlowAside({
   onOpenChange?: (open: boolean) => void;
   className?: string;
 }) {
-  const Title = titleIsHeading ? "h1" : "p";
   return (
-    <div className={cn("flex flex-col gap-5", className)}>
-      {locked ? (
-        <span aria-hidden className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "invisible hidden w-fit lg:inline-flex")} />
+    <VStack gap={5} className={className}>
+      <HStack className={styles.fromLaptop}>
+        {locked ? (
+          <span aria-hidden className={styles.reserve}>
+            <Button label="Alla flöden" size="sm" />
+          </span>
+        ) : (
+          <BackToFlows onLeave={onLeave} />
+        )}
+      </HStack>
+      {titleIsHeading ? (
+        <Heading level={1} className={compact ? styles.compactName : undefined}>
+          {published.name}
+        </Heading>
       ) : (
-        <BackToFlows onLeave={onLeave} className="hidden lg:inline-flex" />
+        <Text as="p" weight="semibold" type="large">
+          {published.name}
+        </Text>
       )}
-      <Title className="hidden text-[26px] font-semibold leading-tight tracking-[-0.02em] text-ink [text-wrap:balance] lg:block">
-        {published.name}
-      </Title>
-      <div className={cn("flex flex-col gap-5", compact && "hidden lg:flex")}>
-        {published.description && <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">{published.description}</p>}
+      <VStack gap={5} className={compact ? styles.fromLaptop : undefined}>
+        {published.description && <Text as="p" color="secondary">{published.description}</Text>}
         <ClassificationNote classification={classification} />
-      </div>
+      </VStack>
       {compact && summary ? (
-        <Collapsible open={open} onOpenChange={onOpenChange}>
-          <CollapsibleTrigger className="group flex min-h-12 w-full items-center gap-3 rounded-xl border border-rule-soft bg-paper px-4 text-left text-[15px] text-ink transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary lg:hidden">
-            <span className="min-w-0 flex-1 truncate">
-              <span className="sr-only">Uppgifter, </span>
+        <Collapsible
+          className={styles.fold}
+          isOpen={open}
+          onOpenChange={onOpenChange}
+          trigger={
+            <>
+              <VisuallyHidden>Uppgifter, </VisuallyHidden>
               {summary}
-            </span>
-            <ChevronDown
-              aria-hidden
-              className="size-5 shrink-0 text-ink-soft transition-transform duration-150 group-data-[state=open]:rotate-180 motion-reduce:transition-none"
-            />
-          </CollapsibleTrigger>
-          <CollapsibleContent forceMount className="pt-4 data-[state=closed]:max-lg:hidden lg:pt-0">
-            {details}
-          </CollapsibleContent>
+            </>
+          }
+        >
+          {details}
         </Collapsible>
       ) : (
         details
       )}
-    </div>
+    </VStack>
   );
 }

@@ -5,10 +5,10 @@
   - link "Alla flöden":
     - /url: /flows
   - region "Dokumentet":
-    - link /Ladda ner PDF , Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
+    - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-pdf/content?disposition=attachment
     - button /Öppna Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/
-    - paragraph: /PDF, \d+ B/
+    - text: /PDF, \d+ B/
     - region "Förhandsvisning av texten i filen":
       - paragraph: Förhandsvisning av texten i filen
       - article:
@@ -25,8 +25,7 @@
     - heading "Fler filer" [level=2]
     - list:
       - listitem:
-        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/
-        - paragraph: /Word, \d+ kB/
+        - text: /Protokoll kommunstyrelsen \d+-\d+-\d+\.docx Word, \d+ kB/
         - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
           - /url: /api/eneo/flows/flow-1/runs/run-done/artifacts/art-docx/content?disposition=attachment
   - button "Hur resultatet togs fram 2 steg"
@@ -34,15 +33,21 @@
     - heading "Transkript" [level=2]
     - button "Kopiera transkriptet"
     - status
-    - button "Ladda ner som text , transkriptet"
+    - button "Ladda ner som text, transkriptet"
     - region "Inspelning och transkript":
-      - radiogroup "Visa talare":
-        - radio "Alla" [checked]
-        - radio "Talare 1"
-        - radio "Talare 2"
-      - group:
-        - group
-        - searchbox "Sök i transkriptet"
+      - group "Visa talare":
+        - button "Alla" [pressed]:
+          - text: ""
+          - status
+        - button "Talare 1":
+          - text: ""
+          - status
+        - button "Talare 2":
+          - text: ""
+          - status
+      - text: Sök i transkriptet
+      - textbox "Sök i transkriptet"
+      - status
       - status
       - link "Hoppa förbi transkriptet":
         - /url: /#.+/
@@ -52,33 +57,37 @@
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 1/
           - text: Välkomna till kommunstyrelsens möte.
-          - button /Rätta repliken från 0:\d+/
+          - button /Rätta repliken från 0:\d+ i del 1/
         - listitem /Talare 2, 0:\d+ i del 1/:
           - button "Talare 2, ändra talare"
           - button /Spela från 0:\d+ i del 1/
           - text: Första punkten gäller budgeten för nästa år.
-          - button /Rätta repliken från 0:\d+/
+          - button /Rätta repliken från 0:\d+ i del 1/
         - listitem /Talare 1, 0:\d+ i del 1/:
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 1/
           - text: Ramen höjs med två procent och förvaltningen återkommer i oktober.
-          - button /Rätta repliken från 0:\d+/
+          - button /Rätta repliken från 0:\d+ i del 1/
       - heading "Del 2" [level=3]
       - list "Del 2":
         - listitem /Talare 2, 0:\d+ i del 2/:
           - button "Talare 2, ändra talare"
           - button /Spela från 0:\d+ i del 2/
           - text: Andra punkten är skolskjutsarna.
-          - button /Rätta repliken från 0:\d+/
+          - button /Rätta repliken från 0:\d+ i del 2/
         - listitem /Talare 1, 0:\d+ i del 2/:
           - button "Talare 1, ändra talare"
           - button /Spela från 0:\d+ i del 2/
           - text: Nya turer börjar gälla efter höstlovet.
-          - button /Rätta repliken från 0:\d+/
+          - button /Rätta repliken från 0:\d+ i del 2/
       - 'group "Uppspelning: Inspelningen"':
         - button "Spela upp"
         - slider "Position i inspelningen"
         - text: /0:\d+ \/ 0:\d+/
-        - button /Bakåt \d+ sekunder/
-        - button /Framåt \d+ sekunder/
-        - button "Hastighet 1×"
+        - button /Bakåt \d+ sekunder/:
+          - status
+        - button /Framåt \d+ sekunder/:
+          - status
+        - button "Hastighet 1×":
+          - text: ""
+          - status

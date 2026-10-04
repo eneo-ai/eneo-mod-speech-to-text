@@ -1,10 +1,10 @@
-# Lyssna — designregler (Sundsvalls kommun-profil)
+# Tal till text — designregler (Sundsvalls kommun-profil)
 
 Kontext för designarbete i claude.ai på `prototyp.html`. Följ dessa regler så
 att ändringarna går att föra tillbaka till den riktiga koden utan friktion.
 
 ## Vad appen är
-"Lyssna" är en webbapp där en åtkomstkod-skyddad användare spelar in eller laddar
+"Tal till text" är en webbapp där en åtkomstkod-skyddad användare spelar in eller laddar
 upp ljud/dokument, skickar det till ett publicerat **Eneo-flöde**, och får tillbaka
 transkript, sammanfattning och ev. genererade filer (DOCX m.m.). Mobil-först,
 fungerar även på desktop.

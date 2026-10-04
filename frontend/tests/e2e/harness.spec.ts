@@ -4,6 +4,7 @@
  */
 import { expect, test } from "@playwright/test";
 import { axe, blocking, focusStop, tabWalk, targetSizes } from "./checks";
+import { STATES } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the checks' own tests run once"));
 
@@ -18,6 +19,23 @@ test("a keyboard trap that cycles between two controls is caught", async ({ page
     </script>`);
   const { left } = await tabWalk(page, 12);
   expect(left, "the walk says focus never left the page").toBe(false);
+});
+
+test("a control in a dialog is in a dialog, native or with the role, so the page's reading order does not judge it", async ({ page }) => {
+  await page.setContent(`
+    <main><h1>Prov</h1><button>Bakom</button></main>
+    <dialog id="native" aria-label="Namnge"><button>Spara</button></dialog>
+    <div role="alertdialog" aria-label="Fråga"><button>Svara</button></div>
+    <script>document.getElementById("native").showModal()</script>`);
+  const inDialog = async (name: string) => {
+    await page.getByRole("button", { name }).evaluate((element) => (element as HTMLElement).focus());
+    return (await focusStop(page))?.inDialog;
+  };
+  expect(await inDialog("Spara"), "a native <dialog> has no role attribute").toBe(true);
+  expect(await inDialog("Svara")).toBe(true);
+  // The page behind a modal dialog cannot take focus, so what is not in a dialog is read where nothing is open.
+  await page.evaluate(() => (document.getElementById("native") as HTMLDialogElement).close());
+  expect(await inDialog("Bakom"), "the page itself is not a dialog").toBe(false);
 });
 
 test("a WCAG violation blocks the gate whatever axe calls its impact", async ({ page }) => {
@@ -86,4 +104,66 @@ test("a hit area grown by a pseudo-element is measured from the padding box, whe
     </style>
     <button aria-label="Liten"></button>`);
   expect(await targetSizes(page, 44, false)).toEqual(['button "Liten" 24×24']);
+});
+
+test("a field's box counts as its control's target only for the control it activates", async ({ page }) => {
+  await page.setContent(`
+    <style>
+      .astryx-text-input, .plain { display: flex; align-items: center; height: 44px; width: 240px; border: 1px solid #767676; }
+      input { height: 20px; border: 0; }
+      button { flex: none; width: 20px; height: 20px; padding: 0; margin-left: 40px; }
+    </style>
+    <div class="astryx-text-input"><input aria-label="I fältets ruta"><button aria-label="Rensa"></button></div>
+    <div class="plain" style="margin-top: 40px"><input aria-label="I en vanlig ruta"></div>`);
+  // The design system's field is credited with its box; a control of its own inside that box, and a field in any
+  // other box, are measured as they are.
+  expect(await targetSizes(page, 44, false)).toEqual(['button "Rensa" 20×20', expect.stringMatching(/^input "I en vanlig ruta" \d+×20$/)]);
+});
+
+test("the design system's field box does activate its control, so crediting it is true", async ({ browser, baseURL }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto(`${baseURL}/dev/foundation`);
+  for (const [name, selector] of [["Ärende", ".astryx-text-input"], ["Talare", ".astryx-selector"]] as const) {
+    const control = page.locator(`${selector} :is(input, [role="combobox"])`).first();
+    const box = (await page.locator(selector).first().boundingBox())!;
+    expect(box.height, `${name}: the box is a 44 px target on a touch screen`).toBeGreaterThanOrEqual(44);
+    // The box's own edge, outside the control inside it.
+    await page.touchscreen.tap(box.x + box.width / 2, box.y + 2);
+    // A text field takes the focus; a picker opens.
+    if (selector === ".astryx-selector") await expect(control, `${name}: a tap on the box's edge opens the picker`).toHaveAttribute("aria-expanded", "true");
+    else await expect(control, `${name}: a tap on the box's edge reaches the field`).toBeFocused();
+    await page.keyboard.press("Escape");
+  }
+  await context.close();
+});
+
+test("a target in an open modal dialog is measured even under an inert ancestor", async ({ page }) => {
+  await page.setContent(`<div inert><dialog><button aria-label="Liten" style="width: 10px; height: 10px; padding: 0"></button></dialog></div>`);
+  await page.evaluate(() => document.querySelector("dialog")!.showModal());
+  expect(await targetSizes(page, 24, false)).toEqual(['button "Liten" 10×10']);
+});
+
+test("a slider's control is its target, and a control too thin for a finger is reported", async ({ page }) => {
+  // The design system's slider: a 20 px thumb inside a control, which takes the press and is the box that counts.
+  const slider = (height: number) => `
+    <div class="astryx-slider-control" data-orientation="horizontal" style="height: ${height}px; width: 240px">
+      <div role="slider" aria-label="Läge" tabindex="0" style="width: 20px; height: 20px"></div>
+    </div>`;
+  await page.setContent(slider(44));
+  expect(await targetSizes(page, 44, false), "44 px tall: the control is the target").toEqual([]);
+  await page.setContent(slider(20));
+  expect(await targetSizes(page, 44, false), "20 px tall: as the design system draws it").toEqual(['slider "Läge" 20×20']);
+});
+
+test("the design system's slider control does take a press beside its thumb, so crediting its box is true", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "ready")!.go(page, info);
+  const thumb = page.getByRole("slider", { name: "Position i inspelningen" });
+  const control = page.locator(".astryx-slider-control");
+  const box = (await control.boundingBox())!;
+  expect(box.height, "the control is a 24 px target with a mouse").toBeGreaterThanOrEqual(24);
+  expect(Number(await thumb.getAttribute("aria-valuenow"))).toBe(0);
+  // The control's own top edge, above the 4 px rail and the thumb's 20 px.
+  await page.mouse.click(box.x + box.width * 0.9, box.y + 1);
+  expect(Number(await thumb.getAttribute("aria-valuenow")), "a press on the control's edge moves the playhead").toBeGreaterThan(0);
 });

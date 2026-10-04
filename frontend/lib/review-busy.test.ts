@@ -162,7 +162,7 @@ test("the save's answer drops only the draft of the version it sent, never a new
   const { useReviewDraft } = await import("../components/useReviewDraft");
   let draft!: ReturnType<typeof useReviewDraft<{ text: string }>>;
   function Holder() {
-    draft = useReviewDraft<{ text: string }>("user-1", "review:run-1:cp-1", 1);
+    draft = useReviewDraft<{ text: string }>("user-1", "review:run-1:cp-1", 1, (value): value is { text: string } => typeof value === "object" && value !== null);
     return null;
   }
   const view = await mount(createElement(Holder));
@@ -251,7 +251,7 @@ test("a control that removes or disables itself hands the focus on, never to the
 test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card under Namnge talarna, before the transcript", async (t) => {
   eneo(t);
   const view = await review(speakers);
-  const card = button(view.container, "Namnge talarna")!.closest("details")!;
+  const card = button(view.container, "Namnge talarna")!.closest('[role="group"][aria-label="Talare"]')!;
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
@@ -278,4 +278,83 @@ test("an approved pause is final: a reason typed before approving cannot reject 
   assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form");
   assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
   assert.deepEqual(rejected, []);
+});
+
+test("a pause whose payload holds no text shows what it holds, and one with no payload shows an empty page that works", async (t) => {
+  eneo(t);
+  const fenced = await review({ ...pause, current_payload_json: { summary: "Ett värde som inte är text." } });
+  assert.match(fenced.container.querySelector("article")?.textContent ?? "", /"summary": "Ett värde som inte är text\."/, "the JSON, so it can still be reviewed");
+  await fenced.unmount();
+  const none = await review({ ...pause, current_payload_json: null });
+  assert.ok(none.container.querySelector("h1"), "the page is there");
+  assert.equal(none.container.querySelector("article")?.textContent?.trim(), "", "an empty text, not an error");
+  assert.ok(button(none.container, "Godkänn och fortsätt"), "and the decision");
+});
+
+test("who is who with no speaker says so, and the decision is still shown", async (t) => {
+  eneo(t);
+  const view = await review({ ...speakers, current_payload_json: { speaker_mapping: { inventory: [] }, structured: { speakers: [] } } });
+  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriptet/);
+  assert.equal(button(view.container, "Namnge talarna"), null, "nobody to name");
+  assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"));
+});
+
+test("while the transcript is being read, or cannot be read, the flow cannot go on from who is who", async (t) => {
+  eneo(t);
+  const eneoFetch = globalThis.fetch;
+  // The transcript's own requests never answer: it is being read.
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
+    String(url).includes("review-checkpoints") ? eneoFetch(url, init) : new Promise<Response>(() => undefined)) as typeof fetch;
+  const reading = await review(speakers);
+  assert.equal(button(reading.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the transcript is read");
+  await reading.unmount();
+
+  // They answer with a failure: the flow still waits (the player has no passages to show the reason under).
+  globalThis.fetch = ((url: string | URL | Request, init?: RequestInit) =>
+    String(url).includes("review-checkpoints") ? eneoFetch(url, init) : Promise.resolve(new Response("{}", { status: 500, headers: { "content-type": "application/json" } }))) as typeof fetch;
+  const failed = await review(speakers);
+  await failed.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  assert.equal(button(failed.container, "Godkänn och fortsätt")!.disabled, true, "blocked while the corrections cannot be read");
+});
+
+test("a review edit kept through a reload is restored only in the shape the review reads: any other is dropped from the storage and the review opens as the pause is", async (t) => {
+  eneo(t);
+  const key = "tal-till-text:draft:user-1:review:run-1:cp-1";
+  const fullRow = (label: string, name: string | null) => ({ label, lineCount: 3, samples: [], name, confidence: "medium", evidence: "" });
+  const opened = async (start: FlowRunReviewCheckpointPublic, raw: string) => {
+    window.sessionStorage.setItem(key, raw);
+    const view = await review(start);
+    const shown = { editing: view.container.querySelector("textarea")?.value ?? null, text: view.container.textContent ?? "" };
+    await view.unmount();
+    return shown;
+  };
+
+  // A pause of text: a kept edit is the text typed in the field.
+  for (const [what, raw] of [
+    ["null", "null"],
+    ["an object without a revision", "{}"],
+    ["a list", '[{"revision": 1, "edit": {"text": "x"}}]'],
+    ["an edit of neither kind", '{"revision": 1, "edit": {}}'],
+    ["a text that is a number", '{"revision": 1, "edit": {"text": 5}}'],
+    ["a revision that is text", '{"revision": "1", "edit": {"text": "x"}}'],
+  ]) {
+    assert.equal((await opened(pause, raw)).editing, null, `${what}: the review is not in the middle of an edit`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed`);
+  }
+  assert.equal((await opened(pause, '{"revision": 1, "edit": {"text": "Min ändring"}}')).editing, "Min ändring", "an edit of the right shape comes back");
+  assert.notEqual(window.sessionStorage.getItem(key), null, "and stays");
+  window.sessionStorage.clear();
+
+  // A pause of speakers: a kept edit is their rows.
+  for (const [what, raw] of [
+    ["rows that are text", '{"revision": 1, "edit": {"speakerRows": "x"}}'],
+    ["rows without their parts", '{"revision": 1, "edit": {"speakerRows": [{"label": "SPEAKER_00"}]}}'],
+    ["a row with a confidence it does not have", JSON.stringify({ revision: 1, edit: { speakerRows: [{ ...fullRow("SPEAKER_00", "Bertil"), confidence: "certain" }] } })],
+  ]) {
+    const shown = await opened(speakers, raw);
+    assert.doesNotMatch(shown.text, /Bertil/, `${what}: no name from it`);
+    assert.equal(window.sessionStorage.getItem(key), null, `${what} is removed`);
+  }
+  const named = await opened(speakers, JSON.stringify({ revision: 1, edit: { speakerRows: [fullRow("SPEAKER_00", "Bertil"), fullRow("SPEAKER_01", null)] } }));
+  assert.match(named.text, /Bertil/, "rows of the right shape come back");
 });

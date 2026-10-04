@@ -4,7 +4,7 @@
  * names stay in this browser's storage and are never sent anywhere.
  */
 
-import type { KeyValueStorage } from "./flow-session";
+import type { KeyValueStorage } from "./browser-storage";
 
 const SEPARATORS = /[,;\n\r]+/;
 const RECENT_MAX = 30;

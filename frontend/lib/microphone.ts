@@ -4,7 +4,7 @@
  * default instead of failing the recording.
  */
 
-import type { KeyValueStorage } from "./flow-session";
+import type { KeyValueStorage } from "./browser-storage";
 
 const KEY = "tal-till-text:microphone";
 

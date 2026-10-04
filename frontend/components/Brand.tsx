@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
+import { Divider } from "@astryxdesign/core/Divider";
+import { HStack } from "@astryxdesign/core/HStack";
+import { Text } from "@astryxdesign/core/Text";
+import { TopNavHeading } from "@astryxdesign/core/TopNav";
 import type { Branding } from "@/lib/api";
-import { cn } from "@/lib/utils";
 
-const SUNDSVALL: Branding = { organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false } };
-
-const BrandingContext = createContext<Branding>(SUNDSVALL);
+// Without a provider there is no organisation to name: the backend's branding (readBranding) is the one owner of who is shown.
+const BrandingContext = createContext<Branding>({ organization: null });
 
 /** The deployment's branding, read by the root layout from the module's backend for every page. */
 export function BrandingProvider({ value, children }: { value: Branding; children: ReactNode }) {
@@ -17,60 +19,61 @@ export function BrandingProvider({ value, children }: { value: Branding; childre
 interface BrandProps {
   /** Linka lockupen till denna sökväg. Utelämna för en statisk lockup (t.ex. inloggning). */
   href?: string;
-  className?: string;
+  /** Asked before the link leaves the page; call preventDefault to stay. */
+  onClickCapture?: ComponentProps<typeof TopNavHeading>["onClickCapture"];
 }
 
-// Another organisation's logo keeps Sundsvall's height; a wide one scales down inside a bounded width.
-const LOGO = "block h-10 w-auto max-w-[6.5rem] object-contain object-left sm:max-w-[10rem]";
-
-/** The organisation's mark: its logo (plain <img>, same-origin), or its name as text. */
+/**
+ * The organisation's mark: its logo (plain <img>, same-origin), or its name as text. Sizing and the colour mode's
+ * choice of logo are the stylesheet's, by data-brand-logo (app/globals.css): default is Sundsvall's black mark, light
+ * and dark are an organisation's two logos, plain one logo that serves both modes, name no logo at all.
+ */
 function OrganizationMark({ organization }: { organization: NonNullable<Branding["organization"]> }) {
   const { name, logo, dark_logo: darkLogo } = organization;
   if (logo === "default") {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src="/brand/sundsvalls-kommun-logotyp.svg" alt={name} className="block h-10 w-auto dark:invert" />;
+    return <img src="/brand/sundsvalls-kommun-logotyp.svg" alt={name} data-brand-logo="default" />;
   }
   if (logo === "custom") {
     return (
       <>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/api/branding/logo/light" alt={name} className={cn(LOGO, darkLogo && "dark:hidden")} />
+        <img src="/api/branding/logo/light" alt={name} data-brand-logo={darkLogo ? "light" : "plain"} />
         {darkLogo && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src="/api/branding/logo/dark" alt={name} className={cn(LOGO, "hidden dark:block")} />
+          <img src="/api/branding/logo/dark" alt={name} data-brand-logo="dark" />
         )}
       </>
     );
   }
   return (
-    <span className="block max-w-[6.5rem] text-[15px] font-semibold leading-tight text-ink sm:max-w-[12rem]">{name}</span>
+    <Text weight="semibold" data-brand-logo="name">
+      {name}
+    </Text>
   );
 }
 
 // Header-lockup: organisationens märke, avdelare och produktnamn; utan organisation bara produktnamnet.
-export function Brand({ href, className }: BrandProps) {
+export function Brand({ href, onClickCapture }: BrandProps) {
   const { organization } = useContext(BrandingContext);
-  const lockup = (
-    <span className={`inline-flex items-center gap-6 ${className ?? ""}`}>
-      {organization && (
-        <>
-          <OrganizationMark organization={organization} />
-          <span aria-hidden className="block h-8 w-px shrink-0 bg-rule" />
-        </>
-      )}
-      <span className="whitespace-nowrap text-[19px] font-bold leading-none">
-        Tal till text
-      </span>
-    </span>
+  const mark = organization && (
+    <HStack gap={4} vAlign="center">
+      <OrganizationMark organization={organization} />
+      {/* A vertical rule takes the height of a box that has one; it is decoration. */}
+      <HStack height="2rem" aria-hidden>
+        <Divider orientation="vertical" variant="strong" />
+      </HStack>
+    </HStack>
   );
-  if (!href) return lockup;
   return (
-    <Link
-      href={href}
-      aria-label={organization ? `Tal till text – ${organization.name}` : "Tal till text"}
-      className="inline-flex items-center rounded-md coarse:min-h-11 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-    >
-      {lockup}
-    </Link>
+    <TopNavHeading
+      as={Link}
+      logo={mark}
+      heading="Tal till text"
+      headingHref={href}
+      // A link says where it goes and for whom; a lockup that goes nowhere is just words.
+      aria-label={href ? (organization ? `Tal till text – ${organization.name}` : "Tal till text") : undefined}
+      onClickCapture={onClickCapture}
+    />
   );
 }

@@ -1,8 +1,16 @@
 "use client";
 import { useEffect, useState } from "react";
+import { AppShell } from "@astryxdesign/core/AppShell";
+import { Button } from "@astryxdesign/core/Button";
+import { Card } from "@astryxdesign/core/Card";
+import { CheckboxInput } from "@astryxdesign/core/CheckboxInput";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Selector } from "@astryxdesign/core/Selector";
+import { Text } from "@astryxdesign/core/Text";
+import { VStack } from "@astryxdesign/core/VStack";
 import fixtures from "@/tests/fixtures/speaker_review.json";
 import { SpeakerNamingDialog } from "@/components/SpeakerNamingDialog";
-import { Button } from "@/components/ui/button";
 import type { SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { locateWords, segmentsFromTranscription } from "@/lib/transcript";
@@ -59,23 +67,26 @@ export function ReviewFixtures() {
   if (selected === "partial") {
     corrections = { ...corrections, speaker_edits: [{ segment_index: 0, char_start: 4, char_end: 7, original: segments[0].text.slice(4, 7), original_speaker: null, speaker: "SPEAKER_01", decision: "confirmed" }] };
   }
-  return <main className="mx-auto w-full max-w-4xl p-6">
-    <h1 className="text-2xl font-semibold">Talargranskning – testfall</h1>
-    <p>Endast syntetiska testdata. Testljudet är tyst och verifierar inte talet.</p>
-    <label className="my-4 block">Testfall <select aria-label="Testfall" value={selected} onChange={(e) => setSelected(e.target.value)} className="border p-2">
-      {[...fixtures.cases.map((c) => c.name), "wordless", "two-files", "partial", "operator", "long-names", "bulk", "accessibility"].map((value) => <option key={value}>{value}</option>)}
-    </select></label>
-    <label className="mb-4 block"><input type="checkbox" checked={audio} onChange={(e) => setAudio(e.target.checked)} /> Tillgängligt testljud</label>
-    <label className="mb-4 block"><input type="checkbox" checked={readOnly} onChange={(e) => setReadOnly(e.target.checked)} /> Skrivskyddat</label>
-    {selected === "accessibility" && <details className="paper-card mb-3 p-4"><summary className="min-h-6 cursor-pointer">Talare</summary>
-      <div className="mt-4"><SpeakerNamingDialog rows={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)}
-        passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }} onSaveAndContinue={async (rows) => { setNames(rows); return null; }}>
-        <Button type="button" variant="outline">Namnge talarna</Button>
-      </SpeakerNamingDialog></div>
-    </details>}
-    <TranscriptPlayer key={`${selected}:${audio}`} segments={segments} speakerReviews={reviews} reviewEnabled
-      fileCount={audio ? selected === "two-files" ? 2 : 1 : 0} audioSrcFor={() => url}
-      speakerNames={selected === "accessibility" ? Object.fromEntries(names.map((row) => [row.label, row.name ?? row.label])) : selected === "long-names" ? { SPEAKER_00: "programledare/intervjuare", SPEAKER_01: "IntervjupersonMedEttMycketLångtSammanhängandeNamn" } : (selected === "operator" || selected === "bulk") ? { SPEAKER_00: "Agne", SPEAKER_01: "Karin" } : {}} textFallback="" corrections={drafts[selected] ?? corrections} editable={!readOnly} speakerOptions={selected === "accessibility" ? names.map((r) => r.label) : ["SPEAKER_00", "SPEAKER_01"]}
-      onCorrectionsChange={(next) => setDrafts((prev) => ({ ...prev, [selected]: next }))} className="paper-card" />
-  </main>;
+  return <AppShell height="auto" mobileNav={false} contentPadding={4}>
+    <VStack gap={4}>
+      <Heading level={1}>Talargranskning – testfall</Heading>
+      <Text as="p">Endast syntetiska testdata. Testljudet är tyst och verifierar inte talet.</Text>
+      <Selector label="Testfall" value={selected} onChange={setSelected} width="min(20rem, 100%)"
+        options={[...fixtures.cases.map((c) => c.name), "wordless", "two-files", "partial", "operator", "long-names", "bulk", "accessibility"].map((value) => ({ value, label: value }))} />
+      <CheckboxInput label="Tillgängligt testljud" value={audio} onChange={setAudio} />
+      <CheckboxInput label="Skrivskyddat" value={readOnly} onChange={setReadOnly} />
+      {selected === "accessibility" && <Collapsible trigger="Talare" defaultIsOpen>
+        <SpeakerNamingDialog rows={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)}
+          passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }} onSaveAndContinue={async (rows) => { setNames(rows); return null; }}>
+          <Button label="Namnge talarna" variant="secondary" />
+        </SpeakerNamingDialog>
+      </Collapsible>}
+      <Card padding={0}>
+        <TranscriptPlayer key={`${selected}:${audio}`} segments={segments} speakerReviews={reviews} reviewEnabled
+          fileCount={audio ? selected === "two-files" ? 2 : 1 : 0} audioSrcFor={() => url}
+          speakerNames={selected === "accessibility" ? Object.fromEntries(names.map((row) => [row.label, row.name ?? row.label])) : selected === "long-names" ? { SPEAKER_00: "programledare/intervjuare", SPEAKER_01: "IntervjupersonMedEttMycketLångtSammanhängandeNamn" } : (selected === "operator" || selected === "bulk") ? { SPEAKER_00: "Agne", SPEAKER_01: "Karin" } : {}} textFallback="" corrections={drafts[selected] ?? corrections} editable={!readOnly} speakerOptions={selected === "accessibility" ? names.map((r) => r.label) : ["SPEAKER_00", "SPEAKER_01"]}
+          onCorrectionsChange={(next) => setDrafts((prev) => ({ ...prev, [selected]: next }))} />
+      </Card>
+    </VStack>
+  </AppShell>;
 }

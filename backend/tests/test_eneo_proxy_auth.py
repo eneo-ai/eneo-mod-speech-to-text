@@ -43,6 +43,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.proxy_client = FakeProxyClient()
         main.http_client = self.proxy_client
         self.client = TestClient(main.app)
+        self.client.headers["X-Expected-User"] = "user-id"  # the page names the user it was opened for
         session = EneoSsoSession(
             access_token="module-user-token",
             expires_at=int(time.time()) + 60,
@@ -200,6 +201,25 @@ class EneoProxyAuthTests(unittest.TestCase):
         for path in ("/api/eneo/spaces/", "/api/eneo/spaces/space-1/"):
             self.assertEqual(self.client.get(path).status_code, 403, path)
         self.assertEqual(self.proxy_client.calls, [])
+
+    def test_proxy_never_hands_the_browser_a_signed_url(self) -> None:
+        # A signed URL is a bearer credential for a file. Only the module backend mints one, and streams the file; the
+        # generic proxy returns Eneo's body unchanged, so a route that mints one would give it to the browser.
+        for path in (
+            "/api/eneo/flows/flow-1/template-files/file-1/signed-url/",
+            "/api/eneo/flows/flow-1/template-files/file-1/signed-url",
+            "/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/signed-url/",
+            "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/signed-url/",
+        ):
+            for method in ("POST", "GET"):
+                with self.subTest(method=method, path=path):
+                    response = self.client.request(
+                        method, path, headers={"Origin": "https://module.example.test"}, json={"expires_in": 3600} if method == "POST" else None
+                    )
+
+                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(response.json()["detail"], "Eneo resource is not exposed")
+        self.assertEqual(self.proxy_client.calls, [], "Eneo was asked for something")
 
     def test_proxy_exposes_transcript_regeneration_with_its_idempotency_key(self) -> None:
         # "Skapa dokumentet igen med rättningarna" starts a new run from the reviewed transcript.

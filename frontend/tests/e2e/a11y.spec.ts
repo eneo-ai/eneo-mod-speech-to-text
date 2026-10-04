@@ -8,12 +8,8 @@
  */
 import { writeFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
-import { axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { TEXT_SPACING, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
-
-// WCAG 1.4.12: the spacing a user may set must not cut anything off.
-const TEXT_SPACING =
-  "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
 
 for (const state of STATES) {
   test(state.name, async ({ page }, info) => {
@@ -23,6 +19,8 @@ for (const state of STATES) {
     const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
     const edges = project.startsWith("phone-320") || project === "zoom-200" || desktop;
     await state.go(page, info);
+    // SHOTS=1: a picture of every state, for review (test-results/shots/<project>/<state>.png).
+    if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
 
     const scan = await axe(page);
     const unnamed = await unnamedControls(page);

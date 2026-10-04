@@ -327,7 +327,8 @@ async function sendLeased(
           `Inspelningen är längre än flödet tar emot (${formatDuration(whole * 1000)}). Välj Spara som fil för att behålla den.`,
         );
       }
-      const files = await store.readParts(id);
+      // Every chunk of every part, or the integrity error: before the recording is sealed, so it stays as it is.
+      const files = await store.readPartsToSend(id);
       if (files.length === 0) throw new Error("Inspelningen innehåller inget ljud.");
       // Sealed from here on: see `sealed`.
       await store.setState(id, "uploading");

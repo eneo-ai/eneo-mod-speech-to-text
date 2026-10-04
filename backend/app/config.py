@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, SecretStr
+
+from app.accent import Accent, resolve_accent
 
 
 AuthMode = Literal["eneo_sso", "access_code"]
@@ -56,6 +59,11 @@ class Settings(BaseModel):
     cookie_secure: bool = True
     demo_space_id: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
+    # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
+    max_body_bytes: int = 10 * 1024 * 1024
+    max_upload_bytes: int = 1024 * 1024 * 1024
+    # The most the module reads of one answer from Eneo (app/upstream.py); a file that streams to the browser is not counted.
+    max_response_bytes: int = 32 * 1024 * 1024
     # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
     # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
     # via Eneo fram till dess.
@@ -64,6 +72,8 @@ class Settings(BaseModel):
     organization: Organization | None = DEFAULT_ORGANIZATION
     organization_logo: LogoFile | None = None
     organization_logo_dark: LogoFile | None = None
+    # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
+    accent: Accent | None = None
 
     @property
     def flow_list_scope(self) -> FlowListScope | None:
@@ -92,6 +102,61 @@ def _parse_bool(raw: str | None, *, default: bool, name: str) -> bool:
     if normalized in {"false", "0", "no", "off"}:
         return False
     raise RuntimeError(f"{name} must be a boolean")
+
+
+# Headers the module sets from the session or the request itself: the bearer token owns Authorization, and the key
+# in any of these would replace it or break the request's framing.
+_RESERVED_HEADER_NAMES = frozenset(
+    {
+        "authorization",
+        "proxy-authorization",
+        "cookie",
+        "origin",
+        "referer",
+        "host",
+        "content-length",
+        "content-type",
+        "transfer-encoding",
+        "connection",
+        "keep-alive",
+        "te",
+        "trailer",
+        "upgrade",
+    }
+)
+
+
+# No limit of the module is meant to be larger than this: a value past it is a typo, and one that is huge enough
+# is no limit at all.
+_MAX_BYTES = 2**40  # 1 TiB
+_MAX_SECONDS = 24 * 60 * 60
+
+
+def _positive_int(name: str, default: int, *, maximum: int = _MAX_BYTES) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:  # not a number, or one of more digits than int() takes
+        value = 0
+    if not 0 < value <= maximum:
+        raise RuntimeError(f"{name} must be an integer between 1 and {maximum}")
+    return value
+
+
+def _positive_seconds(name: str, default: float) -> float:
+    """A finite number of seconds greater than zero, at most a day: ``inf`` or ``nan`` would be no deadline at all."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        value = 0.0
+    if not (math.isfinite(value) and 0 < value <= _MAX_SECONDS):
+        raise RuntimeError(f"{name} must be a number of seconds greater than zero and at most {_MAX_SECONDS}")
+    return value
 
 
 def _read_logo(variable: str, raw_path: str) -> LogoFile | None:
@@ -143,6 +208,12 @@ def _organization() -> tuple[Organization | None, LogoFile | None, LogoFile | No
     return Organization(name=name, logo="custom", dark_logo=dark is not None), logo, dark
 
 
+def _accent() -> Accent | None:
+    """The accent from ORGANIZATION_ACCENT and ORGANIZATION_ACCENT_DARK, apart from the organisation's name and logo."""
+    light, dark = (os.environ.get(name, "").strip() for name in ("ORGANIZATION_ACCENT", "ORGANIZATION_ACCENT_DARK"))
+    return resolve_accent(light, dark)
+
+
 def _required_url(name: str) -> str:
     value = os.environ[name].rstrip("/")
     parsed = urlsplit(value)
@@ -187,10 +258,13 @@ def load_settings() -> Settings:
     api_key_header_name = os.environ.get("ENEO_API_KEY_HEADER_NAME", "X-API-Key")
     if re.fullmatch(r"[!#$%&'*+.^_`|~0-9A-Za-z-]+", api_key_header_name) is None:
         raise RuntimeError("ENEO_API_KEY_HEADER_NAME must be a valid HTTP header name")
+    if api_key_header_name.lower() in _RESERVED_HEADER_NAMES:
+        raise RuntimeError(
+            "ENEO_API_KEY_HEADER_NAME cannot be a credential or framing header "
+            f"({', '.join(sorted(_RESERVED_HEADER_NAMES))}): the module sets those itself"
+        )
 
-    upload_timeout = float(os.environ.get("UPLOAD_PROXY_TIMEOUT_SECONDS", "1800"))
-    if upload_timeout <= 0:
-        raise RuntimeError("UPLOAD_PROXY_TIMEOUT_SECONDS must be greater than zero")
+    upload_timeout = _positive_seconds("UPLOAD_PROXY_TIMEOUT_SECONDS", 1800.0)
 
     raw_session_minutes = os.environ.get("SESSION_MAX_AGE_MINUTES", "480")
     try:
@@ -201,6 +275,7 @@ def load_settings() -> Settings:
         raise RuntimeError("SESSION_MAX_AGE_MINUTES must be greater than zero")
 
     organization, organization_logo, organization_logo_dark = _organization()
+    accent = _accent()
 
     raw_access_code = os.environ.get("APP_ACCESS_CODE")
     if auth_mode == "eneo_sso" and raw_access_code:
@@ -228,10 +303,14 @@ def load_settings() -> Settings:
         cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE"),
         demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
         upload_proxy_timeout_seconds=upload_timeout,
+        max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
+        max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
+        max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", 32 * 1024 * 1024),
         session_max_age_seconds=session_minutes * 60,
         organization=organization,
         organization_logo=organization_logo,
         organization_logo_dark=organization_logo_dark,
+        accent=accent,
     )
     if settings.flow_list_scope is None:
         logger.error(

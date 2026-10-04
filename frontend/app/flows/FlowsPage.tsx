@@ -2,15 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
+import { AccountMenu } from "@/components/AccountMenu";
+import { HeaderBrand } from "@/components/AppHeader";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
-import { AppHeader } from "@/components/AppHeader";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
-import { FRAME } from "@/components/frame";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
-import { UnsentRecordings, useUnsentRecordings } from "@/components/UnsentRecordings";
+import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
+import { ModuleShell } from "@/kit/ModuleShell";
 import { getConfig } from "@/lib/api";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
-import { cn } from "@/lib/utils";
 import {
   DISCOVERY_PAGE_CAP,
   DISCOVERY_PAGE_SIZE,
@@ -18,7 +24,8 @@ import {
   listCreateLabels,
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
-import { browserStorage, lastUsedFlow } from "@/lib/flow-session";
+import { browserStorage } from "@/lib/browser-storage";
+import { lastUsedFlow } from "@/lib/last-used-flow";
 
 export default function FlowsPage() {
   return (
@@ -32,6 +39,7 @@ function FlowsListPage() {
   const router = useRouter();
   const user = useAuthenticatedUser();
   const unsent = useUnsentRecordings(user.id);
+  const evictable = useEvictable();
   const [lastFlowId, setLastFlowId] = useState<string | null>(null);
   useEffect(() => setLastFlowId(lastUsedFlow(browserStorage(), user.id)), [user.id]);
   const [groups, setGroups] = useState<FlowSpaceGroup[] | null>(null);
@@ -66,48 +74,52 @@ function FlowsListPage() {
   const createLabel = listCreateLabels(groups);
 
   return (
-    <>
-      <AppHeader />
-      <main id="innehall" className={cn(FRAME, "flex flex-col gap-8 pb-16 pt-2 md:pt-6 lg:pt-8")}>
-        <h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink md:text-[34px]">
-          Välj ett flöde
-        </h1>
+    <ModuleShell label="Tal till text" heading={<HeaderBrand />} end={<AccountMenu />}>
+      <Layout height="auto" contentWidth={960} padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={8} paddingBlockStart={4}>
+            <Heading level={1}>Välj ett flöde</Heading>
 
-        {unsent.length > 0 && (
-          <UnsentRecordings
-            recordings={unsent}
-            withFlowName
-            sendLabel={(recording) => createLabel(recording.flowId)}
-            onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
-          />
-        )}
+            {unsent.length > 0 && (
+              <UnsentRecordings
+                recordings={unsent}
+                withFlowName
+                evictable={evictable}
+                sendLabel={(recording) => createLabel(recording.flowId)}
+                onSend={(recording) => router.push(`/flows/${recording.flowId}?recording=${recording.id}`)}
+              />
+            )}
 
-        {problem ? (
-          <ProblemAlert
-            problem={{ title: "Flödena kunde inte visas.", detail: problem.message, retry: problem.retry }}
-            onRetry={retry}
-          />
-        ) : groups === null ? (
-          <>
-            <p role="status" className="sr-only">
-              Laddar flödena…
-            </p>
-            <FlowListSkeleton />
-          </>
-        ) : empty ? (
-          <p className="max-w-prose text-[17px] leading-relaxed text-ink-soft">
-            Det finns inga publicerade flöden som du kan använda än. När ett flöde publiceras i Eneo visas det här.
-          </p>
-        ) : (
-          <FlowList groups={groups} lastFlowId={lastFlowId} />
-        )}
+            {problem ? (
+              <ProblemAlert
+                problem={{ title: "Flödena kunde inte visas.", detail: problem.message, retry: problem.retry }}
+                onRetry={retry}
+              />
+            ) : groups === null ? (
+              <>
+                <VisuallyHidden as="p" role="status">
+                  Laddar flödena…
+                </VisuallyHidden>
+                <FlowListSkeleton />
+              </>
+            ) : empty ? (
+              <EmptyState
+                headingLevel={2}
+                title="Det finns inga publicerade flöden som du kan använda än."
+                description="När ett flöde publiceras i Eneo visas det här."
+              />
+            ) : (
+              <FlowList groups={groups} lastFlowId={lastFlowId} />
+            )}
 
-        {truncated && (
-          <p className="text-[15px] text-ink-soft">
-            Visar de första {(DISCOVERY_PAGE_SIZE * DISCOVERY_PAGE_CAP).toLocaleString("sv-SE")} flödena.
-          </p>
-        )}
-      </main>
-    </>
+            {truncated && (
+              <Text as="p" type="supporting">
+                Visar de första {(DISCOVERY_PAGE_SIZE * DISCOVERY_PAGE_CAP).toLocaleString("sv-SE")} flödena.
+              </Text>
+            )}
+          </VStack>
+        </LayoutContent>
+      </Layout>
+    </ModuleShell>
   );
 }

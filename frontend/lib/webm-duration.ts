@@ -151,10 +151,10 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
  * file afterwards copies its bytes as any Blob does.
  */
 export async function withRecordedDuration(
-  first: Blob | ArrayBuffer | Uint8Array,
+  first: Blob | ArrayBuffer | Uint8Array<ArrayBuffer>,
   durationMs: number,
   mimeType: string,
-): Promise<Blob | ArrayBuffer | Uint8Array> {
+): Promise<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> {
   if (!/^(audio|video)\/webm\b/i.test(mimeType)) return first;
   if (!(first instanceof Blob)) {
     // Bytes in memory: the header is a view of their start; nothing is copied to read it.
