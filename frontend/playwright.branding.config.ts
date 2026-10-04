@@ -10,7 +10,8 @@ const PROJECTS = ["phone-320-light", "phone-390-dark", "laptop-1440-light", "zoo
 export default defineConfig({
   ...base,
   outputDir: "test-results/branding",
-  grep: /branding-/,
+  // The branding-* states and branding.spec.ts's own tests (the accent on controls, the first paint without scripts).
+  grep: /branding[-.]/,
   workers: 2,
   reporter: [["list"]],
   projects: (base.projects ?? []).filter((project) => PROJECTS.includes(project.name ?? "")),
