@@ -5,6 +5,10 @@
     checks.py --only 4,5,9   run these
     checks.py --list         say what each check proves
 
+A failure the owner has accepted is in waivers.json, with the decision, the reason and the numbers, and names the one finding it covers: it is
+still printed as FAIL (with the reason), and the exit code is 0 only when every failure is waived. Any other failure of that check, a check that
+breaks, and every check with no entry are not waived.
+
 Standard library only; it drives docker, the image (directly and through Traefik), the stub that is the image's Eneo, and the
 scripts of this folder (upload/measure.py, poll.cjs, auth-preload.cjs, loads.cjs, live_load.py). deploy/acceptance.sh builds and starts
 the stack and then runs this. The stack is the one the environment names; the defaults are acceptance.sh's:
@@ -40,7 +44,7 @@ import sys
 import tempfile
 import time
 import traceback
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -67,7 +71,11 @@ DEV_MARKERS = ("Grundkontroll", "/dev/foundation", "/dev/speaker-review", "/dev/
 
 
 class Failed(Exception):
-    pass
+    """A check that did not hold. ``code`` names one finding, for the owner's waiver of exactly that (waivers.json); no code, no waiver."""
+
+    def __init__(self, message: str, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def expect(condition: object, message: str) -> None:
@@ -658,6 +666,7 @@ def check_14() -> str:
 
 
 RATES = (10, 45, 100)  # visits a second, for the arrival-rate envelope of check 15
+UNAFFECTED_UP_TO = 45  # visits a second: the owner's reason for accepting the stress result (waivers.json); a row up to here over twice idle is a failure
 
 
 @check(15, "the live relay under static load: the loaded p95 round trip is at most twice the idle p95")
@@ -665,7 +674,7 @@ def check_15() -> str:
     session = sign_in()
     path = f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-load"
     headers = {"Origin": STACK.module, "Cookie": session.cookie}  # the load and the socket go to the image's own port: the browser's Origin, no Traefik
-    lines, problems = [], []
+    lines, problems, stop = [], [], []
 
     def relay(name: str, load_args: list[str]) -> tuple[dict, dict | None]:
         """The round trips while the load runs: what was owed and received, the percentiles, the load's own totals."""
@@ -707,7 +716,7 @@ def check_15() -> str:
     if load:
         lines.append(f"stress test, shell and assets, 200 clients with no pause: {stress}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors")
     if stress.get("p95_ms") is not None and idle.get("p95_ms") is not None and stress["p95_ms"] > 2 * idle["p95_ms"]:
-        problems.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice")
+        stop.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice")
 
     # an envelope, not a verdict: the visit above at a controlled arrival rate (open loop)
     with tempfile.NamedTemporaryFile("w", suffix=".json") as visit_file:
@@ -717,10 +726,14 @@ def check_15() -> str:
             report, load = relay(f"{rate} visits/s", ["--rate", str(rate), "--visit", visit_file.name])
             if load:
                 ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
+                if ratio and rate <= UNAFFECTED_UP_TO and report["p95_ms"] > 2 * idle["p95_ms"]:
+                    problems.append(f"{rate} visits/s: the relay p95 {report['p95_ms']} ms is over twice the idle p95 {idle['p95_ms']} ms, which the owner's acceptance of the stress result says it is not")
                 lines.append(f"arrival rate {rate} visits/s ({len(visit)} requests each): {report}{ratio}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors, {load['dropped']} visits not started" + (" (2,000 were in flight: the offered rate is above what the module or the generator serves)" if load["dropped"] else ""))
     lines.append("one machine: the load generator, the relay's client and the image share the host's CPUs (a second host is not available)")
     detail = "\n    ".join(lines)
-    expect(not problems, "; ".join(problems) + "\n    " + detail)
+    expect(not problems, "; ".join(problems + stop) + "\n    " + detail)
+    if stop:
+        raise Failed("; ".join(stop) + "\n    " + detail, code="stress-over-twice-idle")
     return detail
 
 
@@ -792,6 +805,25 @@ def check_16() -> str:
     return "\n    ".join(lines)
 
 
+WAIVER_FIELDS = ("code", "decision", "reason", "measured")
+
+
+def read_waivers(path: Path, known: Iterable[int]) -> dict[int, dict[str, str]]:
+    """The owner's accepted failures: one entry per check, each with the finding it covers (``code``, what a Failed carries), the decision,
+    the reason and the numbers. An entry that lacks one, or names a check that does not exist, is refused."""
+    waivers: dict[int, dict[str, str]] = {}
+    for key, entry in json.loads(path.read_text()).items():
+        if not key.isdigit() or int(key) not in set(known):
+            raise ValueError(f"{path.name}: {key!r} is not a check")
+        missing = [field for field in WAIVER_FIELDS if not (isinstance(entry.get(field), str) and entry[field].strip())]
+        if missing:
+            raise ValueError(f"{path.name}: check {key} lacks {', '.join(missing)}")
+        waivers[int(key)] = entry
+    return waivers
+
+
+WAIVERS = read_waivers(HERE / "waivers.json", CHECKS)
+
 # 10 stops the image and 16 stops it again; both leave a fresh one running. Everything else only reads or recreates it.
 ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 10, 16]
 
@@ -808,7 +840,7 @@ def main() -> int:
     wanted = [int(n) for n in args.only.split(",")] if args.only else ORDER
     image = docker("image", "inspect", "-f", "{{.Id}} {{.Size}}", STACK.image, check=False).stdout.split()
     print(f"image {STACK.image} {image[0][:19] if image else '(not found)'}  module {STACK.module}  direct {STACK.direct}  eneo {STACK.eneo}", flush=True)
-    failed = []
+    failed, waived = [], []
     for number in [n for n in ORDER if n in wanted]:
         title, function = CHECKS[number]
         began = time.monotonic()
@@ -816,13 +848,18 @@ def main() -> int:
             detail = function()
             print(f"PASS {number:>2}  {title}\n    {detail}", flush=True)
         except Failed as error:
-            failed.append(number)
-            print(f"FAIL {number:>2}  {title}\n    {error}", flush=True)
+            waiver = WAIVERS.get(number)
+            if waiver and error.code == waiver["code"]:
+                waived.append(number)
+                print(f"FAIL (waived: {waiver['reason']}) {number:>2}  {title}\n    {error}\n    waiver, {waiver['decision']}: {waiver['measured']}", flush=True)
+            else:
+                failed.append(number)
+                print(f"FAIL {number:>2}  {title}\n    {error}", flush=True)
         except Exception:  # a check that broke, not one that failed: show where
             failed.append(number)
             print(f"FAIL {number:>2}  {title}\n    {traceback.format_exc().strip()}", flush=True)
         print(f"        ({time.monotonic() - began:.1f} s)", flush=True)
-    print(f"{len(wanted) - len(failed)} of {len(wanted)} checks passed" + (f"; failed: {failed}" if failed else ""))
+    print(f"{len(wanted) - len(failed) - len(waived)} of {len(wanted)} checks passed" + (f"; failed: {failed}" if failed else "") + (f"; failed and waived by the owner: {waived}" if waived else ""))
     return 1 if failed else 0
 
 
