@@ -520,11 +520,12 @@ def refused_every_time(base: str, cap: int, attempts: int = 20) -> str:
 def page_refuses(base: str, cap: int) -> str:
     """With a small MAX_UPLOAD_BYTES (the module is running with ``cap`` already): the page refuses a file above it, below the flow's own limit,
     in words, and sends no request that carries it. A client that does send it gets a 413 or, behind a proxy, a 502 (``refused_every_time``)."""
-    file = Path(tempfile.gettempdir()) / "stt-upload-files" / f"upload-{cap + 50 * MB}.bin"
+    # A .wav: the page accepts the type and then looks at the size, which is what is under test. A hole, not bytes: the page reads the size.
+    file = Path(tempfile.gettempdir()) / "stt-upload-files" / f"upload-{cap + 50 * MB}.wav"
     file.parent.mkdir(exist_ok=True)
     if not file.exists():
         with file.open("wb") as handle:
-            handle.truncate(cap + 50 * MB)  # a hole: the page reads its size, not its bytes
+            handle.truncate(cap + 50 * MB)
     shown = json.loads(node(str(HERE / "upload_cap.cjs"), base, FLOW, str(file)))
     expected = f"Filen är större än flödet tar emot (högst {cap // MB} MB)."
     expect(shown["message"] == expected, f"the page said {shown['message']!r} for a {(cap + 50 * MB) // MB} MiB file over a cap of {cap // MB} MiB, not {expected!r}")

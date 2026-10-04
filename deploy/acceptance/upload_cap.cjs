@@ -3,7 +3,8 @@
 // usage: PW_DIR=<frontend dir with node_modules> node upload_cap.cjs <base url> <flow id> <file>
 //   <base url>  the module as a browser reaches it (its Eneo must be reachable from here: the sign-in handshake goes there)
 //   <flow id>   a flow with a file step
-//   <file>      a file above the module's MAX_UPLOAD_BYTES and below the flow's own limit, so that only the module's limit can refuse it
+//   <file>      an audio file (a .wav: the page checks the type first) above the module's MAX_UPLOAD_BYTES and below the flow's own limit,
+//               so that only the module's limit can refuse it
 // A fresh signed-in context opens the flow, chooses "Ladda upp" and gives the file input the file. Prints one JSON object:
 // {"message": the refusal the page shows, "sent": every request that is not a read (an upload is a POST)}. The page learns the
 // module's limit from its status answer (max_upload_bytes) and holds the flow's files to it, so a file the module would refuse
