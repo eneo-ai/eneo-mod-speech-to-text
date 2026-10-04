@@ -5,7 +5,8 @@
  * apart: the controls stand whole in the window whatever the text does (also with the words set far wider than any font
  * sets them), and the text keeps its lines in the platform's own font (CI's DejaVu Sans is the widest sans there is).
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { longLiveText } from "./live-relay";
 import { record, setup } from "./screens";
 

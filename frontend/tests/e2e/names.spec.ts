@@ -3,7 +3,8 @@
  * checks: names and descriptions as Chromium's own tree gives them, the
  * groups around them, and the page titles.
  */
-import { expect, test, type Route } from "@playwright/test";
+import { type Route } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axNode } from "./checks";
 import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
@@ -108,7 +109,8 @@ test("the name list opens with its chevron and closes with it again; a press out
   await expect(field).toBeFocused();
 });
 
-test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 404.*\/input-files\/.*\/audio/ });
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
@@ -117,7 +119,8 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
 });
 
-test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page, sentinel }, info) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
   await STATES.find((s) => s.name === "review")!.go(page, info);
   // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
   await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));

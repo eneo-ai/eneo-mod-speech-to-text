@@ -5,7 +5,8 @@
  * change once, never the ticking timer. These are DOM text changes; what a
  * screen reader actually says is on the manual list.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
