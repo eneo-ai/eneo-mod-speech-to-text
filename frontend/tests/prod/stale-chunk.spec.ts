@@ -15,36 +15,7 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { test as signedIn } from "../e2e/auth";
 import ids from "../fixtures/ids.json";
-
-/**
- * Refuses the files of one chunk the way a deploy that deleted them is answered: by the backend, as a file it does not
- * have. `name` is the chunk's name in the build (`dist/assets/<name>-<hash>.js`).
- */
-async function removeChunk(page: Page, name: string) {
-  const files = new RegExp(`/assets/${name}-[^/]+\\.js$`);
-  const refused: string[] = [];
-  await page.route(files, (route) => {
-    refused.push(new URL(route.request().url()).pathname);
-    return route.continue({ url: new URL("/assets/gone-with-the-deploy.js", route.request().url()).href });
-  });
-  return { refused, lift: () => page.unroute(files) };
-}
-
-/** A mark in this tab's memory and a count of its navigations: a reload clears the first and adds to the second. */
-async function watchForReloads(page: Page) {
-  let navigations = 0;
-  page.on("framenavigated", (frame) => frame === page.mainFrame() && navigations++);
-  await page.evaluate(() => ((window as unknown as { tabBeforeReload: boolean }).tabBeforeReload = true));
-  return {
-    /** Waits long enough for a reload that nothing asked for to have happened, and says whether the tab is the same one. */
-    async stillTheSameTab() {
-      const before = navigations;
-      await page.waitForTimeout(1500);
-      const mark = await page.evaluate(() => (window as unknown as { tabBeforeReload?: boolean }).tabBeforeReload === true);
-      return mark && navigations === before;
-    },
-  };
-}
+import { removeChunk, watchForReloads } from "./gone-chunks";
 
 const reloadButton = (page: Page) => page.getByRole("button", { name: "Ladda om sidan" });
 
