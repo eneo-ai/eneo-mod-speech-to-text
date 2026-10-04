@@ -1,22 +1,15 @@
 /**
- * The deployment's accent stylesheet in the built app: `STUB_BRANDING=custom npm run test:prod -- branding.spec.ts
- * --project=chromium` (the stub is then a green deployment, which the other prod tests, built for the default blue,
- * do not expect). It is a plain same-origin stylesheet link, so a strict style-src 'self' still lets it in.
+ * The deployment's accent stylesheet in the built app, on the backend started as a green deployment (the `branded`
+ * project of playwright.prod.config.ts; the others are built for the default blue). It is a plain same-origin
+ * stylesheet link, so the strict `style-src 'self'` of the backend lets it in.
  */
-import { expect, test } from "@playwright/test";
+import { expect } from "@playwright/test";
+import { test } from "../e2e/auth";
 
-test.beforeEach(() => test.skip(!process.env.STUB_BRANDING, "needs the stub as a deployment with its own accent colour"));
-
-test("the accent applies in the built app, also under a strict style-src 'self', with nothing blocked", async ({ page }) => {
+test("the accent applies in the built app, under the backend's own strict style policy, with nothing blocked @branded", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
   const problems: string[] = [];
   page.on("console", (message) => message.type() === "error" && problems.push(message.text()));
-  // The production policy, with its one inline-style allowance taken away.
-  await page.route("**/flows", async (route) => {
-    const response = await route.fetch();
-    const policy = response.headers()["content-security-policy"];
-    expect(policy).toContain("style-src 'self' 'unsafe-inline'");
-    await route.fulfill({ response, headers: { ...response.headers(), "content-security-policy": policy.replace("style-src 'self' 'unsafe-inline'", "style-src 'self'") } });
-  });
   await page.goto("/flows");
   await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
   const accent = await page.evaluate(() => {
@@ -31,8 +24,8 @@ test("the accent applies in the built app, also under a strict style-src 'self',
   expect(problems.filter((text) => /theme\.css|branding/.test(text))).toEqual([]);
 });
 
-// Its headers (nosniff, cache, ETag) are the backend's, and its unit tests'; the stub answers here.
-test("the built app's /api rewrite delivers the stylesheet", async ({ request }) => {
+// Its headers (nosniff, cache, ETag) are the backend's, and its unit tests'.
+test("the backend serves the deployment's stylesheet @branded", async ({ request }) => {
   const response = await request.get("/api/branding/theme.css");
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toContain("text/css");

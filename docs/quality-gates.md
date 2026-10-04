@@ -17,7 +17,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 | Backendtester | Inloggning, proxy, uppladdning, filer, live-relä, config. | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | snabb |
 | Tillgänglighetsgrinden | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. | `npm run test:a11y` | lång |
 | Grindens branding-tillstånd | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. | `npm run test:a11y:branding` | medel |
-| Produktionssmoke och viktbudget | Det byggda bygget i tre motorer, sidvikt, att det byggda temat används. | `npm run test:prod` | medel |
+| Produktionstester och viktbudget | Det byggda gränssnittet bakom den riktiga backenden i tre motorer: svarshuvuden, vägar, sidvikt, att det byggda temat används, och vad backenden gör mot Eneo. | `npm run test:prod` | medel |
 | Bygget | Att produktionsbygget går att göra. | `npm run build` | medel |
 | Designsystemets hälsa | Att Astryx är rätt uppsatt. | `npm run astryx -- doctor` | snabb |
 | Temat är aktuellt | Att de byggda temafilerna motsvarar temakällan. | `npm run theme:build && git diff --exit-code -- kit/theme/built` | snabb |
@@ -144,21 +144,31 @@ Läs diffen på ögonblicksbilderna innan du behåller dem.
 
 Sänk inte ett tröskelvärde, ta inte bort ett läge ur grinden och lägg inte till ett axe-undantag för att få grinden grön. Hitta orsaken i stället; en brist i designsystemet rättas en gång i temat ([Designsystem](design-system.md#rätta-en-brist-i-designsystemet)).
 
-## Produktionssmoke och viktbudget
+## Produktionstester och viktbudget
 
-`npm run test:prod` bygger produktionsbygget och serverar det som imagen gör (`frontend/tests/prod/serve.mjs`, `frontend/playwright.prod.config.ts`), mot stubbackenden, i Chromium, WebKit och Firefox. Det bevisar det som grindens `next dev` inte kan: de byggda stilarnas ordning, det byggda temat och sidan under produktions-CSP:n. Bygget görs med `FOUNDATION_CHECK=1`, så att utvecklingssidan `/dev/foundation` finns för testerna.
+`npm run test:prod` bygger produktionsbygget (`dist/`) och kontrollbygget (`dist-check/`) och kör dem bakom den riktiga backenden (`python -m app.serve`, startad av `frontend/tests/prod/start-backend.mjs`) med stubbackenden som Eneo (`frontend/tests/e2e/stub-server.py`). Testerna loggar in genom den riktiga inloggningen (`frontend/tests/e2e/auth.ts`, en session per test). Det bevisar det som grindens utvecklingsserver inte kan: de byggda stilarnas ordning, det byggda temat, backendens svarshuvuden och vägar och sidan under produktions-CSP:n. `frontend/playwright.prod.config.ts` har tre backends, eftersom ett bygge bara innehåller det som dess tester väntar sig:
+
+| Projekt | Bygge | Tester |
+|---|---|---|
+| `shipped-chromium`, `shipped-webkit`, `shipped-firefox` | `dist/`, det som levereras | Alla tester utan `@fixture` eller `@branded`; `@chromium` bara i Chromium. |
+| `fixture` | `dist-check/`, med utvecklingssidorna | `@fixture`: utvecklingssidorna `/dev/foundation` och `/dev/speaker-review` finns. |
+| `branded` | `dist/`, startad som en organisation med eget namn, egen logga och grön accent | `@branded`. |
+
+Taggen står i testets titel och inget test ber ett bygge om det som det inte innehåller. `PROD_EXTERNAL_URL` byter ut `shipped`-backenden mot en som redan körs (imagen); stubben är då den som anroparen startat, och `STUB_URL` pekar på den.
 
 | Test | Bevisar |
 |---|---|
-| `smoke.spec.ts` | Att designsystemet är stylat, tematiserat och fungerar i det byggda bygget, och att en inloggad sida laddar utan blockerat eller trasigt innehåll (en CSP-vägran är ett konsolfel). |
-| `weight.spec.ts` | Att en sidas komprimerade JS och CSS inte överstiger `tests/prod/weight-budget.json`, och att det byggda temat används: inget `<style data-astryx-theme*>` får finnas efter laddning (det vore runtime-generering av tema vid varje sidladdning). Bara Chromium, som rapporterar överföringsstorlek. |
-
-`frontend/tests/prod/branding.spec.ts` kör accentens stilmall i det byggda bygget, också under en strikt `style-src 'self'`, och körs bara när stubben är en organisation med egen accent: `STUB_BRANDING=custom npm run test:prod -- branding.spec.ts --project=chromium`.
+| `smoke.spec.ts` | Att designsystemet är stylat, tematiserat och fungerar i kontrollbygget (`@fixture`), och att en inloggad sida i det levererade bygget laddar utan blockerat eller trasigt innehåll (en CSP-vägran är ett konsolfel). |
+| `headers.spec.ts` | Att varje svar bär alla säkerhetshuvuden ur `backend/app/security_headers.json`, att bara den inline visade PDF:en får ramas in (av samma origin), att sidan revalideras med ETag och en hashad fil är `immutable`, att skript och stilar komprimeras (`br` eller `gzip`) och att inget svar har `X-Powered-By` eller `Server: uvicorn`. |
+| `routes.spec.ts` | Att en direkt adress till en route i appen visar sidan på svenska, att en adress som inte är en route går till startsidan, att `/openapi.json`, en saknad fil och en okänd `/api`-väg är 404 utan HTML, att `HEAD /` är 200, och att utvecklingssidorna finns i kontrollbygget men i inget vanligt bygge. |
+| `upstream.spec.ts` | Vad backenden gör mot Eneo: användaren som skrivningar måste namnge, filer med `Range` (206 och 416), PDF:ens inramningshuvuden, live-reläet (en ram på 64 KiB når Eneo, en över 128 KiB stänger med 1009) och en uppladdning som når Eneo hel. Stubben läses per inspelning och efter svarets storlek, så att motorerna kan köra samtidigt. |
+| `weight.spec.ts` | Att en sidas komprimerade JS och CSS inte överstiger `tests/prod/weight-budget.json`, och att det byggda temat används: inget `<style data-astryx-theme*>` får finnas efter laddning (det vore runtime-generering av tema vid varje sidladdning). Bara Chromium (`@chromium`), som rapporterar överföringsstorlek. |
+| `branding.spec.ts` | Att organisationens accent gäller i det byggda gränssnittet under backendens egen strikta `style-src 'self'`, och att backenden levererar stilmallen (`@branded`). |
 
 ### Viktbudgeten
 
 - Budgeten (`frontend/tests/prod/weight-budget.json`) ger ett tak i KB för JS och CSS per sida: den uppmätta vikten avrundad uppåt till närmaste 5 KB.
-- En ändring som höjer den motiverar det i sin pull request. Budgeten mäts på ett bygge som också innehåller utvecklingssidan, vilket flyttar delade bitar något; detaljerna står överst i `weight.spec.ts`.
+- En ändring som höjer den motiverar det i sin pull request. Budgeten mäts på det levererade bygget (`dist/`), utan utvecklingssidorna, och med den förkomprimerade `.br`-filen som webbläsaren får; detaljerna står överst i `weight.spec.ts`.
 - Ladda inget sidan inte använder: importera en språkfil, ikonuppsättning eller komponent där den används, inte via en gemensam samlingsfil. Kör `weight.spec.ts` efter att ha lagt till en import från `@astryxdesign/core`.
 
 ## Läckkontrollen
@@ -181,7 +191,7 @@ npm run test:a11y -- leaks.spec.ts --project=laptop-1440-light
 | Kontroll | Standardportar (app, stub) | Ändra med |
 |---|---|---|
 | `npm run test:a11y`, `npm run dev:stub` | 3401, 8401 | `A11Y_APP_PORT`, `A11Y_STUB_PORT` |
-| `npm run test:prod` | 3411, 8411 | samma två variabler |
+| `npm run test:prod` | 3411 till 3413 (tre backends), 8411 | samma två variabler (appens portar är `A11Y_APP_PORT`, +1 och +2) |
 
 - Flera utcheckningar (git worktrees) kan köra grinden samtidigt på egna portpar, till exempel `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run test:a11y -- ...`.
 - Next tillåter en utvecklingsserver per utcheckning: stoppa din egen `npm run dev` i samma utcheckning först.
