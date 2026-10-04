@@ -6,11 +6,16 @@ import { createElement } from "react";
 
 import { cleanup, installDom, mount } from "./test-dom";
 
+const frames = (count: number) => new Promise<void>((resolve) => (function next(left: number) { left === 0 ? resolve() : requestAnimationFrame(() => next(left - 1)); })(count));
+
 installDom();
 afterEach(async () => {
   await cleanup();
   localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
+  // A switch of the mode marks <html> until two animation frames have passed (see `switching` below). Let them pass
+  // here: the next test must not start with this one's mark, nor have its own cleared by this one's frames.
+  await frames(2);
 });
 
 /** The operating system's choice, as a test controls it: `matches` now, and `change` events to whoever listens. */
@@ -232,7 +237,6 @@ test("no style or component reads the old colour mode, a class on <html>", async
 // (the design system's transitions) would lag behind them. For the frames that apply the new mode, `<html>` carries
 // `data-theme-switching`, which one static rule in styles/globals.css answers with `transition: none`.
 const switching = () => document.documentElement.hasAttribute("data-theme-switching");
-const frames = (count: number) => new Promise<void>((resolve) => (function next(left: number) { left === 0 ? resolve() : requestAnimationFrame(() => next(left - 1)); })(count));
 
 test("a chosen mode marks the document as switching for the frames that apply it, and no longer", async () => {
   const { ColorModeProvider, useColorMode } = await load();
