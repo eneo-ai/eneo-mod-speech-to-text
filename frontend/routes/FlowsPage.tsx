@@ -25,6 +25,7 @@ import {
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
 import { lastUsedFlow } from "@/lib/last-used-flow";
+import { useRouteReady } from "@/routes/RouteEffects";
 
 export default function FlowsPage() {
   return (
@@ -67,6 +68,9 @@ function FlowsListPage() {
       cancelled = true;
     };
   }, [attempt]);
+
+  // The page has its content when the list has answered, or could not.
+  useRouteReady(groups !== null || problem !== null);
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);
   const createLabel = listCreateLabels(groups);

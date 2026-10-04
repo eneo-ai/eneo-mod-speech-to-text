@@ -10,7 +10,7 @@ still printed as FAIL (with the reason), and the exit code is 0 only when every 
 breaks, and every check with no entry are not waived.
 
 Standard library only; it drives docker, the image (directly and through Traefik), the stub that is the image's Eneo, and the
-scripts of this folder (upload/measure.py, poll.cjs, auth-preload.cjs, loads.cjs, live_load.py). deploy/acceptance.sh builds and starts
+scripts of this folder (upload/measure.py, poll.cjs, auth-preload.cjs, loads.cjs, live_load.py, visit_resources.cjs, upload_cap.cjs). deploy/acceptance.sh builds and starts
 the stack and then runs this. The stack is the one the environment names; the defaults are acceptance.sh's:
 
     ACCEPT_MODULE_URL    http://127.0.0.1:8480   the module as a browser reaches it: Traefik, and the image's MODULE_PUBLIC_URL
@@ -476,25 +476,71 @@ def over_cap(base: str, cap: int) -> str:
 
 
 def refused_every_time(base: str, cap: int, attempts: int = 20) -> str:
-    """Uploads of three times the cap, sent in full by a client (curl): each must be answered 413. The module answers early and closes the
-    connection while the client is still sending; behind a proxy that can come back as something else."""
+    """Uploads of three times the cap, sent in full by a raw client (curl), each refused: a 413 from the module, a 502 from the proxy in front
+    (the module answers early and closes the connection while the client is still sending, which a proxy may turn into a Bad Gateway), or a
+    reset; never a success, never an answer of the module's own but the 413. Nothing reaches Eneo and the image's memory stays flat. A person
+    does not get here: the page refuses such a file first (page_refuses). The counts are the result."""
     fresh_module(cap)
     session = sign_in(base)
     file = Path(tempfile.gettempdir()) / "stt-upload-files" / "upload-300MB.bin"
     file.parent.mkdir(exist_ok=True)
     if not file.exists() or file.stat().st_size != 300 * MB:
         file.write_bytes(bytes(300 * MB))
+    body = file.parent / "refused-answer.txt"
+    memory = lambda: sum(rss_by_role(json.loads(probe("snapshot"))).values())
+    get(f"{STACK.eneo}/__reset")
+    before = memory()
     answers: dict[str, int] = {}
     for _ in range(attempts):
+        body.unlink(missing_ok=True)
         r = subprocess.run(
-            ["curl", "-sS", "--max-time", "60", "-o", "/dev/null", "-w", "%{http_code}", "-H", "Expect:", "-H", f"Cookie: {session.cookie}", "-H", f"Origin: {STACK.module}",
+            ["curl", "-sS", "--max-time", "60", "-o", str(body), "-w", "%{http_code}", "-H", "Expect:", "-H", f"Cookie: {session.cookie}", "-H", f"Origin: {STACK.module}",
              "-H", f"X-Expected-User: {session.user}", "-F", f"upload_file=@{file};filename=opptagning.webm;type=audio/webm", f"{base}{UPLOAD_PATH}"],
             capture_output=True, text=True,
         )
-        key = r.stdout.strip() if r.stdout.strip() != "000" else f"000 ({r.stderr.strip()[:40]})"
-        answers[key] = answers.get(key, 0) + 1
-    expect(answers == {"413": attempts}, f"{attempts} uploads of 300 MiB over a cap of {cap} bytes were answered {answers}, not 413 every time")
-    return f"{attempts} uploads of 300 MiB over a cap of {cap} bytes: 413 every time"
+        status, answer = r.stdout.strip(), body.read_text(errors="replace").strip() if body.exists() else ""
+        if status == "413":
+            kind = "413 from the module"
+        elif status == "502" and answer == "Bad Gateway":
+            kind = "502 from the proxy"
+        elif status == "000" and r.returncode in (52, 55, 56):  # empty reply, broken pipe, connection reset: the connection was closed while sending
+            kind = "reset"
+        else:
+            kind = f"{status or '000'} {answer[:60]!r} (curl exit {r.returncode}: {r.stderr.strip()[:60]})"
+        answers[kind] = answers.get(kind, 0) + 1
+    allowed = {"413 from the module", "502 from the proxy", "reset"}
+    expect(set(answers) <= allowed, f"{attempts} uploads of 300 MiB over a cap of {cap} bytes were answered {answers}: only 413, the proxy's 502 and a reset are a refusal")
+    received = json.loads(get(f"{STACK.eneo}/__log").body)
+    expect(received == [], f"Eneo received {len(received)} upload(s) of a file over the cap")
+    after = memory()
+    expect(after - before <= 32, f"the image's resident memory grew {after - before:.0f} MB over {attempts} refused uploads")
+    return f"{attempts} uploads of 300 MiB over a cap of {cap} bytes, each refused: {answers}; Eneo received nothing; memory {before:.0f} -> {after:.0f} MB"
+
+
+def page_refuses(base: str, cap: int) -> str:
+    """With a small MAX_UPLOAD_BYTES (the module is running with ``cap`` already): the page refuses a file above it, below the flow's own limit,
+    in words, and sends no request that carries it. A client that does send it gets a 413 or, behind a proxy, a 502 (``refused_every_time``)."""
+    # A .wav: the page accepts the type and then looks at the size, which is what is under test. A hole, not bytes: the page reads the size.
+    file = Path(tempfile.gettempdir()) / "stt-upload-files" / f"upload-{cap + 50 * MB}.wav"
+    file.parent.mkdir(exist_ok=True)
+    if not file.exists():
+        with file.open("wb") as handle:
+            handle.truncate(cap + 50 * MB)
+    shown = json.loads(node(str(HERE / "upload_cap.cjs"), base, FLOW, str(file)))
+    expected = f"Filen är större än flödet tar emot (högst {cap // MB} MB)."
+    expect(shown["message"] == expected, f"the page said {shown['message']!r} for a {(cap + 50 * MB) // MB} MiB file over a cap of {cap // MB} MiB, not {expected!r}")
+    expect(not shown["sent"], f"the page sent {shown['sent']} for a file it refuses")
+    return f"the page refuses a {(cap + 50 * MB) // MB} MiB file over a cap of {cap // MB} MiB ({expected!r}) and sends nothing (through Traefik)"
+
+
+def describe_open(entries: set[str]) -> list[str]:
+    """What the image's process holds that it did not hold: a file as its path, a socket as its ports and TCP state (01 established, 08 close-wait)."""
+    sockets = {}
+    for line in exec_in(STACK.container, "sh", "-c", "cat /proc/net/tcp /proc/net/tcp6 2>/dev/null; true").splitlines():
+        columns = line.split()
+        if len(columns) > 9 and columns[0].endswith(":"):
+            sockets[columns[9]] = f"local port {int(columns[1].split(':')[1], 16)}, remote port {int(columns[2].split(':')[1], 16)}, state {columns[3]}"
+    return [f"{entry} ({sockets.get(entry[8:-1], 'not in /proc/net/tcp')})" if entry.startswith("socket:[") else entry for entry in sorted(entries)]
 
 
 def abandoned(base: str) -> str:
@@ -504,18 +550,33 @@ def abandoned(base: str) -> str:
     fds = lambda: int(exec_in(STACK.container, "sh", "-c", "ls /proc/1/fd | wc -l"))
     tmp = lambda: int(exec_in(STACK.container, "sh", "-c", "ls -A /tmp | wc -l"))
     before = (fds(), tmp())
+    open_files = lambda: set(exec_in(STACK.container, "sh", "-c", 'for f in /proc/1/fd/*; do echo "$(readlink "$f")"; done').splitlines())
+    files_before = open_files()
     boundary = "acceptanceboundary"
     head = f'--{boundary}\r\nContent-Disposition: form-data; name="upload_file"; filename="opptagning.webm"\r\nContent-Type: audio/webm\r\n\r\n'.encode()
     total = len(head) + 300 * MB + len(f"\r\n--{boundary}--\r\n")
-    parts = urlsplit(base)
-    sock = socket.create_connection((parts.hostname, parts.port or 80), timeout=60)
-    headers = {**session.write(), "Host": parts.netloc, "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(total)}
-    sock.sendall((f"POST {UPLOAD_PATH} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n").encode() + head)
-    chunk = bytes(MB)
-    for _ in range(150):
-        sock.sendall(chunk)
-    reset(sock)
-    wait_until(lambda: fds() <= before[0] and tmp() <= before[1], 20, "the image releases the abandoned upload's file descriptor and temp file")
+    headers = {**session.write(), "Host": "127.0.0.1:3001", "Content-Type": f"multipart/form-data; boundary={boundary}", "Content-Length": str(total)}
+    request = f"POST {UPLOAD_PATH} HTTP/1.1\r\n" + "".join(f"{k}: {v}\r\n" for k, v in headers.items()) + "\r\n"
+    # From inside the image, over loopback: the reset of a client on the host has to cross the host's port forwarder, which does not always
+    # pass it on, and the module cannot release an upload it was never told was abandoned (its socket stays ESTABLISHED, its spool file open).
+    left = subprocess.Popen(
+        ["docker", "exec", "-i", STACK.container, "python", "-", json.dumps({"port": 3001, "send": request + head.decode(), "chunks": 150, "hold": 5})],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    assert left.stdin is not None
+    left.stdin.write((HERE / "upload/abandon_upload.py").read_text())
+    left.stdin.close()
+    try:
+        # The upload is in flight while the client holds the connection: the module has its spool file open (deleted at once, so not in /tmp's listing).
+        wait_until(lambda: any(f.startswith("/tmp/") and f.endswith("(deleted)") for f in open_files() - files_before), 15, "the module holds the spool file of the upload it is receiving")
+    finally:
+        left.wait(timeout=120)  # the client leaves with a reset after its hold
+    error_output = left.stderr.read() if left.stderr else ""
+    expect(left.returncode == 0, f"the client that leaves failed: {error_output.strip()[-200:]}")
+    try:
+        wait_until(lambda: fds() <= before[0] and tmp() <= before[1], 20, "the image releases the abandoned upload's file descriptor and temp file")
+    except Failed as error:
+        raise Failed(f"{error}: file descriptors {before[0]} -> {fds()}, /tmp entries {before[1]} -> {tmp()}; open now and not before: {describe_open(open_files() - files_before)}") from None
     expect(get(f"{STACK.direct}/health").status == 200, "the image is not healthy after the abandoned upload")
     return f"a client that left after 150 of 300 MiB: file descriptors {before[0]} -> {fds()}, /tmp entries {before[1]} -> {tmp()}, still healthy"
 
@@ -737,7 +798,7 @@ def check_15() -> str:
     return detail
 
 
-@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed, a NUL path and docker stop")
+@check(16, "through Traefik: the socket, the origin, uploads and the page refusing a file over the cap, Range, cookies, user_changed, a NUL path and docker stop")
 def check_16() -> str:
     lines, problems = [], []
     lines.append(f"Traefik {docker('inspect', '-f', '{{.Config.Image}}', STACK.traefik).stdout.strip()}")
@@ -786,6 +847,10 @@ def check_16() -> str:
         lines.append(refused_every_time(STACK.module, 100 * MB) + " (through Traefik)")
     except Failed as error:
         problems.append(str(error))  # the rest still runs: what else is proven through Traefik is part of the answer
+    try:
+        lines.append(page_refuses(STACK.module, 100 * MB))  # the module still runs with the cap refused_every_time gave it
+    except Failed as error:
+        problems.append(str(error))
     # docker stop with a stream open through Traefik
     fresh_module()
     expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")

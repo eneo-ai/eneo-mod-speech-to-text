@@ -14,6 +14,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { HeaderBrand } from "@/components/AppHeader";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { useRouteReady } from "@/routes/RouteEffects";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -42,6 +43,9 @@ export default function LoginPage() {
         setChecking(false);
       });
   }, [navigate]);
+
+  // The page has its content once it has stopped asking who is signed in.
+  useRouteReady(!checking);
 
   function startLogin() {
     setSubmitting(true);
