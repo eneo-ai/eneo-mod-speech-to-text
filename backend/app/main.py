@@ -89,6 +89,14 @@ http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
 app.include_router(module_auth.router, prefix="/api/auth")
 
+# What a request under /api/eneo that changes something passes before its body is read, in this order: a session, the
+# module's own origin (a read is exempt) and a page that names the session's user (a read may name nobody).
+_SESSION_ORIGIN_AND_USER = [
+    Depends(module_auth.require_session),
+    Depends(module_auth.require_same_origin),
+    Depends(module_auth.require_expected_user),
+]
+
 
 def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
     effective_timeout = settings.upload_proxy_timeout_seconds
@@ -493,11 +501,7 @@ async def _proxy_multipart_upload(
 
 @app.post(
     "/api/eneo/flows/{flow_id}/files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/files/")
@@ -505,11 +509,7 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
 
 @app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
@@ -517,11 +517,7 @@ async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Req
 
 @app.post(
     "/api/eneo/flows/{flow_id}/template-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/template-files/")
@@ -870,11 +866,7 @@ async def eneo_run_artifact_content(
 @app.api_route(
     "/api/eneo/{path:path}",
     methods=["GET", "POST", "PATCH"],
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
     # The path as the browser spelled it: Eneo's routes carry a trailing slash and so does the allowlist, so the
