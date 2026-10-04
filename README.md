@@ -39,8 +39,8 @@ En annan kommun eller myndighet byter namn, logga och accentfärg utan att ändr
 | Status | Vad |
 |---|---|
 | Nuvarande | Next.js 16 är frontend-servern och FastAPI ligger internt bakom den: båda i en image under supervisord (port 3001), eller som två containrar i Compose. Inloggning med Eneo SSO; `access_code` är en tillfällig testgrind. |
-| Under arbete | Gränssnittet porteras från shadcn/Radix/Tailwind till Astryx. Se [Arkitektur](docs/architecture.md#migration-temporary-removed-by-bead-24). |
-| Planerat | Plan B: en process där FastAPI serverar gränssnittet som statiska filer (en Vite-app) i stället för Next.js. Det är inte påbörjat och väntar på ägarens besked. Därtill ett delat modulkit i ett eget repo. Se [Arkitektur](docs/architecture.md#läget-i-dag). |
+| Klart | Gränssnittet är byggt på Astryx; shadcn, Radix och Tailwind är borttagna. |
+| Planerat | Plan B: en process där FastAPI serverar gränssnittet som statiska filer (en Vite-app) i stället för Next.js. Beslutad och byggs på grenen `feat/one-process`. Därtill ett delat modulkit i ett eget repo. Se [Arkitektur](docs/architecture.md#läget-i-dag). |
 
 ## Karta över dokumentationen
 
@@ -61,3 +61,7 @@ Hela indexet med status finns i [docs/README.md](docs/README.md).
 | förstå en term | [Ordlista](docs/glossary.md) |
 
 Arbetar du som AI-agent, börja med [`AGENTS.md`](AGENTS.md) (engelska).
+
+## Licens
+
+GNU Affero General Public License v3.0 (`AGPL-3.0-only`), samma licens som Eneo. Se [LICENSE](LICENSE).
