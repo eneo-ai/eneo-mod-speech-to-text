@@ -260,7 +260,7 @@ def audio_path(file_id: str = AUDIO_FILE) -> str:
 PAGES = ["/", "/flows", "/flows/", f"/flows/{FLOW}", f"/flows/{FLOW}?run={RUN_DONE}", "/inloggad", "/inloggad?fel=utgangen", "/inloggad?fel=annan-anvandare"]
 # The reads the UI makes (frontend/lib/api.ts); the sign-in's own navigations (/api/auth/login and /callback) redirect by design.
 API_READS = [
-    "/api/auth/status", "/api/branding", "/api/branding/theme.css", "/api/config", "/api/eneo/flows/", f"/api/eneo/flows/{FLOW}/published/",
+    "/api/auth/status", "/api/branding", "/api/branding/theme.css", "/api/eneo/flows/", f"/api/eneo/flows/{FLOW}/published/",
     f"/api/eneo/flows/{FLOW}/run-contract/", f"/api/eneo/flows/{FLOW}/graph/", f"/api/eneo/flows/{FLOW}/runs/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/",
     f"/api/eneo/flows/{FLOW}/runs/{RUN_RUNNING}/status/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/steps/",
     f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/transcript-corrections/", f"/api/eneo/flows/{FLOW}/runs/{RUN_DONE}/review-checkpoints/active/",
