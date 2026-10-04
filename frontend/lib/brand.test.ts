@@ -98,25 +98,14 @@ test("the stylesheet shows the logo of the colour mode and inverts Sundsvall's",
   assert.match(css, /html:not\(\.dark\) \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*none/, "and the dark one stays out of the light mode");
 });
 
-test("the brand's link asks before it leaves the page, and stays when told to", async () => {
+test("the brand's link is a router link to the flows: a navigation, which the page's blocker can stop", async () => {
   const { HeaderBrand } = await import("../components/AppHeader");
-  const asked: boolean[] = [];
-  const { router, tree } = withRouter(
-    createElement(HeaderBrand, {
-      linked: true,
-      onLeave: (event) => {
-        asked.push(true);
-        event.preventDefault();
-      },
-    }),
-    { path: "/start" },
-  );
+  const { router, tree } = withRouter(createElement(HeaderBrand, { linked: true }), { path: "/start" });
   const { container, act } = await mount(tree);
   const link = container.querySelector("a")!;
   assert.equal(link.getAttribute("href"), "/flows");
   await act(async () => link.click());
-  assert.deepEqual(asked, [true], "asked once");
-  assert.equal(router.state.location.pathname, "/start", "and the page was not left");
+  assert.equal(router.state.location.pathname, "/flows", "the router took it, the page was not loaded again");
 });
 
 test("the header brand of a page nobody has signed in to is not a link", async () => {

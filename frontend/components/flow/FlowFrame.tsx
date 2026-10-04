@@ -1,13 +1,12 @@
 "use client";
 
-import { useContext, type MouseEvent, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { AccountMenu } from "@/components/AccountMenu";
 import { HeaderBrand } from "@/components/AppHeader";
-import { LeaveContext } from "@/components/flow/useLeaveQuestion";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";
@@ -23,7 +22,6 @@ export function FlowFrame({
   title,
   titleIsHeading = true,
   trailing,
-  onLeave,
   locked = false,
   fill = false,
   aside,
@@ -35,8 +33,6 @@ export function FlowFrame({
   titleIsHeading?: boolean;
   /** Replaces the account menu on every width, e.g. with the mode while recording, which signing out would drop. */
   trailing?: ReactNode;
-  /** Asked before a link leaves the page; call preventDefault to stay. */
-  onLeave?: (event: MouseEvent) => void;
   /** While leaving would abort what the view is doing (an upload under way): the view's own way out is the only one. */
   locked?: boolean;
   /** The window's height, with panes that scroll on their own (a recording); otherwise the page grows. */
@@ -45,9 +41,6 @@ export function FlowFrame({
   aside?: ReactNode;
   children: ReactNode;
 }) {
-  // The page's leave question, unless the view asks itself.
-  const leave = useContext(LeaveContext);
-  const onLeaveLink = onLeave ?? leave.onLeave;
   const account = !locked && trailing === undefined;
   const heading = (
     <>
@@ -60,11 +53,10 @@ export function FlowFrame({
           icon={<Icon icon="chevronLeft" />}
           variant="ghost"
           className={styles.belowLaptop}
-          onClick={onLeaveLink}
         />
       )}
       <span className={[styles.bare, styles.fromLaptop].join(" ")}>
-        <HeaderBrand onLeave={onLeaveLink} linked={!locked} />
+        <HeaderBrand linked={!locked} />
       </span>
     </>
   );

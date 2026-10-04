@@ -1,7 +1,7 @@
 "use client";
 
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -96,7 +96,6 @@ export function FlowInput({
   onOpenRun,
   onMoreRuns,
   unsentRecordings,
-  onLeave,
   afterRun = false,
 }: {
   published: FlowPublished;
@@ -109,8 +108,6 @@ export function FlowInput({
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
   unsentRecordings: UnsentRecording[];
-  /** The page's links off the flow: they ask first while leaving would lose something (the page owns the question). */
-  onLeave: (event: MouseEvent) => void;
   /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
   afterRun?: boolean;
 }) {
@@ -165,7 +162,6 @@ export function FlowInput({
       <TabTitle input={input} flowName={published.name} />
       <FlowFrame
         fill={group === "capture"}
-        onLeave={onLeave}
         trailing={
           holdsAudio && mode ? (
             <HStack gap={1}>
@@ -180,7 +176,6 @@ export function FlowInput({
           <FlowAside
             published={published}
             classification={contract.security_classification}
-            onLeave={onLeave}
             compact={holdsAudio}
             details={details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}

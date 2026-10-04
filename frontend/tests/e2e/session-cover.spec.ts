@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { clippedFocus } from "./checks";
-import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
+import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -176,7 +176,7 @@ test("a native dialog the page had open when the login ends is hidden behind the
 });
 
 test("Back after the login ended asks above the sign-in dialog, in reach, and answering leaves the sign-in dialog where it was", async ({ page }) => {
-  await setup(page);
+  await setupFromList(page);
   await record(page, "Spela in");
   await endLogin(page);
   const sign = page.getByRole("alertdialog", signIn);
@@ -194,7 +194,7 @@ test("Back after the login ended asks above the sign-in dialog, in reach, and an
   await expect(question).toBeHidden();
   await expect(sign).toBeVisible();
   await expect(sign.getByRole("heading", signIn), "focus is back where it was: in the sign-in dialog").toBeFocused();
-  // It asks again as long as the page is guarded, and nothing but a new login closes the dialog under it.
+  // It asks again for as long as the page holds work, and nothing but a new login closes the dialog under it.
   await page.goBack();
   await expect(question).toBeVisible();
   await question.getByRole("button", { name: "Stanna kvar" }).click();
@@ -210,7 +210,7 @@ test("the leave question opens above the warning that came while recording, and 
       json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 305 },
     }),
   );
-  await setup(page);
+  await setupFromList(page);
   await record(page, "Spela in");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible({ timeout: 15_000 });
@@ -281,7 +281,7 @@ test("the leave question can be answered with a mouse while a dialog of the old 
   // The page's own question to delete a recording is a modal of the old design system, which turns off pointer
   // events on the body. (It also hides what was in the document when it opened from assistive technology, the
   // question included; that is not asserted, and ends with the last modal of the old system.)
-  await setup(page);
+  await setupFromList(page);
   await record(page, "Spela in");
   await page.getByRole("button", { name: "Stoppa" }).click();
   await page.getByRole("button", { name: "Ta bort" }).click();

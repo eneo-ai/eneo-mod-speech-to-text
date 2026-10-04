@@ -36,7 +36,7 @@ async function openAccountMenu(
   t.after(() => {
     globalThis.fetch = browserFetch;
   });
-  const leave = { onLeave() {}, leaveFirst: options.leaveFirst ?? ((goOn: () => void) => goOn()) };
+  const leave = { leaveFirst: options.leaveFirst ?? ((goOn: () => void) => goOn()) };
   // The page is the flow list; signing out leaves it for the sign-in page ("/").
   const { router, tree } = withRouter(
     createElement(

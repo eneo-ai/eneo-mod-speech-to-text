@@ -587,7 +587,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
         onOpenRun={resumeRun}
         onMoreRuns={() => void earlier.more()}
         unsentRecordings={unsentRecordings}
-        onLeave={leaving.onLeave}
         afterRun={shownRun}
       />,
     );

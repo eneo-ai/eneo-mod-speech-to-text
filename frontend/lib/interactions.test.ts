@@ -505,11 +505,11 @@ test("upload: a file dropped on the zone is chosen, the first of several; someth
 });
 
 /** A page's router and signed-in user, as the app gives them; `visited` is where the router went. */
-async function signedIn(element: import("react").ReactElement) {
+async function signedIn(element: import("react").ReactElement, where?: { path?: string; entries?: string[] }) {
   const { createElement } = await import("react");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element));
+  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element), where);
 }
 
 const exits = (container: HTMLElement) => ({
@@ -579,7 +579,6 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
       onOpenRun: () => undefined,
       onMoreRuns: () => undefined,
       unsentRecordings: [],
-      onLeave: () => undefined,
       afterRun,
     });
   }
@@ -775,35 +774,21 @@ test("recording: the account menu steps aside for the mode on every width, so si
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const view = await mount((await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }))).tree);
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it), asked through onLeave");
+  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it); the router asks about them");
   await view.unmount();
 });
 
-test("the way back: a link to the flow list named Alla flöden, and a leave guard still decides first", async () => {
+test("the way back: a link to the flow list named Alla flöden, a router link", async () => {
   const { createElement } = await import("react");
   const { BackToFlows } = await import("../components/flow/BackToFlows");
-  const asked: boolean[] = [];
-  const view = await mount(
-    (
-      await signedIn(
-        createElement(BackToFlows, {
-          onLeave: (event: import("react").MouseEvent) => {
-            event.preventDefault();
-            asked.push(true);
-          },
-        }),
-      )
-    ).tree,
-  );
+  const { router, tree } = await signedIn(createElement(BackToFlows));
+  const view = await mount(tree);
   const links = [...view.container.querySelectorAll("a")];
   assert.equal(links.length, 1);
   assert.equal(links[0].getAttribute("href"), "/flows");
   assert.equal(links[0].textContent?.trim(), "Alla flöden");
-
-  const click = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
-  await view.act(async () => void links[0].dispatchEvent(click));
-  assert.deepEqual(asked, [true], "the guard is asked");
-  assert.equal(click.defaultPrevented, true, "and can keep the page");
+  await view.act(async () => void links[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })));
+  assert.equal(router.state.location.pathname, "/flows", "a navigation of the router, not a page load");
   await view.unmount();
 });
 
@@ -817,30 +802,76 @@ test("the phone top bar's back chevron is named like every other way back", asyn
   await view.unmount();
 });
 
-test("Back during an upload asks first and says what leaving stops", async () => {
+test("Back during an upload asks first and says what leaving stops; Stanna kvar stays, Lämna sidan goes on", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { leaveWarning } = await import("./recording-view");
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   function Page() {
     // A file on its way: the page holds no audio.
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
-  const view = await mount((await signedIn(createElement(Page))).tree);
+  const { tree, router } = await signedIn(createElement(Page), { entries: ["/flows", "/"] });
+  const view = await mount(tree);
   // A native dialog stays in the tree while it is closed: open is its open attribute.
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
-  await view.act(async () => {
-    window.history.back();
-    await settle();
-  });
+  await view.act(async () => void router.navigate(-1));
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
   // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
   assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
   assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
   assert.ok(document.activeElement === button(dialog()!, "Stanna kvar"), "staying has the focus");
+  assert.equal(router.state.location.pathname, "/", "the page is still here while it is asked");
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
   assert.ok(!dialog(), "answered: closed");
+  assert.equal(router.state.location.pathname, "/", "and stayed");
+
+  await view.act(async () => void router.navigate(-1));
+  assert.ok(dialog(), "asked again for the next Back");
+  await view.act(async () => button(dialog()!, "Lämna sidan")!.click());
+  assert.equal(router.state.location.pathname, "/flows", "Lämna sidan goes on back");
+  await view.unmount();
+});
+
+test("repeated Back while the question is open leaves one question, and Stanna kvar stays", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  function Page() {
+    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  const { tree, router } = await signedIn(createElement(Page), { entries: ["/start", "/flows", "/"] });
+  const view = await mount(tree);
+  const dialogs = () => document.body.querySelectorAll('[role="alertdialog"][open]').length;
+  for (let press = 0; press < 3; press += 1) await view.act(async () => void router.navigate(-1));
+  assert.equal(dialogs(), 1, "one question, nothing stacked");
+  await view.act(async () => button(document.body.querySelector<HTMLElement>('[role="alertdialog"][open]')!, "Stanna kvar")!.click());
+  assert.equal(dialogs(), 0);
+  assert.equal(router.state.location.pathname, "/", "still on the page");
+  await view.unmount();
+});
+
+test("an address the page writes that keeps the page is no departure, and a page that is not asking is left without a question", async () => {
+  const { createElement, useState } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  let setActive: (active: boolean) => void = () => {};
+  function Page() {
+    const [active, set] = useState(true);
+    setActive = set;
+    return useLeaveQuestion(active, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  const { tree, router } = await signedIn(createElement(Page), { path: "/flows/:id", entries: ["/flows", "/flows/f1"] });
+  const view = await mount(tree);
+  const dialogs = () => document.body.querySelectorAll('[role="alertdialog"][open]').length;
+  await view.act(async () => void router.navigate({ search: "?run=r1" }, { replace: true }));
+  assert.equal(dialogs(), 0, "the page writing its own address asks nothing");
+  assert.equal(router.state.location.search, "?run=r1");
+  await view.act(async () => void router.navigate("/flows"));
+  assert.equal(dialogs(), 1, "another page asks");
+  await view.act(async () => button(document.body.querySelector<HTMLElement>('[role="alertdialog"][open]')!, "Stanna kvar")!.click());
+  await view.act(async () => setActive(false));
+  await view.act(async () => void router.navigate("/flows"));
+  assert.equal(dialogs(), 0, "nothing to lose, nothing asked");
+  assert.equal(router.state.location.pathname, "/flows");
   await view.unmount();
 });
 
@@ -848,16 +879,12 @@ test("signed out, Back still asks in a native dialog that is open, focused and a
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   function Recording() {
     return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
   }
-  await settle(); // the history step the last test's guard took back
-  const view = await mount((await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }))).tree);
-  await view.act(async () => {
-    window.history.back();
-    await settle();
-  });
+  const { tree, router } = await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), { entries: ["/flows", "/"] });
+  const view = await mount(tree);
+  await view.act(async () => void router.navigate(-1));
   const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   assert.ok(dialog, "asked");
   // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
@@ -894,8 +921,7 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
       leaving.question,
     );
   }
-  await settle(); // the history step the last test's guard took back
-  const { tree, visited } = await signedIn(createElement(Review));
+  const { tree, visited, router } = await signedIn(createElement(Review), { path: "/flows/f1", entries: ["/flows/f1"] });
   const view = await mount(tree);
   const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
@@ -921,6 +947,8 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     await settle();
   });
   assert.equal(loggedOut, 1, "signed out once the user chose to leave");
+  assert.equal(router.state.location.pathname, "/", "and gone to the start");
+  assert.ok(!asked(), "which the question did not ask about a second time");
   await view.unmount();
 });
 
