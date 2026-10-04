@@ -16,12 +16,11 @@ from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -31,7 +30,7 @@ from websockets.exceptions import InvalidStatus  # noqa: E402
 from app import main  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 
-ORIGIN = "https://module.example.test"
+ORIGIN = "http://localhost:3002"
 FLOW, STEP = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 # One distinct dummy per secret that is on the wire, so a hit says which one leaked.
 FILE_TOKEN = "SENTINEL-signed-file-token"

@@ -145,7 +145,7 @@ test("the delete question is covered while the login has ended, and is back, as 
     assert.ok(question()?.hasAttribute("open"), "asked");
     await view.act(async () => loginState.ended());
     assert.equal(question()?.hasAttribute("open"), false, "the login ends: nothing of the question stays open over the sign-in dialog");
-    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna }));
+    await view.act(async () => loginState.observe({ authenticated: true, user: anna }));
     assert.ok(question()?.hasAttribute("open"), "the same person signs in again: the question is back");
     // Asked again with nothing of the page focused, it still gives the focus back to Ta bort when it is answered.
     (document.activeElement as HTMLElement | null)?.blur();

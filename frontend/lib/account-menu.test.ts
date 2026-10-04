@@ -104,12 +104,6 @@ test("the name is shown at the top, and the e-mail when it says more; neither is
   assert.equal(bare.trigger().getAttribute("aria-label"), "Öppna konto för erik@example.se");
   assert.equal((bare.menu()!.textContent ?? "").split("erik@example.se").length - 1, 1, "said once");
   await bare.unmount();
-
-  // The access code's shared sign-in has a name and no e-mail: no empty line for it.
-  const shared = await openAccountMenu(t, { user: { id: "access-code", email: "", username: "Testläge" } });
-  await shared.open();
-  assert.match(shared.menu()!.textContent ?? "", /Testläge/);
-  assert.doesNotMatch(shared.menu()!.textContent ?? "", /@/);
 });
 
 test("Ljust, Mörkt and System are one group named Tema, with the stored choice marked", async (t) => {

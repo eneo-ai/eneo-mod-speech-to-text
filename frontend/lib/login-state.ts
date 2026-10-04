@@ -16,7 +16,7 @@
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";
-import { ACCESS_CODE_USER, sessionUser } from "./user-identity";
+import { sessionUser } from "./user-identity";
 
 /**
  * What a question to the backend (a status read, a request, a socket) remembers of the login when it was asked, to
@@ -120,7 +120,7 @@ export function createLoginState(): LoginState {
       return otherUser;
     },
     get expectedUser() {
-      return owner && owner.id !== ACCESS_CODE_USER.id ? owner.id : null;
+      return owner ? owner.id : null;
     },
     subscribe(listener) {
       listeners.add(listener);

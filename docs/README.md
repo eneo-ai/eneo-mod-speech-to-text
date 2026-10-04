@@ -24,7 +24,7 @@ Status: **Aktuell** stämmer med koden. **Under arbete** beskriver något som ä
 |---|---|---|---|
 | [README](../README.md) | Översikt, snabbstart och karta | alla | Aktuell |
 | [Arkitektur](architecture.md) | Delar, diagram över inloggning, proxy, filer, drift, lager och märke | utvecklare, operatör | Aktuell (Astryx-portningen pågår) |
-| [Inloggning och session](auth-and-session.md) | Handoff, sessionslager, förnyelse, åtkomstkod, vad som aldrig når webbläsaren | utvecklare, säkerhet | Aktuell |
+| [Inloggning och session](auth-and-session.md) | Handoff, sessionslager, förnyelse, vad som aldrig når webbläsaren | utvecklare, säkerhet | Aktuell |
 | [Backend](backend.md) | Rutter, tillåtelselista, uppladdningar, filer, inställningar, säkerhetsegenskaper | utvecklare | Aktuell |
 | [Eneo-integration](eneo-integration.md) | Körningskontraktet, granskning, talarmappning, live-text | utvecklare | Aktuell |
 | [Inspelaren](recording.md) | Format, lagring på enheten, fortsätta, delar, flikar, nya försök | utvecklare | Aktuell |

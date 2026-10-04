@@ -24,12 +24,11 @@ from urllib.parse import parse_qs, urljoin, urlparse
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import uvicorn  # noqa: E402
 import httpx  # noqa: E402
@@ -38,7 +37,7 @@ from fastapi import HTTPException  # noqa: E402
 
 from app import main  # noqa: E402
 from app.config import load_settings  # noqa: E402
-from app.module_auth import SESSION_COOKIE, AccessCodeSession, EneoSsoSession, ModuleUser  # noqa: E402
+from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
 from app.upstream import make_client  # noqa: E402
 
 ORIGIN = main.settings.module_origin
@@ -416,7 +415,7 @@ class BrowserHeaderTests(BoundaryCase):
         "Proxy-Authorization": "Basic Zm9vOmJhcg==",
         "Authorization": "Bearer browser-controlled-token",
         "X-API-Key": "browser-controlled-key",
-        "Referer": "https://module.example.test/flows",
+        "Referer": "http://localhost:3002/flows",
     }
 
     def test_only_the_listed_request_headers_reach_eneo(self) -> None:
@@ -961,7 +960,7 @@ class LiveSessionEndTests(LiveCase):
 
             self.assertNotEqual(client.cookies.get(SESSION_COOKIE), first)
             self.assertEqual(client.get("/api/auth/status").status_code, 200)
-            self.assertEqual(self.request("GET", "/api/config", first, names_user=False).status_code, 401, "the replaced session still lives")
+            self.assertEqual(self.request("GET", "/api/eneo/flows/", first, names_user=False).status_code, 401, "the replaced session still lives")
 
     def test_a_session_that_is_refreshed_after_the_socket_opened_ends_the_socket_at_its_new_expiry(self) -> None:
         # Times are whole seconds in a session, so each step has a margin of a second. Not due when the socket opens
@@ -1040,16 +1039,6 @@ class ExpectedUserTests(BoundaryCase):
         for header, status in (({}, 200), ({"X-Expected-User": "user-token-of-a"}, 200), ({"X-Expected-User": "someone-else"}, 409)):
             with self.subTest(header=header):
                 self.assertEqual(self.request("GET", "/api/eneo/flows/", self.session_a, names_user=False, headers=header).status_code, status)
-
-    def test_a_session_without_a_user_has_nobody_to_compare_and_is_accepted(self) -> None:
-        self.addCleanup(setattr, main.settings, "auth_mode", main.settings.auth_mode)
-        main.settings.auth_mode = "access_code"
-        session = main.module_auth.sessions.create(AccessCodeSession(expires_at=int(time.time()) + 600))
-
-        response = self.request("POST", "/api/eneo/flows/f/files/", session, names_user=False, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(len(self.eneo.requests), 1)
 
     def test_a_page_whose_session_was_replaced_by_another_login_is_refused(self) -> None:
         # The same cookie jar, a different person: tab one's page still names the first user.
@@ -1538,7 +1527,7 @@ class ApiKeyHeaderNameTests(unittest.TestCase):
     ENVIRONMENT = {
         "ENEO_BACKEND_URL": "http://backend:8000",
         "ENEO_PUBLIC_URL": "https://eneo.example.test",
-        "MODULE_PUBLIC_URL": "https://module.example.test",
+        "MODULE_PUBLIC_URL": "http://localhost:3002",
         "MODULE_KEY": "speech-to-text",
         "ENEO_API_KEY": "test-key",
         "SESSION_SECRET": "x" * 48,

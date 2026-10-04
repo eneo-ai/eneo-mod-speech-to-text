@@ -180,7 +180,6 @@ const OVERLAYS: Record<string, Overlay> = {
         route.fulfill({
           json: {
             authenticated: true,
-            auth_mode: "eneo_sso",
             user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
             session_ends_in: loginEndsIn,
           },

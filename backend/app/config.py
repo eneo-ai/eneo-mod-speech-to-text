@@ -6,23 +6,15 @@ import os
 import re
 import struct
 from pathlib import Path
-from typing import Literal, Self, cast
+from typing import Literal, Self
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, Field, SecretStr, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from app.accent import Accent, resolve_accent
 
 
-AuthMode = Literal["eneo_sso", "access_code"]
-
 logger = logging.getLogger("eneo_config")
-
-
-class FlowListScope(BaseModel):
-    """What the flow list asks Eneo for: one named space, or every space the user belongs to (None)."""
-
-    space_id: str | None
 
 
 class LogoSize(BaseModel):
@@ -73,16 +65,13 @@ _LOGO_MAX_BYTES = 1024 * 1024
 
 class Settings(BaseModel):
     eneo_backend_url: str
-    eneo_public_url: str | None
+    eneo_public_url: str
     module_public_url: str
     module_key: str
     eneo_api_key: str
     eneo_api_key_header_name: str = "X-API-Key"
     session_secret: str
-    auth_mode: AuthMode = "eneo_sso"
-    app_access_code: SecretStr | None = None
     cookie_secure: bool = True
-    demo_space_id: str | None = None
     upload_proxy_timeout_seconds: float = 1800.0
     # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
     max_body_bytes: int = 10 * 1024 * 1024
@@ -92,9 +81,8 @@ class Settings(BaseModel):
     # The folder with the built UI, which the backend serves last (app/web.py); unset serves no page (a launch with
     # --api-only, the tests). The launcher refuses to start without it unless it is told not to serve the UI.
     static_dir: Path | None = None
-    # Övre gräns för modulsessionen. I eneo_sso-läge slutar den senast vid
-    # Eneos sessionstak (module_auth_max_session_hours); modultoken förnyas
-    # via Eneo fram till dess.
+    # Övre gräns för modulsessionen. Den slutar senast vid Eneos sessionstak
+    # (module_auth_max_session_hours); modultoken förnyas via Eneo fram till dess.
     session_max_age_seconds: int = 8 * 60 * 60
     # None shows "Tal till text" alone (SHOW_ORGANIZATION=false).
     organization: Organization | None = DEFAULT_ORGANIZATION
@@ -102,18 +90,6 @@ class Settings(BaseModel):
     organization_logo_dark: LogoFile | None = None
     # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
     accent: Accent | None = None
-
-    @property
-    def flow_list_scope(self) -> FlowListScope | None:
-        """The one place the auth mode decides how the flow list asks Eneo.
-
-        An SSO user's list covers every space they belong to, so it never names
-        one. The module key alone (access_code) must name its space; without
-        DEMO_SPACE_ID there is nothing it may list.
-        """
-        if self.auth_mode == "eneo_sso":
-            return FlowListScope(space_id=None)
-        return FlowListScope(space_id=self.demo_space_id) if self.demo_space_id else None
 
     @property
     def module_origin(self) -> str:
@@ -314,33 +290,41 @@ def _accent() -> Accent | None:
     return resolve_accent(light, dark)
 
 
-def _required_url(name: str) -> str:
+# The hosts that mean this machine, matched on the parsed host and nothing else: not a prefix, not a suffix, not what
+# stands before an "@", and no other spelling of the same address.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+_LOOPBACK_SPELLING = "localhost, 127.0.0.1 or [::1]"
+
+
+def _is_loopback(url: str) -> bool:
+    return urlsplit(url).hostname in _LOOPBACK_HOSTS
+
+
+def _required_url(name: str, *, public: bool = False) -> str:
+    """The URL in ``name``. A ``public`` one is what a browser is sent to: https, except on this machine."""
     value = os.environ[name].rstrip("/")
-    parsed = urlsplit(value)
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        raise RuntimeError(f"{name} must be an absolute http(s) URL") from None
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         raise RuntimeError(f"{name} must be an absolute http(s) URL")
     if parsed.query or parsed.fragment:
         raise RuntimeError(f"{name} must not contain a query string or fragment")
+    if public and parsed.scheme == "http" and not _is_loopback(value):
+        raise RuntimeError(f"{name} must be an https URL: http is accepted only for {_LOOPBACK_SPELLING} (local development)")
     return value
 
 
 def load_settings() -> Settings:
-    raw_auth_mode = os.environ.get("AUTH_MODE", "eneo_sso")
-    if raw_auth_mode not in {"eneo_sso", "access_code"}:
-        raise RuntimeError("AUTH_MODE must be either eneo_sso or access_code")
-    auth_mode = cast(AuthMode, raw_auth_mode)
-
     required = [
         "ENEO_BACKEND_URL",
+        "ENEO_PUBLIC_URL",
         "MODULE_PUBLIC_URL",
         "MODULE_KEY",
         "ENEO_API_KEY",
         "SESSION_SECRET",
     ]
-    if auth_mode == "eneo_sso":
-        required.append("ENEO_PUBLIC_URL")
-    else:
-        required.append("APP_ACCESS_CODE")
     missing = [name for name in required if not os.getenv(name)]
     if missing:
         raise RuntimeError(
@@ -377,31 +361,21 @@ def load_settings() -> Settings:
     organization, organization_logo, organization_logo_dark = _organization()
     accent = _accent()
 
-    raw_access_code = os.environ.get("APP_ACCESS_CODE")
-    if auth_mode == "eneo_sso" and raw_access_code:
-        raise RuntimeError("APP_ACCESS_CODE may only be set with AUTH_MODE=access_code")
-    if auth_mode == "access_code" and raw_access_code is not None:
-        if not 16 <= len(raw_access_code) <= 256:
-            raise RuntimeError("APP_ACCESS_CODE must be between 16 and 256 characters")
+    # The backend's own URL is on the service network, where http is how it is reached. The two a browser is sent to are not.
+    module_public_url = _required_url("MODULE_PUBLIC_URL", public=True)
+    cookie_secure = _parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE")
+    if not cookie_secure and not _is_loopback(module_public_url):
+        raise RuntimeError(f"COOKIE_SECURE=false is accepted only when MODULE_PUBLIC_URL is {_LOOPBACK_SPELLING} (local development)")
 
     settings = Settings(
         eneo_backend_url=_required_url("ENEO_BACKEND_URL"),
-        eneo_public_url=(
-            _required_url("ENEO_PUBLIC_URL") if auth_mode == "eneo_sso" else None
-        ),
-        module_public_url=_required_url("MODULE_PUBLIC_URL"),
+        eneo_public_url=_required_url("ENEO_PUBLIC_URL", public=True),
+        module_public_url=module_public_url,
         module_key=module_key,
         eneo_api_key=os.environ["ENEO_API_KEY"],
         eneo_api_key_header_name=api_key_header_name,
         session_secret=session_secret,
-        auth_mode=auth_mode,
-        app_access_code=(
-            SecretStr(raw_access_code)
-            if auth_mode == "access_code" and raw_access_code is not None
-            else None
-        ),
-        cookie_secure=_parse_bool(os.environ.get("COOKIE_SECURE"), default=True, name="COOKIE_SECURE"),
-        demo_space_id=os.environ.get("DEMO_SPACE_ID") or None,
+        cookie_secure=cookie_secure,
         upload_proxy_timeout_seconds=upload_timeout,
         max_body_bytes=_positive_int("MAX_BODY_BYTES", 10 * 1024 * 1024),
         max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", 1024 * 1024 * 1024),
@@ -413,9 +387,4 @@ def load_settings() -> Settings:
         organization_logo_dark=organization_logo_dark,
         accent=accent,
     )
-    if settings.flow_list_scope is None:
-        logger.error(
-            "AUTH_MODE=access_code needs DEMO_SPACE_ID: the module key lists flows only in "
-            "the space it names. The flow list says it cannot be shown until it is set."
-        )
     return settings

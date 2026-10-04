@@ -30,7 +30,6 @@ Hör ihop med: [Arkitektur](architecture.md), [Inloggning och session](auth-and-
 | Term | Betydelse |
 |---|---|
 | `eneo_sso` | Standardläget för inloggning. Eneo autentiserar användaren, modulen är ingen egen OIDC-klient. |
-| `access_code` | Tillfällig testgrind med en delad åtkomstkod, tills Eneos modulhandoff är deployad. Ger ingen användaridentitet. |
 | Strömma | Inmatningsläget som visar text medan man spelar in (live-text). |
 | Spela in | Inmatningsläget som spelar in nu och transkriberar efteråt. |
 | Ladda upp | Inmatningsläget där man väljer en ljudfil. |

@@ -63,7 +63,7 @@ Varje tillstånd är en skärm som grinden besöker. Namnen nedan är namn i `fr
 
 | Sida | Tillstånd |
 |---|---|
-| Inloggning (`/`) | laddar (`signin-loading`), Eneo SSO (`signin-sso`), åtkomstkod (`signin-access-code`), fel (`signin-error`), modulen nås inte (`signin-unreachable`). Ett `auth_error` i adressen ger ett meddelande och tas bort ur adressen. |
+| Inloggning (`/`) | laddar (`signin-loading`), Eneo SSO (`signin-sso`), fel (`signin-error`), modulen nås inte (`signin-unreachable`). Ett `auth_error` i adressen ger ett meddelande och tas bort ur adressen. |
 | Flödeslistan (`/flows`) | laddar (skelett), problem med försök igen, tom, lista grupperad per space, avkortad vid sidtaket, osända inspelningar överst. |
 | Ett flöde (`/flows/[id]`) | flödet laddar (skelett), flödet kan inte användas (`FlowUnavailable`), och därefter körningens `run.kind`: |
 | | `idle`: inmatningen, med faserna `setup`, `starting`, `recording`, `paused`, `interrupted` och `ready`. |

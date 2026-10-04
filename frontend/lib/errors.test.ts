@@ -126,9 +126,9 @@ test("an answer that is not the JSON it claims to be is said in Swedish, and try
   t.after(() => {
     globalThis.fetch = original;
   });
-  const { getConfig } = await import("./api");
-  const error = await getConfig().then(
-    () => assert.fail("a broken answer is not a config"),
+  const { authStatus } = await import("./api");
+  const error = await authStatus().then(
+    () => assert.fail("a broken answer is not a status"),
     (caught: unknown) => caught,
   );
   assert.ok(error instanceof ApiError, "decoding failures are the request's own errors");

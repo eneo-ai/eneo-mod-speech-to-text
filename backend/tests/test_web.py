@@ -18,12 +18,11 @@ from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
@@ -135,8 +134,8 @@ class SecurityHeadersTests(HeadersCase):
         self.addCleanup(setattr, main.settings, "max_body_bytes", main.settings.max_body_bytes)
         main.settings.max_body_bytes = 10
         requests = {
-            "an API JSON answer": (self.client, "GET", "/api/config", 200),
-            "a 401": (self.anonymous, "GET", "/api/config", 401),
+            "an API JSON answer": (self.client, "GET", "/api/auth/status", 200),
+            "a 401": (self.anonymous, "GET", "/api/eneo/flows/", 401),
             "a refused proxy path": (self.client, "GET", "/api/eneo/x", 403),
             "an unknown path": (self.client, "GET", "/api/nope", 404),
             "a 303 redirect": (self.anonymous, "GET", "/api/auth/login", 303),
@@ -236,7 +235,7 @@ class EndpointHeadersWinTests(HeadersCase):
         self.assertEqual(pdf.headers.get_list("x-frame-options"), ["SAMEORIGIN"])
         self.assertEqual(pdf.headers.get_list("content-security-policy"), ["frame-ancestors 'self'"])
         self.assert_default_headers(pdf, except_for=("X-Frame-Options", "Content-Security-Policy"))
-        for other in (self.client.get("/api/config"), self.client.get(self.ARTIFACT), self.client.get("/api/nope")):
+        for other in (self.client.get("/api/auth/status"), self.client.get(self.ARTIFACT), self.client.get("/api/nope")):
             self.assertEqual(other.headers.get_list("x-frame-options"), ["DENY"])
             self.assertNotIn("frame-ancestors 'self'", other.headers["content-security-policy"])
 
@@ -303,7 +302,7 @@ class ProxiedAnswerTests(HeadersCase):
 
     def test_a_proxied_answer_is_not_stored_and_a_route_that_says_how_long_keeps_its_say(self) -> None:
         self.assertEqual(self.proxied({}).headers["cache-control"], "no-store")
-        self.assertEqual(self.client.get("/api/config").headers["cache-control"], "no-store")
+        self.assertEqual(self.client.get("/api/healthz").headers["cache-control"], "no-store")
         self.assertEqual(self.client.get("/api/nope").headers["cache-control"], "no-store")
         theme = self.anonymous.get("/api/branding/theme.css")
         self.assertEqual(theme.headers["cache-control"], "public, max-age=300")
@@ -468,7 +467,7 @@ class StaticServingTests(BuiltUiCase):
         self.assertEqual(index.headers["cache-control"], "no-cache")
 
     def test_the_api_and_every_unknown_api_path_is_404_json_never_the_page(self) -> None:
-        for path in ("/api", "/api/", "/api/nope", "/api/auth/nope/deeper", "/api/eneo", "/api/config/", "/api/live"):
+        for path in ("/api", "/api/", "/api/nope", "/api/auth/nope/deeper", "/api/eneo", "/api/config", "/api/live"):
             with self.subTest(path=path):
                 response = self.client.get(path)
 
@@ -617,7 +616,7 @@ class StaticServingTests(BuiltUiCase):
         theme = self.client.get("/api/branding/theme.css")
         self.assertEqual((theme.status_code, theme.headers["content-type"].split(";")[0]), (200, "text/css"))
         # The route's own answers, not the fallback's: a session check, and "no logo is configured".
-        self.assertEqual(self.client.get("/api/config").status_code, 401)
+        self.assertEqual(self.client.get("/api/eneo/flows/").status_code, 401)
         self.assertEqual(self.client.get("/api/branding/logo/light").json(), {"detail": "No logo is configured"})
 
     def test_every_answer_of_the_ui_carries_the_security_headers(self) -> None:

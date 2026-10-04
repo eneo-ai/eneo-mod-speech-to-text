@@ -124,15 +124,6 @@ async def healthz():
     return {"ok": True}
 
 
-@app.get(
-    "/api/config",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def get_config():
-    # The flow list's scope, decided by the auth mode in one place (Settings.flow_list_scope).
-    return {"flow_list": settings.flow_list_scope}
-
-
 # ---------- Branding ----------
 # The organisation beside "Tal till text" and its accent colour are deployment settings (Settings.organization,
 # Settings.accent). No branding route asks for a session: the login page shows the organisation before there is one.

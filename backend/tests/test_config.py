@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.accent import Accent
-from app.config import FlowListScope, LogoSize, LogoSizes, Organization, load_settings
+from app.config import LogoSize, LogoSizes, Organization, Settings, load_settings
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
 SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
@@ -32,55 +32,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.eneo_backend_url, "http://backend:8000")
         self.assertEqual(settings.module_key, "speech-to-text")
         self.assertEqual(settings.eneo_api_key_header_name, "X-API-Key")
-        self.assertEqual(settings.auth_mode, "eneo_sso")
-        self.assertIsNone(settings.app_access_code)
         self.assertTrue(settings.cookie_secure)
-
-    def test_loads_access_code_mode_without_eneo_public_url(self) -> None:
-        environment = valid_environment()
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-
-        with patch.dict(os.environ, environment, clear=True):
-            settings = load_settings()
-
-        self.assertEqual(settings.auth_mode, "access_code")
-        self.assertIsNone(settings.eneo_public_url)
-        assert settings.app_access_code is not None
-        self.assertEqual(
-            settings.app_access_code.get_secret_value(),
-            "test-access-code-1234",
-        )
-
-    def test_the_auth_mode_decides_whether_the_flow_list_names_a_space(self) -> None:
-        environment = valid_environment()
-        environment["DEMO_SPACE_ID"] = "space-demo"
-        with patch.dict(os.environ, environment, clear=True):
-            sso = load_settings()
-        # An SSO user's list covers every space they belong to, even with a space configured.
-        self.assertEqual(sso.flow_list_scope, FlowListScope(space_id=None))
-
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-        with patch.dict(os.environ, environment, clear=True):
-            access_code = load_settings()
-        # The module key alone must name its space, from the first request.
-        self.assertEqual(access_code.flow_list_scope, FlowListScope(space_id="space-demo"))
-
-    def test_access_code_without_a_space_says_so_at_configuration(self) -> None:
-        environment = valid_environment()
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-
-        with patch.dict(os.environ, environment, clear=True), self.assertLogs("eneo_config", level="ERROR") as logs:
-            settings = load_settings()
-
-        self.assertIsNone(settings.flow_list_scope)
-        self.assertEqual(len(logs.output), 1)
-        self.assertIn("DEMO_SPACE_ID", logs.output[0])
 
     def test_session_max_age_defaults_to_eight_hours(self) -> None:
         with patch.dict(os.environ, valid_environment(), clear=True):
@@ -155,39 +107,6 @@ class SettingsTests(unittest.TestCase):
                 with patch.dict(os.environ, environment, clear=True):
                     self.assertEqual(load_settings().static_dir, expected)
 
-    def test_rejects_unknown_auth_mode(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "automatic"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "AUTH_MODE"):
-                load_settings()
-
-    def test_access_code_mode_requires_access_code(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "access_code"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "APP_ACCESS_CODE"):
-                load_settings()
-
-    def test_rejects_short_access_code(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "abc"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "between 16 and 256"):
-                load_settings()
-
-    def test_sso_mode_rejects_access_code(self) -> None:
-        environment = valid_environment()
-        environment["APP_ACCESS_CODE"] = "unused-access-code"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "only be set"):
-                load_settings()
-
     def test_loads_custom_api_key_header_name(self) -> None:
         environment = valid_environment()
         environment["ENEO_API_KEY_HEADER_NAME"] = "X-Eneo-Module-Key"
@@ -220,6 +139,74 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaisesRegex(RuntimeError, "query string or fragment"):
                 load_settings()
+
+    def test_there_is_one_way_to_sign_in_and_nothing_to_choose(self) -> None:
+        # The access code is gone: no mode, no code, no space the module key alone would have to name.
+        for name in ("auth_mode", "app_access_code", "demo_space_id", "flow_list_scope"):
+            self.assertNotIn(name, Settings.model_fields)
+            self.assertFalse(hasattr(Settings, name), name)
+
+    def test_eneo_public_url_is_required(self) -> None:
+        environment = valid_environment()
+        environment.pop("ENEO_PUBLIC_URL")
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "ENEO_PUBLIC_URL"):
+                load_settings()
+
+    LOOPBACK = ("http://localhost", "http://localhost:3002", "http://127.0.0.1:3002", "http://[::1]:3002", "http://LOCALHOST:3002")
+    NOT_LOOPBACK = (
+        "http://module.example.test",
+        "http://localhost.evil.test",
+        "http://127.0.0.1.evil.test",
+        "http://localhost@evil.test",
+        "http://127.0.0.1:80@evil.test",
+        "http://localhost.:3002",
+        "http://0.0.0.0:3002",
+        "http://127.1",
+        "http://[::ffff:127.0.0.1]:3002",
+        "http://[::2]",
+        "http://192.168.1.10:3002",
+    )
+
+    def test_an_http_public_url_is_accepted_only_for_a_loopback_host(self) -> None:
+        for name in ("MODULE_PUBLIC_URL", "ENEO_PUBLIC_URL"):
+            for url in self.LOOPBACK:
+                with self.subTest(name=name, url=url):
+                    with patch.dict(os.environ, valid_environment() | {name: url}, clear=True):
+                        self.assertEqual(getattr(load_settings(), name.lower()), url.rstrip("/"))
+            for url in self.NOT_LOOPBACK:
+                with self.subTest(name=name, url=url):
+                    with patch.dict(os.environ, valid_environment() | {name: url}, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, rf"{name} must be an https URL.*localhost, 127\.0\.0\.1 or \[::1\]"):
+                            load_settings()
+
+    def test_an_https_public_url_is_accepted_for_any_host(self) -> None:
+        for url in ("https://module.example.test", "https://localhost:3002", "https://192.168.1.10"):
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": url}, clear=True):
+                self.assertEqual(load_settings().module_public_url, url)
+
+    def test_the_backend_url_may_be_http_on_the_service_network(self) -> None:
+        for url in ("http://backend:8000", "http://eneo-backend.internal:8000", "http://host.docker.internal:8123"):
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"ENEO_BACKEND_URL": url}, clear=True):
+                self.assertEqual(load_settings().eneo_backend_url, url)
+
+    def test_the_cookie_may_leave_secure_only_for_a_loopback_module(self) -> None:
+        for url in self.LOOPBACK:
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": url, "COOKIE_SECURE": "false"}, clear=True):
+                self.assertFalse(load_settings().cookie_secure)
+        for url in ("https://module.example.test", *self.NOT_LOOPBACK):
+            with self.subTest(url=url):
+                environment = valid_environment() | {"MODULE_PUBLIC_URL": url, "COOKIE_SECURE": "false"}
+                with patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaises(RuntimeError) as refused:
+                        load_settings()
+                if url.startswith("https://"):  # the URL is fine, the cookie setting is what is refused
+                    self.assertRegex(str(refused.exception), r"COOKIE_SECURE=false.*MODULE_PUBLIC_URL.*localhost, 127\.0\.0\.1 or \[::1\]")
+
+    def test_a_loopback_module_may_keep_the_cookie_secure(self) -> None:
+        with patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": "http://localhost:3002"}, clear=True):
+            self.assertTrue(load_settings().cookie_secure)
 
     def test_rejects_ambiguous_cookie_secure_value(self) -> None:
         environment = valid_environment()

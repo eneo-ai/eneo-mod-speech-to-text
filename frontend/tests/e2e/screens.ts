@@ -15,10 +15,10 @@ export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ??
 
 const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("heading", { name })).toBeVisible();
 
-export async function signIn(page: Page, mode: "eneo_sso" | "access_code", query = "") {
-  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: mode, user: null } }));
+export async function signIn(page: Page, query = "") {
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
   await open(page, `/${query}`);
-  await expect(page.getByRole("button", { name: mode === "eneo_sso" ? "Logga in med Eneo" : "Fortsätt" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
 }
 
 async function loading(page: Page, path: string) {
@@ -33,7 +33,6 @@ export async function sessionWarning(page: Page) {
     route.fulfill({
       json: {
         authenticated: true,
-        auth_mode: "eneo_sso",
         user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
         session_ends_in: 200,
       },
@@ -108,7 +107,7 @@ async function recordingSays(page: Page, line: string | RegExp, start?: () => Pr
 
 /** The login ends while the page is open: the page is covered and a dialog asks for a new login in place. */
 export async function endLogin(page: Page) {
-  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, auth_mode: "eneo_sso", user: null } }));
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", { name: "Du behöver logga in igen" })).toBeVisible();
 }
@@ -241,12 +240,11 @@ export const STATES: State[] = [
       await expect(page.getByRole("option", { name: "Erik Lund" })).toBeVisible();
     },
   },
-  { name: "signin-sso", go: (page) => signIn(page, "eneo_sso") },
-  { name: "signin-access-code", go: (page) => signIn(page, "access_code") },
+  { name: "signin-sso", go: (page) => signIn(page) },
   {
     name: "signin-error",
     go: async (page) => {
-      await signIn(page, "access_code", "?auth_error=1");
+      await signIn(page, "?auth_error=1");
       await expect(page.getByRole("alert").filter({ hasText: "Inloggningen kunde inte" })).toBeVisible();
     },
   },
@@ -296,7 +294,6 @@ export const STATES: State[] = [
         route.fulfill({
           json: {
             authenticated: true,
-            auth_mode: "eneo_sso",
             user: {
               id: "user-1",
               email: "gunnar.bostadsforvaltningsnamndsordforande.langefternamnsson@sundsvallskommunsstjansteorganisation.se",
@@ -859,7 +856,6 @@ export const STATES: State[] = [
 const BRANDED: Record<string, string[]> = {
   custom: [
     "signin-sso",
-    "signin-access-code",
     "flow-list",
     "account-menu",
     "setup",
@@ -868,7 +864,7 @@ const BRANDED: Record<string, string[]> = {
     "recording",
     "result-transcript-tab",
   ],
-  name: ["signin-access-code", "flow-list", "setup"],
+  name: ["signin-sso", "flow-list", "setup"],
 };
 for (const name of BRANDED[process.env.STUB_BRANDING ?? ""] ?? []) {
   STATES.push({ ...STATES.find((state) => state.name === name)!, name: `branding-${process.env.STUB_BRANDING}-${name}` });
