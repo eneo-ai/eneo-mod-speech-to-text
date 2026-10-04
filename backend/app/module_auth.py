@@ -32,12 +32,12 @@ from app.upstream import SMALL_ANSWER, SMALL_CALL_TIMEOUT
 
 logger = logging.getLogger("eneo_module_auth")
 
+# The session cookie lives at most Settings.session_max_age_seconds (SESSION_MAX_AGE_MINUTES); the session also ends at
+# Eneo's session ceiling (module_auth_max_session_hours), and the shorter-lived module token is refreshed through Eneo
+# until then.
 SESSION_COOKIE = "eneo_module_session"
 STATE_COOKIE = "eneo_module_login_state"
-# The browser session cookie's upper bound is Settings.session_max_age_seconds
-# (SESSION_MAX_AGE_MINUTES). The session also ends at Eneo's session ceiling
-# (module_auth_max_session_hours); the shorter-lived module token is refreshed
-# through Eneo until then.
+# How long the login state cookie, which binds a callback to the browser that started the login, is valid.
 STATE_MAX_AGE = 5 * 60
 CALLBACK_PATH = "/api/auth/callback"
 # After Eneo fails to answer a token refresh, wait this long before asking
@@ -323,9 +323,7 @@ class ModuleAuth:
         try:
             upstream = await self.http_client.post(
                 f"{self.settings.eneo_backend_url}/api/v1/module-auth/token/",
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key
-                },
+                headers=self._eneo_headers(),
                 json={"ticket": ticket},
                 timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
@@ -368,10 +366,7 @@ class ModuleAuth:
                     f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
                     f"{quote(self.settings.module_key, safe='')}/session/"
                 ),
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-                    "Authorization": f"Bearer {token.access_token}",
-                },
+                headers=self._eneo_headers(token.access_token),
                 timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
@@ -538,10 +533,7 @@ class ModuleAuth:
                     f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
                     f"{quote(self.settings.module_key, safe='')}/token/refresh/"
                 ),
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-                    "Authorization": f"Bearer {session.access_token}",
-                },
+                headers=self._eneo_headers(session.access_token),
                 timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
@@ -644,13 +636,16 @@ class ModuleAuth:
             raise RuntimeError("Module session dependency did not run")
         return session
 
+    def _eneo_headers(self, access_token: str | None = None) -> dict[str, str]:
+        """Eneo's credentials: the module's key, and a user's token once there is one."""
+        headers = {self.settings.eneo_api_key_header_name: self.settings.eneo_api_key}
+        if access_token is not None:
+            headers["Authorization"] = f"Bearer {access_token}"
+        return headers
+
     def upstream_auth_headers(self, connection: HTTPConnection) -> dict[str, str]:
         """Eneo's credentials for a call made for this session: the module's key and the user's own token."""
-        session = self.session_from_request(connection)
-        return {
-            self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-            "Authorization": f"Bearer {session.access_token}",
-        }
+        return self._eneo_headers(self.session_from_request(connection).access_token)
 
     def _set_session_cookie(
         self,
