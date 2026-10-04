@@ -34,14 +34,6 @@ Raden ovan läses av `backend/tests/test_live_relay.py` och måste ha samma WebS
 
 En annan kommun eller myndighet byter namn, logga och accentfärg utan att ändra kod eller bygga om imagen: sex miljövariabler på backend-tjänsten (`ORGANIZATION_NAME`, `ORGANIZATION_LOGO`, `ORGANIZATION_LOGO_DARK`, `SHOW_ORGANIZATION`, `ORGANIZATION_ACCENT`, `ORGANIZATION_ACCENT_DARK`). Utan dem visas Sundsvalls kommun och modulens standardblå. Guiden med kraven och felmeddelandena: [Byt organisation](docs/branding.md).
 
-## Status
-
-| Status | Vad |
-|---|---|
-| Nuvarande | Next.js 16 är frontend-servern och FastAPI ligger internt bakom den: båda i en image under supervisord (port 3001), eller som två containrar i Compose. Inloggning med Eneo SSO; `access_code` är en tillfällig testgrind. |
-| Klart | Gränssnittet är byggt på Astryx; shadcn, Radix och Tailwind är borttagna. |
-| Planerat | Plan B: en process där FastAPI serverar gränssnittet som statiska filer (en Vite-app) i stället för Next.js. Beslutad och byggs på grenen `feat/one-process`. Därtill ett delat modulkit i ett eget repo. Se [Arkitektur](docs/architecture.md#läget-i-dag). |
-
 ## Karta över dokumentationen
 
 Hela indexet med status finns i [docs/README.md](docs/README.md).
