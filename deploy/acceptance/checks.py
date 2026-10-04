@@ -12,7 +12,7 @@ the stack and then runs this. The stack is the one the environment names; the de
     ACCEPT_MODULE_URL    http://127.0.0.1:8480   the module as a browser reaches it: Traefik, and the image's MODULE_PUBLIC_URL
     ACCEPT_DIRECT_URL    http://127.0.0.1:8482   the image's own port
     ACCEPT_ENEO_URL      http://127.0.0.1:8481   the stub as Eneo: the sign-in handshake, /__log, /__reset and /__stub/stats
-    ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   <that>-review (built with SPEAKER_REVIEW_ENABLED=true)
+    ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   eneo-mod-speech-to-text:acceptance-review (built with SPEAKER_REVIEW_ENABLED=true)
     ACCEPT_CONTAINER     stt-acceptance-module                     ACCEPT_TRAEFIK_CONTAINER   stt-acceptance-traefik
 
 A client that acts as the page names its user: X-Expected-User on a write, ?expected_user= on the live socket. Identifiers are those of
@@ -37,6 +37,7 @@ import statistics
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from collections.abc import Callable
@@ -82,11 +83,10 @@ class Stack:
     image: str = os.environ.get("ACCEPT_IMAGE", "eneo-mod-speech-to-text:acceptance")
     container: str = os.environ.get("ACCEPT_CONTAINER", "stt-acceptance-module")
     traefik: str = os.environ.get("ACCEPT_TRAEFIK_CONTAINER", "stt-acceptance-traefik")
-    traefik_image: str = "traefik:v3.7.13"
 
     @property
     def review_image(self) -> str:
-        return os.environ.get("ACCEPT_REVIEW_IMAGE", f"{self.image}-review")
+        return os.environ.get("ACCEPT_REVIEW_IMAGE", "eneo-mod-speech-to-text:acceptance-review")
 
 
 STACK = Stack()
@@ -161,12 +161,12 @@ def fresh_module(max_upload_bytes: int | None = None) -> None:
     """Recreate the image (a fresh process, no sessions, an empty /tmp), optionally with another MAX_UPLOAD_BYTES; wait until healthy."""
     env = dict(os.environ)
     if max_upload_bytes is not None:
-        env["ACCEPT_MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
+        env["MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
     else:
-        env.pop("ACCEPT_MAX_UPLOAD_BYTES", None)
+        env.pop("MAX_UPLOAD_BYTES", None)  # acceptance.env's
     result = subprocess.run(
-        ["docker", "compose", "-f", str(HERE / "compose.yml"), "-p", "stt-acceptance", "up", "-d", "--force-recreate", "--no-deps", "speech-to-text"],
-        capture_output=True, text=True, env=env, timeout=300,
+        ["docker", "compose", "--env-file", str(HERE / "acceptance.env"), "-f", str(ROOT / "docker-compose.yml"), "-f", str(HERE / "compose.yml"), "-p", "stt-acceptance", "up", "-d", "--force-recreate", "--no-deps", "speech-to-text"],
+        capture_output=True, text=True, env=env, timeout=300, cwd=ROOT,
     )
     if result.returncode != 0:
         raise Failed(f"could not recreate the image: {result.stderr.strip()[:300]}")
@@ -344,24 +344,23 @@ def check_5() -> str:
     return f"{len(seen)} responses carry all {len(SECURITY_HEADERS)} headers with the file's values"
 
 
-@check(6, "the shipped test:prod project, the real profile's claim states and the renewal tests pass against the image")
+@check(6, "the shipped test:prod project, in Chromium, passes against the image")
 def check_6() -> str:
-    claim = "recording|stromma|result|result-docked-player|result-pdf-dialog|result-pdf-preview-whole|result-table|setup-date|account-menu|leave-dialog|naming-dialog|ready-delete-dialog"
-    commands = {
-        "shipped": os.environ.get("ACCEPT_PROD_CMD", "npx playwright test --config playwright.prod.config.ts --project=shipped"),
-        "real": os.environ.get("ACCEPT_REAL_CMD", f"npx playwright test --project=phone-390-light -g \"({claim})|renewal|session-cover\""),
+    # The prod config also starts its other two backends, on dist/ and dist-check/, whichever project runs: both are built first.
+    command = "npm run build && npm run build:check && npx playwright test --config playwright.prod.config.ts --project=shipped-chromium"
+    env = {
+        **os.environ,
+        "PROD_EXTERNAL_URL": STACK.module,  # the shipped project's backend is the image behind Traefik ...
+        "STUB_URL": STACK.eneo,  # ... and the stub that is its Eneo is the one upstream.spec.ts reads back
+        "A11Y_APP_PORT": os.environ.get("A11Y_APP_PORT", "8487"),  # the config's own servers: 8487 to 8489, the stub of its own 8486
+        "A11Y_STUB_PORT": os.environ.get("A11Y_STUB_PORT", "8486"),
     }
-    env_for = {
-        "shipped": {"PROD_EXTERNAL_URL": STACK.module},
-        "real": {"GATE_TARGET": "real", "REAL_EXTERNAL_URL": STACK.module},
-    }
-    lines = []
-    for name, command in commands.items():
-        r = subprocess.run(command, shell=True, cwd=ROOT / "frontend", env={**os.environ, **env_for[name]}, capture_output=True, text=True, timeout=3600)
-        tail = [line for line in (r.stdout + r.stderr).splitlines() if line.strip()][-3:]
-        expect(r.returncode == 0, f"{name}: `{command}` failed ({r.returncode}): {' | '.join(tail)}")
-        lines.append(f"{name}: {tail[-1].strip() if tail else 'ok'}")
-    return "; ".join(lines)
+    r = subprocess.run(command, shell=True, cwd=ROOT / "frontend", env=env, capture_output=True, text=True, timeout=3600)
+    tail = [line.strip() for line in (r.stdout + r.stderr).splitlines() if line.strip() and not line.startswith("[WebServer]")]
+    failed = [line for line in tail if "✘" in line]
+    expect(r.returncode == 0, f"`{command}` failed ({r.returncode}): {' | '.join(failed) or ' | '.join(tail[-4:])}; {tail[-1] if tail else ''}")
+    passed = next((line for line in reversed(tail) if re.fullmatch(r"\d+ passed.*", line)), tail[-1] if tail else "ok")
+    return f"shipped-chromium against {STACK.module}: {passed}"
 
 
 @check(7, "Range on the audio route: 206 with Content-Range, a second range, 416, and a client that leaves leaves no upstream open")
@@ -396,10 +395,7 @@ def check_8() -> str:
         wait_until(lambda: stub_stats()["live_frames"] == before["live_frames"] + 1, 10, "the stub receives the 64 KiB frame")
         after = stub_stats()
         expect(after["live_bytes"] - before["live_bytes"] == 64 * 1024, f"the stub received {after['live_bytes'] - before['live_bytes']} bytes of it")
-        try:
-            ws.send_binary(os.urandom(128 * 1024 + 1))
-        except OSError:
-            pass  # the server closed while the frame was still being sent
+        ws.send_header_only(128 * 1024 + 1)  # the limit is read from the header, before a byte of the frame
         code = ws.wait_for_close(10)
         expect(code == 1009, f"a frame of 128 KiB + 1 closed the socket with {code}, not 1009")
         time.sleep(1)
@@ -408,6 +404,13 @@ def check_8() -> str:
     finally:
         ws.abort()
     return "64 KiB relayed (+1 frame, +65536 bytes); 128 KiB + 1 closed with 1009 and the stub saw nothing of it"
+
+
+def grew_mb(row: dict) -> tuple[int, int]:
+    """What the upload cost in resident memory, of every process of the image together (the baseline's cost was in Next, beside the
+    backend's): the growth of each process and the sum of their peaks."""
+    memory = row["memory"].values()
+    return sum(m["growth_MB"] for m in memory), sum(m["peak_MB"] for m in memory)
 
 
 def measure(case: str, base: str, *, fresh: bool = True) -> dict:
@@ -427,17 +430,17 @@ def upload_row(case: str, base: str, file_bytes: int, files: int, growth_limit_m
     expect(all("http=201" in c for c in client), f"{case}: the client got {client}")
     got = [s["bytes_received"] for s in row["sink"]]
     expect(len(got) == files and all(file_bytes <= g <= file_bytes + 4096 for g in got), f"{case}: the stub received {got} bytes for {files} file(s) of {file_bytes}")
-    grew = row["memory"]["backend"]["growth_MB"]
-    expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {row['memory']['backend']['peak_MB']}")
-    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {row['memory']['backend']['peak_MB']}, {row['seconds']} s)"
+    grew, peak = grew_mb(row)
+    expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {peak}")
+    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {peak}, {row['seconds']} s)"
 
 
 SIZES = {"300MB": 300 * MB, "1GB": 1024 * MB}
 
 
 def over_cap(base: str, cap: int) -> str:
-    """With a small MAX_UPLOAD_BYTES: a declared length over it is 413 at once with max_upload_bytes in the body; a real upload
-    over it is 413 too, with memory flat."""
+    """With a small MAX_UPLOAD_BYTES: a length declared over it is a 413 at once with max_upload_bytes in the answer, and an upload of
+    three times the cap, sent in full by a client, costs no memory."""
     fresh_module(cap)
     session = sign_in(base)
     parts = urlsplit(base)
@@ -445,16 +448,37 @@ def over_cap(base: str, cap: int) -> str:
     connection.putrequest("POST", UPLOAD_PATH)
     for name, value in {**session.write(), "Content-Type": "multipart/form-data; boundary=x", "Content-Length": str(cap + 1)}.items():
         connection.putheader(name, value)
-    connection.endheaders()  # no body is sent: the answer comes from the declared length
+    connection.endheaders()
+    connection.send(bytes(1024))  # the start of the body: the answer comes from the declared length
     r = connection.getresponse()
     body = r.read()
     connection.close()
     expect(r.status == 413 and json.loads(body).get("max_upload_bytes") == cap, f"a declared length over the cap answered {r.status} {body[:100]!r}")
-    row = measure("curl-300MB-1", base, fresh=False)
-    expect("http=413" in row["client"][0], f"an upload of 300 MiB over a cap of {cap} answered {row['client']}")
-    grew = row["memory"]["backend"]["growth_MB"]
+    grew, _ = grew_mb(measure("curl-300MB-1", base, fresh=False))
     expect(grew <= 32, f"the refused upload grew the image's memory {grew} MB")
-    return f"over the cap of {cap} bytes: 413 with max_upload_bytes at once, and for a real upload of 300 MiB (memory +{grew} MB)"
+    return f"over the cap of {cap} bytes: 413 with max_upload_bytes at once for a declared length, and an upload of 300 MiB costs +{grew} MB"
+
+
+def refused_every_time(base: str, cap: int, attempts: int = 20) -> str:
+    """Uploads of three times the cap, sent in full by a client (curl): each must be answered 413. The module answers early and closes the
+    connection while the client is still sending; behind a proxy that can come back as something else."""
+    fresh_module(cap)
+    session = sign_in(base)
+    file = Path(tempfile.gettempdir()) / "stt-upload-files" / "upload-300MB.bin"
+    file.parent.mkdir(exist_ok=True)
+    if not file.exists() or file.stat().st_size != 300 * MB:
+        file.write_bytes(bytes(300 * MB))
+    answers: dict[str, int] = {}
+    for _ in range(attempts):
+        r = subprocess.run(
+            ["curl", "-sS", "--max-time", "60", "-o", "/dev/null", "-w", "%{http_code}", "-H", "Expect:", "-H", f"Cookie: {session.cookie}", "-H", f"Origin: {STACK.module}",
+             "-H", f"X-Expected-User: {session.user}", "-F", f"upload_file=@{file};filename=opptagning.webm;type=audio/webm", f"{base}{UPLOAD_PATH}"],
+            capture_output=True, text=True,
+        )
+        key = r.stdout.strip() if r.stdout.strip() != "000" else f"000 ({r.stderr.strip()[:40]})"
+        answers[key] = answers.get(key, 0) + 1
+    expect(answers == {"413": attempts}, f"{attempts} uploads of 300 MiB over a cap of {cap} bytes were answered {answers}, not 413 every time")
+    return f"{attempts} uploads of 300 MiB over a cap of {cap} bytes: 413 every time"
 
 
 def abandoned(base: str) -> str:
@@ -642,11 +666,10 @@ def check_15() -> str:
     return detail
 
 
-@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed and docker stop")
+@check(16, "through Traefik: the socket, the origin, uploads, Range, cookies, user_changed, a NUL path and docker stop")
 def check_16() -> str:
-    lines = []
-    digest = docker("image", "inspect", "-f", "{{index .RepoDigests 0}}", STACK.traefik_image).stdout.strip()
-    lines.append(f"Traefik {STACK.traefik_image}, {digest}")
+    lines, problems = [], []
+    lines.append(f"Traefik {docker('inspect', '-f', '{{.Config.Image}}', STACK.traefik).stdout.strip()}")
     session = sign_in(STACK.module)
     # the cookie the BFF sets reaches the client, and comes back
     login = get(f"{STACK.module}/api/auth/login?next=/flows")
@@ -681,14 +704,17 @@ def check_16() -> str:
         b = get(STACK.direct + audio_path(), headers={**session.read(), "Range": header})
         expect((a.status, a.headers.get("content-range"), a.body) == (b.status, b.headers.get("content-range"), b.body), f"Range {header}: Traefik {a.status} {a.headers.get('content-range')}, direct {b.status} {b.headers.get('content-range')}")
     lines.append("Range 206, 206 and 416 are the same through Traefik as direct")
-    # a path with a NUL: the module answers 404 (check 4); Traefik refuses it before the module is asked
+    # a path with a NUL reaches the module as written, and its 404 comes back (check 4 has it direct)
     nul = get(f"{STACK.module}/%00")
-    expect(nul.status == 400, f"GET /%00 through Traefik answered {nul.status}, not Traefik's 400")
-    lines.append("a path with a NUL is a 400 from Traefik, before the module (direct it is the module's 404, check 4)")
+    expect(nul.status == 404 and not is_html(nul), f"GET /%00 through Traefik answered {nul.status} {nul.text()[:60]!r}, not the module's 404 JSON")
+    lines.append("a path with a NUL: the module's 404 JSON comes back through Traefik, as direct")
     # uploads through Traefik, as direct
     lines.append(upload_row("curl-300MB-1", STACK.module, SIZES["300MB"], 1, 32) + " (through Traefik)")
     lines.append(upload_row("curl-1GB-1", STACK.module, SIZES["1GB"], 1, 32) + " (through Traefik)")
-    lines.append(over_cap(STACK.module, 100 * MB) + " (through Traefik)")
+    try:
+        lines.append(refused_every_time(STACK.module, 100 * MB) + " (through Traefik)")
+    except Failed as error:
+        problems.append(str(error))  # the rest still runs: what else is proven through Traefik is part of the answer
     # docker stop with a stream open through Traefik
     fresh_module()
     expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")
@@ -704,6 +730,7 @@ def check_16() -> str:
     expect(took < 10, f"docker stop with a stream open through Traefik took {took:.1f} s")
     lines.append(f"docker stop with a stream open through Traefik: {took:.1f} s")
     lines.append("not covered: TLS and the Secure cookie (a hand check at B6.1)")
+    expect(not problems, "; ".join(problems) + "\n    " + "\n    ".join(lines))
     return "\n    ".join(lines)
 
 

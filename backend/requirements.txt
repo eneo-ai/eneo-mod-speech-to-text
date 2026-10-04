@@ -1,3 +1,5 @@
+# The direct dependencies, exactly pinned. backend/requirements.lock is generated from this file (every transitive package, with
+# hashes) and is what CI and the image install; regenerate it after any change here: docs/operations.md, "Uppdatera beroenden".
 fastapi==0.142.2
 starlette==1.7.0
 uvicorn[standard]==0.54.0

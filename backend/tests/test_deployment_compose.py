@@ -10,73 +10,87 @@ from app.config import Settings
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPOSITORY_ROOT / "docker-compose.yml"
+SERVICE = "speech-to-text"
+
+
+def compose_config(*, interpolate: bool = True, **variables: str) -> dict:
+    """``docker compose config`` of docker-compose.yml as JSON; ``variables`` are what the operator's environment sets."""
+    environment = {
+        "PATH": os.environ["PATH"],
+        "HOME": os.environ.get("HOME", "/"),
+        "ENEO_BACKEND_URL": "https://eneo.example.test",
+        "ENEO_PUBLIC_URL": "https://eneo.example.test",
+        "MODULE_PUBLIC_URL": "https://module.example.test",
+        "ENEO_API_KEY": "test-key",
+        "SESSION_SECRET": "x" * 48,
+        **variables,
+    }
+    result = subprocess.run(
+        ["docker", "compose", "-f", str(COMPOSE_FILE), "config", *([] if interpolate else ["--no-interpolate"]), "--format", "json"],
+        cwd=REPOSITORY_ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=environment,
+    )
+    return json.loads(result.stdout)
 
 
 @unittest.skipUnless(shutil.which("docker"), "Docker is required for Compose checks")
 class DeploymentComposeTests(unittest.TestCase):
-    def test_frontend_targets_the_module_specific_backend_service(self) -> None:
-        result = subprocess.run(
-            [
-                "docker",
-                "compose",
-                "-f",
-                str(COMPOSE_FILE),
-                "config",
-                "--no-interpolate",
-                "--format",
-                "json",
-            ],
-            cwd=REPOSITORY_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        services = json.loads(result.stdout)["services"]
+    def test_one_service_runs_the_one_image_built_from_the_repository_root(self) -> None:
+        services = compose_config(interpolate=False)["services"]
 
-        self.assertIn("speech-to-text-backend", services)
-        self.assertNotIn("backend", services)
-        self.assertEqual(
-            services["frontend"]["environment"]["INTERNAL_API_BASE"],
-            "http://speech-to-text-backend:8000",
-        )
-        self.assertEqual(
-            services["frontend"]["depends_on"]["speech-to-text-backend"][
-                "condition"
-            ],
-            "service_healthy",
-        )
+        # The service name is the module's own: a generic one collides with Eneo's on Dokploy's shared network.
+        self.assertEqual(list(services), [SERVICE])
+        build = services[SERVICE]["build"]
+        self.assertEqual(Path(build["context"]).resolve(), REPOSITORY_ROOT)
+        self.assertEqual(build.get("dockerfile", "Dockerfile"), "Dockerfile")
+        self.assertEqual(build["args"]["SPEAKER_REVIEW_ENABLED"], "${SPEAKER_REVIEW_ENABLED:-false}")
+        # The speaker review is a build argument, off unless the operator builds with it on.
+        for variables, expected in (({}, "false"), ({"SPEAKER_REVIEW_ENABLED": "true"}, "true")):
+            with self.subTest(variables=variables):
+                self.assertEqual(compose_config(**variables)["services"][SERVICE]["build"]["args"]["SPEAKER_REVIEW_ENABLED"], expected)
 
-    def interpolated_backend_environment(self, **variables: str) -> dict[str, str]:
-        environment = {
-            "PATH": os.environ["PATH"],
-            "HOME": os.environ.get("HOME", "/"),
-            "ENEO_BACKEND_URL": "https://eneo.example.test",
-            "ENEO_PUBLIC_URL": "https://eneo.example.test",
-            "MODULE_PUBLIC_URL": "https://module.example.test",
-            "ENEO_API_KEY": "test-key",
-            "SESSION_SECRET": "x" * 48,
-            **variables,
-        }
-        result = subprocess.run(
-            ["docker", "compose", "-f", str(COMPOSE_FILE), "config", "--format", "json"],
-            cwd=REPOSITORY_ROOT,
-            check=True,
-            capture_output=True,
-            text=True,
-            env=environment,
-        )
-        return json.loads(result.stdout)["services"]["speech-to-text-backend"]["environment"]
+    def test_the_service_is_on_3001_checks_its_health_there_and_restarts_itself(self) -> None:
+        service = compose_config()["services"][SERVICE]
+
+        self.assertEqual(service["expose"], ["3001"])
+        self.assertNotIn("ports", service)  # published only by docker-compose.override.yml, for development
+        self.assertIn("http://127.0.0.1:3001/health", " ".join(service["healthcheck"]["test"]))
+        # No supervisor any more: restarting a process that died is the container's job.
+        self.assertEqual(service["restart"], "unless-stopped")
+
+    def test_the_container_has_no_more_than_it_needs(self) -> None:
+        service = compose_config()["services"][SERVICE]
+
+        self.assertIs(service["read_only"], True)
+        self.assertEqual(service["cap_drop"], ["ALL"])
+        self.assertNotIn("cap_add", service)
+        self.assertIn("no-new-privileges:true", service["security_opt"])
+        # The one writable place is where an upload is spooled (Starlette's SpooledTemporaryFile, past 1 MB). A volume,
+        # which is the disk: a tmpfs would hold every upload in memory, which is what the hop through Next did.
+        temp = [mount for mount in service["volumes"] if mount["target"] == "/tmp"]
+        self.assertEqual([(mount["type"], mount.get("read_only", False)) for mount in temp], [("volume", False)])
+        self.assertNotIn("tmpfs", service)
+
+    def test_the_override_publishes_3001_for_development_only(self) -> None:
+        override = (REPOSITORY_ROOT / "docker-compose.override.yml").read_text()
+
+        self.assertRegex(override, r'(?m)^  speech-to-text:\n    ports:\n      - "3001:3001"$')
+        self.assertNotIn("frontend", override)
 
     def test_the_body_limits_default_to_what_the_backend_defaults_to_and_can_be_set(self) -> None:
         defaults = Settings.model_fields
-        unset = self.interpolated_backend_environment()
-        empty = self.interpolated_backend_environment(MAX_BODY_BYTES="", MAX_UPLOAD_BYTES="", MAX_RESPONSE_BYTES="")
-        chosen = self.interpolated_backend_environment(MAX_BODY_BYTES="2048", MAX_UPLOAD_BYTES="5000000", MAX_RESPONSE_BYTES="4096")
+        environment = lambda config: config["services"][SERVICE]["environment"]
+        unset = environment(compose_config())
+        empty = environment(compose_config(MAX_BODY_BYTES="", MAX_UPLOAD_BYTES="", MAX_RESPONSE_BYTES=""))
+        chosen = environment(compose_config(MAX_BODY_BYTES="2048", MAX_UPLOAD_BYTES="5000000", MAX_RESPONSE_BYTES="4096"))
 
-        for environment in (unset, empty):
-            self.assertEqual(int(environment["MAX_BODY_BYTES"]), defaults["max_body_bytes"].default)
-            self.assertEqual(int(environment["MAX_UPLOAD_BYTES"]), defaults["max_upload_bytes"].default)
-            self.assertEqual(int(environment["MAX_RESPONSE_BYTES"]), defaults["max_response_bytes"].default)
+        for variables in (unset, empty):
+            self.assertEqual(int(variables["MAX_BODY_BYTES"]), defaults["max_body_bytes"].default)
+            self.assertEqual(int(variables["MAX_UPLOAD_BYTES"]), defaults["max_upload_bytes"].default)
+            self.assertEqual(int(variables["MAX_RESPONSE_BYTES"]), defaults["max_response_bytes"].default)
         self.assertEqual((chosen["MAX_BODY_BYTES"], chosen["MAX_UPLOAD_BYTES"], chosen["MAX_RESPONSE_BYTES"]), ("2048", "5000000", "4096"))
 
 
