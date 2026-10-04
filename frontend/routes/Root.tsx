@@ -7,7 +7,6 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { LoadingShell } from "@/components/LoadingShell";
 import { Brand, BrandingProvider } from "@/components/Brand";
-import { ThemeProvider } from "@/components/theme-provider";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import { readBranding } from "@/lib/read-branding";
@@ -21,11 +20,9 @@ import { RouteEffects } from "@/routes/RouteEffects";
 function Providers({ children }: { children: ReactNode }) {
   const [branding] = useState(readBranding);
   return (
-    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <ModuleProviders>
-        <BrandingProvider value={branding}>{children}</BrandingProvider>
-      </ModuleProviders>
-    </ThemeProvider>
+    <ModuleProviders>
+      <BrandingProvider value={branding}>{children}</BrandingProvider>
+    </ModuleProviders>
   );
 }
 

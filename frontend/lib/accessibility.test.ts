@@ -48,13 +48,8 @@ function pair(name: string): [string, string] {
   assert.ok(match, `globals.css defines --${name} as light-dark(<light>, <dark>)`);
   return [match[1], match[2]];
 }
-// The recording colour is Phase 4's `--module-color-record`; until it exists, today's `--record` (an HSL triplet per mode).
-function recordPair(): [string, string] {
-  if (/--module-color-record:/.test(css)) return pair("module-color-record");
-  const triplet = (block: string) => /--record:\s*(\d+) (\d+)% (\d+)%/.exec(css.split(`${block} {`)[1])!;
-  const [light, dark] = [triplet(":root"), triplet(".dark")];
-  return [`hsl(${light[1]} ${light[2]}% ${light[3]}%)`, `hsl(${dark[1]} ${dark[2]}% ${dark[3]}%)`];
-}
+// The recording colour is `--module-color-record`.
+const recordPair = (): [string, string] => pair("module-color-record");
 
 const SPEAKERS = Array.from({ length: 6 }, (_, i) => `module-speaker-${i}`);
 

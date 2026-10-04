@@ -13,7 +13,6 @@ const signedOut = () => json({ authenticated: false, user: null });
 /** The sign-in page under the providers every page has, with its server's answers and the router that says where it went. */
 async function openLoginPage(t: TestContext, answers: (url: string, init?: RequestInit) => Response | Promise<Response>) {
   const { createElement } = await import("react");
-  const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { default: LoginPage } = await import("../routes/LoginPage");
   const requests: string[] = [];
@@ -28,10 +27,9 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
   });
   // The page reads the address from the window, as in the browser, where the router writes it: a memory router does not,
   // so the entry it starts at is the window's too.
-  const { router, tree } = withRouter(
-    createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: createElement(LoginPage) }) }),
-    { entries: [`${window.location.pathname}${window.location.search}`] },
-  );
+  const { router, tree } = withRouter(createElement(ModuleProviders, { children: createElement(LoginPage) }), {
+    entries: [`${window.location.pathname}${window.location.search}`],
+  });
   const view = await mount(tree);
   // The page asks who is signed in first; let that answer land.
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));

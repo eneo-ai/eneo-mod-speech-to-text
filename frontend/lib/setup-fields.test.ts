@@ -12,14 +12,13 @@ const settle = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 async function mountNames(names: string[] = [], suggestions: string[] = []) {
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
-  const { ThemeProvider } = await import("next-themes");
   const added: string[][] = [];
   function Field() {
     const [list, setList] = useState(names);
     return createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: list, onChange: setList, suggestions, onAdded: (fresh: string[]) => added.push(fresh) });
   }
   // In the page's providers, so the design system's own words (the remove buttons') are Swedish as they are there.
-  const view = await mount(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: createElement(Field) }) }));
+  const view = await mount(createElement(ModuleProviders, { children: createElement(Field) }));
   const input = () => view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
   const shown = () => [...view.container.querySelectorAll("ul[aria-label='Tillagda namn'] li")].map((li) => li.textContent);
   return { view, input, shown, added };

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,11 +17,19 @@ const run = (...args: string[]) => spawnSync(process.execPath, [SCRIPT, ...args]
 const VITE_MARKER = '<meta name="eneo-branding" content="" />';
 const BACKEND_MARKER = readFileSync(join(__dirname, "..", "..", "..", "backend", "app", "web.py"), "utf8").match(/^BRANDING_MARKER = '(.*)'$/m)![1];
 
+// The first-paint script as Vite leaves it: a file beside the page that the page names. The build gives it a name of its
+// content under assets/, so the backend can serve it as immutable like the rest of assets/.
+const SCRIPT_TAG = '<script src="/color-mode.js"></script>';
+const COLOR_MODE = readFileSync(join(__dirname, "..", "..", "public", "color-mode.js"));
+const hashName = (content: Buffer | string) => `color-mode.${createHash("sha256").update(content).digest("hex").slice(0, 8)}.js`;
+const hashedTag = (content: Buffer | string = COLOR_MODE) => `<script src="/assets/${hashName(content)}"></script>`;
+
 /** A built directory as Vite leaves it: the page, hashed assets, and a file beside the page. */
-function built(page = `<!doctype html><title>x</title>${VITE_MARKER}`, name = "finish-build-"): string {
+function built(page = `<!doctype html><title>x</title>${VITE_MARKER}${SCRIPT_TAG}`, name = "finish-build-"): string {
   const dir = mkdtempSync(join(tmpdir(), name));
   mkdirSync(join(dir, "assets"));
   writeFileSync(join(dir, "index.html"), page);
+  writeFileSync(join(dir, "color-mode.js"), COLOR_MODE);
   writeFileSync(join(dir, "assets", "app-Abc12345.js"), "export const a = 1;\n".repeat(200));
   writeFileSync(join(dir, "assets", "app-Abc12345.css"), "a { color: red }\n".repeat(200));
   writeFileSync(join(dir, "assets", "mark-Abc12345.svg"), "<svg></svg>".repeat(100));
@@ -80,22 +89,23 @@ test("the build leaves the marker in the backend's exact form, once, in dist and
   for (const name of ["dist", "dist-check"]) {
     const dir = join(mkdtempSync(join(tmpdir(), "finish-build-out-")), name);
     mkdirSync(dir);
-    writeFileSync(join(dir, "index.html"), `<!doctype html><head>${VITE_MARKER}<title>x</title></head>`);
+    writeFileSync(join(dir, "index.html"), `<!doctype html><head>${VITE_MARKER}<title>x</title>${SCRIPT_TAG}</head>`);
+    writeFileSync(join(dir, "color-mode.js"), COLOR_MODE);
     const result = run(dir);
     assert.equal(result.status, 0, `${name}: ${result.stderr}`);
     const page = readFileSync(join(dir, "index.html"), "utf8");
     assert.equal(page.split(BACKEND_MARKER).length - 1, 1, `${name}: the exact marker, once`);
     assert.ok(!page.includes(VITE_MARKER), `${name}: not the form Vite writes`);
-    assert.equal(page, `<!doctype html><head>${BACKEND_MARKER}<title>x</title></head>`, `${name}: nothing else of the page changed`);
+    assert.equal(page, `<!doctype html><head>${BACKEND_MARKER}<title>x</title>${hashedTag()}</head>`, `${name}: nothing else of the page changed but the script's name`);
   }
 });
 
 test("a page that already has the exact marker is left as it is, and a second run changes nothing", () => {
-  const dir = built(`<!doctype html>${BACKEND_MARKER}`);
+  const dir = built(`<!doctype html>${BACKEND_MARKER}${SCRIPT_TAG}`);
   assert.equal(run(dir).status, 0);
-  assert.equal(readFileSync(join(dir, "index.html"), "utf8"), `<!doctype html>${BACKEND_MARKER}`);
+  assert.equal(readFileSync(join(dir, "index.html"), "utf8"), `<!doctype html>${BACKEND_MARKER}${hashedTag()}`);
   assert.equal(run(dir).status, 0);
-  assert.equal(readFileSync(join(dir, "index.html"), "utf8"), `<!doctype html>${BACKEND_MARKER}`);
+  assert.equal(readFileSync(join(dir, "index.html"), "utf8"), `<!doctype html>${BACKEND_MARKER}${hashedTag()}`);
 });
 
 test("the build fails unless exactly one marker is left: none, two, or one that holds something", () => {
@@ -164,4 +174,79 @@ test("the names a build gives are accepted: Vite's name-hash, a name with a dot 
   const result = run(dir);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(run(dir).status, 0, "and again, with the compressed siblings there");
+});
+
+test("the first-paint script is renamed by its content under assets/, the page names it, and no copy is left at the root", () => {
+  const dir = built();
+  const result = run(dir);
+  assert.equal(result.status, 0, result.stderr);
+  const name = hashName(COLOR_MODE);
+  assert.match(name, /^color-mode\.[0-9a-f]{8}\.js$/);
+  assert.deepEqual(readFileSync(join(dir, "assets", name)), COLOR_MODE, "the file, as it was");
+  assert.equal(existsSync(join(dir, "color-mode.js")), false, "no root copy");
+  const page = readFileSync(join(dir, "index.html"), "utf8");
+  assert.ok(page.includes(`<script src="/assets/${name}"></script>`), "the page names the new file");
+  assert.ok(!page.includes('"/color-mode.js"'), "and no longer the old one");
+  assert.deepEqual(brotliDecompressSync(readFileSync(join(dir, "assets", `${name}.br`))), COLOR_MODE, "it is compressed like the rest of assets/");
+  assert.deepEqual(gunzipSync(readFileSync(join(dir, "assets", `${name}.gz`))), COLOR_MODE);
+});
+
+test("the script's name follows its content: the same content, the same name, another content, another", () => {
+  const names = (content: string) => {
+    const dir = built();
+    writeFileSync(join(dir, "color-mode.js"), content);
+    assert.equal(run(dir).status, 0);
+    return readFileSync(join(dir, "index.html"), "utf8").match(/assets\/(color-mode\.[0-9a-f]{8}\.js)/)![1];
+  };
+  assert.equal(names("a();"), names("a();"));
+  assert.notEqual(names("a();"), names("b();"));
+  assert.equal(names("a();"), hashName("a();"));
+});
+
+test("a second run leaves the script, the page and the siblings as they are", () => {
+  const dir = built();
+  run(dir);
+  const [page, script] = [readFileSync(join(dir, "index.html"), "utf8"), readFileSync(join(dir, "assets", hashName(COLOR_MODE)))];
+  assert.equal(run(dir).status, 0);
+  assert.equal(readFileSync(join(dir, "index.html"), "utf8"), page);
+  assert.deepEqual(readFileSync(join(dir, "assets", hashName(COLOR_MODE))), script);
+  assert.equal(existsSync(join(dir, "color-mode.js")), false);
+});
+
+test("a build without its first-paint script fails: the file or the page's tag missing, the tag twice, or a hashed name that is not the file's", () => {
+  const cases: [string, (dir: string) => void][] = [
+    ["the page names it and the file is not there", (dir) => rmSync(join(dir, "color-mode.js"))],
+    ["the file is there and the page does not name it", (dir) => writeFileSync(join(dir, "index.html"), `<!doctype html>${VITE_MARKER}`)],
+    ["the page names it twice", (dir) => writeFileSync(join(dir, "index.html"), `<!doctype html>${VITE_MARKER}${SCRIPT_TAG}${SCRIPT_TAG}`)],
+    ["neither the file nor the tag", (dir) => (rmSync(join(dir, "color-mode.js")), writeFileSync(join(dir, "index.html"), `<!doctype html>${VITE_MARKER}`))],
+    [
+      "the page names a hashed script that is not the one in assets/",
+      (dir) => (
+        rmSync(join(dir, "color-mode.js")),
+        writeFileSync(join(dir, "assets", "color-mode.00000000.js"), "x();"),
+        writeFileSync(join(dir, "index.html"), `<!doctype html>${VITE_MARKER}<script src="/assets/color-mode.00000000.js"></script>`)
+      ),
+    ],
+  ];
+  for (const [what, damage] of cases) {
+    const dir = built();
+    damage(dir);
+    const result = run(dir);
+    assert.notEqual(result.status, 0, what);
+    assert.match(result.stderr, /color-mode/, `${what}: says which script`);
+    assert.equal(existsSync(join(dir, "assets", "app-Abc12345.js.br")), false, `${what}: nothing is compressed for a build that fails`);
+  }
+});
+
+test("dist and dist-check each end with their own hashed script and no root copy", () => {
+  for (const name of ["dist", "dist-check"]) {
+    const dir = join(mkdtempSync(join(tmpdir(), "finish-build-out-")), name);
+    mkdirSync(dir);
+    writeFileSync(join(dir, "index.html"), `<!doctype html><head>${VITE_MARKER}${SCRIPT_TAG}</head>`);
+    writeFileSync(join(dir, "color-mode.js"), COLOR_MODE);
+    assert.equal(run(dir).status, 0, name);
+    assert.equal(existsSync(join(dir, "color-mode.js")), false, `${name}: no root copy`);
+    assert.ok(existsSync(join(dir, "assets", hashName(COLOR_MODE))), `${name}: the hashed script`);
+    assert.ok(readFileSync(join(dir, "index.html"), "utf8").includes(`/assets/${hashName(COLOR_MODE)}`), `${name}: the page names it`);
+  }
 });

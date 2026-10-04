@@ -52,7 +52,7 @@ Importriktningen visas i [diagrammet](architecture.md#frontendens-lager).
 | Körningens tillstånd | `run` i `app/flows/[id]/page.tsx` | Se nedan. |
 | Uppföljning av en körning | `lib/follow-run.ts` | Frågar bara efter det som är gjort för polling; frågar sällan medan sidan är dold. |
 | Om vi är uppkopplade | `lib/online-status.ts` | Webbläsarens händelser plus våra egna anrop. |
-| Lämna sidan | `lib/leave-guard.ts`, `components/flow/useLeaveQuestion.tsx` | Webbläsarens bakåtknapp förlorar aldrig en inspelning. |
+| Lämna sidan | `components/flow/useLeaveQuestion.tsx`, `beforeunload` i `routes/FlowPage.tsx` | Routerns spärr frågar före varje avsked den ser (Tillbaka, Framåt, en länk, märket) medan sidan håller en inspelning, en sändning eller skrivet som webbläsaren inte kunde spara; Logga ut frågar före utloggningen. Omladdning, stängd flik och Tillbaka från besökets första sida är webbläsarens egen fråga. |
 | Mikrofonval | `lib/microphone.ts` | Kommer ihåg per webbläsare. |
 
 Frågar du dig "var hör det här hemma": kan det göras utan React hör det hemma i `lib/` med ett test bredvid.

@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, type ComponentProps, type ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Text } from "@astryxdesign/core/Text";
@@ -22,8 +22,6 @@ export function BrandingProvider({ value, children }: { value: Branding; childre
 interface BrandProps {
   /** Linka lockupen till denna sökväg. Utelämna för en statisk lockup (t.ex. inloggning). */
   href?: string;
-  /** Asked before the link leaves the page; call preventDefault to stay. */
-  onClickCapture?: ComponentProps<typeof TopNavHeading>["onClickCapture"];
 }
 
 /**
@@ -53,7 +51,7 @@ function OrganizationMark({ organization }: { organization: Organization }) {
 }
 
 // Header-lockup: organisationens märke, avdelare och produktnamn; utan organisation bara produktnamnet.
-export function Brand({ href, onClickCapture }: BrandProps) {
+export function Brand({ href }: BrandProps) {
   const { organization } = useContext(BrandingContext);
   const mark = organization && (
     <HStack gap={4} vAlign="center">
@@ -72,7 +70,6 @@ export function Brand({ href, onClickCapture }: BrandProps) {
       headingHref={href}
       // A link says where it goes and for whom; a lockup that goes nowhere is just words.
       aria-label={href ? (organization ? `Tal till text – ${organization.name}` : "Tal till text") : undefined}
-      onClickCapture={onClickCapture}
     />
   );
 }

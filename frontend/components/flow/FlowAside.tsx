@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -23,7 +23,6 @@ export function FlowAside({
   published,
   classification,
   titleIsHeading = true,
-  onLeave,
   locked = false,
   compact = false,
   details,
@@ -36,7 +35,6 @@ export function FlowAside({
   classification?: FlowSecurityClassification | null;
   /** False where the state's card has the page's heading. */
   titleIsHeading?: boolean;
-  onLeave?: (event: MouseEvent) => void;
   /** No way back while leaving would abort an upload; its place is kept, so the flow's name does not move. */
   locked?: boolean;
   compact?: boolean;
@@ -55,7 +53,7 @@ export function FlowAside({
             <Button label="Alla flöden" size="sm" />
           </span>
         ) : (
-          <BackToFlows onLeave={onLeave} />
+          <BackToFlows />
         )}
       </HStack>
       {titleIsHeading ? (

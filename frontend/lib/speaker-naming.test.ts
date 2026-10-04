@@ -17,9 +17,8 @@ const rows = [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", null, 9)];
 /** Mounts what the page mounts it in: the design system's words are Swedish (Stäng) only inside the providers. */
 async function mountInProviders(element: import("react").ReactElement) {
   const { createElement } = await import("react");
-  const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("../kit/ModuleProviders");
-  return mount(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: element }) }));
+  return mount(createElement(ModuleProviders, { children: element }));
 }
 
 async function dialog(props: Record<string, unknown> = {}) {

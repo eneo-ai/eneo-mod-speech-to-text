@@ -57,6 +57,16 @@ export async function setup(page: Page, flow = ids.flows.flow1) {
   await heading(page, "Hur vill du lägga till ljudet?");
 }
 
+/**
+ * The flow's page reached from the flow list by its link: Back then has a page of the app to go to, which the router
+ * asks about. Opened by its address instead, Back leaves the app, and only the browser's own question is asked.
+ */
+export async function setupFromList(page: Page) {
+  await open(page, "/flows");
+  await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
+  await heading(page, "Hur vill du lägga till ljudet?");
+}
+
 export async function chooseMode(page: Page, mode: "Strömma" | "Spela in" | "Ladda upp") {
   await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).click();
 }
@@ -616,7 +626,7 @@ export const STATES: State[] = [
   {
     name: "signed-out-leave",
     go: async (page) => {
-      await setup(page);
+      await setupFromList(page);
       await record(page, "Spela in");
       await endLogin(page);
       await page.goBack();

@@ -30,6 +30,7 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
@@ -122,19 +123,14 @@ const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components
 export const preloadTranscriptEditor = () => editor.load();
 
 function LazyTranscriptEditor(props: EditorProps) {
-  const { value: Editor, failed, retry } = useLoaded(editor);
+  const { value: Editor, failed } = useLoaded(editor);
   if (Editor) return <Editor {...props} />;
-  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and a
-  // press tries again: the page is not reloaded, since it may hold a recording or an edit that is not saved.
+  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and
+  // offers the person's reload, which gives back the review's draft; the page does not reload by itself.
   if (failed) {
     return (
       <div className={styles.editorPending}>
-        <HStack vAlign="center" wrap="wrap" gap={2}>
-          <Text as="p" type="supporting" role="status">
-            Granskningsverktygen kunde inte läsas in.
-          </Text>
-          <Button size="sm" label="Försök igen" onClick={retry} />
-        </HStack>
+        <LoadFailure keeps="Det du har skrivit finns kvar.">Granskningsverktygen kunde inte läsas in.</LoadFailure>
       </div>
     );
   }

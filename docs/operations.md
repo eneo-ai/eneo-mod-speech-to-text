@@ -99,25 +99,23 @@ Sessionslagret ligger i backendprocessens minne, avsiktligt, eftersom produktion
 
 ## Kapacitet för liveöversättningen (mätt, ingen garanti)
 
-Statiska filer, uppladdningar och liveöversättningens WebSocket delar en process och en händelseslinga. Mätningen gjordes på en bärbar dator med OrbStack, med lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop). Vid 10 besök i sekunden (320 anrop/s) var reläets p95-fördröjning 1,8 till 2,6 ms och vid 45 besök i sekunden (1 440 anrop/s) 1,0 till 1,4 ms, mot 3,3 till 3,5 ms utan last. Modulen mättas vid ungefär 100 besök i sekunden (omkring 3 200 anrop/s): då är p95 22 till 76 ms. Med 200 klienter som hämtar skalet och filerna utan paus är p95 4,8 till 6,5 gånger så hög som utan last (16,7 till 22,3 ms, fyra körningar); ägaren har godtagit det resultatet (`deploy/acceptance/waivers.json`). Det är en observation på en dator, inte ett löfte för en annan maskin. Fler än en arbetsprocess är utesluten av det processlokala sessionslagret (se ovan); mer kapacitet kräver att lagret först flyttas till en delad store.
+Statiska filer, uppladdningar och liveöversättningens WebSocket delar en process och en händelseslinga. Mätningen gjordes på en bärbar dator med OrbStack, med lastgeneratorn på samma dator, med en live-session som strömmar 20 bildrutor i sekunden och N besök i sekunden som hämtar vad en webbläsare hämtar vid ett kallt besök av ett flöde (32 anrop). Vid 10 besök i sekunden (320 anrop/s) var reläets p95-fördröjning 1,8 till 2,2 ms och vid 45 besök i sekunden (1 440 anrop/s) 1,1 till 1,2 ms, mot 2,7 till 3,8 ms utan last. Vid 100 besök i sekunden (3 100 till 3 200 anrop/s) är modulen vid mättnad och p95 22 till 63 ms. Med 200 klienter som hämtar skalet och filerna utan paus klarar modulen 4 000 till 4 400 anrop/s, och p95 är då 3,6 till 6,7 gånger så hög som utan last (11,9 till 18,3 ms, fem körningar); ägaren har godtagit det resultatet (`deploy/acceptance/waivers.json`). Det är en observation på en dator, inte ett löfte för en annan maskin. Fler än en arbetsprocess är utesluten av det processlokala sessionslagret (se ovan); mer kapacitet kräver att lagret först flyttas till en delad store.
 
 ## Inget att säkerhetskopiera
 
 Modulen har ingen databas och ingen volym med data; monteringarna är en valfri, skrivskyddad mapp med en logotyp och uppladdningens tillfälliga lagring (se ovan), som är tom mellan uppladdningar. Sessioner ligger i minnet, inspelningar sparas i användarens webbläsare tills Eneo har tagit emot dem, och flöden, körningar och filer ägs av Eneo. Säkerhetskopiera Eneo, inte modulen.
 
-## Dokploy (exempel: `transkribering.sundsvall.dev`)
+## Driftsätt med Dokploy eller Portainer
 
-1. **Skapa ett Compose-projekt** i Dokploy och peka på det här repot.
-2. **Sätt miljövariablerna** i Dokploy-gränssnittet enligt tabellen ovan (motsvarar `.env`).
-3. **Konfigurera domänen** `transkribering.sundsvall.dev` i Dokploy och peka mot tjänsten `frontend` (port 3000). Dokploy och Traefik sköter HTTPS-certifikatet.
-4. **Deploya.** Dokploy bygger båda containrarna via `docker-compose.yml`. Backend exponeras inte externt, bara internt mot `frontend` på `http://speech-to-text-backend:8000`.
-5. **Verifiera:**
-   - `https://transkribering.sundsvall.dev/` visar sidan med knappen "Logga in med Eneo".
-   - `https://transkribering.sundsvall.dev/api/healthz` svarar `{"ok":true}`.
-   - Callback-URL:en blir ren efter lyckad login.
-   - Flödeslistan visas och ett riktigt Flow-anrop lyckas.
+Modulen körs som en färdig image och byggs inte på plats. Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
 
-Ingress- eller Traefik-loggning måste utesluta callbackens query string.
+- **Image:** `ghcr.io/eneo-ai/eneo-mod-speech-to-text`, taggen väljs med `MODULE_VERSION` (en tagg `vX.Y.Z`, eller `latest` för den senaste utgåvan). Paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
+- **Variabler:** de i `.env`. `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` måste fyllas i (se tabellen ovan); resten har standardvärden.
+- **Dokploy:** skapa ett Compose-projekt, klistra in innehållet i `docker-compose.yml` och variablerna under Environment, lägg domänen (till exempel `transkribering.sundsvall.dev`) på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
+- **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på port 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
+- **Container:** `docker-compose.yml` ger den skrivskyddad, utan Linux-capabilities och med en skrivbar volym för uppladdningar (se Uppladdningens tillfälliga lagring), och startar om den om den dör. Hälsokontrollen frågar `/health`.
+- **Verifiera:** `https://<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Ingress- eller Traefik-loggning måste utesluta callbackens query string.
+- **Uppgradera:** byt `MODULE_VERSION` till den nya taggen och driftsätt igen; en ny tagg hämtas av sig själv, men med `latest` hämtas ingen ny image om en med det namnet redan finns på värden, så fäst en version. Att gå tillbaka är att byta tillbaka. En ny version startar om processen, så alla loggar in igen (se Sessionslagret är processlokalt).
 
 ## Egen organisation i sidhuvudet
 
@@ -150,7 +148,7 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 ## CI och publicering
 
-`.github/workflows/ci.yml` körs vid pull request, vid push till `main` och vid taggar `v*`:
+`.github/workflows/ci.yml` körs vid pull request och vid push till `main` (en tagg kör ingen CI, se Utgåva nedan):
 
 | Jobb | Vad |
 |---|---|
@@ -159,9 +157,16 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 | `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`, och branding-tillstånden (`STUB_BRANDING=custom`) i `laptop-1440-light` och `phone-390-dark`. |
 | `compose` | `docker compose --env-file .env.example config -q`. |
 | `image` | Bygger produktionsimagen en gång, med SBOM och provenance, och lägger den i ett register som bara finns i jobbet. Kör `deploy/acceptance.sh` på just det bygget (efter digest, `ACCEPT_SKIP_BUILD=1`), och sparar den testade imagen som arkiv tillsammans med dess digest. |
-| `publish` | Anropar `.github/workflows/publish.yml`, bara när alla jobb ovan gått igenom på samma commit och bara för `main` och taggar. |
+| `publish` | Anropar `.github/workflows/publish.yml`, bara när alla jobb ovan gått igenom på samma commit och bara för `main`. |
 
-`publish.yml` har ingen egen trigger. Den bygger aldrig: den kopierar det arkiv som `image` sparade, med SBOM, provenance och samma digest som acceptansen såg, till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` under taggarna `latest` (bara `main`), versionen (`v*`) och `sha-<commit>`, och kontrollerar att det registret håller under varje tagg är den testade digesten. En misslyckad acceptans når därför aldrig registret.
+`publish.yml` har ingen egen trigger. Den bygger aldrig: den kopierar det arkiv som `image` sparade, med SBOM, provenance och samma digest som acceptansen såg, till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` under taggen `sha-<commit>` (commitens hela sha), och kontrollerar att det registret håller under taggen är den testade digesten. En misslyckad acceptans når därför aldrig registret.
+
+**Utgåva.** `.github/workflows/release.yml` körs när en tagg `vX.Y.Z` pushas, och bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade och `publish.yml` pushade till taggarna `vX.Y.Z` och `latest`, med samma digest, kontrollerar digesten efter varje kopiering och skapar en GitHub-utgåva med korta anteckningar, där `docker-compose.yml` och `env.example` är bifogade (GitHub byter namn på en fil som börjar med punkt, så exemplet heter `env.example`). En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart. En utgåva görs så här:
+
+```
+git tag v1.2.3 <commit på main>
+git push origin v1.2.3
+```
 
 ## Uppdatera beroenden och fästa versioner
 
@@ -176,7 +181,7 @@ uv pip compile backend/requirements.txt --python-version 3.12 --universal --gene
 
 Checka in båda filerna. `backend/tests/test_dependency_lock.py` stoppar en ändring av den ena utan den andra, och en Dockerfile eller ett CI-steg som inte installerar låsfilen med `--require-hashes`.
 
-**Basimagerna.** `node:22-bookworm-slim` och `python:3.12-slim` (i `Dockerfile`, och `python:3.12-slim` även i `deploy/acceptance/compose.yml`), `traefik` (`deploy/acceptance/compose.yml`), `registry` och skopeo (`.github/workflows/ci.yml` och `publish.yml`). Hämta taggens nya digest och byt den där den står:
+**Basimagerna.** `node:22-bookworm-slim` och `python:3.12-slim` (i `Dockerfile`, och `python:3.12-slim` även i `deploy/acceptance/compose.yml`), `traefik` (`deploy/acceptance/compose.yml`), `registry` och skopeo (`.github/workflows/ci.yml`, `publish.yml` och `release.yml`). Hämta taggens nya digest och byt den där den står:
 
 ```
 docker buildx imagetools inspect node:22-bookworm-slim --format '{{.Manifest.Digest}}'

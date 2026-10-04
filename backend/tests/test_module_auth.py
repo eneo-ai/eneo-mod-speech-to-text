@@ -153,6 +153,7 @@ class ModuleAuthTests(unittest.TestCase):
         # The page checks again once the 900-second token is half used.
         self.assertTrue(0 < body.pop("refresh_in") <= 450)
         self.assertTrue(0 < body.pop("session_ends_in") <= ENEO_SESSION_SECONDS)
+        self.assertEqual(body.pop("max_upload_bytes"), main.settings.max_upload_bytes)
         self.assertEqual(
             body,
             {
@@ -346,6 +347,20 @@ class ModuleAuthTests(unittest.TestCase):
                 self.assertEqual(response.headers["allow"], "GET")
                 self.assertNotIn(SESSION_COOKIE, response.cookies)
                 self.assertEqual(main.module_auth.sessions._sessions, {})
+
+    def test_the_status_says_the_largest_upload_the_module_takes_so_the_page_never_sends_what_is_refused(self) -> None:
+        # Not a secret: a page that sends a file above it is answered 413 (a proxy in front may turn that into a 502), so
+        # the page asks first. It follows the setting, and only a signed-in page is told.
+        state, _ = self.start_login()
+        self.client.get("/api/auth/callback", params={"ticket": "one-time-ticket", "state": state})
+        self.addCleanup(setattr, main.settings, "max_upload_bytes", main.settings.max_upload_bytes)
+        main.settings.max_upload_bytes = 100 * 1024 * 1024
+
+        signed_in = self.client.get("/api/auth/status").json()
+        signed_out = TestClient(main.app, follow_redirects=False).get("/api/auth/status").json()
+
+        self.assertEqual(signed_in["max_upload_bytes"], 104857600)
+        self.assertEqual(signed_out, {"authenticated": False, "user": None})
 
     def test_the_config_route_that_named_the_demo_space_is_gone(self) -> None:
         self.assertEqual(self.client.get("/api/config").status_code, 404)

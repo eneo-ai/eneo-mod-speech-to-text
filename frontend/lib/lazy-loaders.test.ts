@@ -11,7 +11,8 @@ afterEach(cleanup);
 const settle = (view: { act: (callback: () => Promise<void>) => Promise<void> }, ms = 40) => view.act(async () => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
 /** What the page's status lines say, which a screen reader announces. */
-const statuses = (within: ParentNode) => [...within.querySelectorAll('[role="status"]')].map((line) => line.textContent).join(" ");
+const statuses = (within: ParentNode) =>
+  [...within.querySelectorAll('[role="status"]')].map((line) => line.textContent?.trim()).filter(Boolean).join(" ");
 
 /** A chunk that cannot be fetched, as a tab older than the deploy that replaced its files finds it: the import rejects. */
 function refuse(t: TestContext, request: string) {
@@ -40,12 +41,12 @@ function fresh<T>(request: string): T {
 let restore = () => {};
 afterEach(() => restore());
 
-test("a date field whose calendar cannot be loaded stays a text field with the same label and value, says so, and a press fetches only the calendar", async (t) => {
+test("a date field whose calendar cannot be loaded stays a text field with the same label and value, says so, and offers the person's own reload", async (t) => {
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown) => void unhandled.push(reason);
   process.on("unhandledRejection", onUnhandled);
   t.after(() => void process.off("unhandledRejection", onUnhandled));
-  const allow = refuse(t, "@astryxdesign/core/DateInput");
+  refuse(t, "@astryxdesign/core/DateInput");
   const { DetailsForm } = fresh<typeof import("../components/flow/DetailsForm")>("../components/flow/DetailsForm");
   const changes: string[] = [];
   const view = await mount(
@@ -64,17 +65,8 @@ test("a date field whose calendar cannot be loaded stays a text field with the s
   assert.equal(field()?.tagName, "INPUT", "a plain field");
   assert.equal(field()?.value, "2026-09-24", "with the value it holds");
   assert.match(view.container.textContent ?? "", /Datum/, "with its label");
-  assert.match(statuses(view.container), /Kalendern kunde inte läsas in\./);
-  const retry = button(view.container, "Försök igen");
-  assert.ok(retry, "a way to try again");
-
-  // The calendar can be fetched now: one press loads it, and the form stays where it is.
-  allow();
-  await view.act(async () => retry.click());
-  await settle(view);
-  assert.doesNotMatch(view.container.textContent ?? "", /kunde inte läsas in/, "nothing left to say");
-  assert.equal(button(view.container, "Försök igen"), null, "and nothing left to retry");
-  assert.match(view.container.textContent ?? "", /Datum/);
+  assert.equal(statuses(view.container), "Kalendern kunde inte läsas in. Det du har skrivit finns kvar.", "what the details draft keeps through a reload");
+  assert.deepEqual([...view.container.querySelectorAll("button")].map((b) => b.textContent?.trim()), ["Ladda om sidan"], "one action, which nothing presses by itself");
   assert.equal(unhandled.length, 0);
   assert.deepEqual(changes, []);
 });
@@ -99,28 +91,21 @@ test("before the calendar has arrived a date field is a text field with its labe
 
 const segments: TranscriptSegment[] = [{ fileIndex: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." }];
 
-test("a review editor whose code cannot be loaded says so, and a press fetches only the editor", async (t) => {
+test("a review editor whose code cannot be loaded says so, and offers the person's own reload", async (t) => {
   const unhandled: unknown[] = [];
   const onUnhandled = (reason: unknown) => void unhandled.push(reason);
   process.on("unhandledRejection", onUnhandled);
   t.after(() => void process.off("unhandledRejection", onUnhandled));
-  const allow = refuse(t, "../components/TranscriptEditor");
+  refuse(t, "../components/TranscriptEditor");
   const { TranscriptPlayer } = fresh<typeof import("../components/TranscriptPlayer")>("../components/TranscriptPlayer");
   const view = await mount(
     createElement(TranscriptPlayer, { segments, fileCount: 0, audioSrcFor: () => "", speakerNames: {}, textFallback: "", reviewEnabled: true }),
   );
   await settle(view);
   assert.equal(unhandled.length, 0, "the failure is caught, not left to the page");
-  assert.match(statuses(view.container), /Granskningsverktygen kunde inte läsas in\./);
+  assert.equal(statuses(view.container), "Granskningsverktygen kunde inte läsas in. Det du har skrivit finns kvar.", "what the review's draft keeps through a reload");
   assert.ok(!view.container.querySelector('[aria-busy="true"]'), "it is not still waiting");
-  const retry = button(view.container, "Försök igen");
-  assert.ok(retry, "a way to try again");
-
-  allow();
-  await view.act(async () => retry.click());
-  await settle(view, 120);
-  assert.equal(button(view.container, "Försök igen"), null, "the editor has arrived");
-  assert.doesNotMatch(view.container.textContent ?? "", /kunde inte läsas in/);
-  assert.match(view.container.textContent ?? "", /Välkomna till mötet\./, "with the transcript");
+  assert.deepEqual([...view.container.querySelectorAll("button")].map((b) => b.textContent?.trim()).filter((label) => label === "Ladda om sidan"), ["Ladda om sidan"], "one action");
+  assert.doesNotMatch(view.container.textContent ?? "", /Försök igen/);
   assert.equal(unhandled.length, 0);
 });

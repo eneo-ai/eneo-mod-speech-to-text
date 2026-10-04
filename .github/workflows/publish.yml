@@ -2,6 +2,7 @@ name: Publish module image
 
 # Called by ci.yml, after every job of that run passed: this workflow has no trigger of its own. It pushes the image the acceptance
 # tested, the archive the `image` job kept, with its SBOM and provenance and under the digest the acceptance saw. It never builds.
+# The tag is the commit (sha-<40 hex>); a version and `latest` are given later, by release.yml, to the image of the tagged commit.
 
 on:
   workflow_call:
@@ -26,9 +27,7 @@ jobs:
         with:
           images: ghcr.io/eneo-ai/eneo-mod-speech-to-text
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
-            type=sha
+            type=sha,format=long
       - name: Push the tested image under each tag
         env:
           TAGS: ${{ steps.meta.outputs.tags }}

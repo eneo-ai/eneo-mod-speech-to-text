@@ -7,11 +7,12 @@ import { withRouter } from "./test-router";
 installDom();
 afterEach(cleanup);
 
-/** A page's router and signed-in user, as the app gives them. */
+/** A page's router, colour mode and signed-in user, as the app gives them. */
 async function signedIn(element: import("react").ReactElement) {
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
+  const { ColorModeProvider } = await import("@/kit/ColorModeProvider");
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return withRouter(createElement(AuthenticatedUserContext.Provider, { value: user }, element)).tree;
+  return withRouter(createElement(ColorModeProvider, null, createElement(AuthenticatedUserContext.Provider, { value: user }, element))).tree;
 }
 
 const FLOW = { id: "flow-1", name: "Nämndmöte", description: null, published_version: 1 } as unknown as import("./api").FlowPublished;

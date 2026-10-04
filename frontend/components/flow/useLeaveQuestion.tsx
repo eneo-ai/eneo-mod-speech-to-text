@@ -1,35 +1,44 @@
 "use client";
 
-import { createContext, useEffect, useRef, useState, type MouseEvent } from "react";
-import { useNavigate } from "react-router";
+import { createContext, useEffect, useRef, useState } from "react";
+import { useBlocker } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
-import { guardHistory } from "@/lib/leave-guard";
 
-/** The page's leave question for the exits in its top bar: the links, and signing out. */
-export const LeaveContext = createContext<{ onLeave(event: MouseEvent): void; leaveFirst(goOn: () => void): void }>({
-  onLeave: () => undefined,
+/**
+ * Signing out, which is a request and not a navigation: the question comes before the session is ended, so it is the
+ * page that asks and then goes on.
+ */
+export const LeaveContext = createContext<{ leaveFirst(goOn: () => void): void }>({
   leaveFirst: (goOn) => goOn(),
 });
 
 /**
- * While `active`, leaving the flow page asks first, in the page's own dialog: browser back through the history
- * guard, and the page's links through `onLeave`. beforeunload keeps the browser's.
+ * While `active`, leaving the flow page asks first, in the page's own dialog. The router's blocker asks for every
+ * departure it sees: a link, the brand, Back and Forward. A change of the address that keeps the page (the page writing
+ * `?run=`) is no departure. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
+ * a reload, closing the tab, and Back from the first page of a visit.
  */
 export function useLeaveQuestion(active: boolean, warning: string) {
-  const navigate = useNavigate();
-  const [leave, setLeave] = useState<(() => void) | null>(null);
-  const ask = (goOn: () => void) => setLeave(() => goOn);
-  const attempt = useRef(ask);
-  attempt.current = ask;
+  // Set by an answered sign-out question, so the way on to the start that follows it is not asked a second time.
+  const allowed = useRef(false);
   useEffect(() => {
-    if (!active) return;
-    return guardHistory(window, (goOn) => attempt.current(goOn));
+    allowed.current = false;
   }, [active]);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => active && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
+  const [signingOut, setSigningOut] = useState<(() => void) | null>(null);
 
-  const onLeave = (event: MouseEvent) => {
-    if (!active) return;
-    event.preventDefault();
-    ask(() => void navigate("/flows"));
+  const stay = () => {
+    setSigningOut(null);
+    if (blocker.state === "blocked") blocker.reset();
+  };
+  const leave = () => {
+    const goOn = signingOut;
+    setSigningOut(null);
+    if (blocker.state === "blocked") blocker.proceed();
+    if (goOn) {
+      allowed.current = true;
+      goOn();
+    }
   };
 
   // A native dialog: the browser keeps it above the covered page, and above the sign-in dialog when it was asked
@@ -37,22 +46,18 @@ export function useLeaveQuestion(active: boolean, warning: string) {
   // Staying has the focus: leaving stops a recording or a sending.
   const question = (
     <AlertDialog
-      isOpen={leave !== null}
-      onOpenChange={(open) => !open && setLeave(null)}
+      isOpen={blocker.state === "blocked" || signingOut !== null}
+      onOpenChange={(open) => !open && stay()}
       title="Lämna sidan?"
       description={warning}
       cancelLabel="Stanna kvar"
       actionLabel="Lämna sidan"
-      // Answered: the question is closed first, whether or not the way off the page then goes through.
-      onAction={() => {
-        const goOn = leave;
-        setLeave(null);
-        goOn?.();
-      }}
+      // Answered: the question closes with the answer, whether or not the way off the page then goes through.
+      onAction={leave}
     />
   );
-  /** Any other way off the page (signing out): asked first, then `goOn`. */
-  const leaveFirst = (goOn: () => void) => (active ? ask(goOn) : goOn());
+  /** Signing out: asked first, then `goOn`. */
+  const leaveFirst = (goOn: () => void) => (active ? setSigningOut(() => goOn) : goOn());
 
-  return { onLeave, leaveFirst, question };
+  return { leaveFirst, question };
 }
