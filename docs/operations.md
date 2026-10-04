@@ -142,23 +142,53 @@ Callbackens svar har dessutom `Cache-Control: no-store` och `Referrer-Policy: no
 
 ## CI och publicering
 
-`.github/workflows/ci.yml` körs vid pull request och push till `main`:
+`.github/workflows/ci.yml` körs vid pull request, vid push till `main` och vid taggar `v*`:
 
 | Jobb | Vad |
 |---|---|
-| `backend` | `python -m unittest discover -s tests` i `backend/` (Python 3.12). Därefter `pip-audit` på de installerade paketen. |
+| `backend` | Installerar `backend/requirements.lock` med dess hashar (`pip install --require-hashes --no-deps`), `python -m unittest discover -s tests` i `backend/` (Python 3.12), den falska Eneos egna tester (`frontend/tests/e2e/test_stub_eneo.py`) och `pip-audit` på låsfilen. |
 | `frontend` | `npm ci`, `npm test`, `npm run lint`, `npm run astryx -- doctor`, kontroll att det byggda temat är aktuellt (`npm run theme:build` och `git diff --exit-code -- kit/theme/built`), `npm audit --omit=dev --audit-level=high`, `npm run build` (Node 22). |
 | `frontend-browser` | `npm run test:prod` i tre motorer, samt tillgänglighetsgrindens projekt `phone-390-light` och `laptop-1440-light`, och branding-tillstånden (`STUB_BRANDING=custom`) i `laptop-1440-light` och `phone-390-dark`. |
 | `compose` | `docker compose --env-file .env.example config -q`. |
-| `image` | Bygger produktionsimagen. |
+| `image` | Bygger produktionsimagen en gång, med SBOM och provenance, och lägger den i ett register som bara finns i jobbet. Kör `deploy/acceptance.sh` på just det bygget (efter digest, `ACCEPT_SKIP_BUILD=1`), och sparar den testade imagen som arkiv tillsammans med dess digest. |
+| `publish` | Anropar `.github/workflows/publish.yml`, bara när alla jobb ovan gått igenom på samma commit och bara för `main` och taggar. |
 
-`.github/workflows/publish.yml` publicerar imagen till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` vid push till `main` (taggen `latest`) och vid taggar `v*`, och taggar varje bygge med commitens sha.
+`publish.yml` har ingen egen trigger. Den bygger aldrig: den kopierar det arkiv som `image` sparade, med SBOM, provenance och samma digest som acceptansen såg, till `ghcr.io/eneo-ai/eneo-mod-speech-to-text` under taggarna `latest` (bara `main`), versionen (`v*`) och `sha-<commit>`, och kontrollerar att det registret håller under varje tagg är den testade digesten. En misslyckad acceptans når därför aldrig registret.
+
+## Uppdatera beroenden och fästa versioner
+
+Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, basimagerna vid digest, GitHub Actions vid commit-sha. Inget uppdateras av sig självt (se [Beroendesäkerhet](#beroendesäkerhet)); gör så här, till exempel varje månad och när en sårbarhet rapporteras. Ändra ett steg i taget, kör CI och godkänn imagens acceptans innan nästa.
+
+**Backendens paket.** `backend/requirements.txt` nämner de direkta paketen med exakta versioner; `backend/requirements.lock` är alla paket, med hashar, genererad ur den. Ändra en version i `requirements.txt` och generera om låsfilen från repots rot:
+
+```
+uv pip compile backend/requirements.txt --python-version 3.12 --universal --generate-hashes \
+  --exclude-newer <dagens datum>T00:00:00Z -o backend/requirements.lock
+```
+
+Checka in båda filerna. `backend/tests/test_dependency_lock.py` stoppar en ändring av den ena utan den andra, och en Dockerfile eller ett CI-steg som inte installerar låsfilen med `--require-hashes`.
+
+**Basimagerna.** `node:22-bookworm-slim` och `python:3.12-slim` (i `Dockerfile`, och `python:3.12-slim` även i `deploy/acceptance/compose.yml`), `traefik` (`deploy/acceptance/compose.yml`), `registry` och skopeo (`.github/workflows/ci.yml` och `publish.yml`). Hämta taggens nya digest och byt den där den står:
+
+```
+docker buildx imagetools inspect node:22-bookworm-slim --format '{{.Manifest.Digest}}'
+```
+
+Node-bygget kör `npm ci --engine-strict`, så en bas som inte når `engines` i `frontend/package.json` stoppar bygget. Byt versionsraden (till exempel `traefik:v3.7.13`) bara efter att ha läst versionens ändringslista.
+
+**GitHub Actions.** Varje `uses:` är ett commit-sha med versionen i kommentaren. Hitta den senaste utgåvan av samma huvudversion, och commit-shan som taggen pekar på (för en annoterad tagg raden med `^{}`):
+
+```
+git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v7.*'
+```
+
+Byt sha och kommentar. En ny huvudversion är ett eget beslut: läs dess ändringslista först.
 
 ## Beroendesäkerhet
 
-GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends installerade Python-paket (alla kända sårbarheter).
+GitHubs dependency graph och Dependabot alerts är aktiverade för repot (uppgift från tidigare dokumentation, inte omverifierad här). Kända sårbarheter visas under **Security, Dependabot alerts** och hanteras manuellt. Dependabot security updates är avstängt och repot har ingen `.github/dependabot.yml`; GitHub skapar därför inga automatiska dependency-PR:er. Ändra inte detta utan ett separat beslut om PR-automation. CI stoppar dessutom vid fynd i produktionsberoendena: `npm audit` för frontend (från nivån high, se ovan) och `pip-audit` för backends låsfil, det vill säga de Python-paket imagen innehåller (alla kända sårbarheter).
 
-CI granskar dessutom backendens installerade Python-paket med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`), och FastAPI-stacken i `backend/requirements.txt` är höjd förbi 14 säkerhetsmeddelanden.
+CI granskar dessutom backendens låsfil med `pip-audit` och misslyckas vid fynd (`.github/workflows/ci.yml`), och FastAPI-stacken i `backend/requirements.txt` är höjd förbi 14 säkerhetsmeddelanden.
 
 ## Vid problem
 

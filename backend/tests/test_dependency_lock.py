@@ -1,5 +1,5 @@
 """The backend's dependencies: requirements.txt names the direct ones, requirements.lock is every package with its hashes, and the
-image and the tests use the lock, so the set that is tested is the set that ships."""
+image, the tests and the audit all use the lock, so the set that is tested and audited is the set that ships."""
 
 import re
 import unittest
@@ -37,11 +37,15 @@ class DependencyLockTests(unittest.TestCase):
             with self.subTest(package=block.split("==")[0]):
                 self.assertRegex(block, r"--hash=sha256:[0-9a-f]{64}")
 
-    def test_the_image_installs_the_lock_with_its_hashes(self) -> None:
+    def test_the_image_and_ci_install_and_audit_the_lock_with_its_hashes(self) -> None:
         dockerfile = (REPOSITORY / "Dockerfile").read_text()
+        ci = (REPOSITORY / ".github" / "workflows" / "ci.yml").read_text()
 
         self.assertRegex(dockerfile, r"pip install [^\n]*--require-hashes[^\n]*--no-deps[^\n]*-r requirements\.lock")
         self.assertNotIn("requirements.txt", dockerfile)
+        self.assertRegex(ci, r"pip install --require-hashes --no-deps -r backend/requirements\.lock")
+        self.assertRegex(ci, r"pip-audit --requirement backend/requirements\.lock --require-hashes")
+        self.assertNotRegex(ci, r"pip install [^\n]*requirements\.txt")
 
 
 if __name__ == "__main__":
