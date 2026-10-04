@@ -43,7 +43,7 @@ from app.accent import etag, theme_css
 from app.config import load_settings
 from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
-from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
+from app.upstream import CONNECT_TIMEOUT_SECONDS, SMALL_ANSWER, SMALL_ANSWER_BYTES, SMALL_CALL_TIMEOUT, STREAMED, UnboundedAnswer, make_client
 from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
@@ -106,7 +106,7 @@ def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
             max(MIN_UPLOAD_PROXY_TIMEOUT_SECONDS, timeout_seconds),
         )
     return httpx.Timeout(
-        connect=10.0,
+        connect=CONNECT_TIMEOUT_SECONDS,
         read=effective_timeout,
         write=effective_timeout,
         pool=30.0,
@@ -1020,7 +1020,7 @@ async def _open_live_session(
                 if _LIVE_RECORDING_ID.fullmatch(recording_id)
                 else None
             ),
-            timeout=httpx.Timeout(10.0),
+            timeout=SMALL_CALL_TIMEOUT,
             extensions=SMALL_ANSWER,
         )
     except httpx.RequestError:  # also an answer past its bound (UnboundedAnswer)

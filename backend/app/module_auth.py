@@ -28,7 +28,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from pydantic import BaseModel, ValidationError
 
 from app.config import Settings
-from app.upstream import SMALL_ANSWER
+from app.upstream import SMALL_ANSWER, SMALL_CALL_TIMEOUT
 
 logger = logging.getLogger("eneo_module_auth")
 
@@ -327,7 +327,7 @@ class ModuleAuth:
                     self.settings.eneo_api_key_header_name: self.settings.eneo_api_key
                 },
                 json={"ticket": ticket},
-                timeout=httpx.Timeout(10.0),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
@@ -372,7 +372,7 @@ class ModuleAuth:
                     self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
                     "Authorization": f"Bearer {token.access_token}",
                 },
-                timeout=httpx.Timeout(10.0),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
@@ -542,7 +542,7 @@ class ModuleAuth:
                     self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
                     "Authorization": f"Bearer {session.access_token}",
                 },
-                timeout=httpx.Timeout(10.0),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:

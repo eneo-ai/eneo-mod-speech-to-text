@@ -20,6 +20,10 @@ LIMIT = "eneo_module.max_response_bytes"
 SMALL_ANSWER_BYTES = 1024 * 1024
 SMALL_ANSWER = {LIMIT: SMALL_ANSWER_BYTES}
 STREAMED = {LIMIT: None}
+# How long Eneo has to accept a connection, and, for a call that carries a token or a ticket and gets a few lines back
+# (the login, a refresh, a live ticket), to answer at all: it does either well within this or is not there.
+CONNECT_TIMEOUT_SECONDS = 10.0
+SMALL_CALL_TIMEOUT = httpx.Timeout(CONNECT_TIMEOUT_SECONDS)
 
 
 class UnboundedAnswer(httpx.TransportError):
@@ -85,7 +89,7 @@ def make_client(settings: Settings) -> httpx.AsyncClient:
         response.stream = _Counted(response.stream, limit, request)
 
     client = httpx.AsyncClient(
-        timeout=httpx.Timeout(60.0, connect=10.0),
+        timeout=httpx.Timeout(60.0, connect=CONNECT_TIMEOUT_SECONDS),
         follow_redirects=False,
         headers={"Accept-Encoding": "identity"},
         event_hooks={"response": [bound]},
