@@ -710,7 +710,7 @@ def check_15() -> str:
             report, load = relay(f"{rate} visits/s", ["--rate", str(rate), "--visit", visit_file.name])
             if load:
                 ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
-                lines.append(f"arrival rate {rate} visits/s ({len(visit)} requests each): {report}{ratio}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors, {load['dropped']} visits not started (the module or the generator was saturated)")
+                lines.append(f"arrival rate {rate} visits/s ({len(visit)} requests each): {report}{ratio}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors, {load['dropped']} visits not started" + (" (2,000 were in flight: the offered rate is above what the module or the generator serves)" if load["dropped"] else ""))
     lines.append("one machine: the load generator, the relay's client and the image share the host's CPUs (a second host is not available)")
     detail = "\n    ".join(lines)
     expect(not problems, "; ".join(problems) + "\n    " + detail)
