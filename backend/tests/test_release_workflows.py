@@ -40,7 +40,8 @@ class ReleasePathTests(unittest.TestCase):
     def test_a_release_promotes_the_image_of_the_commit_and_builds_nothing(self) -> None:
         text = (WORKFLOWS / "release.yml").read_text()
 
-        self.assertIn('source="$IMAGE:sha-$GITHUB_SHA"', text)
+        self.assertIn('source="$IMAGE:sha-$commit"', text)
+        self.assertIn('commit="$(git rev-parse HEAD)"', text)
         self.assertIn("--preserve-digests", text)
         self.assertIn('test "sha256:$pushed" = "$digest"', text)
         for building in ("docker build", "buildx", "build-push-action"):

@@ -37,7 +37,9 @@ jobs:
           CREDENTIALS: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          source="$IMAGE:sha-$GITHUB_SHA"
+          # The commit the tag points to, whether the tag is lightweight or annotated.
+          commit="$(git rev-parse HEAD)"
+          source="$IMAGE:sha-$commit"
           if ! docker run --rm "$SKOPEO" inspect --raw --creds "$CREDENTIALS" "docker://$source" > /dev/null; then
             echo "::error::cannot read $source. A commit CI has not passed on main (yet) has no tested image: tag one it has passed, or run this job again when it has. Any other cause is in the output above."
             exit 1
@@ -64,7 +66,7 @@ jobs:
           # GitHub renames an asset whose name starts with a dot (".env.example" would be "default.env.example").
           cp .env.example "$assets/env.example"
           {
-            echo "Image: \`$IMAGE:$GITHUB_REF_NAME\` (\`$DIGEST\`). Samma image som CI testade för commit ${GITHUB_SHA::7}; den är inte ombyggd."
+            echo "Image: \`$IMAGE:$GITHUB_REF_NAME\` (\`$DIGEST\`). Samma image som CI testade för commit $(git rev-parse --short=7 HEAD); den är inte ombyggd."
             echo
             echo "Driftsättning med Dokploy eller Portainer: ladda ner \`docker-compose.yml\` och \`env.example\` nedan, spara den andra som \`.env\`, fyll i den och sätt \`MODULE_VERSION=$GITHUB_REF_NAME\`. Se [Driftsätt med Dokploy eller Portainer](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/operations.md#driftsätt-med-dokploy-eller-portainer)."
           } > "$RUNNER_TEMP/notes.md"
