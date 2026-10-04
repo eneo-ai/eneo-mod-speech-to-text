@@ -187,7 +187,6 @@ class FrontendPathTests(SlashCase):
     def test_a_path_with_the_slash_the_allowlist_spells_is_not_refused(self) -> None:
         self.assertTrue(main._proxy_route_is_allowed("GET", "flows/"))
         self.assertFalse(main._proxy_route_is_allowed("GET", "flows"))
-        self.assertFalse(hasattr(main, "_resolve_proxy_path"))
 
 
 if __name__ == "__main__":

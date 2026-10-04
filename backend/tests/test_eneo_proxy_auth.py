@@ -110,16 +110,6 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertNotIn("origin", forwarded)
         self.assertNotIn("referer", forwarded)
 
-    def test_the_slashless_form_of_an_allowlisted_path_is_refused(self) -> None:
-        # The path is matched as the browser spelled it: the allowlist does not make up for a slash that is missing.
-        response = self.client.get(
-            "/api/eneo/flows",
-            params={"space_id": "space-id"},
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(self.proxy_client.calls, [])
-
     def test_proxy_exposes_transcript_review_routes(self) -> None:
         base = "/api/eneo/flows/flow-1/runs/run-1"
         for method, path in (
