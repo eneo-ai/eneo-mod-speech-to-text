@@ -582,11 +582,11 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
 def launch_commands() -> dict[str, list[str]]:
     """Every way the repository starts the module backend."""
     dockerfile = (REPOSITORY / "Dockerfile").read_text()
-    readme = (REPOSITORY / "README.md").read_text()
+    development = (REPOSITORY / "docs" / "development.md").read_text()
     return {
         "production image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
-        "README dev server": shlex.split(
-            re.search(r"^(\.venv/bin/python -m app\.serve .+)$", readme, re.M)[1]
+        "development server": shlex.split(
+            re.search(r"^(\.venv/bin/python -m app\.serve .+)$", development, re.M)[1]
         ),
     }
 
