@@ -2,16 +2,13 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - img "Sundsvalls kommun"
+    - text: Tal till text
+    - link "Alla flöden":
       - /url: /flows
-      - img "Sundsvalls kommun"
-      - text: ""
-    - text: "Läge: Spela in"
+    - button "Öppna konto för Erik Lund":
+      - img "Erik Lund": EL
 - main:
-  - link "Alla flöden":
-    - /url: /flows
-    - text: ""
-    - status
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.

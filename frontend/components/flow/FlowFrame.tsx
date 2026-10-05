@@ -1,26 +1,24 @@
 import type { ReactNode } from "react";
-import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
-import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { AccountMenu } from "@/components/AccountMenu";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { HeaderBrand } from "@/components/HeaderBrand";
 import { ModuleShell } from "@/kit/ModuleShell";
-import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";
 import { PRODUCT_NAME } from "@/lib/product";
 
 /**
  * The frame of every view of a flow's page: the top bar, the skip link, the one main region and the page's width.
  *
- * The bar's way back is the arrow below a laptop's width and the brand from it; `aside` (the flow, beside the
- * working card from a laptop's width) says the flow's name there, so a view with an aside gives no `title`. A view
- * without one names the flow in the bar on a phone or tablet. Locked, it offers no way off the page at all.
+ * The bar is the same in every state: the way back ("Alla flöden") at every width, after the brand from a laptop's
+ * width, and the account (signing out asks first while leaving would lose something). `aside` (the flow, beside the
+ * working card from a laptop's width) says the flow's name; a view without one names the flow in the bar on a phone
+ * or tablet. Locked, it offers no way off the page at all.
  */
 export function FlowFrame({
   title,
   titleIsHeading = true,
-  trailing,
   locked = false,
   fill = false,
   aside,
@@ -30,8 +28,6 @@ export function FlowFrame({
   title?: string;
   /** False where the view's own heading names its state, as a run's views do. */
   titleIsHeading?: boolean;
-  /** Replaces the account menu on every width, e.g. with the mode while recording, which signing out would drop. */
-  trailing?: ReactNode;
   /** While leaving would abort what the view is doing (an upload under way): the view's own way out is the only one. */
   locked?: boolean;
   /** The window's height, with panes that scroll on their own (a recording); otherwise the page grows. */
@@ -40,23 +36,13 @@ export function FlowFrame({
   aside?: ReactNode;
   children: ReactNode;
 }) {
-  const account = !locked && trailing === undefined;
   const heading = (
     <>
-      {!locked && (
-        <Button
-          as={RouterLink}
-          href="/flows"
-          label="Alla flöden"
-          isIconOnly
-          icon={<Icon icon="chevronLeft" />}
-          variant="ghost"
-          className={styles.belowLaptop}
-        />
-      )}
+      {/* No link: the way back beside it is the one to the flows. */}
       <span className={[styles.bare, styles.fromLaptop].join(" ")}>
-        <HeaderBrand linked={!locked} />
+        <HeaderBrand linked={false} />
       </span>
+      {!locked && <BackToFlows variant="ghost" />}
     </>
   );
   return (
@@ -70,12 +56,12 @@ export function FlowFrame({
             {title}
           </Heading>
         ) : (
-          <Text as="p" weight="semibold" type="large" className={styles.belowLaptop}>
+          <Text as="p" weight="semibold" type="large" className={[styles.belowLaptop, styles.besideTheWayBack].join(" ")}>
             {title}
           </Text>
         ))
       }
-      end={trailing ?? (account && <AccountMenu />)}
+      end={!locked && <AccountMenu />}
       height={fill ? "fill" : "auto"}
     >
       <div className={[styles.page, aside && styles.columns, fill && styles.fill].filter(Boolean).join(" ")}>

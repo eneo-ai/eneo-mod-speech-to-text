@@ -27,18 +27,18 @@ test("the frame is the shell's one main region, with the page's skip link and a 
   assert.ok(view.container.querySelector('[data-testid="skip-to-content"]'), "the skip link comes with the shell");
 });
 
-test("the way back is the arrow below a laptop and the brand from it; locked, the page offers neither nor the account", async () => {
+test("the way back is one link named Alla flöden in the bar at every width, with the account; locked, the page offers neither", async () => {
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const exits = (container: HTMLElement) => ({
-    arrow: container.querySelectorAll('a[aria-label="Alla flöden"]').length,
+    back: [...container.querySelectorAll('[role="banner"] a[href="/flows"]')].filter((a) => a.textContent?.trim() === "Alla flöden").length,
     links: container.querySelectorAll('a[href="/flows"]').length,
     account: [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto")).length,
   });
   const open = await mount(await signedIn(createElement(FlowFrame, { children: null })));
-  assert.deepEqual(exits(open.container), { arrow: 1, links: 2, account: 1 });
+  assert.deepEqual(exits(open.container), { back: 1, links: 1, account: 1 }, "the brand beside it is no second link");
   await open.unmount();
   const locked = await mount(await signedIn(createElement(FlowFrame, { locked: true, children: null })));
-  assert.deepEqual(exits(locked.container), { arrow: 0, links: 0, account: 0 });
+  assert.deepEqual(exits(locked.container), { back: 0, links: 0, account: 0 });
 });
 
 test("a view with no aside names the flow in the bar, as a heading only where the view has none of its own", async () => {
@@ -74,20 +74,12 @@ test("the aside says only what the flow has: no description, no classification a
   assert.equal(view.container.querySelectorAll('[role="note"]').length, 0);
   assert.equal(view.container.querySelectorAll("button").length, 0, "no fold without a summary");
   assert.equal(view.container.querySelectorAll("p").length, 0, "no empty description");
-  assert.equal(view.container.querySelectorAll("a").length, 1, "the way back from laptops");
+  assert.equal(view.container.querySelectorAll("a").length, 0, "the way back is the bar's");
   await view.unmount();
   const described = await mount(
     await signedIn(createElement(FlowAside, { published: { ...FLOW, description: "Skapar protokoll." }, details: null })),
   );
   assert.match(described.container.textContent ?? "", /Skapar protokoll\./);
-});
-
-test("locked, the aside keeps the way back's place without offering it", async () => {
-  const { FlowAside } = await import("../components/flow/FlowAside");
-  const view = await mount(await signedIn(createElement(FlowAside, { published: FLOW, locked: true, details: null })));
-  assert.equal(view.container.querySelectorAll("a").length, 0, "no link");
-  const reserved = view.container.querySelector('[aria-hidden="true"]');
-  assert.match(reserved?.textContent ?? "", /Alla flöden/, "its place is kept, hidden from every reader");
 });
 
 test("the folded details are one named button; closed they stay in the page, so what was typed survives", async () => {

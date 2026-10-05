@@ -229,7 +229,7 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Skapad (i dag|i går|\d+ \w+) 16:02/);
   assert.match(words, /Hur resultatet togs fram 4 steg/);
   assert.match(words, /Ny inspelning/);
-  assert.match(words, /Alla flöden/);
+  assert.doesNotMatch(words, /Alla flöden/, "the way back is the page's bar, not the result's own");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
   // The page's frame supplies the one main region and its width; the result is what goes in it.
   assert.doesNotMatch(html, /<main|role="main"/);

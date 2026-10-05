@@ -46,7 +46,6 @@ export function FlowRunPage({
           published={published}
           classification={contract.security_classification}
           titleIsHeading={false}
-          locked={locked}
           compact
           details={
             rows.length > 0 && (

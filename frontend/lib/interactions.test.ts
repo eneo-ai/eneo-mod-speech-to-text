@@ -551,7 +551,8 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   );
   // The shell's one main region: a div with the role, not a <main> element.
   const main = view.container.querySelector('[role="main"]')!;
-  assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
+  const bar = view.container.querySelector('[role="banner"]')!;
+  assert.ok([...bar.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "the way back is the bar's");
   assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
   assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
   const rows = [...main.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling?.textContent}`);
@@ -771,11 +772,11 @@ test("upload under way: the header offers no way off the page, which would abort
   await view.unmount();
 });
 
-test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
+test("every state of the flow's page keeps the same bar: the way back and the account (signing out asks first while something would be lost)", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount((await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }))).tree);
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it); the router asks about them");
+  const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
+  assert.deepEqual(exits(view.container), { links: 1, account: 1 });
   await view.unmount();
 });
 

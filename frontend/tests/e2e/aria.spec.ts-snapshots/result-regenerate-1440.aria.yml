@@ -2,8 +2,6 @@
   - heading "Dokumentet är klart" [level=1]
   - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
   - button "Ny inspelning"
-  - link "Alla flöden":
-    - /url: /flows
   - note:
     - text: Dokumentet skapades före dina rättningar Den nya versionen görs från det rättade transkriptet.
     - button "Skapa dokumentet igen med rättningarna"

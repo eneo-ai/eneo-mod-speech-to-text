@@ -116,6 +116,14 @@
   }
 }
 
+/* The flow's name beside the way back and the account, where a phone has room for it; on the narrowest the view's own
+   heading names what it is. */
+@media (max-width: 359.98px) {
+  .besideTheWayBack {
+    display: none;
+  }
+}
+
 /* The flow's details, folded into one line on a phone or tablet (a bordered row, like a field) and always shown from
    a laptop's width. */
 .fold {
@@ -154,9 +162,4 @@
     font-size: var(--font-size-lg);
     line-height: 1.3;
   }
-}
-
-/* The way back's place while the page may not be left: kept, so the flow's name does not move. */
-.reserve {
-  visibility: hidden;
 }

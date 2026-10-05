@@ -2,11 +2,9 @@ import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { FlowAside } from "@/components/flow/FlowAside";
@@ -160,15 +158,6 @@ export function FlowInput({
       <TabTitle input={input} flowName={published.name} />
       <FlowFrame
         fill={group === "capture"}
-        trailing={
-          holdsAudio && mode ? (
-            <HStack gap={1}>
-              {/* Alone, "Spela in" reads like a command. */}
-              <VisuallyHidden>Läge: </VisuallyHidden>
-              <Token label={MODE_TEXT[mode].name} color="blue" />
-            </HStack>
-          ) : undefined
-        }
         aside={
           <FlowAside
             published={published}

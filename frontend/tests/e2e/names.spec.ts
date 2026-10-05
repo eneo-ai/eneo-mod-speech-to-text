@@ -217,10 +217,12 @@ test("a page that is still loading says so, under the page's heading", async ({ 
   }
 });
 
-test("while recording, the top bar names the mode and the folded details say what they are", async ({ page }, info) => {
+test("while recording, the top bar is the one every state has and the folded details say what they are", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "the phone's top bar and folded details");
   await STATES.find((s) => s.name === "recording")!.go(page, info);
-  await expect(page.getByRole("banner")).toContainText("Läge: Spela in");
+  const bar = page.getByRole("banner");
+  await expect(bar.getByRole("link", { name: "Alla flöden" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: /^Öppna konto för/ })).toBeVisible();
   expect(await axNode(page.getByRole("button", { name: /Deltagare: Anna Berg/ }))).toMatchObject({
     name: "Uppgifter, Deltagare: Anna Berg",
   });

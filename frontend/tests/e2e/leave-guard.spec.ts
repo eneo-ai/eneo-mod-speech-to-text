@@ -122,15 +122,15 @@ test("the page writing ?run= (a run starts) asks nothing and adds no history ent
   await expect(question(page)).toHaveCount(0);
 });
 
-test("a link in the bar, and the brand, ask once each; Stanna kvar stays", async ({ page }) => {
+test("the bar's way back asks once each time; Stanna kvar stays, and the brand beside it is no second way off", async ({ page }) => {
   await recordingInVisit(page);
   const before = await historyOf(page);
-  await backLink(page).click();
-  await asked(page);
-  await stay(page);
-  await page.getByRole("link", { name: /^Tal till text/ }).filter({ visible: true }).first().click();
-  await asked(page);
-  await stay(page);
+  for (const _ of [1, 2]) {
+    await backLink(page).click();
+    await asked(page);
+    await stay(page);
+  }
+  await expect(page.getByRole("link", { name: /^Tal till text/ })).toHaveCount(0);
   expect(await historyOf(page)).toEqual(before);
 });
 
@@ -171,6 +171,19 @@ test("Logga ut asks before the logout request is sent: Stanna kvar sends none, L
   await expect(page).not.toHaveURL(new RegExp(`/flows/${ids.flows.flow1}`));
   await expect(question(page), "the way on is not asked a second time").toHaveCount(0);
   expect(logouts).toHaveLength(1);
+});
+
+test("Logga ut while recording asks first, and Stanna kvar keeps the recording and the login", async ({ page }) => {
+  const logouts: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname.replace(/\/$/, "") === "/api/auth/logout") logouts.push(request.url());
+  });
+  await recordingInVisit(page);
+  await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+  await page.getByRole("menuitem", { name: "Logga ut" }).click();
+  await asked(page);
+  await stay(page);
+  expect(logouts, "nothing signed out").toEqual([]);
 });
 
 test("Forward after Stanna kvar asks nothing and breaks nothing", async ({ page }) => {
