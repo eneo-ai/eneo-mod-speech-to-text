@@ -15,7 +15,7 @@
 //     talaren oavgjord. Återställning tar bort beslutsöverlägget.
 //   - Talaretiketter måste ha formen SPEAKER_NN.
 
-import { effectiveSpeakerLabel, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
 
 /** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
 export const MAX_SPEAKER_EDITS = 2000;
@@ -142,7 +142,7 @@ export function applyCorrections(
     const occurrences = bySegment.get(index);
     const speaker = speakerBySegment.get(index);
     if (!occurrences && speaker === undefined) return segment;
-    const next: TranscriptSegment = { ...segment, modelSpeaker: segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker };
+    const next: TranscriptSegment = { ...segment, modelSpeaker: modelSpeakerOf(segment) };
     if (occurrences && occurrences.length > 0) {
       next.text = correctedSegmentText(segment.text, occurrences);
       const display = displayRanges(segment.text, occurrences);
@@ -196,7 +196,7 @@ export function applyCorrections(
       const sourceWords = raw.words?.filter((w) => w.charStart >= 0 && w.charStart < to && w.charEnd > from);
       const next: TranscriptSegment = {
         ...segment, sourceSegmentIndex: index, sourceCharStart: from, sourceCharEnd: to,
-        modelSpeaker: raw.modelSpeaker === undefined ? raw.speaker : raw.modelSpeaker,
+        modelSpeaker: modelSpeakerOf(raw),
         text: segment.text.slice(start, end),
         ...(edit ? { speaker: edit.speaker, decision: edit.decision ?? "confirmed" } : {}),
         ...(edits.length && sourceWords?.length ? { start: Math.min(...sourceWords.map((w) => w.start)), end: Math.max(...sourceWords.map((w) => w.end)) } : {}),
@@ -503,7 +503,7 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
     if (!segment.text.trim()) continue;
     if (multiple && segment.fileIndex !== file) { lines.push(`## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
     const label = effectiveSpeakerLabel(segment, (s) => s ? names[s]?.trim() || s : "");
-    const marker = label === "Överlappande tal – osäker talare" || label === "Talare går inte att avgöra";
+    const marker = label === OVERLAP_SPEAKER || label === UNDECIDED_SPEAKER;
     lines.push(`[${textTimestamp(segment.start)} - ${textTimestamp(segment.end)}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
   }
   return lines.join("\n");

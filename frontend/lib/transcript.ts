@@ -181,10 +181,10 @@ export function parseTranscriptText(
       fileIndex,
       start: hms(h1, m1, s1),
       end: hms(h2, m2, s2),
-      speaker: speaker?.includes("Överlappande tal") || speaker?.includes("Talare går inte att avgöra") ? null : speaker ? labelFor(speaker.trim()) : null,
+      speaker: speaker?.includes("Överlappande tal") || speaker?.includes(UNDECIDED_SPEAKER) ? null : speaker ? labelFor(speaker.trim()) : null,
       text: body,
       ...(speaker?.includes("Överlappande tal") ? { speakerAttribution: "provisional" as const } : {}),
-      ...(speaker?.includes("Talare går inte att avgöra") ? { decision: "unresolved" as const } : {}),
+      ...(speaker?.includes(UNDECIDED_SPEAKER) ? { decision: "unresolved" as const } : {}),
     });
   }
   return segments;
@@ -293,9 +293,18 @@ export function needsSpeakerReview(segment: TranscriptSegment): boolean {
   return segment.speakerAttribution === "provisional" || Boolean(segment.overlapIds?.length);
 }
 
+/** Who Eneo's model said spoke the passage: its own attribution when it gave one, else the speaker the passage has. */
+export function modelSpeakerOf(segment: Pick<TranscriptSegment, "speaker" | "modelSpeaker">): string | null {
+  return segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker;
+}
+
+/** What a passage says in place of a speaker when the review decided it cannot be told, and while it is still to check. */
+export const UNDECIDED_SPEAKER = "Talare går inte att avgöra";
+export const OVERLAP_SPEAKER = "Överlappande tal – osäker talare";
+
 export function effectiveSpeakerLabel(segment: TranscriptSegment, name: (label: string | null) => string): string {
-  if (segment.decision === "unresolved") return "Talare går inte att avgöra";
-  if (segment.decision !== "confirmed" && needsSpeakerReview(segment)) return "Överlappande tal – osäker talare";
+  if (segment.decision === "unresolved") return UNDECIDED_SPEAKER;
+  if (segment.decision !== "confirmed" && needsSpeakerReview(segment)) return OVERLAP_SPEAKER;
   return name(segment.speaker);
 }
 
