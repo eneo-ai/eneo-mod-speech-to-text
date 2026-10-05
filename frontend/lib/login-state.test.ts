@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
 
 const sessionEnded = () =>

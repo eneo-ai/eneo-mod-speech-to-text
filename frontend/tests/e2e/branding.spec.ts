@@ -12,7 +12,7 @@ const VARIANT = process.env.STUB_BRANDING;
 const ACCENT = { light: "rgb(30, 123, 52)", dark: "rgb(42, 174, 74)" } as const; // #1E7B34, and #2AAE4A derived from it
 const states = STATES.filter((state) => state.name.startsWith("branding-"));
 
-test.beforeEach(({}, info) =>
+test.beforeEach(() =>
   test.skip(!VARIANT, "needs the stub as a deployment with its own organisation: npm run test:a11y:branding"),
 );
 

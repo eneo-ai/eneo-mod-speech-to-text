@@ -4,7 +4,6 @@
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { clippedFocus } from "./checks";
 import { chooseMode, endLogin, isLaptop, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 

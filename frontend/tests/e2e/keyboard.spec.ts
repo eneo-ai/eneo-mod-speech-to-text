@@ -8,7 +8,7 @@
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, isLaptop, isPhone, run, setup, signIn, STATES } from "./screens";
+import { backLink, isLaptop, isPhone, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 const WALKS = [

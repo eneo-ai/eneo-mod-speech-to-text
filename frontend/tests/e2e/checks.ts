@@ -390,12 +390,6 @@ function probeFocus(page: Page) {
       return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
-    const luminance = ([r, g, b]: Rgba) =>
-      [r, g, b].map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
-    const contrast = (a: Rgba, b: Rgba) => {
-      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-      return (hi + 0.05) / (lo + 0.05);
-    };
     // The colour a box shows: its own background over those behind it.
     const background = (e: Element | null): Rgba => {
       if (!e) return [255, 255, 255, 1];
