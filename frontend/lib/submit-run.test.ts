@@ -441,17 +441,22 @@ test("a send cancelled as its upload finishes starts no run, and cancelling stop
   later.abort();
   await assert.rejects(sending, { name: "AbortError" });
 
-  // The real request hands the signal to fetch.
+  // The real request ends when the page's signal does: fetch is given a signal that follows it.
   const browserFetch = globalThis.fetch;
   let fetched: AbortSignal | null | undefined;
-  globalThis.fetch = async (_input, init) => {
-    fetched = init?.signal;
-    return new Response(JSON.stringify(queuedRun), { status: 201, headers: { "content-type": "application/json" } });
-  };
+  globalThis.fetch = (_input, init) =>
+    new Promise((_resolve, reject) => {
+      fetched = init?.signal;
+      init?.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
+    });
   try {
-    const signal = new AbortController().signal;
-    await startRun("flow-1", { expected_flow_version: 3 }, "flow-run:recording:r1", signal);
-    assert.equal(fetched, signal);
+    const own = new AbortController();
+    const sent = startRun("flow-1", { expected_flow_version: 3 }, "flow-run:recording:r1", own.signal);
+    await until(() => fetched !== undefined);
+    assert.equal(fetched?.aborted, false);
+    own.abort();
+    await assert.rejects(sent, { name: "AbortError" });
+    assert.equal(fetched?.aborted, true, "the request in flight is stopped");
   } finally {
     globalThis.fetch = browserFetch;
   }

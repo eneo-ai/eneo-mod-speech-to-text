@@ -180,6 +180,74 @@ export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   await page.goto(`/flows/${flow}?run=${id}`);
 }
 
+/**
+ * Holds the requests to `url`: the module took them and says nothing. `letThrough` lets the requests made after it go on
+ * as they would; the held ones stay held.
+ */
+export async function hold(page: Page, url: string | RegExp) {
+  let holding = true;
+  await page.route(url, (route) => (holding ? undefined : route.fallback()));
+  return { letThrough: () => void (holding = false) };
+}
+
+/** The page's own clock, past the point where a wait that has no answer says so (components/SlowWait). */
+export const pastSlowWait = (page: Page) => page.clock.fastForward(15_000);
+const slowWaitSays = (page: Page) => expect(page.getByText("Det tar längre tid än vanligt.")).toBeVisible();
+
+/** A flow's page whose reads of the flow get no answer, for more than 15 s. */
+export async function flowSlow(page: Page) {
+  await page.clock.install();
+  const held = await hold(page, `**/api/eneo/flows/${ids.flows.flow1}/published/`);
+  await page.goto(`/flows/${ids.flows.flow1}`);
+  await expect(page.getByRole("status").filter({ hasText: "Laddar flödet…" })).toBeAttached();
+  await pastSlowWait(page);
+  await slowWaitSays(page);
+  return held;
+}
+
+/** The flow list whose reads get no answer, for more than 15 s. */
+export async function flowsSlow(page: Page) {
+  await page.clock.install();
+  const held = await hold(page, "**/api/eneo/flows/?*");
+  await page.goto("/flows");
+  await expect(page.getByRole("status").filter({ hasText: "Laddar flödena…" })).toBeAttached();
+  await pastSlowWait(page);
+  await slowWaitSays(page);
+  return held;
+}
+
+/** An earlier run opened by its address, its status reads answered by nothing, for more than 15 s. */
+export async function runOpeningSlow(page: Page) {
+  await page.clock.install();
+  const held = await hold(page, `**/runs/${ids.runs.done}/status/**`);
+  await run(page, ids.runs.done);
+  await expect(page.getByRole("status").filter({ hasText: "Hämtar körningen…" })).toBeAttached();
+  await pastSlowWait(page);
+  await slowWaitSays(page);
+  return held;
+}
+
+/**
+ * A run that is shown going on, whose status then cannot be read: the page says it tries again, and then that it takes
+ * long. `mend` lets the reads through again.
+ */
+export async function runReconnecting(page: Page) {
+  await page.clock.install();
+  let failing = false;
+  await page.route(`**/runs/${ids.runs.running}/status/**`, (route) =>
+    failing ? route.fulfill({ status: 503, json: { code: "internal_error" } }) : route.fallback(),
+  );
+  await run(page, ids.runs.running);
+  await heading(page, "Dokumentet skapas");
+  failing = true;
+  // The next poll is two seconds on, and fails.
+  await page.clock.fastForward(2_000);
+  await expect(page.getByText("Försöker igen. Körningen fortsätter i Eneo.")).toBeVisible();
+  await pastSlowWait(page);
+  await slowWaitSays(page);
+  return { mend: () => void (failing = false) };
+}
+
 /** The finished run with its transcript loaded. */
 export async function result(page: Page) {
   await run(page, ids.runs.done);
@@ -673,6 +741,14 @@ export const STATES: State[] = [
       await heading(page, "Dokumentet skapas");
       await expect(page.getByRole("status").filter({ hasText: "Skriv rapporten" })).toBeVisible();
     },
+  },
+  { name: "flow-slow", go: async (page) => void (await flowSlow(page)) },
+  { name: "flows-slow", go: async (page) => void (await flowsSlow(page)) },
+  { name: "run-opening-slow", go: async (page) => void (await runOpeningSlow(page)) },
+  {
+    name: "run-reconnecting",
+    expects: [{ console: /status of 503.*\/status\// }],
+    go: async (page) => void (await runReconnecting(page)),
   },
   {
     name: "run-started",

@@ -86,7 +86,7 @@ type RunState =
   | { kind: "idle" }
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
-  | { kind: "opening" }
+  | { kind: "opening"; runId: string }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
@@ -120,6 +120,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
+  // Counts the person's "Försök igen" on a flow that is slow to load; each one loads it again.
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  // The run's status cannot be read now, and is asked for again by itself.
+  const [pollTrouble, setPollTrouble] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
@@ -196,7 +200,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowId]);
+  }, [flowId, loadAttempt]);
 
   useEffect(() => {
     return () => {
@@ -318,7 +322,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRunError(null);
     setRetryRefusal(null);
     writeRunIdToUrl(runId);
-    setRun({ kind: "opening" });
+    setRun({ kind: "opening", runId });
     void follow(runId);
   }
 
@@ -331,9 +335,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const controller = new AbortController();
     followAbortRef.current = controller;
     const { signal } = controller;
+    setPollTrouble(false);
     try {
       const last = await followRun(flowId, runId, {
         signal,
+        onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
         onSnapshot: ({ run: current, graph: runGraph }) => {
           if (runOutcome(current.status) || current.status === "awaiting_review") return;
           setRun({ kind: "running", run: current, graph: runGraph });
@@ -364,6 +370,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph });
     } catch (err) {
       if (signal.aborted) return;
+      setPollTrouble(false);
       setRunError(friendlyError(err));
       setRun({ kind: "idle" });
     }
@@ -550,7 +557,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   useRouteReady(loadError !== null || (published !== null && contract !== null));
   if (loadError) return <FlowUnavailable error={loadError} />;
-  if (!published || !contract) return <FlowSkeleton />;
+  if (!published || !contract) return <FlowSkeleton onRetry={() => setLoadAttempt((n) => n + 1)} />;
 
   // The views that can hold unsent work: the leave question, and their top bar's exits through it.
   const withLeave = (view: ReactNode) => (
@@ -627,7 +634,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  if (run.kind === "opening") return flowPage(<RunOpening />);
+  if (run.kind === "opening") return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.runId)} />);
 
   if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
@@ -645,6 +652,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         )}
         startedAt={run.run.created_at}
         error={runError}
+        retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
         // Today's contract speaks only for a run of its own version.
         makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
         onCancel={() => onCancelRun(run.run.id)}

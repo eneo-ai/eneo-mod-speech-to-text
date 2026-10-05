@@ -14,6 +14,9 @@ import {
 
 export type Json = Record<string, unknown>;
 
+/** How long a request waits for the module's answer. The module's own wait for Eneo is 60 s, so this ends only what it never answers. */
+export const REQUEST_TIMEOUT_MS = 90_000;
+
 export class ApiError extends Error {
   status: number;
   code?: string;
@@ -76,6 +79,33 @@ function isUserChanged(error: ApiError): boolean {
   return error.status === 409 && (error.body as { detail?: unknown } | null)?.detail === "user_changed";
 }
 
+const requestTimedOut = () =>
+  new ApiError(408, "Det tog för lång tid att få svar. Försök igen.", null, "request_timed_out");
+
+/**
+ * fetch, ended when no answer has begun within REQUEST_TIMEOUT_MS (the module accepted the request and went quiet): a
+ * wait that would never end is a timeout the page can say and try again. The page's own signal still aborts it.
+ */
+async function fetchWithin(path: string, init: RequestInit): Promise<Response> {
+  const limit = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    limit.abort();
+  }, REQUEST_TIMEOUT_MS);
+  const cancel = () => limit.abort();
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    return await fetch(path, { ...init, signal: limit.signal });
+  } catch (error) {
+    throw timedOut ? requestTimedOut() : error;
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", cancel);
+  }
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
@@ -90,7 +120,7 @@ async function request<T>(
   const question = loginState.ask();
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetchWithin(path, {
       ...init,
       credentials: "include",
       headers: {

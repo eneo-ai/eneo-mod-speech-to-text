@@ -11,6 +11,7 @@ import { HeaderBrand } from "@/components/HeaderBrand";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { SlowWait } from "@/components/SlowWait";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
@@ -99,6 +100,7 @@ function FlowsListPage() {
                 <VisuallyHidden as="p" role="status">
                   Laddar flödena…
                 </VisuallyHidden>
+                <SlowWait flows={false} onRetry={retry} />
                 <FlowListSkeleton />
               </>
             ) : empty ? (

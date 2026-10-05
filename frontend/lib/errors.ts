@@ -146,6 +146,7 @@ const OWN_CODES = new Set([
   "not_started",
   "stalled",
   "server_not_responding",
+  "request_timed_out",
 ]);
 
 // "Failed to fetch" in Chromium, "NetworkError when attempting to fetch resource." in Firefox, "Load failed" in Safari.
