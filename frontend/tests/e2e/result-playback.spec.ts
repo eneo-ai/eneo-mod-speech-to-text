@@ -114,3 +114,37 @@ test("the way past the transcript appears on keyboard focus and reaches the play
   await page.keyboard.press("Tab");
   expect(await page.locator('[data-docked-player]').evaluate((player) => player.contains(document.activeElement))).toBe(true);
 });
+
+
+test("skip controls are disabled only at the recording boundaries", async ({ page }, info) => {
+  test.skip(info.project.use.viewport!.width < 640, "the compact player uses the position slider");
+  await result(page);
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const back = page.getByRole("button", { name: "Bakåt 10 sekunder" });
+  const forward = page.getByRole("button", { name: "Framåt 10 sekunder" });
+  const position = page.getByRole("slider", { name: "Position i inspelningen" });
+  await expect(back).toBeDisabled();
+  await expect(forward).toBeEnabled();
+  await expect(position).toHaveAttribute("aria-valuemax", "20");
+  await position.focus();
+  await page.keyboard.press("End");
+  await expect(forward).toBeDisabled();
+  await expect(back).toBeEnabled();
+  await back.focus();
+  await page.keyboard.press("Enter");
+  await expect(forward).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await expect(back).toBeDisabled();
+  await expect(position).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(forward).toBeFocused();
+  await position.focus();
+  await page.keyboard.press("Home");
+  await expect(back).toBeDisabled();
+  await expect(forward).toBeEnabled();
+  await forward.focus();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(forward).toBeDisabled();
+  await expect(position).toBeFocused();
+});

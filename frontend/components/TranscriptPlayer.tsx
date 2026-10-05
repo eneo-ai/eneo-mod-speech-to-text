@@ -291,7 +291,7 @@ export function TranscriptPlayer(
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [, dockRef] = useDock();
+  const [dock, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -391,6 +391,15 @@ export function TranscriptPlayer(
 
   function cycleRate() {
     playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
+  }
+
+  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
+    playback.skip(milliseconds);
+    const next = playback.getSnapshot();
+    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
+    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
+      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+    }
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
@@ -821,18 +830,18 @@ export function TranscriptPlayer(
             <IconButton
               variant="ghost"
               className={styles.skip}
-              isDisabled={audioUnavailable}
+              isDisabled={audioUnavailable || position.atMs === 0}
               label={`Bakåt ${SKIP_SECONDS} sekunder`}
               icon={<RotateCcw aria-hidden />}
-              onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
+              onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
             />
             <IconButton
               variant="ghost"
               className={styles.skip}
-              isDisabled={audioUnavailable}
+              isDisabled={audioUnavailable || position.atEnd}
               label={`Framåt ${SKIP_SECONDS} sekunder`}
               icon={<RotateCw aria-hidden />}
-              onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
+              onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
             />
             <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
               {rateLabel(rate)}

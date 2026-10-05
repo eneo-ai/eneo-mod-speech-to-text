@@ -40,12 +40,10 @@ const NO_RESPONSE: Record<string, string> = {
   'review-editor-selection | button "Rätta text"': "the correction field is open already: the state is reached by pressing it",
   'review-editor-speakers | button "Markera stycket: programledare/intervjuare"': "the passage is marked already: the state is reached by pressing it",
   'review-editor-speakers | button "Flytta uppspelningen till 0:00"': "the recording is paused at 0:00 already: it moves to where it is",
-  'review-editor-speakers | button "Bakåt 10 sekunder"': "the recording is at 0:00: it cannot go back",
 };
 for (const state of ["result", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "review", "review-reject"]) {
   NO_RESPONSE[`${state} | button "Alla"`] = "the speaker filter's chosen value: pressed again, it stays";
   NO_RESPONSE[`${state} | button "Spela från 0:00 i del 1"`] = "the recording is paused at 0:00 already: it moves to where it is";
-  NO_RESPONSE[`${state} | button "Bakåt 10 sekunder"`] = "the recording is at 0:00: it cannot go back";
 }
 
 const SELECTOR = [

@@ -50,6 +50,26 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
 
+test("an unknown audio length keeps forward skip available after moving the playhead", (t) => {
+  const playback = new Playback([{ url: "/audio/0", durationMs: null }], async () => null);
+  const media: MediaLike = {
+    src: "", currentTime: 0, duration: Number.NaN, paused: true, playbackRate: 1,
+    play: async () => undefined, pause: () => undefined, load: () => undefined,
+  };
+  playback.attach(media);
+  t.after(() => playback.attach(null));
+  playback.onLoadedMetadata();
+  media.currentTime = 10;
+  playback.onTimeUpdate();
+  const html = renderToStaticMarkup(createElement(TranscriptPlayer, {
+    segments, fileCount: 1, audioSrcFor: () => "/audio/0", speakerNames: {}, textFallback: "",
+    reviewEnabled: false, playback,
+  }));
+  const controls = parse(html);
+  assert.equal(controls.querySelector('button[aria-label="Framåt 10 sekunder"]')!.hasAttribute("disabled"), false);
+  assert.equal(controls.querySelector('button[aria-label="Bakåt 10 sekunder"]')!.hasAttribute("disabled"), false);
+});
+
 test("a link before the passages skips them: to the player under them, or past the transcript without audio", () => {
   for (const [fileCount, target] of [[2, /^<div[^>]*data-docked-player/], [0, /^<[a-z]+ id="[^"]+" tabindex="-1"/]] as const) {
     const html = render(fileCount);

@@ -86,7 +86,7 @@
         - button "Spela upp"
         - slider "Position i inspelningen"
         - text: /0:\d+ \/ 0:\d+/
-        - button /Bakåt \d+ sekunder/:
+        - button /Bakåt \d+ sekunder/ [disabled]:
           - status
         - button /Framåt \d+ sekunder/:
           - status
