@@ -497,7 +497,7 @@ test("a failed later save keeps the note that the document is older, and says wh
 
   // A later correction fails to save.
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => document.querySelector<HTMLInputElement>('dialog[open] input[type="radio"][value="SPEAKER_01"]')!.click());
   await view.act(async () => button(document.body, "Spara")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.ok(note(), "still said: the document is older than the saved corrections");
@@ -553,7 +553,7 @@ test("a save refused as stale reads the saved corrections again, says so, and of
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.equal(reads, 1);
   await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-  await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => document.querySelector<HTMLInputElement>('dialog[open] input[type="radio"][value="SPEAKER_01"]')!.click());
   await view.act(async () => button(document.body, "Spara")!.click());
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
   assert.equal(reads, 2, "the saved corrections are read again");
@@ -608,7 +608,7 @@ async function correcting(t: TestContext, onSave: () => Promise<Response>) {
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const correct = async () => {
     await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
-    await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
+    await view.act(async () => document.querySelector<HTMLInputElement>('dialog[open] input[type="radio"][value="SPEAKER_01"]')!.click());
     await view.act(async () => button(document.body, "Spara")!.click());
   };
   return { view, correct };

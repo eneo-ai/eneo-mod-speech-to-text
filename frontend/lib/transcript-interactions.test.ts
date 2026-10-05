@@ -42,13 +42,13 @@ const chip = (within: ParentNode, words: string) =>
   [...within.querySelectorAll<HTMLButtonElement>('[aria-label="Visa talare"] button')].find((b) => b.textContent?.includes(words))!;
 const searchField = (within: ParentNode) =>
   [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
-// "Ändra talare" is a popover of the top layer; its choices are radios, named by their words.
-const picker = () => document.querySelector("[data-popover-open]");
-const radios = (within = "[data-popover-open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];
+// "Ändra talare" uses a native dialog; its choices are radios, named by their words.
+const picker = () => document.querySelector("dialog[open]");
+const radios = (within = "dialog[open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];
 const radio = (name: string) => radios().find((input) => computeAccessibleName(input) === name)!;
 const pick = (value: string) => radios().find((input) => input.value === value)!;
 // The speakers to choose from are the picker's first group of radios; the scope ("Gäller") is the second.
-const speakerRadios = () => [...(document.querySelector('[data-popover-open] [role="radiogroup"]')?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
+const speakerRadios = () => [...(document.querySelector('dialog[open] [role="radiogroup"]')?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
 
 test("search counts the hits, marks them, and steps through them with buttons and Enter", async () => {
   const view = await player(meeting);
@@ -201,7 +201,7 @@ test("Ändra talare on a passage Eneo gave no speaker changes nothing: nothing i
   await view.act(async () => pick("SPEAKER_01").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.equal(saved.length, 0, "nothing sent");
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /kan inte ändras/);
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /kan inte ändras/);
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
 });
 
@@ -225,7 +225,7 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
   await view.act(async () => pick("SPEAKER_02").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.equal(saved.length, 0, "nothing sent");
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /fler än 2 000 talarändringar/);
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /fler än 2 000 talarändringar/);
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
 });
 

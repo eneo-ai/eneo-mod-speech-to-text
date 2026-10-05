@@ -72,23 +72,29 @@ test("a name list open when the login ends goes with its dialog, and the focus i
   expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null), "focus is in the dialog").toBe(true);
 });
 
-test("a change-speaker popover open when the login ends is covered with the page, and the page works after the new login", async ({ page }) => {
+test("a change-speaker dialog closes while the login has ended and returns with its choice after the new login", async ({ page }) => {
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   const trigger = page.getByRole("button", { name: "Anna Berg, ändra talare" }).first();
   await trigger.click();
   const picker = page.getByRole("dialog", { name: "Ändra talare" });
   await expect(picker).toBeVisible();
+  await picker.getByRole("radio", { name: "Erik Lund", exact: true }).check();
 
   await endLogin(page);
-  // Not a modal: it is part of the page, so the cover's inertness reaches it, though it is in the top layer.
+  // A native dialog escapes the page's inert cover, so it must close itself.
   await expect(picker).toBeHidden();
   expect(await page.locator("body").ariaSnapshot()).not.toMatch(/Ändra talare|Anna Berg/);
+  await tabStaysInSignIn(page);
 
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
-  await expect(trigger).toBeVisible();
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole("radio", { name: "Erik Lund", exact: true })).toBeChecked();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 test("the warning already open when the login ends becomes the sign-in dialog, which nothing but a new login closes", async ({ page }) => {

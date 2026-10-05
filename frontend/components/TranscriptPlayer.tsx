@@ -11,10 +11,11 @@ import {
 } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
-import { Popover, type PopoverTriggerRenderProps } from "@astryxdesign/core/Popover";
+import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
@@ -31,6 +32,7 @@ import { useDock } from "@/lib/dock";
 import { downloadBlob } from "@/lib/download";
 import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
+import { useSignedOut } from "@/components/AuthGate";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
@@ -79,6 +81,7 @@ const EMPTY_SET: ReadonlySet<string> = new Set();
 const SKIP_SECONDS = 10;
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
+type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick" | "aria-haspopup" | "aria-expanded" | "aria-controls">;
 /** The filter value for the passages Eneo asks someone to check: a to-do, not a speaker. */
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
@@ -936,7 +939,7 @@ function TurnBlock({
     wasEditing.current = editingHere;
   }, [editingHere]);
 
-  const picker = (trigger: (props: PopoverTriggerRenderProps) => React.ReactNode) => (
+  const picker = (trigger: (props: SpeakerPickerTrigger) => React.ReactNode) => (
     <SpeakerPicker
       current={toCheck || decision === "unresolved" ? null : turn.speaker}
       suggested={toCheck ? turn.speaker : null}
@@ -1162,88 +1165,105 @@ function SpeakerPicker({
   /** Saves the choice; returns why it was not saved, or null. */
   onPick: (speaker: string, all: boolean) => string | null;
   /** The button that opens it: the design system's own props for it go on the button. */
-  children: (trigger: PopoverTriggerRenderProps) => React.ReactNode;
+  children: (trigger: SpeakerPickerTrigger) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>(current ?? "");
   const [scope, setScope] = useState<"one" | "all">("one");
   const [problem, setProblem] = useState<string | null>(null);
   const others = suggested ? options.filter((label) => label !== suggested) : options;
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialogId = useId();
+  const covered = useSignedOut();
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus({ preventScroll: true });
+    wasOpen.current = open;
+  }, [open]);
+  const close = () => setOpen(false);
+  const submit = () => {
+    if (!choice) return;
+    const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
+    setProblem(refused);
+    if (!refused) close();
+  };
 
   return (
-    <Popover
-      isOpen={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
-          // Every opening starts from this passage alone; all of a speaker's passages is a deliberate choice.
+    <>
+      {children({
+        ref: trigger,
+        "aria-haspopup": "dialog",
+        "aria-expanded": open,
+        "aria-controls": dialogId,
+        onClick: () => {
           setChoice(current ?? "");
           setScope("one");
           setProblem(null);
-        }
-      }}
-      label="Ändra talare"
-      width="22rem"
-      placement="below"
-      alignment="start"
-      isModal={false}
-      hasCloseButton={false}
-      content={
-        // Only while it is open: a long meeting has hundreds of passages, none of them with a form of its own in the page.
-        open ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!choice) return;
-              const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
-              setProblem(refused);
-              if (!refused) setOpen(false);
-            }}
-          >
-            <div className={styles.pickerHead}>
-              <Text as="p" weight="semibold">Ändra talare</Text>
-              <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
-            </div>
-            <div className={styles.pickerList}>
-              <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
-                {suggested && (
-                  <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
+          setOpen(true);
+        },
+      })}
+      <Dialog
+        id={dialogId}
+        aria-label="Ändra talare"
+        isOpen={open && !covered}
+        onOpenChange={(next) => !next && close()}
+        width="22rem"
+        maxHeight="calc(100dvh - 2 * var(--spacing-4))"
+        purpose="form"
+      >
+        {/* A long meeting has hundreds of passages; only the open dialog needs its controls. */}
+        {open && (
+          <Layout
+            header={<DialogHeader title="Ändra talare" onOpenChange={close} />}
+            content={
+              <LayoutContent padding={0}>
+                <div className={styles.pickerHead}>
+                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
+                </div>
+                <div className={styles.pickerList}>
+                  <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
+                    {suggested && (
+                      <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
+                    )}
+                    {others.map((label) => (
+                      <PickerOption
+                        key={label}
+                        value={label}
+                        label={label}
+                        name={displayName(label)}
+                        note={label === stored && !toCheck ? "ursprunglig" : undefined}
+                      />
+                    ))}
+                    {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
+                  </RadioList>
+                </div>
+                {passages > 1 && choice !== UNRESOLVED && (
+                  <div className={styles.pickerSection}>
+                    <RadioList label="Gäller" value={scope} onChange={(value) => setScope(value as "one" | "all")}>
+                      <RadioListItem value="one" label="Bara det här inlägget" />
+                      <RadioListItem value="all" label={`Alla ${passages} inlägg från ${fromName}`} />
+                    </RadioList>
+                  </div>
                 )}
-                {others.map((label) => (
-                  <PickerOption
-                    key={label}
-                    value={label}
-                    label={label}
-                    name={displayName(label)}
-                    note={label === stored && !toCheck ? "ursprunglig" : undefined}
-                  />
-                ))}
-                {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
-              </RadioList>
-            </div>
-            {passages > 1 && choice !== UNRESOLVED && (
-              <div className={styles.pickerSection}>
-                <RadioList label="Gäller" value={scope} onChange={(value) => setScope(value as "one" | "all")}>
-                  <RadioListItem value="one" label="Bara det här inlägget" />
-                  <RadioListItem value="all" label={`Alla ${passages} inlägg från ${fromName}`} />
-                </RadioList>
-              </div>
-            )}
-            {problem && (
-              <div className={styles.pickerSection}>
-                <Banner status="error" title={problem} collapsible={false} />
-              </div>
-            )}
-            <HStack gap={2} hAlign="end" className={styles.pickerSection}>
-              <Button variant="ghost" size="sm" label="Avbryt" onClick={() => setOpen(false)} />
-              <Button type="submit" variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} />
-            </HStack>
-          </form>
-        ) : null
-      }
-    >
-      {children}
-    </Popover>
+                {problem && (
+                  <div className={styles.pickerSection}>
+                    <Banner status="error" title={problem} collapsible={false} />
+                  </div>
+                )}
+              </LayoutContent>
+            }
+            footer={
+              <LayoutFooter hasDivider>
+                <HStack gap={2} hAlign="end">
+                  <Button variant="ghost" size="sm" label="Avbryt" onClick={close} />
+                  <Button variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} onClick={submit} />
+                </HStack>
+              </LayoutFooter>
+            }
+          />
+        )}
+      </Dialog>
+    </>
   );
 }
 

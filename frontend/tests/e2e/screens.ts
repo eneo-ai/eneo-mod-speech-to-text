@@ -990,7 +990,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await run(page, ids.runs.review, ids.flows.flow2);
       await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
-      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("radio").first()).toBeFocused();
+      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("heading", { name: "Ändra talare" })).toBeFocused();
     },
   },
   {
