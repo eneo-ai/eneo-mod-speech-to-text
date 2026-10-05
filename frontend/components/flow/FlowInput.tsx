@@ -66,8 +66,8 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
-// Phone width, where the setup's primary action docks at the bottom of the page.
-const PHONE = "(max-width: 767px)";
+// Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
+const PHONE = "(max-width: 767.98px)";
 const subscribePhone = (onChange: () => void) => {
   const query = window.matchMedia(PHONE);
   query.addEventListener("change", onChange);
