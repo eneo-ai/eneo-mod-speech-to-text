@@ -1,12 +1,34 @@
-/* The module's own tokens (the transcript's speaker colours and the review marks follow below). Motion is on the
-   transitions.dev scale, namespaced: the design system declares --duration-fast (175 ms) in a layer above this one, and
-   an un-namespaced token here would be overridden by it. The recording dot, for CSS Modules, 3:1 on the card and the
-   muted surface in both colour modes. */
+/* The module's own tokens. Motion is on the transitions.dev scale, namespaced: the design system declares
+   --duration-fast (175 ms) in a layer above this one, and a token here without the prefix would be overridden by it. A colour is
+   one declaration for both colour modes, and lib/accessibility.test.ts asserts its contrast against the design system's
+   surfaces. */
 :root {
   --module-duration-quick: 150ms;
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
+  --module-page-width: 1180px;
+
+  /* The recording dot, for CSS Modules: 3:1 on the card and the muted surface. */
   --module-color-record: light-dark(#dc2828, #dd2c2c);
+
+  /* The transcript's speakers and the review marks. The first speaker is never the brand's blue, so a name is not read as a link. */
+  --module-speaker-0: light-dark(hsl(262 46% 48%), hsl(262 62% 74%));
+  --module-speaker-1: light-dark(hsl(152 48% 30%), hsl(152 52% 62%));
+  --module-speaker-2: light-dark(hsl(28 78% 34%), hsl(32 88% 66%));
+  --module-speaker-3: light-dark(hsl(330 52% 42%), hsl(330 62% 72%));
+  --module-speaker-4: light-dark(hsl(190 58% 33%), hsl(190 62% 62%));
+  --module-speaker-5: light-dark(hsl(70 45% 28%), hsl(70 45% 60%));
+  --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
+  --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
+
+/* A speaker's colour as the stylesheets read it: data-speaker-color is the speaker's index, from lib/transcript. */
+[data-speaker-color="0"] { --tint: var(--module-speaker-0); }
+[data-speaker-color="1"] { --tint: var(--module-speaker-1); }
+[data-speaker-color="2"] { --tint: var(--module-speaker-2); }
+[data-speaker-color="3"] { --tint: var(--module-speaker-3); }
+[data-speaker-color="4"] { --tint: var(--module-speaker-4); }
+[data-speaker-color="5"] { --tint: var(--module-speaker-5); }
 
 /* What the page rests on, in the layer of the design system's reset (after it, so these win over it, and below the
    system's own layers). */
@@ -37,20 +59,6 @@
     display: flex;
     flex-direction: column;
   }
-}
-
-/* The colours of the module's own surfaces (the transcript's speakers and the review marks), one declaration for both
-   colour modes. The first speaker is never the brand's blue, so a name is not read as a link. Contrast of each against
-   the design system's surfaces is asserted by lib/accessibility.test.ts. */
-:root {
-  --module-speaker-0: light-dark(hsl(262 46% 48%), hsl(262 62% 74%));
-  --module-speaker-1: light-dark(hsl(152 48% 30%), hsl(152 52% 62%));
-  --module-speaker-2: light-dark(hsl(28 78% 34%), hsl(32 88% 66%));
-  --module-speaker-3: light-dark(hsl(330 52% 42%), hsl(330 62% 72%));
-  --module-speaker-4: light-dark(hsl(190 58% 33%), hsl(190 62% 62%));
-  --module-speaker-5: light-dark(hsl(70 45% 28%), hsl(70 45% 60%));
-  --module-color-review: light-dark(hsl(42 95% 28%), hsl(47 92% 58%));
-  --module-color-ok: light-dark(hsl(152 55% 32%), hsl(152 50% 58%));
 }
 
 /* What is docked at the bottom of a phone's screen (the setup's primary action, a player) never hides what has the
@@ -143,9 +151,9 @@ img[data-brand-logo] {
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
-/* On a wide screen the bar's content stands in the page's column (1180 px, FlowFrame.module.css), so the brand is above
+/* On a wide screen the bar's content stands in the page's column (--module-page-width), so the brand is above
    the page's left edge and the account at its right, not a thousand pixels out at the window's edges. Up to 1440 px the
    bar's own padding already puts them at the page's edges. */
 @media (min-width: 1441px) {
-  .astryx-top-nav { padding-inline: calc((100% - 1180px) / 2 + var(--spacing-2)); }
+  .astryx-top-nav { padding-inline: calc((100% - var(--module-page-width)) / 2 + var(--spacing-2)); }
 }

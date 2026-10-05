@@ -2,7 +2,7 @@
  * The speaker-review editor: bespoke, because the text is content-editable and every word, passage and speaker change is
  * a span the code reads back (data-text-span, data-word-start, data-turn-index, data-segment-index). Semantic HTML and
  * design-system tokens only; the controls in the toolbar are the design system's own.
- * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in styles/globals.css), never an inline style.
+ * A speaker's colour is data-speaker-color (0 to 5), which styles/globals.css turns into --tint; never an inline style.
  */
 
 .editor {
@@ -14,13 +14,6 @@
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
 }
-
-.editor [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
-.editor [data-speaker-color="1"] { --tint: var(--module-speaker-1); }
-.editor [data-speaker-color="2"] { --tint: var(--module-speaker-2); }
-.editor [data-speaker-color="3"] { --tint: var(--module-speaker-3); }
-.editor [data-speaker-color="4"] { --tint: var(--module-speaker-4); }
-.editor [data-speaker-color="5"] { --tint: var(--module-speaker-5); }
 
 /* ---- The tools ---- */
 

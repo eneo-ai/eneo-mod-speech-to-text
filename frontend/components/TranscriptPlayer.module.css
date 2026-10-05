@@ -7,7 +7,7 @@
   user-select: none;
   border-radius: var(--radius-full);
   font-weight: var(--font-weight-semibold);
-  background: var(--color-text-secondary);
+  background: var(--tint, var(--color-text-secondary));
   color: var(--color-background-surface);
 }
 
@@ -28,13 +28,6 @@
   block-size: var(--spacing-9);
   font-size: var(--font-size-sm);
 }
-
-.mark[data-speaker-color="0"] { background: var(--module-speaker-0); }
-.mark[data-speaker-color="1"] { background: var(--module-speaker-1); }
-.mark[data-speaker-color="2"] { background: var(--module-speaker-2); }
-.mark[data-speaker-color="3"] { background: var(--module-speaker-3); }
-.mark[data-speaker-color="4"] { background: var(--module-speaker-4); }
-.mark[data-speaker-color="5"] { background: var(--module-speaker-5); }
 
 /* ---- The player (TranscriptPlayer): the text, its words, the tools above it and the player docked under it. ---- */
 
