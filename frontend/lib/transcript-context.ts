@@ -1,4 +1,5 @@
 import {
+  ApiError,
   getRunArtifactText,
   getRunSteps,
   getTranscriptSource,
@@ -230,9 +231,15 @@ export async function loadTranscriptContext({
     stepId = step?.step_id ?? null;
     speakerNames = speakerNamesFromSteps(steps);
     if (segments && stepId) {
+      let wordsProblem: string | null = null;
       const [words, sets] = await Promise.all([
-        // 404 är normalt: steget lagrade inga ordtider.
-        getTranscriptWords(flowId, runId, stepId).catch(() => null),
+        // A 404 is normal: the step stored no word times. Any other failure leaves the uncertain words unseen.
+        getTranscriptWords(flowId, runId, stepId).catch((error) => {
+          if (!(error instanceof ApiError && error.status === 404)) {
+            wordsProblem = "Kunde inte läsa transkriptets ordtider. Läs in sidan igen innan du redigerar eller godkänner.";
+          }
+          return null;
+        }),
         listTranscriptCorrections(flowId, runId).catch(() => {
           correctionProblem = "Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.";
           return [];
@@ -249,6 +256,7 @@ export async function loadTranscriptContext({
           correctionProblem = error instanceof Error ? error.message : "Rättningarna kunde inte läsas.";
         }
       }
+      correctionProblem ??= wordsProblem;
     }
   } catch {
     correctionProblem = "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner.";
