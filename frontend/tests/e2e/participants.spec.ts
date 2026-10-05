@@ -36,7 +36,12 @@ function row(page: Page) {
     document.body.append(line);
     const inputBaseline = atInput.getBoundingClientRect().bottom;
     line.remove();
-    return { field: box(input.closest(".astryx-text-input")!), button: box(add), inputBaseline, buttonBaseline };
+    const field = input.closest(".astryx-text-input")!;
+    // The corners where the field and the button meet: the field's end, the button's start.
+    const corners = [getComputedStyle(field), getComputedStyle(add)].flatMap((style, i) =>
+      i === 0 ? [style.borderStartEndRadius, style.borderEndEndRadius] : [style.borderStartStartRadius, style.borderEndStartRadius],
+    );
+    return { field: box(field), button: box(add), inputBaseline, buttonBaseline, corners };
   });
 }
 
@@ -54,6 +59,7 @@ test("Lägg till stands beside the field, level with it and off until a name is 
   expect(typed.button, "and Lägg till its own").toEqual(empty.button);
   expect([typed.button.top, typed.button.height], "Lägg till is the field's height, on its line").toEqual([typed.field.top, typed.field.height]);
   expect(Math.abs(typed.buttonBaseline - typed.inputBaseline), "their words stand on one baseline").toBeLessThanOrEqual(1);
+  expect(typed.corners, "one piece: square where the field and the button meet").toEqual(["0px", "0px", "0px", "0px"]);
   await input.fill("");
   await expect(add, "off again once the field is empty").toBeDisabled();
 });

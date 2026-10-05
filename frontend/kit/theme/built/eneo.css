@@ -434,6 +434,11 @@
     padding-block: var(--spacing-0-5);
   }
 
+  .astryx-button:is(.astryx-input-group > :not(:first-child)) {
+    border-start-start-radius: 0;
+    border-end-start-radius: 0;
+  }
+
   .astryx-button[data-size="sm"] {
     min-height: var(--size-element-sm);
   }

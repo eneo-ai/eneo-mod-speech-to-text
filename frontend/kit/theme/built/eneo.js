@@ -311,7 +311,11 @@ export const eneoTheme = {
         "whiteSpace": "normal",
         "height": "auto",
         "minHeight": "var(--size-element-md)",
-        "paddingBlock": "var(--spacing-0-5)"
+        "paddingBlock": "var(--spacing-0-5)",
+        ":is(.astryx-input-group > :not(:first-child))": {
+          "borderStartStartRadius": "0",
+          "borderEndStartRadius": "0"
+        }
       },
       "size:sm": {
         "minHeight": "var(--size-element-sm)"
