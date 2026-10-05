@@ -15,10 +15,10 @@ import { FlowFrame } from "@/components/flow/FlowFrame";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
+import { ReviewView } from "@/components/flow/ReviewView";
 import { FlowRunPage } from "@/components/flow/FlowRunPage";
 import type { OfflineWaiting } from "@/components/OfflineBanner";
 import { SubmittingView, type SubmissionState } from "@/components/flow/SubmittingView";
-import { ReviewView } from "@/components/flow/ReviewView";
 import { continueFromPause } from "@/lib/review-continue";
 import { useFlowSession } from "@/components/flow/useFlowSession";
 import { LeaveContext, useLeaveQuestion } from "@/components/flow/useLeaveQuestion";
@@ -589,7 +589,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const holding = adopting && run.kind === "idle";
   useRouteReady(loadError !== null || (published !== null && contract !== null && !holding));
   if (loadError) return <FlowUnavailable error={loadError} />;
-  if (holding) return <FlowSkeleton />;
+  if (holding) return <FlowSkeleton onRetry={() => window.location.reload()} />;
   if (!published || !contract) return <FlowSkeleton onRetry={() => setLoadAttempt((n) => n + 1)} />;
 
   // The views that can hold unsent work: the leave question, and their top bar's exits through it.
