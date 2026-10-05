@@ -44,7 +44,7 @@ export function FlowAside({
   className?: string;
 }) {
   return (
-    <VStack gap={5} className={className}>
+    <VStack gap={6} className={className}>
       <HStack className={styles.fromLaptop}>
         {locked ? (
           <span aria-hidden className={styles.reserve}>
@@ -63,7 +63,7 @@ export function FlowAside({
           {published.name}
         </Text>
       )}
-      <VStack gap={5} className={compact ? styles.fromLaptop : undefined}>
+      <VStack gap={6} className={compact ? styles.fromLaptop : undefined}>
         {published.description && <Text as="p" color="secondary">{published.description}</Text>}
         <ClassificationNote classification={classification} />
       </VStack>

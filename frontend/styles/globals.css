@@ -7,6 +7,8 @@
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
+  /* A form's measure (the flow's setup): a control stays beside its label and the action is not a bar across the screen. */
+  --module-form-width: 40rem;
   /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
   --module-transcript-min-height: 28rem;
 

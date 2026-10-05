@@ -34,8 +34,10 @@
 }
 
 
-/* The setup's card stands a little further from the details above it than the other states' do. */
+/* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it),
+   and at a form's measure on every width. */
 .setup {
+  max-width: var(--module-form-width);
   margin-block-start: var(--spacing-4);
 }
 
@@ -73,7 +75,7 @@
   background: var(--color-background-surface);
 }
 
-/* Earlier runs stand a little apart from the setup's actions above them. */
+/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. */
 .earlier {
-  padding-block-start: var(--spacing-4);
+  padding-block-start: var(--spacing-2);
 }
