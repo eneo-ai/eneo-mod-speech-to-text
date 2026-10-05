@@ -7,6 +7,8 @@
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
+  /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
+  --module-transcript-min-height: 28rem;
 
   /* The recording dot, for CSS Modules: 3:1 on the card and the muted surface. */
   --module-color-record: light-dark(#dc2828, #dd2c2c);

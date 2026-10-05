@@ -117,7 +117,7 @@
 
 @media (min-width: 1024px) {
   .transcriptCard {
-    min-block-size: 28rem;
+    min-block-size: var(--module-transcript-min-height);
     max-block-size: calc(100vh - 14rem);
     overflow: hidden;
   }
