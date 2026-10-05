@@ -34,13 +34,13 @@ export function useTranscriptContext({
     return () => {
       cancelled = true;
     };
-    // Laddas om per körning och vid reload; övriga argument är härledda ur samma checkpoint/run.
+    // Read again for each run and on a reload; the other arguments are derived from the same checkpoint and run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowId, runId, enabled, attempt]);
 
   const patch = (next: Partial<TranscriptContext>) =>
     setCtx((prev) => ({ ...prev, ...next }));
-  /** Läser underlaget och de sparade rättningarna igen, t.ex. efter ett nätverksfel. */
+  /** Reads the transcript and its saved corrections again, e.g. after a network error. */
   const reload = () => {
     setCtx({ ...INITIAL_TRANSCRIPT, pending: true });
     setAttempt((n) => n + 1);

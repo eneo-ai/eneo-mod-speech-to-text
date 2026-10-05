@@ -46,7 +46,6 @@ export default function LoginPage() {
       });
   }, [navigate]);
 
-  // The page has its content once it has stopped asking who is signed in.
   useRouteReady(!checking);
 
   // Back from Eneo, the browser may show this page again as it was left, with the button still opening Eneo.

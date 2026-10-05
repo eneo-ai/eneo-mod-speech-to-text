@@ -71,7 +71,6 @@ function FlowsListPage() {
     };
   }, [attempt]);
 
-  // The page has its content when the list has answered, or could not.
   useRouteReady(groups !== null || problem !== null);
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);

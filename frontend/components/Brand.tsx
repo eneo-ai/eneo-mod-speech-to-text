@@ -21,7 +21,7 @@ export function BrandingProvider({ value, children }: { value: Branding; childre
 }
 
 interface BrandProps {
-  /** Linka lockupen till denna sökväg. Utelämna för en statisk lockup (t.ex. inloggning). */
+  /** Links the lockup to this path. Left out, the lockup is static (the sign-in page). */
   href?: string;
 }
 
@@ -51,7 +51,7 @@ function OrganizationMark({ organization }: { organization: Organization }) {
   );
 }
 
-// Header-lockup: organisationens märke, avdelare och produktnamn; utan organisation bara produktnamnet.
+// The header lockup: the organisation's mark, a divider and the product name; without an organisation the product name alone.
 export function Brand({ href }: BrandProps) {
   const { organization } = useContext(BrandingContext);
   const mark = organization && (

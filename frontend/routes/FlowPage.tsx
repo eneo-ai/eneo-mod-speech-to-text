@@ -75,7 +75,6 @@ import { selectRuntimeInputStep } from "@/lib/upload";
 import { useRouteReady } from "@/routes/RouteEffects";
 
 export default function FlowDetailPage() {
-  // The route is flows/:id.
   const { id } = useParams() as { id: string };
   return (
     <AuthGate>
@@ -101,8 +100,7 @@ type RunState =
     }
   | { kind: "done"; run: FlowRunPublic; steps: FlowRunStep[]; graph: FlowGraph | null };
 
-// Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
-// delad länk, kan återuppta samma körning i stället för att tappa den.
+// The run's id is kept in the address (?run=), so a reload or a shared link resumes the same run.
 const RUN_QUERY_PARAM = "run";
 
 function readRunIdFromUrl(): string | null {
@@ -192,8 +190,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
         setPublished(p);
         setContract(c);
 
-        // Återuppta körningen i URL:en (t.ex. efter omladdning mitt i en
-        // granskning). Annars: visa flödets senaste körningar.
         const urlRunId = readRunIdFromUrl();
         if (urlRunId) resumeRun(urlRunId);
         else loadEarlierRuns();
@@ -235,7 +231,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [holdsAudio, submitting, unstored]);
 
-  // Öppnad från "Skapa dokument" i flödeslistan: skicka inspelningen när flödet har laddats.
+  // Opened by "Skapa dokument" on an unsent recording in the flow list: the recording is sent once the flow has loaded.
   useEffect(() => {
     if (!contract) return;
     const recordingId = new URLSearchParams(window.location.search).get(RECORDING_QUERY_PARAM);
@@ -315,12 +311,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
-  /** Användarens senaste körningar av flödet, från första sidan; listan är en genväg och får saknas. */
+  /** The person's latest runs of the flow, the first page of them; the list is a shortcut and may be missing. */
   function loadEarlierRuns() {
     void earlier.reload();
   }
 
-  /** Plockar upp en befintlig körning (från URL eller listan) och följer den. */
+  /** Takes up an existing run (from the address or the list) and follows it. */
   function resumeRun(runId: string) {
     setRunError(null);
     setRetryRefusal(null);
@@ -330,9 +326,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   }
 
   /**
-   * Följer körningen via dess status och den körningslåsta grafen tills den
-   * är klar eller väntar på granskning. Stegresultaten (en auditloggad läsning)
-   * och detaljen hämtas en gång, när körningen är klar.
+   * Follows the run by its status and its run-locked graph until it is done or waits for review. The step results (an
+   * audit-logged read) and the detail are read once, when the run is done.
    */
   async function follow(runId: string) {
     followAbortRef.current?.abort();
@@ -353,10 +348,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
         const checkpoint = await getActiveReviewCheckpoint(flowId, runId);
         if (signal.aborted) return;
         if (checkpoint) {
-          // Pausad tills användaren agerat; granskningsvyn startar följningen igen.
+          // Paused until the person has acted; the review view starts the following again.
           setRun({ kind: "awaiting_review", run: last.run as FlowRunPublic, steps: [], checkpoint });
         } else {
-          // Checkpointen syns strax efter statusen; läs igen om en stund.
+          // The checkpoint shows a moment after the status does: read again shortly.
           setTimeout(() => !signal.aborted && void follow(runId), VISIBLE_POLL_MS);
         }
         return;
@@ -385,7 +380,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRunError(friendlyError(err));
       return;
     }
-    // Läs den avbrutna körningen direkt i stället för vid nästa läsning.
+    // The cancelled run is read now, not at the next poll.
     void follow(runId);
   }
 
@@ -404,7 +399,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun((prev) => (prev.kind === "awaiting_review" ? { ...prev, checkpoint: cp } : prev));
     try {
       const resumedRun = await continueFromPause({ flowId, runId, checkpoint, edit, onCheckpoint: hold, onHeld: onSaved });
-      // Följ körningen igen — den är nu i "running".
       setRun({ kind: "running", run: resumedRun, graph: null });
       void follow(resumedRun.id);
       return null;
@@ -431,7 +425,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         checkpoint.id,
         {
           expected_checkpoint_revision: checkpoint.revision,
-          // Stegets output i sig (text-sträng eller JSON-värde), inte payload-kuvertet.
+          // The step's output itself (a text or a JSON value), not the payload envelope.
           edited_value: editedValue,
         },
       );
@@ -444,8 +438,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
     } catch (err) {
       const message = describe(err);
       setRunError(message);
-      // Vid t.ex. stale revision: hämta aktuell checkpoint så UI:t synkar om
-      // formuläret mot serverns version innan användaren försöker igen.
+      // After e.g. a stale revision: the current checkpoint is read, so that the form follows the server's version
+      // before the person tries again.
       const latest = await getActiveReviewCheckpoint(
         flowId,
         checkpoint.flow_run_id,
@@ -468,14 +462,14 @@ function FlowDetail({ flowId }: { flowId: string }) {
         expected_checkpoint_revision: checkpoint.revision,
         reason,
       });
-      // Körningen avbryts; följ den till slutet så att stegen och resultatet läses som vanligt.
+      // The run is cancelled: followed to its end, so that its steps and result are read as usual.
       void follow(runId);
     } catch (err) {
       setRunError(friendlyError(err));
     }
   }
 
-  /** Ny inspelning: samma flöde och uppgifter (deltagarna); sessionen släppte ljudet när det skickades. */
+  /** A new recording: the same flow and details (the participants); the session let go of the audio when it was sent. */
   function onRunAgain() {
     followAbortRef.current?.abort();
     setRunError(null);
@@ -485,10 +479,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     loadEarlierRuns();
   }
 
-  /**
-   * "Försök igen": Eneo fortsätter den misslyckade körningen från första
-   * ofärdiga steget i en ny körning; det som blev klart görs inte om.
-   */
+  /** "Försök igen": Eneo continues the failed run from its first unfinished step in a new run; what was finished is not done again. */
   async function onRetry(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setRetryRefusal(null);
@@ -507,7 +498,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     void follow(outcome.run.id);
   }
 
-  /** En ny körning med samma ljud och uppgifter: efter en avbrytning, eller när Eneo inte kan fortsätta. */
+  /** A new run with the same audio and details: after a cancellation, or when Eneo cannot continue. */
   async function onStartAgain(failed: Extract<RunState, { kind: "done" }>) {
     setRunError(null);
     setStartedWith({ runId: null, input: failed.run.input_payload_json ?? null });
@@ -560,7 +551,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRun({ kind: "idle" });
   }
 
-  // The page has its content when the flow has loaded, or could not.
   useRouteReady(loadError !== null || (published !== null && contract !== null));
   if (loadError) return <FlowUnavailable error={loadError} />;
   if (!published || !contract) return <FlowSkeleton />;

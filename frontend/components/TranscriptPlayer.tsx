@@ -160,7 +160,7 @@ type Piece = {
   text: string;
   word: TranscriptWord | null;
   wordIndex: number;
-  /** Ursprunglig text när biten är ett rättat spann. */
+  /** The original text, when the piece is a corrected span. */
   correctedFrom: string | null;
   /** A search hit: "current" is the one the arrows are on. */
   hit: "match" | "current" | null;
@@ -168,10 +168,7 @@ type Piece = {
 
 type Hit = { start: number; end: number; current: boolean };
 
-/**
- * Segmentets text uppdelad vid varje ord-, rättnings- och sökgräns, så att en
- * bit är antingen vanlig text, ett tidsatt ord eller ett rättat spann.
- */
+/** The segment's text divided at every word, correction and search boundary, so a piece is plain text, a timed word or a corrected span. */
 function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[], hits: readonly Hit[] = []): Piece[] {
   const text = segment.text;
   const words = (segment.words ?? [])
@@ -203,7 +200,7 @@ function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[], h
       hit: hit ? (hit.current ? "current" : "match") : null,
     });
   }
-  // En ren radering lämnar inget spann att peka på; visa en smal markör.
+  // A plain deletion leaves no span to point at: a narrow marker stands in its place.
   for (const r of ranges) {
     if (r.end === r.start) {
       const at = out.findIndex((_, idx) => bounds[idx] >= r.start);
@@ -255,33 +252,33 @@ export function TranscriptPlayer(
     downloadable = true,
     playback: shared,
   }: {
-    /** Råa segment; korrigeringar läggs på vid visning. */
+    /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
     speakerReviews?: readonly FileSpeakerReview[];
     reviewEnabled?: boolean;
     correctionProblem?: string | null;
-    /** Antal ljudfiler; 0 = inget ljud, bara läsbart transkript. */
+    /** The number of audio files; 0 is no audio, a transcript to read only. */
     fileCount: number;
     audioSrcFor: (fileIndex: number) => string;
-    /** Rå etikett → namn som granskaren valt, läggs ovanpå segmentens etiketter. */
+    /** A raw label to the name the reviewer chose, laid over the segments' labels. */
     speakerNames: Readonly<Record<string, string>>;
-    /** Visas när segment saknas helt. */
+    /** Shown when there are no segments at all. */
     textFallback: string;
     audioPending?: boolean;
     className?: string;
-    /** Sparade/osparade korrigeringar som ska visas ovanpå råtexten. */
+    /** The saved and unsaved corrections to show over the raw text. */
     corrections?: CorrectionSet;
-    /** Tillåt rättning av repliker och talarbyte. Kräver `onCorrectionsChange`. */
+    /** Allows correcting a turn and changing its speaker. Needs `onCorrectionsChange`. */
     editable?: boolean;
     onCorrectionsChange?: (next: CorrectionSet) => void;
-    /** Etiketter en replik kan tilldelas (SPEAKER_NN). */
+    /** The labels a turn can be given (SPEAKER_NN). */
     speakerOptions?: readonly string[];
     saveState?: CorrectionsSaveState;
-    /** Osäkra ord som granskaren lyssnat på och bekräftat (se lib/confirmed-words). */
+    /** The uncertain words the reviewer has listened to and confirmed (lib/confirmed-words). */
     confirmedWords?: ReadonlySet<string>;
-    /** Gör det möjligt att bekräfta/ångra ett osäkert ord. */
+    /** Makes it possible to confirm, or take back, an uncertain word. */
     onToggleConfirmed?: (key: string) => void;
-    /** Egen länk för att hämta det granskade transkriptet; av när sidan har egna åtgärder. */
+    /** Its own link to download the reviewed transcript; off when the page has actions of its own. */
     downloadable?: boolean;
     /**
      * The page's own playback of these parts, when the page shows it elsewhere too
@@ -411,7 +408,7 @@ export function TranscriptPlayer(
     else playback.skip(action.skipMs);
   }
 
-  // Följ uppspelningen: rulla den aktiva repliken till mitten.
+  // Follows the playback: the active turn is scrolled to the middle.
   useEffect(() => {
     if (!follow || activeIndex < 0 || !listRef.current || editingIndex >= 0) return;
     const el = listRef.current.querySelector<HTMLElement>(
@@ -1045,7 +1042,7 @@ function TurnBlock({
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
                     const isWordActive =
                       Boolean(piece.word) && partActive && piece.wordIndex === findActiveWordIndex(part.segment.words ?? [], currentTime);
-                    // Bekräftelseknappen sitter efter ordets sista bit.
+                    // The confirm button sits after the word's last piece.
                     const lastOfWord =
                       Boolean(piece.word?.uncertain) &&
                       all[k + 1]?.wordIndex !== piece.wordIndex;

@@ -10,9 +10,8 @@ import {
 const EMPTY: ReadonlySet<string> = new Set();
 
 /**
- * Lokalt lagrade bekräftelser av osäkra ord för ett transkriberingssteg.
- * `storageKey` = null innan steget är känt; då är mängden tom och
- * växlingar ignoreras.
+ * The uncertain words a reviewer has confirmed for a transcription step, kept on this device. `storageKey` is null
+ * before the step is known: the set is then empty and a toggle is ignored.
  */
 export function useConfirmedWords(
   storageKey: string | null,
