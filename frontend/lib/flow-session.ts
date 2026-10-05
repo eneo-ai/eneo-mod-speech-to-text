@@ -229,6 +229,8 @@ interface SessionSnapshot {
   live: LiveSession | null;
   /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, briefly. */
   finishing: boolean;
+  /** Skapa dokument was pressed while the final text is being finished: it sends once that is done. */
+  finishQueued: boolean;
   problem: Problem | null;
 }
 
@@ -517,6 +519,8 @@ export class FlowSession {
   // Whether live text names the recording, so its final text may bring a transcript, and whether that is awaited.
   private liveNamed = false;
   private finishing = false;
+  /** A press of Skapa dokument made during the wait, sent when the wait ends. */
+  private sendQueued = false;
   private finishingTimer: ReturnType<typeof setTimeout> | null = null;
   // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
   private keepTranscript: (() => void) | null = null;
@@ -750,8 +754,12 @@ export class FlowSession {
   }
 
   private async send(): Promise<boolean> {
-    // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
-    if (this.finishing) return false;
+    // The button says it waits; a press meanwhile is kept, and sends when the text is in.
+    if (this.finishing) {
+      this.sendQueued = true;
+      this.emit();
+      return false;
+    }
     if (this.keepInFlight && this.snapshot.phase === "ready") {
       this.problem = { title: "Texten sparas fortfarande.", detail: "Försök igen om en stund." };
       this.emit();
@@ -1032,8 +1040,10 @@ export class FlowSession {
     let kept = false;
     const done = () => {
       if (this.live !== live || !this.finishing) return;
+      const queued = this.sendQueued;
       this.clearFinishing();
       this.emit();
+      if (queued) void this.createDocument();
     };
     // The capture holds the recording's lease until its stop is stored: the keep runs once both are there.
     const keep = (this.keepTranscript = () => {
@@ -1069,6 +1079,7 @@ export class FlowSession {
     if (this.finishingTimer !== null) clearTimeout(this.finishingTimer);
     this.finishingTimer = null;
     this.finishing = false;
+    this.sendQueued = false;
   }
 
   private onCapture = () => {
@@ -1115,6 +1126,7 @@ export class FlowSession {
       fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
       finishing: this.finishing,
+      finishQueued: this.sendQueued,
       problem: this.problem,
     };
   }

@@ -213,6 +213,7 @@ export function FlowInput({
               problem={snapshot.problem}
               live={snapshot.live}
               finishing={snapshot.finishing}
+              finishQueued={snapshot.finishQueued}
               makesText={text}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}

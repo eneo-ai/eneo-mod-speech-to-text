@@ -69,6 +69,10 @@ test("while Strömma's final text is on its way, Skapa dokument keeps its name a
   await view.act(async () => create.click());
   assert.equal(document.activeElement, create, "a press leaves the focus where it was");
 
+  const queuedPanel = createElement(ReadyPanel, { recording, persistent: true, problem: null, finishing: true, finishQueued: true, onCreate() {}, onDiscard() {} });
+  await view.act(async () => view.rerender(queuedPanel));
+  assert.equal(region.textContent, "Slutför texten… Det skapas så snart den är klar.", "a press meanwhile is kept, and the line says so");
+
   await view.act(async () => view.rerender(panel(false)));
   assert.equal(region.textContent, "", "the line goes when the text is in");
   assert.equal(create.hasAttribute("aria-busy"), false);

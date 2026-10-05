@@ -1679,7 +1679,7 @@ test("Strömma names the new recording to live text, and a clean session's store
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
 
-test("Skapa dokument waits while Strömma's final text is on its way, until its transcript is kept with the recording", async () => {
+test("Skapa dokument pressed while Strömma's final text is on its way is kept, and sends once its transcript is kept with the recording", async () => {
   const sent: unknown[] = [];
   const live = fakeLiveClient();
   const { session, store, recorders } = await setup({ live: live.client });
@@ -1693,14 +1693,18 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   await until(() => session.getSnapshot().phase === "ready");
 
   assert.equal(session.getSnapshot().finishing, true);
-  assert.equal(await session.createDocument(), false, "a press now sends nothing and leaves nothing pending");
+  assert.equal(session.getSnapshot().finishQueued, false, "nothing asked for yet");
+  assert.equal(await session.createDocument(), false, "a press now sends nothing yet");
   assert.deepEqual(sent, []);
+  assert.equal(session.getSnapshot().finishQueued, true, "but it is kept, and the page says so");
+  assert.equal(await session.createDocument(), false);
 
   live.report({ transcriptId: "transcript-1" });
   await until(() => !session.getSnapshot().finishing, "the transcript kept");
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1", "kept before a send could seal the recording");
-  assert.equal(await session.createDocument(), true);
-  assert.equal(sent.length, 1);
+  await until(() => sent.length === 1, "the kept press sent");
+  assert.equal(session.getSnapshot().finishQueued, false);
+  assert.equal(sent.length, 1, "one document, however many presses");
 });
 
 test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, says why while the text is still being kept, and nothing sends without one", async (t) => {
