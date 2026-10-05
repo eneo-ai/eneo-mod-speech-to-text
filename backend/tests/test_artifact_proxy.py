@@ -189,8 +189,8 @@ class ArtifactProxyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 410)
         self.assertEqual(self.fake.stream_requests, [])
 
-    def test_the_browser_can_no_longer_mint_a_signed_url_itself(self) -> None:
-        # The URL is a bearer credential for the file; only the module backend mints it now.
+    def test_the_browser_cannot_mint_a_signed_url_itself(self) -> None:
+        # The URL is a bearer credential for the file; only the module backend mints it.
         response = self.client.post(
             "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/signed-url/",
             headers={"Origin": "http://localhost:3002"},
