@@ -10,26 +10,30 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 | enhet | `npm test` | `frontend/lib/*.test.ts` i jsdom | Logik och komponenter. |
 | backend | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | backendens app i processen, med falska Eneo-svar | Inloggning, proxy, uppladdning, filer, live-relä, statisk servering, konfiguration. |
 | gaten | `npm run test:a11y` | Vites utvecklingsserver, med stubben som backend | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. |
-| gaten, granskning | `npm run test:a11y:review` | samma, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan med granskningen på. |
-| gaten, branding | `npm run test:a11y:branding` | samma, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
-| produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden (`python -m app.serve`), stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
-| sajten | `npm run build` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Att inga länkar är döda, att startsidan och API-sidan saknar konsolfel och externa anrop och klarar axe, tangentbord och 390 px, och att varje diagram ritas. |
+| gaten, riktigt mål | `npm run test:a11y:real` | samma lägen och specar på `dist-check/`, serverad av den riktiga backenden under den strikta policyn, stubben som Eneo | Det som levereras, med en vaktpost som stoppar policybrott, omdirigeringar och oväntade fel. |
+| gaten, granskning | `npm run test:a11y:review` | samma som gaten, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan med granskningen på. |
+| gaten, branding | `npm run test:a11y:branding` | samma som gaten, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
+| produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden, stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
 | imagen | `npm run test:image` | den byggda imagen bakom Traefik, stubben som Eneo | Produktionsimagen: en process, headers, uppladdningar, WebSocket, minne, stopp. |
+| sajten | `npm run build` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Att inga länkar är döda, att startsidan och API-sidan klarar axe, tangentbord och 390 px utan konsolfel eller externa anrop, och att varje diagram ritas. |
 
-Dessutom: `npm run astryx -- doctor` (uppsättningen), `npm run theme:build && git diff --exit-code -- kit/theme/built` (temat är aktuellt), `docker compose -f docker-compose.yml --env-file .env.example config -q` (Compose-filen, från roten). CI kör allt utom hela gaten: [Drift](operations.md#ci-och-utgåvor).
+Dessutom: `npm run astryx -- doctor` (uppsättningen), `npm run theme:build && git diff --exit-code -- kit/theme/built` (temat är aktuellt) och `docker compose -f docker-compose.yml --env-file .env.example config -q` (Compose-filen, från roten). CI kör allt utom hela gaten ([Drift](operations.md#ci-och-utgåvor)).
+
+Före en pull request, billigast först:
 
 ```bash
 cd frontend
 npm ci
 npm run lint
 npm test
-npm run test:a11y        # stoppa din egen npm run dev först om den ligger på samma port
+npm run test:a11y          # egna portar, så din egen npm run dev (3002) kan ligga kvar
+npm run test:a11y:real     # bygger dist-check/ och kör gaten mot den riktiga backenden
 npm run test:prod
 npm run build
 cd ../backend && .venv/bin/python -m unittest discover -s tests
 ```
 
-Första gången: `npx playwright install chromium` för gaten och `npx playwright install chromium webkit firefox` för `test:prod`. `test:prod` och imagens acceptans startar den riktiga backenden och behöver därför dess paket: `pip install -r backend/requirements.lock`. De startar `backend/.venv/bin/python` när den finns, annars `python3`; `BACKEND_PYTHON` pekar på en annan Python, till exempel en annan utchecknings miljö.
+Första gången: `npx playwright install chromium` för gaten och `npx playwright install chromium webkit firefox` för `test:prod`. Det riktiga målet, `test:prod` och imagens acceptans startar den riktiga backenden och behöver därför dess paket: `pip install -r backend/requirements.lock`. De startar `backend/.venv/bin/python` när den finns, annars `python3`; `BACKEND_PYTHON` pekar på en annan Python, till exempel en annan utchecknings miljö.
 
 ## Enhetstester
 
@@ -41,7 +45,7 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 
 ## Gaten
 
-`npm run test:a11y` startar stubben (`frontend/tests/e2e/stub-server.py`, bara för test: den låtsas vara modulens backend) och Vites utvecklingsserver (`frontend/playwright.config.ts`), och besöker varje läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Ett läge är ett namn och stegen dit.
+`npm run test:a11y` startar stubben (`frontend/tests/e2e/stub-server.py`, bara för test: den låtsas vara modulens backend) och Vites utvecklingsserver (`frontend/playwright.config.ts`, som också listar projekten: telefoner, surfplattor, laptop, 200 % zoom, forcerade färger, bred skärm och reducerad rörelse), och besöker varje läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Ett läge är ett namn och stegen dit; specarna i `frontend/tests/e2e/` är döpta efter vad de bevisar.
 
 **Vad som mäts** (i den renderade sidan, `frontend/tests/e2e/checks.ts`; resultat per test i `findings.json`):
 
@@ -56,10 +60,6 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 | Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
 | ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
 
-**Specarna** ligger i `frontend/tests/e2e/`, en per ansvar och döpta efter det. `a11y.spec.ts` är mätningarna för varje läge och projekt, `keyboard.spec.ts`, `aria.spec.ts` och `names.spec.ts` tangentbord, ögonblicksbilder och namn, `harness.spec.ts` gatens egna kontroller mot sidor byggda för att fela, och `session-cover.spec.ts` att inget av sidan eller av en dialog den hade öppen syns eller nås medan inloggningen är slut. Specerna väljer själva vilka projekt de gäller; `branding.spec.ts` och `review-flag.spec.ts` körs bara i sina profiler.
-
-**Projekten** (19, i `playwright.config.ts`): telefoner (320 och 390 px, ljust och mörkt), surfplattor (768 och 1024 px), laptop (1280 och 1440 px), `zoom-200`, `forced-colors`, `ultrawide` (1920, 2560 och 3440 px) och `reduced-motion`. `a11y.spec.ts` körs i alla; tangentbord, ARIA och namn där de skiljer sig (`testIgnore` i konfigurationen).
-
 ```bash
 # Ett läge, smalast och mörkt, medan du bygger det
 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-320-light --project=laptop-1440-dark
@@ -69,13 +69,22 @@ npm run test:a11y -- aria.spec.ts --update-snapshots -g "<läge>"
 
 Läs diffen på ögonblicksbilderna innan du behåller dem.
 
-**Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus (grinden kräver att visaren inte stänger in fokus och att Escape stänger dialogen från dess egna kontroller), och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
+**Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus, och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
 
 **Regler som aldrig ändras:** sänk inte ett tröskelvärde, ta inte bort ett läge ur gaten och lägg inte till ett axe-undantag för att få den grön. Hitta orsaken; en brist i designsystemet rättas en gång i temat ([Frontend](frontend.md#rätta-en-brist-i-designsystemet)).
 
-### Läckkontrollen
+`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
 
-`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums egna räknare (DOM-noder, lyssnare, minne) efter skräpsamling, före och efter. Ett läckage växer med varje varv. Fem uppvärmningsvarv räknas inte; marginalen för de 40 öppningarna är 20 noder, 20 lyssnare och 1,5 MB, och den höjs aldrig för att få ett test att passera. Chromium behåller elementet som senast låg under pekaren tills pekaren flyttas, så specen flyttar pekaren bort efter varje stängning. Ett av överläggen läcker med avsikt (`/dev/dialog-leak`, bara på utvecklingsservern), så att specen visar att den kan fela. Ett nytt överlägg läggs till i `OVERLAYS` i samma ändring som inför det.
+### Gaten på det riktiga målet
+
+`npm run test:a11y:real` (`GATE_TARGET=real`) kör samma lägen och specar mot det byggda gränssnittet (`dist-check/`, från `npm run build:check`) serverat av `python -m app.serve` under den strikta policyn i `backend/app/security_headers.json`, med stubben som Eneo. Varje test får en egen session genom den riktiga inloggningen, och en vaktpost (`frontend/tests/e2e/sentinel.ts`) bevakar det:
+
+- Ett brott mot policyn (Content-Security-Policy) fäller testet, alltid. Ett läge kan inte deklarera det: policyn lättas aldrig för att ett test ska gå igenom.
+- En omdirigering fäller testet, utom inloggningens egna (`/api/auth/login`, `/api/auth/callback` och stubbens `/module-login`).
+- Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`) räknas inte.
+- `sentinel.spec.ts` orsakar vart och ett av dem och ser att vaktposten ser det.
+
+`REAL_EXTERNAL_URL` kör gaten mot en backend som redan är igång (imagen bakom Traefik, som imagens acceptans gör) i stället för att starta en; stubben är då den driftsättningens Eneo, på en adress webbläsaren når.
 
 ## Produktionstesterna
 
@@ -95,15 +104,13 @@ Budgetarna och skälen: [beslut 0007](decisions/0007-weight-budget.md).
 
 ## Imagens acceptans
 
-`npm run test:image` (`deploy/acceptance.sh`) startar `docker-compose.yml`, den riktiga tjänsten, med stubben som Eneo och en Traefik framför (`deploy/acceptance/compose.yml`) och kör 16 kontroller (`python3 deploy/acceptance/checks.py --list` säger vad var och en bevisar; `--only 4,5,9` kör några): hälsa, en process och icke-root, att varje route är sidan och inget omdirigerar, 404 utan HTML, headrarna, `test:prod` mot imagen, Range, WebSocket-ramar, uppladdningars minne och tak, stopp med en fil som strömmar, inline-PDF, att granskningsflaggan och utvecklingssidorna bara finns i sina bygg, imagens storlek och minne mot `deploy/acceptance/baseline.json`, live-reläets fördröjning under last och hela vägen genom Traefik. Behöver Docker, `npm ci` i `frontend/` och Playwright. Portarna (127.0.0.1) är `ACCEPT_TRAEFIK_PORT` 8480, `ACCEPT_ENEO_PORT` 8481 och `ACCEPT_DIRECT_PORT` 8482.
-
-Ett fel som ägaren godtagit står i `deploy/acceptance/waivers.json`, med beslut, skäl och siffror; det skrivs ändå ut som `FAIL (waived: ...)`.
+`npm run test:image` (`deploy/acceptance.sh`) startar `docker-compose.yml`, den riktiga tjänsten, med stubben som Eneo och en Traefik framför (`deploy/acceptance/compose.yml`) och kör kontroller av imagen: hälsa, en process och icke-root, headrarna, uppladdningar, WebSocket, stopp med en fil som strömmar, imagens storlek och minne, och live-reläets fördröjning under last. `python3 deploy/acceptance/checks.py --list` säger vad var och en bevisar; `--only 4,5,9` kör några. Behöver Docker, `npm ci` i `frontend/` och Playwright. Portarna (127.0.0.1) är `ACCEPT_TRAEFIK_PORT` 8480, `ACCEPT_ENEO_PORT` 8481 och `ACCEPT_DIRECT_PORT` 8482. Ett fel som ägaren godtagit står i `deploy/acceptance/waivers.json` och skrivs ändå ut som `FAIL (waived: ...)`.
 
 ## Portar och flera utcheckningar
 
 | Kontroll | Standardportar (app, stub) | Ändra med |
 |---|---|---|
-| gaten, `npm run dev:stub` | 3401, 8401 | `A11Y_APP_PORT`, `A11Y_STUB_PORT` |
+| gaten, `npm run test:a11y:real`, `npm run dev:stub` | 3401, 8401 | `A11Y_APP_PORT`, `A11Y_STUB_PORT` |
 | `npm run test:prod` | 3411 till 3413, 8411 | samma två variabler |
 | `npm run test:image` | 8480 till 8482 | `ACCEPT_*_PORT` |
 
