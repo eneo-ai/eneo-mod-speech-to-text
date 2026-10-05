@@ -5,6 +5,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Brand } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /** What a page says when the module could not be asked who is signed in. */
 export const UNREACHABLE = "Kunde inte kontakta modulen. Försök igen.";
@@ -15,9 +16,9 @@ export const UNREACHABLE = "Kunde inte kontakta modulen. Försök igen.";
  */
 export function ModuleUnreachable({ onRetry }: { onRetry: () => void }) {
   return (
-    <ModuleShell label="Tal till text" heading={<Brand />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <VStack gap={4} maxWidth={640}>
-        <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+        <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
         <Banner status="error" title={UNREACHABLE} collapsible={false} />
         <HStack>
           <Button label="Försök igen" onClick={onRetry} />

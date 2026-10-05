@@ -11,6 +11,7 @@ import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import { readBranding } from "@/lib/read-branding";
 import { RouteEffects } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /**
  * What every screen stands in: the colour mode, the design system's providers and who the deployment is for. The
@@ -58,7 +59,7 @@ export function RouteError() {
   const error = useRouteError();
   useEffect(() => console.error("A page could not be shown:", error), [error]);
   return (
-    <ModuleShell label="Tal till text" heading={<Brand />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <VStack gap={4} maxWidth={640}>
         <Heading level={1}>Sidan kunde inte visas.</Heading>
         <Text as="p" color="secondary">

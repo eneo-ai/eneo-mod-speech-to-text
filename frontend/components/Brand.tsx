@@ -7,6 +7,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TopNavHeading } from "@astryxdesign/core/TopNav";
 import { RouterLink } from "@/kit/RouterLink";
 import type { Branding, Organization } from "@/lib/read-branding";
+import { PRODUCT_NAME } from "@/lib/product";
 
 // Without a provider there is no organisation to name: the page's branding marker (readBranding) is the one owner of who is shown.
 const BrandingContext = createContext<Branding>({ organization: null });
@@ -66,10 +67,10 @@ export function Brand({ href }: BrandProps) {
     <TopNavHeading
       as={RouterLink}
       logo={mark}
-      heading="Tal till text"
+      heading={PRODUCT_NAME}
       headingHref={href}
       // A link says where it goes and for whom; a lockup that goes nowhere is just words.
-      aria-label={href ? (organization ? `Tal till text – ${organization.name}` : "Tal till text") : undefined}
+      aria-label={href ? (organization ? `${PRODUCT_NAME} – ${organization.name}` : PRODUCT_NAME) : undefined}
     />
   );
 }

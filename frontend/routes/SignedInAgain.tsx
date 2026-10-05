@@ -11,6 +11,7 @@ import { SESSION_CHANNEL } from "@/components/SessionEndWarning";
 import { authStatus } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 import { useRouteReady } from "@/routes/RouteEffects";
+import { documentTitle } from "@/lib/product";
 
 /** Why the backend refused a renewal (`?fel=`); the page's own login stays as it was. */
 type Refusal = "annan-anvandare" | "utgangen";
@@ -19,9 +20,9 @@ type Refusal = "annan-anvandare" | "utgangen";
 const refusalOf = (fel: string | null): Refusal | null => (fel === "annan-anvandare" || fel === "utgangen" ? fel : null);
 
 const TITLE: Record<Refusal | "ok", string> = {
-  ok: "Inloggad igen · Tal till text",
-  "annan-anvandare": "Fel användare · Tal till text",
-  utgangen: "Inloggningen har gått ut · Tal till text",
+  ok: documentTitle("Inloggad igen"),
+  "annan-anvandare": documentTitle("Fel användare"),
+  utgangen: documentTitle("Inloggningen har gått ut"),
 };
 
 /** The route /inloggad, where a login window lands. It is outside every gate: no AuthGate, and no way off the page when nobody is signed in. */

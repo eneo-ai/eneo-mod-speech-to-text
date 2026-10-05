@@ -26,6 +26,7 @@ import {
 import { browserStorage } from "@/lib/browser-storage";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 export default function FlowsPage() {
   return (
@@ -76,7 +77,7 @@ function FlowsListPage() {
   const createLabel = listCreateLabels(groups);
 
   return (
-    <ModuleShell label="Tal till text" heading={<HeaderBrand />} end={<AccountMenu />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand />} end={<AccountMenu />}>
       <Layout height="auto" contentWidth={960} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={8} paddingBlockStart={4}>

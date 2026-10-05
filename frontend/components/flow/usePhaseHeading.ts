@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useDocumentTitle } from "./recording-hooks";
+import { documentTitle } from "@/lib/product";
 
 /**
  * A phase's view announces itself: the tab title names the state, and focus
@@ -11,6 +12,6 @@ import { useDocumentTitle } from "./recording-hooks";
 export function usePhaseHeading(title: string) {
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => heading.current?.focus(), []);
-  useDocumentTitle(`${title} · Tal till text`);
+  useDocumentTitle(documentTitle(title));
   return heading;
 }

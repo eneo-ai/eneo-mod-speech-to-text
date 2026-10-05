@@ -10,6 +10,7 @@ import { HeaderBrand } from "@/components/AppHeader";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /**
  * The frame of every view of a flow's page: the top bar, the skip link, the one main region and the page's width.
@@ -62,7 +63,7 @@ export function FlowFrame({
   );
   return (
     <ModuleShell
-      label="Tal till text"
+      label={PRODUCT_NAME}
       heading={heading}
       start={
         title &&

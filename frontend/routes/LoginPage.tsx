@@ -16,6 +16,7 @@ import { HeaderBrand } from "@/components/AppHeader";
 import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { useRouteReady } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -63,9 +64,9 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+      <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
         <VStack hAlign="center" paddingBlock={10}>
-          <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+          <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
           <Spinner aria-label="Laddar" />
         </VStack>
       </ModuleShell>
@@ -73,7 +74,7 @@ export default function LoginPage() {
   }
 
   return (
-    <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
       <Layout height="auto" contentWidth={640} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={6} paddingBlockStart={6}>

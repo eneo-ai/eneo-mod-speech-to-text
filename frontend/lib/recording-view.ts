@@ -6,8 +6,8 @@ import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
+import { documentTitle } from "./product";
 
-const APP = "Tal till text";
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
   `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
@@ -48,15 +48,15 @@ export class SilenceWatch {
 export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string, sent = false): string {
   switch (phase) {
     case "recording":
-      return `Spelar in ${formatClock(elapsedMs)} · ${APP}`;
+      return documentTitle(`Spelar in ${formatClock(elapsedMs)}`);
     case "paused":
     case "interrupted":
-      return `Pausad · ${APP}`;
+      return documentTitle("Pausad");
     // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `${sent ? "Redan skickad" : "Inte skickad"} · ${APP}`;
+      return documentTitle(sent ? "Redan skickad" : "Inte skickad");
     default:
-      return flowName ? `${flowName} · ${APP}` : APP;
+      return documentTitle(flowName);
   }
 }
 
