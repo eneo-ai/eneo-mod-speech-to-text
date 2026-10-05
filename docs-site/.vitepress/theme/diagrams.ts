@@ -1,6 +1,7 @@
 // Renders the pages' Mermaid diagrams in the browser. mermaid is fetched on the first page that has one, and each
 // diagram type is fetched when a diagram of it is drawn: the other pages never load it.
 const SELECTOR = 'pre.mermaid'
+const svgOf = (node: HTMLElement) => node.querySelector('svg')
 let drawing = Promise.resolve()
 
 async function draw() {
@@ -27,7 +28,7 @@ async function draw() {
       // A diagram wider than the column scrolls; the keyboard needs a way to reach it.
       node.tabIndex = 0
       node.setAttribute('role', 'group')
-      node.setAttribute('aria-label', 'Diagram')
+      node.setAttribute('aria-label', svgOf(node)?.querySelector('title')?.textContent?.trim() || 'Diagram')
     } catch (error) {
       document.getElementById(`d${id}`)?.remove()
       node.dataset.drawn = 'failed'

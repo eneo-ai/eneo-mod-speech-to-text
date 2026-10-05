@@ -3,9 +3,9 @@ layout: home
 title: Tal till text
 titleTemplate: false
 hero:
-  name: Tal till text
+  name: 'Tal till text<span class="visually-hidden">. </span>'
   text: Gör text av ett möte
-  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: ett transkript, en sammanfattning eller filer.<span class=\"hero-note\">Det här är dokumentationen. Själva modulen öppnar du i din organisations Eneo.</span>"
+  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: ett transkript, en sammanfattning eller filer.<span class=\"hero-note\">Det här är dokumentationen. Själva modulen öppnar du på den adress din organisation har satt upp, och du loggar in med ditt Eneo-konto.</span>"
   actions:
     - theme: brand
       text: Driftsätt modulen
@@ -29,7 +29,7 @@ Modulen är en egen webbapplikation som körs bredvid Eneo. Du loggar in med dit
 
 - [Driftsätt modulen](operations.md): köra imagen i Dokploy eller Portainer, miljövariabler, uppdateringar och felsökning.
 - [Byt organisation](branding.md): namn, logga och accentfärg för din kommun eller myndighet.
-- [Utveckla lokalt](development.md): starta modulen på din dator, med eller utan Docker.
+- [Lokal utveckling](development.md): starta modulen på din dator, med eller utan Docker.
 - [API-referens](api-referens.md): vilka anrop modulen släpper igenom till Eneo.
 - [Arkitektur](architecture.md): hur webbläsaren, modulen och Eneo hänger ihop.
 

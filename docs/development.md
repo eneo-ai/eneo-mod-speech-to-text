@@ -2,15 +2,19 @@
 
 ## Kom igång
 
-```bash
-git clone https://github.com/eneo-ai/eneo-mod-speech-to-text && cd eneo-mod-speech-to-text
-cp .env.example .env   # fyll i ENEO_BACKEND_URL, ENEO_PUBLIC_URL, ENEO_API_KEY, SESSION_SECRET
-                       # lokalt också MODULE_PUBLIC_URL=http://localhost:3001 och COOKIE_SECURE=false
-docker compose up --build
-open http://localhost:3001
-```
+1. **Du behöver ett Eneo som modulen når**, med en servicenyckel och modulen installerad ([Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo)). Har du inget kör du stubben som Eneo i stället ([utan Eneo](#den-riktiga-backenden-utan-ett-eneo)).
+2. **Hämta koden och inställningarna:**
 
-Har du inget Eneo att peka på kör du stubben som Eneo, [nedan](#den-riktiga-backenden-utan-ett-eneo), eller bara gränssnittet mot stubben med `npm run dev:stub` i `frontend/`. Mikrofonen fungerar på `localhost` men kräver HTTPS på en annan adress ([Drift](operations.md#vad-som-står-framför-modulen)).
+   ```bash
+   git clone https://github.com/eneo-ai/eneo-mod-speech-to-text && cd eneo-mod-speech-to-text
+   cp .env.example .env
+   ```
+
+3. **Fyll i `.env`:** `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` (skapa den med `python -c "import secrets; print(secrets.token_urlsafe(48))"`). För lokal körning också `MODULE_PUBLIC_URL=http://localhost:3001` och `COOKIE_SECURE=false`. Kör Eneo på din egen dator, på port 8123 för API:t och 3000 för webben, är `ENEO_BACKEND_URL=http://host.docker.internal:8123` (så når containern din dator) och `ENEO_PUBLIC_URL=http://localhost:3000` (så når webbläsaren den).
+4. **Starta:** `docker compose up --build`
+5. **Öppna** `http://localhost:3001` i webbläsaren.
+
+Mikrofonen fungerar på `localhost` men kräver HTTPS på en annan adress ([Drift](operations.md#vad-som-står-framför-modulen)).
 
 ## Portar
 
@@ -55,14 +59,16 @@ Vite vidarebefordrar `/api` (också WebSocket, som live-texten använder) och `/
 
 ### Mot ett lokalt Eneo
 
-| Variabel | Värde |
-|---|---|
-| `ENEO_BACKEND_URL` | `http://host.docker.internal:8123` |
-| `ENEO_PUBLIC_URL` | `http://localhost:3000` |
-| `MODULE_PUBLIC_URL` | `http://localhost:3002` |
-| `COOKIE_SECURE` | `false` |
+Eneos egen devcontainer lägger webben på port 3000 och API:t på 8123. Vem som når vad bestämmer adressen: en modul i Docker når din dator som `host.docker.internal`, en modul som körs direkt gör det som `localhost`, och webbläsaren når alltid Eneos webb på `localhost`.
 
-Registrera modulen som i [Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo), med callback `http://localhost:3002/api/auth/callback`.
+| Variabel | Modulen i Docker (`docker compose up`) | Modulen utan Docker (Vite på 3002) |
+|---|---|---|
+| `ENEO_BACKEND_URL` | `http://host.docker.internal:8123` | `http://localhost:8123` |
+| `ENEO_PUBLIC_URL` | `http://localhost:3000` | `http://localhost:3000` |
+| `MODULE_PUBLIC_URL` | `http://localhost:3001` | `http://localhost:3002` |
+| `COOKIE_SECURE` | `false` | `false` |
+
+Registrera modulen som i [Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo), med callback `<MODULE_PUBLIC_URL>/api/auth/callback`: `http://localhost:3001/api/auth/callback` eller `http://localhost:3002/api/auth/callback`.
 
 ### Den riktiga backenden utan ett Eneo
 

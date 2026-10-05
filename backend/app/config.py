@@ -321,6 +321,14 @@ def _required_url(name: str, *, public: bool = False) -> str:
     return value
 
 
+# Secrets that .env.example has shown. A value that is published is no secret, so the module does not start with one: an
+# exact list, not a guess at what looks like a placeholder.
+_PLACEHOLDERS = {
+    "SESSION_SECRET": frozenset({"replace-with-long-random-string-now"}),
+    "ENEO_API_KEY": frozenset({"sk_replace_me"}),
+}
+
+
 def load_settings() -> Settings:
     required = [
         "ENEO_BACKEND_URL",
@@ -335,6 +343,10 @@ def load_settings() -> Settings:
         raise RuntimeError(
             f"Missing required environment variables: {', '.join(missing)}"
         )
+
+    for name, shown in _PLACEHOLDERS.items():
+        if os.environ[name] in shown:
+            raise RuntimeError(f"{name} is a placeholder from .env.example: set a value of your own")
 
     session_secret = os.environ["SESSION_SECRET"]
     if len(session_secret) < 32:

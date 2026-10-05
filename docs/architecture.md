@@ -14,7 +14,7 @@ Modulen är en process, `python -m app.serve`, i en container. Den serverar det 
 
 | Term | Betydelse |
 |---|---|
-| modul | Den här webbapplikationen, Tal till text (`MODULE_KEY=speech-to-text`), som Eneo länkar till. |
+| modul | Den här webbapplikationen, Tal till text (`MODULE_KEY=speech-to-text`), som körs bredvid Eneo och använder Eneo som sin AI-motor. |
 | BFF | Modulens backend i FastAPI (`backend/app/`): håller inloggningen, lägger credentials på och släpper bara igenom tillåtna anrop till Eneo. |
 | flöde, körning | Ett publicerat arbetsflöde i Eneo, och en enskild exekvering av det med en användares indata. |
 | granskning | En paus i en körning där en människa kontrollerar ett stegs resultat (`awaiting_review`). Talarmappning är en granskning. |
@@ -28,6 +28,8 @@ Webbläsaren pratar bara med modulen, modulen pratar med Eneo, och webbläsaren 
 
 ```mermaid
 flowchart LR
+    accTitle: Systemkontext
+    accDescr: Användaren i webbläsaren når modulens gränssnitt och API genom en omvänd proxy. API:t pratar med Eneo med servicenyckel och modultoken, och webbläsaren skickas till Eneo bara för att logga in.
     user["Användare i webbläsaren"]
     proxy["Omvänd proxy: HTTPS"]
     subgraph module["Modulen: en container, en process, port 3001"]

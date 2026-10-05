@@ -16,6 +16,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 from unittest import mock
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
@@ -147,6 +148,23 @@ class DocumentTests(unittest.TestCase):
                 for part in reference.removeprefix("#/").split("/"):
                     node = node[part]
         self.assertGreater(len(found), 100)
+
+    def test_the_titles_and_the_response_descriptions_are_plain_text(self) -> None:
+        # The reference shows these as written, with no Markdown: a backtick is a backtick.
+        titles = [self.document["info"]["title"], *(tag["name"] for tag in self.document["tags"])]
+        titles += [operation["summary"] for operation in self.operations.values()]
+        for operation in self.operations.values():
+            titles += [
+                response["description"] for response in operation["responses"].values() if "description" in response
+            ]
+        titles += [response["description"] for response in self.components["responses"].values()]
+
+        self.assertEqual([title for title in titles if "`" in title], [])
+        self.assertGreater(len(titles), 150)
+
+    def test_the_server_is_the_modules_own_address_and_not_an_address_that_looks_real(self) -> None:
+        for server in self.document["servers"]:
+            self.assertEqual(urlsplit(server["url"]).netloc, "", server["url"])
 
     def test_every_component_is_used(self) -> None:
         used = set(self.references())

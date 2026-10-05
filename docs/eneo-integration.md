@@ -43,10 +43,12 @@ Repliker kan rättas i spelaren och en replikgrupp kan byta talare. Rättningarn
 
 ## Live-text (Strömma)
 
-Strömma visar texten medan användaren spelar in. Inspelningen laddas upp och flödet körs som i Spela in; har en enda live-session hört hela inspelningen, och den är en enda fil, använder körningen sessionens text i stället för att transkribera ljudet en gång till. Run-kontraktets `transcription.live` säger i förväg om flödets ljudsteg kan visa live-text. Biljetten hämtas och används bara av BFF:en, och ramarna och Eneos händelser går oförändrade åt vardera håll.
+Strömma visar texten medan användaren spelar in. Inspelningen laddas upp och flödet körs som i Spela in; har en enda live-session hört hela inspelningen, och den är en enda fil, använder körningen sessionens text i stället för att transkribera ljudet en gång till. Run-kontraktets `transcription.live` säger i förväg om flödets ljudsteg kan visa live-text. Ticketen hämtas och används bara av BFF:en, och ramarna och Eneos händelser går oförändrade åt vardera håll.
 
 ```mermaid
 sequenceDiagram
+    accTitle: Live-text
+    accDescr: Webbläsaren öppnar en WebSocket till modulens backend, som hämtar en ticket hos Eneo och öppnar Eneos WebSocket. Ljudramar går åt ena hållet och texthändelser åt det andra, oförändrade, tills webbläsaren skickar stop.
     participant B as Webbläsare
     participant M as Modulens BFF
     participant E as Eneo
@@ -67,4 +69,4 @@ sequenceDiagram
     M-->>B: transcript.done oförändrad, sedan stängning
 ```
 
-Webbläsaren öppnar en WebSocket till `/api/live/{flowId}/{stepId}?recording_id={id}` på modulens egen origin (`frontend/lib/live-transcriber.ts`) och skickar mono PCM16 LE i 16 kHz som binära ramar och till sist `{"type":"stop","produced_samples":n}`. Nekar Eneo biljetten, till exempel 409 `flow_live_transcription_unavailable`, får webbläsaren en enda `error`-händelse med Eneos `code` och sedan en normal stängning; når BFF:en inte Eneo blir koden `upstream_unreachable` med `retryable: true`. Vad BFF:en själv avgör (gränser, session, användare, biljett): [Backend](backend.md#live-reläet).
+Webbläsaren öppnar en WebSocket till `/api/live/{flowId}/{stepId}?recording_id={id}` på modulens egen origin (`frontend/lib/live-transcriber.ts`) och skickar mono PCM16 LE i 16 kHz som binära ramar och till sist `{"type":"stop","produced_samples":n}`. Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`, får webbläsaren en enda `error`-händelse med Eneos `code` och sedan en normal stängning; når BFF:en inte Eneo blir koden `upstream_unreachable` med `retryable: true`. Vad BFF:en själv avgör (gränser, session, användare, ticket): [Backend](backend.md#live-reläet).

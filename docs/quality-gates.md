@@ -1,6 +1,6 @@
 # Tester
 
-Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
+Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`. **Gaten** är webbläsartestet som besöker varje skärm och mäter tillgänglighet (WCAG 2.2 AA) och husets krav; "gaten" betyder det på den här sidan och i resten av dokumentationen.
 
 ## Profiler
 
@@ -41,6 +41,7 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 
 - jsdom saknar `showModal` och Popover API. `frontend/lib/test-dom.ts` ersätter dem med attribut och händelser, men modalitet och förankring simuleras inte: de bevisas i gaten.
 - En CSS-modul i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`).
+- `frontend/lib/css-tokens.test.ts` kräver att CSS-modulerna och `styles/globals.css` tar avstånd, radie, färg, teckenstorlek och kantbredd från tokens (`var(--spacing-*)`, `--radius-*`, `--color-*`, `--font-size-*`, `--border-width`). Ett rått px-, rem- eller em-värde eller en rå färg i de egenskaperna fäller testet, om det inte står i `ALLOWED` med sitt skäl eller i `TO_REPLACE` med den token som ska ta dess plats. En post som inte längre förekommer fäller också testet, så listorna bara krymper.
 - `frontend/lib/test-router.ts` ger komponenttester en data-router; IndexedDB kommer från `fake-indexeddb`.
 
 ## Gaten
@@ -74,6 +75,8 @@ Läs diffen på ögonblicksbilderna innan du behåller dem.
 **Regler som aldrig ändras:** sänk inte ett tröskelvärde, ta inte bort ett läge ur gaten och lägg inte till ett axe-undantag för att få den grön. Hitta orsaken; en brist i designsystemet rättas en gång i temat ([Frontend](frontend.md#rätta-en-brist-i-designsystemet)).
 
 `frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
+
+`frontend/tests/e2e/controls.spec.ts` trycker på varje synlig, aktiverad knapp, länk, menyval, flik, brytare, kryssruta och radioknapp i varje läge, var och en i en ny kopia av läget (en egen webbläsarkontext). Den kräver ett synligt svar (adressen, fokus, en överlagring, ett aria-tillstånd, en live-region eller innehållet ändras), inga konsol- eller nätverksfel som läget inte deklarerat och att det som öppnades går att stänga med Escape eller sin egen stängknapp. Det som inte trycks (`SKIPPED`), det som med avsikt inte svarar (`NO_RESPONSE`) och det som får ge ett fel (`EXPECTS`) står med skäl i filen; ett val som redan är gjort, eller en länk till sidan man är på, trycks inte. Den körs bara på dev-profilen, i `laptop-1440-light` och `phone-390-light`, och tar ungefär 20 minuter.
 
 ### Gaten på det riktiga målet
 

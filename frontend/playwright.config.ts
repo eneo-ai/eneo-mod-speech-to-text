@@ -17,8 +17,9 @@ const REAL = process.env.GATE_TARGET === "real";
 const EXTERNAL = process.env.REAL_EXTERNAL_URL;
 // Specs that need what only the dev server has, or that replace the live socket in the browser and so would skip the relay
 // they are meant to exercise: the dialog-leak fixture (leaks), routeWebSocket (live-sheet, recording-short), the review
-// build (review-flag) and another deployment (branding). A file, not a skip at run time, and no title changes.
-const DEV_ONLY = /(leaks|live-sheet|recording-short|review-flag|branding)\.spec\.ts/;
+// build (review-flag), another deployment (branding) and browser contexts of its own, which the real target does not sign in
+// (controls). A file, not a skip at run time, and no title changes.
+const DEV_ONLY = /(leaks|live-sheet|recording-short|review-flag|branding|controls)\.spec\.ts/;
 
 type Use = NonNullable<PlaywrightTestConfig["use"]>;
 // A touch screen: Chromium then matches (pointer: coarse) and (hover: none).
