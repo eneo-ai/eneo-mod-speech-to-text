@@ -24,6 +24,7 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
+import { sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
@@ -89,7 +90,7 @@ function FlowsListPage() {
                 withFlowName
                 evictable={evictable}
                 sendLabel={(recording) => createLabel(recording.flowId)}
-                onSend={(recording) => void navigate(`/flows/${recording.flowId}?recording=${recording.id}`)}
+                onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
               />
             )}
 

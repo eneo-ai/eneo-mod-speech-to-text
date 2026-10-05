@@ -45,6 +45,7 @@ import {
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
 import { friendlyError } from "@/lib/errors";
+import { RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
@@ -103,8 +104,6 @@ type RunState =
 // Körningens id ligger i URL:en (?run=…) så att en omladdning, eller en
 // delad länk, kan återuppta samma körning i stället för att tappa den.
 const RUN_QUERY_PARAM = "run";
-// "Skapa dokument" på en osänd inspelning i flödeslistan öppnar flödet med ?recording=…
-const RECORDING_QUERY_PARAM = "recording";
 
 function readRunIdFromUrl(): string | null {
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
