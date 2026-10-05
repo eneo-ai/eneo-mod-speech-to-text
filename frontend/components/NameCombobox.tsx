@@ -30,8 +30,8 @@ export function NameCombobox({
   options,
   onChange,
   disabled = false,
-  placeholder = "Välj eller skriv namn",
-  noneLabel = "Ingen (behåll etiketten)",
+  placeholder,
+  noneLabel,
   writeLabel,
   optionNote,
   label,
@@ -43,8 +43,9 @@ export function NameCombobox({
   options: readonly string[];
   onChange: (name: string | null) => void;
   disabled?: boolean;
-  placeholder?: string;
-  noneLabel?: string;
+  placeholder: string;
+  /** The row that clears the name, e.g. "Inget namn (behåll etiketten)". */
+  noneLabel: string;
   /** Offers a way to type a name of one's own, e.g. "Skriv ett annat namn": it selects the field's text. */
   writeLabel?: string;
   /** A quiet note after a name, e.g. whom it is already given to; never a check. */

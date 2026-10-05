@@ -28,7 +28,7 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
 });
 
 const render = (props: Partial<ComponentProps<typeof UnsentRecordings>> & Pick<ComponentProps<typeof UnsentRecordings>, "recordings">) =>
-  mount(createElement(UnsentRecordings, { onSend: () => {}, ...props }));
+  mount(createElement(UnsentRecordings, { onSend: () => {}, sendLabel: () => "Skapa dokument", ...props }));
 const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("li")];
 const labels = (row: Element) => [...row.querySelectorAll("button")].map((b) => b.textContent!.trim());
 /** The element the row's actions say they are described by: what a screen reader reads after each button's name. */

@@ -94,7 +94,7 @@ export function UnsentRecordings({
   onSend,
   onContinue,
   withFlowName = false,
-  sendLabel = () => "Skapa dokument",
+  sendLabel,
   evictable = false,
 }: {
   recordings: UnsentRecording[];
@@ -102,7 +102,7 @@ export function UnsentRecordings({
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
   /** What a recording's send says: what its flow makes (lib/flow-output createActionLabel). */
-  sendLabel?: (recording: StoredRecording) => string;
+  sendLabel: (recording: StoredRecording) => string;
   /** The browser may delete the recordings (useEvictable): the list then does not promise they stay. */
   evictable?: boolean;
 }) {
