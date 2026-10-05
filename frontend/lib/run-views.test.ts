@@ -94,11 +94,11 @@ test("a run with no steps shown yet has no step region, and one that could not b
   assert.match(failed, /role="alert"(?:(?!<button).)*Körningen kunde inte avbrytas just nu\./, "the sentence is in the alert");
 });
 
-test("opening an earlier run is a busy placeholder that says so once and has no heading to move to", () => {
+test("opening an earlier run is a busy placeholder that says so once, with the page's one h1 out of sight", () => {
   const html = markup(createElement(RunOpening));
   assert.match(html, /aria-busy="true"/);
   assert.deepEqual(statuses(html), ["Hämtar körningen…"]);
-  assert.doesNotMatch(html, /<h[1-6]/);
+  assert.deepEqual([...html.matchAll(/<h([1-6])[^>]*>(.*?)<\/h\1>/g)].map(([, level, words]) => `${level} ${text(words)}`), ["1 Tal till text"]);
 });
 
 const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>

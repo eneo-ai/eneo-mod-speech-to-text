@@ -128,6 +128,7 @@ test("the page that loads says so, in one status region, and is busy", async () 
   assert.equal(status.length, 1);
   assert.ok(view.container.querySelector('[aria-busy="true"]'));
   assert.equal(view.container.querySelectorAll('[role="main"]').length, 1, "in the same frame as the page it becomes");
+  assert.deepEqual([...view.container.querySelectorAll("h1")].map((h) => h.textContent), ["Tal till text"], "a page has its h1 while it loads too");
 });
 
 test("the page for a flow that cannot be opened has one h1, and Försök igen only where trying again can help", async () => {
