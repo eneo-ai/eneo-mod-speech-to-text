@@ -275,7 +275,7 @@ export const eneoTheme = {
       "base": {
         "overflow": "visible",
         "height": "auto",
-        "minHeight": "calc(var(--size-element-md) - 8px)"
+        "minHeight": "calc(var(--size-element-md) - var(--spacing-2))"
       },
       "color:blue": {
         "backgroundColor": "var(--color-accent-muted)",

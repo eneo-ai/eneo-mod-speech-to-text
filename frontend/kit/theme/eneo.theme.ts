@@ -58,7 +58,7 @@ export const eneoTheme = defineTheme({
     // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour
     // (ORGANIZATION_ACCENT), with the primary text colour on it, which keeps its contrast whatever the accent is.
     token: {
-      base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - 8px)'},
+      base: {overflow: 'visible', height: 'auto', minHeight: 'calc(var(--size-element-md) - var(--spacing-2))'},
       'color:blue': {backgroundColor: 'var(--color-accent-muted)', color: 'var(--color-text-primary)'},
     },
     // The control is the slider's target (the track is 4 px, the thumb 20): the gate's 24 px, and 44 px below.
