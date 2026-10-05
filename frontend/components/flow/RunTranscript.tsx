@@ -86,7 +86,7 @@ export function RunTranscriptView({
   /** Reads the transcript and its saved corrections again. */
   onReload: () => void;
 }) {
-  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = editing;
+  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
   if (transcript.pending) {
     return (
@@ -136,7 +136,7 @@ export function RunTranscriptView({
           </Button>
         </HStack>
       </HStack>
-      {(unread || localError || saveState === "error") && (
+      {(unread || localError || saveState === "error" || hasDropped) && (
         <VStack gap={2} hAlign="start" paddingInline={4} paddingBlockEnd={3}>
           {unread && (
             <HStack wrap="wrap" vAlign="center" gap={3}>
@@ -149,6 +149,7 @@ export function RunTranscriptView({
             </HStack>
           )}
           {localError && <Banner status="error" collapsible={false} title={localError} />}
+          {hasDropped && <Button variant="ghost" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
           {saveState === "error" && (
             <HStack wrap="wrap" gap={2}>
               <Button size="sm" label="Försök spara igen" onClick={retryCorrections} />

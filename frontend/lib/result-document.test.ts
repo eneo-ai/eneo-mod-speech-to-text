@@ -488,6 +488,98 @@ test("a save refused as stale reads the saved corrections again, says so, and of
   assert.ok(!(view.container.textContent ?? "").includes("osparade rättningar finns kvar"));
 });
 
+/** The result page with a transcript to correct, whose saves are answered by `onSave`; the person picks Talare 2 for the first passage. */
+async function correcting(t: TestContext, onSave: () => Promise<Response>) {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const hash = "a".repeat(64);
+  let reads = 0;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-corrections") && init?.method === "PATCH") return onSave();
+    if (path.includes("transcript-corrections")) {
+      reads += 1;
+      return Response.json([{ flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: hash, occurrences: [], speaker_edits: [], revision: reads, stale: false, updated_at: "2026-09-24T10:00:00Z" }]);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: {
+      transcription: {
+        file_ids: [],
+        segments_hash: hash,
+        segments: [
+          { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten gäller budgeten." },
+        ],
+      },
+    },
+  };
+  const view = await mount(
+    await asPerson(createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+      steps: [],
+      stepResults: [transcribe] as never,
+      files: [pdf],
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    })),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  const correct = async () => {
+    await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
+    await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
+    await view.act(async () => button(document.body, "Spara")!.click());
+  };
+  return { view, correct };
+}
+
+/** Whether leaving now would ask the browser's own question. */
+const asksBeforeLeaving = () => {
+  const event = new window.Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+test("while a correction is being saved, or could not be, closing the page asks first; once it is saved it does not", async (t) => {
+  let answer: (response: Response) => void = () => {};
+  const { view, correct } = await correcting(t, () => new Promise<Response>((resolve) => void (answer = resolve)));
+  assert.equal(asksBeforeLeaving(), false, "nothing to lose yet");
+  await correct();
+  assert.equal(asksBeforeLeaving(), true, "the save has not been answered");
+  await view.act(async () => answer(Response.json({ flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: "a".repeat(64), occurrences: [], speaker_edits: [{ segment_index: 0, char_start: null, char_end: null, original: null, original_speaker: "SPEAKER_00", speaker: "SPEAKER_01", decision: "confirmed" }], revision: 2, stale: false, updated_at: "2026-09-24T10:01:00Z" })));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.equal(asksBeforeLeaving(), false, "saved");
+});
+
+test("a correction that could not be saved keeps the page asking before it is closed", async (t) => {
+  const { view, correct } = await correcting(t, async () => Response.json({ code: "service_unavailable" }, { status: 503 }));
+  await correct();
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  assert.ok(button(view.container, "Försök spara igen"), "the save failed");
+  assert.equal(asksBeforeLeaving(), true);
+});
+
+test("a save refused as stale keeps what the person corrected, to take with them, after the others' corrections are read", async (t) => {
+  const download = await import("./download");
+  const kept: Blob[] = [];
+  t.mock.method(download, "downloadBlob", (blob: Blob) => void kept.push(blob));
+  const { view, correct } = await correcting(t, async () => Response.json({ code: "flow_transcript_corrections_stale_revision" }, { status: 409 }));
+  await correct();
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  assert.match(view.container.textContent ?? "", /har laddats om/);
+  assert.equal(asksBeforeLeaving(), true, "what the person typed is not kept anywhere else");
+  await view.act(async () => button(view.container, "Hämta dina rättningar")!.click());
+  const saved = JSON.parse(await kept[0].text());
+  assert.deepEqual(saved.speaker_edits.map((edit: { speaker: string }) => edit.speaker), ["SPEAKER_01"], "their change, not the reloaded set");
+});
+
 test("Dela's read ahead does not start over when the page draws again with the same file", async (t) => {
   const { createElement } = await import("react");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
