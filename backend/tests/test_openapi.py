@@ -375,7 +375,7 @@ class AnswerTests(AppCase):
 
     def test_what_eneo_answers_comes_back_as_its_own_and_the_file_allows_it(self) -> None:
         upload = {"upload_file": ("meeting.webm", b"audio", "audio/webm")}
-        files = "/api/eneo/flows/{flow_id}/files/"
+        files = "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/"
         runs = "/api/eneo/flows/{flow_id}/runs/"
         cancel = "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/"
         as_json, as_text = "application/json", "text/plain"
@@ -412,14 +412,20 @@ class AnswerTests(AppCase):
             ("GET", "/api/eneo/flows/", {}, unreachable, 502),
             (
                 "POST",
-                "/api/eneo/flows/{flow_id}/files/",
+                "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
                 {"files": {"upload_file": ("a", b"", "text/plain")}},
                 unreachable,
                 502,
             ),
-            ("POST", "/api/eneo/flows/{flow_id}/files/", {"origin": "https://elsewhere.example"}, Eneo(), 403),
-            ("POST", "/api/eneo/flows/{flow_id}/files/", {"session": False}, Eneo(), 401),
-            ("POST", "/api/eneo/flows/{flow_id}/files/", {}, Eneo(), 400),
+            (
+                "POST",
+                "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
+                {"origin": "https://elsewhere.example"},
+                Eneo(),
+                403,
+            ),
+            ("POST", "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/", {"session": False}, Eneo(), 401),
+            ("POST", "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/", {}, Eneo(), 400),
         )
         for method, path, options, eneo, status in cases:
             with self.subTest(method=method, path=path, status=status, options=sorted(options)):

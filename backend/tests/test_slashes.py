@@ -119,7 +119,7 @@ class NoRedirectTests(SlashCase):
             "/api/auth/callback",
             "/api/auth/logout",
             "/api/auth/status",
-            "/api/eneo/flows/{flow_id}/files/",
+            "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
             "/api/eneo/{path:path}",
         ):
             self.assertIn(expected, paths)

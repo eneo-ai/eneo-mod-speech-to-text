@@ -223,8 +223,8 @@ class LogTests(unittest.TestCase):
         cases = {
             "succeeds": (lambda request: httpx.Response(200, json={"id": "file-1"}), 200, None),
             "is refused": (lambda request: httpx.Response(422, json={"detail": f"bad {ACCESS}"}), 422, None),
-            "times out": (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")), 504, "Upload timed out: url=https://eneo.example.test/api/v1/flows/flow-1/files/"),
-            "is unreachable": (lambda request: (_ for _ in ()).throw(httpx.ConnectError("connection refused")), 502, "Upload failed: url=https://eneo.example.test/api/v1/flows/flow-1/files/"),
+            "times out": (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")), 504, "Upload timed out: url=https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/"),
+            "is unreachable": (lambda request: (_ for _ in ()).throw(httpx.ConnectError("connection refused")), 502, "Upload failed: url=https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/"),
         }
         for label, (answer, status, diagnosis) in cases.items():
             with self.subTest(label):
@@ -233,7 +233,7 @@ class LogTests(unittest.TestCase):
                 self.sign_in()
 
                 response = self.client.post(
-                    "/api/eneo/flows/flow-1/files/",
+                    "/api/eneo/flows/flow-1/steps/step-1/runtime-files/",
                     headers={"Origin": ORIGIN},
                     files={"upload_file": (f"{SESSION_ID_NOTE}.webm", b"audio", "audio/webm")},
                 )

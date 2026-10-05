@@ -242,7 +242,7 @@ class EneoProxyAuthTests(ProxyCase):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 403, path)
         response = self.client.post(
-            "/api/eneo/flows/x%3F/files/",
+            "/api/eneo/flows/x%3F/steps/s/runtime-files/",
             headers={"Origin": "http://localhost:3002"},
             files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
         )
@@ -251,7 +251,7 @@ class EneoProxyAuthTests(ProxyCase):
 
     def test_upload_route_rejects_dot_segment_flow_id(self) -> None:
         response = self.client.post(
-            "/api/eneo/flows/%2E%2E/files/",
+            "/api/eneo/flows/%2E%2E/steps/s/runtime-files/",
             headers={"Origin": "http://localhost:3002"},
             files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
         )
@@ -295,7 +295,7 @@ ALLOWED = (
 ELSEWHERE = (("PATCH", f"{RUN_PATH}/review-checkpoints/active/"),)
 
 # Uploads have routes of their own, which take a POST; no other method of theirs is forwarded.
-UPLOAD_PATHS = (f"flows/{FLOW}/files/", f"flows/{FLOW}/steps/{STEP}/runtime-files/")
+UPLOAD_PATHS = (f"flows/{FLOW}/steps/{STEP}/runtime-files/",)
 
 # Paths next to the allowed ones that no method may reach, spelled as a page could send them.
 REFUSED = (
