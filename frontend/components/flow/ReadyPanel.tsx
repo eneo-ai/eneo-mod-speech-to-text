@@ -13,6 +13,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
+import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { StateCard } from "@/components/flow/StateCard";
@@ -154,6 +155,7 @@ export function ReadyPanel({
 
   return (
     <StateCard>
+      <StoppedWhileSignedOut />
       <VStack gap={1}>
         <Heading level={2} data-phase-heading tabIndex={-1}>
           Inspelningen är klar

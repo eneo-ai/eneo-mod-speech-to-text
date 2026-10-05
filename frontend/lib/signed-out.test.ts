@@ -52,7 +52,7 @@ test("signed out: the dialog asks for a new login, says the page and a recording
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"]');
   assert.equal(dialog()?.tagName, "DIALOG", "a native dialog: the browser keeps it above whatever the page has open");
   assert.match(dialog()?.textContent ?? "", /Du behöver logga in igen/);
-  assert.match(dialog()?.textContent ?? "", /inspelning fortsätter/);
+  assert.match(dialog()?.textContent ?? "", /inspelning som pågår fortsätter/);
   assert.ok(button(dialog()!, "Logga in igen"));
   assert.equal(button(dialog()!, "Stäng"), null, "no way past it but the new login");
 
@@ -151,10 +151,21 @@ test("signed out, a recording can still be paused and stopped from the sign-in d
       createElement(SignedOutControls, { phase, onPause: () => pressed.push("pausa"), onStop: () => pressed.push("stoppa") }),
     );
   const page = await mount(recorder("recording"));
+  assert.match(dialog.textContent ?? "", /En inspelning som pågår fortsätter och sparas på enheten\./, "said of a recording that runs, not of one that has stopped");
   await page.act(async () => button(dialog, "Pausa")!.click());
-  await page.act(async () => button(dialog, "Stoppa")!.click());
+  const stop = button(dialog, "Stoppa")!;
+  stop.focus();
+  await page.act(async () => stop.click());
   assert.deepEqual(pressed, ["pausa", "stoppa"]);
   await page.unmount();
+  // Stoppa ends the recording and its view with it: the stopped recording's page comes up under the cover, and the dialog
+  // says it is stopped and kept, with the focus still in it.
+  const { StoppedWhileSignedOut } = await import("../components/flow/Recorder");
+  const stopped = await mount(createElement(SignedOutSlot.Provider, { value: slot }, createElement(StoppedWhileSignedOut)));
+  const said = [...dialog.querySelectorAll('[role="status"]')].find((status) => status.textContent === "Inspelningen är stoppad och sparad.");
+  assert.ok(said, "said, in a status region");
+  assert.equal(document.activeElement, said, "the focus stays in the dialog, on those words");
+  await stopped.unmount();
   const ready = await mount(recorder("ready"));
   assert.equal(button(dialog, "Stoppa"), null, "nothing to stop once the recording is done");
   await ready.unmount();

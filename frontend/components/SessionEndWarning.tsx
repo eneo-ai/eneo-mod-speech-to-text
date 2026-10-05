@@ -165,7 +165,7 @@ export function SessionEndWarning({
                     : `Inloggningen upphör kl. ${time}. `}
                 {`${action} loggar in dig igen i ett nytt fönster.`}{" "}
                 {ended
-                  ? "Allt på den här sidan finns kvar, och en inspelning fortsätter och sparas på enheten."
+                  ? "Allt på den här sidan finns kvar. En inspelning som pågår fortsätter och sparas på enheten."
                   : "Allt på den här sidan finns kvar."}
               </Text>
               {signedOut && <div ref={controlsRef} />}

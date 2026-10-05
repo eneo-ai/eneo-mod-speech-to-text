@@ -269,6 +269,8 @@ test("signed out, a recording is stopped from the sign-in dialog, and is done wh
   const dialog = page.getByRole("alertdialog", signIn);
   await dialog.getByRole("button", { name: "Stoppa" }).click();
   await expect(dialog.getByRole("button", { name: "Stoppa" }), "nothing to stop once it is done").toHaveCount(0);
+  await expect(dialog.getByText("Inspelningen är stoppad och sparad."), "the dialog says it, where the button was").toBeVisible();
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement) && document.activeElement !== element), "the focus is still in the dialog").toBe(true);
   await expect(dialog, "and the page is still covered").toBeVisible();
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
