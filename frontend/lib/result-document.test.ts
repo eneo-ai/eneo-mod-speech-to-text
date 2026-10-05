@@ -972,19 +972,30 @@ test("the document is the file Eneo names as the run's result, not the first fil
 });
 
 
-test("a run's file is asked for, first byte only, before a person is sent to it", async () => {
+test("a run's file is checked without Range and its body is cancelled before it is read", async () => {
   const { checkRunArtifact } = await import("./api");
   const { ApiError } = await import("./api");
   const seen: { url: string; range: string | null }[] = [];
   const real = globalThis.fetch;
-  let answer: () => Response = present;
+  let reads = 0;
+  let cancelled = 0;
+  let answer: () => Response = () => new Response(new ReadableStream<Uint8Array>({
+    pull(controller) {
+      reads++;
+      controller.enqueue(new Uint8Array(1024));
+      if (reads > 1) controller.close();
+    },
+    cancel() { cancelled++; },
+  }, { highWaterMark: 0 }), { headers: { "Content-Type": "application/pdf" } });
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     seen.push({ url: String(input), range: new Headers(init?.headers).get("Range") });
     return answer();
   }) as typeof fetch;
   try {
     await checkRunArtifact("flow-1", "run-1", "file-1");
-    assert.deepEqual(seen, [{ url: ATTACHMENT, range: "bytes=0-0" }]);
+    assert.deepEqual(seen, [{ url: ATTACHMENT, range: null }], "older Eneo versions reject Range for a PDF");
+    assert.equal(reads, 0, "no file body is read into memory");
+    assert.equal(cancelled, 1, "the upstream stream is released");
     answer = missing;
     await assert.rejects(checkRunArtifact("flow-1", "run-1", "file-1"), (error: unknown) => error instanceof ApiError && error.status === 404);
   } finally {
@@ -1003,7 +1014,7 @@ test("a PDF that Eneo no longer has is not opened: no raw answer in the viewer, 
 
   await view.act(async () => open.click());
   assert.equal(asked.length, 1);
-  assert.equal(asked[0].range, "bytes=0-0", "the first byte, not the file");
+  assert.equal(asked[0].range, null, "the availability check also supports older Eneo document routes");
   assert.equal(document.querySelector("dialog[open]"), null, "no dialog");
   assert.equal(document.querySelector("iframe"), null, "no viewer to show the module's answer in");
   assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);

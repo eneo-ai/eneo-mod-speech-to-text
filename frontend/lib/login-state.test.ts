@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, checkRunArtifact, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
 
 const sessionEnded = () =>
@@ -87,6 +87,24 @@ test("a request sent again after the new login is sent again only once", async (
   loginState.observe(signedIn());
   await assert.rejects(reading, (error: ApiError) => error.status === 401);
   assert.equal(calls.length, 2);
+});
+
+test("a document availability check still cancels the body after the session is renewed", async (t) => {
+  let reads = 0;
+  let cancellations = 0;
+  const { calls } = signedInPage(t, [sessionEnded, () => new Response(new ReadableStream({
+    pull() { reads += 1; },
+    cancel() { cancellations += 1; },
+  }, { highWaterMark: 0 }), { headers: { "content-type": "application/pdf" } })]);
+  const checking = checkRunArtifact("flow-1", "run-1", "file-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loginState.signedOut, true);
+  loginState.observe(signedIn());
+  await checking;
+  assert.equal(reads, 0, "the check does not download the document");
+  assert.equal(cancellations, 1, "the renewed request releases the stream");
+  assert.deepEqual(calls.map((call) => call.method), ["GET", "GET"]);
+  assert.ok(calls.every((call) => !call.headers.has("Range")));
 });
 
 test("a run request with its Idempotency-Key goes again after the new login; a request without one is the user's to repeat", async (t) => {

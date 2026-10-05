@@ -110,10 +110,11 @@ async function request<T>(
   path: string,
   init: RequestInit = {},
   again = false,
+  read: (response: Response) => Promise<T> = readResponse<T>,
 ): Promise<T> {
   // Signed out, or someone else signed in here: nothing leaves the page until its own user is back.
   if (loginState.signedOut && !path.startsWith("/api/auth/")) {
-    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again);
+    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again, read);
     throw sessionEnded();
   }
   // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
@@ -147,7 +148,7 @@ async function request<T>(
     if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
       loginState.ended(question);
       if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
-        return request<T>(path, init, true);
+        return request<T>(path, init, true, read);
       }
     } else if (isUserChanged(error)) {
       // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
@@ -158,6 +159,10 @@ async function request<T>(
     throw error;
   }
 
+  return read(res);
+}
+
+async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   const ctype = res.headers.get("content-type") || "";
@@ -928,7 +933,7 @@ export async function uploadStepRuntimeFile(
   );
 }
 
-// --- Transkript: ordtider och ljud ---
+// --- Transkribering: ordtider och ljud ---
 
 interface TranscriptWordsResponse {
   flow_run_id: string;
@@ -1002,9 +1007,10 @@ export function inputFileAudioUrl(
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
 }
 
-/** The first byte of a run's file: whether it can be fetched, asked before a person is sent to it. */
+/** Older Eneo document routes reject Range; check availability without consuming the file's body. */
 export async function checkRunArtifact(flowId: string, runId: string, fileId: string): Promise<void> {
-  await request<string>(runArtifactUrl(flowId, runId, fileId), { headers: { Accept: "*/*", Range: "bytes=0-0" } });
+  await request<void>(runArtifactUrl(flowId, runId, fileId), { headers: { Accept: "*/*" } }, false,
+    async (response) => { await response.body?.cancel(); });
 }
 
 /**
