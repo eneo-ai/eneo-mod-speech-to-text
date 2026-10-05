@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
-import { browserDrafts, clearDraft, isRecord, readDraft, writeDraft } from "@/lib/drafts";
+import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { isRecord } from "@/lib/is-record";
 
 type Kept<T> = { revision: number; edit: T };
 type Edits<T> = { current: Kept<T> | null; yours: T | null };

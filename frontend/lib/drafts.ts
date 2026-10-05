@@ -37,11 +37,6 @@ export const unstoredDrafts = {
   },
 };
 
-/** An object that is neither a list nor null: the first thing a reader of a draft of named parts checks. */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * A draft in the shape its reader needs, or null. The storage holds what an earlier page wrote, which may be of an older
  * shape or not a draft at all: `isDraft` is the reader's own check of what it is about to use. A draft that fails it, or

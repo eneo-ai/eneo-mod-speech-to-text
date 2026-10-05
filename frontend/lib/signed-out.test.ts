@@ -65,7 +65,8 @@ test("signed out: the dialog asks for a new login, says the page and a recording
 test("someone signing in here keeps only their own drafts: another person's typed details and review edits go", async (t) => {
   const { createElement } = await import("react");
   const { AuthGate } = await import("../components/AuthGate");
-  const { browserDrafts, isRecord, readDraft, writeDraft } = await import("./drafts");
+  const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
+  const { isRecord } = await import("./is-record");
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ authenticated: true, user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {

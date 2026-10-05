@@ -7,7 +7,7 @@
 
 import { ApiError, regenerateTranscript, type FlowRunPublic } from "./api";
 import { friendlyError } from "./errors";
-import type { CorrectionSet } from "./transcript-corrections";
+import { isSegmentsHash, type CorrectionSet } from "./transcript-corrections";
 
 export interface RegenerationRequest {
   flowId: string;
@@ -40,7 +40,7 @@ export function regenerationOffer({
   hasDocument: boolean;
 }): RegenerationRequest | null {
   if (!hasDocument || !fromMetadata || !stepId || typeof run.revision !== "number") return null;
-  if (corrections.schemaVersion !== 3 || !/^[0-9a-f]{64}$/.test(corrections.segmentsHash ?? "")) return null;
+  if (corrections.schemaVersion !== 3 || !isSegmentsHash(corrections.segmentsHash)) return null;
   if (corrections.revision === null || !corrections.updatedAt || !run.finished_at) return null;
   if (Date.parse(corrections.updatedAt) <= Date.parse(run.finished_at)) return null;
   return {

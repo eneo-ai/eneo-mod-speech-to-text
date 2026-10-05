@@ -25,6 +25,7 @@ import {
   EMPTY_CORRECTIONS,
   correctionsFromResponse,
   correctionWriteProblem,
+  isSegmentsHash,
   type CorrectionSet,
 } from "./transcript-corrections";
 
@@ -219,7 +220,7 @@ export async function loadTranscriptContext({
     // Without segments the text is the transcript; a preview is read in full first.
     if (segments === null && stepText) stepText = await wholeText(flowId, runId, stepText);
     const hash = (transcription as { segments_hash?: unknown } | null)?.segments_hash;
-    const segmentsHash = typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash) ? hash : null;
+    const segmentsHash = isSegmentsHash(hash) ? hash : null;
     corrections = { ...EMPTY_CORRECTIONS, ...(segmentsHash ? { schemaVersion: 3, segmentsHash } : {}) };
     speakerReviews = speakerReviewsFromTranscription(transcription);
     fileIds = fileIdsFromTranscription(transcription);

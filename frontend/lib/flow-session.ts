@@ -14,7 +14,8 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { clearDraft, isRecord, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { isRecord } from "./is-record";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";

@@ -12,7 +12,8 @@ import { useSignedOut } from "@/components/AuthGate";
 import { NameCombobox } from "@/components/NameCombobox";
 import styles from "@/components/SpeakerNamingDialog.module.css";
 import { SpeakerMark } from "@/components/TranscriptPlayer";
-import { browserDrafts, clearDraft, isRecord, readDraft, writeDraft } from "@/lib/drafts";
+import { browserDrafts, clearDraft, readDraft, writeDraft } from "@/lib/drafts";
+import { isRecord } from "@/lib/is-record";
 import { speakerNameProblem, type SpeakerMappingRow } from "@/lib/speaker-mapping";
 import { speakerDisplayLabel } from "@/lib/transcript";
 

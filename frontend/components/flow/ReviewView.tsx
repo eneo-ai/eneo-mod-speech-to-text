@@ -58,7 +58,7 @@ import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
-import { isRecord } from "@/lib/drafts";
+import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
 import styles from "./ReviewView.module.css";
 

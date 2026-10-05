@@ -430,11 +430,14 @@ export function correctionsFromResponse(response: {
   return set;
 }
 
+/** The hash of the segments a set of corrections is made against: 64 hex digits. */
+export const isSegmentsHash = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+
 /** Guard full-list writes until the original base hash is known. */
 export function correctionWriteProblem(set: CorrectionSet): string | null {
   const version = set.schemaVersion ?? 2;
   if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Tal till text.";
-  if (version >= 3 && !/^[0-9a-f]{64}$/.test(set.segmentsHash ?? "")) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
+  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
     return "Talarbeslut kräver Eneos uppdaterade transkriptunderlag.";
   }
