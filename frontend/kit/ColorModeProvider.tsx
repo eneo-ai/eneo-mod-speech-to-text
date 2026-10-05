@@ -1,8 +1,5 @@
-// Copied from eneo-module-kit-ui, packages/ui/src/color-mode.tsx, commit 9eb66af (and its tests, lib/color-mode.test.ts, from
-// packages/ui/tests/color-mode.test.ts). Plan C task stt-plan-c-module-kit-gwh.3 deletes this copy for the kit's own.
-// Changed from the kit's: one comment is reworded (the kit's names the library its key came from, which this module no
-// longer has), and a switch of the mode marks `<html>` so the page's colour transitions are off for it (markSwitching).
-// The kit's own apps want the same: say so on the kit's board when Plan C starts.
+// The colour mode of eneo-module-kit-ui (packages/ui/src/color-mode.tsx; its tests are lib/color-mode.test.ts). A switch of
+// the mode also marks `<html>`, so the page's colour transitions are off for it (markSwitching).
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
