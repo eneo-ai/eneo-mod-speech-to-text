@@ -5,8 +5,9 @@
     - log "Preliminär text":
       - paragraph: /Välkomna till/
     - status
-  - text: /Spelar in 0:\d+/
-  - button "Pausa"
-  - button "Stoppa"
+  - toolbar "Inspelningen":
+    - text: /Spelar in 0:\d+/
+    - button "Pausa"
+    - button "Stoppa"
   - status
   - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.
