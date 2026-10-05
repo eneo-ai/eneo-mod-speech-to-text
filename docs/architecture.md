@@ -1,6 +1,6 @@
 # Arkitektur
 
-![Översikt: webbläsare, modulen med gränssnitt och säker backend, och Eneo](images/arkitektur-oversikt.png)
+![Översikt: webbläsare, modulen med gränssnitt och säker backend, och Eneo](images/arkitektur-oversikt.webp)
 
 Bilden är en översikt; diagrammen nedan är beskrivningen som gäller.
 

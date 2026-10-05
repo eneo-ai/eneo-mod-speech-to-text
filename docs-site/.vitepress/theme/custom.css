@@ -1,0 +1,358 @@
+/* The module's identity on the default theme: its accent, system fonts and focus ring (frontend/kit/theme/eneo.theme.ts). */
+:root {
+  --vp-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --vp-font-family-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  --vp-c-bg: #fbfcff;
+  --vp-c-bg-alt: #f0f0f6;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f4f5fa;
+  --vp-c-text-1: #16181d;
+  --vp-c-text-2: #454852;
+  --vp-c-text-3: #62656f;
+  --vp-c-divider: #e1e2ea;
+  --vp-c-border: #c9cad4;
+
+  --vp-c-brand-1: #004595;
+  --vp-c-brand-2: #003672;
+  --vp-c-brand-3: #004595;
+  --vp-c-brand-soft: rgba(0, 69, 149, 0.1);
+
+  --vp-button-brand-text: #ffffff;
+  --vp-button-brand-bg: #004595;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-text: #ffffff;
+  --vp-button-brand-hover-bg: #003a80;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-active-text: #ffffff;
+  --vp-button-brand-active-bg: #003672;
+  --vp-button-brand-active-border: transparent;
+
+  --vp-home-hero-name-color: var(--vp-c-brand-1);
+  --vp-home-hero-name-background: none;
+  --vp-home-hero-image-background-image: none;
+  --vp-home-hero-image-filter: none;
+}
+
+.dark {
+  --vp-c-bg: #0e1115;
+  --vp-c-bg-alt: #14171c;
+  --vp-c-bg-elv: #191c1f;
+  --vp-c-bg-soft: #191c1f;
+  --vp-c-text-1: #eceef2;
+  --vp-c-text-2: #b4b8c2;
+  --vp-c-text-3: #8c919c;
+  --vp-c-divider: #23272c;
+  --vp-c-border: #2e3135;
+
+  --vp-c-brand-1: #52b1ff;
+  --vp-c-brand-2: #7cc3ff;
+  --vp-c-brand-3: #52b1ff;
+  --vp-c-brand-soft: rgba(82, 177, 255, 0.14);
+
+  /* The module's own dark-mode label on its accent: white on this blue is 2.4:1. */
+  --vp-button-brand-text: #0b1118;
+  --vp-button-brand-bg: #52b1ff;
+  --vp-button-brand-hover-text: #0b1118;
+  --vp-button-brand-hover-bg: #7cc3ff;
+  --vp-button-brand-active-text: #0b1118;
+  --vp-button-brand-active-bg: #3fa3f5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--vp-c-brand-1);
+  outline-offset: 2px;
+}
+
+/* A diagram is source text until diagrams.ts draws it, then it keeps its natural size and scrolls sideways in its own box. */
+pre.mermaid {
+  margin: 20px 0;
+  padding: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  overflow-x: auto;
+  background: none;
+  white-space: pre;
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.8125rem;
+  color: var(--vp-c-text-2);
+}
+pre.mermaid[data-drawn='light'],
+pre.mermaid[data-drawn='dark'] {
+  font-family: inherit;
+  white-space: normal;
+}
+pre.mermaid svg {
+  display: block;
+  margin: 0 auto;
+}
+/* Mermaid sizes a label with the page's line height; inside .vp-doc its paragraphs get VitePress's taller one and the last line is cut. */
+pre.mermaid p {
+  line-height: inherit;
+}
+
+/* ---------- Start page ---------- */
+
+.VPHome .VPHero .name,
+.VPHome .VPHero .text {
+  font-size: 2.5rem;
+  line-height: 1.12;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.VPHome .VPHero.has-image .name,
+.VPHome .VPHero.has-image .text {
+  max-width: none;
+  margin: 0;
+}
+.VPHome .VPHero.has-image .tagline {
+  max-width: 34em;
+  margin: 20px 0 0;
+  padding-top: 0;
+  font-size: 1.125rem;
+  line-height: 1.6;
+  font-weight: 400;
+  color: var(--vp-c-text-2);
+  text-wrap: pretty;
+}
+.VPHome .VPHero .hero-note {
+  display: block;
+  margin-top: 12px;
+  font-size: 1rem;
+}
+/* The project's touch target is 44 px; VitePress's medium button is 40. */
+.VPHome .VPHero .VPButton.medium {
+  line-height: 42px;
+  border-radius: 22px;
+}
+.VPHome .VPHero .image-container {
+  width: 100%;
+  height: auto;
+  transform: none;
+}
+.VPHome .VPHero .image-src {
+  position: static;
+  width: 100%;
+  max-width: 460px;
+  max-height: none;
+  transform: none;
+}
+@media (max-width: 959px) {
+  /* Reading text stays left-aligned at every width. */
+  .VPHome .VPHero.has-image .container {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+  }
+  .VPHome .VPHero .actions,
+  .VPHome .VPHero.has-image .image-container {
+    justify-content: flex-start;
+    margin: 0;
+  }
+  .VPHome .VPHero .actions {
+    margin: 24px 0 0;
+  }
+  .VPHome .VPHero .image {
+    order: 3;
+    margin: 48px 0 0;
+  }
+  .VPHome .VPHero .image-src {
+    max-width: 280px;
+  }
+}
+@media (min-width: 640px) {
+  .VPHome .VPHero .name,
+  .VPHome .VPHero .text {
+    font-size: 3.5rem;
+  }
+}
+
+/* The page body: a heading and its text side by side, one hairline between sections. */
+.VPContent .VPHome {
+  margin-bottom: 0;
+}
+.VPHome .vp-doc.container {
+  padding-bottom: 0;
+}
+.VPHome .vp-doc > div > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+.VPHome .vp-doc h2 {
+  margin: 0;
+  padding: 32px 0 16px;
+  border-top: 1px solid var(--vp-c-divider);
+  font-size: 1.375rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+}
+.VPHome .vp-doc h2 ~ :is(p, ul) {
+  margin: 0 0 16px;
+}
+.VPHome .vp-doc h2 ~ :is(p, ul):has(+ h2),
+.VPHome .vp-doc h2 ~ :is(p, ul):last-child {
+  margin-bottom: 0;
+  padding-bottom: 32px;
+}
+.VPHome .vp-doc ul {
+  padding-left: 0;
+  list-style: none;
+}
+.VPHome .vp-doc ul li {
+  margin: 0;
+  padding: 0 0 12px;
+  color: var(--vp-c-text-2);
+}
+.VPHome .vp-doc ul li:last-child {
+  padding-bottom: 0;
+}
+.VPHome .vp-doc ul li > a:first-child {
+  font-weight: 600;
+  text-decoration: none;
+}
+.VPHome .vp-doc ul li > a:first-child:hover {
+  text-decoration: underline;
+}
+@media (min-width: 960px) {
+  .VPHome .vp-doc > div > div {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 11fr);
+  }
+  .VPHome .vp-doc h2 {
+    grid-column: 1;
+    padding-bottom: 32px;
+  }
+  .VPHome .vp-doc h2 ~ :not(h2) {
+    grid-column: 2;
+    /* About 70 characters of text; the hairline above it still runs the full width. */
+    padding-left: 48px;
+    padding-right: max(0px, calc(100% - 36em - 48px));
+  }
+  /* The first element of a section sits on the same line as its heading. */
+  .VPHome .vp-doc h2 + * {
+    padding-top: 32px;
+    border-top: 1px solid var(--vp-c-divider);
+  }
+}
+
+/* Three steps, each under its own rule. The numbers carry the order. */
+.VPHome .vp-doc h2#så-fungerar-det {
+  grid-column: 1 / -1;
+  padding-bottom: 24px;
+}
+.VPHome .vp-doc h2#så-fungerar-det + ol {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 32px;
+  margin: 0 0 48px;
+  padding: 0;
+  border-top: 0;
+  list-style: none;
+  counter-reset: step;
+}
+.VPHome .vp-doc h2#så-fungerar-det + ol li {
+  margin: 0;
+  padding-top: 16px;
+  border-top: 2px solid var(--vp-c-brand-1);
+  counter-increment: step;
+  color: var(--vp-c-text-2);
+  line-height: 1.6;
+}
+.VPHome .vp-doc h2#så-fungerar-det + ol li::before {
+  content: counter(step);
+  display: block;
+  margin-bottom: 8px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--vp-c-brand-1);
+}
+.VPHome .vp-doc h2#så-fungerar-det + ol li strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 1.0625rem;
+  color: var(--vp-c-text-1);
+}
+@media (min-width: 960px) {
+  .VPHome .vp-doc h2#så-fungerar-det + ol {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    padding-left: 0;
+    padding-right: 0;
+  }
+}
+
+/* ---------- API reference (Scalar) ---------- */
+
+.api-page > h1,
+.api-page > p {
+  max-width: 1152px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+.api-page > h1 {
+  padding-top: 40px;
+  font-size: 2rem;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.api-page > p {
+  margin-top: 12px;
+  margin-bottom: 32px;
+  color: var(--vp-c-text-2);
+  line-height: 1.6;
+}
+.api-reference {
+  border-top: 1px solid var(--vp-c-divider);
+}
+.scalar-app {
+  --scalar-custom-header-height: var(--vp-nav-height);
+  --scalar-font: var(--vp-font-family-base);
+  --scalar-font-code: var(--vp-font-family-mono);
+  --scalar-background-1: var(--vp-c-bg);
+  --scalar-background-2: var(--vp-c-bg-alt);
+  --scalar-background-3: var(--vp-c-bg-soft);
+  --scalar-background-accent: var(--vp-c-brand-soft);
+  --scalar-color-1: var(--vp-c-text-1);
+  --scalar-color-2: var(--vp-c-text-2);
+  --scalar-color-3: var(--vp-c-text-3);
+  --scalar-color-accent: var(--vp-c-brand-1);
+  --scalar-border-color: var(--vp-c-divider);
+  --scalar-link-color: var(--vp-c-brand-1);
+  --scalar-link-color-hover: var(--vp-c-brand-2);
+  --scalar-button-1: var(--vp-button-brand-bg);
+  --scalar-button-1-hover: var(--vp-button-brand-hover-bg);
+  --scalar-button-1-color: var(--vp-button-brand-text);
+  --scalar-sidebar-background-1: var(--vp-c-bg);
+  --scalar-sidebar-search-background: var(--vp-c-bg-alt);
+  --scalar-sidebar-search-color: var(--vp-c-text-2);
+}
+/* VitePress resets headings outside any cascade layer, which beats Scalar's layered styles: give them back Scalar's own. */
+.scalar-app :is(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  font-weight: inherit;
+}
+/* The method names are text on the sidebar's grey: darker tones than Scalar's, for 4.5:1. */
+html:not(.dark) .scalar-app {
+  --scalar-color-green: #05704c;
+  --scalar-color-blue: #0b5cad;
+  --scalar-color-red: #b3171c;
+  --scalar-color-orange: #a83a00;
+  --scalar-color-yellow: #7a5600;
+}
+/* The sidebar's open and close buttons are 22 px; 24 px is the floor (WCAG 2.5.8). */
+.scalar-app button[aria-expanded] {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+@media (max-width: 959px) {
+  .VPHome .vp-doc ul li {
+    padding-bottom: 0;
+  }
+  .VPHome .vp-doc ul li > a:first-child {
+    display: inline-block;
+    padding-block: 10px;
+  }
+}

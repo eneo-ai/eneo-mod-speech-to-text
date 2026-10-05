@@ -1,0 +1,24 @@
+{
+  "name": "eneo-mod-speech-to-text-docs",
+  "private": true,
+  "type": "module",
+  "description": "The documentation site (VitePress), built from ../docs. Separate from the module: nothing here reaches the image or the frontend build.",
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview",
+    "check": "node check.mjs"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
+    "mermaid": "12.1.0",
+    "vitepress": "1.6.4"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "1.72.4"
+  }
+}
