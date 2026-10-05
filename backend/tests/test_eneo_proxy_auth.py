@@ -282,34 +282,30 @@ ALLOWED = (
     ("GET", f"{STEP_PATH}/attempts/{ATTEMPT}/transcript-source/"),
     ("PATCH", f"{STEP_PATH}/transcript-corrections/"),
     ("POST", f"{RUN_PATH}/cancel/"),
-    ("POST", f"{RUN_PATH}/redispatch/"),
     ("POST", f"{RUN_PATH}/retry/"),
     ("POST", f"{STEP_PATH}/transcript-regenerations/"),
-    ("POST", f"{STEP_PATH}/rerun/"),
-    ("GET", f"{RUN_PATH}/evidence/"),
-    ("GET", f"{RUN_PATH}/evidence/export"),
     ("GET", f"{RUN_PATH}/review-checkpoints/active/"),
     ("PATCH", f"{CHECKPOINT_PATH}/"),
     ("POST", f"{CHECKPOINT_PATH}/approve/"),
     ("POST", f"{CHECKPOINT_PATH}/reject/"),
     ("POST", f"{CHECKPOINT_PATH}/resume/"),
-    ("GET", f"flows/{FLOW}/template-files/"),
 )
 
-# Calls the allowlist does not own, and so is not held to above: an id of a checkpoint may be spelled "active", and a POST of a
-# template file is the upload route's.
-ELSEWHERE = (
-    ("PATCH", f"{RUN_PATH}/review-checkpoints/active/"),
-    ("POST", f"flows/{FLOW}/template-files/"),
-)
+# Calls the allowlist does not own, and so is not held to above: an id of a checkpoint may be spelled "active".
+ELSEWHERE = (("PATCH", f"{RUN_PATH}/review-checkpoints/active/"),)
 
-# Uploads have routes of their own, which take a POST; no other method of theirs is forwarded (a template file's route is
-# also listed for GET, above).
+# Uploads have routes of their own, which take a POST; no other method of theirs is forwarded.
 UPLOAD_PATHS = (f"flows/{FLOW}/files/", f"flows/{FLOW}/steps/{STEP}/runtime-files/")
 
 # Paths next to the allowed ones that no method may reach, spelled as a page could send them.
 REFUSED = (
     "",
+    # Eneo has these, and the module's page calls none of them.
+    f"{RUN_PATH}/redispatch/",
+    f"{STEP_PATH}/rerun/",
+    f"{RUN_PATH}/evidence/",
+    f"{RUN_PATH}/evidence/export",
+    f"flows/{FLOW}/template-files/",
     "flows",
     f"flows/{FLOW}/",
     f"flows/{FLOW}/runs/{RUN}/steps/{STEP}/",
@@ -325,9 +321,9 @@ REFUSED = (
     f"{RUN_PATH}/review-checkpoints/",
     f"{RUN_PATH}/artifacts/file-1/",
     f"{RUN_PATH}/input-files/file-1/",
-    f"flows//runs/",
+    "flows//runs/",
     f"flows/{FLOW}/runs//",
-    f"x/flows/",
+    "x/flows/",
     "Flows/",
     "api/v1/flows/",
     "users/",
@@ -407,6 +403,22 @@ class EneoProxyAllowlistTests(ProxyCase):
                     response = self.send(method, path)
 
                     self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_a_template_file_is_neither_uploaded_nor_listed(self) -> None:
+        for method in ("GET", "POST", "PATCH"):
+            with self.subTest(method=method):
+                response = self.client.request(
+                    method,
+                    f"/api/eneo/flows/{FLOW}/template-files/",
+                    headers=ORIGIN,
+                    files={"upload_file": ("mall.docx", b"template", "application/octet-stream")}
+                    if method == "POST"
+                    else None,
+                )
+
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
         self.assertEqual(self.proxy_client.calls, [])
 
     def test_an_unsafe_spelling_of_a_listed_path_is_refused_for_every_method(self) -> None:

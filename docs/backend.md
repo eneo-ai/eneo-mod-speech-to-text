@@ -46,7 +46,6 @@ Alla rutter ligger under `/api` utom `/health` och det byggda gränssnittet. "Se
 | `/api/auth/status` | GET | nej | nej | `authenticated`, `user`, `session_ends_in`, `refresh_in` och `max_upload_bytes` (vad sidan får skicka i en uppladdning). |
 | `/api/eneo/flows/{flow_id}/files/` | POST | ja | ja | Uppladdning, se [Uppladdningar](#uppladdningar). |
 | `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/` | POST | ja | ja | Uppladdning till flödets ljudsteg. |
-| `/api/eneo/flows/{flow_id}/template-files/` | POST | ja | ja | Uppladdning av mallfil. |
 | `/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio` | GET | ja | nej | Strömmar körningens indatafil med Range. |
 | `/api/eneo/flows/{flow_id}/runs/{run_id}/artifacts/{file_id}/content` | GET | ja | nej | Strömmar en genererad fil. `?disposition=inline` ger inline bara för PDF. |
 | `/api/eneo/{path}` | GET, POST, PATCH | ja | ja | Allt annat mot Eneo, bara det [tillåtelselistan](#tillåtelselistan-för-eneo-anrop) räknar upp. |
@@ -61,7 +60,7 @@ Alla rutter ligger under `/api` utom `/health` och det byggda gränssnittet. "Se
 
 ## Tillåtelselistan för Eneo-anrop
 
-Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`. Allt som inte räknas upp här får `403 Eneo resource is not exposed`. Sökvägarna matchas som de stavas, med avslutande snedstreck (`evidence/export` är den enda utan); `{namn}` matchar ett enda segment.
+Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`. Allt som inte räknas upp här får `403 Eneo resource is not exposed`. Sökvägarna matchas som de stavas, med avslutande snedstreck; `{namn}` matchar ett enda segment. Bara det sidan anropar är med.
 
 | Metod | Sökväg |
 |---|---|
@@ -78,18 +77,13 @@ Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`
 | GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/` |
 | PATCH | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/` |
-| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/redispatch/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/retry/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/` |
-| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/rerun/` |
-| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/evidence/` |
-| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/evidence/export` |
 | GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/` |
 | PATCH | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/` |
 | POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/` |
-| GET | `/api/eneo/flows/{flow_id}/template-files/` |
 
 Källan är `PROXY_ROUTES` i `backend/app/main.py`. Ett test, `backend/tests/test_backend_page.py`, håller den här tabellen och tabellen över rutter ovan lika med appen.
 
@@ -110,7 +104,7 @@ Värdena (standard och regler) står i [Drift](operations.md#miljövariabler). H
 | Gräns | Gäller | Överskridet ger |
 |---|---|---|
 | `MAX_BODY_BYTES` | Varje request-body utom uppladdningarna: JSON och allt annat, med eller utan session, även inloggningens. WebSocket berörs inte. | 413 med `max_body_bytes` i svaret. En ogiltig `Content-Length` ger 400. |
-| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till de tre uppladdningsrutterna, hela request-bodyn inräknad. | 413 med `max_upload_bytes` i svaret; 411 utan `Content-Length`. |
+| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till de två uppladdningsrutterna, hela request-bodyn inräknad. | 413 med `max_upload_bytes` i svaret; 411 utan `Content-Length`. |
 | `MAX_RESPONSE_BYTES` | Ett enskilt svar från Eneo som modulen läser (proxyn och uppladdningens svar). En fil som strömmas räknas inte. | `502 upstream_too_large` |
 | små svar, 1 MiB | Svar som bär en token eller en URL (ticketväxling, sessionskontroll, förnyelse, signerad URL, live-ticket) och kroppen i ett misslyckat filsvar. | Ett misslyckat anrop: ticketväxlingen avslutas utan session, en signerad URL ger `502 upstream_invalid`, en live-ticket händelsen `upstream_unreachable`; ett misslyckat filsvar behåller sin status men får en standardtext i stället för Eneos kropp. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | Hela vidarebefordran av en uppladdning, inte bara varje läsning. | `504 upstream_upload_timeout` |

@@ -162,7 +162,7 @@ class FrontendPathTests(SlashCase):
         self.assertNotIn("/api/config", paths, "the module has no such route")
         self.assertIn("/api/eneo/flows/x/runs/x/artifacts/x/content", paths)
         self.assertIn("/api/eneo/flows/x/runs/", paths)
-        self.assertGreater(len(paths), 27)  # the frontend builds some thirty
+        self.assertGreater(len(paths), 20)  # the frontend builds some twenty-five
 
     def test_each_one_reaches_its_handler_as_written(self) -> None:
         for path in sorted(frontend_paths()):

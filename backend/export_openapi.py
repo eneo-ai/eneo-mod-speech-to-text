@@ -298,19 +298,6 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
     ),
-    ("POST", "/api/eneo/flows/{flow_id}/template-files/"): Op(
-        "Uppladdning",
-        "Ladda upp en mallfil",
-        "Som uppladdningen till flödet, för en mallfil.",
-        session=True,
-        origin=True,
-        user="required",
-        body=UPLOAD_BODY,
-        success=ENEO_ANSWERS,
-        parameters=(UPLOAD_TIMEOUT,),
-        errors=UPLOAD_ERRORS,
-        too_large="max_upload_bytes",
-    ),
     ("GET", "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio"): Op(
         "Filer",
         "Körningens ljud",
@@ -355,18 +342,13 @@ ENEO_SUMMARIES: dict[tuple[str, str], str] = {
     ): "Transkriptets källsegment i ett försök (`start_segment_index` som frågeparameter)",
     ("PATCH", STEP + "/transcript-corrections/"): "Spara rättningar av transkriptet",
     ("POST", RUN + "/cancel/"): "Avbryt en körning",
-    ("POST", RUN + "/redispatch/"): "Skicka en körning igen (redispatch)",
     ("POST", RUN + "/retry/"): "Försök igen från det misslyckade steget",
     ("POST", STEP + "/transcript-regenerations/"): "Skapa dokumentet igen med rättningarna",
-    ("POST", STEP + "/rerun/"): "Kör ett steg igen",
-    ("GET", RUN + "/evidence/"): "Körningens underlag",
-    ("GET", RUN + "/evidence/export"): "Exportera körningens underlag",
     ("GET", RUN + "/review-checkpoints/active/"): "Körningens aktiva granskningspunkt",
     ("PATCH", CHECKPOINT + "/"): "Ändra en granskningspunkt",
     ("POST", CHECKPOINT + "/approve/"): "Godkänn en granskningspunkt",
     ("POST", CHECKPOINT + "/reject/"): "Avvisa en granskningspunkt",
     ("POST", CHECKPOINT + "/resume/"): "Återuppta körningen efter en granskningspunkt",
-    ("GET", "/api/eneo/flows/{flow_id}/template-files/"): "Flödets mallfiler",
 }
 
 

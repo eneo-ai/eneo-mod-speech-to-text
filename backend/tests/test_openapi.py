@@ -111,7 +111,7 @@ class DocumentTests(unittest.TestCase):
         expected |= {(method, template) for methods, template in main.PROXY_ROUTES for method in methods}
 
         self.assertEqual(set(self.operations), expected)
-        self.assertGreater(len(expected), 40)
+        self.assertGreater(len(expected), 30)
 
     def test_the_live_socket_is_not_in_it(self) -> None:
         self.assertEqual([path for path in self.document["paths"] if path.startswith("/api/live")], [])
