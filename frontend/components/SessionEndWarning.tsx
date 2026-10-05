@@ -15,6 +15,8 @@ export const SESSION_CHANNEL = "tal-till-text:session";
 
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
+// The longest delay a timer holds: a longer one (a login set to last more than 24.8 days) fires at once.
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * The login ends at a fixed time, which only a new login can move. Five
@@ -55,10 +57,20 @@ export function SessionEndWarning({
     setOpen(false);
     setProblem(null);
     if (endsAt === null) return;
-    const timer = setTimeout(() => {
-      returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setOpen(true);
-    }, Math.max(0, endsAt - WARN_BEFORE_MS - Date.now()));
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      const wait = Math.max(0, endsAt - WARN_BEFORE_MS - Date.now());
+      timer = setTimeout(
+        wait > LONGEST_TIMER_MS
+          ? arm
+          : () => {
+              returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setOpen(true);
+            },
+        Math.min(wait, LONGEST_TIMER_MS),
+      );
+    };
+    arm();
     return () => clearTimeout(timer);
   }, [endsAt]);
 
