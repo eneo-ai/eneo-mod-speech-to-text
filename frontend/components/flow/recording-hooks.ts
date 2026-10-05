@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useInputLevel } from "@/components/flow/LevelMeter";
+import type { LiveStatus } from "@/lib/live-transcriber";
 import type { RecordingCapture } from "@/lib/recording-session";
 import { SilenceWatch } from "@/lib/recording-view";
 
@@ -54,4 +55,28 @@ export function useDocumentTitle(title: string): void {
     },
     [],
   );
+}
+
+/** How long live text must be down before the sheet says so, and up again before it takes the words back. */
+export const LIVE_SETTLE_MS = 5_000;
+
+// What cannot go on is said at once; only a break, which may mend, is waited out.
+const LIVE_ENDS: ReadonlySet<LiveStatus> = new Set(["unavailable", "stopped", "ended"]);
+
+/**
+ * The live status as the sheet says it. A break is said only once it has lasted LIVE_SETTLE_MS, and once said it is
+ * taken back only after the text has been up as long, so a connection that flaps is said once, not at every break.
+ */
+export function useSettledLiveStatus(status: LiveStatus): LiveStatus {
+  const [shown, setShown] = useState(status);
+  useEffect(() => {
+    if (status === shown) return;
+    if (LIVE_ENDS.has(status) || (status !== "reconnecting" && shown !== "reconnecting")) {
+      setShown(status);
+      return;
+    }
+    const timer = setTimeout(() => setShown(status), LIVE_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [status, shown]);
+  return shown;
 }

@@ -137,3 +137,18 @@ for (const [name, css] of [
     expect(sheet.lines, `a line of the text to read (${JSON.stringify(sheet)})`).toBeGreaterThanOrEqual(1);
   });
 }
+
+test("live text that cannot start says why where the promise of text was, and the sentence is in the log once", async ({ page }) => {
+  // Eneo refuses the session before it says ready: live text is unavailable for this recording.
+  await page.routeWebSocket(/\/api\/live\//, (ws) => {
+    ws.send(JSON.stringify({ type: "error", code: "flow_live_transcription_unavailable", message: "Unavailable", retryable: false }));
+    ws.close({ code: 1011 });
+  });
+  await setup(page);
+  await record(page, "Strömma");
+  const sentence = "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar.";
+  await expect(page.getByRole("log", { name: "Preliminär text" })).toHaveText(sentence, { timeout: 30_000 });
+  await expect(page.getByText("Texten visas här när du börjar prata.")).toHaveCount(0);
+  // One sentence in the page's reading order, and one in the status region that announces it.
+  await expect(page.getByRole("status").filter({ hasText: sentence })).toHaveCount(1);
+});

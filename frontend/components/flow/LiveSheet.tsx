@@ -5,6 +5,7 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
@@ -12,6 +13,7 @@ import type { CaptureStatus } from "@/lib/recording-session";
 import { scrollBehavior } from "@/lib/motion";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 import styles from "./LiveSheet.module.css";
+import { useSettledLiveStatus } from "./recording-hooks";
 
 export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   const out: LivePiece[][] = [];
@@ -51,10 +53,11 @@ export function LiveSheet({
   const headingId = useId();
   const scroller = useRef<HTMLElement>(null);
   const [following, setFollowing] = useState(true);
-  const status = liveStatusLine(snapshot.status, snapshot.started, recorder);
+  const status = liveStatusLine(useSettledLiveStatus(snapshot.status), snapshot.started, recorder);
   const groups = paragraphs(snapshot.pieces);
-  // No promise of text once live text could not start; the status line says why.
-  const empty = groups.length === 0 && !snapshot.pending && snapshot.status !== "unavailable";
+  const noText = groups.length === 0 && !snapshot.pending;
+  // A failure replaces the placeholder; the persistent status region announces it once.
+  const empty = noText && (status !== null || snapshot.status !== "unavailable");
 
   // After each change, and only while following: keep the newest line in view.
   useLayoutEffect(() => {
@@ -91,8 +94,8 @@ export function LiveSheet({
           className={styles.log}
         >
           {empty && (
-            <Text as="p" color="secondary" size="lg">
-              Texten visas här när du börjar prata.
+            <Text as="p" color="secondary" size="lg" aria-hidden={status ? true : undefined}>
+              {status ?? "Texten visas här när du börjar prata."}
             </Text>
           )}
           <VStack gap={4} maxWidth="68ch" className={styles.text}>
@@ -125,8 +128,8 @@ export function LiveSheet({
         )}
       </div>
       {/* Always rendered, so a change is said once; empty (and so no taller than nothing) while live text is fine. */}
-      <Text as="p" type="supporting" role="status" className={status ? styles.statusLine : undefined}>
-        {status ?? ""}
+      <Text as="p" type="supporting" role="status" className={status && !noText ? styles.statusLine : undefined}>
+        {noText ? <VisuallyHidden>{status ?? ""}</VisuallyHidden> : status ?? ""}
       </Text>
     </Card>
   );
