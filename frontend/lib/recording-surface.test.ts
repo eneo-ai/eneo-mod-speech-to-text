@@ -65,7 +65,7 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   assert.ok(alert.compareDocumentPosition(pause) & Node.DOCUMENT_POSITION_FOLLOWING, "above the controls");
   assert.match(alert.textContent ?? "", /Vi hör inget från mikrofonen\./);
 
-  const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null, storageNote: null }));
+  const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null }));
   for (const view of [running, recorder]) {
     // Everything inside a live region is checked for the timer, and the timer itself is on the page.
     assert.ok(text(view.container, "span", "0:00"), "the timer is shown");
