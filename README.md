@@ -2,14 +2,17 @@
 
 Tal till text är en Eneo-modul (repot heter `eneo-mod-speech-to-text`): du spelar in ett samtal i webbläsaren eller laddar upp en ljudfil, och ett publicerat Eneo-flöde gör text av det.
 
-Dokumentationen finns på https://eneo-ai.github.io/eneo-mod-speech-to-text/. Sidorna ligger i [`docs/`](docs/) och går att läsa direkt här:
+## Kom igång
 
-- [Drift](docs/operations.md)
-- [Lokal utveckling](docs/development.md)
-- [Arkitektur](docs/architecture.md)
-- [API-referens](docs/backend.md#rutter)
+```bash
+git clone https://github.com/eneo-ai/eneo-mod-speech-to-text && cd eneo-mod-speech-to-text
+cp .env.example .env   # fyll i ENEO_BACKEND_URL, ENEO_PUBLIC_URL, ENEO_API_KEY, SESSION_SECRET
+                       # lokalt också MODULE_PUBLIC_URL=http://localhost:3001 och COOKIE_SECURE=false
+docker compose up --build
+open http://localhost:3001
+```
 
-Arbetar du som AI-agent, börja med [`AGENTS.md`](AGENTS.md) (engelska).
+Mer: [Lokal utveckling](docs/development.md) (utan Docker, utan Eneo), [Drift](docs/operations.md), [Arkitektur](docs/architecture.md) och [API-referens](docs/backend.md). Alla sidor finns också som webbplats: https://eneo-ai.github.io/eneo-mod-speech-to-text/. Arbetar du som AI-agent, börja med [`AGENTS.md`](AGENTS.md) (engelska).
 
 ## Licens
 
