@@ -17,7 +17,10 @@ test("a direct visit to a route of the app renders that page, in Swedish", async
   ];
 
   for (const [path, title] of visits) {
-    const response = await page.goto(path);
+    // Not "load": Firefox sometimes never fires it for a page opened right after the result page, whose audio is still
+    // being fetched (readyState stays "interactive" with the document, its scripts and its styles all there). Nothing
+    // here needs it: the title and the language are asserted below, and retried.
+    const response = await page.goto(path, { waitUntil: "domcontentloaded" });
 
     expect(response?.status(), path).toBe(200);
     await expect(page, path).toHaveTitle(title);
