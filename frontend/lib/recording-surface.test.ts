@@ -120,6 +120,25 @@ test("the live sheet is a named log of committed text; words still arriving are 
   assert.match(refused.textContent ?? "", /Livetexten kunde inte starta\./);
 });
 
+test("the live sheet shows the relay's final text where a session's deltas were, also when the paragraph keeps its length", async () => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const first = { text: "Hej alla.", opensParagraph: true };
+  let snapshot: LiveSnapshot = { status: "live", started: true, complete: false, pieces: [first, { text: "Vi börjar", opensParagraph: false }], pending: "" };
+  const listeners = new Set<() => void>();
+  const live: LiveSession = {
+    ...liveOf(snapshot),
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
+  };
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const log = () => view.container.querySelector('[role="log"]')!.textContent;
+  assert.match(log() ?? "", /Hej alla\. Vi börjar/);
+  snapshot = { ...snapshot, pieces: [first, { text: "Vi börjar nu.", opensParagraph: false }] };
+  await view.act(async () => listeners.forEach((listener) => listener()));
+  assert.match(log() ?? "", /Hej alla\. Vi börjar nu\./);
+});
+
 test("the live sheet's jump button shows when the reader has scrolled up, and gives the focus to the text it scrolls to", async () => {
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");

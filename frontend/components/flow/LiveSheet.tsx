@@ -21,13 +21,13 @@ export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   return out;
 }
 
-// Committed text only grows at its end, so over a long meeting a paragraph
-// renders again only when it gains a piece, not with every word.
+// A paragraph renders again only when one of its pieces is another (a new one, or the relay's final text in place of a
+// session's), not with every word still arriving.
 const Pieces = memo(
   function Pieces({ pieces }: { pieces: LivePiece[] }) {
     return pieces.map((piece, i) => <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>);
   },
-  (before, after) => before.pieces.length === after.pieces.length && before.pieces[0] === after.pieces[0],
+  (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
 );
 
 function prefersReducedMotion(): boolean {
