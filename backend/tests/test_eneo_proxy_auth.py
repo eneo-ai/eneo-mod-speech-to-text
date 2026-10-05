@@ -242,7 +242,7 @@ class EneoProxyAuthTests(ProxyCase):
             response = self.client.get(path)
             self.assertEqual(response.status_code, 403, path)
         response = self.client.post(
-            "/api/eneo/flows/x%3F/files/",
+            "/api/eneo/flows/x%3F/steps/s/runtime-files/",
             headers={"Origin": "http://localhost:3002"},
             files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
         )
@@ -251,7 +251,7 @@ class EneoProxyAuthTests(ProxyCase):
 
     def test_upload_route_rejects_dot_segment_flow_id(self) -> None:
         response = self.client.post(
-            "/api/eneo/flows/%2E%2E/files/",
+            "/api/eneo/flows/%2E%2E/steps/s/runtime-files/",
             headers={"Origin": "http://localhost:3002"},
             files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
         )
@@ -295,7 +295,7 @@ ALLOWED = (
 ELSEWHERE = (("PATCH", f"{RUN_PATH}/review-checkpoints/active/"),)
 
 # Uploads have routes of their own, which take a POST; no other method of theirs is forwarded.
-UPLOAD_PATHS = (f"flows/{FLOW}/files/", f"flows/{FLOW}/steps/{STEP}/runtime-files/")
+UPLOAD_PATHS = (f"flows/{FLOW}/steps/{STEP}/runtime-files/",)
 
 # Paths next to the allowed ones that no method may reach, spelled as a page could send them.
 REFUSED = (
@@ -306,6 +306,7 @@ REFUSED = (
     f"{RUN_PATH}/evidence/",
     f"{RUN_PATH}/evidence/export",
     f"flows/{FLOW}/template-files/",
+    f"flows/{FLOW}/files/",
     "flows",
     f"flows/{FLOW}/",
     f"flows/{FLOW}/runs/{RUN}/steps/{STEP}/",
@@ -419,6 +420,18 @@ class EneoProxyAllowlistTests(ProxyCase):
 
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_a_file_cannot_be_uploaded_to_a_flow_itself(self) -> None:
+        # Eneo has no such route: files go to a step's runtime-files.
+        response = self.client.post(
+            f"/api/eneo/flows/{FLOW}/files/",
+            headers=ORIGIN,
+            files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
         self.assertEqual(self.proxy_client.calls, [])
 
     def test_an_unsafe_spelling_of_a_listed_path_is_refused_for_every_method(self) -> None:

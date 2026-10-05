@@ -255,7 +255,6 @@ class DoubleEncodingTests(BoundaryCase):
 
     def test_an_encoded_slash_in_an_upload_path_is_not_a_path_boundary_for_eneo(self) -> None:
         routes = {
-            "/api/eneo/flows/a%252Fexport/files/": r"/api/v1/flows/[^/]+/files/",
             "/api/eneo/flows/a%252Fx/steps/s/runtime-files/": r"/api/v1/flows/[^/]+/steps/[^/]+/runtime-files/",
             "/api/eneo/flows/f/steps/a%252Fx/runtime-files/": r"/api/v1/flows/[^/]+/steps/[^/]+/runtime-files/",
         }
@@ -297,7 +296,7 @@ class UnsafePathTests(BoundaryCase):
         "a control character in a proxied path": ("GET", "/api/eneo/flows/a%0Ab/published/"),
         "NUL in a proxied path": ("GET", "/api/eneo/flows/a%00b/published/"),
         "a backslash in a proxied path": ("GET", "/api/eneo/flows/a%5Cb/published/"),
-        "a control character in an upload path": ("POST", "/api/eneo/flows/a%0Ab/files/"),
+        "a control character in an upload path": ("POST", "/api/eneo/flows/a%0Ab/steps/s/runtime-files/"),
         "a control character in a mint path": ("GET", "/api/eneo/flows/f/runs/r/input-files/a%0Ab/audio"),
     }
 
@@ -692,7 +691,7 @@ class AbandonedUploadTests(BoundaryCase):
             browser = socket.create_connection((host, int(port)))
             browser.sendall(
                 (
-                    f"POST /api/eneo/flows/f/files/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\nCookie: {SESSION_COOKIE}={self.session_a}\r\nX-Expected-User: {self.user_of(self.session_a)}\r\n"
+                    f"POST /api/eneo/flows/f/steps/s/runtime-files/ HTTP/1.1\r\nHost: module\r\nOrigin: {ORIGIN}\r\nCookie: {SESSION_COOKIE}={self.session_a}\r\nX-Expected-User: {self.user_of(self.session_a)}\r\n"
                     f"Content-Type: multipart/form-data; boundary={BOUNDARY}\r\nContent-Length: {len(body)}\r\n\r\n"
                 ).encode() + body
             )
@@ -733,7 +732,7 @@ class UploadDeadlineTests(BoundaryCase):
         fds_before = len(os.listdir("/dev/fd"))
         started = time.monotonic()
 
-        response = self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", os.urandom(3 * MiB), "audio/webm")}, timeout=20)
+        response = self.request("POST", "/api/eneo/flows/f/steps/s/runtime-files/", self.session_a, files={"upload_file": ("a.webm", os.urandom(3 * MiB), "audio/webm")}, timeout=20)
 
         self.assertEqual(response.status_code, 504)
         self.assertEqual(response.json()["error"], "upstream_upload_timeout")
@@ -987,7 +986,6 @@ class ExpectedUserTests(BoundaryCase):
     """An old tab must not send audio under another person's session: a media request names the user its page is for."""
 
     MEDIA = {
-        "an upload": ("POST", "/api/eneo/flows/f/files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "a step's runtime file": ("POST", "/api/eneo/flows/f/steps/s/runtime-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "the start of a run": ("POST", "/api/eneo/flows/f/runs/", {"content": b'{"input_values": []}'}),
     }
@@ -1041,7 +1039,7 @@ class ExpectedUserTests(BoundaryCase):
         # The same cookie jar, a different person: tab one's page still names the first user.
         second = a_session("token-of-b")
 
-        refused = self.request("POST", "/api/eneo/flows/f/files/", second, headers={"X-Expected-User": "user-token-of-a"}, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
+        refused = self.request("POST", "/api/eneo/flows/f/steps/s/runtime-files/", second, headers={"X-Expected-User": "user-token-of-a"}, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
 
         self.assertEqual((refused.status_code, refused.json()), (409, {"detail": "user_changed"}))
         self.assertEqual(self.eneo.requests, [])
@@ -1151,7 +1149,7 @@ class RedirectFromEneoTests(BoundaryCase):
     def test_a_redirect_is_a_502_for_the_proxy_the_upload_and_the_signed_file(self) -> None:
         calls = {
             "proxy": lambda: self.request("GET", "/api/eneo/flows/", self.session_a),
-            "upload": lambda: self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")}),
+            "upload": lambda: self.request("POST", "/api/eneo/flows/f/steps/s/runtime-files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")}),
             "signed file": lambda: self.request("GET", "/api/eneo/flows/f/runs/r/input-files/x/audio", self.session_a),
         }
         for status in self.STATUSES:
@@ -1284,7 +1282,7 @@ class UpstreamAnswerTests(BoundaryCase):
     def test_an_upload_answer_past_the_bound_is_a_502(self) -> None:
         self.serve(200, [self.JSON], lazy(300 * MiB))
 
-        response = self.request("POST", "/api/eneo/flows/f/files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
+        response = self.request("POST", "/api/eneo/flows/f/steps/s/runtime-files/", self.session_a, files={"upload_file": ("a.webm", b"audio", "audio/webm")})
 
         self.assert_refused_and_closed(response, "upstream_too_large", CAP)
 

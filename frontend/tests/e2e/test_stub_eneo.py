@@ -435,15 +435,6 @@ class UploadTests(SignedIn):
         self.assertEqual(call(self.stub, "GET", "/__reset")[0], 200)
         self.assertEqual(json.loads(call(self.stub, "GET", "/__log")[2]), [])
 
-    def test_the_upload_route_of_a_flow_is_a_sink_too(self) -> None:
-        headers, body = multipart(5 * KB)
-        call(self.stub, "POST", "/__stub/reset")
-
-        status, _, _, _ = self.api("POST", f"/api/eneo/flows/{FLOW}/files/", headers=headers, body=body)
-
-        self.assertIn(status, (200, 201))
-        self.assertEqual(len(json.loads(call(self.stub, "GET", "/__log")[2])), 1)
-
     def test_a_file_named_for_the_gate_is_refused_as_too_long(self) -> None:
         headers, body = multipart(KB, filename="for-lang.webm")
 

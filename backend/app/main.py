@@ -186,7 +186,7 @@ async def get_branding_theme(request: Request) -> Response:
 # so a browser's Transfer-Encoding, Forwarded, X-Forwarded-For or X-Real-IP must not arrive: a header a browser, a
 # proxy or a script adds is not Eneo's to receive. The credentials are set by the module from the session, never
 # taken from the browser. The frontend sends Accept, Content-Type (a JSON body) and Idempotency-Key through
-# /api/eneo/*, with Accept-Language, If-Match and If-None-Match. X-Upload-Timeout-Seconds is read by the upload routes
+# /api/eneo/*, with Accept-Language, If-Match and If-None-Match. X-Upload-Timeout-Seconds is read by the upload route
 # and never forwarded; the signed-file routes forward Range, If-Range and Accept on their own
 # (_STREAM_FORWARD_REQUEST_HEADERS).
 _FORWARDED_REQUEST_HEADERS = frozenset(
@@ -337,7 +337,7 @@ def _has_control_character(value: str | None) -> bool:
     return value is not None and any(character < " " or character == "\x7f" for character in value)
 
 
-# Dedicated upload routes — bypass the catch-all proxy because forwarding
+# The dedicated upload route bypasses the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
 async def _forward_upload(request: Request, path: str) -> Response:
@@ -436,14 +436,6 @@ async def _proxy_multipart_upload(
         status_code=upstream.status_code,
         media_type=upstream.headers.get("content-type"),
     )
-
-
-@app.post(
-    "/api/eneo/flows/{flow_id}/files/",
-    dependencies=_SESSION_ORIGIN_AND_USER,
-)
-async def eneo_upload_file(flow_id: str, request: Request) -> Response:
-    return await _forward_upload(request, f"flows/{flow_id}/files/")
 
 
 @app.post(

@@ -281,26 +281,11 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "gå ut. `Cache-Control: no-store`.",
         success={"200": reply("Inloggningsläget.", json_of({"$ref": "#/components/schemas/Status"}))},
     ),
-    ("POST", "/api/eneo/flows/{flow_id}/files/"): Op(
-        "Uppladdning",
-        "Ladda upp en fil till ett flöde",
-        "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går "
-        "inte med. En fil som är hel hos modulen "
-        "lämnas alltid vidare, även om webbläsaren har gått.",
-        session=True,
-        origin=True,
-        user="required",
-        body=UPLOAD_BODY,
-        success=ENEO_ANSWERS,
-        eneo="unchanged",
-        parameters=(UPLOAD_TIMEOUT,),
-        errors=UPLOAD_ERRORS,
-        too_large="max_upload_bytes",
-    ),
     ("POST", "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/"): Op(
         "Uppladdning",
         "Ladda upp en fil till flödets ljudsteg",
-        "Som uppladdningen till flödet, till ett steg.",
+        "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går "
+        "inte med. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
         session=True,
         origin=True,
         user="required",

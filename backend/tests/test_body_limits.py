@@ -188,7 +188,7 @@ class JsonBodyTests(Case):
 class MalformedLengthTests(Case):
     """A Content-Length that is not a plain number is a 400, never a 500 and never a body read on trust."""
 
-    PATHS = ("/api/auth/logout", "/api/eneo/flows/flow-1/runs/", "/api/eneo/flows/flow-1/files/")
+    PATHS = ("/api/auth/logout", "/api/eneo/flows/flow-1/runs/", "/api/eneo/flows/flow-1/steps/step-1/runtime-files/")
     VALUES = {
         "5001 digits (int() refuses more than 4300)": "9" * 5001,
         "5001 zeros then a 1": "0" * 5000 + "1",
@@ -276,7 +276,7 @@ class ProxyBodyTests(Case):
 
 
 class UploadTests(Case):
-    PATH = "/api/eneo/flows/flow-1/files/"
+    PATH = "/api/eneo/flows/flow-1/steps/step-1/runtime-files/"
 
     def setUp(self) -> None:
         super().setUp()
@@ -358,13 +358,12 @@ class UploadTests(Case):
         self.assertEqual(response.json(), {"ok": True})
         self.assertEqual(self.eneo.calls[-1]["size"], 6 * MiB)
         self.assertEqual(self.eneo.calls[-1]["filename"], "a.bin")
-        self.assertEqual(self.eneo.calls[-1]["url"], "https://eneo.example.test/api/v1/flows/flow-1/files/")
+        self.assertEqual(self.eneo.calls[-1]["url"], "https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/")
         self.assertEqual(os.listdir(self.temporary), [])
         self.assertEqual(self.open_files(), files_before)
 
     async def test_each_upload_route_answers_on_the_path_the_page_sends_and_forwards_to_its_own_eneo_route(self) -> None:
         routes = {
-            "/api/eneo/flows/f1/files/": "flows/f1/files/",
             "/api/eneo/flows/f1/steps/s1/runtime-files/": "flows/f1/steps/s1/runtime-files/",
         }
         for path, upstream in routes.items():
@@ -376,7 +375,7 @@ class UploadTests(Case):
                 self.assertEqual(self.eneo.calls[-1]["size"], MiB)
 
     async def test_the_slashless_twin_of_an_upload_route_is_not_a_route_and_sends_nothing_to_eneo(self) -> None:
-        for path in ("/api/eneo/flows/f1/files", "/api/eneo/flows/f1/steps/s1/runtime-files"):
+        for path in ("/api/eneo/flows/f1/steps/s1/runtime-files",):
             with self.subTest(path=path):
                 calls = len(self.eneo.calls)
 
@@ -389,7 +388,7 @@ class UploadTests(Case):
     async def test_a_flow_id_that_leaves_its_route_is_403_before_the_body_is_read(self) -> None:
         body = multipart_of(6)
 
-        response = await self.post("/api/eneo/flows/%2E%2E/files/", body, headers=MULTIPART)
+        response = await self.post("/api/eneo/flows/%2E%2E/steps/s1/runtime-files/", body, headers=MULTIPART)
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(body.taken, 0)
