@@ -14,6 +14,8 @@ Modulen har inga egna konton: Eneo loggar in användaren, och modulen anropar En
 
 ## Driftsätt med Dokploy eller Portainer
 
+**Obs:** i Traefik v3.7 är `readTimeout` 60 s som standard, och det kapar uppladdningar som tar längre tid. Höj den på ingångspunkten: [Vad som står framför modulen](#vad-som-står-framför-modulen) har Dokploy-raden och hur du räknar ut värdet.
+
 Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
 
 - **Variabler:** de i `.env`. `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `MODULE_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` måste fyllas i; resten har standardvärden ([Miljövariabler](#miljövariabler)).
