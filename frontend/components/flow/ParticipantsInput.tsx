@@ -18,9 +18,10 @@ const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter" } as Record<string, string>;
 
 /**
- * A `list` field as chips. "Lägg till" shows while a name is typed, so a
- * tap adds it on any device; Enter (a phone's return key) or a comma adds it
- * too, a pasted list is split on commas, semicolons and line breaks,
+ * A `list` field as chips. "Lägg till" stands beside the input, off until a
+ * name is typed, so a tap adds it on any device and the input keeps its width;
+ * Enter (a phone's return key) or a comma adds it too, a pasted list is split
+ * on commas, semicolons and line breaks,
  * Backspace in the empty input removes the last chip, and each chip has its
  * own remove button. Earlier names are offered as the browser's own
  * suggestions. Text left in the input becomes a chip when the field loses
@@ -144,18 +145,17 @@ export function ParticipantsInput({
               }
             }}
           />
-          {text.trim() && (
-            <Button
-              label="Lägg till"
-              variant="secondary"
-              // Keeps the focus, and a phone's keyboard, in the field for the next name.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                addTyped();
-                input.current?.focus();
-              }}
-            />
-          )}
+          <Button
+            label="Lägg till"
+            variant="secondary"
+            isDisabled={!text.trim()}
+            // Keeps the focus, and a phone's keyboard, in the field for the next name.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              addTyped();
+              input.current?.focus();
+            }}
+          />
         </InputGroup>
       </VStack>
       {names.length > 0 && (

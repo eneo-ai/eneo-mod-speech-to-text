@@ -10,6 +10,7 @@ import { COUNT_FROM_NAMES, DetailsForm, SpeakerCountField } from "../components/
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
 import type { FlowSecurityClassification, FormField } from "./api";
+import { parse } from "./test-dom";
 
 const noop = () => {};
 
@@ -77,7 +78,9 @@ test("each participant chip has its own remove button named after the person, an
   const input = control(html, "deltagare");
   assert.equal(referenced(html, input, "aria-labelledby"), "Deltagare Lägg till namn");
   assert.equal(referenced(html, input, "aria-describedby"), "Skilj flera namn med komma.");
-  assert.doesNotMatch(html, /Lägg till<\/span>/, "no Lägg till button while nothing is typed");
+  // Lägg till stands beside the field from the start, off until a name is typed, so the field never changes its width.
+  const add = [...parse(html).querySelectorAll("button")].find((b) => b.textContent?.trim() === "Lägg till");
+  assert.equal(add?.disabled, true, "Lägg till is there, and off, while nothing is typed");
 });
 
 test("labels are sentence case with Valfritt on optional fields, and a missing required field says so at the field", () => {
