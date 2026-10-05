@@ -29,6 +29,9 @@ export const translations = {
     entryTagGroup: 'Grupp',
     entryWebhook: 'Webhook',
   },
+  footer: {
+    poweredByScalar: 'Drivs av Scalar',
+  },
   navigation: {
     introduction: 'Inledning',
     closeGroup: 'Stäng gruppen',
