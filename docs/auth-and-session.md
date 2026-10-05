@@ -8,6 +8,8 @@ Ticketen går via webbläsaren men växlas mot en token bara av BFF:en, och sess
 
 ```mermaid
 sequenceDiagram
+    accTitle: Inloggning med Eneo SSO
+    accDescr: Webbläsaren startar inloggningen hos modulens backend och skickas till Eneo. Eneo skickar tillbaka den med en ticket, som backend växlar mot en modultoken, validerar och gör till en session med en HttpOnly-cookie.
     participant B as Webbläsare
     participant M as Modulens BFF
     participant E as Eneo

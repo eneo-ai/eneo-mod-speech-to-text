@@ -7,8 +7,8 @@
   },
   "servers": [
     {
-      "url": "https://transkribering.example.org",
-      "description": "Modulens egen adress (`MODULE_PUBLIC_URL`)."
+      "url": "/",
+      "description": "Modulens egen adress (`MODULE_PUBLIC_URL`). Sökvägarna är relativa till den."
     }
   ],
   "tags": [
@@ -396,7 +396,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen.",
+            "description": "Origin är inte modulens egen.",
             "content": {
               "application/json": {
                 "schema": {
@@ -504,7 +504,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "400": {
-            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Inte exakt en fil med namnet upload_file, ett filnamn eller en innehållstyp med styrtecken, eller en Content-Length som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -546,7 +546,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -563,7 +563,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -580,7 +580,7 @@
             }
           },
           "411": {
-            "description": "`Content-Length` saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Content-Length saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -614,7 +614,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -631,7 +631,7 @@
             }
           },
           "504": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_upload_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -706,7 +706,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Ljudfilen, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "description": "Ljudfilen, strömmad: modulen buffrar den inte. Cache-Control: private, no-store och X-Content-Type-Options: nosniff. Eneos felsvar (till exempel 404) kommer tillbaka med sin statuskod och sitt detail.",
             "headers": {
               "Accept-Ranges": {
                 "schema": {
@@ -729,7 +729,7 @@
             }
           },
           "206": {
-            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. Cache-Control: private, no-store och X-Content-Type-Options: nosniff. Eneos felsvar (till exempel 404) kommer tillbaka med sin statuskod och sitt detail.",
             "headers": {
               "Accept-Ranges": {
                 "schema": {
@@ -752,7 +752,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -777,7 +777,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_redirect eller upstream_invalid. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -866,7 +866,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Filen, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "description": "Filen, strömmad: modulen buffrar den inte. Cache-Control: private, no-store och X-Content-Type-Options: nosniff. Eneos felsvar (till exempel 404) kommer tillbaka med sin statuskod och sitt detail.",
             "headers": {
               "Accept-Ranges": {
                 "schema": {
@@ -889,7 +889,7 @@
             }
           },
           "206": {
-            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. Cache-Control: private, no-store och X-Content-Type-Options: nosniff. Eneos felsvar (till exempel 404) kommer tillbaka med sin statuskod och sitt detail.",
             "headers": {
               "Accept-Ranges": {
                 "schema": {
@@ -912,7 +912,7 @@
             }
           },
           "401": {
-            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "headers": {
               "X-Auth-Required": {
                 "description": "Alltid `session`.",
@@ -937,7 +937,7 @@
             }
           },
           "422": {
-            "description": "Ett värde som inte är ett av de tillåtna. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "description": "Ett värde som inte är ett av de tillåtna. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -954,7 +954,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_redirect eller upstream_invalid. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1024,7 +1024,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1041,7 +1041,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1120,7 +1120,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1137,7 +1137,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1216,7 +1216,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1233,7 +1233,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1260,7 +1260,7 @@
         "tags": [
           "Eneo"
         ],
-        "summary": "Flödets graf för en körning (`run_id` som frågeparameter)",
+        "summary": "Flödets graf för en körning (run_id som frågeparameter)",
         "operationId": "get_api_eneo_flows_flow_id_graph",
         "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/graph/`.",
         "parameters": [
@@ -1312,7 +1312,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1329,7 +1329,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1408,7 +1408,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1425,7 +1425,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1515,7 +1515,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1532,7 +1532,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1566,7 +1566,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1654,7 +1654,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1671,7 +1671,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1759,7 +1759,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1776,7 +1776,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1864,7 +1864,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1881,7 +1881,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1978,7 +1978,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -1995,7 +1995,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2083,7 +2083,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2100,7 +2100,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2127,7 +2127,7 @@
         "tags": [
           "Eneo"
         ],
-        "summary": "Transkriptets källsegment i ett försök (`start_segment_index` som frågeparameter)",
+        "summary": "Transkriptets källsegment i ett försök (start_segment_index som frågeparameter)",
         "operationId": "get_api_eneo_flows_flow_id_runs_run_id_steps_step_id_attempts_attempt_id_transcript_source",
         "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/`.",
         "parameters": [
@@ -2206,7 +2206,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2223,7 +2223,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2333,7 +2333,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2350,7 +2350,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2384,7 +2384,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2485,7 +2485,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2502,7 +2502,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2536,7 +2536,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2637,7 +2637,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2654,7 +2654,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2688,7 +2688,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2798,7 +2798,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2815,7 +2815,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2849,7 +2849,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2937,7 +2937,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -2954,7 +2954,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3064,7 +3064,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3081,7 +3081,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3115,7 +3115,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3225,7 +3225,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3242,7 +3242,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3276,7 +3276,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3386,7 +3386,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3403,7 +3403,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3437,7 +3437,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3547,7 +3547,7 @@
             }
           },
           "403": {
-            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Origin är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3564,7 +3564,7 @@
             }
           },
           "409": {
-            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3598,7 +3598,7 @@
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
               "*/*": {
                 "schema": {
@@ -3661,7 +3661,7 @@
     },
     "responses": {
       "EneoAnswer": {
-        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
+        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst MAX_RESPONSE_BYTES; ett längre svar blir 502 upstream_too_large). Modulen lägger inget till och beskriver inget av det.",
         "content": {
           "*/*": {
             "schema": {
@@ -3671,7 +3671,7 @@
         }
       },
       "EneoRefusal": {
-        "description": "Eneos felstatus. Eneos svar, vilken JSON det än är, står i `detail`.",
+        "description": "Eneos felstatus. Eneos svar, vilken JSON det än är, står i detail.",
         "content": {
           "application/json": {
             "schema": {

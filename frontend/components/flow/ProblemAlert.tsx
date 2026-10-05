@@ -4,18 +4,19 @@ import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { Problem } from "@/lib/flow-session";
-import { scrollBehavior } from "@/lib/motion";
 
 /**
  * What happened and what to do next, with "Försök igen" when trying again can help. A problem without a detail is
  * one message, read as text rather than as a heading. `reveal` scrolls it into view when it appears, for an answer
- * to a button that may be far from it (the docked Skapa dokument on a phone, whose clearance globals.css owns).
+ * to a button that may be far from it (the docked Skapa dokument on a phone, whose clearance globals.css owns). The scroll
+ * is a jump: a smooth one runs to the offset it computed when it began, so a notice that appears above the alert while it
+ * runs (the offline notice) leaves the alert under the dock, where the browser would have kept it in place by itself.
  */
 export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Problem; onRetry?: () => void; reveal?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!reveal) return;
-    ref.current?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
+    ref.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
   }, [reveal, problem]);
 
   const actions = (problem.retry && onRetry) || problem.back;

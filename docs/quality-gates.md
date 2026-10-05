@@ -1,6 +1,6 @@
 # Tester
 
-Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
+Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`. **Gaten** är webbläsartestet som besöker varje skärm och mäter tillgänglighet (WCAG 2.2 AA) och husets krav; "gaten" betyder det på den här sidan och i resten av dokumentationen.
 
 ## Profiler
 
