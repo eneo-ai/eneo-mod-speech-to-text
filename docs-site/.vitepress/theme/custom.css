@@ -310,6 +310,11 @@ pre.mermaid svg {
   --scalar-sidebar-search-background: var(--vp-c-bg-alt);
   --scalar-sidebar-search-color: var(--vp-c-text-2);
 }
+/* VitePress resets headings outside any cascade layer, which beats Scalar's layered styles: give them back Scalar's own. */
+.scalar-app :is(h1, h2, h3, h4, h5, h6) {
+  font-size: inherit;
+  font-weight: inherit;
+}
 /* The method names are text on the sidebar's grey: darker tones than Scalar's, for 4.5:1. */
 html:not(.dark) .scalar-app {
   --scalar-color-green: #05704c;
