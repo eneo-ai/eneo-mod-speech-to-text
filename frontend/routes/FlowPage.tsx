@@ -180,9 +180,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   });
   const { session, snapshot } = input;
   const currentRecordingId = snapshot.recording?.id ?? null;
-  const unsentRecordings = useUnsentRecordings(user.id, flowId).filter(
-    (recording) => recording.id !== currentRecordingId,
-  );
+  const unsentList = useUnsentRecordings(user.id, flowId);
+  const unsent = { ...unsentList, recordings: unsentList.recordings.filter((recording) => recording.id !== currentRecordingId) };
 
   useEffect(() => {
     let cancelled = false;
@@ -587,7 +586,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         earlierRuns={earlierRuns}
         onOpenRun={resumeRun}
         onMoreRuns={() => void earlier.more()}
-        unsentRecordings={unsentRecordings}
+        unsent={unsent}
         afterRun={shownRun}
       />,
     );

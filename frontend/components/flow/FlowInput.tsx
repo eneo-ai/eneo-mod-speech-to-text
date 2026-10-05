@@ -29,7 +29,7 @@ import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/reco
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
+import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
@@ -93,7 +93,7 @@ export function FlowInput({
   earlierRuns,
   onOpenRun,
   onMoreRuns,
-  unsentRecordings,
+  unsent,
   afterRun = false,
 }: {
   published: FlowPublished;
@@ -105,7 +105,7 @@ export function FlowInput({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: UnsentRecording[];
+  unsent: UnsentList;
   /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
   afterRun?: boolean;
 }) {
@@ -204,7 +204,7 @@ export function FlowInput({
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
-              unsentRecordings={unsentRecordings}
+              unsent={unsent}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -301,7 +301,7 @@ function SetupWorkspace({
   earlierRuns,
   onOpenRun,
   onMoreRuns,
-  unsentRecordings,
+  unsent,
 }: {
   contract: RunContract;
   input: Session;
@@ -310,7 +310,7 @@ function SetupWorkspace({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: UnsentRecording[];
+  unsent: UnsentList;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
@@ -333,7 +333,7 @@ function SetupWorkspace({
     ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
     : undefined;
   // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
-  const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
+  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined;
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? create
@@ -369,7 +369,7 @@ function SetupWorkspace({
   return (
     <VStack gap={6}>
       <UnsentRecordings
-        recordings={unsentRecordings}
+        list={unsent}
         sendLabel={() => create}
         evictable={input.evictable}
         onSend={(recording) => {

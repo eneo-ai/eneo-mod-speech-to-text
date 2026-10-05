@@ -579,7 +579,7 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
       earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
       onOpenRun: () => undefined,
       onMoreRuns: () => undefined,
-      unsentRecordings: [],
+      unsent: { recordings: [], unreadable: false, retry: () => undefined },
       afterRun,
     });
   }

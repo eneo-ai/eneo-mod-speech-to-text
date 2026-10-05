@@ -80,15 +80,13 @@ function FlowsListPage() {
           <VStack gap={8} paddingBlockStart={4}>
             <Heading level={1}>Välj ett flöde</Heading>
 
-            {unsent.length > 0 && (
-              <UnsentRecordings
-                recordings={unsent}
-                withFlowName
-                evictable={evictable}
-                sendLabel={(recording) => createLabel(recording.flowId)}
-                onSend={(recording) => void navigate(`/flows/${recording.flowId}?recording=${recording.id}`)}
-              />
-            )}
+            <UnsentRecordings
+              list={unsent}
+              withFlowName
+              evictable={evictable}
+              sendLabel={(recording) => createLabel(recording.flowId)}
+              onSend={(recording) => void navigate(`/flows/${recording.flowId}?recording=${recording.id}`)}
+            />
 
             {problem ? (
               <ProblemAlert

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -7,6 +7,7 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
+import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { saveRecordingAsFiles } from "@/components/save-recording";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
@@ -20,9 +21,15 @@ import styles from "./UnsentRecordings.module.css";
 /** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
 export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
 
+/** The user's unsent recordings as read from the device; `unreadable` when the device's store could not be read. */
+export type UnsentList = { recordings: UnsentRecording[]; unreadable: boolean; retry: () => void };
+
 /** The user's unsent recordings (of one flow, when given), kept current. */
-export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRecording[] {
+export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentList {
   const [recordings, setRecordings] = useState<UnsentRecording[]>([]);
+  const [unreadable, setUnreadable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   useEffect(() => {
     let cancelled = false;
     let unsubscribe = () => {};
@@ -30,15 +37,17 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRec
       if (cancelled) return;
       const load = () =>
         store.listUnsent(ownerId).then(
-          (all) =>
-            !cancelled &&
+          (all) => {
+            if (cancelled) return;
+            setUnreadable(false);
             setRecordings(
               (flowId ? all.filter((r) => r.flowId === flowId) : all).map((r) => ({
                 ...r,
                 exportOnly: !store.mayChange(r.id),
               })),
-            ),
-          () => undefined,
+            );
+          },
+          () => !cancelled && setUnreadable(true),
         );
       unsubscribe = store.subscribe(() => void load());
       void load();
@@ -47,8 +56,8 @@ export function useUnsentRecordings(ownerId: string, flowId?: string): UnsentRec
       cancelled = true;
       unsubscribe();
     };
-  }, [ownerId, flowId]);
-  return recordings;
+  }, [ownerId, flowId, attempt]);
+  return { recordings, unreadable, retry };
 }
 
 /** Whether the browser may delete this device's recordings (its storage is not persistent); false until it has said. */
@@ -84,18 +93,19 @@ export function resumableRecording(recordings: UnsentRecording[]): UnsentRecordi
 }
 
 /**
- * Recordings kept on this device that Eneo has not received yet. Only "Fortsätt spela in" on a recording a
+ * Recordings kept on this device that Eneo has not received yet; when the device cannot be read, a notice in
+ * their place, so that the person is not left thinking there are none. Only "Fortsätt spela in" on a recording a
  * reload cut off is filled: the page has one filled action.
  */
 export function UnsentRecordings({
-  recordings,
+  list: { recordings, unreadable, retry },
   onSend,
   onContinue,
   withFlowName = false,
   sendLabel = () => "Skapa dokument",
   evictable = false,
 }: {
-  recordings: UnsentRecording[];
+  list: UnsentList;
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   withFlowName?: boolean;
@@ -105,6 +115,14 @@ export function UnsentRecordings({
   evictable?: boolean;
 }) {
   const headingId = useId();
+  if (unreadable) {
+    return (
+      <ProblemAlert
+        problem={{ title: "Kunde inte läsa inspelningar som inte skickats på den här enheten.", retry: true }}
+        onRetry={retry}
+      />
+    );
+  }
   if (recordings.length === 0) return null;
   const resumable = onContinue ? resumableRecording(recordings) : undefined;
   const cutOff = recordings.length === 1 && resumable !== undefined;
