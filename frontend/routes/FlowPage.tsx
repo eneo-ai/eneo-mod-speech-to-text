@@ -632,7 +632,6 @@ function FlowDetail({ flowId }: { flowId: string }) {
       <FlowFrame title={published.name} titleIsHeading={false}>
         <ReviewView
           flowId={flowId}
-          published={published}
           checkpoint={run.checkpoint}
           runState={{ run: run.run, steps: run.steps }}
           runError={runError}
