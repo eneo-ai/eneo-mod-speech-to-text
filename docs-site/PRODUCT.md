@@ -48,7 +48,7 @@ This is the module's own documentation, not Eneo's. The module has no database a
 
 ## Evidence on Hand
 
-- `docs/` pages, `docs/images/arkitektur-oversikt.png` (illustration, provenance in its `.json`).
+- `docs/` pages, `docs/images/arkitektur-oversikt.webp` (illustration, provenance in its `.json`).
 - No screenshots of the module, no user quotes, no usage numbers: none may be invented.
 
 ## Product Principles
