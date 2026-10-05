@@ -4,11 +4,11 @@ import { createContext, useContext, useEffect, useRef, useState, useSyncExternal
 import { useNavigate } from "react-router";
 import { LoadingShell } from "@/components/LoadingShell";
 import { ModuleUnreachable } from "@/components/ModuleUnreachable";
-import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
+import { SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
 import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
-import { loginState, type Question } from "@/lib/login-state";
+import { loginState, SESSION_CHANNEL, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { sessionUser } from "@/lib/user-identity";
 

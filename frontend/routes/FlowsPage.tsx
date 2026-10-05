@@ -9,7 +9,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { AccountMenu } from "@/components/AccountMenu";
-import { HeaderBrand } from "@/components/AppHeader";
+import { HeaderBrand } from "@/components/HeaderBrand";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";

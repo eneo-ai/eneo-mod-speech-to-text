@@ -6,7 +6,7 @@ import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { AccountMenu } from "@/components/AccountMenu";
-import { HeaderBrand } from "@/components/AppHeader";
+import { HeaderBrand } from "@/components/HeaderBrand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";

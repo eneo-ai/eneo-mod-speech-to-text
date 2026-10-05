@@ -52,7 +52,7 @@ test("a status read that went out while signed in, answered after a request foun
 test("a login window that tells the session channel it is done confirms a new login the page never showed as ended: what is still out on the old session is stale", async (t) => {
   const { createElement } = await import("react");
   const { AuthGate } = await import("../components/AuthGate");
-  const { SESSION_CHANNEL } = await import("../components/SessionEndWarning");
+  const { SESSION_CHANNEL } = await import("./login-state");
   const { getRunStatus } = await import("./api");
   const { loginState } = await import("./login-state");
 
