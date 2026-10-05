@@ -24,7 +24,31 @@ def valid_environment() -> dict[str, str]:
     }
 
 
+def example_environment() -> dict[str, str]:
+    """The variables of .env.example as they stand, comments aside: what a copy of it that nobody edits runs."""
+    lines = (Path(__file__).resolve().parents[2] / ".env.example").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines if line.strip() and not line.startswith("#"))
+
+
 class SettingsTests(unittest.TestCase):
+    def test_a_secret_the_example_file_shows_does_not_start_the_module(self) -> None:
+        shown = (("SESSION_SECRET", "replace-with-long-random-string-now"), ("ENEO_API_KEY", "sk_replace_me"))
+        for name, value in shown:
+            with self.subTest(name=name):
+                with patch.dict(os.environ, {**valid_environment(), name: value}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, f"{name} .*placeholder"):
+                        load_settings()
+
+    def test_the_example_file_cannot_start_the_module_as_it_is(self) -> None:
+        example = example_environment()
+
+        for name in ("SESSION_SECRET", "ENEO_API_KEY"):
+            with self.subTest(name=name):
+                # Everything else is a good value, so it is this variable of the example that stops the start.
+                with patch.dict(os.environ, {**valid_environment(), name: example[name]}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
+
     def test_loads_module_contract(self) -> None:
         with patch.dict(os.environ, valid_environment(), clear=True):
             settings = load_settings()
