@@ -105,6 +105,12 @@ for (const [file, count] of withDiagrams) { // Every diagram is drawn, in both m
     const failed = await page.locator('pre.mermaid[data-drawn="failed"]').count()
     const drawn = await page.locator(`pre.mermaid[data-drawn="${scheme}"] svg`).count()
     if (failed || drawn !== count) note(label, `${drawn} of ${count} diagrams drawn, ${failed} failed`)
+    // Natural size: no diagram is drawn narrower than its viewBox, and none makes the page scroll sideways.
+    const shrunk = await page.evaluate(() =>
+      [...document.querySelectorAll('pre.mermaid svg')].filter((svg) => svg.getBoundingClientRect().width < svg.viewBox.baseVal.width - 1).length,
+    )
+    if (shrunk) note(label, `${shrunk} diagram(s) are scaled down`)
+    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
     await context.close()
   }
 }

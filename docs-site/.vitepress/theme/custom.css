@@ -64,10 +64,12 @@
   outline-offset: 2px;
 }
 
-/* A diagram is source text until diagrams.ts draws it. Wide ones scroll instead of shrinking past reading size. */
+/* A diagram is source text until diagrams.ts draws it, then it keeps its natural size and scrolls sideways in its own box. */
 pre.mermaid {
   margin: 20px 0;
-  padding: 0;
+  padding: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
   overflow-x: auto;
   background: none;
   white-space: pre;
@@ -87,11 +89,6 @@ pre.mermaid svg {
 /* Mermaid sizes a label with the page's line height; inside .vp-doc its paragraphs get VitePress's taller one and the last line is cut. */
 pre.mermaid p {
   line-height: inherit;
-}
-@media (max-width: 640px) {
-  pre.mermaid svg {
-    min-width: 600px;
-  }
 }
 
 /* ---------- Start page ---------- */

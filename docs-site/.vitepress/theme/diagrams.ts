@@ -13,6 +13,9 @@ async function draw() {
     securityLevel: 'strict',
     theme: dark ? 'dark' : 'neutral',
     fontFamily: getComputedStyle(document.body).fontFamily,
+    // Natural size: a diagram wider than the column scrolls inside its own box instead of shrinking to unreadable text.
+    flowchart: { useMaxWidth: false },
+    sequence: { useMaxWidth: false },
   })
   for (const node of nodes) {
     node.dataset.source ??= node.textContent ?? ''
@@ -21,7 +24,7 @@ async function draw() {
       const { svg } = await mermaid.render(id, node.dataset.source)
       node.innerHTML = svg
       node.dataset.drawn = dark ? 'dark' : 'light'
-      // A wide diagram scrolls; the keyboard needs a way to reach it.
+      // A diagram wider than the column scrolls; the keyboard needs a way to reach it.
       node.tabIndex = 0
       node.setAttribute('role', 'group')
       node.setAttribute('aria-label', 'Diagram')

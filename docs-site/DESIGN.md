@@ -141,7 +141,7 @@ One blue on cool neutrals. Values come from the module token and feed VitePress 
 
 ## Layout
 
-VitePress default layout. Start page: hero (text left, drawing right at up to 460px; below 960px one left-aligned column, actions before the drawing, drawing up to 280px), then a three-step strip (three equal columns from 960px, one column below, 32px gap), then heading-and-text rows. From 960px rows are a 5fr/11fr grid with heading left, text right (48px inset, text capped at 36em), each row under a full-width hairline; below 960px one column. API page: title and intro capped at 1152px with 24px side padding, Scalar below a top hairline, Scalar header height tied to `--vp-nav-height`. Mermaid diagrams are centred, and below 640px keep a 600px minimum width and scroll sideways.
+VitePress default layout. Start page: hero (text left, drawing right at up to 460px; below 960px one left-aligned column, actions before the drawing, drawing up to 280px), then a three-step strip (three equal columns from 960px, one column below, 32px gap), then heading-and-text rows. From 960px rows are a 5fr/11fr grid with heading left, text right (48px inset, text capped at 36em), each row under a full-width hairline; below 960px one column. API page: title and intro capped at 1152px with 24px side padding, Scalar below a top hairline, Scalar header height tied to `--vp-nav-height`. Mermaid diagrams keep their natural size (labels are 16px) and sit in their own box (1px hairline, 8px radius, 12px padding): one wider than the column scrolls sideways there, reachable by keyboard, and the page itself never scrolls sideways.
 
 ## Elevation & Depth
 
@@ -160,7 +160,7 @@ VitePress hero buttons, 44px tall (the project's touch target; the default is 40
 Ordered list, each item under a 2px accent top rule with a CSS-counter numeral in accent above a bold title and text-2 body.
 
 ### Mermaid diagrams
-Mermaid 12.1.0, drawn in the browser by `theme/diagrams.ts`: neutral theme in light, dark theme in dark; the source is shown as mono text until drawn; below 640px a diagram keeps 600px and scrolls sideways. Its labels take the page's line height (`pre.mermaid p`), because VitePress's taller paragraph height cut the last line of every wrapped label.
+Mermaid 12.1.0, drawn in the browser by `theme/diagrams.ts`: neutral theme in light, dark theme in dark; the source is shown as mono text until drawn; a diagram keeps its natural size, and one wider than the column scrolls sideways inside its own focusable box. Its labels take the page's line height (`pre.mermaid p`), because VitePress's taller paragraph height cut the last line of every wrapped label.
 
 ### Scalar API reference
 Scalar's background, text, accent, border, link and button variables are mapped from the VitePress variables. VitePress resets headings outside any cascade layer, which beats Scalar's layered styles, so headings inside `.scalar-app` inherit their size and weight again. Light-mode method colours are darkened for 4.5:1 on the sidebar grey (green #05704c, blue #0b5cad, red #b3171c, orange #a83a00, yellow #7a5600). Sidebar toggle buttons have a 24px minimum target (WCAG 2.5.8). The page is called only by the module's own page with a session cookie, so it shows no client-language samples, no "open API client" button and no test request; each operation shows its request line and its responses.
