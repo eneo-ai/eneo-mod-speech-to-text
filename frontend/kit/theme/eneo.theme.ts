@@ -6,6 +6,9 @@ const focusRing = {
 };
 // A menu's rows sit edge to edge in a clipping box: their ring is drawn inside them.
 const rowFocusRing = {...focusRing, outlineOffset: 'calc(var(--focus-outline-width) * -1)'};
+// A field's ring is its border, thickened: one line on the field's own edge and radius, not a second box around it, and
+// without the design system's faint inner ring beside it.
+const fieldFocusRing = {...focusRing, outlineOffset: 'calc(var(--border-width) * -1)', boxShadow: 'none'};
 const TOUCH = '44px';
 // The one action a screen exists for, at every pointer.
 const LARGE = '48px';
@@ -43,12 +46,12 @@ export const eneoTheme = defineTheme({
     // focus call as keyboard focus and would frame the headline on every visit.
     heading: {base: {overflowWrap: 'anywhere', ':focus-visible': {outline: 'none'}}},
     text: {base: {overflowWrap: 'anywhere'}},
-    'text-input': {base: {':focus-within': focusRing}},
-    'text-area': {base: {':focus-within': focusRing}},
-    'number-input': {base: {':focus-within': focusRing}},
-    selector: {base: {':focus-within': focusRing}},
-    typeahead: {base: {':focus-within': focusRing}},
-    tokenizer: {base: {':focus-within': focusRing}},
+    'text-input': {base: {':focus-within': fieldFocusRing}},
+    'text-area': {base: {':focus-within': fieldFocusRing}},
+    'number-input': {base: {':focus-within': fieldFocusRing}},
+    selector: {base: {':focus-within': fieldFocusRing}},
+    typeahead: {base: {':focus-within': fieldFocusRing}},
+    tokenizer: {base: {':focus-within': fieldFocusRing}},
     // The radio rows of a menu show no focus at all (a plain row tints, a radio row does not).
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.

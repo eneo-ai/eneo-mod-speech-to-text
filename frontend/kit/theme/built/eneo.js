@@ -214,7 +214,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -222,7 +223,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -230,7 +232,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -238,7 +241,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -246,7 +250,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -254,7 +259,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },

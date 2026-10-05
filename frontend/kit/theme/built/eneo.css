@@ -360,32 +360,38 @@
 
   .astryx-text-input:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-text-area:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-number-input:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-selector:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-typeahead:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-tokenizer:focus-within {
     outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
-    outline-offset: var(--focus-outline-offset);
+    outline-offset: calc(var(--border-width) * -1);
+    box-shadow: none;
   }
 
   .astryx-dropdown-menu-item:focus-visible {
