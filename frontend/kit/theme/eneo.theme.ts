@@ -58,6 +58,14 @@ export const eneoTheme = defineTheme({
     'dropdown-menu-item': {base: {':focus-visible': rowFocusRing}},
     // A long compound word or e-mail address wraps inside its row instead of being cut off by it.
     item: {base: {overflowWrap: 'anywhere'}},
+    // A result's prose, as the page's own text: a long address wraps inside the column instead of reaching past a 320 px screen.
+    markdown: {base: {overflowWrap: 'anywhere'}},
+    // A table's header cells keep one line and cut the rest off with an ellipsis, where the cells under them wrap: a
+    // heading such as "Belopp, tkr" loses its unit on a phone (WCAG 1.4.10).
+    'table-header-cell': {base: {whiteSpace: 'normal', textOverflow: 'clip', overflowWrap: 'break-word', wordBreak: 'break-word'}},
+    // A step's name keeps one line and is cut off with an ellipsis, with its state words beside it pushed out of the
+    // card (WCAG 1.4.10): a flow's step names are its author's, as long as they like. It wraps, and the words follow it.
+    'step-label': {base: {whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', overflowWrap: 'anywhere'}},
     // A removable chip: its remove button reaches a 44 px target through a pseudo-element, which the chip must not
     // clip, and its height gives way to the text spacing a reader may set (WCAG 1.4.12) instead of cutting the name.
     // The blue token is the brand's tint, not the data palette's blue: it follows the deployment's accent colour

@@ -1,28 +1,40 @@
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { remarkResultHeadings } from "./Markdown";
-import styles from "./Markdown.module.css";
+import { Markdown, visitMarkdownNodes } from "@astryxdesign/core/Markdown";
+import { createMarkdownPlugin } from "@astryxdesign/core/Markdown/plugins";
 
-const COMPONENTS: Components = {
-  // react-markdown blanks an address it will not follow (javascript:, data:), and a link with an empty href reloads the
-  // page, work in progress with it: such a link, and such an image (an empty src asks for the page itself), are their words.
-  a: ({ node: _node, href, children, ...props }) => (href ? <a href={href} {...props}>{children}</a> : <>{children}</>),
-  img: ({ node: _node, src, alt, ...props }) => (src ? <img src={src} alt={alt} {...props} /> : <>{alt}</>),
-};
+type Node = { readonly type: string; readonly depth?: number; readonly children?: readonly Node[] };
 
-// The footnotes' words default to English. Their heading is hidden by the module's own rule, which a screen reader still reads.
-const REHYPE = {
-  footnoteLabel: "Fotnoter",
-  footnoteLabelProperties: { className: [styles.visuallyHidden] },
-  footnoteBackLabel: (reference: number, rereference: number) =>
-    `Tillbaka till referens ${reference + 1}${rereference > 1 ? `-${rereference}` : ""}`,
-};
+/**
+ * The tree with every heading `by` levels higher. A heading with another depth is made anew, with no source position:
+ * the design system takes a depth that differs from the source's only on a heading that does not claim to be it.
+ */
+const lifted = (node: Node, by: number): Node =>
+  node.type === "heading"
+    ? { type: "heading", depth: node.depth! - by, children: node.children }
+    : node.children
+      ? { ...node, children: node.children.map((child) => lifted(child, by)) }
+      : node;
+
+/**
+ * A result's headings relative to its top one: whatever its level, the top heading is the document's `#`, and the
+ * deeper ones keep their distance to it. `headingLevelStart` then puts that `#` under the page's h1. It reads the
+ * parsed document, so an underlined title counts and nothing in a code block does.
+ */
+const topHeadingFirst = createMarkdownPlugin({
+  name: "top-heading-first",
+  apiVersion: 1,
+  transform: (document) => {
+    let top = 7;
+    visitMarkdownNodes(document, "heading", (heading) => void (top = Math.min(top, heading.depth)));
+    return top > 1 && top < 7 ? (lifted(document, top - 1) as unknown as typeof document) : document;
+  },
+});
+const PLUGINS = [topHeadingFirst];
 
 /** What Markdown loads on demand: the formatting itself (see Markdown). */
 export default function MarkdownFormatted({ children }: { children: string }) {
   return (
-    <ReactMarkdown remarkPlugins={[remarkGfm, remarkResultHeadings]} remarkRehypeOptions={REHYPE} components={COMPONENTS}>
+    <Markdown headingLevelStart={2} autolink="gfm" plugins={PLUGINS}>
       {children}
-    </ReactMarkdown>
+    </Markdown>
   );
 }

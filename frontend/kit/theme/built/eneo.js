@@ -277,6 +277,27 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "markdown": {
+      "base": {
+        "overflowWrap": "anywhere"
+      }
+    },
+    "table-header-cell": {
+      "base": {
+        "whiteSpace": "normal",
+        "textOverflow": "clip",
+        "overflowWrap": "break-word",
+        "wordBreak": "break-word"
+      }
+    },
+    "step-label": {
+      "base": {
+        "whiteSpace": "normal",
+        "overflow": "visible",
+        "textOverflow": "clip",
+        "overflowWrap": "anywhere"
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",

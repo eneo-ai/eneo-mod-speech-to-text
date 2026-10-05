@@ -160,12 +160,23 @@
   }
 }
 
-.row {
-  display: flex;
+/*
+ * The controls' toolbar (Astryx's Toolbar, its row the element with role="toolbar"): wide enough, its status and its
+ * controls share a line; narrower, the controls go under the status, at the end of their line.
+ */
+.toolbar {
+  /* The toolbar's own padding (a block of 8 px, the theme's 16 px inline) is the bar's already. */
+  margin: calc(-1 * var(--spacing-2)) calc(-1 * var(--spacing-4));
+}
+
+.toolbar [role="toolbar"] {
   flex-wrap: wrap;
-  align-items: center;
   column-gap: var(--spacing-4);
   row-gap: var(--spacing-3);
+}
+
+.toolbar [role="toolbar"][data-status] > :nth-child(2) {
+  margin-inline-start: auto;
 }
 
 /* On a phone: the status over the timer and the level, so the buttons keep the same row. */
@@ -204,32 +215,25 @@
 
 /* Wide enough for "Fortsätt", so pausing moves nothing. */
 .actions {
-  display: grid;
-  --action-width: 8.5rem;
-  grid-template-columns: minmax(var(--action-width), 1fr) minmax(var(--action-width), 1.4fr);
-  gap: var(--spacing-3);
   inline-size: 100%;
 }
 
 @media (min-width: 1024px) {
   .actions {
-    grid-template-columns: 11rem 14rem;
-    justify-content: center;
+    max-inline-size: 25rem;
+    margin-inline: auto;
   }
 }
 
-/* With the status beside them, the two buttons keep to the row's end. */
-.row[data-status] .actions {
-  grid-template-columns: repeat(2, minmax(6rem, 1fr));
-  gap: var(--spacing-2);
-  inline-size: auto;
-  margin-inline-start: auto;
+/* With the status beside them, the two controls keep to the line's end, as wide as the longer of Pausa and Fortsätt makes
+   them (so pausing moves nothing) and no wider. */
+.statusActions {
+  min-inline-size: 12.5rem;
 }
 
 @media (min-width: 640px) {
-  .row[data-status] .actions {
-    grid-template-columns: repeat(2, var(--action-width));
-    gap: var(--spacing-3);
+  .statusActions {
+    min-inline-size: 17.5rem;
   }
 }
 
@@ -254,7 +258,7 @@
   }
 
   /* After the row's own rules above, which they would otherwise lose to. */
-  .row {
+  .toolbar [role="toolbar"] {
     column-gap: var(--spacing-2);
     row-gap: var(--spacing-2);
   }
@@ -320,7 +324,7 @@
     padding-inline: var(--spacing-2);
   }
 
-  .row {
+  .toolbar [role="toolbar"] {
     flex-wrap: nowrap;
   }
 
@@ -328,8 +332,7 @@
     flex: 1 1 0;
   }
 
-  .row[data-status] .actions {
+  .statusActions {
     flex: none;
-    grid-template-columns: repeat(2, minmax(max-content, 1fr));
   }
 }

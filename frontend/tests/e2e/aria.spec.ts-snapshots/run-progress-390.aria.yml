@@ -3,8 +3,8 @@
   - heading "Dokumentet skapas" [level=1]
   - status: Skriv rapporten
   - region "Flödets steg":
-    - list:
-      - listitem: Transkribera Klar
+    - list "Flödets steg":
+      - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Pågår
   - paragraph: Dokumentet blir klart även om du stänger sidan. Du hittar det här sedan.
   - button "Avbryt körningen"

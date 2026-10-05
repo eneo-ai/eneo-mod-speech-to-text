@@ -403,6 +403,24 @@
     overflow-wrap: anywhere;
   }
 
+  .astryx-markdown {
+    overflow-wrap: anywhere;
+  }
+
+  .astryx-table-header-cell {
+    white-space: normal;
+    text-overflow: clip;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
+
+  .astryx-step-label {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
   .astryx-token {
     overflow: visible;
     height: auto;

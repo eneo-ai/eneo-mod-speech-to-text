@@ -1,6 +1,7 @@
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
+import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -105,6 +106,7 @@ export function RunResult({
   );
   const playback = usePlayback(sources);
   const tabs = !wide && showTranscript;
+  const sideBySide = wide && showTranscript;
   const [view, setView] = useState<View>("document");
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
@@ -169,7 +171,7 @@ export function RunResult({
       role={tabs ? "tabpanel" : undefined}
       aria-labelledby={tabs ? PANELS[view_].tab : undefined}
       hidden={tabs && !isChosen}
-      className={className}
+      className={className ? `${styles.panel} ${className}` : styles.panel}
     >
       {content}
     </section>
@@ -198,23 +200,33 @@ export function RunResult({
       </HStack>
 
       {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
-          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
-      <VStack gap={4} className={showTranscript && wide ? styles.sideBySide : undefined}>
+          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it, the document
+          7 columns of 13 and the transcript 6. Below it each panel spans the one column; a hidden panel is an empty
+          span, which takes no room between rows because the grid has no row gap. */}
+      <VStack gap={4}>
         {tabs && (
           <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
             <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
             <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
           </TabList>
         )}
-        {panel(
-          "document",
-          view === "document",
-          <VStack gap={6}>
-            {documentColumn}
-            {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
-          </VStack>,
-        )}
-        {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+        <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
+          <GridSpan columns={sideBySide ? 7 : "full"}>
+            {panel(
+              "document",
+              view === "document",
+              <VStack gap={6}>
+                {documentColumn}
+                {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
+              </VStack>,
+            )}
+          </GridSpan>
+          {transcriptColumn && (
+            <GridSpan columns={sideBySide ? 6 : "full"}>
+              {panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+            </GridSpan>
+          )}
+        </Grid>
       </VStack>
     </VStack>
   );

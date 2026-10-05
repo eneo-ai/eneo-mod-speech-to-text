@@ -3,9 +3,11 @@ import { useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { Grid } from "@astryxdesign/core/Grid";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
+import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SignedOutSlot } from "@/components/AuthGate";
@@ -126,6 +128,27 @@ export function RecordingBar({
     if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
   };
   const marker = showStatus ? "" : undefined;
+  const readout = (
+    <div className={styles.readout}>
+      <RecordingStatus phase={phase} />
+      <div className={styles.readoutLine}>
+        <Timer capture={capture} phase={phase} weight="medium" />
+        <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
+      </div>
+    </div>
+  );
+  const actions = (
+    <Grid columns={2} gap={showStatus ? 2 : 3} className={showStatus ? styles.statusActions : styles.actions}>
+      <Button
+        label={running ? "Pausa" : "Fortsätt"}
+        variant="secondary"
+        width="100%"
+        icon={<Icon icon={running ? Pause : Play} size="md" />}
+        onClick={settled(onPause)}
+      />
+      <Button label="Stoppa" variant="primary" width="100%" icon={<Icon icon="stop" size="md" />} onClick={settled(onStop)} />
+    </Grid>
+  );
   return (
     <div className={styles.bar} data-status={marker}>
       <VStack gap={3} className={styles.barStack}>
@@ -137,35 +160,16 @@ export function RecordingBar({
           </VStack>
         )}
         <VStack gap={3} className={styles.controls}>
-          <div className={styles.row} data-status={marker}>
-            {showStatus && (
-              <div className={styles.readout}>
-                <RecordingStatus phase={phase} />
-                <div className={styles.readoutLine}>
-                  <Timer capture={capture} phase={phase} weight="medium" />
-                  <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
-                </div>
-              </div>
-            )}
-            <div className={styles.actions}>
-              <Button
-                label={running ? "Pausa" : "Fortsätt"}
-                variant="secondary"
-                size="lg"
-                width="100%"
-                icon={<Icon icon={running ? Pause : Play} size="md" />}
-                onClick={settled(onPause)}
-              />
-              <Button
-                label="Stoppa"
-                variant="primary"
-                size="lg"
-                width="100%"
-                icon={<Icon icon="stop" size="md" />}
-                onClick={settled(onStop)}
-              />
-            </div>
-          </div>
+          {/* One toolbar for the controls: a single Tab stop, the arrow keys between Pausa and Stoppa. */}
+          <Toolbar
+            label="Inspelningen"
+            size="lg"
+            gap={0}
+            className={styles.toolbar}
+            data-status={marker}
+            startContent={showStatus ? readout : actions}
+            endContent={showStatus ? actions : undefined}
+          />
           <VStack gap={0.5} className={styles.notes} data-status={marker}>
             {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
             <VStack role="status" gap={0.5}>

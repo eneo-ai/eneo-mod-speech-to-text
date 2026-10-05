@@ -152,16 +152,31 @@ test("an address the page will not follow is shown as its words, not as a link t
   const article = view.container.querySelector("article")!;
   assert.deepEqual([...article.querySelectorAll("a")].map((a) => a.getAttribute("href")), ["https://sundsvall.se"], "the safe link only; no href=\"\"");
   assert.equal(article.querySelector("img"), null, "no image with an empty source, which asks for the page itself");
-  assert.match(article.textContent ?? "", /Se klicka här, kommunen och en bild\./, "every word of it is still there");
+  for (const words of ["klicka här", "kommunen", "en bild"]) assert.match(article.textContent ?? "", new RegExp(words), "every word of it is still there");
 });
 
-test("footnotes are named in Swedish, and their heading is hidden by the module's own rule", async () => {
+test("a footnote, which the design system's Markdown does not draw, stays as the words it was written as", async () => {
   const view = await document_({ text: "Beslutet togs.[^1]\n\n[^1]: Enligt protokollet.", file: null });
   const article = view.container.querySelector("article")!;
-  const heading = article.querySelector("section[data-footnotes] h2")!;
-  assert.equal(heading.textContent, "Fotnoter", "the footnotes' own label, which a screen reader reads");
-  assert.match(heading.className, /visuallyHidden/, "the module's own rule hides it");
-  assert.match(article.querySelector("a[data-footnote-backref]")?.getAttribute("aria-label") ?? "", /^Tillbaka till referens 1/);
+  assert.match(article.textContent ?? "", /Beslutet togs\.\[\^1\]/, "the marker, where it was written");
+  assert.match(article.textContent ?? "", /\[\^1\]: Enligt protokollet\./, "and the note it points to, whole");
+  assert.equal(article.querySelector("a, section"), null, "no link to nothing, and no section the page does not name");
+});
+
+test("a bare address is a link, without the full stop that ends its sentence", async () => {
+  const view = await document_({ text: "Se https://sundsvall.se/budget. Skriv till kommun@sundsvall.se.", file: null });
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual(
+    [...article.querySelectorAll("a")].map((a) => [a.getAttribute("href"), a.textContent]),
+    [["https://sundsvall.se/budget", "https://sundsvall.se/budget"], ["mailto:kommun@sundsvall.se", "kommun@sundsvall.se"]],
+  );
+});
+
+test("an address on another site opens in a tab of its own, without a handle to the page that holds the work", async () => {
+  const view = await document_({ text: "Se [kommunen](https://sundsvall.se).", file: null });
+  const link = view.container.querySelector<HTMLAnchorElement>("article a")!;
+  assert.equal(link.target, "_blank");
+  assert.deepEqual(link.rel.split(" ").sort(), ["noopener", "noreferrer"]);
 });
 
 test("the document's one filled action is its file's download; without a file it is copying the text", async () => {
@@ -211,14 +226,20 @@ test("the result's own headings sit under the page's h1: its top heading is an h
     return headings;
   };
   assert.deepEqual(await outline("# Protokoll\n\n## Beslut\n\n###### Bilaga\n\nText."), ["H2 Protokoll", "H3 Beslut", "H6 Bilaga"]);
-  // An underlined title is a heading like any other: here the top one.
-  assert.deepEqual(await outline("Protokoll\n=========\n\n## Beslut\n\nText."), ["H2 Protokoll", "H3 Beslut"]);
-  assert.deepEqual(await outline("Protokoll\n---------\n\nText."), ["H2 Protokoll"]);
+  // Relative to the top heading, not to the number of its hashes: a text that starts at ### is no deeper for it.
+  assert.deepEqual(await outline("### Protokoll\n\n#### Beslut\n\nText."), ["H2 Protokoll", "H3 Beslut"]);
   // A code block holds no headings, whatever its fence and whatever it contains.
   assert.deepEqual(
     await outline("## Protokoll\n\n### Beslut\n\n````md\n```\n# inte en rubrik\n```\n````\n\nText."),
     ["H2 Protokoll", "H3 Beslut"],
   );
+});
+
+test("an underlined title, which the design system's parser does not read as a heading, stays its words and takes no level from the next one", async () => {
+  const view = await document_({ text: "Protokoll\n=========\n\n## Beslut\n\nText.", file: null });
+  const article = view.container.querySelector("article")!;
+  assert.deepEqual([...article.querySelectorAll("h1, h2, h3, h4, h5, h6")].map((h) => `${h.tagName} ${h.textContent}`), ["H2 Beslut"]);
+  assert.match(article.textContent ?? "", /Protokoll/, "the title is still there");
 });
 
 test("on a narrower screen the one more action beside the download is a button, not a menu of one", async () => {

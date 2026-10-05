@@ -11,8 +11,8 @@
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
-    - list:
-      - listitem: Transkribera Klar
+    - list "Flödets steg":
+      - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
   - region "Transkript":
     - heading "Transkript" [level=2]

@@ -14,7 +14,6 @@ import type { ResultFileView } from "@/lib/run-files";
 import { CopyStatus, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
-import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 import { pressing, useFileAccess } from "./useFileAccess";
 
@@ -77,7 +76,7 @@ function FilePreview({ text }: { text: string }) {
       <Text as="p" id={`${id}-name`} type="supporting">
         Förhandsvisning av texten i filen
       </Text>
-      <article id={`${id}-text`} className={styles.prose}>
+      <article id={`${id}-text`}>
         <Markdown>{whole || !first ? text : first}</Markdown>
       </article>
       {first && (
@@ -263,7 +262,7 @@ export function ResultDocument({
         )}
 
         {text && (
-          <VStack as="article" padding={6} className={styles.prose}>
+          <VStack as="article" padding={6}>
             <Markdown>{text}</Markdown>
           </VStack>
         )}
