@@ -35,7 +35,9 @@ class FakeProxyClient:
         return FakeResponse()
 
 
-class EneoProxyAuthTests(unittest.TestCase):
+class ProxyCase(unittest.TestCase):
+    """A signed-in browser of the module, and an Eneo that answers every call it gets."""
+
     def setUp(self) -> None:
         self.original_client = main.http_client
         self.proxy_client = FakeProxyClient()
@@ -61,6 +63,8 @@ class EneoProxyAuthTests(unittest.TestCase):
     def tearDown(self) -> None:
         main.http_client = self.original_client
 
+
+class EneoProxyAuthTests(ProxyCase):
     def test_proxy_replaces_browser_credentials_with_module_credentials(self) -> None:
         response = self.client.get(
             "/api/eneo/flows/?published=true",
@@ -253,6 +257,173 @@ class EneoProxyAuthTests(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+
+FLOW, RUN, STEP, ATTEMPT, CHECKPOINT = "flow-1", "run-1", "step-1", "attempt-1", "checkpoint-1"
+RUN_PATH = f"flows/{FLOW}/runs/{RUN}"
+STEP_PATH = f"{RUN_PATH}/steps/{STEP}"
+CHECKPOINT_PATH = f"{RUN_PATH}/review-checkpoints/{CHECKPOINT}"
+
+# Every call the module forwards to Eneo, as the page spells it. Written out, not read from the allowlist: this is what the
+# allowlist is held to.
+ALLOWED = (
+    ("GET", "flows/"),
+    ("GET", f"flows/{FLOW}/published/"),
+    ("GET", f"flows/{FLOW}/run-contract/"),
+    ("GET", f"flows/{FLOW}/graph/"),
+    ("GET", f"flows/{FLOW}/runs/"),
+    ("POST", f"flows/{FLOW}/runs/"),
+    ("GET", f"{RUN_PATH}/"),
+    ("GET", f"{RUN_PATH}/status/"),
+    ("GET", f"{RUN_PATH}/steps/"),
+    ("GET", f"{STEP_PATH}/transcript-words/"),
+    ("GET", f"{RUN_PATH}/transcript-corrections/"),
+    ("GET", f"{STEP_PATH}/attempts/{ATTEMPT}/transcript-source/"),
+    ("PATCH", f"{STEP_PATH}/transcript-corrections/"),
+    ("POST", f"{RUN_PATH}/cancel/"),
+    ("POST", f"{RUN_PATH}/redispatch/"),
+    ("POST", f"{RUN_PATH}/retry/"),
+    ("POST", f"{STEP_PATH}/transcript-regenerations/"),
+    ("POST", f"{STEP_PATH}/rerun/"),
+    ("GET", f"{RUN_PATH}/evidence/"),
+    ("GET", f"{RUN_PATH}/evidence/export"),
+    ("GET", f"{RUN_PATH}/review-checkpoints/active/"),
+    ("PATCH", f"{CHECKPOINT_PATH}/"),
+    ("POST", f"{CHECKPOINT_PATH}/approve/"),
+    ("POST", f"{CHECKPOINT_PATH}/reject/"),
+    ("POST", f"{CHECKPOINT_PATH}/resume/"),
+    ("GET", f"flows/{FLOW}/template-files/"),
+)
+
+# Calls the allowlist does not own, and so is not held to above: an id of a checkpoint may be spelled "active", and a POST of a
+# template file is the upload route's.
+ELSEWHERE = (
+    ("PATCH", f"{RUN_PATH}/review-checkpoints/active/"),
+    ("POST", f"flows/{FLOW}/template-files/"),
+)
+
+# Uploads have routes of their own, which take a POST; no other method of theirs is forwarded (a template file's route is
+# also listed for GET, above).
+UPLOAD_PATHS = (f"flows/{FLOW}/files/", f"flows/{FLOW}/steps/{STEP}/runtime-files/")
+
+# Paths next to the allowed ones that no method may reach, spelled as a page could send them.
+REFUSED = (
+    "",
+    "flows",
+    f"flows/{FLOW}/",
+    f"flows/{FLOW}/runs/{RUN}/steps/{STEP}/",
+    f"flows/{FLOW}/published/extra/",
+    f"{RUN_PATH}/status/extra/",
+    f"{STEP_PATH}/transcript-words/extra/",
+    f"{STEP_PATH}/attempts/{ATTEMPT}/",
+    f"{RUN_PATH}/cancel/extra/",
+    f"{RUN_PATH}/evidence/other",
+    f"{RUN_PATH}/evidence/export/extra",
+    f"{CHECKPOINT_PATH}/approve/extra/",
+    f"{CHECKPOINT_PATH}/delete/",
+    f"{RUN_PATH}/review-checkpoints/",
+    f"{RUN_PATH}/artifacts/file-1/",
+    f"{RUN_PATH}/input-files/file-1/",
+    f"flows//runs/",
+    f"flows/{FLOW}/runs//",
+    f"x/flows/",
+    "Flows/",
+    "api/v1/flows/",
+    "users/",
+    "spaces/",
+)
+
+# Raw paths whose decoded form is listed or looks listed, and that the module refuses before it matches: a dot segment,
+# a query or fragment hidden in an id, a separator inside an id, a backslash and the control characters. A line feed
+# last in a path is not here: the router's pattern ends before it, so the path the module sees is the listed one without it.
+UNSAFE = (
+    "flows/%2E%2E/runs/",
+    "flows/%2e/runs/",
+    "flows/%2E%2e/published/",
+    f"flows/{FLOW}%3F/runs/",
+    f"flows/{FLOW}%23/runs/",
+    f"flows/{FLOW}%2Fx/runs/",
+    f"flows/{FLOW}%5Cx/runs/",
+    "flows/%00/runs/",
+)
+
+OTHER_METHODS = ("GET", "POST", "PATCH")
+ORIGIN = {"Origin": "http://localhost:3002"}
+
+
+class EneoProxyAllowlistTests(ProxyCase):
+    def send(self, method: str, path: str):
+        return self.client.request(method, f"/api/eneo/{path}", headers=ORIGIN, json={} if method != "GET" else None)
+
+    def allowed_methods(self, path: str) -> set[str]:
+        return {method for method, listed in ALLOWED + ELSEWHERE if listed == path}
+
+    def test_every_listed_call_reaches_eneo_as_the_same_method_and_path(self) -> None:
+        for method, path in ALLOWED:
+            with self.subTest(method=method, path=path):
+                self.proxy_client.calls.clear()
+
+                response = self.send(method, path)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(
+                    [(call["method"], call["url"]) for call in self.proxy_client.calls],
+                    [(method, f"https://eneo.example.test/api/v1/{path}")],
+                )
+
+    def test_a_listed_path_is_refused_for_every_other_method(self) -> None:
+        for _, path in ALLOWED:
+            for method in sorted(set(OTHER_METHODS) - self.allowed_methods(path)):
+                with self.subTest(method=method, path=path):
+                    response = self.send(method, path)
+
+                    self.assertEqual(response.status_code, 403)
+                    self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_the_slash_twin_of_a_listed_path_is_refused(self) -> None:
+        for method, path in ALLOWED:
+            twin = path[:-1] if path.endswith("/") else path + "/"
+            with self.subTest(method=method, path=twin):
+                response = self.send(method, twin)
+
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_a_path_next_to_the_listed_ones_is_refused_for_every_method(self) -> None:
+        for path in REFUSED:
+            for method in OTHER_METHODS:
+                with self.subTest(method=method, path=path):
+                    response = self.send(method, path)
+
+                    self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_an_upload_path_is_forwarded_for_no_other_method(self) -> None:
+        for path in UPLOAD_PATHS:
+            for method in ("GET", "PATCH"):
+                with self.subTest(method=method, path=path):
+                    response = self.send(method, path)
+
+                    self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_an_unsafe_spelling_of_a_listed_path_is_refused_for_every_method(self) -> None:
+        for path in UNSAFE:
+            for method in OTHER_METHODS:
+                with self.subTest(method=method, path=path):
+                    response = self.send(method, path)
+
+                    self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_a_method_the_proxy_does_not_route_is_not_forwarded(self) -> None:
+        for method in ("PUT", "DELETE"):
+            with self.subTest(method=method):
+                response = self.send(method, "flows/")
+
+                self.assertEqual(response.status_code, 405)
         self.assertEqual(self.proxy_client.calls, [])
 
 
