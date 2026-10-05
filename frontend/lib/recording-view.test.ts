@@ -107,6 +107,12 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
     { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
   ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "lost" }).warnings, [
+    {
+      title: "Inspelningen kan inte längre sparas på enheten.",
+      detail: "Det som spelats in tidigare kan ha försvunnit. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+    },
+  ]);
   const minutes = (count: number) => count * 60_000;
   const notes = (options: Partial<Parameters<typeof recordingNotices>[0]>) =>
     recordingNotices({ ...base, ...options }).notes;

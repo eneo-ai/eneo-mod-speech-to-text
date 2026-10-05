@@ -738,7 +738,7 @@ test("Stoppa on a recording that has vanished from the device still ends: the mi
   await capture.start(meeting);
   recorders[0].emit("a");
   const { id } = capture.getSnapshot().recording!;
-  await store.discard(id); // another tab without Web Locks, a cleared store
+  await store.discard(id); // deleted by this tab itself: nothing of it is left to keep
   const stopped = await capture.stop();
   assert.equal(stopped, null);
   assert.equal(streams[0].track.readyState, "ended");
@@ -798,10 +798,53 @@ test("chunks that no longer reach the device are said at once, while the recordi
   const { capture, store, recorders } = await setup();
   await capture.start(meeting);
   recorders[0].emit("a");
-  await store.discard(capture.getSnapshot().recording!.id); // another tab without Web Locks, a cleared store
+  await store.discard(capture.getSnapshot().recording!.id); // deleted by this tab itself: nothing of it is left to keep
   recorders[0].emit("b");
   await until(() => capture.getSnapshot().error === NOT_ON_DEVICE, "the loss said");
   assert.equal(capture.getSnapshot().status, "recording");
+});
+
+/** A device whose storage the browser can clear under an open recording: the next connection is to an empty database. */
+function wipeable() {
+  let underneath = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const factory = {
+    open(name: string, version?: number) {
+      const request = underneath.open(name, version);
+      request.addEventListener("success", () => connections.push(request.result));
+      return request;
+    },
+  } as unknown as IDBFactory;
+  return {
+    env: { indexedDB: factory, keyRange: IDBKeyRange, locks: fakeWebLocks() },
+    wipe() {
+      connections.splice(0).forEach((connection) => connection.close());
+      underneath = new IDBFactory();
+    },
+  };
+}
+
+test("the device cleared in the middle of a recording is said at once, the recording goes on, and Stoppa leaves what is kept to save and send", async () => {
+  const { env, wipe } = wipeable();
+  const store = await openRecordingStore(env);
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  const { id } = capture.getSnapshot().recording!;
+  recorders[0].emit("H");
+  recorders[0].emit("a");
+  await until(async () => (await store.get(id))?.parts[0]?.chunks === 2, "both chunks kept");
+
+  wipe();
+  recorders[0].emit("b");
+  await until(() => capture.getSnapshot().refused === "lost", "the loss said");
+  const { status, error, persistent } = capture.getSnapshot();
+  assert.deepEqual([status, error, persistent], ["recording", null, false], "it goes on, with no failure to stop it");
+
+  recorders[0].emit("c");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.state, "stopped");
+  assert.deepEqual(await texts(await store.readParts(id)), ["Hbc."], "the header and what came after");
+  assert.deepEqual(await texts(await store.readPartsToSend(id)), ["Hbc."]);
 });
 
 test("Stoppa while the screen's wake lock is still being asked for leaves the recording stopped on the device, not paused", async () => {
