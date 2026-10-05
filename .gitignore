@@ -3,15 +3,13 @@
 .env.local
 .env.*.local
 
-# --- Node / Next.js ---
+# --- Node ---
 node_modules/
-.next/
 out/
 build/
 dist/
 dist-check/
 *.tsbuildinfo
-next-env.d.ts
 .test-build/
 
 # --- Python ---

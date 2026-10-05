@@ -1,5 +1,5 @@
 import { correctionWriteProblem } from "./transcript-corrections";
-// All requests go to same-origin /api/* — Next rewrites these to the backend.
+// All requests go to same-origin /api/*: the backend serves the app and the API on one origin.
 // The backend in turn proxies /api/eneo/* to Eneo with the module's service
 // key and, in Eneo SSO mode, the short-lived module-user token from its
 // HttpOnly session.
