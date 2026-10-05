@@ -9,6 +9,10 @@ import { addNames, hasSeparator, splitNames, takeNames } from "@/lib/participant
 
 const ADD_NAME = "Lägg till namn";
 
+// The names an addition announces: "Anna Berg och Erik Lund". Each change names what changed, so two in a row never
+// say the same words, which a live region would not announce again.
+const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
+
 // Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
 // them on to the input.
 const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter" } as Record<string, string>;
@@ -60,7 +64,7 @@ export function ParticipantsInput({
     if (fresh.length === 0) return;
     onChange(next);
     onAdded?.(fresh);
-    setAnnouncement(fresh.length === 1 ? `${fresh[0]} har lagts till.` : `${fresh.length} namn har lagts till.`);
+    setAnnouncement(`${NAMES.format(fresh)} har lagts till.`);
   }
 
   function remove(name: string) {
@@ -77,10 +81,6 @@ export function ParticipantsInput({
     setText("");
   };
 
-  // The field says how many names it already holds, as part of what describes it.
-  const count = names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`;
-  const described = [description, names.length > 0 ? count : null].filter(Boolean).join(" ") || undefined;
-
   return (
     <VStack gap={2}>
       {/* Leaving the field and its "Lägg till" together adds what was typed; moving between them does not. */}
@@ -92,7 +92,7 @@ export function ParticipantsInput({
       >
         <InputGroup
           label={label}
-          description={described}
+          description={description}
           isOptional={isOptional}
           isRequired={isRequired}
           status={error ? { type: "error", message: error } : undefined}
