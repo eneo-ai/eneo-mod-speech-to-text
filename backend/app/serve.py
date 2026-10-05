@@ -27,7 +27,8 @@ from app.config import load_settings
 from app.limits import WS_MAX_MESSAGE_BYTES
 
 APP = "app.main:app"
-GRACEFUL_SHUTDOWN_SECONDS = 8
+# Leave time for cancelled streams and lifespan cleanup before Docker's 10 s deadline.
+GRACEFUL_SHUTDOWN_SECONDS = 5
 HOST = "0.0.0.0"
 PORT = 3001
 

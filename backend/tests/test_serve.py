@@ -31,7 +31,7 @@ FIXED = {
     "access_log": False,
     "server_header": False,
     "ws_max_size": 128 * 1024,
-    "timeout_graceful_shutdown": 8,
+    "timeout_graceful_shutdown": 5,
     "reload": False,
 }
 
@@ -72,7 +72,7 @@ class ServeTests(unittest.TestCase):
         with patch("uvicorn.run") as run:
             launcher.serve("app.main:app", api_only=True)
 
-        self.assertLess(run.call_args.kwargs["timeout_graceful_shutdown"], 10)
+        self.assertLessEqual(run.call_args.kwargs["timeout_graceful_shutdown"], 5)
 
     def test_what_the_launcher_fixes_cannot_be_overridden_and_nothing_starts(self) -> None:
         # Another value, and the very value it fixes: the launcher is the one place that says what they are.
@@ -81,7 +81,7 @@ class ServeTests(unittest.TestCase):
             "access_log": (True, False),
             "server_header": (True, False),
             "ws_max_size": (1024**3, 128 * 1024),
-            "timeout_graceful_shutdown": (30, 8),
+            "timeout_graceful_shutdown": (30, 5),
         }
         for name, values in attempts.items():
             for value in values:
