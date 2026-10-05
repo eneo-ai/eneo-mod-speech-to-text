@@ -114,7 +114,7 @@ function useShare(file: ResultFileView | null, url: string | null, text: string 
   const mimeType = file?.mimeType ?? "";
   const sizeBytes = file?.sizeBytes ?? null;
   useEffect(() => {
-    if (typeof navigator === "undefined" || typeof navigator.share !== "function") return;
+    if (typeof navigator.share !== "function") return;
     const controller = new AbortController();
     const instead: Share | null = text ? { kind: "text" } : null;
     const probe = name !== null ? new File([""], name, { type: mimeType }) : null;

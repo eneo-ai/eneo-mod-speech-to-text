@@ -22,11 +22,7 @@ export function useInputLevel(
   listener.current = onLevel;
 
   useEffect(() => {
-    const AudioCtor =
-      typeof window === "undefined"
-        ? undefined
-        : (window.AudioContext ??
-          (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
+    const AudioCtor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     if (!stream || !AudioCtor) return;
     const context = new AudioCtor();
     void context.resume().catch(() => undefined);

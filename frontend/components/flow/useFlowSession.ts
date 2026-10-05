@@ -16,7 +16,7 @@ type NavigatorWithWakeLock = Navigator & {
 };
 
 function pickMimeType(accepted: string[] | undefined): string | null {
-  if (typeof window === "undefined" || !("MediaRecorder" in window) || !navigator.mediaDevices) return null;
+  if (!("MediaRecorder" in window) || !navigator.mediaDevices) return null;
   return pickSupportedAudioMimetype(accepted, (mime) => MediaRecorder.isTypeSupported(mime));
 }
 
@@ -41,8 +41,8 @@ function browserCaptureDeps(): CaptureDeps {
     createRecorder: (stream, options) => new MediaRecorder(stream, options),
     requestWakeLock: async () =>
       (await (navigator as NavigatorWithWakeLock).wakeLock?.request("screen")) ?? null,
-    page: typeof document === "undefined" ? undefined : document,
-    window: typeof window === "undefined" ? undefined : window,
+    page: document,
+    window,
   };
 }
 
