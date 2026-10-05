@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import { cleanup, installDom, mount } from "./test-dom";
+import { button, cleanup, installDom, mount } from "./test-dom";
 import { withRouter } from "./test-router";
 
 installDom();
@@ -143,4 +143,52 @@ test("a navigation that keeps the page mounted does not make AuthGate read the s
   assert.equal(router.state.location.pathname, "/flows/b", "the router moved");
   assert.ok(container.textContent?.includes("Sidan"), "the page stayed");
   assert.equal(reads, 1, "and the session was not read again: the effect did not run again, nor the keep-alive restart");
+});
+
+test("a first status read that fails keeps the address, so a link that resumes a run is not lost, and says so with a way to try again", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  let answer: () => Promise<Response> = () => Promise.reject(new TypeError("Failed to fetch"));
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => (String(url).startsWith("/api/auth/status") ? answer() : json({}))) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  t.mock.method(console, "error", () => undefined);
+  const { router, visited, tree } = withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a?run=r1"] });
+  const { container, act } = await mount(tree);
+  for (let i = 0; i < 10; i += 1) await act(settle);
+
+  assert.deepEqual(visited, [], "the router went nowhere");
+  assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
+  assert.ok(!container.textContent?.includes("Sidan"), "nothing of the page before the session has answered");
+  assert.match(container.textContent ?? "", /Kunde inte kontakta modulen/);
+  for (const status of [500, 503]) {
+    answer = () => Promise.resolve(new Response("{}", { status, headers: { "content-type": "application/json" } }));
+    await act(async () => button(container, "Försök igen")!.click());
+    for (let i = 0; i < 5; i += 1) await act(settle);
+    assert.match(container.textContent ?? "", /Kunde inte kontakta modulen/, `still said after a ${status}`);
+    assert.deepEqual(visited, []);
+  }
+
+  answer = () => Promise.resolve(json(signedIn));
+  await act(async () => button(container, "Försök igen")!.click());
+  for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+  assert.ok(container.textContent?.includes("Sidan"), "the page is there once the session answers");
+  assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1", "at the address it was opened at");
+});
+
+test("a status that says nobody is signed in goes to the sign-in page", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => (String(url).startsWith("/api/auth/status") ? json({ authenticated: false, user: null }) : json({}))) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+  });
+  const { router, tree } = withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows/:id", entries: ["/flows/a?run=r1"] });
+  const { act } = await mount(tree);
+  for (let i = 0; i < 10; i += 1) await act(settle);
+  assert.equal(router.state.location.pathname, "/");
+  assert.equal(router.state.historyAction, "REPLACE");
 });

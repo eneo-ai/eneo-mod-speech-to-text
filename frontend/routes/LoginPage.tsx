@@ -13,6 +13,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
 import { HeaderBrand } from "@/components/AppHeader";
+import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { useRouteReady } from "@/routes/RouteEffects";
 
@@ -39,7 +40,7 @@ export default function LoginPage() {
         }
       })
       .catch(() => {
-        setAuthError("Kunde inte kontakta modulen. Försök igen.");
+        setAuthError(UNREACHABLE);
         setChecking(false);
       });
   }, [navigate]);

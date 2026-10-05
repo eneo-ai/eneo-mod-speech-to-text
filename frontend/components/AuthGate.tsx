@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { LoadingShell } from "@/components/LoadingShell";
+import { ModuleUnreachable } from "@/components/ModuleUnreachable";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
 import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
@@ -88,6 +89,9 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
+  // The first read did not come back: neither signed in nor out is known, so the address stays.
+  const [unreachable, setUnreachable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
 
   useEffect(() => {
@@ -155,7 +159,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
-        if (!cancelled) void navigate("/", { replace: true });
+        if (!cancelled) setUnreachable(true);
       });
 
     return () => {
@@ -165,8 +169,18 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       channel?.close();
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [navigate]);
+  }, [navigate, attempt]);
 
+  if (unreachable) {
+    return (
+      <ModuleUnreachable
+        onRetry={() => {
+          setUnreachable(false);
+          setAttempt((count) => count + 1);
+        }}
+      />
+    );
+  }
   if (!user) return <LoadingShell />;
 
   return (
