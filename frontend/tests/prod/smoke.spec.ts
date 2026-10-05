@@ -37,3 +37,21 @@ test("a signed-in page of the built app loads with nothing blocked or broken", a
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+test("a navigation of the built app is announced through a live region, with nothing blocked", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
+  const problems = problemsOf(page);
+  const violations: string[] = [];
+  await page.exposeFunction("blocked", (what: string) => violations.push(what));
+  await page.addInitScript(() =>
+    document.addEventListener("securitypolicyviolation", (event) => void (window as unknown as { blocked(what: string): void }).blocked(`${event.violatedDirective} ${event.blockedURI}`)),
+  );
+  await page.goto("/flows");
+  await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  // The design system's live region sets its hidden style from script, which the policy allows (no 'unsafe-inline').
+  await expect(page.locator('[data-astryx-live-region="polite"]')).toHaveText("Nämndmöte till rapport · Tal till text");
+  expect(violations).toEqual([]);
+  expect(problems).toEqual([]);
+});
