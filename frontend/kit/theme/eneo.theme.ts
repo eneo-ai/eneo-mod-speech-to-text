@@ -82,6 +82,10 @@ export const eneoTheme = defineTheme({
     // The initials sit on a tint of the neutral colour; the secondary text colour on it, over the page's surface, is
     // 4.28:1 in dark mode, the primary one 8.5:1.
     'avatar-fallback': {base: {color: 'var(--color-text-primary)'}},
+    // An off switch's track is a control's edge colour: 3:1 on the page and under its thumb (WCAG 1.4.11); the design
+    // system's translucent grey is 1.5:1. Set as the grey the switch's own off, hover and disabled rules read, so its on
+    // track and its forced-colours tracks stay the design system's.
+    switch: {base: {'--color-background-gray': 'var(--color-border-emphasized)'}},
     // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
     'collapsible-trigger': {base: {minHeight: MOUSE_TARGET}},
   },

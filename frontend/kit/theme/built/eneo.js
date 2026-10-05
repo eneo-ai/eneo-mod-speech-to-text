@@ -325,6 +325,11 @@ export const eneoTheme = {
         "color": "var(--color-text-primary)"
       }
     },
+    "switch": {
+      "base": {
+        "--color-background-gray": "var(--color-border-emphasized)"
+      }
+    },
     "collapsible-trigger": {
       "base": {
         "minHeight": "24px"

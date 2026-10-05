@@ -446,6 +446,10 @@
     color: var(--color-text-primary);
   }
 
+  .astryx-switch {
+    --color-background-gray: var(--color-border-emphasized);
+  }
+
   .astryx-collapsible-trigger {
     min-height: 24px;
   }
