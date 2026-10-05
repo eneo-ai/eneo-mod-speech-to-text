@@ -196,8 +196,15 @@ class SilentWebServer:
             connection.close()
 
 
+PAGE = (
+    b'<link rel="icon" href="/favicon.svg"><link rel="stylesheet" href="/assets/a.css"><link rel="modulepreload" href="/assets/m.js">'
+    b'<script src="/assets/a.js"></script><a href="/flows">flows</a><link rel="canonical" href="/">'
+)
+
+
 class QuickWebServer(ThreadingHTTPServer):
     daemon_threads = True
+    paths: list[str]
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -206,7 +213,8 @@ class QuickWebServer(ThreadingHTTPServer):
             pass
 
         def do_GET(self) -> None:
-            body = b'<link href="/assets/a.css"><script src="/assets/a.js"></script>' if self.path == "/" else b"x" * 100
+            body = PAGE if self.path == "/" else b"x" * 100
+            self.server.paths.append(self.path)  # type: ignore[attr-defined]
             self.send_response(200)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -214,8 +222,20 @@ class QuickWebServer(ThreadingHTTPServer):
 
     def __init__(self) -> None:
         super().__init__(("127.0.0.1", 0), self.Handler)
+        self.paths = []
         threading.Thread(target=self.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.server_address[1]}"
+
+
+class AssetsNamedTests(unittest.TestCase):
+    def test_only_what_loading_the_page_fetches_is_named(self) -> None:
+        # A headless browser does not ask for the icon (a headed one does, once, and keeps it), and no browser follows an anchor or a canonical link.
+        self.assertEqual(live_load.assets_named(PAGE), ["/assets/a.css", "/assets/a.js", "/assets/m.js"])
+
+    def test_a_file_on_another_origin_and_an_inline_script_are_not_the_modules(self) -> None:
+        page = b'<script src="//cdn.example/x.js"></script><script src="https://cdn.example/y.js"></script><script>1</script><img src="/brand/logo.svg">'
+
+        self.assertEqual(live_load.assets_named(page), ["/brand/logo.svg"])
 
 
 class LoadGeneratorTests(unittest.TestCase):
@@ -237,8 +257,9 @@ class LoadGeneratorTests(unittest.TestCase):
         result = asyncio.run(live_load.run_load(server.url, 1, clients=2))
 
         self.assertGreater(result["visits"], 0)
-        self.assertEqual(result["requests"], result["visits"] * 3)  # the page, a.css and a.js
+        self.assertEqual(result["requests"], result["visits"] * 4)  # the page, a.css, m.js and a.js: not the icon, not a link
         self.assertEqual(result["errors"], 0)
+        self.assertEqual(sorted(set(server.paths)), ["/", "/assets/a.css", "/assets/a.js", "/assets/m.js"])
 
     def test_a_server_that_never_answers_ends_the_load_in_bounded_time_and_counts_errors(self) -> None:
         server = SilentWebServer()
