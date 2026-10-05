@@ -357,7 +357,7 @@ export class RecordingStore {
     return this.serial(async () => {
       const recording = await this.load(id);
       const current = recording?.parts[part];
-      if (!recording || !current) return;
+      if (!recording || !current) throw new Error(NOT_ON_DEVICE);
       const parts = recording.parts.map((p) =>
         p.index === part
           ? {

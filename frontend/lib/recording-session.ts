@@ -136,6 +136,9 @@ type EndReason = "stop" | "interrupt" | "leave";
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
+const PAUSE_UNCONFIRMED = "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.";
+
+const notOnDevice = (error: unknown) => error instanceof Error && error.message === NOT_ON_DEVICE;
 
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
@@ -254,7 +257,6 @@ export class RecordingCapture {
       this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent, refused: null });
       this.record(stream);
       await this.takeWakeLock();
-      if (generation !== this.generation) this.dispose();
     } catch (error) {
       // Nothing was recorded: do not leave an empty recording to recover.
       if (created) await this.store?.discard(created.id).catch(() => undefined);
@@ -347,7 +349,7 @@ export class RecordingCapture {
       await store.setState(recording.id, "stopped");
       stopped = await store.get(recording.id);
     } catch (error) {
-      failure = error instanceof Error && error.message === NOT_ON_DEVICE ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
+      failure = notOnDevice(error) ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
     }
     this.finish();
     // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
@@ -380,7 +382,11 @@ export class RecordingCapture {
     const ended = this.endParts("leave");
     // The hardware does not wait for the database either.
     this.stopMicrophone();
-    void ended.then(() => store.setState(recording.id, "paused")).finally(() => this.finish());
+    // Nobody is left to tell if the device cannot keep it paused.
+    void ended
+      .then(() => store.setState(recording.id, "paused"))
+      .catch(() => undefined)
+      .finally(() => this.finish());
   }
 
   /**
@@ -437,7 +443,6 @@ export class RecordingCapture {
       });
       this.record(stream);
       await this.takeWakeLock();
-      if (generation !== this.generation) this.dispose();
     } catch (error) {
       this.finish();
       const message = error instanceof Refusal ? error.message : "Inspelningen kunde inte öppnas.";
@@ -503,7 +508,10 @@ export class RecordingCapture {
             this.set({ persistent: store.persistent, refused });
           }
         })
-        .catch(() => undefined);
+        .catch((error) => {
+          // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
+          if (notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
+        });
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
         void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
@@ -710,16 +718,17 @@ export class RecordingCapture {
     this.releaseWakeLock();
     const { id } = this.snapshot.recording!;
     const store = this.store!;
-    await store.setState(id, "paused");
-    const recording = await store.get(id);
-    this.partCount = recording ? filesIn(recording) : this.partCount;
-    this.set({
-      status: "interrupted",
-      stream: null,
-      partBytes: 0,
-      recording,
-      remainingMs: this.remaining(null),
-    });
+    let kept: { recording: StoredRecording | null } | { error: string };
+    try {
+      await store.setState(id, "paused");
+      const recording = await store.get(id);
+      this.partCount = recording ? filesIn(recording) : this.partCount;
+      kept = { recording };
+    } catch (error) {
+      // The recorder has stopped whatever the device said: the page goes on as interrupted, and says what failed.
+      kept = { error: notOnDevice(error) ? NOT_ON_DEVICE : PAUSE_UNCONFIRMED };
+    }
+    this.set({ status: "interrupted", stream: null, partBytes: 0, remainingMs: this.remaining(null), ...kept });
   }
 
   private onMicrophoneLost = () => void this.endParts("interrupt");
