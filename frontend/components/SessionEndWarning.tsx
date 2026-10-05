@@ -142,7 +142,7 @@ export function SessionEndWarning({
   return (
     <Dialog
       ref={dialogRef}
-      isOpen={shown}
+      isOpen
       onOpenChange={setOpen}
       role="alertdialog"
       // Like the alert dialog it replaces, the warning does not close on a click beside it: it is the only notice.

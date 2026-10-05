@@ -107,7 +107,6 @@ const RUN_QUERY_PARAM = "run";
 const RECORDING_QUERY_PARAM = "recording";
 
 function readRunIdFromUrl(): string | null {
-  if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get(RUN_QUERY_PARAM);
 }
 
@@ -463,19 +462,15 @@ function FlowDetail({ flowId }: { flowId: string }) {
     }
   }
 
-  async function onReject(
-    checkpoint: FlowRunReviewCheckpointPublic,
-    runState: { run: FlowRunPublic; steps: FlowRunStep[] },
-    reason: string,
-  ) {
+  async function onReject(checkpoint: FlowRunReviewCheckpointPublic, runId: string, reason: string) {
     setRunError(null);
     try {
-      await rejectReviewCheckpoint(flowId, runState.run.id, checkpoint.id, {
+      await rejectReviewCheckpoint(flowId, runId, checkpoint.id, {
         expected_checkpoint_revision: checkpoint.revision,
         reason,
       });
       // Körningen avbryts; följ den till slutet så att stegen och resultatet läses som vanligt.
-      void follow(runState.run.id);
+      void follow(runId);
     } catch (err) {
       setRunError(friendlyError(err));
     }
@@ -641,9 +636,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           runError={runError}
           onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
           onSaveEdit={onSaveEdit}
-          onReject={(cp, reason) =>
-            onReject(cp, { run: run.run, steps: run.steps }, reason)
-          }
+          onReject={(cp, reason) => onReject(cp, run.run.id, reason)}
         />
       </FlowFrame>,
     );

@@ -26,7 +26,7 @@ import { speakerDisplayLabel } from "@/lib/transcript";
 function useVisibleHeight(active: boolean): number | null {
   const [height, setHeight] = useState<number | null>(null);
   useEffect(() => {
-    const viewport = typeof window === "undefined" ? null : window.visualViewport;
+    const viewport = window.visualViewport;
     if (!active || !viewport) return;
     const update = () => setHeight(viewport.height);
     update();
@@ -167,11 +167,10 @@ export function SpeakerNamingDialog({
     wasOpen.current = open;
   }, [open]);
 
-  const title = (label: string) => speakerDisplayLabel(label);
   // A name given to another speaker is said quietly; only the row's own choice is checked.
   const usedBy = (name: string, label: string) => {
     const other = draft.find((row) => row.label !== label && row.name?.trim() === name.trim());
-    return other ? `Redan kopplad till ${title(other.label)}` : null;
+    return other ? `Redan kopplad till ${speakerDisplayLabel(other.label)}` : null;
   };
   const names = [...new Set([...participants, ...draft.map((row) => row.name?.trim()).filter((n): n is string => Boolean(n))])];
 
@@ -224,7 +223,7 @@ export function SpeakerNamingDialog({
               {/* Tab past the last control comes back to the first without scrolling to it (the dialog's focus trap
                   moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}
               {shown && (
-                <ul className={styles.rows} onFocus={(e) => e.target.scrollIntoView?.({ block: "nearest" })}>
+                <ul className={styles.rows} onFocus={(e) => e.target.scrollIntoView({ block: "nearest" })}>
                   {draft.map((row) => {
                     const count = passages(row.label);
                     const said = quote(row.label);
@@ -237,10 +236,10 @@ export function SpeakerNamingDialog({
                     return (
                       <li key={row.label} className={styles.row}>
                         <div className={styles.who}>
-                          <SpeakerMark label={row.label} name={title(row.label)} size="lg" />
+                          <SpeakerMark label={row.label} name={speakerDisplayLabel(row.label)} size="lg" />
                           <VStack gap={1} hAlign="start" className={styles.said}>
                             <Text as="p">
-                              <Text weight="medium">{title(row.label)}</Text>
+                              <Text weight="medium">{speakerDisplayLabel(row.label)}</Text>
                               <Text color="secondary"> · {count} inlägg</Text>
                             </Text>
                             {said && (
@@ -254,7 +253,7 @@ export function SpeakerNamingDialog({
                                 size="sm"
                                 className={styles.sample}
                                 icon={playing ? <Pause aria-hidden /> : <Headphones aria-hidden />}
-                                label={`${sample}: ${title(row.label)}`}
+                                label={`${sample}: ${speakerDisplayLabel(row.label)}`}
                                 isDisabled={disabled || Boolean(unavailable)}
                                 onClick={() => (playing ? onStopListening?.() : onListen(row.label))}
                               >
@@ -267,7 +266,7 @@ export function SpeakerNamingDialog({
                         </div>
                         <div className={styles.name}>
                           <NameCombobox
-                            label={`Vem är ${title(row.label)}?`}
+                            label={`Vem är ${speakerDisplayLabel(row.label)}?`}
                             value={row.name}
                             options={names}
                             disabled={disabled || decided || saving !== null}
