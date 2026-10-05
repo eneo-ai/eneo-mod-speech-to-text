@@ -102,7 +102,7 @@ Astryx uppgraderas aldrig i en funktionsändring; en uppgradering är en egen pu
 ## Lägga till en skärm
 
 1. **Hitta delarna:** `npm run astryx -- build "<vad skärmen är>"`, `template <namn> --skeleton` för ramen, `component <Namn>` för varje komponent och `docs layout` för sidramen.
-2. **Route:** lägg sidan i `frontend/routes/` och i `frontend/routes.tsx` med en titel, bakom `AuthGate` om den kräver inloggning, och rendera `ModuleShell`. Anropa `useRouteReady` när sidan har sitt innehåll.
+2. **Route:** lägg sidan i `frontend/routes/` och i `frontend/routes.tsx`, bakom `AuthGate` om den kräver inloggning, och rendera `ModuleShell`. Routens titel är `documentTitle("<sidans namn>")`, sidans namn följt av `PRODUCT_NAME`; båda ägs av `frontend/lib/product.ts`, som är gränssnittets ägare av produktnamnet i titlar, rubriker och landmärken. Anropa `useRouteReady` när sidan har sitt innehåll.
 3. **Logik i `lib/`** med ett test bredvid (`lib/<namn>.test.ts`); komponenttester ligger också där.
 4. **Specialyta?** Bara om designsystemet saknar motsvarighet: en CSS-modul bredvid komponenten, bara tokens.
 5. **Läge i gaten:** lägg lägen för skärmen i `frontend/tests/e2e/screens.ts`; ett nytt överlägg läggs i `leaks.spec.ts`. [Tester](quality-gates.md)
