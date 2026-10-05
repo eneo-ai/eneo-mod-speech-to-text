@@ -1,10 +1,8 @@
 """No route answers a redirect for the path as the frontend sends it, or for its slash twin.
 
-Next stripped a trailing slash when it forwarded a request, so the backend never saw the one the frontend sends, and
 Starlette answers a slash twin of a route with a 307 whose Location follows the scope's scheme: behind Traefik it says
-http://, which a fetch on an https page refuses as mixed content. Now the backend sees the exact path, a twin that is
-not a route is a JSON 404, and the slashless form of an allowlisted /api/eneo path is refused like any path not on the
-list.
+http://, which a fetch on an https page refuses as mixed content. The backend sees the exact path, a twin that is not a
+route is a JSON 404, and the slashless form of an allowlisted /api/eneo path is refused like any path not on the list.
 """
 
 import os
@@ -21,11 +19,12 @@ os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 
-from fastapi.routing import APIRoute, APIWebSocketRoute  # noqa: E402
+from fastapi.routing import APIRoute  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
 from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
+from app_routes import http_routes  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 REDIRECTS = {301, 302, 307, 308}
@@ -103,9 +102,7 @@ class SlashCase(unittest.TestCase):
 class NoRedirectTests(SlashCase):
     def test_no_route_of_the_app_answers_a_redirect_for_its_path_or_its_slash_twin(self) -> None:
         checked = 0
-        for route in main.app.routes:
-            if isinstance(route, APIWebSocketRoute) or not isinstance(route, APIRoute):
-                continue
+        for route in http_routes():
             for method in sorted(route.methods - {"OPTIONS"}):
                 for path in (fill(route.path), twin(fill(route.path))):
                     for client in (self.anonymous, self.client):
@@ -114,8 +111,17 @@ class NoRedirectTests(SlashCase):
 
                             self.assertNotIn(response.status_code, REDIRECTS, response.headers.get("location"))
                             checked += 1
-        paths = {route.path for route in main.app.routes if isinstance(route, APIRoute)}
-        for expected in ("/health", "/api/branding", "/api/eneo/flows/{flow_id}/files/", "/api/eneo/{path:path}"):
+        paths = {route.path for route in http_routes()}
+        for expected in (
+            "/health",
+            "/api/branding",
+            "/api/auth/login",
+            "/api/auth/callback",
+            "/api/auth/logout",
+            "/api/auth/status",
+            "/api/eneo/flows/{flow_id}/files/",
+            "/api/eneo/{path:path}",
+        ):
             self.assertIn(expected, paths)
         self.assertGreater(checked, 2 * len(paths))
 
@@ -127,10 +133,8 @@ class NoRedirectTests(SlashCase):
                 self.assertNotIn(response.status_code, REDIRECTS)
 
     def test_every_allowlisted_path_and_its_slash_twin_is_never_redirected(self) -> None:
-        for methods, pattern in main._PROXY_ROUTE_RULES:
-            path = "/api/eneo/" + re.sub(r"\[\^/\]\+", "x", pattern.pattern).replace("(?:published|run-contract|graph)", "published").replace(
-                "(?:status/)?", "").replace("(?:cancel|redispatch|retry)", "cancel").replace("(?:approve|reject|resume)", "approve").replace(
-                "(?:export)?", "").replace("$", "")
+        for methods, template in main.PROXY_ROUTES:
+            path = fill(template)
             for method in sorted(methods):
                 for candidate in (path, twin(path)):
                     with self.subTest(method=method, path=candidate):
@@ -155,10 +159,10 @@ class FrontendPathTests(SlashCase):
         paths = frontend_paths()
 
         self.assertIn("/api/auth/status", paths)
-        self.assertNotIn("/api/config", paths, "the route that named the demo space is gone")
+        self.assertNotIn("/api/config", paths, "the module has no such route")
         self.assertIn("/api/eneo/flows/x/runs/x/artifacts/x/content", paths)
         self.assertIn("/api/eneo/flows/x/runs/", paths)
-        self.assertGreater(len(paths), 27)  # 30 now; the two the access code needed (/api/config and its login POST) are gone
+        self.assertGreaterEqual(len(paths), 25)  # what the frontend builds: a path taken out of it lowers this on purpose
 
     def test_each_one_reaches_its_handler_as_written(self) -> None:
         for path in sorted(frontend_paths()):
@@ -171,7 +175,7 @@ class FrontendPathTests(SlashCase):
                         isinstance(route, APIRoute) and route.path != "/api/eneo/{path:path}" and route.path_regex.fullmatch(path)
                         for route in main.app.routes
                     )
-                    listed = any(pattern.fullmatch(path.removeprefix("/api/eneo/")) for _, pattern in main._PROXY_ROUTE_RULES)
+                    listed = any(pattern.fullmatch(path) for _, pattern in main._PROXY_PATTERNS)
                     self.assertTrue(dedicated or listed, "neither a route of its own nor on the allowlist, as spelled")
                 else:
                     response = self.anonymous.get(path)
@@ -189,7 +193,6 @@ class FrontendPathTests(SlashCase):
     def test_a_path_with_the_slash_the_allowlist_spells_is_not_refused(self) -> None:
         self.assertTrue(main._proxy_route_is_allowed("GET", "flows/"))
         self.assertFalse(main._proxy_route_is_allowed("GET", "flows"))
-        self.assertFalse(hasattr(main, "_resolve_proxy_path"))
 
 
 if __name__ == "__main__":

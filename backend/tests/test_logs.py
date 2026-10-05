@@ -233,7 +233,7 @@ class LogTests(unittest.TestCase):
                 self.sign_in()
 
                 response = self.client.post(
-                    "/api/eneo/flows/flow-1/files",
+                    "/api/eneo/flows/flow-1/files/",
                     headers={"Origin": ORIGIN},
                     files={"upload_file": (f"{SESSION_ID_NOTE}.webm", b"audio", "audio/webm")},
                 )

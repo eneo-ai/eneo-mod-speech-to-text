@@ -10,6 +10,25 @@ import type { Locator, Page } from "@playwright/test";
 export const TEXT_SPACING =
   "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
 
+/**
+ * Adds a stylesheet to the page the way the strict `style-src 'self'` allows: a constructable one, adopted by the
+ * document. `page.addStyleTag` makes a <style> element, which the policy blocks, and a block is a violation. Returns what
+ * takes it away again.
+ */
+export async function addStyles(page: Page, css: string) {
+  await page.evaluate((css) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    (window as unknown as { __addedStyles: CSSStyleSheet[] }).__addedStyles = [...((window as unknown as { __addedStyles?: CSSStyleSheet[] }).__addedStyles ?? []), sheet];
+  }, css);
+  return () =>
+    page.evaluate(() => {
+      const added = (window as unknown as { __addedStyles?: CSSStyleSheet[] }).__addedStyles ?? [];
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => !added.includes(sheet));
+    });
+}
+
 export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
@@ -351,9 +370,8 @@ export function changedArea(page: Page, a: string, b: string, clipWidth: number)
   return page.evaluate(
     async ([a, b, clipWidth]) => {
       const pixels = async (base64: string) => {
-        const image = new Image();
-        image.src = `data:image/png;base64,${base64}`;
-        await image.decode();
+        // Decoded from its bytes: a data: URL would be an image the page's policy does not allow.
+        const image = await createImageBitmap(new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))], { type: "image/png" }));
         const canvas = document.createElement("canvas");
         canvas.width = image.width;
         canvas.height = image.height;

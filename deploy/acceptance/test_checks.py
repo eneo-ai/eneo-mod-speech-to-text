@@ -8,6 +8,8 @@ The checks are replaced by small functions; nothing here touches docker.
 import contextlib
 import io
 import json
+import shutil
+import subprocess
 import sys
 import tempfile
 import types
@@ -118,6 +120,49 @@ class WaiverFileTests(unittest.TestCase):
     def test_the_committed_waivers_are_valid(self) -> None:
         self.assertEqual(checks.read_waivers(checks.HERE / "waivers.json", checks.CHECKS), checks.WAIVERS)
         self.assertEqual(set(checks.WAIVERS), {15})
+
+
+class StandsOnItsOwnTests(unittest.TestCase):
+    def test_nothing_the_acceptance_runs_or_reads_lives_in_the_plans_or_the_board(self) -> None:
+        # docs/plans/ and .beads/ are removed when the work they track is done; a check that ran a script from there would break with them.
+        folder = Path(__file__).resolve().parent
+        sources = [path for path in (*folder.rglob("*"), folder.parent / "acceptance.sh") if path.is_file() and path.suffix in {".py", ".cjs", ".sh", ".yml", ".json", ".env"}]
+        named = [f"{path.relative_to(folder.parent)}:{number}" for path in sources if path != Path(__file__) for number, line in enumerate(path.read_text().splitlines(), 1) if "docs/plans" in line or ".beads" in line]
+
+        self.assertEqual(named, [])
+
+
+@unittest.skipUnless(shutil.which("node"), "node is not installed")
+class MeasuringScriptsNeedTheirArgumentsTests(unittest.TestCase):
+    """A measurement script without what it measures stops with its usage text before it looks for a browser."""
+
+    def run_script(self, script: str, *arguments: str) -> subprocess.CompletedProcess:
+        # The first argument is a directory with no Playwright in it: a script that got as far as loading it would fail with another message.
+        return subprocess.run(
+            ["node", str(Path(__file__).resolve().parent / script), "/nonexistent", "http://localhost", *arguments],
+            capture_output=True,
+            text=True,
+        )
+
+    def assert_usage(self, result: subprocess.CompletedProcess) -> None:
+        self.assertNotEqual(result.returncode, 0)
+        self.assertRegex(result.stderr, r"^usage: node ", "no usage text")
+        self.assertEqual(result.stdout, "")
+
+    def test_poll_needs_its_run_and_its_flow(self) -> None:
+        for arguments in (("10", "60"), ("10", "60", "run-id"), ("10", "60", "", "flow-id")):
+            with self.subTest(arguments=arguments):
+                self.assert_usage(self.run_script("poll.cjs", *arguments))
+
+    def test_poll_needs_a_number_of_browsers_and_seconds(self) -> None:
+        for arguments in (("0", "60", "run-id", "flow-id"), ("ten", "60", "run-id", "flow-id"), ("10", "-1", "run-id", "flow-id"), ("1.5", "60", "run-id", "flow-id")):
+            with self.subTest(arguments=arguments):
+                self.assert_usage(self.run_script("poll.cjs", *arguments))
+
+    def test_page_cost_needs_a_label_and_a_path(self) -> None:
+        for arguments in ((), ("label",)):
+            with self.subTest(arguments=arguments):
+                self.assert_usage(self.run_script("page-cost.cjs", *arguments))
 
 
 if __name__ == "__main__":

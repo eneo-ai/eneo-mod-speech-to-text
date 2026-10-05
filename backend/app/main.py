@@ -30,6 +30,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
+from starlette.routing import compile_path
 from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
@@ -43,7 +44,7 @@ from app.accent import etag, theme_css
 from app.config import load_settings
 from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
-from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
+from app.upstream import CONNECT_TIMEOUT_SECONDS, SMALL_ANSWER, SMALL_ANSWER_BYTES, SMALL_CALL_TIMEOUT, STREAMED, UnboundedAnswer, make_client
 from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
@@ -89,6 +90,14 @@ http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
 app.include_router(module_auth.router, prefix="/api/auth")
 
+# What a request under /api/eneo that changes something passes before its body is read, in this order: a session, the
+# module's own origin (a read is exempt) and a page that names the session's user (a read may name nobody).
+_SESSION_ORIGIN_AND_USER = [
+    Depends(module_auth.require_session),
+    Depends(module_auth.require_same_origin),
+    Depends(module_auth.require_expected_user),
+]
+
 
 def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
     effective_timeout = settings.upload_proxy_timeout_seconds
@@ -98,7 +107,7 @@ def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
             max(MIN_UPLOAD_PROXY_TIMEOUT_SECONDS, timeout_seconds),
         )
     return httpx.Timeout(
-        connect=10.0,
+        connect=CONNECT_TIMEOUT_SECONDS,
         read=effective_timeout,
         write=effective_timeout,
         pool=30.0,
@@ -177,9 +186,9 @@ async def get_branding_theme(request: Request) -> Response:
 # so a browser's Transfer-Encoding, Forwarded, X-Forwarded-For or X-Real-IP must not arrive: a header a browser, a
 # proxy or a script adds is not Eneo's to receive. The credentials are set by the module from the session, never
 # taken from the browser. The frontend sends Accept, Content-Type (a JSON body) and Idempotency-Key through
-# /api/eneo/*; the rest is the kit's list (Accept-Language, If-Match, If-None-Match). X-Upload-Timeout-Seconds is
-# read by the upload routes and never forwarded; the signed-file routes forward Range, If-Range and Accept on their
-# own (_STREAM_FORWARD_REQUEST_HEADERS).
+# /api/eneo/*, with Accept-Language, If-Match and If-None-Match. X-Upload-Timeout-Seconds is read by the upload routes
+# and never forwarded; the signed-file routes forward Range, If-Range and Accept on their own
+# (_STREAM_FORWARD_REQUEST_HEADERS).
 _FORWARDED_REQUEST_HEADERS = frozenset(
     {"accept", "accept-language", "content-type", "idempotency-key", "if-match", "if-none-match"}
 )
@@ -235,106 +244,51 @@ def _upstream_redirect() -> JSONResponse:
         },
     )
 
-_RESOURCE_ID = r"[^/]+"
-_PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
-    (frozenset({"GET"}), re.compile(r"flows/$")),
+
+def _upstream_unreachable() -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
+    )
+
+
+# What the module forwards to Eneo under /api/eneo, deny by default: one entry per path template, with the methods allowed
+# for it. A path matches as the page spells it, trailing slash included (Eneo's routes carry one), and a {name} is
+# exactly one segment. The names are distinct, which compile_path requires. Only what the page calls is listed.
+# docs/backend.md lists these entries and docs/api/openapi.json describes them.
+PROXY_ROUTES: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset({"GET"}), "/api/eneo/flows/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/published/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/run-contract/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/graph/"),
+    (frozenset({"GET", "POST"}), "/api/eneo/flows/{flow_id}/runs/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/status/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/"),
     (
         frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/(?:published|run-contract|graph)/$"),
+        "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/",
     ),
-    (frozenset({"GET", "POST"}), re.compile(rf"flows/{_RESOURCE_ID}/runs/$")),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:status/)?$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-words/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/transcript-corrections/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/{_RESOURCE_ID}/"
-            rf"attempts/{_RESOURCE_ID}/transcript-source/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-corrections/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:cancel|redispatch|retry)/$"
-        ),
-    ),
-    (
-        # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-regenerations/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/rerun/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/evidence/(?:export)?$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/"
-            r"review-checkpoints/active/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/(?:approve|reject|resume)/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
-    ),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/retry/"),
+    # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/"),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/"),
 )
+_PROXY_PATTERNS = tuple((methods, compile_path(template)[0]) for methods, template in PROXY_ROUTES)
 
 
 def _proxy_route_is_allowed(method: str, path: str) -> bool:
     return any(
-        method in methods and pattern.fullmatch(path) is not None
-        for methods, pattern in _PROXY_ROUTE_RULES
+        method in methods and pattern.fullmatch(f"/api/eneo/{path}") is not None
+        for methods, pattern in _PROXY_PATTERNS
     )
 
 
@@ -471,13 +425,7 @@ async def _proxy_multipart_upload(
         )
     except httpx.RequestError:
         logger.exception("Upload failed: url=%s", upstream_url)
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error("Upload was answered with a redirect: url=%s status=%s", upstream_url, upstream.status_code)
@@ -491,63 +439,19 @@ async def _proxy_multipart_upload(
 
 
 @app.post(
-    "/api/eneo/flows/{flow_id}/files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
     "/api/eneo/flows/{flow_id}/files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_file(flow_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/files/")
 
 
 @app.post(
-    "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
-
-
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
-    return await _forward_upload(request, f"flows/{flow_id}/template-files/")
 
 
 # ---------------------------------------------------------------------------
@@ -630,6 +534,10 @@ class _InvalidMintAnswer(Exception):
     """Eneo answered the mint request with something the module cannot use."""
 
 
+class _MintUnreachable(Exception):
+    """The mint request did not reach Eneo."""
+
+
 def _read_mint_answer(upstream: httpx.Response, base_url: str, now: float) -> tuple[str, float]:
     """The signed URL (on the host the module reaches Eneo on) and when it expires, from Eneo's answer.
 
@@ -681,7 +589,7 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
         raise _InvalidMintAnswer from None
     except httpx.RequestError:
         logger.exception("Signed URL request failed: path=%s", mint_path)
-        raise HTTPException(status_code=502, detail="Eneo could not be reached.")
+        raise _MintUnreachable from None
     if upstream.status_code >= 400:
         try:
             detail = upstream.json()
@@ -756,6 +664,8 @@ async def _stream_signed(
     key = (request.cookies.get(SESSION_COOKIE) or "", mint_path)
     try:
         url = await _signed_url(request, key, unavailable)
+    except _MintUnreachable:
+        return _upstream_unreachable()
     except _InvalidMintAnswer:
         return JSONResponse(
             status_code=502,
@@ -767,10 +677,7 @@ async def _stream_signed(
         upstream = await http_client.send(upstream_request, stream=True)
     except httpx.RequestError:
         logger.exception("File stream request failed: path=%s", mint_path)
-        return JSONResponse(
-            status_code=502,
-            content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         # Not a file: the URL is not worth keeping either, and the stream is closed unread.
@@ -786,10 +693,7 @@ async def _stream_signed(
             body = await _read_small(upstream)
         except httpx.RequestError:  # the error's own body broke off, or stalled
             logger.exception("File stream error body failed: path=%s", mint_path)
-            return JSONResponse(
-                status_code=502,
-                content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-            )
+            return _upstream_unreachable()
         detail: object = unavailable
         if upstream.headers.get("content-type", "").startswith("application/json"):
             try:
@@ -811,7 +715,11 @@ async def _stream_signed(
     return _FileResponse(upstream, resp_headers)
 
 
-async def _stream_input_file_audio(
+@app.get(
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
+    dependencies=[Depends(module_auth.require_session)],
+)
+async def eneo_input_file_audio(
     flow_id: str, run_id: str, file_id: str, request: Request
 ) -> Response:
     return await _stream_signed(
@@ -822,26 +730,6 @@ async def _stream_input_file_audio(
         mint_path=f"flows/{flow_id}/runs/{run_id}/input-files/{file_id}/signed-url/",
         unavailable="Audio is not available for this run.",
     )
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio/",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio_slash(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
 
 
 _UNSAFE_FILENAME = re.compile(r'[\x00-\x1f\x7f"\\/]+')
@@ -909,11 +797,7 @@ async def eneo_run_artifact_content(
 @app.api_route(
     "/api/eneo/{path:path}",
     methods=["GET", "POST", "PATCH"],
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
     # The path as the browser spelled it: Eneo's routes carry a trailing slash and so does the allowlist, so the
@@ -953,13 +837,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             request.method,
             upstream_url,
         )
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error(
@@ -1073,7 +951,7 @@ async def _open_live_session(
                 if _LIVE_RECORDING_ID.fullmatch(recording_id)
                 else None
             ),
-            timeout=httpx.Timeout(10.0),
+            timeout=SMALL_CALL_TIMEOUT,
             extensions=SMALL_ANSWER,
         )
     except httpx.RequestError:  # also an answer past its bound (UnboundedAnswer)

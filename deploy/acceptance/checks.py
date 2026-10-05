@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The acceptance of the production image: the 16 checks of Plan B, Task B4.2, on a running stack (deploy/acceptance/compose.yml).
+"""The acceptance of the production image: sixteen checks on a running stack (deploy/acceptance/compose.yml).
 
     checks.py                run every check, one report, exit 1 if one failed
     checks.py --only 4,5,9   run these
@@ -21,9 +21,9 @@ the stack and then runs this. The stack is the one the environment names; the de
 
 A client that acts as the page names its user: X-Expected-User on a write, ?expected_user= on the live socket. Identifiers are those of
 frontend/tests/fixtures/ids.json, which the stub serves; the headers are those of backend/app/security_headers.json; the numbers the
-image is measured against are baseline.json (B0.1). Checks that stop or recreate the image leave it running when they end.
+image is measured against are baseline.json. Checks that stop or recreate the image leave it running when they end.
 
-What the checks read of the stub (frontend/tests/e2e/stub-server.py, B3.1): GET /__stub/stats (file_streams_open, live_frames, live_bytes),
+What the checks read of the stub (frontend/tests/e2e/stub-server.py): GET /__stub/stats (file_streams_open, live_frames, live_bytes),
 GET /__log and /__reset (upload/upstream.py's record format, one record per upload), and a file in ids.json under files.audioLarge that
 never finishes by itself (a long WAV served in small pieces, with a pause), which checks 7, 10 and 16 hold open.
 """
@@ -65,8 +65,8 @@ AUDIO_STEP, AUDIO_FILE, PDF_FILE = IDS["steps"]["audio"], IDS["files"]["audioA"]
 AUDIO_LARGE = IDS["files"].get("audioLarge")
 UPLOAD_PATH = f"/api/eneo/flows/{FLOW}/steps/{AUDIO_STEP}/runtime-files/"
 # The speaker review's own text, in the part of an ASCII-escaped bundle before its first non-ASCII character: it is in dist/ only when
-# the flag was on at build time (frontend/components/flow/ReviewView.tsx). B2 moves the code; the marker follows it.
-SPEAKER_REVIEW_MARKER = os.environ.get("ACCEPT_SPEAKER_REVIEW_MARKER", "Lyssna, markera ord och v")
+# the flag was on at build time (frontend/components/flow/ReviewView.tsx).
+SPEAKER_REVIEW_MARKER = "Lyssna, markera ord och v"
 DEV_MARKERS = ("Grundkontroll", "/dev/foundation", "/dev/speaker-review", "/dev/dialog-leak")
 
 
@@ -392,7 +392,7 @@ def check_7() -> str:
     expect(second.status == 206 and second.headers.get("content-range") == f"bytes 100-199/{size}", f"bytes=100-199 answered {second.status} {second.headers.get('content-range')}")
     beyond = get(STACK.direct + path, headers={**session.read(), "Range": f"bytes={size + 1000}-"})
     expect(beyond.status == 416, f"a range past the end answered {beyond.status}, not 416")
-    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: nothing can be held open to leave half-way (B3.1's stub)")
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: nothing can be held open to leave half-way")
     sock = open_stream(STACK.direct, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
     wait_until(lambda: stub_stats()["file_streams_open"] >= 1, 10, "the stub sees the stream open")
     reset(sock)
@@ -593,14 +593,14 @@ def check_9() -> str:
     ]
     up = BASELINE["uploads"]
     lines.append(f"baseline on Next (growth in MB): 300 MiB {up['curl_300MB']}, 1 GiB {up['curl_1GB']}, 2 x 300 MiB {up['curl_2x300MB']}; over 2 GiB: {up['over_2GiB']}")
-    lines.append("path: /steps/<step>/runtime-files/, the baseline's, not the plan's .../files wording, so that the comparison is like for like")
+    lines.append("path: /steps/<step>/runtime-files/, the baseline's, so that the comparison is like for like")
     fresh_module()
     return "\n    ".join(lines)
 
 
 @check(10, "docker stop with a file still streaming ends the container in under 10 s")
 def check_10() -> str:
-    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open")
     session = sign_in()
     sock = open_stream(STACK.direct, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
     try:
@@ -666,7 +666,7 @@ def node(script: str, *args: str, preload: bool = False, env: dict[str, str] | N
     return r.stdout.strip()
 
 
-@check(14, "the image against B0.1: size, start, idle and loaded memory, CPU under polling, page cost, layout shift")
+@check(14, "the image against baseline.json: size, start, idle and loaded memory, CPU under polling, page cost, layout shift")
 def check_14() -> str:
     pw = str(ROOT / "frontend")
     out, problems = [], []
@@ -707,7 +707,7 @@ def check_14() -> str:
         problems.append(f"CPU under polling {cpu:.1f} % is above the baseline's {BASELINE['polling']['cpu_percent']['all']} %")
     # what a page costs a visitor: page-cost.cjs, signed in, three runs, median
     paths = {"flows": "/flows", "flow": f"/flows/{FLOW}"}
-    runs = [json.loads(node(str(ROOT / "docs/plans/page-cost.cjs"), pw, STACK.module, f"b42-{n}", *paths.values(), preload=True)) for n in (1, 2, 3)]
+    runs = [json.loads(node(str(HERE / "page-cost.cjs"), pw, STACK.module, f"run-{n}", *paths.values(), preload=True)) for n in (1, 2, 3)]
     for key, path in paths.items():
         base = BASELINE["pages"][key]
         for profile in ("desktop", "phone-4x-cpu"):
@@ -762,7 +762,7 @@ def check_15() -> str:
     if stress_files - files:
         problems.append(f"the stress test fetches files the browser does not on a visit: {sorted(stress_files - files)}")
 
-    # the plan's measurement: 200 clients fetching the shell and its files over and over with no pause, against the idle relay
+    # 200 clients fetching the shell and its files over and over with no pause, against the idle relay
     try:
         idle_trips = live_load.measure_round_trips(STACK.direct, path, headers, 30, 20)
     except live_load.RelayError as error:
@@ -853,7 +853,7 @@ def check_16() -> str:
         problems.append(str(error))
     # docker stop with a stream open through Traefik
     fresh_module()
-    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open (B3.1's stub)")
+    expect(AUDIO_LARGE, "ids.json has no files.audioLarge: no stream stays open")
     session = sign_in(STACK.module)
     sock = open_stream(STACK.module, audio_path(AUDIO_LARGE), {**session.read(), "Range": "bytes=0-"})
     try:
@@ -865,7 +865,7 @@ def check_16() -> str:
         fresh_module()
     expect(took < 10, f"docker stop with a stream open through Traefik took {took:.1f} s")
     lines.append(f"docker stop with a stream open through Traefik: {took:.1f} s")
-    lines.append("not covered: TLS and the Secure cookie (a hand check at B6.1)")
+    lines.append("not covered: TLS and the Secure cookie (checked by hand where TLS ends)")
     expect(not problems, "; ".join(problems) + "\n    " + "\n    ".join(lines))
     return "\n    ".join(lines)
 

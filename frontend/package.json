@@ -10,6 +10,7 @@
     "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
     "lint": "tsc --noEmit",
     "test:a11y": "playwright test",
+    "test:a11y:real": "npm run build:check && GATE_TARGET=real playwright test",
     "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
     "theme:build": "npm run astryx -- theme build kit/theme/eneo.theme.ts -o kit/theme/built/eneo.css",
     "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py ${A11Y_STUB_PORT:-8401} & trap \"kill $!\" EXIT; DEV_API_BASE=http://127.0.0.1:${A11Y_STUB_PORT:-8401} vite --host 127.0.0.1 --port ${A11Y_APP_PORT:-3401} --strictPort'",
