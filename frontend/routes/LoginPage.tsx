@@ -48,6 +48,13 @@ export default function LoginPage() {
   // The page has its content once it has stopped asking who is signed in.
   useRouteReady(!checking);
 
+  // Back from Eneo, the browser may show this page again as it was left, with the button still opening Eneo.
+  useEffect(() => {
+    const shownAgain = (event: PageTransitionEvent) => event.persisted && setSubmitting(false);
+    window.addEventListener("pageshow", shownAgain);
+    return () => window.removeEventListener("pageshow", shownAgain);
+  }, []);
+
   function startLogin() {
     setSubmitting(true);
     setAuthError(null);
