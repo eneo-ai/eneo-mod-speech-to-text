@@ -2,6 +2,7 @@ import { AudioLines, Mic, Upload, type LucideIcon } from "lucide-react";
 import { Heading } from "@astryxdesign/core/Heading";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { VStack } from "@astryxdesign/core/Stack";
+import { Text } from "@astryxdesign/core/Text";
 import type { InputMode } from "@/lib/flow-session";
 
 export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: LucideIcon }> = {
@@ -15,7 +16,18 @@ export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: Lu
  * selects; the arrow keys move between them. The heading takes the focus when the setup appears, the group is
  * named by the same words. The radio is a row's one leading mark: the mode's icon is on the action it starts.
  */
-export function ModeCards({ modes, mode, onSelect }: { modes: InputMode[]; mode: InputMode | null; onSelect: (mode: InputMode) => void }) {
+export function ModeCards({
+  modes,
+  mode,
+  onSelect,
+  note,
+}: {
+  modes: InputMode[];
+  mode: InputMode | null;
+  onSelect: (mode: InputMode) => void;
+  /** Why a way the flow takes is missing here (lib/flow-session missingModesNote). */
+  note?: string | null;
+}) {
   return (
     <VStack gap={4}>
       <Heading level={2} data-phase-heading tabIndex={-1}>
@@ -27,6 +39,11 @@ export function ModeCards({ modes, mode, onSelect }: { modes: InputMode[]; mode:
           return <RadioListItem key={value} value={value} label={name} description={line} />;
         })}
       </RadioList>
+      {note && (
+        <Text as="p" type="supporting">
+          {note}
+        </Text>
+      )}
     </VStack>
   );
 }

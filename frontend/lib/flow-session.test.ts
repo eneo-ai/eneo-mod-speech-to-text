@@ -11,6 +11,7 @@ import type { DraftStorage } from "./drafts";
 import {
   FlowSession,
   availableModes,
+  missingModesNote,
   acceptedFormats,
   fileAccept,
   primaryActionLabel,
@@ -211,6 +212,22 @@ async function setup(
   });
   return { session, store, streams, recorders };
 }
+
+test("a way the flow would offer but this browser or Eneo cannot give is said, not silently left out", () => {
+  const withLive = audioContract();
+  const live = (reason: "model_unavailable" | "model_not_realtime") =>
+    audioContract({ transcription: { live: { available: false, reason }, speaker_labels: { selectable: true, required: false, default: true } } });
+  assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: true }), null, "every way is there");
+  assert.equal(
+    missingModesNote(withLive, { canRecord: false, liveClient: true }),
+    "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.",
+  );
+  assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: false }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");
+  assert.equal(missingModesNote(live("model_unavailable"), { canRecord: true, liveClient: true }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");
+  assert.equal(missingModesNote(live("model_not_realtime"), { canRecord: true, liveClient: true }), null, "a flow that never streams has nothing missing");
+  const documentFlow = audioContract({ steps_requiring_input: [{ step_id: "step-doc", input_format: "document" }], transcription: null });
+  assert.equal(missingModesNote(documentFlow, { canRecord: false, liveClient: false }), null, "a document flow records nothing");
+});
 
 test("the flow offers Strömma only when its live text is available, Spela in only when the browser can record, and Ladda upp always", () => {
   const withLive = audioContract();

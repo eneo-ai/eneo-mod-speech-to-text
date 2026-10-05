@@ -372,12 +372,15 @@ function SetupWorkspace({
       />
 
       {modes.length > 1 ? (
-        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
+        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />
       ) : (
-        // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
-        <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
-          {modes[0] ? MODE_TEXT[modes[0]].name : create}
-        </VisuallyHidden>
+        <>
+          {/* No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go. */}
+          <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
+            {modes[0] ? MODE_TEXT[modes[0]].name : create}
+          </VisuallyHidden>
+          {snapshot.modesNote && <Text as="p" color="secondary">{snapshot.modesNote}</Text>}
+        </>
       )}
 
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
