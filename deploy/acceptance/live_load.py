@@ -31,12 +31,12 @@ import argparse
 import asyncio
 import dataclasses
 import json
-import re
 import statistics
 import subprocess
 import sys
 import threading
 import time
+from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -166,12 +166,27 @@ def percentiles(trips: Trips) -> dict[str, float | int]:
 
 
 # ---- the load: first-time visitors ------------------------------------------------------------------------------------
-ASSET = re.compile(rb"""(?:src|href)=["'](/[^"']+)["']""")
+LOADED_LINKS = {"stylesheet", "modulepreload", "preload"}  # the rels of a <link> that a browser fetches to load the page
+
+
+class _Loaded(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.found: set[str] = set()
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        a = dict(attrs)
+        url = a.get("href") if tag == "link" and LOADED_LINKS & set((a.get("rel") or "").lower().split()) else a.get("src") if tag in ("script", "img") else None
+        if url and url.startswith("/") and not url.startswith("//"):
+            self.found.add(url)
 
 
 def assets_named(html: bytes) -> list[str]:
-    """The files a page's HTML names, as a browser would fetch them without running a script."""
-    return sorted({m.decode() for m in ASSET.findall(html) if not m.startswith(b"//")})
+    """The files of this origin that loading a page's HTML fetches, without running a script: scripts, stylesheets, preloads and images. Not the
+    icon (a headless browser does not ask for it; a headed one does, once, and keeps it), and not anchors or other links."""
+    parser = _Loaded()
+    parser.feed(html.decode("utf-8", errors="replace"))
+    return sorted(parser.found)
 
 
 async def fetch(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, host: str, path: str, cookie: str | None) -> tuple[int, int, bytes]:
