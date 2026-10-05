@@ -1,5 +1,5 @@
 // What a browser fetches on one cold visit of a page of the module, signed in: the list that live_load.py replays at an arrival rate
-// (B4.2 check 15), and what the stress test's list of files is held against.
+// (check 15), and what the stress test's list of files is held against.
 //
 // usage: PW_DIR=<frontend dir with node_modules> node visit_resources.cjs <base url> <path>
 //   <base url>  the module as a browser reaches it (its Eneo must be reachable from here: the sign-in handshake goes there)

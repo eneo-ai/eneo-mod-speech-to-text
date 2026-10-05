@@ -1,9 +1,8 @@
 // Sends one upload as the app does: XMLHttpRequest + FormData("upload_file") from a Blob, in Chromium, signed in through the SSO handshake.
-// usage: PW_DIR=<frontend dir with node_modules> node xhr.cjs <base url> <bytes> <tag> [path]
+// usage: PW_DIR=<frontend dir with node_modules> node xhr.cjs <base url> <bytes> <tag> <path>
 // The page names its user (X-Expected-User, EXPECTED_USER, default user-1) as the app does on a write.
-const [, , base, bytesArg, tag, pathArg] = process.argv;
+const [, , base, bytesArg, tag, path] = process.argv;
 const { chromium } = require(process.env.PW_DIR + "/node_modules/@playwright/test");
-const path = pathArg || "/api/eneo/flows/flow-1/steps/step-1/runtime-files/";
 (async () => {
   const browser = await chromium.launch();
   const page = await (await browser.newContext()).newPage();

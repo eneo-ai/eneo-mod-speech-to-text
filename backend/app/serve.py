@@ -1,8 +1,7 @@
 """The one way the backend is started: ``python -m app.serve``.
 
 Copied from the module kit's packages/bff/src/eneo_module_bff/serve.py (kit commit 6621163), with server_header off, the
-options the module fixes refused, ``reload`` and ``api_only`` added, and the WebSocket limits moved to app/limits.py.
-Plan C (the module kit) deletes this copy when the module moves onto the released package.
+options the module fixes refused, ``reload`` and ``api_only`` added, and the WebSocket limits in app/limits.py.
 
 It fixes what the running system depends on, in one place:
 
@@ -10,8 +9,8 @@ It fixes what the running system depends on, in one place:
 - no access log: the callback URL carries a one-time ticket;
 - no ``Server: uvicorn`` banner;
 - the browser WebSocket limits of ``app.limits``;
-- a stop that does not wait for open streams past 8 s (Docker kills a container ten seconds after SIGTERM, and a file that
-  is still streaming never ends by itself).
+- a stop that does not wait for open streams past ``GRACEFUL_SHUTDOWN_SECONDS`` (Docker kills a container ten seconds
+  after SIGTERM, and a file that is still streaming never ends by itself).
 
 Without ``--api-only`` the launcher serves the built UI, and refuses to start unless ``STATIC_DIR`` (read by
 ``Settings``, the one reader) holds its ``index.html``: a deployment with no page is a failed start, not a running API that answers 404 to every visit.

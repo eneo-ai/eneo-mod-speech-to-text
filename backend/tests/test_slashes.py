@@ -1,10 +1,8 @@
 """No route answers a redirect for the path as the frontend sends it, or for its slash twin.
 
-Next stripped a trailing slash when it forwarded a request, so the backend never saw the one the frontend sends, and
 Starlette answers a slash twin of a route with a 307 whose Location follows the scope's scheme: behind Traefik it says
-http://, which a fetch on an https page refuses as mixed content. Now the backend sees the exact path, a twin that is
-not a route is a JSON 404, and the slashless form of an allowlisted /api/eneo path is refused like any path not on the
-list.
+http://, which a fetch on an https page refuses as mixed content. The backend sees the exact path, a twin that is not a
+route is a JSON 404, and the slashless form of an allowlisted /api/eneo path is refused like any path not on the list.
 """
 
 import os
@@ -155,10 +153,10 @@ class FrontendPathTests(SlashCase):
         paths = frontend_paths()
 
         self.assertIn("/api/auth/status", paths)
-        self.assertNotIn("/api/config", paths, "the route that named the demo space is gone")
+        self.assertNotIn("/api/config", paths, "the module has no such route")
         self.assertIn("/api/eneo/flows/x/runs/x/artifacts/x/content", paths)
         self.assertIn("/api/eneo/flows/x/runs/", paths)
-        self.assertGreater(len(paths), 27)  # 30 now; the two the access code needed (/api/config and its login POST) are gone
+        self.assertGreater(len(paths), 27)  # the frontend builds some thirty
 
     def test_each_one_reaches_its_handler_as_written(self) -> None:
         for path in sorted(frontend_paths()):
@@ -189,7 +187,6 @@ class FrontendPathTests(SlashCase):
     def test_a_path_with_the_slash_the_allowlist_spells_is_not_refused(self) -> None:
         self.assertTrue(main._proxy_route_is_allowed("GET", "flows/"))
         self.assertFalse(main._proxy_route_is_allowed("GET", "flows"))
-        self.assertFalse(hasattr(main, "_resolve_proxy_path"))
 
 
 if __name__ == "__main__":

@@ -989,7 +989,6 @@ class ExpectedUserTests(BoundaryCase):
 
     MEDIA = {
         "an upload": ("POST", "/api/eneo/flows/f/files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
-        "an upload without the slash": ("POST", "/api/eneo/flows/f/files", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "a step's runtime file": ("POST", "/api/eneo/flows/f/steps/s/runtime-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "a template file": ("POST", "/api/eneo/flows/f/template-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "the start of a run": ("POST", "/api/eneo/flows/f/runs/", {"content": b'{"input_values": []}'}),

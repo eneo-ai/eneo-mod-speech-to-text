@@ -110,17 +110,6 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertNotIn("origin", forwarded)
         self.assertNotIn("referer", forwarded)
 
-    def test_the_slashless_form_of_an_allowlisted_path_is_refused(self) -> None:
-        # The path is matched as the browser spelled it: nothing strips a slash on the way any more, so the allowlist
-        # does not make up for one that is missing.
-        response = self.client.get(
-            "/api/eneo/flows",
-            params={"space_id": "space-id"},
-        )
-
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(self.proxy_client.calls, [])
-
     def test_proxy_exposes_transcript_review_routes(self) -> None:
         base = "/api/eneo/flows/flow-1/runs/run-1"
         for method, path in (
@@ -128,7 +117,7 @@ class EneoProxyAuthTests(unittest.TestCase):
             ("GET", f"{base}/steps/step-1/transcript-words/"),
             ("GET", f"{base}/transcript-corrections/"),
             ("PATCH", f"{base}/steps/step-1/transcript-corrections/"),
-            # Eneo keeps an attempt's segments here, paged; the step result no longer embeds them.
+            # Eneo keeps an attempt's segments here, paged; the step result does not embed them.
             ("GET", f"{base}/steps/step-1/attempts/1/transcript-source/?start_segment_index=200"),
         ):
             response = self.client.request(
@@ -148,7 +137,7 @@ class EneoProxyAuthTests(unittest.TestCase):
         self.assertEqual(call["url"], "https://eneo.example.test/api/v1/flows/")
         self.assertEqual(dict(call["params"]), {"published_only": "true", "limit": "200", "offset": "0"})
 
-    def test_proxy_no_longer_exposes_spaces(self) -> None:
+    def test_proxy_does_not_expose_spaces(self) -> None:
         # Discovery lists flows across spaces; the spaces routes refuse module credentials anyway.
         for path in ("/api/eneo/spaces/", "/api/eneo/spaces/space-1/"):
             self.assertEqual(self.client.get(path).status_code, 403, path)
