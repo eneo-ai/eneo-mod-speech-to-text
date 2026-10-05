@@ -22,8 +22,8 @@ export const SignedOutSlot = createContext<HTMLElement | null>(null);
 /**
  * Whether the page's login has ended. A native dialog of the page is in the top layer and escapes the cover's inert,
  * hidden wrapper: it stays visible and focusable above the page. So each page dialog closes itself while this holds
- * and opens again after the new login, with its state kept above it (design decision D6, point 3). Taking this away
- * fails the cover specs of every dialog (tests/e2e/session-cover.spec.ts), measured on the merged tip.
+ * and opens again after the new login, with its state kept above it. Without it a dialog stays on a covered page
+ * (tests/e2e/session-cover.spec.ts runs each).
  */
 export function useSignedOut(): boolean {
   return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);

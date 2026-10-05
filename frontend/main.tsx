@@ -9,7 +9,7 @@ import "@/kit/theme/built/eneo.css";
 import "./styles/globals.css";
 import { router } from "./routes";
 
-// The route's own effects own the scroll after a navigation (B2.8); the browser must not restore it first.
+// The route's own effects own the scroll after a navigation (routes/RouteEffects); the browser must not restore it first.
 history.scrollRestoration = "manual";
 
 createRoot(document.getElementById("root")!).render(

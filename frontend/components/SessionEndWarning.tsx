@@ -132,9 +132,9 @@ export function SessionEndWarning({
     wasShown.current = shown;
   }, [shown, onFocusBack]);
 
-  // In the tree only while it is shown: a modal dialog of the page that is open when it appears has hidden what was
-  // in the document by then from assistive technology (aria-hidden), and a dialog that was already there with it.
-  // Signed out, nothing but the new login closes it, and nothing of the page shows through (the stylesheet).
+  // Mounted only while shown: a page dialog that is open hides everything already in the document from assistive
+  // technology (aria-hidden), a closed warning included, so the warning is added when it is needed. Signed out, nothing
+  // but the new login closes it, and nothing of the page shows through (the stylesheet).
   if (!shown) return null;
   return (
     <Dialog
