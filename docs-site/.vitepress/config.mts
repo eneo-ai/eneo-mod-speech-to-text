@@ -40,9 +40,26 @@ export default defineConfig({
   rewrites: { 'decisions/README.md': 'decisions/index.md' },
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: mark(ACCENT.light) }]],
   markdown: {
+    // The high-contrast variants: the default token colours (a green key, a grey comment) are below 4.5:1 on the code block.
+    theme: { light: 'github-light-high-contrast', dark: 'github-dark-high-contrast' },
+    codeCopyButtonTitle: 'Kopiera koden',
     // The pages are written for GitHub, whose heading links keep å, ä and ö: the site's ids must be the same.
     anchor: { slugify: (text: string) => text.trim().toLowerCase().replace(/[^\p{L}\p{N}_\- ]/gu, '').replace(/ /g, '-') },
     config(md) {
+      // A table is read as a table by assistive technology whatever its CSS display, and each cell knows its column:
+      // on a narrow screen a row is drawn as a card whose cells carry their labels (custom.css).
+      md.core.ruler.push('table_labels', (state) => {
+        const roles: Record<string, string> = { table_open: 'table', thead_open: 'rowgroup', tbody_open: 'rowgroup', tr_open: 'row', th_open: 'columnheader', td_open: 'cell' }
+        let labels: string[] = []
+        let column = 0
+        state.tokens.forEach((token, index) => {
+          if (token.type === 'table_open') labels = []
+          if (token.type === 'tr_open') column = 0
+          if (token.type === 'th_open') labels.push(state.tokens[index + 1]?.content ?? '')
+          if (token.type === 'td_open') token.attrSet('data-label', labels[column++] ?? '')
+          if (roles[token.type]) token.attrSet('role', roles[token.type])
+        })
+      })
       // A diagram is plain text in the page; theme/diagrams.ts renders it in the browser, on the pages that have one.
       const fence = md.renderer.rules.fence!
       md.renderer.rules.fence = (tokens, idx, options, env, self) =>
@@ -61,12 +78,14 @@ export default defineConfig({
     siteTitle: 'Tal till text',
     nav: [
       { text: 'Start', link: '/' },
+      { text: 'Drift', link: '/operations' },
+      { text: 'Utveckling', link: '/development' },
       { text: 'API-referens', link: '/api-referens' },
     ],
     sidebar: [
       { text: 'Om modulen', items: [{ text: 'Start', link: '/' }] },
       {
-        text: 'Drift',
+        text: 'Driftsättning',
         items: [
           { text: 'Drift', link: '/operations' },
           { text: 'Byt organisation', link: '/branding' },
