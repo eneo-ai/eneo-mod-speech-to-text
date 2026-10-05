@@ -5,6 +5,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import styles from "@/components/flow/ParticipantsInput.module.css";
 import { addNames, hasSeparator, splitNames, takeNames } from "@/lib/participants";
 
 const ADD_NAME = "Lägg till namn";
@@ -159,7 +160,7 @@ export function ParticipantsInput({
         </InputGroup>
       </VStack>
       {names.length > 0 && (
-        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2}>
+        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2} className={styles.names}>
           {names.map((name) => (
             <li key={name}>
               <Token

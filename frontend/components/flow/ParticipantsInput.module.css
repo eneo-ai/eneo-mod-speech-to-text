@@ -1,0 +1,14 @@
+/* A name longer than its line wraps inside its chip, which grows with it, and the remove button stays at the chip's end,
+   in reach. The design system holds a token's name on one line, so a long name ran past the column and took its button
+   off a phone's screen (WCAG 1.4.10, 1.4.12). The name and the button are no hooks of the theme, whose rules reach the
+   token, not what is inside it. */
+.names :global(.astryx-token) > span {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  padding-block: var(--spacing-0-5);
+}
+
+/* The wrapping name gives way, not the button: it keeps its 16 px, and with them the 44 px its ::after reaches. */
+.names :global(.astryx-token) > button {
+  flex-shrink: 0;
+}
