@@ -283,6 +283,9 @@ FILES = [
 # The report step's PDF and Word file are the run's result, as Eneo projects a final step's files.
 DONE = {"status": "completed", "result": {"kind": "artifact", "files": FILES}, "result_files": FILES,
         "steps": [TRANSCRIBE_STEP, REPORT_STEP], "step_status": ["completed", "completed"]}
+TEXT_FILE_BODY = (REPORT + "\n\n" + ("Förvaltningen återkommer med underlag i oktober.\n" * 2048)).encode()
+TEXT_FILE = {"file_id": FILE["text"], "name": "Resultat.txt", "mimetype": "text/plain", "size": len(TEXT_FILE_BODY),
+             "step_id": REPORT_STEP_ID}
 LONG_REPORT = REPORT + "".join(
     f"\n\n### {title}\n\n{body} Ärendet bereddes av förvaltningen och föredrogs av handläggaren. "
     "Ledamöterna ställde frågor om kostnaderna och om hur invånarna berörs. Beslutet justeras vid nästa sammanträde."
@@ -303,6 +306,7 @@ def only_pdf(text):
 
 RUNS = {
     RUN["done"]: DONE,
+    RUN["fileText"]: dict(DONE, result={"kind": "file_backed_text", "preview": REPORT, "file": TEXT_FILE}, result_files=[TEXT_FILE]),
     # Finished like done, its report with a table.
     RUN["table"]: dict(DONE, steps=[TRANSCRIBE_STEP, dict(REPORT_STEP, output_payload_json={"text": TABLE_REPORT})]),
     RUN["plain"]: {"status": "completed", "result": {"kind": "inline_text", "text": "Protokollet är klart."},
@@ -821,6 +825,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(what) == 3 and what[0] == "input-files" and what[2] == "audio" and what[1] in AUDIO:
             return self.audio(AUDIO[what[1]])
         if len(what) == 3 and what[0] == "artifacts" and what[2] == "content":
+            if what[1] == FILE["text"]:
+                return self.send(200, TEXT_FILE_BODY, "text/plain;charset=utf-8")
             return self.send(200, PDF, "application/pdf")
         run = run_state(run_id, poll=what == ["status"])
         if run is None:

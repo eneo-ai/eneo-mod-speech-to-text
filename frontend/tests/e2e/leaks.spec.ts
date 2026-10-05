@@ -6,7 +6,7 @@
  */
 import { type CDPSession, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { backLink, chooseMode, record, result, reviewEditor, run, setup, stop } from "./screens";
+import { backLink, chooseMode, fileBackedText, record, result, reviewEditor, run, setup, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
@@ -142,14 +142,14 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("dialog"),
     hide: (page) => page.keyboard.press("Escape"),
   },
-  // Fler alternativ is under a laptop's width, and holds Dela where the browser can share (headless Chromium has no
+  // File-backed text has both copy and share in Fler alternativ; inline text has its share button directly. Headless Chromium has no
   // share sheet, so a stand-in is defined before the page loads).
   "more options": {
     go: async (page) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
-      await run(page, ids.runs.plain);
-      await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
+      await fileBackedText(page);
+      await expect(page.getByRole("button", { name: "Fler alternativ" })).toBeVisible();
     },
     show: (page) => page.getByRole("button", { name: "Fler alternativ" }).click(),
     shown: (page) => page.getByRole("menu"),

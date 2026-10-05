@@ -274,6 +274,13 @@ export async function result(page: Page) {
   await expect(page.getByRole("button", { name: /^Spela från/, includeHidden: true }).first()).toBeAttached();
 }
 
+/** A text result whose full content is in a file, with its preview on the page. */
+export async function fileBackedText(page: Page) {
+  await run(page, ids.runs.fileText);
+  await heading(page, "Texten är klar");
+  await expect(page.getByRole("link", { name: /^Ladda ner textfilen, Resultat\.txt$/ })).toBeVisible();
+}
+
 /**
  * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"): the development page's
  * fixtures, the "bulk" case with its test audio. The setting that shows the editor in a run is off by default, so no
@@ -903,6 +910,10 @@ export const STATES: State[] = [
       await page.getByRole("button", { name: "Visa hela texten" }).click();
       await expect(page.getByRole("button", { name: "Visa mindre" })).toBeVisible();
     },
+  },
+  {
+    name: "result-file-backed-text",
+    go: fileBackedText,
   },
   {
     name: "result-without-transcript",

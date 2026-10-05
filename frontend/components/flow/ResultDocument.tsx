@@ -183,16 +183,17 @@ export function ResultDocument({
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaMatch(LAPTOP);
 
+  const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
   const primaryDownload = file && download && (
     <Button
       as={DownloadLink}
       href={download}
       variant="primary"
       icon={<Icon icon={Download} />}
-      label={`Ladda ner ${file.typeLabel}, ${file.name}`}
+      label={`${downloadLabel}, ${file.name}`}
       onClick={pressing(access, file.fileId, "download")}
     >
-      {`Ladda ner ${file.typeLabel}`}
+      {downloadLabel}
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;

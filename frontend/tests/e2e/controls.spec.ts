@@ -41,7 +41,7 @@ const NO_RESPONSE: Record<string, string> = {
   'review-editor-speakers | button "Markera stycket: programledare/intervjuare"': "the passage is marked already: the state is reached by pressing it",
   'review-editor-speakers | button "Flytta uppspelningen till 0:00"': "the recording is paused at 0:00 already: it moves to where it is",
 };
-for (const state of ["result", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "review", "review-reject"]) {
+for (const state of ["result", "result-file-backed-text", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "review", "review-reject"]) {
   NO_RESPONSE[`${state} | button "Alla"`] = "the speaker filter's chosen value: pressed again, it stays";
   NO_RESPONSE[`${state} | button "Spela från 0:00 i del 1"`] = "the recording is paused at 0:00 already: it moves to where it is";
 }
