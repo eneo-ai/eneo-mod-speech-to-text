@@ -15,6 +15,8 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
@@ -155,23 +157,28 @@ class DocumentTests(unittest.TestCase):
 
 
 class Eneo:
-    """The module's client, in process: every call is answered at once with an empty JSON object."""
+    """The module's client, in process: every call is answered at once with the one answer it was given."""
 
-    class Answer:
-        status_code = 200
-        headers = {"content-type": "application/json"}
-        content = b"{}"
+    def __init__(self, status_code: int = 200, content: bytes = b"{}") -> None:
+        self.answer = SimpleNamespace(
+            status_code=status_code, headers={"content-type": "application/json"}, content=content
+        )
 
     async def request(self, **kwargs):
-        return self.Answer()
+        return self.answer
+
+    async def post(self, url, **kwargs):
+        return self.answer
 
 
-class WhoMayCallTests(unittest.TestCase):
-    """Each operation requires what the file says it requires: a session, the module's origin, the page's user."""
+class AppCase(unittest.TestCase):
+    """The app with a signed-in session and an Eneo that answers, and the file that describes it."""
 
     @classmethod
     def setUpClass(cls) -> None:
-        cls.operations = operations(json.loads(COMMITTED.read_text()))
+        cls.document = json.loads(COMMITTED.read_text())
+        cls.operations = operations(cls.document)
+        cls.components = cls.document["components"]
 
     def setUp(self) -> None:
         main.module_auth.sessions.clear()
@@ -207,6 +214,10 @@ class WhoMayCallTests(unittest.TestCase):
             parameter["$ref"].rsplit("/", 1)[-1] if "$ref" in parameter else parameter["name"]
             for parameter in operation.get("parameters", [])
         }
+
+
+class WhoMayCallTests(AppCase):
+    """Each operation requires what the file says it requires: a session, the module's origin, the page's user."""
 
     def test_an_operation_with_a_security_requirement_answers_401_without_a_session_and_one_without_does_not(
         self,
@@ -264,6 +275,27 @@ class WhoMayCallTests(unittest.TestCase):
                     self.assertEqual(response.json(), {"detail": "user_changed"})
                     self.assertIn("409", operation["responses"])
                     self.assertEqual(self.call(method, path).status_code, 200)
+
+
+class AnswerTests(AppCase):
+    """What the app answers is what the file says it answers."""
+
+    def test_the_branding_answer_is_one_the_file_describes_with_an_organisation_and_without(self) -> None:
+        shown = self.components["schemas"]["Branding"]["properties"]["organization"]["anyOf"]
+        organization = self.components["schemas"]["Organization"]
+
+        self.assertIn({"type": "null"}, shown)
+        self.assertIn({"$ref": "#/components/schemas/Organization"}, shown)
+        for chosen in (main.settings.organization, None):
+            with mock.patch.object(main.settings, "organization", chosen):
+                body = self.call("GET", "/api/branding", session=False).json()
+
+            self.assertEqual(set(body), {"organization"})
+            if chosen is None:
+                self.assertIsNone(body["organization"])
+            else:
+                self.assertLessEqual(set(organization["required"]), set(body["organization"]))
+                self.assertLessEqual(set(body["organization"]), set(organization["properties"]))
 
 
 if __name__ == "__main__":

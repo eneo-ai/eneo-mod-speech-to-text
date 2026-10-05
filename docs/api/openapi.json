@@ -134,12 +134,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "organization": {
-                      "type": "object"
-                    }
-                  }
+                  "$ref": "#/components/schemas/Branding"
                 }
               }
             }
@@ -3209,6 +3204,25 @@
       "EneoPayload": {
         "description": "Eneos innehåll, vilken JSON det än är. Modulen beskriver det inte: se Eneos egen beskrivning."
       },
+      "Branding": {
+        "type": "object",
+        "required": [
+          "organization"
+        ],
+        "properties": {
+          "organization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Organization"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null när organisationen inte ska visas (`SHOW_ORGANIZATION=false`): bara \"Tal till text\"."
+          }
+        }
+      },
       "Status": {
         "type": "object",
         "required": [
@@ -3220,25 +3234,14 @@
             "type": "boolean"
           },
           "user": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "required": [
-              "id",
-              "email"
-            ],
-            "properties": {
-              "id": {
-                "type": "string"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleUser"
               },
-              "email": {
-                "type": "string"
-              },
-              "username": {
-                "type": "string"
+              {
+                "type": "null"
               }
-            }
+            ]
           },
           "session_ends_in": {
             "type": "integer",
@@ -3253,6 +3256,116 @@
             "description": "Vad sidan får skicka i en uppladdning (hela begäran, så en fil får lite mindre)."
           }
         }
+      },
+      "LogoSize": {
+        "properties": {
+          "width": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object",
+        "description": "En logotyps proportioner: sidan ger sin `<img>` den bredden och höjden, så att sidhuvudet inte flyttar sig när filen kommer."
+      },
+      "LogoSizes": {
+        "properties": {
+          "light": {
+            "$ref": "#/components/schemas/LogoSize"
+          },
+          "dark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogoSize"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "light"
+        ],
+        "type": "object",
+        "description": "Proportionerna för den ljusa logotypen och, om det finns en, den mörka."
+      },
+      "Organization": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "enum": [
+                  "default",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dark_logo": {
+            "default": false,
+            "type": "boolean"
+          },
+          "logo_sizes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogoSizes"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "name",
+          "logo"
+        ],
+        "type": "object",
+        "description": "Organisationen bredvid \"Tal till text\": namnet och logotypen. `logo` är `default` för den medföljande logotypen, `custom` för driftsättningens egen (hämtas från `/api/branding/logo/{variant}`) och null för bara namnet som text."
+      },
+      "ModuleUser": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "type": "object",
+        "description": "Användaren som är inloggad."
       },
       "HTTPValidationError": {
         "properties": {

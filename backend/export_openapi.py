@@ -35,13 +35,15 @@ PLACEHOLDERS = {
     "SESSION_SECRET": "x" * 48,
 }
 
+from pydantic import BaseModel  # noqa: E402
 from starlette.routing import compile_path  # noqa: E402
 
 # The app reads its settings when it is imported. It reads these and nothing the shell has set, and the environment is
 # the shell's again afterwards.
 with mock.patch.dict(os.environ, PLACEHOLDERS, clear=True):
     from app import main  # noqa: E402
-from app.module_auth import SESSION_COOKIE, STATE_COOKIE  # noqa: E402
+from app.config import Organization  # noqa: E402
+from app.module_auth import SESSION_COOKIE, STATE_COOKIE, ModuleUser  # noqa: E402
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json"
 # Where Eneo's own description of what these calls take and return is read.
@@ -202,11 +204,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Märke",
         "Organisationen i sidhuvudet",
         "Namnet, om det ska visas, och varje logotyps proportioner så att sidan kan reservera plats.",
-        success={
-            "200": reply(
-                "Organisationen.", json_of({"type": "object", "properties": {"organization": {"type": "object"}}})
-            )
-        },
+        success={"200": reply("Organisationen.", json_of({"$ref": "#/components/schemas/Branding"}))},
     ),
     ("GET", "/api/branding/logo/{variant}"): Op(
         "Märke",
@@ -540,20 +538,23 @@ COMPONENTS: dict[str, Any] = {
             "description": "Eneos innehåll, vilken JSON det än är. Modulen beskriver det inte: se Eneos egen "
             "beskrivning."
         },
+        "Branding": {
+            "type": "object",
+            "required": ["organization"],
+            "properties": {
+                "organization": {
+                    "anyOf": [{"$ref": "#/components/schemas/Organization"}, {"type": "null"}],
+                    "description": "Null när organisationen inte ska visas (`SHOW_ORGANIZATION=false`): bara "
+                    '"Tal till text".',
+                }
+            },
+        },
         "Status": {
             "type": "object",
             "required": ["authenticated", "user"],
             "properties": {
                 "authenticated": {"type": "boolean"},
-                "user": {
-                    "type": ["object", "null"],
-                    "required": ["id", "email"],
-                    "properties": {
-                        "id": {"type": "string"},
-                        "email": {"type": "string"},
-                        "username": {"type": "string"},
-                    },
-                },
+                "user": {"anyOf": [{"$ref": "#/components/schemas/ModuleUser"}, {"type": "null"}]},
                 "session_ends_in": {"type": "integer", "description": "Sekunder till sessionens fasta slut."},
                 "refresh_in": {
                     "type": "integer",
@@ -568,6 +569,44 @@ COMPONENTS: dict[str, Any] = {
         },
     },
 }
+
+
+MODEL_TEXT = {
+    "Organization": 'Organisationen bredvid "Tal till text": namnet och logotypen. `logo` är `default` för den '
+    "medföljande logotypen, `custom` för driftsättningens egen (hämtas från "
+    "`/api/branding/logo/{variant}`) och null för bara namnet som text.",
+    "LogoSize": "En logotyps proportioner: sidan ger sin `<img>` den bredden och höjden, så att sidhuvudet inte "
+    "flyttar sig när filen kommer.",
+    "LogoSizes": "Proportionerna för den ljusa logotypen och, om det finns en, den mörka.",
+    "ModuleUser": "Användaren som är inloggad.",
+}
+
+
+def without_titles(node: Any) -> Any:
+    if isinstance(node, dict):
+        return {key: without_titles(value) for key, value in node.items() if key != "title"}
+    if isinstance(node, list):
+        return [without_titles(value) for value in node]
+    return node
+
+
+def model_schemas(*models: type[BaseModel]) -> dict[str, Any]:
+    """The schemas of models of the app, and of those they hold, for components.schemas: the fields are the models'.
+
+    Their docstrings are English notes for the code, so each schema has the text of MODEL_TEXT instead.
+    """
+    schemas: dict[str, Any] = {}
+    for model in models:
+        schema = model.model_json_schema(ref_template="#/components/schemas/{model}")
+        schemas.update(schema.pop("$defs", {}))
+        schemas[model.__name__] = schema
+    return {
+        name: {
+            **without_titles({key: value for key, value in schema.items() if key != "description"}),
+            "description": MODEL_TEXT[name],
+        }
+        for name, schema in schemas.items()
+    }
 
 
 def build() -> dict[str, Any]:
@@ -600,6 +639,7 @@ def build() -> dict[str, Any]:
             paths.setdefault(template, {})[method.lower()] = eneo_operation(method, template)
 
     components = deepcopy(COMPONENTS)
+    components["schemas"].update(model_schemas(Organization, ModuleUser))
     components["schemas"]["HTTPValidationError"] = generated["components"]["schemas"]["HTTPValidationError"]
     components["schemas"]["ValidationError"] = generated["components"]["schemas"]["ValidationError"]
     return {
