@@ -244,7 +244,7 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Skapad (i dag|i går|\d+ \w+) 16:02/);
   assert.match(words, /Hur resultatet togs fram 4 steg/);
   assert.match(words, /Ny inspelning/);
-  assert.match(words, /Alla flöden/);
+  assert.doesNotMatch(words, /Alla flöden/, "the way back is the page's bar, not the result's own");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
   // The page's frame supplies the one main region and its width; the result is what goes in it.
   assert.doesNotMatch(html, /<main|role="main"/);
@@ -414,7 +414,7 @@ test("a failure the same input cannot pass offers another file as its one filled
   );
   const words = text(html);
   assert.match(words, /Steg 1, Transkribera ljud/);
-  assert.match(words, /Välj en annan fil/);
+  assert.match(words, /Välj nytt ljud/, "a recording or a file, whichever it was");
   assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
   assert.equal([...html.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1, "one filled action");
   // Eneo's words come as a note, not an alert: the heading's focus has announced the view already.
@@ -719,4 +719,10 @@ test("a transcript still being read shows only skeletons the screen reader skips
   assert.match(html, /^<div[^>]*aria-hidden="true"/, "hidden from the start");
   assert.deepEqual(names(html), []);
   assert.equal(html.replace(/<[^>]*>/g, ""), "", "no words, no heading");
+});
+
+test("the stage is said once: read out from its status region, shown by the step list where there is one", () => {
+  const html = markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", onCancel: async () => undefined }));
+  assert.equal(text(html).split("Tar fram texten").length - 1, 1, "once in the page's text");
+  assert.ok(statuses(html).some((status) => status === "Tar fram texten"), "and that once is the status region");
 });

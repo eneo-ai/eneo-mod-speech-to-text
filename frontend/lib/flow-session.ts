@@ -208,6 +208,8 @@ function submitProblem(
 
 interface SessionSnapshot {
   modes: InputMode[];
+  /** Why a way the flow takes is missing here (missingModesNote), or null. */
+  modesNote: string | null;
   mode: InputMode | null;
   phase: SessionPhase;
   details: Record<string, DetailValue>;
@@ -247,6 +249,24 @@ export function availableModes(
   if (canRecord) modes.push("spela-in");
   modes.push("ladda-upp");
   return modes;
+}
+
+/**
+ * Why a way of giving the audio that this flow takes is not offered, when the reason is the browser's or a passing one
+ * of Eneo's: said under the choice rather than left out silently. Nothing for a flow that never streams or records.
+ */
+export function missingModesNote(
+  contract: RunContract | null,
+  { canRecord, liveClient }: { canRecord: boolean; liveClient: boolean },
+): string | null {
+  const step = selectRuntimeInputStep(contract);
+  if (step?.input_format?.toLowerCase() !== "audio") return null;
+  if (!canRecord) return "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.";
+  const live = contract?.transcription?.live;
+  if ((live?.available && !liveClient) || live?.reason === "model_unavailable") {
+    return "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.";
+  }
+  return null;
 }
 
 /** The flow's own default in every mode, Strömma included, until the person chooses. */
@@ -493,6 +513,7 @@ export class FlowSession {
   private flowName: string;
   private contract: RunContract | null = null;
   private modes: InputMode[] = [];
+  private modesNote: string | null = null;
   private mode: InputMode | null = null;
   private details: Record<string, DetailValue> = {};
   private explicitSpeakerLabels: boolean | null = null;
@@ -568,10 +589,12 @@ export class FlowSession {
   /** The run contract, first or refreshed: the modes, and the details that still fit. */
   setContract(contract: RunContract | null): void {
     this.contract = contract;
-    this.modes = availableModes(contract, {
+    const capabilities = {
       canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
       liveClient: this.options.live != null,
-    });
+    };
+    this.modes = availableModes(contract, capabilities);
+    this.modesNote = missingModesNote(contract, capabilities);
     const remembered = this.read(modeKey(this.options.flowId));
     this.mode =
       this.modes.find((mode) => mode === this.mode) ??
@@ -1124,6 +1147,7 @@ export class FlowSession {
     const own = this.ownCountField();
     return {
       modes: this.modes,
+      modesNote: this.modesNote,
       mode: this.mode,
       phase: capturing
         ? (capture.status as "recording" | "paused" | "interrupted")

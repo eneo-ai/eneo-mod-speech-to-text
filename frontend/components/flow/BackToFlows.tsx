@@ -4,16 +4,16 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { RouterLink } from "@/kit/RouterLink";
 
 /**
- * The way back to the flow list, named the same on every page, a button that reads as one at rest. An action row
- * may give it more weight.
+ * The way back to the flow list, named the same on every page: in the flow page's top bar a quiet button at every
+ * width; an error's action row may give it more weight.
  */
 export function BackToFlows({
   variant = "secondary",
   size = "sm",
   className,
 }: {
-  /** The filled one is the page's main action. */
-  variant?: "primary" | "secondary";
+  /** The filled one is the page's main action; the bar's is ghost. */
+  variant?: "primary" | "secondary" | "ghost";
   size?: "sm" | "md";
   className?: string;
 }) {

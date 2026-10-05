@@ -76,7 +76,7 @@ export function ReviewFixtures() {
       <CheckboxInput label="Skrivskyddat" value={readOnly} onChange={setReadOnly} />
       {selected === "accessibility" && <Collapsible trigger="Talare" defaultIsOpen>
         <SpeakerNamingDialog rows={names} participants={Array.from({ length: 20 }, (_, i) => `Testperson ${i + 1} Efternamn`)}
-          passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }} onSaveAndContinue={async (rows) => { setNames(rows); return null; }}>
+          passages={() => 1} quote={() => null} disabled={readOnly} onSave={async (rows) => { setNames(rows); return null; }}>
           <Button label="Namnge talarna" variant="secondary" />
         </SpeakerNamingDialog>
       </Collapsible>}

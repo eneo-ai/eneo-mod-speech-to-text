@@ -59,13 +59,10 @@ export function FocusedRecorder({
   capture,
   phase,
   stream,
-  storageNote,
 }: {
   capture: RecordingCapture;
   phase: SessionPhase;
   stream: MediaStream | null;
-  /** Where the recording is kept, when that is worth saying. */
-  storageNote: string | null;
 }) {
   return (
     <Card padding={6} className={styles.stage}>
@@ -82,13 +79,8 @@ export function FocusedRecorder({
           className={styles.stageMeter}
         />
         <Text as="p" color="secondary" className={styles.note}>
+          {/* Where the recording is kept was said under Starta inspelning: once per view. */}
           Texten skapas när du stoppar inspelningen.
-          {storageNote && (
-            <>
-              <br />
-              {storageNote}
-            </>
-          )}
         </Text>
       </VStack>
     </Card>

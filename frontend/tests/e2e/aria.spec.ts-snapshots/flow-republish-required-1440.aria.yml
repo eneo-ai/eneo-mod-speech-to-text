@@ -2,10 +2,10 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
+    - img "Sundsvalls kommun"
+    - text: Tal till text
+    - link "Alla flöden":
       - /url: /flows
-      - img "Sundsvalls kommun"
-      - text: ""
     - button "Öppna konto för Erik Lund":
       - img "Erik Lund": EL
       - status

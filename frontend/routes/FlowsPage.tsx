@@ -77,9 +77,11 @@ function FlowsListPage() {
 
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand />} end={<AccountMenu />}>
-      <Layout height="auto" contentWidth={960} padding={4}>
+      {/* The page's column in the shell's gutter, so the list starts where the bar's brand and a flow's page do; the list
+          at a reading width in it. */}
+      <Layout height="auto" contentWidth="calc(var(--module-page-width) + var(--spacing-8))" padding={4}>
         <LayoutContent isScrollable={false}>
-          <VStack gap={8} paddingBlockStart={4}>
+          <VStack gap={8} paddingBlockStart={4} maxWidth={960}>
             <Heading level={1}>Välj ett flöde</Heading>
 
             <UnsentRecordings
@@ -94,6 +96,7 @@ function FlowsListPage() {
               <ProblemAlert
                 problem={{ title: "Flödena kunde inte visas.", detail: problem.message, retry: problem.retry }}
                 onRetry={retry}
+                focusRetry={attempt > 0}
               />
             ) : groups === null ? (
               <>

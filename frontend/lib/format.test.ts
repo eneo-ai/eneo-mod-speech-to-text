@@ -42,6 +42,9 @@ test("durations read as seconds under a minute, then minutes, then hours and min
   assert.equal(formatDuration(22_400), "22 s");
   assert.equal(formatDuration(60_000), "1 min");
   assert.equal(formatDuration(32 * 60_000 + 10_000), "32 min");
+  assert.equal(formatDuration(25 * 3_600_000), "1 dygn 1 h", "a day and more in days and hours, not in hundreds of hours");
+  assert.equal(formatDuration((263 * 60 + 33) * 60_000), "10 dygn 23 h");
+  assert.equal(formatDuration(48 * 3_600_000), "2 dygn");
   assert.equal(formatDuration(65 * 60_000), "1 h 5 min");
   assert.equal(formatDuration(119 * 60_000 + 40_000), "2 h");
   assert.equal(formatDuration(3 * 3_600_000), "3 h");

@@ -190,7 +190,7 @@
 .editor:has(.text:focus-visible) .focusLabel {
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
-  border-radius: 2px;
+  border-radius: var(--radius-inner);
   color: var(--color-text-primary);
 }
 
@@ -234,7 +234,7 @@
 }
 
 .text [data-turn-index] {
-  scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem;
+  scroll-margin-block: var(--transcript-toolbar-height, 0px) var(--spacing-4);
 }
 
 .text [data-text-span]:focus-visible {
@@ -387,7 +387,10 @@
    (padding on an inline box does not move the lines), and so overlaps the lines beside it. */
 @media (pointer: coarse) {
   .span {
-    padding-block: 0.8em;
+    /* In the text's own unit, so the box reaches 44 px at the text's size and stops short of the time button above it:
+       no step of the spacing scale does both. Named once, here. */
+    --passage-reach: 0.8em;
+    padding-block: var(--passage-reach);
   }
 }
 
@@ -411,7 +414,7 @@
 
 /* A word, in the order of what it is told about: unsure, played now, marked, being said. */
 .word {
-  border-radius: 2px;
+  border-radius: var(--radius-inner);
 }
 
 .word[data-doubt] {

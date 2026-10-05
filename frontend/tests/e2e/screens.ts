@@ -366,7 +366,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/");
-      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
@@ -378,7 +378,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/flows");
-      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
       await expect(page).toHaveURL(/\/flows$/);
     },
@@ -470,6 +470,23 @@ export const STATES: State[] = [
       await setup(page);
       await chooseMode(page, "Strömma");
       await addParticipants(page, ["Anna Berg", "Erik Lund"]);
+    },
+  },
+  {
+    // Names longer than a phone's line beside names of two letters: each chip keeps to the field's column, its remove
+    // button in reach.
+    name: "setup-participants-long",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Strömma");
+      await addParticipants(page, [
+        "Anna-Karin Bostadsförvaltningsnämndsordförande-Östergren",
+        "Li",
+        "Maria Magdalena Christina Andersson-Svensson",
+        "Åsa",
+        "Karl-Johan von Sydow af Ekenstierna",
+        "Erik Lund",
+      ]);
     },
   },
   {

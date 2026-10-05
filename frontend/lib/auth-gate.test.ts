@@ -162,12 +162,12 @@ test("a first status read that fails keeps the address, so a link that resumes a
   assert.deepEqual(visited, [], "the router went nowhere");
   assert.equal(`${router.state.location.pathname}${router.state.location.search}`, "/flows/a?run=r1");
   assert.ok(!container.textContent?.includes("Sidan"), "nothing of the page before the session has answered");
-  assert.match(container.textContent ?? "", /Kunde inte kontakta modulen/);
+  assert.match(container.textContent ?? "", /Tal till text kan inte nås just nu/);
   for (const status of [500, 503]) {
     answer = () => Promise.resolve(new Response("{}", { status, headers: { "content-type": "application/json" } }));
     await act(async () => button(container, "Försök igen")!.click());
     for (let i = 0; i < 5; i += 1) await act(settle);
-    assert.match(container.textContent ?? "", /Kunde inte kontakta modulen/, `still said after a ${status}`);
+    assert.match(container.textContent ?? "", /Tal till text kan inte nås just nu/, `still said after a ${status}`);
     assert.deepEqual(visited, []);
   }
 

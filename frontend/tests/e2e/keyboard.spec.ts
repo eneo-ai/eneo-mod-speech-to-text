@@ -348,7 +348,7 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
-  // The names follow the field, and "Lägg till" is only there while a name is typed: Tab reaches the first name's button.
+  // The names follow the field, and "Lägg till" is off while nothing is typed: Tab passes it to the first name's button.
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");

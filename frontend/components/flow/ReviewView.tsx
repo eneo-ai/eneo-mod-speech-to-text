@@ -16,6 +16,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -121,7 +122,9 @@ export function ReviewView({
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
-    <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+    <Text as="p" type="supporting">
+      Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
+    </Text>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -320,10 +323,10 @@ export function ReviewView({
   }
 
   /**
-   * Godkänn / Spara och fortsätt, from the page or the naming dialog: the page's edit or the names, saved when the
-   * pause does not hold them yet, then approved and resumed (onContinue). Returns why it did not go on, or null.
+   * Godkänn och fortsätt / Spara och fortsätt / Fortsätt: the page's edit, saved when the pause does not hold it yet,
+   * then approved and resumed (onContinue). Returns why it did not go on, or null.
    */
-  function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
+  function saveAndApprove(): Promise<string | null> {
     return exclusively("approve", async () => {
       // Pågående korrigeringssparningar måste landa före godkännandet, som
       // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
@@ -332,11 +335,10 @@ export function ReviewView({
         return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
       }
       // Approved already: nothing is saved any more, the run is only resumed.
-      const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+      const edit = decided ? null : dirty ? pendingEditedValue() : null;
       // The version sent, as its draft holds it: only that is dropped once Eneo has it.
-      const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
+      const sent: ReviewEdit = isSpeakerMapping ? { speakerRows } : { text };
       return onContinue(checkpoint, edit, {
-        describe: names ? (err) => namingRefusal(err, names) : undefined,
         // Saved now or held already, whether or not this view is shown again before the run goes on.
         onSaved: () => draft.drop(sent),
       });
@@ -369,7 +371,10 @@ export function ReviewView({
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
-  const rejectSection = showReject && !decided ? (
+  // While the reason form is open it is the decision, with its own Avbryt and Bekräfta avvisning: Avvisa and Godkänn
+  // are not shown beside it.
+  const rejecting = showReject && !decided;
+  const rejectSection = rejecting ? (
     <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
       <TextArea
         ref={reasonField}
@@ -391,23 +396,27 @@ export function ReviewView({
             setRejectReason("");
           }}
         />
-        <Button variant="primary" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
       </HStack>
     </VStack>
   ) : null;
 
-  const actions = (
-    <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
+  // The choice as a pair at the end of the bar, of one height: Avvisa, then the action the page exists for.
+  const actions = rejecting ? null : (
+    <HStack gap={3} hAlign="end" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
       {decided ? (
-        <Text as="p" type="supporting">
-          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-        </Text>
+        <StackItem size="fill">
+          <Text as="p" type="supporting">
+            {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+          </Text>
+        </StackItem>
       ) : (
         <Button
           ref={rejectButton}
-          variant="ghost"
+          variant="secondary"
+          size="lg"
           label="Avvisa"
-          isDisabled={busy || showReject}
+          isDisabled={busy}
           onClick={() => {
             handOff.current = reasonField;
             setShowReject(true);
@@ -416,6 +425,7 @@ export function ReviewView({
       )}
       <Button
         variant="primary"
+        size="lg"
         icon={<CheckCircle2 aria-hidden />}
         label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
         isLoading={working === "approve"}
@@ -444,7 +454,7 @@ export function ReviewView({
 
   const paused = (
     <Text as="p" type="supporting">
-      Pausat i steg {checkpoint.step_order}
+      Väntar på din granskning
     </Text>
   );
 
@@ -484,8 +494,6 @@ export function ReviewView({
             onStopListening={stopListening}
             listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
             onSave={saveNames}
-            onSaveAndContinue={saveAndApprove}
-            continueDisabled={continueBlocked}
             decided={decided}
             draftKey={namesDraftKey}
           >
@@ -508,8 +516,8 @@ export function ReviewView({
           </Heading>
           <Text as="p" type="supporting" className={styles.description}>
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
-            {deadline}
           </Text>
+          {deadline}
         </VStack>
 
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
@@ -584,8 +592,8 @@ export function ReviewView({
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
-          {deadline}
         </Text>
+        {deadline}
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>

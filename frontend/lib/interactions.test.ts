@@ -16,10 +16,11 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
     createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
+  assert.equal(button(view.container, "Lägg till")?.disabled, true, "Lägg till is there, and off, while nothing is typed");
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
-  assert.ok(add, "Lägg till shows while a name is typed");
+  assert.equal(add.disabled, false, "and on while a name is typed");
   // Tab to the button: not yet added, the button adds it.
   await view.act(async () => add.focus());
   assert.deepEqual(changes, []);
@@ -45,6 +46,7 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
+  assert.equal(add.disabled, true, "and Lägg till is off again, beside the empty field");
   await view.unmount();
 });
 
@@ -551,7 +553,8 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   );
   // The shell's one main region: a div with the role, not a <main> element.
   const main = view.container.querySelector('[role="main"]')!;
-  assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
+  const bar = view.container.querySelector('[role="banner"]')!;
+  assert.ok([...bar.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "the way back is the bar's");
   assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
   assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
   const rows = [...main.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling?.textContent}`);
@@ -771,11 +774,11 @@ test("upload under way: the header offers no way off the page, which would abort
   await view.unmount();
 });
 
-test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
+test("every state of the flow's page keeps the same bar: the way back and the account (signing out asks first while something would be lost)", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount((await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }))).tree);
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it); the router asks about them");
+  const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
+  assert.deepEqual(exits(view.container), { links: 1, account: 1 });
   await view.unmount();
 });
 

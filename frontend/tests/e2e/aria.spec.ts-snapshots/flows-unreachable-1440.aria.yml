@@ -6,7 +6,7 @@
     - text: ""
 - main:
   - heading "Tal till text" [level=1]
-  - alert: Kunde inte kontakta modulen. Försök igen.
+  - alert: Tal till text kan inte nås just nu.
   - button "Försök igen":
     - text: ""
     - status

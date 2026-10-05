@@ -71,6 +71,8 @@ export default defineConfig({
     { name: "phone-390-dark", use: { ...touch(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
     { name: "tablet-landscape", use: { ...touch(1024, 768), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
+    // A window just narrower than the laptop layout (1024 px): one column at its widest.
+    { name: "laptop-1000-light", use: { ...wide(1000, 800), colorScheme: "light" }, testIgnore: scanOnly },
     // The small laptop: 1280 × 800.
     { name: "laptop-1280-light", use: { ...wide(1280, 800), colorScheme: "light" }, testIgnore: noSnapshots },
     { name: "laptop-1280-dark", use: { ...wide(1280, 800), colorScheme: "dark" }, testIgnore: scanOnly },

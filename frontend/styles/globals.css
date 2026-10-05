@@ -7,6 +7,8 @@
   --module-ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* The page's column: the flow's frame, and the top bar's content on a wide screen. */
   --module-page-width: 1180px;
+  /* A form's measure (the flow's setup): a control stays beside its label and the action is not a bar across the screen. */
+  --module-form-width: 40rem;
   /* What the review's transcript card is at least as tall as, and the placeholder that stands for its editor. */
   --module-transcript-min-height: 28rem;
 
@@ -154,9 +156,12 @@ img[data-brand-logo] {
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
-/* On a wide screen the bar's content stands in the page's column (--module-page-width), so the brand is above
-   the page's left edge and the account at its right, not a thousand pixels out at the window's edges. Up to 1440 px the
-   bar's own padding already puts them at the page's edges. */
-@media (min-width: 1441px) {
-  .astryx-top-nav { padding-inline: calc((100% - var(--module-page-width)) / 2 + var(--spacing-2)); }
+/* The bar's content stands in the page's column (--module-page-width, in the shell's 16 px gutter), so the brand or
+   the way back starts where the page's content does and the account ends where it ends, at every width; the heading
+   slot adds its own 8 px. From a laptop's width a hairline closes the bar. */
+.astryx-top-nav {
+  padding-inline: max(var(--spacing-2), calc((100% - var(--module-page-width)) / 2 - var(--spacing-2)));
+}
+@media (min-width: 1024px) {
+  .astryx-app-shell-header { border-block-end: var(--border-width) solid var(--color-border); }
 }

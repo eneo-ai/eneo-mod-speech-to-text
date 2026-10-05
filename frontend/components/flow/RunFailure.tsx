@@ -114,7 +114,7 @@ export function RunFailure({
             {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
             <HStack gap={3} wrap="wrap">
               {offerChooseInput && (
-                <Button label="Välj en annan fil" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={onChooseInput} />
+                <Button label="Välj nytt ljud" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={onChooseInput} />
               )}
               {offerRetry && (
                 // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.

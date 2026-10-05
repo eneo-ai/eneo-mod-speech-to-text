@@ -1,8 +1,4 @@
 - main:
-  - link "Alla flöden":
-    - /url: /flows
-    - text: ""
-    - status
   - heading "Samråd till protokoll" [level=1]
   - paragraph: Gör ett protokoll av ett samrådsmöte.
   - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.

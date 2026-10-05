@@ -7,7 +7,6 @@ import { Icon } from "@astryxdesign/core/Icon";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { BackToFlows } from "@/components/flow/BackToFlows";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -195,7 +194,6 @@ export function RunResult({
         </VStack>
         <HStack vAlign="center" gap={2}>
           <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={onNewRecording} />
-          {wide && <BackToFlows size="md" />}
         </HStack>
       </HStack>
 

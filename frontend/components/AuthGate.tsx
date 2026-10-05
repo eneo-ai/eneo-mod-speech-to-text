@@ -176,6 +176,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (unreachable) {
     return (
       <ModuleUnreachable
+        retried={attempt > 0}
         onRetry={() => {
           setUnreachable(false);
           setAttempt((count) => count + 1);
