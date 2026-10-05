@@ -284,7 +284,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/eneo/flows/?*", (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
       await open(page, "/flows");
-      await expect(page.getByRole("alert").filter({ hasText: /\w/ })).toBeVisible();
+      await expect(page.getByRole("alert")).toBeVisible();
     },
   },
   {

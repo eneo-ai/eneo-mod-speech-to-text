@@ -21,8 +21,7 @@ const flow = (id: string, name: string, extra: object = {}) => ({ id, name, is_p
 const answer = (items: object[], hasMore = false) => (route: Route) =>
   route.fulfill({ json: { items, has_more: hasMore, count: items.length } });
 
-/** What a person reads of an alert: Next's route announcer is an empty one that is always there. */
-const alert = (page: Page) => page.getByRole("alert").filter({ hasText: /\w/ });
+const alert = (page: Page) => page.getByRole("alert");
 
 const clean = async (page: Page) => {
   expect(blocking((await axe(page)).violations).map((v) => `${v.id}: ${v.help}`), "axe").toEqual([]);

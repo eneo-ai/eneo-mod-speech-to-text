@@ -139,7 +139,7 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
 
 test("a native dialog the page had open when the login ends is hidden behind the sign-in dialog, out of reach and out of the accessibility tree", async ({ page }) => {
   await setup(page);
-  // What a ported page dialog is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
+  // What a dialog of the page is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
   // here in a colour nothing else on the screen has, so that any pixel of it that shows is found.
   const MAGENTA: [number, number, number] = [255, 0, 255];
   await page.evaluate(() => {

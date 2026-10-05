@@ -321,10 +321,7 @@ test("the input modes change with the arrow keys", async ({ page }) => {
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  await page.keyboard.down("ArrowDown");
-  await page.waitForTimeout(60);
-  await page.keyboard.up("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   await expect(cards.nth(1)).toBeFocused();
   await expect(cards.nth(1), "the arrow key chooses the mode it moves to").toBeChecked();
 });
@@ -375,14 +372,8 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  const arrow = async (key: string) => {
-    await page.keyboard.down(key);
-    await page.waitForTimeout(60);
-    await page.keyboard.up(key);
-  };
   for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
-    await arrow(key);
+    await page.keyboard.press(key);
     await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
     await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
     await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);

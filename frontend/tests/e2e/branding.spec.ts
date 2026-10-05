@@ -51,7 +51,7 @@ for (const state of states) {
       for (const element of document.querySelectorAll("body *")) {
         const style = getComputedStyle(element);
         if (style.display === "none" || style.visibility === "hidden") continue;
-        // A shadow layer of no size paints nothing: Tailwind's ring, 0 0 0 0 in its default blue, sits in every shadow.
+        // A shadow layer of no size paints nothing, whatever its colour.
         const painted = style.boxShadow
           .split(/,(?![^(]*\))/)
           .filter((layer) => (layer.replace(/(rgba?|color)\([^)]*\)/g, "").match(/-?[\d.]+px/g) ?? []).some((length) => parseFloat(length) !== 0))
