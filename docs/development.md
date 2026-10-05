@@ -8,6 +8,7 @@
 | 3002 | `npm run dev`: Vites utvecklingsserver, som vidarebefordrar `/api` och `/health` till backend. |
 | 8000 | Backend i utveckling (`--api-only`, alltså utan gränssnitt). |
 | 3401 och 8401 | Gaten och `npm run dev:stub`: app och stubbackend. |
+| 5173 och 4173 | Dokumentationssajten: `npm run dev` och `npm run preview` i `docs-site/`. |
 | 3411 till 3413 och 8411 | `npm run test:prod`: tre riktiga backends med varsitt bygge, och stubben som Eneo. |
 | 8480 till 8482 | `npm run test:image`: Traefik, stubben som Eneo och imagens egen port. |
 
@@ -94,3 +95,18 @@ npm run dev:stub
 ```
 
 Det startar stubben och appen på `http://127.0.0.1:3401` (andra portar: `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run dev:stub`). Vissa lägen går inte att nå med en vanlig adress eftersom de behöver Playwrights nätverksavlyssning eller klocka: öppna ett namngivet läge ur `frontend/tests/e2e/screens.ts` i en webbläsare med fönster med `npm run state -- "<läge>"`.
+
+## Dokumentationen
+
+Sidorna i `docs/` är källan till dokumentationssajten i `docs-site/` (VitePress). Sajten är ett eget paket som aldrig når imagen eller frontendbygget. Från `docs-site/`:
+
+```bash
+npm ci
+npm run dev       # sajten på http://localhost:5173, med omladdning vid ändringar
+npm run build     # bygger till .vitepress/dist, och misslyckas på en länk som inte leder någonstans
+npm run check     # öppnar den byggda sajten i en webbläsare: startsidan, API-sidan och varje diagram
+```
+
+Första gången: `npx playwright install chromium`. Kontrollen startar sin egen server på 4173; `DOCS_PORT` flyttar den, till exempel när flera utcheckningar körs samtidigt.
+
+Sidorna är vanlig Markdown med sin rubrik och utan frontmatter, så att de läses likadant på GitHub. Två sidor finns bara för sajten: `docs/index.md` (startsidan) och `docs/api-referens.md` (ritar `docs/api/openapi.json` med Scalar). Sidomenyn och sidhuvudets länkar står i `docs-site/.vitepress/config.mts`, så en ny sida läggs till där. Mermaid-diagram skrivs som vanliga kodblock och ritas i webbläsaren. Gestaltning och färger: `docs-site/DESIGN.md`.

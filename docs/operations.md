@@ -86,6 +86,8 @@ Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `d
 | `image` | Bygger imagen en gång, med SBOM och provenance, kör imagens acceptans ([Tester](quality-gates.md#imagens-acceptans)) på just det bygget efter digest, och sparar den testade imagen som arkiv. |
 | `publish` | Efter att alla jobb ovan gått igenom på samma commit, bara för `main`: `publish.yml` kopierar arkivet (samma digest som acceptansen såg) till `ghcr.io/eneo-ai/eneo-mod-speech-to-text:sha-<commit>` och kontrollerar digesten. Den bygger aldrig. |
 
+**Dokumentationssajten.** `.github/workflows/docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll på varje pull request som rör `docs/` eller `docs-site/`, med skrivskyddad åtkomst. En push till `main` publicerar sajten till GitHub Pages på `https://eneo-ai.github.io/eneo-mod-speech-to-text/`, från ett eget jobb som är det enda med Pages-behörighet. Pages måste vara påslaget i repots inställningar, med GitHub Actions som källa.
+
 **Utgåva.** `.github/workflows/release.yml` körs när en tagg `vX.Y.Z` pushas. Den bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade till taggarna `vX.Y.Z` och `latest` med samma digest, kontrollerar digesten efter varje kopiering och skapar en GitHub-utgåva där `docker-compose.yml` och `env.example` är bifogade. En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart.
 
 ```
@@ -113,6 +115,8 @@ docker buildx imagetools inspect node:22-bookworm-slim --format '{{.Manifest.Dig
 ```
 
 Node-bygget kör `npm ci --engine-strict`, så en bas som inte når `engines` i `frontend/package.json` stoppar bygget. Byt en versionsrad (till exempel `traefik:v3.7.13`) först efter att ha läst versionens ändringslista.
+
+**Dokumentationssajten.** `docs-site/package.json` fäster varje paket till en exakt version och `docs-site/package-lock.json` låser resten. Ändra en version med `npm install --save-exact <paket>@<version>` i `docs-site/`, checka in båda filerna och läs versionens ändringslista först: VitePress och Mermaid byts var för sig.
 
 **GitHub Actions.** Varje `uses:` är ett commit-sha med versionen i kommentaren. Hitta den senaste utgåvan av samma huvudversion och commit-shan som taggen pekar på (för en annoterad tagg raden med `^{}`):
 
