@@ -28,6 +28,7 @@
 
 /* The positioned layer: as wide as the field, and never wider than the screen. */
 .layer {
+  min-inline-size: 12rem;
   min-inline-size: max(anchor-size(width), 12rem);
   max-inline-size: calc(100dvw - 2 * var(--spacing-4));
 }

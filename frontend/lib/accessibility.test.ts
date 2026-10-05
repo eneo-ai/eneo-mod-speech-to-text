@@ -190,3 +190,13 @@ test("the page's full-height rules measure the visible window, as the rest of th
     [],
   );
 });
+
+// A browser that does not know anchor-size() drops the whole declaration, so the same property is set before it.
+test("a declaration with anchor-size() has a plain one of the same property before it", () => {
+  const css = readFileSync("components/NameCombobox.module.css", "utf8").split("\n");
+  const unguarded = css.flatMap((line, index) => {
+    const property = /^\s*([a-z-]+):.*anchor-size\(/.exec(line)?.[1];
+    return property && !new RegExp(`^\\s*${property}:(?!.*anchor-size)`).test(css[index - 1] ?? "") ? [`line ${index + 1}`] : [];
+  });
+  assert.deepEqual(unguarded, []);
+});
