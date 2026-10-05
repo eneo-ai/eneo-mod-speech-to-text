@@ -128,7 +128,7 @@ export function backLink(page: Page) {
 }
 
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
-export async function leaveRecording(page: Page) {
+async function leaveRecording(page: Page) {
   await setup(page);
   await record(page, "Spela in");
   await page.waitForTimeout(1_500);

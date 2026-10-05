@@ -10,7 +10,7 @@ import type { Locator, Page } from "@playwright/test";
 export const TEXT_SPACING =
   "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
 
-export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
 export async function settle(page: Page) {
@@ -168,7 +168,7 @@ const TOGGLES = ["checked", "pressed", "expanded", "selected"];
 const FLAGS = ["disabled", "invalid", "required", "readonly", "busy"];
 
 /** The states a screen reader reads out, from Chromium's properties: "checked=true", "expanded=false" and so on. */
-export function axState(properties: AxProperty[] = []): string {
+function axState(properties: AxProperty[] = []): string {
   return properties
     .filter((p) => p.value.value !== undefined && (TOGGLES.includes(p.name) || (FLAGS.includes(p.name) && ![false, "false"].includes(p.value.value as string))))
     .map((p) => `${p.name}=${String(p.value.value)}`)
