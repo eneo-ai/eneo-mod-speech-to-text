@@ -9,6 +9,11 @@ export function makesText(output: Pick<NonNullable<RunContract["final_output"]>,
   return output?.delivery === "payload";
 }
 
+/** The heading of the sending and of the running view, which carry on under one another: by what the flow ends in. */
+export function creatingHeading(text: boolean): string {
+  return text ? "Texten skapas" : "Dokumentet skapas";
+}
+
 /** The action that makes the run, by what the flow ends in (`makesText`). */
 export function createActionLabel(text: boolean): string {
   return text ? "Skapa text" : "Skapa dokument";

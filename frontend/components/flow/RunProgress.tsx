@@ -13,6 +13,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useSignedOut } from "@/components/AuthGate";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { runElapsed, type StepView } from "@/lib/run-progress";
+import { creatingHeading } from "@/lib/flow-output";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
@@ -72,7 +73,7 @@ export function RunProgress({
       <VStack gap={6}>
         <VStack gap={2}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            {makesText ? "Texten skapas" : "Dokumentet skapas"}
+            {creatingHeading(makesText)}
           </Heading>
           <VStack gap={1}>
             <HStack gap={2} align="center">
