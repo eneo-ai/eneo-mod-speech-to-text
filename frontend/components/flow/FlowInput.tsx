@@ -352,7 +352,7 @@ function SetupWorkspace({
     speakerOption?.selectable && snapshot.speakerLabels !== null ? (
       <Switch
         label="Märk upp talare"
-        description="Tar längre tid efter inspelningen."
+        description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
         value={snapshot.speakerLabels}
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
