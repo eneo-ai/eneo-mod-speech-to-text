@@ -33,7 +33,7 @@ export interface RetryWait {
   retryNow: () => void;
 }
 
-export interface RetryOptions {
+interface RetryOptions {
   online: OnlineStatus;
   signal?: AbortSignal;
   /** A wait before the next attempt began (or ended, with null). */
@@ -42,7 +42,7 @@ export interface RetryOptions {
   maxServerErrorTries?: number;
 }
 
-export function isRetryable(error: unknown): boolean {
+function isRetryable(error: unknown): boolean {
   if (error instanceof ApiError) {
     if (error.status === 0) return error.code === "network_error";
     return error.status === 408 || error.status === 429 || error.status >= 500;
@@ -97,7 +97,7 @@ function waitToRetry(delayMs: number, { online, signal, onWait }: RetryOptions):
   });
 }
 
-export interface SubmitFile {
+interface SubmitFile {
   blob: Blob;
   filename: string;
   /** Set when an earlier send already uploaded this file. */
@@ -403,7 +403,7 @@ const RETRY_REFUSALS: Record<string, [message: string, startAgain: boolean]> = {
   not_found: ["Körningen finns inte längre och kan inte fortsätta.", false],
 };
 
-export type RetryOutcome =
+type RetryOutcome =
   | { kind: "started"; run: FlowRunPublic }
   | { kind: "refused"; message: string; startAgain: boolean };
 
@@ -487,7 +487,7 @@ export function startAgainRequest(
   return { body, idempotencyKey: `flow-run-again:${failed.id}` };
 }
 
-export type StartAgainOutcome =
+type StartAgainOutcome =
   | { kind: "started"; run: FlowRunPublic; contract: RunContract }
   | { kind: "review"; message: string; contract: RunContract };
 

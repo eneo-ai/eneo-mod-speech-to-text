@@ -45,7 +45,7 @@ export async function listMicrophones(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-export interface MicrophoneChoice {
+interface MicrophoneChoice {
   /** The device's id; "" is Standard, whatever the system uses. */
   value: string;
   label: string;

@@ -3,7 +3,7 @@ import { Button, type ButtonProps } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 
-export type CopyState = "idle" | "copied" | "failed";
+type CopyState = "idle" | "copied" | "failed";
 
 /** Copies text; the state says "Kopierat" for a moment, or that it failed. */
 export function useCopy(text: string): [CopyState, () => Promise<void>] {

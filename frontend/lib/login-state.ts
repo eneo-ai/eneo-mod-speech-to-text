@@ -28,7 +28,7 @@ export interface Question {
   readonly order: number;
 }
 
-export interface LoginState {
+interface LoginState {
   readonly signedOut: boolean;
   /**
    * The user the page was opened for, which the page names in what it sends to Eneo (api.ts) and to the live relay:

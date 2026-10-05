@@ -9,7 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 export type ColorMode = "light" | "dark" | "system";
 
 /** The key and values this module's first colour mode stored (and the kit's apps before it), so a person's choice carries over (design K9). */
-export const COLOR_MODE_KEY = "theme";
+const COLOR_MODE_KEY = "theme";
 
 const MODES: readonly string[] = ["light", "dark", "system"];
 const DARK = "(prefers-color-scheme: dark)";

@@ -60,7 +60,7 @@ export interface SubmitRequest {
   maxSpeakers: number | undefined;
 }
 
-export interface SessionHandlers {
+interface SessionHandlers {
   /** Uploads and starts the run; throws when it could not. */
   submit: (request: SubmitRequest) => Promise<void>;
   /** Loads the published flow and its run contract again. */
@@ -167,7 +167,7 @@ function unsupported(accepted: string[] | undefined): Problem {
 }
 
 /** Whether the flow's input step takes this file, said in plain words when it does not. */
-export function fileProblem(
+function fileProblem(
   file: { name: string; type: string; size: number },
   step: RunContractStepInput | null,
 ): Problem | null {
@@ -180,7 +180,7 @@ export function fileProblem(
 }
 
 /** A failed send in the product's words, with the next step. */
-export function submitProblem(
+function submitProblem(
   error: unknown,
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
@@ -206,7 +206,7 @@ export function submitProblem(
   return { title: friendlyError(error) };
 }
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   modes: InputMode[];
   mode: InputMode | null;
   phase: SessionPhase;
@@ -400,7 +400,7 @@ export function filledValue(value: unknown): boolean {
 }
 
 /** The details as the run's input_payload_json; empty ones are left out. */
-export function detailsPayload(
+function detailsPayload(
   fields: FormField[],
   details: Record<string, DetailValue>,
 ): Record<string, unknown> {
@@ -469,7 +469,7 @@ const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
   (value.count === undefined || typeof value.count === "string") &&
   (value.edited === undefined || typeof value.edited === "boolean");
 
-export interface FlowSessionOptions {
+interface FlowSessionOptions {
   flowId: string;
   flowName: string;
   ownerId: string;

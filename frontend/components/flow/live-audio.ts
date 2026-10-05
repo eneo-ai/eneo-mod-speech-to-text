@@ -15,7 +15,7 @@ export function supportsLiveText(): boolean {
 }
 
 /** What live text needs of the browser; tests give their own. */
-export interface LiveEnv {
+interface LiveEnv {
   audioContext(): AudioContext;
   workletNode(context: AudioContext, options: AudioWorkletNodeOptions): AudioWorkletNode;
   /** The transcriber's connection to the relay for one step and recording, and its timers. */

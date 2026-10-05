@@ -2,7 +2,7 @@ import type { FlowRunError, FlowRunResult, RunContract } from "./api";
 import { makesText } from "./flow-output";
 import { ofContractVersion } from "./run-progress";
 
-export interface RunResultView {
+interface RunResultView {
   /** Markdown att visa, eller null när resultatet inte är text. */
   text: string | null;
   /** Kort förklaring som visas före resultatet. */
@@ -45,7 +45,7 @@ export function runResultView(
 }
 
 /** What a run makes: text (JSON shown as text), a document, or null where neither can be said. */
-export type RunOutput = "text" | "document" | null;
+type RunOutput = "text" | "document" | null;
 
 /**
  * What a run makes, for its page's words. A finished run says so in its own result, whatever version it ran:

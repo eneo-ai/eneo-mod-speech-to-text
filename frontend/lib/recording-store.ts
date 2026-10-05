@@ -12,7 +12,7 @@ import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
 
-export type RecordingState =
+type RecordingState =
   | "recording"
   | "paused"
   | "stopped"
@@ -20,10 +20,10 @@ export type RecordingState =
   | "uploaded"
   | "submitted";
 
-export type RecordingInputMode = "record" | "stream";
+type RecordingInputMode = "record" | "stream";
 export type DeviceRefusal = "full" | "failed";
 
-export interface RecordingPart {
+interface RecordingPart {
   index: number;
   startedAt: number;
   durationMs: number;
@@ -250,7 +250,7 @@ export function continuable(recording: StoredRecording): boolean {
 }
 
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
-export function recordingFilename(recording: StoredRecording, index: number): string {
+function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;

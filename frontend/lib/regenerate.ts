@@ -53,7 +53,7 @@ export function regenerationOffer({
   };
 }
 
-export type RegenerationOutcome =
+type RegenerationOutcome =
   | { kind: "started"; run: FlowRunPublic }
   | { kind: "refused"; message: string; reload: boolean };
 

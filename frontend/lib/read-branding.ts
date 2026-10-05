@@ -7,7 +7,7 @@
 import { isRecord } from "./is-record";
 
 /** A logo's proportions (a width and a height in whole numbers): the <img> keeps its room before the file arrives. */
-export interface LogoSize {
+interface LogoSize {
   width: number;
   height: number;
 }

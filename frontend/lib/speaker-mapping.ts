@@ -15,7 +15,7 @@
 import { ApiError, type Json } from "./api";
 import { friendlyError } from "./errors";
 
-export type SpeakerConfidence = "low" | "medium" | "high";
+type SpeakerConfidence = "low" | "medium" | "high";
 
 export interface SpeakerMappingRow {
   label: string;
@@ -29,7 +29,7 @@ export interface SpeakerMappingRow {
 }
 
 // Type-alias (inte interface) så värdet är tilldelningsbart till Json/ReviewEditedValue.
-export type SpeakerMappingEditedValue = {
+type SpeakerMappingEditedValue = {
   speakers: {
     label: string;
     name: string | null;

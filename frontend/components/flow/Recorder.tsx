@@ -22,7 +22,7 @@ import styles from "./Recorder.module.css";
 const SETTLE_MS = 700;
 
 /** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
-export function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
+function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
   const recording = phase === "recording";
   return (
     <HStack as="span" gap={2} align="center">
@@ -35,7 +35,7 @@ export function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase;
 }
 
 /** The recorded time (paused time excluded), from the recorder itself. */
-export function Timer({
+function Timer({
   capture,
   phase,
   weight,

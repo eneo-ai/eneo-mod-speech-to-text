@@ -25,7 +25,7 @@ export interface TranscriptWord {
   uncertain: boolean;
 }
 
-export type SpeakerAttribution = "assigned" | "provisional" | "unassigned";
+type SpeakerAttribution = "assigned" | "provisional" | "unassigned";
 export type SpeakerDecision = "confirmed" | "unresolved";
 
 export interface TranscriptSegment {
@@ -62,14 +62,14 @@ export interface TranscriptTurn {
   parts: TranscriptTurnPart[];
 }
 
-export interface RawTranscriptWord {
+interface RawTranscriptWord {
   word: string;
   start: number;
   end: number;
   probability?: number | null;
 }
 
-export interface TranscriptWordsPayload {
+interface TranscriptWordsPayload {
   alignment?: string | null;
   stale?: boolean;
   segments?: {
@@ -378,7 +378,7 @@ export function firstSegmentForSpeaker(
   return null;
 }
 
-export const SPEAKER_COLOR_COUNT = 6;
+const SPEAKER_COLOR_COUNT = 6;
 
 /** Stabil färgplats per etikett: SPEAKER_03 → 3 mod 6, annars en enkel hash. */
 export function speakerColorIndex(label: string): number {
@@ -413,7 +413,7 @@ export function pendingSpeakerReview(turn: TranscriptTurn): boolean {
   return Boolean(first) && needsSpeakerReview(first) && !first.decision;
 }
 
-export interface SpeakerSummary {
+interface SpeakerSummary {
   label: string;
   /** Passages (turns) the speaker has; passages still to check count for no one. */
   passages: number;

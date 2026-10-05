@@ -28,7 +28,7 @@ import {
   type StoredRecording,
 } from "./recording-store";
 
-export const CHUNK_MS = 2_000;
+const CHUNK_MS = 2_000;
 
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
@@ -48,7 +48,7 @@ export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } 
  * overlap and no gap). A hidden tab may stretch the wait to about a second,
  * which a part's headroom has room for.
  */
-export const ROTATION_OVERLAP_MS = 150;
+const ROTATION_OVERLAP_MS = 150;
 
 /**
  * Room a part keeps below Eneo's time per file: the overlap with the next part, a timer a hidden tab fires late
@@ -64,7 +64,7 @@ const SPACE_CHECK_EVERY_CHUNKS = Math.round(60_000 / CHUNK_MS);
 
 export type CaptureStatus = "idle" | "recording" | "paused" | "interrupted" | "stopped";
 
-export interface CaptureSnapshot {
+interface CaptureSnapshot {
   status: CaptureStatus;
   recording: StoredRecording | null;
   /** The microphone stream of the running part, for a level meter. */
@@ -84,7 +84,7 @@ export interface CaptureSnapshot {
   stopping: boolean;
 }
 
-export interface WakeLockLike {
+interface WakeLockLike {
   release(): Promise<void>;
 }
 

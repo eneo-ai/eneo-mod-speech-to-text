@@ -172,7 +172,7 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface PaginatedResponse<T> {
+interface PaginatedResponse<T> {
   items: T[];
   count?: number;
   total_count?: number;
@@ -246,7 +246,7 @@ export interface FlowReviewStepContract {
   output_contract?: Json | null;
 }
 
-export type LiveTranscriptionUnavailableReason =
+type LiveTranscriptionUnavailableReason =
   | "transcription_disabled"
   | "transcription_service_mode"
   | "model_unavailable"
@@ -313,7 +313,7 @@ export interface FlowPublished {
   published_version: number;
 }
 
-export interface FilePublic {
+interface FilePublic {
   id: string;
   filename?: string;
   mimetype?: string;
@@ -405,20 +405,20 @@ export interface FlowRunStep {
 
 // ---------- Nya typer för refaktorerade Eneo-flows ----------
 
-export type FlowStepResultStatus =
+type FlowStepResultStatus =
   | "pending"
   | "running"
   | "completed"
   | "failed"
   | "cancelled";
 
-export type FlowStepReviewMode = "view" | "edit";
+type FlowStepReviewMode = "view" | "edit";
 
-export type FlowOutputType = "text" | "json" | "pdf" | "docx";
-export type FlowRuntimeInputFormat = "document" | "audio" | "file";
+type FlowOutputType = "text" | "json" | "pdf" | "docx";
+type FlowRuntimeInputFormat = "document" | "audio" | "file";
 export type FileType = "text" | "image" | "audio" | "document";
 
-export type FlowRunReviewCheckpointState =
+type FlowRunReviewCheckpointState =
   | "awaiting_review"
   | "edited"
   | "approved"
@@ -468,22 +468,22 @@ export interface FlowRunReviewCheckpointPublic {
  */
 export type ReviewEditedValue = string | Json | unknown[];
 
-export interface ReviewEditRequest {
+interface ReviewEditRequest {
   expected_checkpoint_revision: number;
   edited_value: ReviewEditedValue;
 }
 
-export interface ReviewApproveRequest {
+interface ReviewApproveRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewRejectRequest {
+interface ReviewRejectRequest {
   expected_checkpoint_revision: number;
   reason: string;
 }
-export interface ReviewResumeRequest {
+interface ReviewResumeRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewResumeResponse {
+interface ReviewResumeResponse {
   checkpoint: FlowRunReviewCheckpointPublic;
   run: FlowRunPublic;
 }
@@ -540,7 +540,7 @@ export interface UploadProgress {
   percent: number | null;
 }
 
-export type RuntimeUploadTimeoutReason =
+type RuntimeUploadTimeoutReason =
   | "not_started"
   | "stalled"
   | "server_not_responding";
@@ -760,7 +760,7 @@ export interface FlowGraphNode {
   run_status?: FlowStepResultStatus | string | null;
 }
 
-export interface FlowGraphEdge {
+interface FlowGraphEdge {
   source: string;
   target: string;
   kind: string; // "flow_input" | "previous_step" | "flow_output" | "input_bindings.X"
@@ -855,7 +855,7 @@ export async function cancelRun(flowId: string, runId: string) {
 }
 
 /** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
-export interface FlowRunRetryPublic {
+interface FlowRunRetryPublic {
   run: FlowRunPublic;
   /** False when the same key replays a retry Eneo already accepted. */
   created: boolean;
@@ -908,7 +908,7 @@ export async function uploadStepRuntimeFile(
 
 // --- Transkript: ordtider och ljud ---
 
-export interface TranscriptWordsResponse {
+interface TranscriptWordsResponse {
   flow_run_id: string;
   step_id: string;
   segments_hash: string;
@@ -943,7 +943,7 @@ export async function getRunArtifactText(flowId: string, runId: string, fileId: 
  * (the step's text is then the transcript). Unavailable: written before Eneo
  * kept sources.
  */
-export type TranscriptSourcePage =
+type TranscriptSourcePage =
   | {
       status: "present";
       source_hash: string;
@@ -992,7 +992,7 @@ export function runArtifactUrl(flowId: string, runId: string, fileId: string, in
 
 // --- Transkriptkorrigeringar ---
 
-export interface TranscriptCorrectionsPublic {
+interface TranscriptCorrectionsPublic {
   schema_version?: number;
   segments_hash?: string | null;
   flow_run_id: string;
@@ -1029,7 +1029,7 @@ export async function listTranscriptCorrections(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export interface TranscriptCorrectionsEditRequest {
+interface TranscriptCorrectionsEditRequest {
   schema_version?: 2 | 3;
   segments_hash?: string;
   /** null skapar den första uppsättningen; annars senast kända revision. */
@@ -1053,7 +1053,7 @@ export async function saveTranscriptCorrections(
   );
 }
 
-export interface FlowTranscriptRegenerationPublic {
+interface FlowTranscriptRegenerationPublic {
   /** The new run: the source run, its document and files stay as they were. */
   run: FlowRunPublic;
   /** False when the same request and key replayed an accepted run. */

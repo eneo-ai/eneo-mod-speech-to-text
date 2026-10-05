@@ -55,7 +55,7 @@ function DateField({ name, text, onChange, className, ...common }: DateFieldProp
  * The control of a detail by its name, so a problem can move focus to it. The design system's fields own their ids,
  * so a field is found by the name it carries (`data-detail-field`), on the control or inside what holds it.
  */
-export function detailControl(name: string): HTMLElement | null {
+function detailControl(name: string): HTMLElement | null {
   const marked = document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(name)}"]`);
   const control = "input, textarea, button, [role=combobox]";
   return marked?.matches(control) ? marked : (marked?.querySelector<HTMLElement>(control) ?? null);
@@ -214,7 +214,7 @@ export function DetailsForm({
 }
 
 /** What "Antal talare" is found by, so a refused start can move focus to it. */
-export const SPEAKER_COUNT_ID = "antal-talare";
+const SPEAKER_COUNT_ID = "antal-talare";
 
 /** Moves focus to "Antal talare". The design system's field owns its id, so it is found by its name. */
 export const focusSpeakerCount = () => detailControl(SPEAKER_COUNT_ID)?.focus();

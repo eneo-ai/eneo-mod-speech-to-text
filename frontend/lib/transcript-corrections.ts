@@ -20,7 +20,7 @@ import { effectiveSpeakerLabel, type SpeakerDecision, type TranscriptSegment } f
 /** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
 export const MAX_SPEAKER_EDITS = 2000;
 
-export interface CorrectionOccurrence {
+interface CorrectionOccurrence {
   segment_index: number;
   char_start: number;
   char_end: number;
@@ -28,7 +28,7 @@ export interface CorrectionOccurrence {
   corrected: string;
 }
 
-export interface SpeakerEdit {
+interface SpeakerEdit {
   segment_index: number;
   char_start: number | null;
   char_end: number | null;
