@@ -4,6 +4,7 @@ import { browserDrafts } from "@/lib/drafts";
 import { FlowSession } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
 import { audioConstraints, preferredMicrophone } from "@/lib/microphone";
+import { probeLength } from "@/lib/playback";
 import type { CaptureDeps } from "@/lib/recording-session";
 import { recordingStore, sealed } from "@/lib/recording-store";
 import { browserLiveClient, supportsLiveText } from "@/components/flow/live-audio";
@@ -21,21 +22,8 @@ function pickMimeType(accepted: string[] | undefined): string | null {
 
 /** A chosen file's length from its header, or null when the browser cannot tell. */
 function probeDuration(file: Blob): Promise<number | null> {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const audio = new Audio();
-    const done = (ms: number | null) => {
-      clearTimeout(timer);
-      audio.removeAttribute("src");
-      URL.revokeObjectURL(url);
-      resolve(ms);
-    };
-    const timer = setTimeout(() => done(null), 10_000);
-    audio.preload = "metadata";
-    audio.onloadedmetadata = () => done(Number.isFinite(audio.duration) ? Math.round(audio.duration * 1_000) : null);
-    audio.onerror = () => done(null);
-    audio.src = url;
-  });
+  const url = URL.createObjectURL(file);
+  return probeLength(url).finally(() => URL.revokeObjectURL(url));
 }
 
 function browserCaptureDeps(): CaptureDeps {
