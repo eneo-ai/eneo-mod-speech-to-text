@@ -1,5 +1,5 @@
-/* What the flow's page needs of its frame that only the setup and the recording have. Breakpoints are Tailwind's
-   (md 768, lg 1024) and the short screen's (a phone on its side, 200 % zoom: 480 px high). */
+/* What the flow's page needs of its frame that only the setup and the recording have. Its breakpoints are 768 and 1024 px
+   wide, and the short screen's: a phone on its side or 200 % zoom, 480 px high. */
 
 /* Recording: the details column and the working card scroll on their own from a laptop's width, the bar of
    controls never moving. The side room keeps a focused control's outline inside the scroll box. A short, wide screen

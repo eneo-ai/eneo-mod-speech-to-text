@@ -34,7 +34,7 @@
   background: var(--color-accent);
   transform: scaleY(0.12);
   transform-origin: center;
-  /* Just under the 66 ms between two readings, so a bar settles before the next one. */
+  /* A little over the 66 ms between two readings, so a bar is still moving when the next one comes. */
   transition: transform 75ms;
 }
 
