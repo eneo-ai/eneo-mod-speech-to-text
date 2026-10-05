@@ -84,6 +84,11 @@ pre.mermaid svg {
   display: block;
   margin: 0 auto;
 }
+@media (max-width: 640px) {
+  pre.mermaid svg {
+    min-width: 600px;
+  }
+}
 
 /* ---------- Start page ---------- */
 
@@ -258,4 +263,63 @@ pre.mermaid svg {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     padding-left: 0;
   }
+}
+
+/* ---------- API reference (Scalar) ---------- */
+
+.api-page > h1,
+.api-page > p {
+  max-width: 1152px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+.api-page > h1 {
+  padding-top: 40px;
+  font-size: 2rem;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+}
+.api-page > p {
+  margin-top: 12px;
+  margin-bottom: 32px;
+  color: var(--vp-c-text-2);
+  line-height: 1.6;
+}
+.api-reference {
+  border-top: 1px solid var(--vp-c-divider);
+}
+.scalar-app {
+  --scalar-custom-header-height: var(--vp-nav-height);
+  --scalar-font: var(--vp-font-family-base);
+  --scalar-font-code: var(--vp-font-family-mono);
+  --scalar-background-1: var(--vp-c-bg);
+  --scalar-background-2: var(--vp-c-bg-alt);
+  --scalar-background-3: var(--vp-c-bg-soft);
+  --scalar-background-accent: var(--vp-c-brand-soft);
+  --scalar-color-1: var(--vp-c-text-1);
+  --scalar-color-2: var(--vp-c-text-2);
+  --scalar-color-3: var(--vp-c-text-3);
+  --scalar-color-accent: var(--vp-c-brand-1);
+  --scalar-border-color: var(--vp-c-divider);
+  --scalar-link-color: var(--vp-c-brand-1);
+  --scalar-link-color-hover: var(--vp-c-brand-2);
+  --scalar-button-1: var(--vp-button-brand-bg);
+  --scalar-button-1-hover: var(--vp-button-brand-hover-bg);
+  --scalar-button-1-color: var(--vp-button-brand-text);
+  --scalar-sidebar-background-1: var(--vp-c-bg);
+  --scalar-sidebar-search-background: var(--vp-c-bg-alt);
+  --scalar-sidebar-search-color: var(--vp-c-text-2);
+}
+/* The method names are text on the sidebar's grey: darker tones than Scalar's, for 4.5:1. */
+html:not(.dark) .scalar-app {
+  --scalar-color-green: #05704c;
+  --scalar-color-blue: #0b5cad;
+  --scalar-color-red: #b3171c;
+  --scalar-color-orange: #a83a00;
+  --scalar-color-yellow: #7a5600;
+}
+/* The sidebar's open and close buttons are 22 px; 24 px is the floor (WCAG 2.5.8). */
+.scalar-app button[aria-expanded] {
+  min-width: 24px;
+  min-height: 24px;
 }

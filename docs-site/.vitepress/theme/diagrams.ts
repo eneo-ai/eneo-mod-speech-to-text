@@ -21,6 +21,10 @@ async function draw() {
       const { svg } = await mermaid.render(id, node.dataset.source)
       node.innerHTML = svg
       node.dataset.drawn = dark ? 'dark' : 'light'
+      // A wide diagram scrolls; the keyboard needs a way to reach it.
+      node.tabIndex = 0
+      node.setAttribute('role', 'group')
+      node.setAttribute('aria-label', 'Diagram')
     } catch (error) {
       document.getElementById(`d${id}`)?.remove()
       node.dataset.drawn = 'failed'

@@ -7,14 +7,18 @@
     "node": ">=22.22.2"
   },
   "scripts": {
-    "dev": "vitepress dev --port 9460",
+    "dev": "vitepress dev",
     "build": "vitepress build",
-    "preview": "vitepress preview --port 9461"
+    "preview": "vitepress preview",
+    "check": "node check.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.63.0",
     "mermaid": "11.17.2",
     "vitepress": "1.6.4"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "1.72.4"
   }
 }

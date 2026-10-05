@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitepress'
+import { localizeHtml } from './theme/labels'
 
 const docs = fileURLToPath(new URL('../../docs/', import.meta.url))
 const here = (file: string) => fileURLToPath(new URL(`../${file}`, import.meta.url))
@@ -134,6 +135,8 @@ export default defineConfig({
       code: '404',
     },
   },
+
+  transformHtml: localizeHtml,
 
   transformPageData(page) {
     // The start page's picture lives beside the config, not in docs/, so it is attached here.
