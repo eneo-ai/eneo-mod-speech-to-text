@@ -5,7 +5,7 @@ import { createElement } from "react";
 import { OfflineBanner, type OfflineWaiting } from "../components/OfflineBanner";
 import { RetryNotice } from "../components/RetryNotice";
 import { ProblemAlert } from "../components/flow/ProblemAlert";
-import { onlineStatus } from "./online-status";
+import { createOnlineStatus, onlineStatus, type OnlineTarget } from "./online-status";
 import type { Problem } from "./flow-session";
 import { button, cleanup, installDom, mount } from "./test-dom";
 import { withRouter } from "./test-router";
@@ -163,36 +163,80 @@ test("the countdown's timer is stopped when the notice goes", async (t) => {
   assert.equal(live.size, 0, "none after");
 });
 
-const MESSAGES: [OfflineWaiting, string][] = [
+/** A browser window whose network the test switches, and the status that listens to it. */
+function device() {
+  const target = Object.assign(new window.EventTarget(), { navigator: { onLine: true } });
+  const status = createOnlineStatus(target as OnlineTarget);
+  return {
+    status,
+    network(on: boolean) {
+      target.navigator.onLine = on;
+      target.dispatchEvent(new Event(on ? "online" : "offline"));
+    },
+  };
+}
+
+// What waits, said for a device with no network, and for a module that does not answer.
+const OFFLINE: [OfflineWaiting, string][] = [
   ["recording", "Ingen anslutning. Inspelningen fortsätter."],
   ["upload", "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka."],
   ["run", "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka."],
   [null, "Ingen anslutning."],
 ];
+const UNREACHABLE: [OfflineWaiting, string][] = [
+  ["recording", "Tal till text svarar inte just nu. Inspelningen fortsätter."],
+  ["upload", "Tal till text svarar inte just nu. Uppladdningen fortsätter när det svarar igen."],
+  ["run", "Tal till text svarar inte just nu. Körningen fortsätter i Eneo och visas här när det svarar igen."],
+  [null, "Tal till text svarar inte just nu."],
+];
 
 test("while online the offline notice is an empty status region; offline it says what waits, in the same region", async () => {
-  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "run" }));
-  const status = container.querySelector('[role="status"]')!;
+  const { status, network } = device();
+  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "run", status }));
+  const region = container.querySelector('[role="status"]')!;
   assert.equal(container.querySelectorAll('[role="status"]').length, 1);
-  assert.equal(status.textContent, "");
-  assert.equal(status.getAttribute("aria-label"), null, "no name");
-  assert.equal(status.children.length, 0, "no children");
+  assert.equal(region.textContent, "");
+  assert.equal(region.getAttribute("aria-label"), null, "no name");
+  assert.equal(region.children.length, 0, "no children");
 
-  await act(async () => onlineStatus.reportNetworkFailure());
-  assert.equal(container.querySelector('[role="status"]'), status, "the region was there before, so the change is announced");
-  assert.equal(status.textContent, "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.");
+  await act(async () => network(false));
+  assert.equal(container.querySelector('[role="status"]'), region, "the region was there before, so the change is announced");
+  assert.equal(region.textContent, "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.");
 
-  await act(async () => onlineStatus.reportReachable());
-  assert.equal(status.textContent, "");
-  assert.equal(status.children.length, 0);
+  await act(async () => network(true));
+  assert.equal(region.textContent, "");
+  assert.equal(region.children.length, 0);
 });
 
 test("the offline notice says what waits for each thing that can", async () => {
-  for (const [waiting, words] of MESSAGES) {
-    onlineStatus.reportNetworkFailure();
-    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting }));
+  for (const [waiting, words] of OFFLINE) {
+    const { status, network } = device();
+    network(false);
+    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting, status }));
     assert.equal(container.querySelector('[role="status"]')?.textContent, words, `${waiting}`);
     await unmount();
-    onlineStatus.reportReachable();
   }
+});
+
+test("a module that does not answer, on a device with a network, is not called a lost connection", async () => {
+  for (const [waiting, words] of UNREACHABLE) {
+    const { status } = device();
+    status.reportNetworkFailure();
+    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting, status }));
+    assert.equal(container.querySelector('[role="status"]')?.textContent, words, `${waiting}`);
+    await unmount();
+  }
+});
+
+test("the notice follows the cause in the one region: the module not answering, then the device losing its network", async () => {
+  const { status, network } = device();
+  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "upload", status }));
+  const region = container.querySelector('[role="status"]')!;
+
+  await act(async () => status.reportNetworkFailure());
+  assert.equal(region.textContent, "Tal till text svarar inte just nu. Uppladdningen fortsätter när det svarar igen.");
+  await act(async () => network(false));
+  assert.equal(region.textContent, "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.");
+  await act(async () => network(true));
+  assert.equal(region.textContent, "");
 });

@@ -40,8 +40,33 @@ test("the browser's online events and our own requests decide whether we are onl
   browser.go(true);
   assert.equal(status.online, true, "the connection coming back clears an earlier failure");
 
-  assert.deepEqual(heard, [false, true, false, true, false, true], "each change is heard once");
+  // The last change of cause, from a module that does not answer to a device with no network, is heard too.
+  assert.deepEqual(heard, [false, true, false, true, false, false, true], "each change is heard once");
   assert.equal(createOnlineStatus(fakeBrowser(false).target).online, false, "a page opened offline starts offline");
+});
+
+test("a device with no network and a module that does not answer are told apart", () => {
+  const browser = fakeBrowser(true);
+  const status = createOnlineStatus(browser.target);
+  assert.equal(status.connection, "online");
+
+  browser.go(false);
+  assert.equal(status.connection, "offline", "the browser says there is no network");
+  browser.go(true);
+  assert.equal(status.connection, "online");
+
+  status.reportNetworkFailure();
+  assert.equal(status.connection, "unreachable", "the browser has a network, and the request did not reach the module");
+  status.reportReachable();
+  assert.equal(status.connection, "online");
+
+  // A failure while the device has no network is the device's loss, not the module's.
+  browser.go(false);
+  status.reportNetworkFailure();
+  assert.equal(status.connection, "offline");
+  browser.go(true);
+  assert.equal(status.connection, "online", "the network coming back clears it");
+  assert.equal(createOnlineStatus(fakeBrowser(false).target).connection, "offline");
 });
 
 test("requests report whether the module can be reached", async (t) => {
