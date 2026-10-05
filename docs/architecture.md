@@ -42,7 +42,7 @@ flowchart LR
     user -.->|"omdirigeras vid inloggning"| eneo
 ```
 
-Inloggningen steg för steg: [Inloggning och session](auth-and-session.md). Vilka anrop till Eneo som släpps igenom, och hur en uppladdning och en signerad fil hanteras: [Backend](backend.md). Frontendens lager: [Frontend](frontend.md#lager). Organisationens märke och accent är driftsinställningar: [Byt organisation](branding.md).
+Inloggningen steg för steg, med sekvensdiagram: [Inloggning och session](auth-and-session.md#eneo-sso). Vilka anrop till Eneo som släpps igenom, och hur en uppladdning och en signerad fil hanteras: [Backend](backend.md). Frontendens lager: [Frontend](frontend.md#lager). Organisationens märke och accent är driftsinställningar: [Byt organisation](branding.md).
 
 ## Gränser som inte flyttas
 

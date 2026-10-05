@@ -4,11 +4,29 @@ Eneo SSO är det enda sättet att logga in. Modulen är ingen egen OIDC-klient: 
 
 ## Eneo SSO
 
-1. `GET /api/auth/login` skapar ett oförutsägbart, kortlivat `state`, binder det till en HttpOnly-cookie och skickar webbläsaren till Eneos `/module-login` med `module_key`, `redirect_uri` och `state`.
-2. Eneo autentiserar användaren och skickar tillbaka en engångsticket till `/api/auth/callback`.
-3. Callbacken verifierar och förbrukar `state` (cookien raderas), växlar ticketen server-side med modulens servicenyckel mot en modultoken, validerar identiteten med ett andra anrop (`/api/v1/module-auth/{module_key}/session/`) och skapar en HttpOnly-modulsession.
-4. Varje proxat Eneo-anrop skickar både servicenyckeln och modultoken som BFF:en hämtar ur sessionen.
-5. När halva tokenens livslängd har gått förnyar BFF:en den. Nekar Eneo förnyelsen, till exempel när Eneos sessionstak har passerats, avslutas sessionen och användaren loggar in igen.
+Ticketen går via webbläsaren men växlas mot en token bara av BFF:en, och sessionscookien är ett slumpmässigt ID.
+
+```mermaid
+sequenceDiagram
+    participant B as Webbläsare
+    participant M as Modulens BFF
+    participant E as Eneo
+    B->>M: GET /api/auth/login
+    M-->>B: 303 till Eneo /module-login, state-cookie
+    B->>E: /module-login med module_key, redirect_uri och state
+    E-->>B: användaren loggar in, 303 tillbaka med ticket och state
+    B->>M: GET /api/auth/callback med ticket och state
+    M->>M: jämför state med state-cookien
+    M->>E: POST /api/v1/module-auth/token/ med servicenyckel och ticket
+    E-->>M: modultoken, användare och Eneos sessionstak
+    M->>E: GET /api/v1/module-auth/MODULE_KEY/session/ med servicenyckel och token
+    E-->>M: samma modul, tenant och användare
+    M-->>B: 303 till modulens sida och HttpOnly-sessionscookie
+```
+
+- `state` är oförutsägbart och kortlivat, bundet till en HttpOnly-cookie och förbrukat vid callbacken (cookien raderas).
+- Varje proxat Eneo-anrop skickar både servicenyckeln och modultoken som BFF:en hämtar ur sessionen.
+- När halva tokenens livslängd har gått förnyar BFF:en den. Nekar Eneo förnyelsen, till exempel när Eneos sessionstak har passerats, avslutas sessionen och användaren loggar in igen.
 
 Callbacken redirectar alltid till en ren URL och svarar med `Referrer-Policy: no-referrer` och `Cache-Control: no-store`. Uvicorns accesslogg är avstängd så att callbackens ticket och state inte hamnar i containerloggar.
 
