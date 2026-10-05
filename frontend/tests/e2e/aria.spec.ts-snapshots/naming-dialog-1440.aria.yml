@@ -40,9 +40,6 @@
   - button "Avbryt":
     - text: ""
     - status
-  - button "Spara":
-    - text: ""
-    - status
-  - button "Spara och fortsätt":
+  - button "Spara namnen":
     - text: ""
     - status

@@ -72,7 +72,7 @@ test("a step that will stop for the person says what it asks while it is ahead, 
   await expect(page.getByRole("listitem").filter({ hasText: "Transkribera" })).not.toContainText("Här ");
 });
 
-test("naming the speakers and going on is one action: a changed name is saved, then the run goes on", async ({ page }, info) => {
+test("the dialog saves the names; the page's Godkänn och fortsätt then lets the run go on with them", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
   const saved: { edited_value: { speakers: { label: string; name: string | null }[] } }[] = [];
   page.on("request", (request) => {
@@ -80,10 +80,14 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   });
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
-  await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
-  expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
+  await dialog.getByRole("button", { name: "Spara namnen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("listitem").filter({ hasText: "Talare 2" }), "the page shows the saved name").toContainText("Sara Holm");
+  expect(saved, "the changed name was saved").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
+  await page.getByRole("button", { name: "Godkänn och fortsätt" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
+  expect(saved, "approving saves nothing again").toHaveLength(1);
 });
 
 test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
@@ -160,7 +164,10 @@ test("an approved pause whose resume did not go through shows the saved names re
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: /^Spara/ })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  // The page's Fortsätt goes on; the dialog's one action closes it (the footer's Stäng, after the header's own).
+  await expect(dialog.getByRole("button", { name: /Fortsätt|Avbryt/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Stäng", exact: true }).last().click();
+  await expect(dialog).toBeHidden();
 
   const writes: string[] = [];
   page.on("request", (request) => {
@@ -194,6 +201,23 @@ test("an approved text review shows the saved decision; a draft from before it i
   await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
   expect(writes).toEqual(["resume"]);
+});
+
+test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height of at least 48 px", async ({ page }, info) => {
+  for (const state of ["review", "review-text-edit"]) {
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const avvisa = page.getByRole("button", { name: "Avvisa" });
+    const [reject, approve, bar] = await Promise.all([
+      avvisa.boundingBox(),
+      page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox(),
+      avvisa.locator("..").boundingBox(),
+    ]);
+    expect(reject!.height, `${state}: one height`).toBe(approve!.height);
+    expect(approve!.height, `${state}: the height of the action a screen exists for`).toBeGreaterThanOrEqual(48);
+    expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(bar!.x + bar!.width, 0);
+    // Beside it, or above it where the bar wraps: never at the bar's other end.
+    expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
+  }
 });
 
 test("the review's text fields are labelled", async ({ page }, info) => {
@@ -356,14 +380,16 @@ test("below a laptop's width the document's PDF opens in a new tab, and says so"
   await expect(link).toHaveAttribute("href", /disposition=inline/);
 });
 
-test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
+test("a review says it waits for the person and, on a line of its own, when it must be done by, with the time, in the next year too", async ({ page }, info) => {
   for (const [state, now, deadline] of [
     ["review", "2026-09-24T12:00:00+02:00", "8 okt 11:01"],
     ["review-text-edit", "2026-12-28T12:00:00+01:00", "3 jan 2027 09:01"],
   ]) {
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
-    await expect(page.getByRole("main")).toContainText(`Granska senast ${deadline}. Därefter avbryts körningen.`);
+    const main = page.getByRole("main");
+    await expect.soft(main.getByText("Väntar på din granskning", { exact: true })).toBeVisible();
+    await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });
 

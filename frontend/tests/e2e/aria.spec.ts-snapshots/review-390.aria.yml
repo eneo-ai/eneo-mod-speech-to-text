@@ -1,7 +1,8 @@
 - main:
-  - paragraph: Pausat i steg 2
+  - paragraph: Väntar på din granskning
   - heading "Vem är vem?" [level=1]
-  - paragraph: /Lyssna och sätt namn på talarna\. Namnen skrivs in i transkriptet när du fortsätter\. Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
+  - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter.
+  - paragraph: /Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
   - group "Talare":
     - list:
       - listitem: Talare 1 Anna Berg
