@@ -70,6 +70,23 @@ export const eneoTheme = defineTheme({
     'slider-control': {base: {minBlockSize: MOUSE_TARGET}},
     // A row of chips wraps instead of reaching past a 320 px screen: the group is one inline line.
     'toggle-button-group': {base: {flexWrap: 'wrap'}},
+    // One choice of a few (the setup's modes, a passage's speaker) is a row the whole of which is the target: bordered,
+    // and the chosen one tinted and ringed in the accent, so the choice reads at a glance, not only from the radio's dot.
+    'radio-list-item': {
+      base: {
+        boxSizing: 'border-box',
+        paddingBlock: 'var(--spacing-2)',
+        paddingInline: 'var(--spacing-3)',
+        border: 'var(--border-width) solid var(--color-border-emphasized)',
+        borderRadius: 'var(--radius-container)',
+        ':has(:focus-visible)': focusRing,
+      },
+      selected: {
+        borderColor: 'var(--color-accent)',
+        backgroundColor: 'color-mix(in srgb, var(--color-accent) 8%, transparent)',
+        boxShadow: 'inset 0 0 0 var(--border-width) var(--color-accent)',
+      },
+    },
     // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
     // off with an ellipsis and fixes the height (WCAG 1.4.10 reflow at 320 px, 1.4.4 resize at 200 %). The block padding
     // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.

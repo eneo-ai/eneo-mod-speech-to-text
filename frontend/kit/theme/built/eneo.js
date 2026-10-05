@@ -298,6 +298,24 @@ export const eneoTheme = {
         "flexWrap": "wrap"
       }
     },
+    "radio-list-item": {
+      "base": {
+        "boxSizing": "border-box",
+        "paddingBlock": "var(--spacing-2)",
+        "paddingInline": "var(--spacing-3)",
+        "border": "var(--border-width) solid var(--color-border-emphasized)",
+        "borderRadius": "var(--radius-container)",
+        ":has(:focus-visible)": {
+          "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
+          "outlineOffset": "var(--focus-outline-offset)"
+        }
+      },
+      "selected": {
+        "borderColor": "var(--color-accent)",
+        "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)"
+      }
+    },
     "button": {
       "base": {
         "whiteSpace": "normal",
