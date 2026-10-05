@@ -3,7 +3,8 @@
  * had open. Proved in the browser as a person meets it (what is visible, what takes focus, what the accessibility
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { chooseMode, endLogin, isLaptop, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
@@ -117,9 +118,8 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
   const png = (await page.screenshot()).toString("base64");
   return page.evaluate(
     async ([png, r, g, b]) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${png}`;
-      await image.decode();
+      // Decoded from its bytes: a data: URL would be an image the page's policy does not allow.
+      const image = await createImageBitmap(new Blob([Uint8Array.from(atob(png), (character) => character.charCodeAt(0))], { type: "image/png" }));
       const canvas = document.createElement("canvas");
       canvas.width = image.width;
       canvas.height = image.height;

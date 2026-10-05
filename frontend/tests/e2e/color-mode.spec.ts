@@ -3,7 +3,7 @@
  * the page shows, and the first render of the page has the same stored choice, so the theme root is right from its
  * first frame (kit/ColorModeProvider, kit/ModuleProviders).
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./gate";
 import { STATES } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough"));

@@ -2,7 +2,8 @@
  * The flow list as a person meets it while it loads, when it is empty, cut, long-winded or broken, and how a row opens
  * a flow. The gate's states (a11y.spec) show the list with the stub's four flows; these are the cases they cannot reach.
  */
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { type Page, type Route } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axe, blocking, endlessAnimations, reflow, targetSizes, unnamedControls } from "./checks";
 import ids from "../fixtures/ids.json";
 
@@ -72,7 +73,8 @@ test("a list Eneo cut at the cap says how many are shown", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("link")).toHaveCount(1000);
 });
 
-test("a list that cannot be shown says what and why, and offers no retry where trying again cannot help", async ({ page }) => {
+test("a list that cannot be shown says what and why, and offers no retry where trying again cannot help", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 403.*\/api\/eneo\/flows\// });
   await page.route(FLOWS, (route) => route.fulfill({ status: 403, json: { detail: "Forbidden" } }));
   await page.goto("/flows");
   await expect(alert(page)).toContainText("Flödena kunde inte visas.");
@@ -82,7 +84,8 @@ test("a list that cannot be shown says what and why, and offers no retry where t
   expect((await reflow(page)).horizontalScroll).toBe(false);
 });
 
-test("a failed list is tried again from the notice, and the flows then replace it", async ({ page }) => {
+test("a failed list is tried again from the notice, and the flows then replace it", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 503.*\/api\/eneo\/flows\// });
   // In development React asks twice, so the answer is a failure until the person has seen it and pressed the button.
   let failing = true;
   await page.route(FLOWS, (route) => (failing ? route.fulfill({ status: 503, json: { code: "internal_error" } }) : route.fallback()));

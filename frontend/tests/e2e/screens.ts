@@ -4,6 +4,7 @@
  */
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
+import { declare, REAL, type Expectation } from "./sentinel";
 
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
@@ -167,7 +168,15 @@ export async function sending(page: Page) {
   await expect(page.getByText("Laddar upp filen")).toBeVisible();
 }
 
+/**
+ * A run's transcript asks Eneo for the words a person has confirmed, and Eneo answers 404 when none are: the page reads that
+ * as "none yet". The browser logs every failed resource as a console error all the same. Optional: a run without a
+ * transcript does not ask.
+ */
+export const NO_CONFIRMED_WORDS: Expectation = { console: /status of 404.*\/transcript-words\//, optional: true };
+
 export async function run(page: Page, id: string, flow = ids.flows.flow1) {
+  declare(page, [NO_CONFIRMED_WORDS]);
   await page.goto(`/flows/${flow}?run=${id}`);
 }
 
@@ -208,7 +217,19 @@ export interface State {
   go: (page: Page, info: TestInfo) => Promise<void>;
   /** Only where the state exists, e.g. the PDF dialog is a new tab on a phone. */
   only?: (info: TestInfo) => boolean;
+  /**
+   * The console errors and failed requests the state is meant to cause (the 503 of the flow list's error, an aborted
+   * request). On the gate's real target the sentinel fails a test for any it was not told about, and for a declared one
+   * that did not happen.
+   */
+  expects?: Expectation[];
 }
+
+/**
+ * The states that do not run on the gate's real target, each with its reason. A state runs there unless it is listed; none
+ * is listed to make a run pass.
+ */
+export const REAL_SKIP: Record<string, string> = {};
 
 /** Every screen and state the gate visits. */
 export const STATES: State[] = [
@@ -256,6 +277,7 @@ export const STATES: State[] = [
   },
   {
     name: "signin-unreachable",
+    expects: [{ console: /net::ERR_FAILED.*\/api\/auth\/status/ }, { requestFailed: /GET .*\/api\/auth\/status: net::ERR_FAILED/ }],
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/");
@@ -277,6 +299,7 @@ export const STATES: State[] = [
   },
   {
     name: "flow-list-error",
+    expects: [{ console: /status of 503.*\/api\/eneo\/flows\// }],
     go: async (page) => {
       await page.route("**/api/eneo/flows/?*", (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
       await page.goto("/flows");
@@ -428,6 +451,7 @@ export const STATES: State[] = [
   },
   {
     name: "setup-republished",
+    expects: [{ console: /status of 409.*\/runs\// }],
     go: async (page) => {
       await setup(page, ids.flows.flow3);
       await chooseFile(page);
@@ -840,6 +864,7 @@ export const STATES: State[] = [
   },
   {
     name: "flow-gone",
+    expects: [{ console: /status of 404.*\/run-contract\// }, { console: /status of 404.*\/published\// }],
     go: async (page) => {
       await page.goto("/flows/flow-gone");
       await heading(page, "Flödet är inte längre tillgängligt.");
@@ -847,6 +872,7 @@ export const STATES: State[] = [
   },
   {
     name: "flow-republish-required",
+    expects: [{ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// }],
     go: async (page) => {
       await page.goto(`/flows/${ids.flows.flow4}`);
       await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
@@ -874,4 +900,16 @@ const BRANDED: Record<string, string[]> = {
 };
 for (const name of BRANDED[process.env.STUB_BRANDING ?? ""] ?? []) {
   STATES.push({ ...STATES.find((state) => state.name === name)!, name: `branding-${process.env.STUB_BRANDING}-${name}` });
+}
+
+// On the gate's real target a state that cannot be an Eneo answer is left out (REAL_SKIP), and a state tells the sentinel
+// what it is meant to cause.
+for (const name of Object.keys(REAL_SKIP)) {
+  const at = STATES.findIndex((state) => state.name === name);
+  if (at < 0) throw new Error(`REAL_SKIP names ${name}, which is no state`);
+  if (REAL) STATES.splice(at, 1);
+}
+for (const state of STATES) {
+  const { go, expects } = state;
+  if (expects) state.go = async (page, info) => (declare(page, expects), go(page, info));
 }

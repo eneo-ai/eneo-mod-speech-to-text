@@ -417,12 +417,6 @@ export type FlowStepResultStatus =
 
 export type FlowStepReviewMode = "view" | "edit";
 
-export type FlowTemplateAssetStatus =
-  | "ready"
-  | "needs_action"
-  | "read_only"
-  | "unavailable";
-
 export type FlowOutputType = "text" | "json" | "pdf" | "docx";
 export type FlowOutputMode =
   | "pass_through"
@@ -550,67 +544,6 @@ export function speakerMappingReviewSteps(
   return (contract?.steps_requiring_review ?? []).filter(
     isSpeakerMappingReviewStep,
   );
-}
-
-export interface FlowRunRedispatchResponse {
-  run: FlowRunPublic;
-  redispatched_count: number;
-}
-
-export interface FlowTemplateAssetPublic {
-  id: string;
-  flow_id: string;
-  file_id: string;
-  name: string;
-  checksum: string;
-  mimetype?: string | null;
-  placeholders: string[];
-  status: FlowTemplateAssetStatus;
-  last_updated_by_name?: string | null;
-  can_edit: boolean;
-  can_download: boolean;
-  can_select: boolean;
-  can_inspect: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface FlowRunStepRerunRequest {
-  expected_run_revision: number;
-  reason: string;
-  input_payload_json?: Json | null;
-  step_inputs?: Json | null;
-}
-export interface FlowRunStepRerunResponse {
-  operation_id: string;
-  run: FlowRunPublic;
-  rerun_step_id: string;
-  new_attempt_no: number;
-  invalidated_step_ids: string[];
-  status: string;
-}
-
-export interface FlowRunEvidenceResponse {
-  run: FlowRunPublic;
-  definition_snapshot: Json;
-  step_results: FlowRunStep[];
-  // Övriga fält håller vi löst typade tills UI behöver dem.
-  step_attempts: Json[];
-  result_files: ResultFile[];
-  rerun_operations: Json[];
-  rerun_invalidated_steps: Json[];
-  review_checkpoints: Json[];
-  debug_export: Json;
-}
-
-export interface FlowRunEvidenceExportResponse {
-  schema_version: string;
-  generated_at: string;
-  content_hash: string;
-  manifest: Json;
-  summary: Json;
-  redaction: Json;
-  bundle: Json;
 }
 
 export interface UploadProgress {
@@ -940,7 +873,7 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-// --- Cancel / redispatch / list ---
+// --- Cancel / retry / list ---
 
 export async function cancelRun(flowId: string, runId: string) {
   return request<FlowRunPublic>(
@@ -971,13 +904,6 @@ export async function retryFlowRunFromFailedStep(flowId: string, runId: string, 
   });
 }
 
-export async function redispatchRun(flowId: string, runId: string) {
-  return request<FlowRunRedispatchResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/redispatch/`,
-    { method: "POST" },
-  );
-}
-
 /**
  * The caller's latest runs of a flow. `mine=true` keeps a colleague's runs
  * out, which Eneo would otherwise list for a space admin or the flow's owner;
@@ -990,24 +916,7 @@ export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { 
   );
 }
 
-// --- Step rerun + step runtime-files ---
-
-export async function rerunStep(
-  flowId: string,
-  runId: string,
-  stepId: string,
-  body: FlowRunStepRerunRequest,
-  idempotencyKey: string,
-) {
-  return request<FlowRunStepRerunResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/rerun/`,
-    {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(body),
-    },
-  );
-}
+// --- Step runtime-files ---
 
 export async function uploadStepRuntimeFile(
   flowId: string,
@@ -1202,20 +1111,6 @@ export async function regenerateTranscript(
   );
 }
 
-// --- Evidence ---
-
-export async function getRunEvidence(flowId: string, runId: string) {
-  return request<FlowRunEvidenceResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/evidence/`,
-  );
-}
-
-export async function exportRunEvidence(flowId: string, runId: string) {
-  return request<FlowRunEvidenceExportResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/evidence/export`,
-  );
-}
-
 // --- Review checkpoints ---
 
 export async function getActiveReviewCheckpoint(flowId: string, runId: string) {
@@ -1274,31 +1169,5 @@ export async function resumeReviewCheckpoint(
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(body),
     },
-  );
-}
-
-// --- DOCX templates ---
-
-export async function listFlowTemplateFiles(flowId: string) {
-  // Eneo kan returnera antingen bare array eller paginerat wrapper.
-  const res = await request<
-    | FlowTemplateAssetPublic[]
-    | PaginatedResponse<FlowTemplateAssetPublic>
-    | OffsetPaginatedResponse<FlowTemplateAssetPublic>
-  >(`/api/eneo/flows/${flowId}/template-files/`);
-  if (Array.isArray(res)) return res;
-  return res.items ?? [];
-}
-
-export async function uploadFlowTemplateFile(
-  flowId: string,
-  file: Blob,
-  filename: string,
-) {
-  const fd = new FormData();
-  fd.append("upload_file", file, filename);
-  return request<FlowTemplateAssetPublic>(
-    `/api/eneo/flows/${flowId}/template-files/`,
-    { method: "POST", body: fd },
   );
 }

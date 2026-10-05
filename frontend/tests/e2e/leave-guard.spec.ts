@@ -6,7 +6,8 @@
  *
  * One width is enough: this is about history and requests, and the dev server's StrictMode runs every effect twice.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
 import { addParticipants, backLink, chooseFile, record, setup, setupFromList } from "./screens";
 

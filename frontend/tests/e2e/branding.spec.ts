@@ -4,7 +4,8 @@
  * `npm run test:a11y:branding`, whose stub is that deployment; the scans (axe, targets, reflow) of the branding-*
  * states are a11y.spec.ts's.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { stopProblems, tabWalk } from "./checks";
 import { STATES } from "./screens";
 

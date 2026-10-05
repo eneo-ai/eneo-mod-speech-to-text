@@ -30,6 +30,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from starlette.datastructures import UploadFile
+from starlette.routing import compile_path
 from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
@@ -250,106 +251,44 @@ def _upstream_unreachable() -> JSONResponse:
         content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
     )
 
-_RESOURCE_ID = r"[^/]+"
-_PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
-    (frozenset({"GET"}), re.compile(r"flows/$")),
+
+# What the module forwards to Eneo under /api/eneo, deny by default: one entry per path template, with the methods allowed
+# for it. A path matches as the page spells it, trailing slash included (Eneo's routes carry one), and a {name} is
+# exactly one segment. The names are distinct, which compile_path requires. Only what the page calls is listed.
+# docs/backend.md lists these entries and docs/api/openapi.json describes them.
+PROXY_ROUTES: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset({"GET"}), "/api/eneo/flows/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/published/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/run-contract/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/graph/"),
+    (frozenset({"GET", "POST"}), "/api/eneo/flows/{flow_id}/runs/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/status/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/"),
     (
         frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/(?:published|run-contract|graph)/$"),
+        "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/",
     ),
-    (frozenset({"GET", "POST"}), re.compile(rf"flows/{_RESOURCE_ID}/runs/$")),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:status/)?$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-words/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/transcript-corrections/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/{_RESOURCE_ID}/"
-            rf"attempts/{_RESOURCE_ID}/transcript-source/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-corrections/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:cancel|redispatch|retry)/$"
-        ),
-    ),
-    (
-        # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-regenerations/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/rerun/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/evidence/(?:export)?$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/"
-            r"review-checkpoints/active/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/(?:approve|reject|resume)/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
-    ),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/retry/"),
+    # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/"),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/"),
 )
+_PROXY_PATTERNS = tuple((methods, compile_path(template)[0]) for methods, template in PROXY_ROUTES)
 
 
 def _proxy_route_is_allowed(method: str, path: str) -> bool:
     return any(
-        method in methods and pattern.fullmatch(path) is not None
-        for methods, pattern in _PROXY_ROUTE_RULES
+        method in methods and pattern.fullmatch(f"/api/eneo/{path}") is not None
+        for methods, pattern in _PROXY_PATTERNS
     )
 
 
@@ -513,14 +452,6 @@ async def eneo_upload_file(flow_id: str, request: Request) -> Response:
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
-
-
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files/",
-    dependencies=_SESSION_ORIGIN_AND_USER,
-)
-async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
-    return await _forward_upload(request, f"flows/{flow_id}/template-files/")
 
 
 # ---------------------------------------------------------------------------

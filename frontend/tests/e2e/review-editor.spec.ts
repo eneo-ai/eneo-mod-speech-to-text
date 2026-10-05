@@ -4,7 +4,8 @@
  * and taken back, a word that moves the playback, and the way between the text and its tools. The development page's
  * fixtures carry it.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));

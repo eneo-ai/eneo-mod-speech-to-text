@@ -1,0 +1,4183 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Tal till text: modulens backend",
+    "version": "1.0.0",
+    "description": "Backend-for-frontend för Eneos modul Tal till text. Det är sidans egen server och inget publikt API: webbläsaren når den på modulens egen adress och den når Eneo åt personen.\n\nModulens egna rutter (`/api/auth`, `/api/branding`, uppladdningar och filströmmar) beskrivs här i sin helhet. Anropen till Eneo (`/api/eneo/...`) är bara de som tillåtelselistan räknar upp, och deras innehåll är Eneos. Live-transkriberingen går över en WebSocket, `/api/live/{flow_id}/{step_id}`, som OpenAPI inte beskriver: den står under Live-reläet i backendsidan."
+  },
+  "servers": [
+    {
+      "url": "https://transkribering.example.org",
+      "description": "Modulens egen adress (`MODULE_PUBLIC_URL`)."
+    }
+  ],
+  "tags": [
+    {
+      "name": "Inloggning",
+      "description": "Modulens egen inloggning mot Eneo. Sessionen är en opak kaka som slås upp i backendprocessen; ingen token når webbläsaren."
+    },
+    {
+      "name": "Uppladdning",
+      "description": "Filer som modulen tar emot och lämnar vidare till Eneo."
+    },
+    {
+      "name": "Filer",
+      "description": "Filer ur en körning, strömmade från modulens egen origin."
+    },
+    {
+      "name": "Märke",
+      "description": "Organisationen och dess accent. Ingen av rutterna kräver session: inloggningssidan visar organisationen före inloggningen."
+    },
+    {
+      "name": "Hälsa",
+      "description": "Hälsokontroll."
+    },
+    {
+      "name": "Eneo",
+      "description": "Anrop som modulen skickar vidare till Eneo, bara de som tillåtelselistan räknar upp. Begäran och svar är Eneos: modulen läser och ändrar inte innehållet, Eneos statuskod går tillbaka som den är och frågeparametrarna skickas vidare. Det som gäller för en begäran och ett svar står i Eneos egen beskrivning (se länken). Allt annat under `/api/eneo/` får `403 Eneo resource is not exposed`. Av webbläsarens huvuden går bara `Accept`, `Accept-Language`, `Content-Type`, `Idempotency-Key`, `If-Match`, `If-None-Match` vidare; modulens nyckel och användarens token sätts ur sessionen.",
+      "externalDocs": {
+        "description": "Eneos beskrivning",
+        "url": "https://github.com/eneo-ai/eneo"
+      }
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Hälsa"
+        ],
+        "summary": "Hälsokontroll",
+        "operationId": "get_health",
+        "description": "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida.",
+        "responses": {
+          "200": {
+            "description": "Backenden svarar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "Hälsa"
+        ],
+        "summary": "Hälsokontroll, bara huvudena",
+        "operationId": "head_health",
+        "responses": {
+          "200": {
+            "description": "Backenden svarar."
+          }
+        }
+      }
+    },
+    "/api/healthz": {
+      "get": {
+        "tags": [
+          "Hälsa"
+        ],
+        "summary": "Hälsokontroll",
+        "operationId": "get_api_healthz",
+        "description": "Samma svar som `/health`.",
+        "responses": {
+          "200": {
+            "description": "Backenden svarar.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "head": {
+        "tags": [
+          "Hälsa"
+        ],
+        "summary": "Hälsokontroll, bara huvudena",
+        "operationId": "head_api_healthz",
+        "responses": {
+          "200": {
+            "description": "Backenden svarar."
+          }
+        }
+      }
+    },
+    "/api/branding": {
+      "get": {
+        "tags": [
+          "Märke"
+        ],
+        "summary": "Organisationen i sidhuvudet",
+        "operationId": "get_api_branding",
+        "description": "Namnet, om det ska visas, och varje logotyps proportioner så att sidan kan reservera plats.",
+        "responses": {
+          "200": {
+            "description": "Organisationen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Branding"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/branding/logo/{variant}": {
+      "get": {
+        "tags": [
+          "Märke"
+        ],
+        "summary": "Organisationens logotyp",
+        "operationId": "get_api_branding_logo_variant",
+        "description": "Från modulens egen origin med `nosniff`, `no-cache` och en egen `Content-Security-Policy` som gör att en SVG som öppnas för sig inte kör något.",
+        "parameters": [
+          {
+            "name": "variant",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "enum": [
+                "light",
+                "dark"
+              ],
+              "type": "string"
+            },
+            "description": "Vilken logotyp: den för ljust eller för mörkt läge."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logotypen.",
+            "content": {
+              "image/svg+xml": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "image/png": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Ingen logotyp är konfigurerad.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Ett värde som inte är ett av de tillåtna.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/branding/theme.css": {
+      "get": {
+        "tags": [
+          "Märke"
+        ],
+        "summary": "Accentfärgens stilmall",
+        "operationId": "get_api_branding_theme_css",
+        "description": "Sidan länkar den efter sitt byggda tema. Innehållet är en fast mall med en redan kontrollerad accent, eller en tom kommentar utan `ORGANIZATION_ACCENT`. `ETag` och `If-None-Match` ger `304`.",
+        "parameters": [
+          {
+            "name": "If-None-Match",
+            "in": "header",
+            "required": false,
+            "description": "`ETag` från ett tidigare svar.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Stilmallen.",
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "text/css": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Stilmallen är oförändrad."
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "get": {
+        "tags": [
+          "Inloggning"
+        ],
+        "summary": "Starta inloggningen mot Eneo",
+        "operationId": "get_api_auth_login",
+        "description": "Skickar webbläsaren till Eneos `/module-login` och sätter kakan `eneo_module_login_state`, som binder återkomsten till den webbläsare som började.",
+        "parameters": [
+          {
+            "name": "next",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Sida i modulen att återvända till efter inloggningen: en sökväg som börjar med ett enda snedstreck, annars `/flows`."
+          },
+          {
+            "name": "renew",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "`true` för en ny inloggning i ett eget fönster för den som är inloggad nu. Utan session är den vägrad (`fel=utgangen`)."
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Till Eneos inloggning.",
+            "headers": {
+              "Location": {
+                "description": "Dit webbläsaren går härnäst.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Ett värde som inte är ett av de tillåtna.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/callback": {
+      "get": {
+        "tags": [
+          "Inloggning"
+        ],
+        "summary": "Ta emot inloggningen från Eneo",
+        "operationId": "get_api_auth_callback",
+        "description": "Byter ticketen mot en session och sätter kakan `eneo_module_session` (`HttpOnly`, `SameSite=Lax`). Misslyckas något går webbläsaren till `/?auth_error=<kod>`; koderna är `invalid_state`, `exchange_unavailable`, `exchange_failed`, `exchange_invalid`, `validation_unavailable`, `validation_failed` och `validation_invalid`. Är det en annan användare än den som bad om en förnyad inloggning går den till `next?fel=annan-anvandare`.",
+        "parameters": [
+          {
+            "name": "ticket",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Engångsticket från Eneo."
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "description": "Värdet som inloggningen startade med; det måste vara det som står i kakan `eneo_module_login_state`."
+          }
+        ],
+        "responses": {
+          "303": {
+            "description": "Till sidan som inloggningen började på, eller till felet.",
+            "headers": {
+              "Location": {
+                "description": "Dit webbläsaren går härnäst.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Inloggning"
+        ],
+        "summary": "Logga ut",
+        "operationId": "post_api_auth_logout",
+        "description": "Tar bort sessionen i backenden och kakan i webbläsaren. Kräver inte någon session: den som redan är utloggad får samma svar.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Origin"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Utloggad.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "const": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/status": {
+      "get": {
+        "tags": [
+          "Inloggning"
+        ],
+        "summary": "Vem är inloggad",
+        "operationId": "get_api_auth_status",
+        "description": "Sidan frågar vid start och när sessionen närmar sig sitt slut. Förnyar sessionens token när den är på väg att gå ut. `Cache-Control: no-store`.",
+        "responses": {
+          "200": {
+            "description": "Inloggningsläget.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/files/": {
+      "post": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Ladda upp en fil till ett flöde",
+        "operationId": "post_api_eneo_flows_flow_id_files",
+        "description": "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går inte med. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          },
+          {
+            "name": "X-Upload-Timeout-Seconds",
+            "in": "header",
+            "required": false,
+            "description": "Hur länge modulen väntar på Eneo, i sekunder. Ett värde under 60 räknas som 60, och inget går över `UPLOAD_PROXY_TIMEOUT_SECONDS`. Läses av modulen och skickas inte vidare.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Exakt en filpart med namnet `upload_file` och inga andra fält. Filnamn och innehållstyp får sakna styrtecken (annars 400).",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "upload_file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "upload_file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "400": {
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "`Content-Length` saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/": {
+      "post": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Ladda upp en fil till flödets ljudsteg",
+        "operationId": "post_api_eneo_flows_flow_id_steps_step_id_runtime_files",
+        "description": "Som uppladdningen till flödet, till ett steg.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          },
+          {
+            "name": "X-Upload-Timeout-Seconds",
+            "in": "header",
+            "required": false,
+            "description": "Hur länge modulen väntar på Eneo, i sekunder. Ett värde under 60 räknas som 60, och inget går över `UPLOAD_PROXY_TIMEOUT_SECONDS`. Läses av modulen och skickas inte vidare.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "Exakt en filpart med namnet `upload_file` och inga andra fält. Filnamn och innehållstyp får sakna styrtecken (annars 400).",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "upload_file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "upload_file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "400": {
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "`Content-Length` saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "504": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio": {
+      "get": {
+        "tags": [
+          "Filer"
+        ],
+        "summary": "Körningens ljud",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_input_files_file_id_audio",
+        "description": "Modulen ber Eneo om en tidsbegränsad URL med sina egna uppgifter och strömmar filen därifrån; URL:en är en nyckel till filen och når aldrig webbläsaren. Ingen `X-Expected-User` behövs: en `<audio src>` kan inte skicka huvuden.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Körningens id i Eneo."
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filens id i Eneo."
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "Ett byteintervall, som `bytes=0-1023`. Skickas vidare till Eneo; svaret är då `206`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ljudfilen, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoRefusal"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/artifacts/{file_id}/content": {
+      "get": {
+        "tags": [
+          "Filer"
+        ],
+        "summary": "En genererad fil",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_artifacts_file_id_content",
+        "description": "Under det namn Eneo gav filen. En PDF med `disposition=inline` öppnas i webbläsaren och får `X-Frame-Options: SAMEORIGIN`; allt annat laddas ner.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Körningens id i Eneo."
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filens id i Eneo."
+          },
+          {
+            "name": "disposition",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "inline",
+                "attachment"
+              ],
+              "type": "string",
+              "default": "attachment"
+            },
+            "description": "`inline` öppnar bara en PDF i webbläsaren; allt annat, och `attachment`, hämtas som fil."
+          },
+          {
+            "name": "Range",
+            "in": "header",
+            "required": false,
+            "description": "Ett byteintervall, som `bytes=0-1023`. Skickas vidare till Eneo; svaret är då `206`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Filen, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "206": {
+            "description": "Det begärda intervallet, strömmad: modulen buffrar den inte. `Cache-Control: private, no-store` och `X-Content-Type-Options: nosniff`. Eneos felsvar (till exempel `404`) kommer tillbaka med sin statuskod och sitt `detail`.",
+            "headers": {
+              "Accept-Ranges": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "Content-Range": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Ett värde som inte är ett av de tillåtna. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoRefusal"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Lista flöden",
+        "operationId": "get_api_eneo_flows",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/`.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/published/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Flödets publicerade version",
+        "operationId": "get_api_eneo_flows_flow_id_published",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/published/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/run-contract/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Flödets körningskontrakt",
+        "operationId": "get_api_eneo_flows_flow_id_run_contract",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/run-contract/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/graph/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Flödets graf för en körning (`run_id` som frågeparameter)",
+        "operationId": "get_api_eneo_flows_flow_id_graph",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/graph/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Lista körningar",
+        "operationId": "get_api_eneo_flows_flow_id_runs",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Starta en körning",
+        "operationId": "post_api_eneo_flows_flow_id_runs",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Hämta en körning",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/status/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Körningens status",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_status",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/status/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Körningens steg",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_steps",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Transkriptets ord i ett steg",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_steps_step_id_transcript_words",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "description": "Stegets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Körningens rättningar av transkriptet",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_transcript_corrections",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/transcript-corrections/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Transkriptets källsegment i ett försök (`start_segment_index` som frågeparameter)",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_steps_step_id_attempts_attempt_id_transcript_source",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "description": "Stegets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "attempt_id",
+            "in": "path",
+            "required": true,
+            "description": "Försökets nummer i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/": {
+      "patch": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Spara rättningar av transkriptet",
+        "operationId": "patch_api_eneo_flows_flow_id_runs_run_id_steps_step_id_transcript_corrections",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "description": "Stegets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Avbryt en körning",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_cancel",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/cancel/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/retry/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Försök igen från det misslyckade steget",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_retry",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/retry/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Skapa dokumentet igen med rättningarna",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_steps_step_id_transcript_regenerations",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "description": "Stegets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/": {
+      "get": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Körningens aktiva granskningspunkt",
+        "operationId": "get_api_eneo_flows_flow_id_runs_run_id_review_checkpoints_active",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/": {
+      "patch": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Ändra en granskningspunkt",
+        "operationId": "patch_api_eneo_flows_flow_id_runs_run_id_review_checkpoints_checkpoint_id",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "required": true,
+            "description": "Granskningspunktens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Godkänn en granskningspunkt",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_review_checkpoints_checkpoint_id_approve",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "required": true,
+            "description": "Granskningspunktens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Avvisa en granskningspunkt",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_review_checkpoints_checkpoint_id_reject",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "required": true,
+            "description": "Granskningspunktens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    },
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/": {
+      "post": {
+        "tags": [
+          "Eneo"
+        ],
+        "summary": "Återuppta körningen efter en granskningspunkt",
+        "operationId": "post_api_eneo_flows_flow_id_runs_run_id_review_checkpoints_checkpoint_id_resume",
+        "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/`.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "description": "Flödets id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "description": "Körningens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "checkpoint_id",
+            "in": "path",
+            "required": true,
+            "description": "Granskningspunktens id i Eneo.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EneoPayload"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "sessionCookie": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "eneo_module_session",
+        "description": "Modulens session. `/api/auth/callback` sätter den efter inloggningen i Eneo; den är en opak kaka och värdet säger inget om användaren. Den följer bara med anrop från modulens egen webbplats, och det som ändrar något kräver dessutom modulens `Origin`."
+      }
+    },
+    "parameters": {
+      "Origin": {
+        "name": "Origin",
+        "in": "header",
+        "required": true,
+        "description": "Modulens egen origin (`MODULE_PUBLIC_URL`). Webbläsaren sätter den; en annan ger 403.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ExpectedUser": {
+        "name": "X-Expected-User",
+        "in": "header",
+        "required": true,
+        "description": "Id för den användare sidan öppnades för (`user.id` i `/api/auth/status`). Är det en annans än sessionens svarar modulen 409 `user_changed` innan kroppen läses.",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "ExpectedUserOptional": {
+        "name": "X-Expected-User",
+        "in": "header",
+        "required": false,
+        "description": "Som vid ändringar, men en läsning får sakna det. Ett namn som skickas måste vara sessionens.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "responses": {
+      "EneoAnswer": {
+        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
+        "content": {
+          "*/*": {
+            "schema": {
+              "$ref": "#/components/schemas/EneoPayload"
+            }
+          }
+        }
+      },
+      "EneoRefusal": {
+        "description": "Eneos felstatus. Eneos svar, vilken JSON det än är, står i `detail`.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EneoDetail"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "BffError": {
+        "type": "object",
+        "required": [
+          "error",
+          "detail"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "upstream_invalid",
+              "upstream_redirect",
+              "upstream_too_large",
+              "upstream_unreachable",
+              "upstream_upload_timeout"
+            ]
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "description": "Modulens svar när den inte kan ge Eneos."
+      },
+      "TooLarge": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "type": "string"
+          },
+          "max_body_bytes": {
+            "type": "integer"
+          },
+          "max_upload_bytes": {
+            "type": "integer"
+          }
+        },
+        "description": "Den gräns som blev passerad står med sitt värde."
+      },
+      "EneoPayload": {
+        "description": "Eneos innehåll, av vilken typ det än är. Modulen beskriver det inte: se Eneos egen beskrivning."
+      },
+      "EneoDetail": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "description": "Eneos svar, vilken JSON det än är."
+          }
+        }
+      },
+      "Branding": {
+        "type": "object",
+        "required": [
+          "organization"
+        ],
+        "properties": {
+          "organization": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Organization"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null när organisationen inte ska visas (`SHOW_ORGANIZATION=false`): bara \"Tal till text\"."
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "authenticated",
+          "user"
+        ],
+        "properties": {
+          "authenticated": {
+            "type": "boolean"
+          },
+          "user": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModuleUser"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session_ends_in": {
+            "type": "integer",
+            "description": "Sekunder till sessionens fasta slut."
+          },
+          "refresh_in": {
+            "type": "integer",
+            "description": "Sekunder tills sidan frågar igen, så att en session utan andra anrop (en inspelning) förnyas."
+          },
+          "max_upload_bytes": {
+            "type": "integer",
+            "description": "Vad sidan får skicka i en uppladdning (hela begäran, så en fil får lite mindre)."
+          }
+        }
+      },
+      "LogoSize": {
+        "properties": {
+          "width": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "height": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "type": "object",
+        "description": "En logotyps proportioner: sidan ger sin `<img>` den bredden och höjden, så att sidhuvudet inte flyttar sig när filen kommer."
+      },
+      "LogoSizes": {
+        "properties": {
+          "light": {
+            "$ref": "#/components/schemas/LogoSize"
+          },
+          "dark": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogoSize"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "light"
+        ],
+        "type": "object",
+        "description": "Proportionerna för den ljusa logotypen och, om det finns en, den mörka."
+      },
+      "Organization": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "logo": {
+            "anyOf": [
+              {
+                "enum": [
+                  "default",
+                  "custom"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dark_logo": {
+            "default": false,
+            "type": "boolean"
+          },
+          "logo_sizes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LogoSizes"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "name",
+          "logo"
+        ],
+        "type": "object",
+        "description": "Organisationen bredvid \"Tal till text\": namnet och logotypen. `logo` är `default` för den medföljande logotypen, `custom` för driftsättningens egen (hämtas från `/api/branding/logo/{variant}`) och null för bara namnet som text."
+      },
+      "ModuleUser": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "id",
+          "email"
+        ],
+        "type": "object",
+        "description": "Användaren som är inloggad."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

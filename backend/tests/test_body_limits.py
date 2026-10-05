@@ -366,7 +366,6 @@ class UploadTests(Case):
         routes = {
             "/api/eneo/flows/f1/files/": "flows/f1/files/",
             "/api/eneo/flows/f1/steps/s1/runtime-files/": "flows/f1/steps/s1/runtime-files/",
-            "/api/eneo/flows/f1/template-files/": "flows/f1/template-files/",
         }
         for path, upstream in routes.items():
             with self.subTest(path=path):
@@ -377,7 +376,7 @@ class UploadTests(Case):
                 self.assertEqual(self.eneo.calls[-1]["size"], MiB)
 
     async def test_the_slashless_twin_of_an_upload_route_is_not_a_route_and_sends_nothing_to_eneo(self) -> None:
-        for path in ("/api/eneo/flows/f1/files", "/api/eneo/flows/f1/steps/s1/runtime-files", "/api/eneo/flows/f1/template-files"):
+        for path in ("/api/eneo/flows/f1/files", "/api/eneo/flows/f1/steps/s1/runtime-files"):
             with self.subTest(path=path):
                 calls = len(self.eneo.calls)
 

@@ -20,7 +20,7 @@ The Eneo role (MODULE_KEY and ENEO_API_KEY, the backend's own variables, say whi
   GET  /api/v1/files/{audio,artifact}/<file>/download/    the file, with Range, 206, 416
   POST /api/v1/flows/<f>/steps/<s>/live-transcription-sessions/                a ticket and the socket's path
   GET  /api/v1/live-transcription                         the eneo-live.v1 socket, for a ticket the stub gave
-  POST .../runtime-files/, .../files/, .../template-files/  uploads: drained in 64 KB reads, one record each
+  POST .../runtime-files/, .../files/                      uploads: drained in 64 KB reads, one record each
 
 For tests (unauthenticated, never shipped): GET /__stub/stats, POST /__stub/reset, POST /__stub/end-session (every token
 is refused from now on, as when Eneo ends the login) and, in upstream.py's format of deploy/acceptance/upload/ (so that
@@ -441,10 +441,10 @@ def ws_recv(rfile):
 
 
 def is_upload(segments):
-    """flows/<f>/files, flows/<f>/template-files and flows/<f>/steps/<s>/runtime-files, under /api/eneo or /api/v1."""
+    """flows/<f>/files and flows/<f>/steps/<s>/runtime-files, under /api/eneo or /api/v1."""
     rest = segments[4:]
     return (segments[:2] in (["api", "eneo"], ["api", "v1"]) and segments[2:3] == ["flows"] and len(segments) >= 5
-            and (rest in (["files"], ["template-files"]) or (len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files")))
+            and (rest == ["files"] or (len(rest) == 3 and rest[0] == "steps" and rest[2] == "runtime-files")))
 
 
 class Handler(BaseHTTPRequestHandler):

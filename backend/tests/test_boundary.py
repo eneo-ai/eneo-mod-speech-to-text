@@ -258,7 +258,6 @@ class DoubleEncodingTests(BoundaryCase):
             "/api/eneo/flows/a%252Fexport/files/": r"/api/v1/flows/[^/]+/files/",
             "/api/eneo/flows/a%252Fx/steps/s/runtime-files/": r"/api/v1/flows/[^/]+/steps/[^/]+/runtime-files/",
             "/api/eneo/flows/f/steps/a%252Fx/runtime-files/": r"/api/v1/flows/[^/]+/steps/[^/]+/runtime-files/",
-            "/api/eneo/flows/a%252Fexport/template-files/": r"/api/v1/flows/[^/]+/template-files/",
         }
         for path, route in routes.items():
             with self.subTest(path):
@@ -990,7 +989,6 @@ class ExpectedUserTests(BoundaryCase):
     MEDIA = {
         "an upload": ("POST", "/api/eneo/flows/f/files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "a step's runtime file": ("POST", "/api/eneo/flows/f/steps/s/runtime-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
-        "a template file": ("POST", "/api/eneo/flows/f/template-files/", {"files": {"upload_file": ("a.webm", b"audio", "audio/webm")}}),
         "the start of a run": ("POST", "/api/eneo/flows/f/runs/", {"content": b'{"input_values": []}'}),
     }
 
