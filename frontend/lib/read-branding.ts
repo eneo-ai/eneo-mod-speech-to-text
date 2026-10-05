@@ -1,7 +1,7 @@
 /**
  * The page's reader of the branding's shape, and how it learns it: the backend writes the answer of
  * `GET /api/branding` into `<meta name="eneo-branding">` when it starts (and the dev server does the same for each
- * page, lib/branding-marker.ts), so the organisation's mark is in the first frame and there is nothing to fetch.
+ * page, lib/branding-marker.mts), so the organisation's mark is in the first frame and there is nothing to fetch.
  */
 
 import { isRecord } from "./is-record";
