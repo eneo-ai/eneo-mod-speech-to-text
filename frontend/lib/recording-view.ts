@@ -147,6 +147,14 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
 export const UNSTORED_LEAVE = "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.";
 
 /**
+ * Whether leaving loses nothing: audio the device keeps (it waits among unsent recordings), nothing being sent and nothing
+ * typed that the browser could not keep. "Lämna sidan" is then a choice, not a warning.
+ */
+export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: boolean; sending: boolean; unstored: boolean }): boolean {
+  return state.holdsAudio && state.persistent === true && !state.sending && !state.unstored;
+}
+
+/**
  * What "Lämna sidan?" says. A running recording stops: it does not go on in
  * the background. The recording is promised back among unsent recordings
  * only when the device keeps it; otherwise leaving loses it, and the way to

@@ -7,6 +7,7 @@ import {
   atBottom,
   detailsSummary,
   keepDetailsOpen,
+  leaveKeepsWork,
   leaveWarning,
   liveStatusLine,
   pageTitle,
@@ -285,3 +286,12 @@ test("a flow labels speakers when it says so: switched on, off, required, or not
   assert.equal(labelsSpeakers(undefined, null), false, "a flow that says nothing");
 });
 
+
+test("leaving keeps everything only for audio the device keeps, with nothing being sent and nothing typed that it could not keep", () => {
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: false, unstored: false }), true);
+  assert.equal(leaveKeepsWork({ persistent: false, holdsAudio: true, sending: false, unstored: false }), false, "only in this tab");
+  assert.equal(leaveKeepsWork({ persistent: null, holdsAudio: true, sending: false, unstored: false }), false, "unknown is never claimed");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: true, unstored: false }), false, "a sending is aborted");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: false, unstored: true }), false, "typed work is lost");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: false, sending: false, unstored: true }), false);
+});

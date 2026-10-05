@@ -16,7 +16,7 @@ export const LeaveContext = createContext<{ leaveFirst(goOn: () => void | Promis
  * `?run=`) is no departure. The browser's own question (beforeunload, by the page) covers what no navigation reaches:
  * a reload, closing the tab, and Back from the first page of a visit.
  */
-export function useLeaveQuestion(active: boolean, warning: string) {
+export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false) {
   // Set by an answered sign-out question while its way on runs, so the way on to the start that follows it is not asked a
   // second time. It ends with the way on: one that did not go through leaves no departure unasked.
   const allowed = useRef(false);
@@ -57,6 +57,8 @@ export function useLeaveQuestion(active: boolean, warning: string) {
       description={warning}
       cancelLabel="Stanna kvar"
       actionLabel="Lämna sidan"
+      // Red only where leaving loses something (lib/recording-view leaveKeepsWork).
+      actionVariant={keepsWork ? "secondary" : "destructive"}
       // Answered: the question closes with the answer, whether or not the way off the page then goes through.
       onAction={leave}
     />

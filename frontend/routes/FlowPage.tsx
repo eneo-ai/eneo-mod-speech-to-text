@@ -49,7 +49,7 @@ import { makesText } from "@/lib/flow-output";
 import { followRun, readFinishedRun, VISIBLE_POLL_MS } from "@/lib/follow-run";
 import { onlineStatus } from "@/lib/online-status";
 import { recordingStore } from "@/lib/recording-store";
-import { leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
+import { leaveKeepsWork, leaveWarning, UNSTORED_LEAVE } from "@/lib/recording-view";
 import { resultFileViews } from "@/lib/run-files";
 import {
   finishedRun,
@@ -215,6 +215,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const leaving = useLeaveQuestion(
     submitting || holdsAudio || unstored,
     submitting || holdsAudio ? leaveWarning(input.persistent, snapshot.phase, submitting) : UNSTORED_LEAVE,
+    leaveKeepsWork({ persistent: input.persistent, holdsAudio, sending: submitting, unstored }),
   );
   useEffect(() => {
     const shouldWarn = holdsAudio || submitting || unstored;
