@@ -33,6 +33,8 @@ export const eneoTheme = defineTheme({
     // The one action a screen exists for (Starta, Stoppa, Skapa dokument) is 48 px at every pointer; Astryx's
     // large control is 36 px with a mouse.
     '--size-element-lg': LARGE,
+    // Descriptions, help under a label and lines under an action are read, not glanced at: 14 px, not the scale's 13.
+    '--font-size-sm': '0.875rem',
     // Error text is 4.1:1 on the page's grey in Astryx's red, and that red is the recording dot's (1.0:1 and 1.25:1
     // apart): an error never looks like "recording".
     '--color-error': ['#AA181D', '#F47B7F'],
@@ -84,7 +86,9 @@ export const eneoTheme = defineTheme({
     // track and its forced-colours tracks stay the design system's.
     switch: {base: {'--color-background-gray': 'var(--color-border-emphasized)'}},
     // The trigger is one line of 13 px text, 19 px tall: the gate's 24 px (WCAG 2.5.8).
-    'collapsible-trigger': {base: {minHeight: MOUSE_TARGET}},
+    // A disclosure is quieter than the headings around it: body size and medium weight, not the design system's large
+    // semibold row.
+    'collapsible-trigger': {base: {minHeight: MOUSE_TARGET, fontSize: 'var(--font-size-base)', fontWeight: 'var(--font-weight-medium)'}},
   },
   adaptations: {
     rules: [

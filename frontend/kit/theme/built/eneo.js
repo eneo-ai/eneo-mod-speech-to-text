@@ -48,7 +48,7 @@ export const eneoTheme = {
     "--font-size-3xs": "0.5rem",
     "--font-size-2xs": "0.5625rem",
     "--font-size-xs": "0.6875rem",
-    "--font-size-sm": "0.8125rem",
+    "--font-size-sm": "0.875rem",
     "--font-size-base": "1rem",
     "--font-size-lg": "1.1875rem",
     "--font-size-xl": "1.4375rem",
@@ -324,7 +324,9 @@ export const eneoTheme = {
     },
     "collapsible-trigger": {
       "base": {
-        "minHeight": "24px"
+        "minHeight": "24px",
+        "fontSize": "var(--font-size-base)",
+        "fontWeight": "var(--font-weight-medium)"
       }
     }
   },
