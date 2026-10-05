@@ -5,6 +5,7 @@ import {
   applyCorrections,
   correctedSegmentText,
   occurrencesForLine,
+  renderReviewedTranscript,
   sameCorrections,
   withLineCorrection,
   withSpeakerEdit,
@@ -148,4 +149,11 @@ test("choosing the stored speaker again removes the edit instead of writing a no
   set = withSpeakerEdit(set, 0, "SPEAKER_00", "SPEAKER_00");
   assert.equal(set.speaker_edits.length, 0);
   assert.equal(sameCorrections(set, EMPTY_CORRECTIONS), true);
+});
+
+test("the plain text names a speaker as the page does: the confirmed name, else Talare N", () => {
+  assert.deepEqual(
+    renderReviewedTranscript(segments, EMPTY_CORRECTIONS, { SPEAKER_01: " Anna Berg " }).split("\n"),
+    ["[00:00:00 - 00:00:04] Talare 1: Hej och välkomna.", "[00:00:04 - 00:00:09] Anna Berg: Tack så mycket."],
+  );
 });

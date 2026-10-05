@@ -47,7 +47,7 @@ import {
   paragraphTurns,
   pendingSpeakerReview,
   speakerColorIndex,
-  speakerDisplayLabel,
+  speakerName,
   speakerInitial,
   speakerSummaries,
   type SearchHit,
@@ -341,8 +341,7 @@ export function TranscriptPlayer(
   const displayName = useCallback(
     (label: string | null) => {
       if (!label) return "Okänd talare";
-      const name = speakerNames[label];
-      return name && name.trim() ? name.trim() : speakerDisplayLabel(label);
+      return speakerName(label, speakerNames);
     },
     [speakerNames],
   );
