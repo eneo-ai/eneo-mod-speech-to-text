@@ -155,6 +155,43 @@ def measure_round_trips(base: str, path: str, headers: dict[str, str], seconds: 
         ws.abort()
 
 
+def survive_quiet(base: str, path: str, headers: dict[str, str], seconds: float, *, reply_seconds: float = 8) -> None:
+    """Hold a live socket open for ``seconds`` with nothing sent (the pings of either side are answered), then send four frames and require the
+    reply to the fourth. Raises RelayError when the socket closes first, or when the reply does not come within ``reply_seconds``: a proxy that
+    cuts a quiet connection is found by this."""
+    ws = WebSocket(base, path, headers=headers)
+    try:
+        ready = ws.recv_json(timeout=10)
+        if ready.get("type") != "ready":
+            raise RelayError(f"the live socket's first event was {ready}, not ready")
+        began = time.monotonic()
+        while (left := seconds - (time.monotonic() - began)) > 0:
+            try:
+                ws.recv(timeout=min(1, left))
+            except TimeoutError:
+                continue
+            except ConnectionEnded as ended:
+                raise RelayError(f"the socket closed ({ws.close_code}) after {time.monotonic() - began:.0f} s of {seconds:.0f} s with nothing sent: {ended}") from None
+        for _ in range(FRAMES_PER_REPLY):
+            ws.send_binary(bytes(FRAME_BYTES_PER_SECOND // 20))
+        until = time.monotonic() + reply_seconds
+        while time.monotonic() < until:
+            try:
+                _, payload = ws.recv(timeout=0.5)
+            except TimeoutError:
+                continue
+            except ConnectionEnded as ended:
+                raise RelayError(f"the socket closed ({ws.close_code}) after the quiet, before it answered four frames: {ended}") from None
+            event = json.loads(payload)
+            if event.get("type") == "error":
+                raise RelayError(f"the relay sent an error event after the quiet: {event}")
+            if event.get("type") == "transcript.delta":
+                return
+        raise RelayError(f"no reply to four frames within {reply_seconds:g} s after {seconds:.0f} s of quiet")
+    finally:
+        ws.abort()
+
+
 def percentiles(trips: Trips) -> dict[str, float | int]:
     """The replies owed and received, and the percentiles of those that came (read them beside ``missing``)."""
     report: dict[str, float | int] = {"expected": trips.expected, "received": trips.received, "missing": trips.missing}

@@ -5,12 +5,15 @@ import subprocess
 import unittest
 from pathlib import Path
 
+import yaml
 from app.config import Settings
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPOSITORY_ROOT / "docker-compose.yml"
 OVERRIDE_FILE = REPOSITORY_ROOT / "docker-compose.override.yml"
+TRAEFIK_FILE = REPOSITORY_ROOT / "docker-compose.traefik.yml"
+ACCEPTANCE = REPOSITORY_ROOT / "deploy" / "acceptance"
 SERVICE = "speech-to-text"
 IMAGE = "ghcr.io/eneo-ai/eneo-mod-speech-to-text"
 
@@ -26,6 +29,8 @@ def compose_config(*, interpolate: bool = True, files: tuple[Path, ...] = (COMPO
         "MODULE_PUBLIC_URL": "https://module.example.test",
         "ENEO_API_KEY": "test-key",
         "SESSION_SECRET": "x" * 48,
+        "MODULE_HOST": "module.example.test",
+        "ACME_EMAIL": "ops@example.test",
         **variables,
     }
     result = subprocess.run(
@@ -119,6 +124,73 @@ class DeploymentComposeTests(unittest.TestCase):
             self.assertEqual(float(variables["UPLOAD_PROXY_TIMEOUT_SECONDS"]), fields["upload_proxy_timeout_seconds"].default)
             self.assertEqual(variables["COOKIE_SECURE"], str(fields["cookie_secure"].default).lower())
             self.assertEqual(variables["ENEO_API_KEY_HEADER_NAME"], fields["eneo_api_key_header_name"].default)
+
+
+@unittest.skipUnless(shutil.which("docker"), "Docker is required for Compose checks")
+class TraefikOverlayTests(unittest.TestCase):
+    """docker-compose.traefik.yml: the proxy for a host that has none. The base file stays neutral, and the acceptance's Traefik is held to the same
+    timeouts, so what the acceptance tests is what an operator is given."""
+
+    @staticmethod
+    def overlay(**variables: str) -> dict:
+        return compose_config(files=(COMPOSE_FILE, TRAEFIK_FILE), **variables)
+
+    @staticmethod
+    def flags(config: dict, prefix: str) -> dict[str, str]:
+        found = (flag[2:].split("=", 1) for flag in config["services"]["traefik"]["command"] if flag.startswith(f"--{prefix}"))
+        return {name: value for name, value in found}
+
+    def test_the_base_file_is_proxy_neutral_and_the_overlay_adds_only_traefik(self) -> None:
+        self.assertEqual(list(compose_config()["services"]), [SERVICE])
+        self.assertEqual(list(self.overlay()["services"]), [SERVICE, "traefik"])
+
+    def test_traefik_is_the_acceptances_traefik_pinned_by_digest(self) -> None:
+        image = self.overlay()["services"]["traefik"]["image"]
+        acceptance = yaml.safe_load((ACCEPTANCE / "compose.yml").read_text())["services"]["traefik"]["image"]
+
+        self.assertRegex(image, r"^traefik:v3\.7\.\d+@sha256:[0-9a-f]{64}$")
+        self.assertEqual(image, acceptance)
+
+    def test_traefik_has_no_more_than_it_needs(self) -> None:
+        traefik = self.overlay()["services"]["traefik"]
+
+        # (Not read_only: Compose copies the inline route into the container, which a read-only root refuses.)
+        self.assertEqual(traefik["cap_drop"], ["ALL"])
+        self.assertEqual(traefik["cap_add"], ["NET_BIND_SERVICE"])
+        self.assertIn("no-new-privileges:true", traefik["security_opt"])
+        self.assertEqual(traefik["restart"], "unless-stopped")
+        self.assertEqual(sorted(port["published"] for port in traefik["ports"]), ["443", "80"])
+        # Routes come from a file, not from the Docker provider: Traefik gets no Docker socket.
+        self.assertEqual([volume["target"] for volume in traefik["volumes"]], ["/letsencrypt"])
+        self.assertFalse(any("docker" in flag for flag in traefik["command"] if flag.startswith("--providers")))
+
+    def test_the_proxy_timeouts_are_the_acceptances_and_the_documented_ones(self) -> None:
+        timeouts = self.flags(self.overlay(), "entrypoints.websecure.transport.respondingtimeouts.")
+        acceptance = yaml.safe_load((ACCEPTANCE / "traefik.yml").read_text())["entryPoints"]["web"]["transport"]["respondingTimeouts"]
+
+        self.assertEqual(
+            {name.rsplit(".", 1)[1]: value for name, value in timeouts.items()},
+            {name.lower(): value for name, value in acceptance.items()},
+        )
+        self.assertEqual(timeouts["entrypoints.websecure.transport.respondingtimeouts.readtimeout"], "1800s")  # 1 GiB at 5 Mbit/s
+        # The operator can size it for a larger MAX_UPLOAD_BYTES or a slower link in the same .env.
+        longer = self.flags(self.overlay(PROXY_READ_TIMEOUT="3600s"), "entrypoints.websecure.transport.respondingtimeouts.")
+        self.assertEqual(longer["entrypoints.websecure.transport.respondingtimeouts.readtimeout"], "3600s")
+
+    def test_the_route_sends_the_host_to_the_module_over_tls_with_hsts(self) -> None:
+        config = self.overlay()
+        routes = yaml.safe_load(config["configs"]["traefik_dynamic"]["content"])["http"]
+        router = routes["routers"]["module"]
+        resolvers = {name.split(".")[1] for name in self.flags(config, "certificatesresolvers.")}
+
+        self.assertEqual(router["rule"], "Host(`module.example.test`)")
+        self.assertEqual(router["entryPoints"], ["websecure"])
+        self.assertEqual({router["tls"]["certResolver"]}, resolvers)
+        # The service is the module's own, on the port the base file exposes.
+        self.assertEqual(routes["services"]["module"]["loadBalancer"]["servers"], [{"url": f"http://{SERVICE}:3001"}])
+        self.assertEqual(compose_config()["services"][SERVICE]["expose"], ["3001"])
+        self.assertGreaterEqual(routes["middlewares"][router["middlewares"][0]]["headers"]["stsSeconds"], 31536000)
+        self.assertRegex(self.flags(config, "entrypoints.web.")["entrypoints.web.http.redirections.entrypoint.scheme"], "https")
 
 
 class BrandingSettingsReachTheBackendTests(unittest.TestCase):

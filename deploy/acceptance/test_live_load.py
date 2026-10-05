@@ -39,8 +39,9 @@ class FakeRelay:
     """A live relay on a port of 127.0.0.1. ``behaviour(reply_number)`` says what to do instead of reply number N: None answers
     it, "quiet" stops answering from then on, "error" sends an error event, "close" closes the socket with 1011."""
 
-    def __init__(self, behaviour=lambda number: None) -> None:
+    def __init__(self, behaviour=lambda number: None, close_after: float | None = None) -> None:
         self.behaviour = behaviour
+        self.close_after = close_after  # seconds of silence from the client after which the relay closes the socket with 1011
         self.server = socket.socket()
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server.bind(("127.0.0.1", 0))
@@ -81,10 +82,16 @@ class FakeRelay:
         accept = base64.b64encode(hashlib.sha1(key + GUID).digest())
         connection.sendall(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: " + accept + b"\r\n\r\n")
         connection.sendall(frame(1, json.dumps({"type": "ready"}).encode()))
+        if self.close_after:
+            connection.settimeout(self.close_after)
         frames, replies, quiet = 0, 0, False
         while True:
             while len(buffer) < 2:
-                data = connection.recv(65536)
+                try:
+                    data = connection.recv(65536)
+                except TimeoutError:
+                    connection.sendall(frame(8, struct.pack(">H", 1011)))
+                    return
                 if not data:
                     return
                 buffer += data
@@ -170,6 +177,36 @@ class RoundTripTests(unittest.TestCase):
             measure(relay)
 
         self.assertIn("1011", str(raised.exception))
+
+
+class QuietSocketTests(unittest.TestCase):
+    def survive(self, relay: FakeRelay, seconds: float = 1.0) -> None:
+        live_load.survive_quiet(relay.url, "/api/live/f/s", {}, seconds, reply_seconds=1.5)
+
+    def test_a_socket_that_stays_open_through_the_quiet_relays_four_frames_after_it(self) -> None:
+        relay = FakeRelay()
+        self.addCleanup(relay.close)
+
+        self.survive(relay)  # no exception
+
+    def test_a_socket_the_relay_closes_during_the_quiet_is_raised_with_how_long_it_lived(self) -> None:
+        relay = FakeRelay(close_after=0.4)
+        self.addCleanup(relay.close)
+
+        with self.assertRaises(live_load.RelayError) as raised:
+            self.survive(relay, seconds=3)
+
+        self.assertIn("1011", str(raised.exception))
+        self.assertIn("of 3 s", str(raised.exception))
+
+    def test_a_relay_that_is_open_but_does_not_answer_after_the_quiet_is_raised(self) -> None:
+        relay = FakeRelay(lambda number: "quiet")
+        self.addCleanup(relay.close)
+
+        with self.assertRaises(live_load.RelayError) as raised:
+            self.survive(relay)
+
+        self.assertIn("no reply", str(raised.exception))
 
 
 class SilentWebServer:
