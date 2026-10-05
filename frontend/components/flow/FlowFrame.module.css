@@ -1,5 +1,6 @@
 /* A flow's page: the width of every view of it, and from a laptop's width (1024 px) the flow in a column beside the
-   working card. From 768 px the page has a gutter of its own. */
+   working card. It stands in the shell's gutter, as the flow list does, so the bar, the list and every view of a flow
+   share one left edge (styles/globals.css aligns the bar to it). */
 
 .page {
   box-sizing: border-box;
@@ -10,12 +11,6 @@
   min-height: 100%;
   margin-inline: auto;
   padding-block-end: var(--spacing-8);
-}
-
-@media (min-width: 768px) {
-  .page {
-    padding-inline: var(--spacing-4);
-  }
 }
 
 @media (min-width: 1024px) {
@@ -55,12 +50,6 @@
   max-width: calc(var(--module-page-width) + var(--spacing-8));
   padding-inline: var(--spacing-4);
   padding-block: var(--spacing-3) 0;
-}
-
-@media (min-width: 768px) {
-  .fill {
-    padding-inline: var(--spacing-8);
-  }
 }
 
 @media (min-width: 1024px) {
