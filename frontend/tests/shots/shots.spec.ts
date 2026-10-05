@@ -62,8 +62,10 @@ for (const state of STATES) {
     await page.setViewportSize({ width: firstWidth, height: firstHeight });
     await state.go(page, at(info, firstWidth, firstHeight));
     mkdirSync(`${OUT}/${state.name}`, { recursive: true });
-    // What changes by itself between two runs: the recording's clock and the level of the microphone.
-    const mask = [page.getByText(/^\d{1,2}:\d{2}(:\d{2})?$/), page.locator("[data-lit]")];
+    // Masked, because no run can repeat them: the level of the fake microphone, and while recording the clock of the time
+    // recorded. Everything else (the transcript's times, the player, dates) comes from the stub and is shown.
+    const recording = (await page.getByRole("button", { name: /^(Stoppa|Pausa|Fortsätt)$/ }).count()) > 0;
+    const mask = [page.locator("[data-lit]"), ...(recording ? [page.getByText(/^\d{1,2}:\d{2}(:\d{2})?$/)] : [])];
     for (const [, width, height] of sizes) {
       await page.setViewportSize({ width, height });
       // Two frames for the layout to follow the new size, then what fades in at the new size.
