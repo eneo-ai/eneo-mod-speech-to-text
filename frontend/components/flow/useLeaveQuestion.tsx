@@ -6,8 +6,8 @@ import { AlertDialog } from "@astryxdesign/core/AlertDialog";
  * Signing out, which is a request and not a navigation: the question comes before the session is ended, so it is the
  * page that asks and then goes on.
  */
-export const LeaveContext = createContext<{ leaveFirst(goOn: () => void): void }>({
-  leaveFirst: (goOn) => goOn(),
+export const LeaveContext = createContext<{ leaveFirst(goOn: () => void | Promise<void>): void }>({
+  leaveFirst: (goOn) => void goOn(),
 });
 
 /**
@@ -17,13 +17,14 @@ export const LeaveContext = createContext<{ leaveFirst(goOn: () => void): void }
  * a reload, closing the tab, and Back from the first page of a visit.
  */
 export function useLeaveQuestion(active: boolean, warning: string) {
-  // Set by an answered sign-out question, so the way on to the start that follows it is not asked a second time.
+  // Set by an answered sign-out question while its way on runs, so the way on to the start that follows it is not asked a
+  // second time. It ends with the way on: one that did not go through leaves no departure unasked.
   const allowed = useRef(false);
   useEffect(() => {
     allowed.current = false;
   }, [active]);
   const blocker = useBlocker(({ currentLocation, nextLocation }) => active && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
-  const [signingOut, setSigningOut] = useState<(() => void) | null>(null);
+  const [signingOut, setSigningOut] = useState<(() => void | Promise<void>) | null>(null);
 
   const stay = () => {
     setSigningOut(null);
@@ -35,7 +36,13 @@ export function useLeaveQuestion(active: boolean, warning: string) {
     if (blocker.state === "blocked") blocker.proceed();
     if (goOn) {
       allowed.current = true;
-      goOn();
+      void (async () => {
+        try {
+          await goOn();
+        } finally {
+          allowed.current = false;
+        }
+      })();
     }
   };
 
@@ -55,7 +62,7 @@ export function useLeaveQuestion(active: boolean, warning: string) {
     />
   );
   /** Signing out: asked first, then `goOn`. */
-  const leaveFirst = (goOn: () => void) => (active ? setSigningOut(() => goOn) : goOn());
+  const leaveFirst = (goOn: () => void | Promise<void>) => (active ? setSigningOut(() => goOn) : void goOn());
 
   return { leaveFirst, question };
 }

@@ -803,6 +803,30 @@ test("the phone top bar's back chevron is named like every other way back", asyn
   await view.unmount();
 });
 
+test("a sign-out that was answered but did not go through leaves no way off the page unasked: the next departure asks", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  function Page() {
+    const leaving = useLeaveQuestion(true, "Det du har skrivit försvinner om du lämnar sidan.");
+    // A sign-out whose request fails: it goes on, and no navigation follows.
+    return createElement("div", null, createElement("button", { onClick: () => leaving.leaveFirst(async () => undefined) }, "Logga ut"), leaving.question);
+  }
+  const { tree, router } = await signedIn(createElement(Page), { path: "/flows/f1", entries: ["/flows/f1"] });
+  const view = await mount(tree);
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
+  await view.act(async () => button(view.container, "Logga ut")!.click());
+  assert.ok(dialog(), "Logga ut asks");
+  await view.act(async () => {
+    button(dialog()!, "Lämna sidan")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.ok(!dialog(), "answered");
+  await view.act(async () => void router.navigate("/flows"));
+  assert.ok(dialog(), "a way off the page right after is asked about too");
+  assert.equal(router.state.location.pathname, "/flows/f1", "and the page is still here");
+  await view.unmount();
+});
+
 test("Back during an upload asks first and says what leaving stops; Stanna kvar stays, Lämna sidan goes on", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");

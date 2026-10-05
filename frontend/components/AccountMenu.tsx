@@ -83,7 +83,7 @@ export function AccountMenu() {
         isDisabled={loggingOut}
         // The menu stays open to say that it is signing out, and for the leave question to give back to.
         hasCloseOnSelect={false}
-        onClick={() => leaveFirst(() => void onLogout())}
+        onClick={() => leaveFirst(onLogout)}
       />
     </DropdownMenu>
   );
