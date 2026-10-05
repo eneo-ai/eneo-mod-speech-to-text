@@ -13,5 +13,5 @@
 
 ## Konsekvenser
 
-- `frontend/tests/e2e/session-cover.spec.ts` är beviset: med namngivningsdialogen öppen och en redigering skriven, avsluta inloggningen; inget av dialogen syns, går att fokusera eller finns i tillgänglighetsträdet; förnya som samma användare; dialogen och redigeringen är tillbaka. Även: utgång medan femminutersvarningen är öppen, Bakåt efter utgång, och att Pausa och Stoppa går att nå. Tab hamnar aldrig på sidan bakom.
+- `frontend/tests/e2e/session-cover.spec.ts` är beviset: med en dialog öppen och en redigering skriven, avsluta inloggningen; inget av dialogen syns, går att fokusera eller finns i tillgänglighetsträdet, och efter förnyelse som samma användare är dialogen och redigeringen tillbaka.
 - Varje ny dialog som sidan äger måste stängas medan inloggningen saknas, ha sitt tillstånd ovanför sig och läggas i `frontend/tests/e2e/leaks.spec.ts`.
