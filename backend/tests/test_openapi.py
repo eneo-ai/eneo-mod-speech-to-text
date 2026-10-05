@@ -16,6 +16,7 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.parse import urlsplit
 from unittest import mock
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
@@ -160,6 +161,10 @@ class DocumentTests(unittest.TestCase):
 
         self.assertEqual([title for title in titles if "`" in title], [])
         self.assertGreater(len(titles), 150)
+
+    def test_the_server_is_the_modules_own_address_and_not_an_address_that_looks_real(self) -> None:
+        for server in self.document["servers"]:
+            self.assertEqual(urlsplit(server["url"]).netloc, "", server["url"])
 
     def test_every_component_is_used(self) -> None:
         used = set(self.references())

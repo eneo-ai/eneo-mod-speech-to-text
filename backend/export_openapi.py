@@ -675,7 +675,7 @@ def build() -> dict[str, Any]:
             ),
         },
         "servers": [
-            {"url": PLACEHOLDERS["MODULE_PUBLIC_URL"], "description": "Modulens egen adress (`MODULE_PUBLIC_URL`)."}
+            {"url": "/", "description": "Modulens egen adress (`MODULE_PUBLIC_URL`). Sökvägarna är relativa till den."}
         ],
         "tags": [
             {
