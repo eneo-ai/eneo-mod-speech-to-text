@@ -51,7 +51,6 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
           reload();
           return false;
         }
-        setSaveState("error");
         setLocalError(`${friendlyError(err)} Dina osparade rättningar finns kvar.`);
         return false;
       }
