@@ -123,7 +123,8 @@ class Op(NamedTuple):
 def reply(
     description: str, content: dict[str, Any] | None = None, headers: dict[str, Any] | None = None
 ) -> dict[str, Any]:
-    answer: dict[str, Any] = {"description": description}
+    """A response. Its description is a heading in the reference, shown as written, so it is plain text."""
+    answer: dict[str, Any] = {"description": description.replace("`", "")}
     if headers:
         answer["headers"] = headers
     if content:
@@ -154,8 +155,7 @@ ENEO_ANSWERS = {
 ENEO_SHARES_STATUS = {
     "unchanged": " Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen "
     "här är modulens.",
-    "detail": " Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är "
-    "modulens.",
+    "detail": " Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
 }
 UPLOAD_BODY = {
     "required": True,
@@ -328,7 +328,7 @@ ENEO_SUMMARIES: dict[tuple[str, str], str] = {
     ("GET", "/api/eneo/flows/"): "Lista flöden",
     ("GET", "/api/eneo/flows/{flow_id}/published/"): "Flödets publicerade version",
     ("GET", "/api/eneo/flows/{flow_id}/run-contract/"): "Flödets körningskontrakt",
-    ("GET", "/api/eneo/flows/{flow_id}/graph/"): "Flödets graf för en körning (`run_id` som frågeparameter)",
+    ("GET", "/api/eneo/flows/{flow_id}/graph/"): "Flödets graf för en körning (run_id som frågeparameter)",
     ("GET", "/api/eneo/flows/{flow_id}/runs/"): "Lista körningar",
     ("POST", "/api/eneo/flows/{flow_id}/runs/"): "Starta en körning",
     ("GET", RUN + "/"): "Hämta en körning",
@@ -339,7 +339,7 @@ ENEO_SUMMARIES: dict[tuple[str, str], str] = {
     (
         "GET",
         STEP + "/attempts/{attempt_id}/transcript-source/",
-    ): "Transkriptets källsegment i ett försök (`start_segment_index` som frågeparameter)",
+    ): "Transkriptets källsegment i ett försök (start_segment_index som frågeparameter)",
     ("PATCH", STEP + "/transcript-corrections/"): "Spara rättningar av transkriptet",
     ("POST", RUN + "/cancel/"): "Avbryt en körning",
     ("POST", RUN + "/retry/"): "Försök igen från det misslyckade steget",

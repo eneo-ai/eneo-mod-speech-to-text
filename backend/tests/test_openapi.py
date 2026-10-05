@@ -148,6 +148,19 @@ class DocumentTests(unittest.TestCase):
                     node = node[part]
         self.assertGreater(len(found), 100)
 
+    def test_the_titles_and_the_response_descriptions_are_plain_text(self) -> None:
+        # The reference shows these as written, with no Markdown: a backtick is a backtick.
+        titles = [self.document["info"]["title"], *(tag["name"] for tag in self.document["tags"])]
+        titles += [operation["summary"] for operation in self.operations.values()]
+        for operation in self.operations.values():
+            titles += [
+                response["description"] for response in operation["responses"].values() if "description" in response
+            ]
+        titles += [response["description"] for response in self.components["responses"].values()]
+
+        self.assertEqual([title for title in titles if "`" in title], [])
+        self.assertGreater(len(titles), 150)
+
     def test_every_component_is_used(self) -> None:
         used = set(self.references())
         for kind in ("schemas", "responses", "parameters"):
