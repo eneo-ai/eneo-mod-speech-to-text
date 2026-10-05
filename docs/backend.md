@@ -79,8 +79,8 @@ Eneo ger en kortlivad signerad URL per fil, och den är en bärartoken. Webbläs
 
 - **Gränser:** 128 KiB per meddelande från webbläsaren. Går en av sidorna inte att skriva till på 15 sekunder avslutar BFF:en sessionen.
 - **Socketen följer sessionen:** den stängs med `1008` och skälet `session_ended` när sessionen tar slut, också när inget skickas (utloggning, utgång, en ny inloggning, en förnyelse som Eneo nekar).
-- **Rätt användare:** sidans användare kontrolleras innan någon biljett begärs hos Eneo.
-- **Biljetten** är en engångsbiljett som färdas som WebSocket-subprotokoll, valideras och når aldrig webbläsaren; anslutningen till Eneo följer ingen omdirigering.
+- **Rätt användare:** sidans användare kontrolleras innan någon ticket begärs hos Eneo.
+- **Ticketen** är en engångsticket som färdas som WebSocket-subprotokoll, valideras och når aldrig webbläsaren; anslutningen till Eneo följer ingen omdirigering.
 
 ## Statiska filer och säkerhetsheaders
 
@@ -105,5 +105,5 @@ Testerna som håller detta ligger i `backend/tests/`, en fil per ansvar.
 
 - JSON-anropen läses hela i minnet, upp till `MAX_BODY_BYTES` per request.
 - Sidans användare kontrolleras inte på en GET utan namn, och inte alls på GET av ljud och genererade filer ([skälet](auth-and-session.md#sidans-användare-i-en-gammal-flik)).
-- BFF:en har ingen egen rate limiting; det är ingressens uppgift.
+- BFF:en har ingen egen rate limiting; det är proxyns uppgift.
 - Sessionslagret och cachen med signerade URL:er är process-lokala: en backendprocess, en replik.

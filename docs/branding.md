@@ -14,7 +14,7 @@ Alla sätts som miljövariabler på tjänsten `speech-to-text` (`docker-compose.
 | Variabel | Standard | Vad den gör |
 | --- | --- | --- |
 | `ORGANIZATION_NAME` | Sundsvalls kommun | Organisationens namn i sidhuvudet. Högst 100 tecken. Är också loggans alternativtext. |
-| `ORGANIZATION_LOGO` | modulens egen logga | Sökväg i backend-containern till en SVG- eller PNG-fil, till exempel `/branding/logo.svg`. Kräver `ORGANIZATION_NAME`. |
+| `ORGANIZATION_LOGO` | modulens egen logga | Sökväg i modulens container till en SVG- eller PNG-fil, till exempel `/branding/logo.svg`. Kräver `ORGANIZATION_NAME`. |
 | `ORGANIZATION_LOGO_DARK` | (ingen) | Valfri logga för mörkt läge. Utan den visas `ORGANIZATION_LOGO` i båda lägena. |
 | `SHOW_ORGANIZATION` | `true` | `false` visar bara "Tal till text", ingen organisation. Accentfärgen gäller ändå. |
 | `ORGANIZATION_ACCENT` | `#004595` | Accentfärgen som `#RRGGBB`: knappar, länkar, fokusramar, valda val, ikoner och nivåmätaren. |

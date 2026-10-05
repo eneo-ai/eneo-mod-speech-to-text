@@ -4,17 +4,22 @@ Modulen körs som en image, en process, på port 3001: `python -m app.serve` ser
 
 ## Sätt upp modulen i Eneo
 
-Modulen har inga egna konton: Eneo loggar in användaren, och modulen anropar Eneo med en servicenyckel. Registrera därför modulen i Eneo innan du driftsätter den ([Eneos egen modulguide](https://github.com/eneo-ai/eneo/blob/develop/docs/deployment/MODULES.md) beskriver steget i Eneo):
+Modulen har inga egna konton: Eneo loggar in användaren, och modulen anropar Eneo med en servicenyckel. Gör det här i Eneo innan du driftsätter ([Eneos modulguide](https://github.com/eneo-ai/eneo/blob/develop/docs/deployment/MODULES.md) har alla steg och felsökning; Eneos gränssnitt är på engelska):
 
-- **Modulnyckel:** `speech-to-text` (`MODULE_KEY`, gemener i kebab-case). Samma nyckel i Eneo och i modulen.
-- **Callback-URL:** `<MODULE_PUBLIC_URL>/api/auth/callback`, exakt som den är registrerad i Eneo.
-- **Servicenyckel:** en `sk_`-nyckel som är bunden till modulen och har `flows = write`. Den blir `ENEO_API_KEY`. Nyckelns headernamn måste vara samma som Eneos `API_KEY_HEADER_NAME` (`ENEO_API_KEY_HEADER_NAME`, standard `X-API-Key`).
-- **Eneo-versionen** måste ha modulinloggningen (`/module-login`) och modulkontraktet.
-- **Flödet:** modulen visar de publicerade flöden som användaren har tillgång till. Ett flöde som ska ta emot ljud är publicerat och har ett ljudsteg som tar emot en fil ([Eneo-integration](eneo-integration.md#så-byggs-en-körning)). Utan ett sådant flöde är flödeslistan tom.
+1. **Förutsättningar.** Du behöver en roll med behörigheterna `admin`, `modules` och `api_keys` (rollen Owner har dem), och en Eneo som har sidan **Admin → Modules** och modulinloggningen (`/module-login`). Eneos guide anger inget versionsnummer: kontrollera att sidan finns, och att modulens release uttryckligen stöder Eneos modulinloggning.
+2. **Servicenyckel.** Skapa en i **Administration → API keys**: typ `sk_`, ägare `service`, så snäv resursomfattning som möjligt (ofta ett eget space), behörigheten `write` (`admin` bara om modulkontraktet kräver det), med utgångsdatum och rate limit. Kopiera hemligheten direkt, den visas en gång. Den blir `ENEO_API_KEY`, och nyckelns headernamn måste vara samma som Eneos `API_KEY_HEADER_NAME` (`ENEO_API_KEY_HEADER_NAME`, standard `X-API-Key`).
+3. **Installera modulen** i **Admin → Modules**: modulnyckeln, en callback-URL per rad och servicenyckeln, och välj **Install module**.
+   - Modulnyckeln är `speech-to-text` (`MODULE_KEY`). Eneo skiljer på versaler och gemener och nyckeln kan inte ändras efteråt; modulen kräver gemener i kebab-case.
+   - Callback-URL:en är `<MODULE_PUBLIC_URL>/api/auth/callback`: en exakt HTTPS-adress utan jokertecken, som Eneo jämför i schema, värd, port, sökväg och avslutande snedstreck. Registrera produktion och test var för sig.
+4. **Modulens miljö:** samma modulnyckel, servicenyckelns hemlighet och en egen, separat genererad `SESSION_SECRET` ([Miljövariabler](#miljövariabler)). Driftsätt sedan.
+5. **Användarna** öppnar modulen på dess egen adress (`MODULE_PUBLIC_URL`) och loggar in via Eneo. Prova i ett privat fönster: inloggningen ska gå via Eneo och tillbaka till modulens flödeslista med en ren adress.
+
+Modulen visar de publicerade flöden som användaren har tillgång till. Ett flöde som ska ta emot ljud är publicerat och har ett ljudsteg som tar emot en fil ([Eneo-integration](eneo-integration.md#så-byggs-en-körning)). Utan ett sådant flöde är flödeslistan tom.
 
 ## Driftsätt med Dokploy eller Portainer
 
-**Obs:** i Traefik v3.7 är `readTimeout` 60 s som standard, och det kapar uppladdningar som tar längre tid. Höj den på ingångspunkten: [Vad som står framför modulen](#vad-som-står-framför-modulen) har Dokploy-raden och hur du räknar ut värdet.
+> [!WARNING]
+> **Traefik kapar uppladdningar efter 60 s.** I Traefik v3.7 är `readTimeout` 60 s som standard och gäller hela requesten. Sätt den till minst `1800s` (räcker för 1 GiB över 5 Mbit/s) på `websecure`: [så gör du, fil för fil](#vad-som-står-framför-modulen).
 
 Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
 
@@ -22,7 +27,7 @@ Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-m
 - **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
 - **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
 - **Image:** paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
-- **Verifiera:** `https://<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress.
+- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress.
 
 ## Uppgradera
 
@@ -57,22 +62,63 @@ De tre `MAX_*_BYTES` är heltal från 1 till 2^40; ett värde utanför det stopp
 
 Modulen svarar på vanlig HTTP och litar inte på något `X-Forwarded-*`: den läser varken schema, värd eller klientadress. Allt som står framför den hör till driftsättningen och måste ha:
 
-- **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. I Traefik räcker en `headers`-middleware, till exempel som Compose-etiketter: `traefik.http.middlewares.hsts.headers.stsSeconds=31536000` och `traefik.http.routers.<router>.middlewares=hsts`. Sessionscookien är `Secure`, och webbläsaren skickar den bara över HTTPS: hela vägen från webbläsaren till proxyn måste vara HTTPS (proxyn talar vanlig HTTP med modulen). Samma krav gäller mikrofonen: webbläsaren ger bara sidor i en säker kontext, alltså HTTPS eller `localhost`, tillgång till den. Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
-- **Storlek och tid för uppladdningar.** Gäller Traefik v3.7: varje ingångspunkt har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s. `readTimeout` gäller hela requesten inklusive bodyn, så en uppladdning som tar längre än 60 s att skicka kapas av proxyn, hur snabbt modulen än svarar.
-  - Sätt `readTimeout` till minst den tid det tar att skicka `MAX_UPLOAD_BYTES` över den långsammaste uppkoppling du räknar med: 1 GiB på 20 Mbit/s tar omkring 7 minuter, och 1800 s räcker för 1 GiB över 5 Mbit/s.
+- **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. Sessionscookien är `Secure`, och webbläsaren skickar den bara över HTTPS: hela vägen från webbläsaren till proxyn måste vara HTTPS (proxyn talar vanlig HTTP med modulen). Samma krav gäller mikrofonen: webbläsaren ger bara sidor i en säker kontext, alltså HTTPS eller `localhost`, tillgång till den. Hur HSTS sätts i Dokploy och i en annan Traefik: [nedan](#hsts-i-traefik). Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
+- **Storlek och tid för uppladdningar.** Gäller Traefik v3.7: varje ingångspunkt har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s. `readTimeout` gäller hela requesten inklusive bodyn, så en uppladdning som tar längre än 60 s att skicka kapas av proxyn, hur snabbt modulen än svarar. Hur du höjer den: [nedan](#höj-readtimeout-i-traefik).
+  - Värdet: minst den tid det tar att skicka `MAX_UPLOAD_BYTES` över den långsammaste uppkoppling du räknar med. 1 GiB på 20 Mbit/s tar omkring 7 minuter, och 1800 s räcker för 1 GiB över 5 Mbit/s.
   - `UPLOAD_PROXY_TIMEOUT_SECONDS` är nästa steg och en egen tid: när hela filen är hos modulen får den högst så länge på sig att skicka den vidare till Eneo. Proxyns `writeTimeout` på 0 gör att inget i proxyn kapar den delen.
-  - I Dokploy ligger ingångspunkterna (`web` och `websecure`) i Traefiks statiska konfiguration, och en ändring där kräver att Traefik startas om (`docker restart dokploy-traefik`):
-
-    ```yaml
-    entryPoints:
-      websecure:
-        transport:
-          respondingTimeouts:
-            readTimeout: 1800s
-    ```
-
   - En eventuell `maxRequestBodyBytes` i proxyn ska rymma `MAX_UPLOAD_BYTES`. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
 - **WebSocket.** Uppgraderingen till `/api/live/...` måste släppas igenom, och webbläsarens `Origin` måste komma fram oförändrad. Traefik gör det utan extra konfiguration (v3.7); går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom uppgraderingar. Traefik v3.7 varnar vid start när `aliasHeadersStrategy` saknas; det är ofarligt för modulen.
+
+- **Rate limiting.** Modulen har ingen egen; behöver du en sätts den i proxyn.
+
+### Höj readTimeout i Traefik
+
+I Dokploy är det två ingångspunkter, `web` och `websecure`, och båda ligger i Traefiks statiska konfiguration, `traefik.yml`:
+
+1. Öppna filen: på servern är den `/etc/dokploy/traefik/traefik.yml`, och i Dokploys panel redigeras den under **Traefik File System**.
+2. Lägg `transport` under de `web` och `websecure` som redan finns, och behåll allt annat i dem (`address`, `http`, certifikat):
+
+   ```yaml
+   entryPoints:
+     web:
+       transport:
+         respondingTimeouts:
+           readTimeout: 1800s
+     websecure:
+       transport:
+         respondingTimeouts:
+           readTimeout: 1800s
+   ```
+
+3. Starta om Traefik, eftersom en ändring i den statiska konfigurationen inte läses om av sig själv: `docker restart dokploy-traefik`.
+
+En annan Traefik tar samma nycklar i sin `traefik.yml` (`--entryPoints.websecure.transport.respondingTimeouts.readTimeout=1800s` som flagga).
+
+### HSTS i Traefik
+
+Två små filer i Dokploy; HSTS gäller då varje tjänst bakom den Traefik:
+
+1. En middleware i den dynamiska konfigurationen, `/etc/dokploy/traefik/dynamic/hsts.yml` (Traefiks fil-provider läser den katalogen):
+
+   ```yaml
+   http:
+     middlewares:
+       hsts:
+         headers:
+           stsSeconds: 31536000
+   ```
+
+2. Koppla den till `websecure` i `traefik.yml`, bredvid `readTimeout`, och starta om Traefik:
+
+   ```yaml
+   entryPoints:
+     websecure:
+       http:
+         middlewares:
+           - hsts@file
+   ```
+
+Vill du ha HSTS bara för modulen sätter du middleware på modulens router med Compose-etiketter i stället, `traefik.http.middlewares.hsts.headers.stsSeconds=31536000` och `traefik.http.routers.<router>.middlewares=hsts`, där `<router>` är routerns namn i Traefik (Dokploy genererar det för tjänsten).
 
 ## Vad en användare behöver
 
@@ -96,7 +142,7 @@ I en Eneo-installation ger Eneos Compose-overlay modulen endast `module_net` och
 
 ## Loggar
 
-Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `docker compose logs speech-to-text`). Det finns ingen accesslogg. Den loggar fel och varningar med tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logotyp som inte kunde läsas) men aldrig en token eller en URL med query. Ingressens loggning ska inte heller skriva callbackens query string: den bär en engångsticket.
+Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `docker compose logs speech-to-text`). Det finns ingen accesslogg. Den loggar fel och varningar med tydliga etiketter (upstream-fel, misslyckad ticketväxling, en logotyp som inte kunde läsas) men aldrig en token eller en URL med query. Proxyns loggning ska inte heller skriva callbackens query string: den bär en engångsticket.
 
 ## CI och utgåvor
 
