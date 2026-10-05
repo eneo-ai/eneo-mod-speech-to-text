@@ -43,6 +43,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 from collections.abc import Callable, Iterable
@@ -544,6 +545,67 @@ def describe_open(entries: set[str]) -> list[str]:
     return [f"{entry} ({sockets.get(entry[8:-1], 'not in /proc/net/tcp')})" if entry.startswith("socket:[") else entry for entry in sorted(entries)]
 
 
+def survives_the_proxy(base: str, seconds: int = 200) -> str:
+    """The proxy's timeouts against the long things the module does, all at once for ``seconds``: an upload whose body takes about 105 s to send (a
+    10 MiB file at 100 KB/s), a live socket that streams 20 frames a second, and one with nothing sent. A read deadline of Traefik's default 60 s
+    ends the upload (a 499; docs/operations.md and traefik.yml set 1800 s); an upgraded connection has none, and this proves it stays that way: the
+    sockets outlive the 60 s read and the 180 s idle timeouts. The upload must end 201 with every byte at the stub, and every reply must come."""
+    session = sign_in(base)
+    headers = {"Origin": STACK.module, "Cookie": session.cookie}
+    live = lambda kind: f"/api/live/{FLOW}/{AUDIO_STEP}?expected_user={session.user}&recording_id=acceptance-0016-{kind}"
+    file = Path(tempfile.gettempdir()) / "stt-upload-files" / "slow-10MB.wav"
+    file.parent.mkdir(exist_ok=True)
+    if not file.exists() or file.stat().st_size != 10 * MB:
+        file.write_bytes(bytes(10 * MB))
+    body = file.parent / "slow-answer.txt"
+    body.unlink(missing_ok=True)
+    get(f"{STACK.eneo}/__reset")
+    done: dict[str, object] = {}
+
+    def run(name: str, work: Callable[[], object]) -> None:
+        try:
+            done[name] = work()
+        except Exception as error:  # reported with the others, after all have ended
+            done[name] = error
+
+    def slow_upload() -> tuple[str, float]:
+        began = time.monotonic()
+        r = subprocess.run(
+            ["curl", "-sS", "--limit-rate", "100K", "--max-time", str(seconds + 60), "-o", str(body), "-w", "%{http_code}", "-H", "Expect:", "-H", f"Cookie: {session.cookie}",
+             "-H", f"Origin: {STACK.module}", "-H", f"X-Expected-User: {session.user}", "-F", f"upload_file=@{file};filename=slow.wav;type=audio/wav", f"{base}{UPLOAD_PATH}"],
+            capture_output=True, text=True,
+        )
+        return (r.stdout.strip() or f"no answer (curl exit {r.returncode}: {r.stderr.strip()[:60]})"), time.monotonic() - began
+
+    threads = [
+        threading.Thread(target=run, args=("upload", slow_upload)),
+        threading.Thread(target=run, args=("streaming", lambda: live_load.measure_round_trips(base, live("streaming"), headers, seconds, 20))),
+        threading.Thread(target=run, args=("quiet", lambda: live_load.survive_quiet(base, live("quiet"), headers, seconds))),
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    errors = [f"{name}: {result!r}" for name, result in done.items() if isinstance(result, Exception)]
+    expect(not errors, "; ".join(errors))
+    upload, trips = done["upload"], done["streaming"]
+    assert isinstance(upload, tuple) and isinstance(trips, live_load.Trips)
+    status, took = upload
+    sent = [record["bytes_received"] for record in json.loads(get(f"{STACK.eneo}/__log").body)]
+    expect(
+        status == "201" and took > 60 and len(sent) == 1 and 10 * MB <= sent[0] <= 10 * MB + 4096,
+        f"the upload of 10 MiB at 100 KB/s ended {status} after {took:.0f} s and the stub received {sent}: it must end 201, after more than a read deadline of 60 s, with every byte",
+    )
+    try:
+        live_load.require_complete(("streaming socket", trips))
+    except live_load.Shortfall as error:
+        raise Failed(str(error)) from None
+    return (
+        f"through the proxy, side by side for {seconds} s: a 10 MiB upload at 100 KB/s ended 201 after {took:.0f} s with every byte at the stub; a socket streaming "
+        f"20 frames/s got {trips.received} of {trips.expected} replies; a socket with nothing sent for {seconds} s relayed four frames after it"
+    )
+
+
 def abandoned(base: str) -> str:
     """An upload the client leaves half-way: the image stays healthy and holds no file descriptor or temp file for it."""
     fresh_module()
@@ -883,6 +945,10 @@ def check_16() -> str:
         problems.append(str(error))  # the rest still runs: what else is proven through Traefik is part of the answer
     try:
         lines.append(page_refuses(STACK.module, 100 * MB))  # the module still runs with the cap refused_every_time gave it
+    except Failed as error:
+        problems.append(str(error))
+    try:
+        lines.append(survives_the_proxy(STACK.module))
     except Failed as error:
         problems.append(str(error))
     # docker stop with a stream open through Traefik
