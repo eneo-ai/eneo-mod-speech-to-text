@@ -138,7 +138,9 @@ test("a correction that cannot be saved says so, and offers another try and the 
   await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
   await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
   const picker = page.getByRole("dialog", { name: "Ändra talare" });
-  await picker.getByText("Erik Lund", { exact: true }).click();
+  const speaker = picker.getByRole("radio", { name: /^Erik Lund\b/ });
+  await speaker.click();
+  await expect(speaker).toBeChecked();
   await picker.getByRole("button", { name: "Spara" }).click();
   await expect(page.getByRole("button", { name: "Försök spara igen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
@@ -148,14 +150,14 @@ test("the player's row keeps the position slider a usable width on a phone, with
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
   // Looking for a word stops the transcript following the playback: Följ is offered.
-  await page.getByRole("textbox", { name: "Sök i transkriptet" }).fill("punkten");
+  await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
   await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
   const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
     const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
     return track.getBoundingClientRect().width;
   });
   expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
-  const player = await page.getByRole("region", { name: "Inspelning och transkript" }).boundingBox();
+  const player = await page.getByRole("region", { name: "Inspelning och transkribering" }).boundingBox();
   const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
   expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
 });

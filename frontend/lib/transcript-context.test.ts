@@ -110,7 +110,7 @@ test("a step with no word times is normal, and word times that cannot be read ar
   assert.equal((await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] })).correctionProblem, null, "Eneo stored no word times: the transcript is as it is");
   stubEneo(t, pages, {}, 500);
   const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] });
-  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriptets ordtider/);
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriberingens ordtider/);
   assert.equal(ctx.segments.length, 1, "the text is still there to read");
 });
 
@@ -123,7 +123,7 @@ test("a transcript source that cannot be read shows the text and says so", async
 
   const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] });
 
-  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriptets underlag/, "so its exports stay off (F1)");
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriberingens underlag/, "so its exports stay off (F1)");
   assert.equal(ctx.segments.length, 1, "the step's own text is still there to read");
 });
 

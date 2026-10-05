@@ -110,6 +110,6 @@ Följande är modulens, inte organisationens, och ändras i koden:
 - Layout, avstånd, rundning, teckensnitt (systemets) och storlekar. Modulen laddar inga typsnitt eller skript från
   andra adresser.
 - De neutrala gråa ytorna och textfärgerna, statusfärgerna (till exempel rött för fel och grönt för klart) och
-  talarnas färger i transkriptet. Bara accentfärgen är organisationens.
+  talarnas färger i transkriberingen. Bara accentfärgen är organisationens.
 - Den medföljande loggan (`frontend/public/brand/`), som är det som visas utan `ORGANIZATION_LOGO`.
 - Sidans titel och fliknamn, "Tal till text".

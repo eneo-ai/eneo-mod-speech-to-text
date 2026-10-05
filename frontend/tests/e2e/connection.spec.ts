@@ -20,11 +20,14 @@ test("a module that does not answer is not called a lost connection, and a lost 
   // The module goes quiet: the next poll's request fails on a device that has its network.
   await page.route(/\/runs\/[^/]+\/status\//, (route) => route.abort());
   await page.clock.fastForward(2_000);
-  await expect(page.getByText("Tal till text svarar inte just nu. Körningen fortsätter i Eneo och visas här när det svarar igen.")).toBeVisible();
+  const notice = page.locator('[aria-hidden="true"]');
+  await expect(notice.getByText("Tal till text svarar inte just nu. Körningen fortsätter i Eneo och visas här när det svarar igen.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^Tal till text svarar inte just nu/ })).toHaveCount(1);
   await expect(page.getByText(/Ingen anslutning/)).toHaveCount(0);
 
   // Then the device loses its network.
   await context.setOffline(true);
-  await expect(page.getByText("Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.")).toBeVisible();
+  await expect(notice.getByText("Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: /^Ingen anslutning/ })).toHaveCount(1);
   await expect(page.getByText(/svarar inte just nu/)).toHaveCount(0);
 });

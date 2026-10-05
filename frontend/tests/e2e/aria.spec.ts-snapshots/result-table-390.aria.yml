@@ -4,7 +4,7 @@
   - button "Ny inspelning"
   - tablist "Visa":
     - tab "Dokument" [selected]
-    - tab "Transkript"
+    - tab "Transkribering"
   - tabpanel "Dokument":
     - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
       - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/1fef2b78-5d86-42cb-8979-64050a1c9ec8/artifacts/9ffa0ee9-2436-422a-8f0f-e6e09f972daf/content?disposition=attachment

@@ -190,7 +190,7 @@ export function RunResult({
               {/* On a phone the top bar already names the flow. */}
               {wide && `${flowName} · `}
               Skapad {formatRelativeDate(finished)}
-              {fromReviewed && " från det rättade transkriptet"}
+              {fromReviewed && " från den rättade transkriberingen"}
             </Text>
           )}
         </VStack>
@@ -207,7 +207,7 @@ export function RunResult({
         {tabs && (
           <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
             <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
-            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
+            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
           </TabList>
         )}
         <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
@@ -252,7 +252,7 @@ function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () =>
       <Text type="supporting" hasTabularNumbers>
         {formatClock(state.atMs)} / {formatClock(state.totalMs)}
       </Text>
-      <Button variant="ghost" label="Visa i transkriptet" onClick={onShow} />
+      <Button variant="ghost" label="Visa i transkriberingen" onClick={onShow} />
     </HStack>
   );
 }

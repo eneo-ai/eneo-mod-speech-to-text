@@ -62,19 +62,17 @@ for (const state of STATES) {
     await page.setViewportSize({ width: firstWidth, height: firstHeight });
     await state.go(page, at(info, firstWidth, firstHeight));
     mkdirSync(`${OUT}/${state.name}`, { recursive: true });
-    // Masked, because no run can repeat them: the level of the fake microphone, and while recording the clock of the time
-    // recorded. Everything else (the transcript's times, the player, dates) comes from the stub and is shown.
-    const recording = (await page.getByRole("button", { name: /^(Stoppa|Pausa|Fortsätt)$/ }).count()) > 0;
-    const mask = [page.locator("[data-lit]"), ...(recording ? [page.getByText(/^\d{1,2}:\d{2}(:\d{2})?$/)] : [])];
+    // The gallery is reviewed for layout, not pixel equality. Keep clocks and levels visible: an opaque mask can cover
+    // the warning beside a timer, or a dialog placed in front of the waveform.
     for (const [, width, height] of sizes) {
       await page.setViewportSize({ width, height });
       // Two frames for the layout to follow the new size, then what fades in at the new size.
       await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
       await page.waitForTimeout(250);
       const base = `${OUT}/${state.name}/${width}x${height}-${mode}`;
-      await page.screenshot({ path: `${base}.png`, fullPage: true, animations: "disabled", mask });
+      await page.screenshot({ path: `${base}.png`, fullPage: true, animations: "disabled" });
       const tall = await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
-      if (tall) await page.screenshot({ path: `${base}.first.png`, animations: "disabled", mask });
+      if (tall) await page.screenshot({ path: `${base}.first.png`, animations: "disabled" });
     }
   });
 }

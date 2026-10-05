@@ -111,7 +111,7 @@ for (const mode of ["Spela in", "Strömma"] as const) {
 
     // The list's code is gone: its page is replaced by the line and the reload, and nothing reloads by itself.
     await expect(page.getByRole("heading", { name: "Sidan kunde inte visas." })).toBeVisible();
-    expect(gone.refused.map((path) => path.replace(/-[^-/]+\.js$/, "")), "the list's code was asked for and refused").toEqual(["/assets/FlowsPage"]);
+    expect(gone.refused.map((path) => path.replace(/-[A-Za-z0-9_-]{8}\.js$/, "")), "the list's code was asked for and refused").toContain("/assets/FlowsPage");
     expect(await reloads.stillTheSameTab(), "nothing reloaded the page by itself").toBe(true);
     // Paused, as the question said: the recording stopped with its page and waits to be recovered, sent or saved.
     await expect.poll(async () => (await onDevice(page)).states, "the recording is kept, paused").toEqual(["paused"]);

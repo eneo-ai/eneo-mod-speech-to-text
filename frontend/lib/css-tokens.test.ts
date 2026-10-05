@@ -116,10 +116,7 @@ const ALLOWED: Record<string, string> = {
 };
 
 /** Raw values to be replaced by a token, and with which: the design lane empties this list, and an entry that no longer occurs fails the test. */
-const TO_REPLACE: Record<string, string> = {
-  "components/flow/Markdown.module.css | .visuallyHidden | margin: -1px": "the design system's VisuallyHidden, not a hand-written copy of its rule",
-  "components/flow/ResultDocument.module.css | .prose code | font-size: 0.9em": "a --font-size-* token",
-};
+const TO_REPLACE: Record<string, string> = {};
 
 function stylesheets(dir: string): string[] {
   return readdirSync(join(root, dir), { withFileTypes: true }).flatMap((entry) => {

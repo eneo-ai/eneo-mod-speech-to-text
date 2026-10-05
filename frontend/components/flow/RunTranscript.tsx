@@ -102,7 +102,7 @@ export function RunTranscriptView({
     return (
       <VStack as="section" aria-labelledby="run-transcript" gap={3} hAlign="start">
         <Heading level={2} id="run-transcript">
-          Transkript
+          Transkribering
         </Heading>
         <Banner status="error" collapsible={false} title={transcript.correctionProblem} />
         <Button icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
@@ -120,16 +120,16 @@ export function RunTranscriptView({
     <Card padding={0} role="region" aria-labelledby="run-transcript" className={styles.card}>
       <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={4} paddingBlockStart={3} paddingBlockEnd={2}>
         <Heading level={2} id="run-transcript">
-          Transkript
+          Transkribering
         </Heading>
         <HStack wrap="wrap" gap={1}>
-          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriptet" isDisabled={unread} />
+          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
           <Button
             variant="ghost"
             size="sm"
             isDisabled={unread}
             icon={<Icon icon={Download} />}
-            label="Ladda ner som text, transkriptet"
+            label="Ladda ner som text, transkriberingen"
             onClick={() => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName)}
           >
             Ladda ner som text
@@ -142,8 +142,8 @@ export function RunTranscriptView({
             <HStack wrap="wrap" vAlign="center" gap={3}>
               <Text color="secondary">
                 {transcript.textPreview
-                  ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
-                  : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
+                  ? "Förhandsvisning, hela transkriberingen kunde inte hämtas."
+                  : "Transkriberingen kan kopieras och laddas ner när rättningarna har lästs in."}
               </Text>
               <Button size="sm" icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
             </HStack>

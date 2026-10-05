@@ -250,7 +250,7 @@ test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card unde
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
-  const transcript = view.container.querySelector('section[aria-label="Transkript"], section[aria-label="Inspelning och transkript"]')!;
+  const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
   assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa")!.click());
   assert.ok(card.contains(button(view.container, "Bekräfta avvisning")), "the reason form opens there too");
@@ -307,7 +307,7 @@ test("a pause whose payload holds no text shows what it holds, and one with no p
 test("who is who with no speaker says so, and the decision is still shown", async (t) => {
   eneo(t);
   const view = await review({ ...speakers, current_payload_json: { speaker_mapping: { inventory: [] }, structured: { speakers: [] } } });
-  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriptet/);
+  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriberingen/);
   assert.equal(button(view.container, "Namnge talarna"), null, "nobody to name");
   assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"));
 });

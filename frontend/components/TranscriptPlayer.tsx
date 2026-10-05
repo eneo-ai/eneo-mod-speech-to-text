@@ -76,7 +76,6 @@ export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
-const NONE_LIT: ReadonlySet<number> = new Set();
 const SKIP_SECONDS = 10;
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
@@ -511,7 +510,7 @@ export function TranscriptPlayer(
     if (sameCorrections(next, corrections)) return "Talaren kan inte ändras för det här inlägget.";
     // Eneo refuses a set with more speaker edits than it holds; say so before sending.
     if (next.speaker_edits.length > MAX_SPEAKER_EDITS) {
-      return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriptet, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
+      return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriberingen, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
     }
     setEditError(null);
     onCorrectionsChange?.(next);
@@ -522,9 +521,9 @@ export function TranscriptPlayer(
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
       return (
-        <section className={join(styles.loading, className)} aria-label="Transkript" aria-busy="true">
+        <section className={join(styles.loading, className)} aria-label="Transkribering" aria-busy="true">
           <VisuallyHidden as="p" role="status">
-            Hämtar transkriptet…
+            Hämtar transkriberingen…
           </VisuallyHidden>
           {[0, 1, 2].map((row) => (
             <HStack key={row} gap={3} vAlign="start">
@@ -540,9 +539,9 @@ export function TranscriptPlayer(
       );
     }
     return (
-      <section className={join(styles.fallback, className)} aria-label="Transkript">
+      <section className={join(styles.fallback, className)} aria-label="Transkribering">
         <Text as="p" type="supporting">
-          Transkriptet saknar tidsmarkeringar och kan inte följas i ljudet.
+          Transkriberingen saknar tidsmarkeringar och kan inte följas i ljudet.
         </Text>
         <pre className={styles.fallbackText}>{textFallback}</pre>
       </section>
@@ -565,7 +564,7 @@ export function TranscriptPlayer(
     <section
       className={join(styles.player, className)}
       role="region"
-      aria-label="Inspelning och transkript"
+      aria-label="Inspelning och transkribering"
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
@@ -614,11 +613,11 @@ export function TranscriptPlayer(
           <HStack gap={2} vAlign="center">
             <div className={styles.search}>
               <TextInput
-                label="Sök i transkriptet"
+                label="Sök i transkriberingen"
                 isLabelHidden
                 startIcon="search"
                 hasClear
-                placeholder="Sök i transkriptet"
+                placeholder="Sök i transkriberingen"
                 value={query}
                 onChange={(next) => {
                   setQuery(next);
@@ -634,8 +633,8 @@ export function TranscriptPlayer(
             {query.trim() && (
               <>
                 <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(-1)} />
-                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(1)} />
+                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
               </>
             )}
           </HStack>
@@ -702,9 +701,9 @@ export function TranscriptPlayer(
           variant="ghost"
           size="sm"
           icon={<Download aria-hidden />}
-          label="Hämta granskat transkript"
+          label="Hämta granskad transkribering"
           className={styles.download}
-          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskat-transkript.txt")}
+          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt")}
         />
       )}
 
@@ -721,9 +720,9 @@ export function TranscriptPlayer(
         }}
         className={styles.skipLink}
       >
-        Hoppa förbi transkriptet
+        Hoppa förbi transkriberingen
       </a>
-      {/* Transkript: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
+      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
@@ -744,7 +743,7 @@ export function TranscriptPlayer(
             {totalFiles > 1 && (
               <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>
             )}
-            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriptet"}>
+            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
               {part.turns.map((turn) => {
                 // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
                 const editableTurn =
@@ -762,8 +761,7 @@ export function TranscriptPlayer(
                     correctedRanges={correctedRanges}
                     hitsBySegment={hitsBySegment}
                     partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    // A passage is lit only while it plays; a paused recording lights nothing.
-                    activeIndices={paused ? NONE_LIT : activeIndices}
+                    activeIndices={activeIndices}
                     currentTime={playhead}
                     labelled={labelled}
                     displayName={displayName}
@@ -1046,13 +1044,15 @@ function TurnBlock({
                       <span key={k}>
                         <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
+                          aria-current={isWordActive ? "true" : undefined}
                           data-hit={piece.hit ?? undefined}
                           className={join(
                             styles.word,
                             flagged && styles.flagged,
                             confirmed && styles.confirmed,
                             piece.hit === "match" && styles.match,
-                            (piece.hit === "current" || isWordActive) && styles.lit,
+                            piece.hit === "current" && styles.currentMatch,
+                            isWordActive && styles.lit,
                             piece.correctedFrom !== null && styles.corrected,
                           )}
                           title={
@@ -1242,9 +1242,13 @@ function PickerOption({ value, label, name, markName = name, note }: { value: st
   return (
     <RadioListItem
       value={value}
-      label={name}
-      startContent={<SpeakerMark label={label} name={markName} size="sm" />}
-      endContent={note ? <Text type="supporting">{note}</Text> : undefined}
+      label={
+        <HStack as="span" gap={2} align="center">
+          <SpeakerMark label={label} name={markName} size="sm" />
+          {name}
+        </HStack>
+      }
+      description={note}
     />
   );
 }
@@ -1281,8 +1285,9 @@ function LineEditor({
     fit(el);
   }, []);
   return (
-    <div
+    <VStack
       className={styles.lineEditor}
+      gap={3}
       // Focus moving between the text and its buttons stays in the editor; leaving it all saves or closes.
       onBlur={(e) => {
         if (locked || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -1316,12 +1321,12 @@ function LineEditor({
         }}
       />
       {locked ? (
-        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
+        <HStack gap={3} wrap="wrap" vAlign="center">
           <Text type="supporting">Rättningen kan inte sparas längre. Kopiera texten om du vill behålla den.</Text>
           <Button size="sm" variant="ghost" label="Stäng" onClick={onCancel} />
         </HStack>
       ) : (
-        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
+        <HStack gap={3} wrap="wrap" vAlign="center">
           {/* Pressed without taking the focus, so leaving the field does not save first. */}
           <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Button size="sm" variant="ghost" label="Avbryt" onMouseDown={(e) => e.preventDefault()} onClick={onCancel} />
@@ -1331,6 +1336,6 @@ function LineEditor({
           )}
         </HStack>
       )}
-    </div>
+    </VStack>
   );
 }

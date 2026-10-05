@@ -41,7 +41,7 @@ const status = (within: ParentNode) => within.querySelector('p[role="status"]')?
 const chip = (within: ParentNode, words: string) =>
   [...within.querySelectorAll<HTMLButtonElement>('[aria-label="Visa talare"] button')].find((b) => b.textContent?.includes(words))!;
 const searchField = (within: ParentNode) =>
-  [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
+  [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
 // "Ändra talare" is a popover of the top layer; its choices are radios, named by their words.
 const picker = () => document.querySelector("[data-popover-open]");
 const radios = (within = "[data-popover-open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];

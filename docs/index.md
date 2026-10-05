@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: 'Tal till text<span class="visually-hidden">. </span>'
   text: Gör text av ett möte
-  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: ett transkript, en sammanfattning eller filer.<span class=\"hero-note\">Det här är dokumentationen. Själva modulen öppnar du på den adress din organisation har satt upp, och du loggar in med ditt Eneo-konto.</span>"
+  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: en transkribering, en sammanfattning eller filer.<span class=\"hero-note\">Det här är dokumentationen. Själva modulen öppnar du på den adress din organisation har satt upp, och du loggar in med ditt Eneo-konto.</span>"
   actions:
     - theme: brand
       text: Driftsätt modulen

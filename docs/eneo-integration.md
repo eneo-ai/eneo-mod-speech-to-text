@@ -33,13 +33,13 @@ Anropen mot Eneo (alla via [tillåtelselistan](backend.md#tillåtelselistan-för
 
 - `GET …/runs/{runId}/review-checkpoints/active/`, `PATCH …/review-checkpoints/{checkpointId}/` med `expected_checkpoint_revision`, och `POST …/approve/`, `…/reject/`, `…/resume/`.
 
-### Spelaren och transkriptet
+### Spelaren och transkriberingen
 
-Vyn spelar upp inspelningen med ett följande transkript. Segmenten (talare, start och slut per replik) kommer från `GET …/runs/{runId}/steps/`, ordtiderna från `GET …/steps/{stepId}/transcript-words/` (404 betyder inga ordtider, och då markeras bara repliken), och ljudet strömmas via modulens backend ([Backend](backend.md#filer-ut-ur-eneo)).
+Vyn spelar upp inspelningen med en transkribering som följer ljudet. Segmenten (talare, start och slut per replik) kommer från `GET …/runs/{runId}/steps/`, ordtiderna från `GET …/steps/{stepId}/transcript-words/` (404 betyder inga ordtider, och då markeras bara repliken), och ljudet strömmas via modulens backend ([Backend](backend.md#filer-ut-ur-eneo)).
 
 ### Rättningar
 
-Repliker kan rättas i spelaren och en replikgrupp kan byta talare. Rättningarna är icke-destruktiva: de sparas per ändring som ett komplett ersättningsset (`PATCH …/steps/{stepId}/transcript-corrections/`, schema 3, med `expected_revision` och transkriptets hash), och Eneo viker in dem när granskningen godkänns. Originalet ändras aldrig, och en föråldrad hash, ett ogiltigt ankare eller en annan revision blir aldrig en lyckad överskrivning. Schemat och reglerna för teckenpositioner finns i `frontend/lib/transcript-corrections.ts` och dess tester. Efter en rättning av en färdig körning kan dokumentet göras om ur det granskade transkriptet: `POST …/steps/{stepId}/transcript-regenerations/` skapar en ny körning, och källkörningen och dess filer ändras aldrig (`frontend/lib/regenerate.ts`).
+Repliker kan rättas i spelaren och en replikgrupp kan byta talare. Rättningarna är icke-destruktiva: de sparas per ändring som ett komplett ersättningsset (`PATCH …/steps/{stepId}/transcript-corrections/`, schema 3, med `expected_revision` och transkriberingens hash), och Eneo viker in dem när granskningen godkänns. Originalet ändras aldrig, och en föråldrad hash, ett ogiltigt ankare eller en annan revision blir aldrig en lyckad överskrivning. Schemat och reglerna för teckenpositioner finns i `frontend/lib/transcript-corrections.ts` och dess tester. Efter en rättning av en färdig körning kan dokumentet göras om ur den granskade transkriberingen: `POST …/steps/{stepId}/transcript-regenerations/` skapar en ny körning, och källkörningen och dess filer ändras aldrig (`frontend/lib/regenerate.ts`).
 
 ## Live-text (Strömma)
 

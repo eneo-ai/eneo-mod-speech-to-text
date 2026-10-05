@@ -15,12 +15,12 @@
     - list "Flödets steg":
       - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
-  - region "Transkript":
-    - heading "Transkript" [level=2]
-    - button "Kopiera transkriptet"
+  - region "Transkribering":
+    - heading "Transkribering" [level=2]
+    - button "Kopiera transkriberingen"
     - status
-    - button "Ladda ner som text, transkriptet"
-    - region "Inspelning och transkript":
+    - button "Ladda ner som text, transkriberingen"
+    - region "Inspelning och transkribering":
       - group "Visa talare":
         - button "Alla" [pressed]:
           - text: ""
@@ -31,11 +31,11 @@
         - button "Talare 2":
           - text: ""
           - status
-      - text: Sök i transkriptet
-      - textbox "Sök i transkriptet"
+      - text: Sök i transkriberingen
+      - textbox "Sök i transkriberingen"
       - status
       - status
-      - link "Hoppa förbi transkriptet":
+      - link "Hoppa förbi transkriberingen":
         - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":

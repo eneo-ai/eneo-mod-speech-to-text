@@ -13,6 +13,12 @@
   max-inline-size: 42rem;
 }
 
+/* The editing field and its focus frame fit short and zoomed windows. */
+.reviewText textarea {
+  max-block-size: 50dvh;
+  scroll-margin-block: var(--spacing-3);
+}
+
 /* A section with its own box: what the text review and its rejection are held in. */
 .card {
   margin-block-end: var(--spacing-5);

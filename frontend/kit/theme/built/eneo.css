@@ -581,6 +581,10 @@
     .astryx-radio-list-item {
       min-height: 44px;
     }
+
+    .astryx-text-area-control {
+      min-block-size: 44px;
+    }
   }
 }
 }

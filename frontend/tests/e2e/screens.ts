@@ -192,7 +192,7 @@ export async function hold(page: Page, url: string | RegExp) {
 
 /** The page's own clock, past the point where a wait that has no answer says so (components/SlowWait). */
 export const pastSlowWait = (page: Page) => page.clock.fastForward(15_000);
-const slowWaitSays = (page: Page) => expect(page.getByText("Det tar längre tid än vanligt.")).toBeVisible();
+const slowWaitSays = (page: Page) => expect(page.getByRole("status").filter({ hasText: /^Det tar längre tid än vanligt\.$/ })).toBeVisible();
 
 /** A flow's page whose reads of the flow get no answer, for more than 15 s. */
 export async function flowSlow(page: Page) {
@@ -232,7 +232,8 @@ export async function runOpeningSlow(page: Page) {
  * long. `mend` lets the reads through again.
  */
 export async function runReconnecting(page: Page) {
-  await page.clock.install();
+  declare(page, [{ console: /status of 503.*\/status\// }]);
+  await page.clock.install({ time: new Date("2026-09-24T09:00:00Z") });
   let failing = false;
   await page.route(`**/runs/${ids.runs.running}/status/**`, (route) =>
     failing ? route.fulfill({ status: 503, json: { code: "internal_error" } }) : route.fallback(),
@@ -282,7 +283,7 @@ export async function reviewEditor(page: Page, testCase = "bulk") {
   await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), testCase);
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
-  await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" })).toBeVisible();
 }
 
 /**
@@ -781,7 +782,6 @@ export const STATES: State[] = [
   { name: "run-opening-slow", go: async (page) => void (await runOpeningSlow(page)) },
   {
     name: "run-reconnecting",
-    expects: [{ console: /status of 503.*\/status\// }],
     go: async (page) => void (await runReconnecting(page)),
   },
   {
@@ -828,10 +828,15 @@ export const STATES: State[] = [
     name: "file-missing",
     expects: [{ console: /status of 404.*\/artifacts\// }],
     go: async (page) => {
-      await page.route("**/artifacts/*/content*", (route) => route.fulfill({ status: 404, json: { detail: "File not found" } }));
+      let gone = true;
+      await page.route("**/artifacts/*/content*", (route) => gone
+        ? route.fulfill({ status: 404, json: { detail: "File not found" } })
+        : route.fallback());
       await result(page);
       await page.getByRole("link", { name: /^Ladda ner PDF/ }).click();
       await expect(page.getByRole("alert").filter({ hasText: "Filen finns inte kvar hos Eneo." })).toBeVisible();
+      // The page stays on its notice until asked again; its recovery controls can now prove that they recover.
+      gone = false;
     },
   },
   {
@@ -839,8 +844,37 @@ export const STATES: State[] = [
     only: (info) => !isLaptop(info),
     go: async (page) => {
       await result(page);
-      await page.getByRole("tab", { name: "Transkript" }).click();
-      await expect(page.getByRole("tab", { name: "Transkript" })).toHaveAttribute("aria-selected", "true");
+      await page.getByRole("tab", { name: "Transkribering" }).click();
+      await expect(page.getByRole("tab", { name: "Transkribering" })).toHaveAttribute("aria-selected", "true");
+    },
+  },
+  {
+    name: "result-word-selected",
+    go: async (page, info) => {
+      await result(page);
+      if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+      const word = page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
+      await word.click();
+      await expect(word).toHaveAttribute("aria-current", "true");
+    },
+  },
+  {
+    name: "result-search-and-playhead",
+    go: async (page, info) => {
+      await result(page);
+      if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+      await page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first().click();
+      await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("höjs");
+      await expect(page.locator('[data-hit="current"]')).toContainText("höjs");
+    },
+  },
+  {
+    name: "result-correction-open",
+    go: async (page, info) => {
+      await result(page);
+      if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+      await page.getByRole("button", { name: "Rätta repliken från 0:03" }).first().click();
+      await expect(page.getByRole("textbox", { name: /Rätta repliken/ })).toBeVisible();
     },
   },
   {
@@ -848,7 +882,7 @@ export const STATES: State[] = [
     only: (info) => !isLaptop(info),
     go: async (page) => {
       await result(page);
-      await page.getByRole("tab", { name: "Transkript" }).click();
+      await page.getByRole("tab", { name: "Transkribering" }).click();
       await page.getByRole("button", { name: "Spela upp", exact: true }).first().click();
       await page.getByRole("tab", { name: "Dokument" }).click();
       await expect(page.getByRole("button", { name: "Pausa uppspelningen" })).toBeVisible();

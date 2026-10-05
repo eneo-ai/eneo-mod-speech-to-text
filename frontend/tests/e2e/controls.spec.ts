@@ -35,16 +35,6 @@ for (const state of ["flow-list", "unsent-recordings", "unsent-recording-delete-
     expects: [{ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// }],
   };
 }
-// An earlier run opened from the setup page: the fake Eneo has no word timings for it, which the page takes as none.
-for (const state of ["setup", "setup-participants", "setup-microphone-check", "setup-count-from-names", "setup-count-invalid", "upload-chosen-file", "unsent-on-setup"]) {
-  for (const when of ["23 sep 11:00", "22 sep 16:30"]) {
-    EXPECTS[`${state} | button "Öppna, körningen ${when}"`] = {
-      reason: "the fake Eneo has no word timings for an earlier run (404), which the page takes as none",
-      expects: [{ console: /status of 404.*\/transcript-words\// }],
-    };
-  }
-}
-
 /** Presses that change nothing by design, `<state> | <role> "<name>"`, and why: they are still activated, and judged on everything else. */
 const NO_RESPONSE: Record<string, string> = {
   'review-editor-selection | button "Rätta text"': "the correction field is open already: the state is reached by pressing it",
@@ -52,7 +42,7 @@ const NO_RESPONSE: Record<string, string> = {
   'review-editor-speakers | button "Flytta uppspelningen till 0:00"': "the recording is paused at 0:00 already: it moves to where it is",
   'review-editor-speakers | button "Bakåt 10 sekunder"': "the recording is at 0:00: it cannot go back",
 };
-for (const state of ["result", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "failure", "review", "review-reject"]) {
+for (const state of ["result", "result-table", "result-steps-open", "result-regenerate", "result-pdf-preview-whole", "result-transcript-tab", "result-word-selected", "result-search-and-playhead", "result-correction-open", "file-missing", "failure", "review", "review-reject"]) {
   NO_RESPONSE[`${state} | button "Alla"`] = "the speaker filter's chosen value: pressed again, it stays";
   NO_RESPONSE[`${state} | button "Spela från 0:00 i del 1"`] = "the recording is paused at 0:00 already: it moves to where it is";
   NO_RESPONSE[`${state} | button "Bakåt 10 sekunder"`] = "the recording is at 0:00: it cannot go back";
@@ -212,6 +202,20 @@ async function copyOf(browser: Browser, info: TestInfo, state: State): Promise<C
   const sentinel = new Sentinel();
   await sentinel.watch(context);
   const caused: string[] = [];
+  // The operating system's share sheet is outside the page and Playwright's native-dialog events. Observe the
+  // real API boundary; the mutation check still fails a Dela button whose handler never calls it.
+  await context.exposeBinding("__controlsShare", (_source, data: { title?: string; text?: string; files?: number }) => {
+    if (data.title && (data.text?.trim() || data.files)) caused.push("the device was asked to share text or a file");
+  });
+  await context.addInitScript(() => {
+    if (typeof navigator.share !== "function") return;
+    const share = navigator.share.bind(navigator);
+    navigator.share = (data) => {
+      void (window as unknown as { __controlsShare(data: { title?: string; text?: string; files?: number }): void })
+        .__controlsShare({ title: data?.title, text: data?.text, files: data?.files?.length });
+      return share(data);
+    };
+  });
   context.on("page", (popup) => void caused.push(`a new tab opened (${popup.url()})`));
   // The dev server has no favicon, and the stub no sign-in: a full navigation to either is not what is under test.
   await context.route("**/favicon.ico", (route) => route.fulfill({ status: 204 }));

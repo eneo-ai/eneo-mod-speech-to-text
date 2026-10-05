@@ -109,7 +109,7 @@ base("the review editor whose code cannot be fetched leaves the transcript with 
   await expect(line).toContainText("Det du har skrivit finns kvar.");
   await expect(reloadButton(page)).toBeVisible();
   expect(chunk.refused.length, "the editor's code was asked for and refused").toBeGreaterThan(0);
-  const editor = page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" });
+  const editor = page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" });
   await expect(editor).toHaveCount(0);
   const reloads = await watchForReloads(page);
   expect(await reloads.stillTheSameTab(), "nothing reloaded the page by itself").toBe(true);

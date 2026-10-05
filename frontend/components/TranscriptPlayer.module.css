@@ -37,8 +37,8 @@
   min-block-size: 0;
 }
 
-/* Keyboard focus stays local to the control, including the plain buttons and links in the text. */
-.player :is(button, a, input, select, textarea, summary, [role="button"]):focus-visible {
+/* Bespoke controls keep their own ring; Astryx text fields use the themed frame around the field. */
+.player :is(button, a, input[type="range"], select, summary, [role="button"]):focus-visible {
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
 }
@@ -517,6 +517,14 @@
   color: var(--color-text-primary);
 }
 
+.currentMatch {
+  background: var(--color-accent-muted);
+  color: var(--color-text-primary);
+  outline: var(--border-width) solid var(--color-accent);
+  text-decoration: underline;
+  text-underline-offset: var(--spacing-0-5);
+}
+
 .lit {
   background: var(--color-accent);
   color: var(--color-on-accent);
@@ -637,10 +645,6 @@
 
 .lineEditor {
   margin-block: var(--spacing-1);
-}
-
-.editorActions {
-  margin-block-start: var(--spacing-1);
 }
 
 @media (pointer: coarse) {

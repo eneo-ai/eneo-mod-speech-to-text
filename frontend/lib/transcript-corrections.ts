@@ -1,6 +1,6 @@
 // Icke-destruktiva transkriptkorrigeringar (Eneo "transcript corrections").
 //
-// Eneo skriver aldrig om det råa transkriptet. I stället lagras per
+// Eneo skriver aldrig om den råa transkriberingen. I stället lagras per
 // transkriberingssteg en uppsättning teckenintervall-ersättningar
 // (`occurrences`) och talarbyten (`speaker_edits`), förankrade i stegets
 // lagrade `transcription.segments`. Korrigeringarna appliceras vid läsning
@@ -366,7 +366,7 @@ export function correctionsFromResponse(response: {
 }, segments: readonly TranscriptSegment[], expectedHash?: string | null): CorrectionSet {
   const version = response.schema_version ?? 2;
   if (expectedHash && response.segments_hash && expectedHash !== response.segments_hash) {
-    throw new Error("Rättningarnas transkriptunderlag har ändrats. Läs in det aktuella underlaget innan du fortsätter.");
+    throw new Error("Transkriberingens underlag har ändrats. Läs in det aktuella underlaget innan du fortsätter.");
   }
   // Eneo anchors use Unicode code points; DOM/string offsets use UTF-16.
   const offset = (index: number, value: number) => {
@@ -382,7 +382,7 @@ export function correctionsFromResponse(response: {
     })),
   };
   if (![1, 2, 3].includes(version)) throw new Error(`Rättningarnas version (${version}) stöds inte. Uppdatera Tal till text innan du fortsätter.`);
-  if (response.stale) throw new Error("Rättningarna gäller ett äldre transkript. Läs in det aktuella underlaget innan du fortsätter.");
+  if (response.stale) throw new Error("Rättningarna gäller en äldre transkribering. Läs in det aktuella underlaget innan du fortsätter.");
   const occupiedText = new Map<number, [number, number][]>();
   for (const occurrence of response.occurrences) {
     const raw = segments[occurrence.segment_index];
@@ -428,9 +428,9 @@ export const isSegmentsHash = (value: unknown): value is string => typeof value 
 export function correctionWriteProblem(set: CorrectionSet): string | null {
   const version = set.schemaVersion ?? 2;
   if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Tal till text.";
-  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
+  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriberingens originalunderlag saknas. Läs in sidan igen innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
-    return "Talarbeslut kräver Eneos uppdaterade transkriptunderlag.";
+    return "Talarbeslut kräver Eneos uppdaterade underlag för transkriberingen.";
   }
   return null;
 }
@@ -455,7 +455,7 @@ export function correctionRequest(set: CorrectionSet, segments: readonly Transcr
 export function withSpeakerDecision(set: CorrectionSet, segments: readonly TranscriptSegment[], segmentIndex: number,
   start: number | null, end: number | null, decision: SpeakerDecision | null, speaker: string | null): CorrectionSet {
   const raw = segments[segmentIndex];
-  if (!raw) throw new Error("Transkriptpassagen saknas.");
+  if (!raw) throw new Error("Passagen i transkriberingen saknas.");
   if (decision === "confirmed" && (!speaker || !/^SPEAKER_\d{2,}$/.test(speaker))) throw new Error("Välj en talare för att bekräfta.");
   const from = start ?? 0, to = end ?? raw.text.length;
   if ((start === null) !== (end === null) || from < 0 || to > raw.text.length || (start !== null && to <= from)) throw new Error("Välj ett giltigt ordintervall.");

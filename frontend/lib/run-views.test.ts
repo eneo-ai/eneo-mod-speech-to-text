@@ -595,7 +595,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
 
 /**
  * Every button of the markup by what a screen reader hears, and whether it is off. The design system names a button by
- * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriptet").
+ * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriberingen").
  */
 const buttonsIn = (html: string) =>
   [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)].map(
@@ -634,7 +634,7 @@ test("the transcript is not copied or downloaded while its saved corrections cou
       createElement(RunTranscriptView, {
         flowId: "flow-1",
         runId: "run-1",
-        fileName: "transkript.txt",
+        fileName: "transkribering.txt",
         transcript: { ...transcript, correctionProblem },
         confirmedWords: new Set<string>(),
         editing,
@@ -643,12 +643,12 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     );
 
   const readable = render(null);
-  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner som text, transkriptet", false]]);
+  assert.deepEqual(exportButtons(readable), [["Kopiera transkriberingen", false], ["Ladda ner som text, transkriberingen", false]]);
   assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
-  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
 });
@@ -670,7 +670,7 @@ function transcriptView(overrides: Record<string, unknown>) {
     createElement(RunTranscriptView, {
       flowId: "flow-1",
       runId: "run-1",
-      fileName: "transkript.txt",
+      fileName: "transkribering.txt",
       transcript: {
         pending: false,
         speakerReviews: [],
@@ -703,14 +703,14 @@ function transcriptView(overrides: Record<string, unknown>) {
 
 test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
   const html = transcriptView({ textPreview: true });
-  assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
-  assert.deepEqual(exportButtons(html), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.match(html, /Förhandsvisning, hela transkriberingen kunde inte hämtas/);
+  assert.deepEqual(exportButtons(html), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.ok(names(html).includes("Läs in igen"));
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
-  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner." });
-  assert.match(html, /Kunde inte läsa transkriptets underlag/);
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
+  assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
   assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
 });

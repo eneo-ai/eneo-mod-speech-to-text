@@ -237,7 +237,7 @@ export async function loadTranscriptContext({
         // A 404 is normal: the step stored no word times. Any other failure leaves the uncertain words unseen.
         getTranscriptWords(flowId, runId, stepId).catch((error) => {
           if (!(error instanceof ApiError && error.status === 404)) {
-            wordsProblem = "Kunde inte läsa transkriptets ordtider. Läs in sidan igen innan du redigerar eller godkänner.";
+            wordsProblem = "Kunde inte läsa transkriberingens ordtider. Läs in sidan igen innan du redigerar eller godkänner.";
           }
           return null;
         }),
@@ -260,7 +260,7 @@ export async function loadTranscriptContext({
       correctionProblem ??= wordsProblem;
     }
   } catch {
-    correctionProblem = "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner.";
+    correctionProblem = "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner.";
     // Utan stegdata visas texten som den är, utan ljud.
   }
   const fromMetadata = segments !== null;
@@ -274,7 +274,7 @@ export async function loadTranscriptContext({
       (fileIds.length <= 1 || /^## Del \d+/m.test(fallbackText ?? stepText?.text ?? "")));
   if (!seekable) fileIds = [];
   if (!correctionProblem && corrections.schemaVersion !== 3 && (speakerReviews.length > 0 || displaySegments.some(needsSpeakerReview))) {
-    correctionProblem = "Talargranskningen visas skrivskyddat. Transkriptets originalunderlag saknas för sparande och godkännande.";
+    correctionProblem = "Talargranskningen visas skrivskyddat. Transkriberingens originalunderlag saknas för sparande och godkännande.";
   }
   return {
     pending: false,

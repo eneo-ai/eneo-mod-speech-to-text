@@ -28,9 +28,9 @@ async function copyButton(props: { text?: string; name?: string } = {}) {
 test("the button is named by more than its words where it says so, and says Kopierat once after a copy", async (t) => {
   const written: string[] = [];
   useClipboard(t, { writeText: async (text) => void written.push(text) });
-  const { button, status, act } = await copyButton({ name: "Kopiera transkriptet" });
+  const { button, status, act } = await copyButton({ name: "Kopiera transkriberingen" });
   assert.equal(button().textContent, "Kopiera");
-  assert.equal(button().getAttribute("aria-label"), "Kopiera transkriptet", "its name starts with the words it shows");
+  assert.equal(button().getAttribute("aria-label"), "Kopiera transkriberingen", "its name starts with the words it shows");
 
   await act(async () => button().click());
   assert.deepEqual(written, ["Texten"]);

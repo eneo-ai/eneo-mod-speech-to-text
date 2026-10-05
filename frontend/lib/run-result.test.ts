@@ -6,7 +6,7 @@ import { runErrorView, runOutput, runResultView } from "./run-result";
 
 const transcriptFile = (availability: string): ResultFile => ({
   file_id: "file-1",
-  name: "transkript.txt",
+  name: "transkribering.txt",
   availability,
 });
 

@@ -27,11 +27,11 @@ test("the page makes no name of its own: whatever Eneo sends is what people see"
     { ...pdf, name: "step_4_output.pdf" },
     { ...pdf, file_id: "f2", name: "step_4_output.pdf" },
     { file_id: "f3", name: "beslut.docx", mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", size: 87_859 },
-    { file_id: "f4", name: "transkript", mimetype: "text/plain; charset=utf-8" },
+    { file_id: "f4", name: "transkribering", mimetype: "text/plain; charset=utf-8" },
     { file_id: "f5", mimetype: "application/pdf" },
   ]);
 
-  assert.deepEqual(files.map((f) => f.name), ["step_4_output.pdf", "step_4_output.pdf", "beslut.docx", "transkript", "Fil"]);
+  assert.deepEqual(files.map((f) => f.name), ["step_4_output.pdf", "step_4_output.pdf", "beslut.docx", "transkribering", "Fil"]);
   assert.deepEqual(files.map((f) => f.meta), ["PDF, 13,3 kB", "PDF, 13,3 kB", "Word, 85,8 kB", "Text", "PDF"]);
   // Only a PDF opens in the browser's own viewer; Word downloads.
   assert.deepEqual(files.map((f) => f.previewable), [true, true, false, false, true]);
@@ -45,20 +45,20 @@ test("a purged file stays listed but offers nothing to open", () => {
 });
 
 test("the module's own transcript export is named the way Eneo names documents", () => {
-  assert.equal(transcriptFileName('Möte: "budget" 2/3?', "2026-09-23T14:02:01Z"), "Möte budget 2 3 2026-09-23 transkript.txt");
+  assert.equal(transcriptFileName('Möte: "budget" 2/3?', "2026-09-23T14:02:01Z"), "Möte budget 2 3 2026-09-23 transkribering.txt");
   // Eneo dates a document by the run's day in UTC, so the export keeps that day too.
-  assert.equal(transcriptFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-23 transkript.txt");
-  assert.equal(transcriptFileName("", undefined), "transkript.txt");
+  assert.equal(transcriptFileName("Nämndmöte", "2026-09-23T23:30:00+00:00"), "Nämndmöte 2026-09-23 transkribering.txt");
+  assert.equal(transcriptFileName("", undefined), "transkribering.txt");
 });
 
 test("a document's file says what its own step wrote: Eneo lays that text out in the file", () => {
   const [file] = resultFileViews([{ ...pdf, step_id: "s2" }]);
   assert.equal(file.stepId, "s2");
-  const transcribe: FlowRunStep = { id: "r1", step_id: "s1", status: "completed", output_payload_json: { text: "Transkript" } };
+  const transcribe: FlowRunStep = { id: "r1", step_id: "s1", status: "completed", output_payload_json: { text: "Transkribering" } };
   // A model step read the transcript and wrote the report (its parameters name the model); the report is what the file says.
   const report: FlowRunStep = {
     id: "r2", step_id: "s2", status: "completed",
-    input_payload_json: { runtime_input: { text: "Transkript" } },
+    input_payload_json: { runtime_input: { text: "Transkribering" } },
     model_parameters_json: { model_id: "model-1", model_name: "Modell", provider: "azure" },
     output_payload_json: { text: "## Protokoll\n\nBeslut." },
   };

@@ -137,6 +137,8 @@ export const eneoTheme = defineTheme({
             'slider-control': {base: {minBlockSize: TOUCH}},
             'collapsible-trigger': {base: {minHeight: TOUCH}},
             'radio-list-item': {base: {minHeight: TOUCH}},
+            // A one-line correction can shrink to 32 px on a tablet. The field itself remains a touch target.
+            'text-area-control': {base: {minBlockSize: TOUCH}},
           },
         },
       },

@@ -443,6 +443,11 @@ export const eneoTheme = {
               "base": {
                 "minHeight": "44px"
               }
+            },
+            "text-area-control": {
+              "base": {
+                "minBlockSize": "44px"
+              }
             }
           }
         }

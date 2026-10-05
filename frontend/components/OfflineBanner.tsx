@@ -5,7 +5,7 @@ import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { onlineStatus, type OnlineStatus } from "@/lib/online-status";
+import { onlineStatus, type Connection, type OnlineStatus } from "@/lib/online-status";
 export type OfflineWaiting = "recording" | "upload" | "run" | null;
 
 // A device with no network says so; a module that does not answer says that, and neither blames the other.
@@ -25,12 +25,6 @@ const MESSAGES: Record<"offline" | "unreachable", Record<NonNullable<OfflineWait
   },
 };
 
-/** Where the notice stands in the window, and the room it takes in its stack: its height and the gap after it. */
-function measure(card: HTMLElement) {
-  const box = card.getBoundingClientRect();
-  return { top: box.top, room: box.height + (parseFloat(getComputedStyle(card.parentElement!).rowGap) || 0) };
-}
-
 /**
  * Says what waits while the device has no network or the module does not answer. The status region is always rendered, so a screen reader announces the
  * change once; it takes no room, so a page that is online has no gap where the notice would be.
@@ -41,33 +35,40 @@ function measure(card: HTMLElement) {
  */
 export function OfflineBanner({ waiting, status = onlineStatus }: { waiting: OfflineWaiting; status?: OnlineStatus }) {
   const card = useRef<HTMLDivElement>(null);
-  // The window as it was just before the notice showed or went.
-  const before = useRef<{ scrollY: number; top: number; room: number } | null>(null);
+  const region = useRef<HTMLParagraphElement>(null);
+  const before = useRef<{ following: Element; top: number } | null>(null);
   const subscribe = useCallback(
     (onChange: () => void) =>
       status.subscribe(() => {
-        before.current = { scrollY: window.scrollY, ...(card.current ? measure(card.current) : { top: Infinity, room: 0 }) };
+        const following = (card.current ?? region.current)?.nextElementSibling;
+        // Keep an answer already brought into view above a dock at its visible pixel.
+        const answer = following?.matches('[role="alert"]') ? following : following?.querySelector('[role="alert"]');
+        const answerTop = answer?.getBoundingClientRect().top;
+        const anchor = answer && answerTop !== undefined && answerTop >= 0 && answerTop < window.innerHeight ? answer : following;
+        before.current = anchor ? { following: anchor, top: anchor.getBoundingClientRect().top } : null;
         onChange();
       }),
     [status],
   );
-  const connection = useSyncExternalStore(subscribe, () => status.connection, () => "online");
+  const connection = useSyncExternalStore<Connection>(subscribe, () => status.connection, () => "online");
 
   useLayoutEffect(() => {
     const was = before.current;
     before.current = null;
-    if (!was) return;
-    const now = card.current ? measure(card.current) : { top: was.top, room: 0 };
-    // How far what follows the notice moved, less what the browser's own anchoring has already scrolled back.
-    const shift = now.room - was.room - (window.scrollY - was.scrollY);
-    // A notice below the window moves nothing on screen.
-    if (shift !== 0 && now.top < window.innerHeight) window.scrollBy({ top: shift, behavior: "instant" });
+    if (!was?.following.isConnected) return;
+    const top = was.following.getBoundingClientRect().top;
+    // Scroll positions are rounded to pixels. Preserve the visible content's pixel rather than rounding the notice's
+    // fractional height, which can move that content by one pixel. Browser scroll anchoring is already reflected here.
+    const shift = Math.round(top) - Math.round(was.top);
+    if (shift !== 0 && (card.current?.getBoundingClientRect().top ?? top) < window.innerHeight) {
+      window.scrollBy({ top: shift, behavior: "instant" });
+    }
   }, [connection]);
 
   const message = connection === "online" ? "" : MESSAGES[connection][waiting ?? "nothing"];
   return (
     <>
-      <VisuallyHidden as="p" role="status">
+      <VisuallyHidden ref={region} as="p" role="status">
         {message}
       </VisuallyHidden>
       {/* What the status says, for the eye: the region above reads it out. */}

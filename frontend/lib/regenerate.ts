@@ -87,19 +87,19 @@ export function regenerationRefusal(err: unknown, thing = "dokumentet"): { messa
       case "flow_transcript_corrections_stale_revision":
       case "flow_run_idempotency_conflict":
         return {
-          message: "Transkriptet eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
+          message: "Transkriberingen eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
           reload: true,
         };
       case "flow_run_stale_version":
         return {
           message:
-            `Flödet har ändrats sedan ${thing} skapades, så ${thing} kan inte skapas igen på samma sätt. Ladda ner det rättade transkriptet i stället.`,
+            `Flödet har ändrats sedan ${thing} skapades, så ${thing} kan inte skapas igen på samma sätt. Ladda ner den rättade transkriberingen i stället.`,
           reload: false,
         };
       case "flow_transcript_corrections_invalid_occurrence":
         return {
           message:
-            `Det här flödet kan inte skapa ${thing} igen från ett rättat transkript. Ladda ner det rättade transkriptet i stället.`,
+            `Det här flödet kan inte skapa ${thing} igen från en rättad transkribering. Ladda ner den rättade transkriberingen i stället.`,
           reload: false,
         };
       case "flow_run_access_denied":

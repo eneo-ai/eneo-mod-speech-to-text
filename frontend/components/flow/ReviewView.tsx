@@ -114,7 +114,7 @@ export function ReviewView({
   const isSpeakerMapping = isSpeakerMappingCheckpoint(payload);
   const title = isSpeakerMapping
     ? SPEAKER_REVIEW_ENABLED
-      ? "Granska transkriptet"
+      ? "Granska transkriberingen"
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   const heading = usePhaseHeading(title);
@@ -328,10 +328,10 @@ export function ReviewView({
   function saveAndApprove(): Promise<string | null> {
     return exclusively("approve", async () => {
       // Pågående korrigeringssparningar måste landa före godkännandet, som
-      // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
+      // viker in dem i transkriberingen. Misslyckades senaste sparningen: stanna.
       const correctionsSaved = await saveQueue.current;
       if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
-        return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
+        return "Ändringarna i transkriberingen är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
       }
       // Approved already: nothing is saved any more, the run is only resumed.
       const edit = decided ? null : dirty ? pendingEditedValue() : null;
@@ -462,7 +462,7 @@ export function ReviewView({
     const speakers =
       speakerRows.length === 0 ? (
         <Text as="p" type="supporting">
-          Inga talare kunde urskiljas i transkriptet. Du kan fortsätta utan att namnge någon.
+          Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
         <VStack gap={3}>
@@ -502,7 +502,7 @@ export function ReviewView({
       );
     const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
       <Text as="p" type="supporting">
-        Talare utan namn behåller sin etikett i transkriptet.
+        Talare utan namn behåller sin etikett i transkriberingen.
       </Text>
     );
 
@@ -514,7 +514,7 @@ export function ReviewView({
             {title}
           </Heading>
           <Text as="p" type="supporting" className={styles.description}>
-            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
+            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
           </Text>
           {deadline}
         </VStack>
@@ -534,7 +534,7 @@ export function ReviewView({
                 }
               >
                 <VStack gap={3} paddingBlockStart={3}>
-                  <Text as="p" type="supporting">Namn gäller för talaren i hela transkriptet. För att byta vem som säger vissa ord, markera orden nedan.</Text>
+                  <Text as="p" type="supporting">Namn gäller för talaren i hela transkriberingen. För att byta vem som säger vissa ord, markera orden nedan.</Text>
                   {speakers}
                   {unmappedNote}
                 </VStack>
@@ -553,7 +553,7 @@ export function ReviewView({
           {SPEAKER_REVIEW_ENABLED && decision}
 
           {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
-          <VisuallyHidden as="h2">Transkript</VisuallyHidden>
+          <VisuallyHidden as="h2">Transkribering</VisuallyHidden>
           <TranscriptPlayer
             className={styles.transcriptCard}
             segments={transcript.segments}
@@ -604,11 +604,13 @@ export function ReviewView({
         {editable && editing ? (
           <TextArea
             ref={textField}
+            className={styles.reviewText}
             label="Innehåll för granskning"
             isLabelHidden
             value={text}
             isReadOnly={busy}
             onChange={editText}
+            onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
           />
         ) : (

@@ -10,8 +10,8 @@ import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
-const transcript = (page: Page) => page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" });
-const tools = (page: Page) => page.getByRole("group", { name: "Transkriptverktyg" });
+const transcript = (page: Page) => page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" });
+const tools = (page: Page) => page.getByRole("group", { name: "Verktyg för transkriberingen" });
 /** What the tools say about the last change: each design-system button holds a live region of its own, empty. */
 const said = (page: Page) => tools(page).getByRole("status").filter({ hasText: /\S/ });
 

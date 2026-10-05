@@ -22,5 +22,12 @@ export default defineConfig(({ mode }) => ({
     outDir: mode === "check" ? "dist-check" : "dist",
     assetsInlineLimit: 0, // no data: URIs: font-src and img-src stay as small as they are
     sourcemap: false,
+    rolldownOptions: {
+      output: {
+        // Group the widely shared Astryx primitives and their dependencies so each route does not transfer many
+        // small chunks. Components used by fewer routes keep their own lazy boundaries (weight.spec.ts).
+        codeSplitting: { groups: [{ name: "ui-shared", test: /node_modules\/@astryxdesign\/core\/dist\//, minShareCount: 4 }] },
+      },
+    },
   },
 }));

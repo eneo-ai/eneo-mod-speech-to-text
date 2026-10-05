@@ -298,11 +298,11 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
   const speakerName = (segment: TranscriptSegment) =>
     segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(modelSpeakerOf(segment))}` : displayName(segment.speaker);
   return <div ref={editorRoot} className={styles.editor}>
-    <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Transkriptverktyg">
+    <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Verktyg för transkriberingen">
       <div className={styles.row}>
         <span aria-live="polite" className={styles.quiet}>{pending.length ? `${pending.length} ${pending.length === 1 ? "ställe" : "ställen"} att granska` : "Inga väntande talarbeslut"}</span>
         <div className={styles.actions}>
-          <VisuallyHidden id={confirmAllNote}>Bekräfta återstående talarförslag i hela transkriptet. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
+          <VisuallyHidden id={confirmAllNote}>Bekräfta återstående talarförslag i hela transkriberingen. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
           <Button size="sm" variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable || !allSuggestions.length}
             label={`Bekräfta alla förslag${allSuggestions.length > 0 ? ` (${allSuggestions.length})` : ""}`} aria-describedby={confirmAllNote}
             onClick={() => confirmSuggestions(allSuggestions)} />
@@ -353,9 +353,9 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     </div>
     <section id={detailsId} hidden={!details} aria-label="Talargranskning" className={styles.details}>
       <h2>Om markeringen</h2>
-      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className={styles.inline} disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
+      {wordless && <p>Transkriberingen saknar ord för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className={styles.inline} disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
       {new Set(selectedSources.map((s) => s.fileIndex)).size > 1 && <p>Markeringen omfattar flera ljudfiler. Lyssna spelar den första delen.</p>}
-      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(modelSpeakerOf(s))))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
+      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(modelSpeakerOf(s))))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriberingen för att se talarförslag och granskningsstatus.</p>}
       {selectedSpans.some(needsSpeakerReview) && <p>Överlappande tal har markerats här. {selectedSpans.some((s) => !s.decision) ? "Talaren behöver granskas." : "Talarbeslutet ändrar inte den ursprungliga överlappsmarkeringen."}</p>}
       {selectedSpans.some((s) => s.decision === "unresolved") && <p>Granskad: talare går inte att avgöra.</p>}
       {reviews.some((r) => r.overlapDetection === "unavailable") && <p>Överlappningsanalys saknas för del {reviews.filter((r) => r.overlapDetection === "unavailable").map((r) => r.fileIndex + 1).join(", ")}.</p>}
@@ -367,13 +367,13 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         }))}
       <details><summary>Överlapp i inspelningen</summary><ul>{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className={styles.inline} disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start * 1_000)}–{formatClock(o.end * 1_000)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
     </section>
-    <p className={styles.note} id={helpId}><span className={styles.focusLabel}>Transkript</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<VisuallyHidden> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</VisuallyHidden></p>
-    {!shown.length && <p className={styles.empty}>Inga transkriptord finns. Använd Nästa för att lyssna på markerade överlapp.</p>}
+    <p className={styles.note} id={helpId}><span className={styles.focusLabel}>Transkribering</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<VisuallyHidden> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</VisuallyHidden></p>
+    {!shown.length && <p className={styles.empty}>Transkriberingen saknar ord. Använd Nästa för att lyssna på markerade överlapp.</p>}
     {reviews.some((r) => r.overlapDetection === "unavailable") && <p className={styles.note}>Överlappningsanalys saknas. Se Detaljer.</p>}
     {reviews.some((r) => r.detailsOmitted) && <p className={styles.note}>Överlappsdetaljer har utelämnats eftersom underlaget är för stort.</p>}
     <div ref={body} className={styles.text} onMouseUp={captureSelection} onTouchEnd={captureSelection} onKeyUp={captureSelection}
       onFocusCapture={(e) => { if (e.target !== body.current) { const target = e.target; requestAnimationFrame(() => target.scrollIntoView({ block: "nearest", behavior: "instant" })); } }}
-      contentEditable suppressContentEditableWarning role="textbox" aria-label="Transkript, markera ord för att redigera" aria-multiline="true" aria-readonly={!textEditable} aria-describedby={helpId} aria-keyshortcuts="Alt+T" tabIndex={0}
+      contentEditable suppressContentEditableWarning role="textbox" aria-label="Transkribering, markera ord för att redigera" aria-multiline="true" aria-readonly={!textEditable} aria-describedby={helpId} aria-keyshortcuts="Alt+T" tabIndex={0}
       onCopy={(e) => { if (selection.length && window.getSelection()?.isCollapsed) { e.preventDefault(); e.clipboardData.setData("text/plain", selectedText); } }}
       onPaste={(e) => { e.preventDefault(); typeText(e.clipboardData.getData("text/plain")); }}
       onCut={(e) => { e.preventDefault(); const native = window.getSelection(); if (native && !native.isCollapsed) { e.clipboardData.setData("text/plain", native.toString()); typeText(""); } }} onDrop={(e) => e.preventDefault()}

@@ -10,7 +10,7 @@
 // PATCH …/review-checkpoints/{id}/ enligt kontraktet:
 //   { speakers: [{ label, name | null, confidence, evidence }] }
 // Varje etikett i inventariet måste förekomma exakt en gång. Eneo räknar
-// sedan om transkriptet med namnen och uppdaterar `{{transkribering}}`.
+// sedan om transkriberingen med namnen och uppdaterar `{{transkribering}}`.
 
 import { ApiError, type Json } from "./api";
 import { friendlyError } from "./errors";
@@ -207,7 +207,7 @@ export function speakerNamesFromRows(
   return names;
 }
 
-/** Vilka etiketter som saknar namn och därför lämnas kvar i transkriptet. */
+/** Vilka etiketter som saknar namn och därför lämnas kvar i transkriberingen. */
 export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],
 ): string[] {

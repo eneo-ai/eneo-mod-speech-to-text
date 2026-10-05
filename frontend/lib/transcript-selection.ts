@@ -116,7 +116,7 @@ export function displayedSourceOffset(segment: TranscriptSegment, index: number,
 
 /** Exact character editing: never snap a caret to words or rewrite speaker decisions. */
 export function replaceTranscriptText(set: CorrectionSet, raw: readonly TranscriptSegment[], shown: readonly TranscriptSegment[], ranges: readonly DisplaySelectionSpan[], text: string) {
-  if (!ranges.length) throw new Error("Placera markören i transkripttexten.");
+  if (!ranges.length) throw new Error("Placera markören i transkriberingen.");
   let next = set;
   const first = ranges[0];
   if (!shown[first.index]) throw new Error("Markeringen behöver göras om.");

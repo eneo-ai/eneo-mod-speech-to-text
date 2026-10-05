@@ -459,7 +459,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError):
+            # File preflights deliberately close the response after its headers.
+            self.close_connection = True
 
     def ranged(self, data, ctype, extra=None):
         """A file with Range semantics: 200 whole, 206 and Content-Range for a satisfiable range, 416 for one that is not.
@@ -832,6 +836,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, body)
         if what == ["steps"]:
             return self.send(200, run["steps"])
+        if len(what) == 3 and what[0] == "steps" and what[2] == "transcript-words":
+            step = next((step for step in run["steps"] if step["step_id"] == what[1]), None)
+            transcript = (step or {}).get("input_payload_json", {}).get("transcription")
+            if transcript is None:
+                return self.send(404, {"detail": "Transcript words not found."})
+            return self.send(200, {
+                "flow_run_id": run_id, "step_id": what[1], "segments_hash": transcript["segments_hash"],
+                "alignment": "fixture", "stale": False,
+                "segments": [{"segment_index": index, "words": [dict(word, probability=None) for word in segment["words"]]}
+                             for index, segment in enumerate(transcript["segments"])],
+            })
         if what == ["review-checkpoints", "active"]:
             return self.send(200, PAUSES.get(run_id))
         if what == ["transcript-corrections"]:

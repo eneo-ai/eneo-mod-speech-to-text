@@ -2,7 +2,7 @@
   - heading "Namnge talarna" [level=2]
   - button "Stäng":
     - status
-  - paragraph: Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriptet och dokumentet när du fortsätter.
+  - paragraph: Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriberingen och dokumentet när du fortsätter.
   - list:
     - listitem:
       - paragraph: Talare 1 · 3 inlägg

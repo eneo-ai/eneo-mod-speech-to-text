@@ -3,7 +3,7 @@
   - paragraph: /Nämndmöte till rapport · Skapad i dag \d+:\d+/
   - button "Ny inspelning"
   - note:
-    - text: Dokumentet skapades före dina rättningar Den nya versionen görs från det rättade transkriptet.
+    - text: Dokumentet skapades före dina rättningar Den nya versionen görs från den rättade transkriberingen.
     - button "Skapa dokumentet igen med rättningarna"
   - region "Dokumentet":
     - link /Ladda ner PDF, Protokoll kommunstyrelsen \d+-\d+-\d+\.pdf/:
@@ -31,12 +31,12 @@
         - link /Ladda ner Protokoll kommunstyrelsen \d+-\d+-\d+\.docx/:
           - /url: /api/eneo/flows/000dd5fc-6a9e-4a42-918b-0c183f171a78/runs/a3771df2-42d1-4151-8416-edad90eff651/artifacts/126f349f-46fc-461a-8876-bf8e8603767e/content?disposition=attachment
   - button "Hur resultatet togs fram 2 steg"
-  - region "Transkript":
-    - heading "Transkript" [level=2]
-    - button "Kopiera transkriptet"
+  - region "Transkribering":
+    - heading "Transkribering" [level=2]
+    - button "Kopiera transkriberingen"
     - status
-    - button "Ladda ner som text, transkriptet"
-    - region "Inspelning och transkript":
+    - button "Ladda ner som text, transkriberingen"
+    - region "Inspelning och transkribering":
       - group "Visa talare":
         - button "Alla" [pressed]:
           - text: ""
@@ -47,11 +47,11 @@
         - button "Talare 2":
           - text: ""
           - status
-      - text: Sök i transkriptet
-      - textbox "Sök i transkriptet"
+      - text: Sök i transkriberingen
+      - textbox "Sök i transkriberingen"
       - status
       - status
-      - link "Hoppa förbi transkriptet":
+      - link "Hoppa förbi transkriberingen":
         - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":

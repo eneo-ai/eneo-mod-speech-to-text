@@ -51,7 +51,7 @@ test("the editor's code that cannot be fetched leaves the transcript with the pe
     return route.fulfill({ response });
   });
   await run(page, ids.runs.review, ids.flows.flow2);
-  const editor = page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" });
+  const editor = page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" });
   const problem = page.getByText("Granskningsverktygen kunde inte läsas in.");
   await expect(problem).toContainText("Det du har skrivit finns kvar.");
   await expect(editor).toHaveCount(0);

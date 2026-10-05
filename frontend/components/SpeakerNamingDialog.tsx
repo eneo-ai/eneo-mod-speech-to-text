@@ -212,7 +212,7 @@ export function SpeakerNamingDialog({
           content={
             <LayoutContent>
               <Text as="p" id={descriptionId} color="secondary">
-                Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriptet och dokumentet när du fortsätter.
+                Lyssna på ett exempel och välj vem som talar. Namnen skrivs in i transkriberingen och dokumentet när du fortsätter.
               </Text>
               {/* Tab past the last control comes back to the first without scrolling to it (the dialog's focus trap
                   moves focus with preventScroll), so the list brings whatever takes focus into view itself. */}

@@ -388,7 +388,7 @@ test("a file that cannot be fetched shows its name and size and nothing to press
   assert.equal(row.querySelectorAll("a, button").length, 0);
 });
 
-test("narrower than a laptop, Dokument and Transkript are tabs that keep each other's state", async (t) => {
+test("narrower than a laptop, Dokument and Transkribering are tabs that keep each other's state", async (t) => {
   const { createElement } = await import("react");
   const { RunResult } = await import("../components/flow/RunResult");
   const original = globalThis.fetch;
@@ -430,20 +430,20 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
   // A panel taller than the screen cannot show its focus; each starts with its own controls, so Tab goes there.
   assert.deepEqual(panels.map((p) => p.getAttribute("tabindex")), [null, null], "the panels are not tab stops");
   // Each panel is named by its tab and its tab points at it; only the chosen one is shown.
-  assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkript"]);
+  assert.deepEqual(panels.map((p) => tabLabel(document.getElementById(p.getAttribute("aria-labelledby")!)!)), ["Dokument", "Transkribering"]);
   assert.deepEqual(tabsIn(view.container).map((t) => t.getAttribute("aria-controls")), panels.map((p) => p.id));
   assert.deepEqual(panels.map((p) => p.hidden), [false, true]);
 
   const { computeAccessibleName } = await import("dom-accessibility-api");
   // The search is found by the name a screen reader gives it: the design system's input is named by its label.
-  const searchBox = () => [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
+  const searchBox = () => [...view.container.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
   const search = searchBox();
-  await view.act(async () => tab("Transkript").click());
+  await view.act(async () => tab("Transkribering").click());
   const { type } = await import("./test-dom");
   await view.act(async () => type(search, "punkten"));
   await view.act(async () => tab("Dokument").click());
   assert.deepEqual([...view.container.querySelectorAll<HTMLElement>('[role="tabpanel"]')].map((p) => p.hidden), [false, true], "the document is back");
-  await view.act(async () => tab("Transkript").click());
+  await view.act(async () => tab("Transkribering").click());
   assert.equal(searchBox().value, "punkten", "the search is kept");
   assert.equal(view.container.querySelectorAll("audio").length, 1, "one player for the page");
   // Nothing has played: no pause beside the document yet.
@@ -899,7 +899,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
   const note = view.container.querySelector('[role="note"]')!;
   assert.match(note.textContent ?? "", /^Texten skapades före dina rättningar/);
   assert.ok(button(note, "Skapa texten igen med rättningarna"), "Skapa texten igen");
-  assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkript"]);
+  assert.deepEqual(tabsIn(view.container).map(tabLabel), ["Text", "Transkribering"]);
   assert.ok(view.container.querySelector('[role="region"][aria-label="Texten"]'), "the text, named as such");
   assert.doesNotMatch(view.container.textContent ?? "", /[Dd]okument/);
 });

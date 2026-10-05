@@ -54,7 +54,7 @@ export function RegenerateNotice({
       role="note"
       collapsible={false}
       title={`${thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar`}
-      description="Den nya versionen görs från det rättade transkriptet."
+      description="Den nya versionen görs från den rättade transkriberingen."
     >
       <VStack gap={3} hAlign="start">
         <Button
@@ -65,7 +65,7 @@ export function RegenerateNotice({
         />
         {unsaved && (
           <Text as="p" color="secondary">
-            Den senaste rättningen är inte sparad. Spara den igen i transkriptet innan {thing} skapas på nytt.
+            Den senaste rättningen är inte sparad. Spara den igen i transkriberingen innan {thing} skapas på nytt.
           </Text>
         )}
         {refusal && (

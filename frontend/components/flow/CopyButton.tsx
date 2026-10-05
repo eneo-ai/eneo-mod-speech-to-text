@@ -51,7 +51,7 @@ export function CopyButton({
   text: string;
   /** The visible words. */
   label: string;
-  /** What the button is called when that says more than its words ("Kopiera transkriptet"); it starts with them. */
+  /** What the button is called when that says more than its words ("Kopiera transkriberingen"); it starts with them. */
   name?: string;
   variant?: ButtonProps["variant"];
   size?: ButtonProps["size"];

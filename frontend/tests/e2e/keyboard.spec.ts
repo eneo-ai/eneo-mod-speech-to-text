@@ -82,6 +82,13 @@ for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
  */
 const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
 
+// APG permits initial focus on the static title to announce a dialog's beginning. It is not a keyboard control.
+const focusedTitle = (popup: Locator) => popup.evaluate((element) => {
+  const focused = document.activeElement;
+  return focused instanceof HTMLElement && /^H[1-6]$/.test(focused.tagName) && focused.tabIndex === -1
+    && element.getAttribute("aria-labelledby")?.split(/\s+/).includes(focused.id);
+});
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
   await trigger.focus();
@@ -99,7 +106,10 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
       const stop = await focusStop(page);
       const inside = await popup.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
-      else problems.push(...stopProblems([stop]));
+      else {
+        const startsOnTitle = i === 0 && await focusedTitle(popup);
+        problems.push(...stopProblems([startsOnTitle ? { ...stop, indicator: true } : stop]));
+      }
     }
     if (keys[i]) await page.keyboard.press(keys[i]);
   }
@@ -160,7 +170,10 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
-      else problems.push(...stopProblems([stop]));
+      else {
+        const startsOnTitle = presses === 0 && await focusedTitle(dialog);
+        problems.push(...stopProblems([startsOnTitle ? { ...stop, indicator: true } : stop]));
+      }
       leftFrame = frame !== null;
       // Back at a stop already met, without meeting the viewer: Tab goes round the dialog's own controls.
       const key = stop ? `${stop.label}@${stop.left},${stop.top}` : "";

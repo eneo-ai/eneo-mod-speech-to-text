@@ -29,7 +29,7 @@ Utvecklingsservern ligger på 3002 för att Eneos egen devcontainer tar 3000 (we
 
 ## Med Docker
 
-`docker compose up --build` bygger imagen lokalt (`docker-compose.override.yml`) och publicerar port 3001. `SESSION_SECRET` är minst 32 tecken: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Loggar: `docker compose logs -f speech-to-text`. Granskningen av transkriptet slås på när imagen byggs: `SPEAKER_REVIEW_ENABLED=true` i `.env`.
+`docker compose up --build` bygger imagen lokalt (`docker-compose.override.yml`) och publicerar port 3001. `SESSION_SECRET` är minst 32 tecken: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Loggar: `docker compose logs -f speech-to-text`. Granskningen av transkriberingen slås på när imagen byggs: `SPEAKER_REVIEW_ENABLED=true` i `.env`.
 
 Imagen utan Compose:
 

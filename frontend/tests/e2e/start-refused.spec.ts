@@ -5,11 +5,13 @@
  */
 import { expect, test } from "./gate";
 import { chooseFile, record, setup, stop } from "./screens";
+import { declare } from "./sentinel";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "one laptop and one phone"));
 
 /** The run request is refused (503) while `state.refusing`; every request's key and every upload is counted. */
 async function eneoRefusesTheRun(page: import("@playwright/test").Page) {
+  declare(page, [{ console: /status of 503.*\/runs\// }]);
   const state = { refusing: true, keys: [] as string[], uploads: 0 };
   await page.route(/\/runtime-files\/?$/, (route) => {
     if (route.request().method() === "POST") state.uploads += 1;

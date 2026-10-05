@@ -2022,7 +2022,7 @@
         "tags": [
           "Eneo"
         ],
-        "summary": "Körningens rättningar av transkriptet",
+        "summary": "Körningens rättningar av transkriberingen",
         "operationId": "get_api_eneo_flows_flow_id_runs_run_id_transcript_corrections",
         "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/transcript-corrections/`.",
         "parameters": [
@@ -2250,7 +2250,7 @@
         "tags": [
           "Eneo"
         ],
-        "summary": "Spara rättningar av transkriptet",
+        "summary": "Spara rättningar av transkriberingen",
         "operationId": "patch_api_eneo_flows_flow_id_runs_run_id_steps_step_id_transcript_corrections",
         "description": "Skickas vidare till `{ENEO_BACKEND_URL}/api/v1/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/`.",
         "parameters": [

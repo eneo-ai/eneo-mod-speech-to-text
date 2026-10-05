@@ -123,11 +123,11 @@ const CODES: Record<string, string> = {
   typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget.",
   // Correcting a transcript.
   flow_transcript_corrections_stale_revision:
-    "Transkriptet har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
+    "Transkriberingen har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
   flow_transcript_corrections_invalid_occurrence:
-    "Rättningen kunde inte förankras i transkriptet. Ladda om sidan och försök igen.",
+    "Rättningen kunde inte förankras i transkriberingen. Ladda om sidan och försök igen.",
   flow_transcript_corrections_invalid_speaker_edit: "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.",
-  flow_transcript_corrections_segments_unavailable: "Det här transkriptet saknar lagrade repliker och kan inte rättas.",
+  flow_transcript_corrections_segments_unavailable: "Den här transkriberingen saknar lagrade repliker och kan inte rättas.",
 };
 
 // Busy or briefly unreachable: the same request may go through a moment later.

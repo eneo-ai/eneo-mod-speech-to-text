@@ -70,7 +70,8 @@
    lib/dock.ts, so a longer note or the text spacing a reader sets cannot outgrow it; with no dock stuck to the window's
    edge (a laptop, a short screen) the variable is unset and only the margin is left. */
 html:has([data-docked-action], [data-docked-player]) {
-  scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-2));
+  /* Focus can sit on a field's inner control while its ring surrounds the padded field. Keep that whole edge clear. */
+  scroll-padding-bottom: calc(var(--dock-block-size, 0px) + var(--spacing-6));
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-// Transkript med tidsmarkeringar för uppspelning.
+// Transkribering med tidsmarkeringar för uppspelning.
 //
 // Eneo lagrar ett transkriberingssteg i två lager:
 //   1. `input_payload_json.transcription.segments` på steget — en rad per
