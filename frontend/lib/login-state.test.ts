@@ -122,7 +122,7 @@ test("the start page, which no signed-in page holds, never waits for a login", a
   try {
     await assert.rejects(getRunStatus("flow-1", "run-1"), (error: ApiError) => error.status === 401);
     assert.equal(loginState.signedOut, false);
-    assert.equal(calls, 1, "sent once, as before");
+    assert.equal(calls, 1, "sent once");
   } finally {
     globalThis.fetch = browserFetch;
   }

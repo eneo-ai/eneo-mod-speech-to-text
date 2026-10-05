@@ -270,7 +270,7 @@ test("a recording keeps each file within the time the contract gives Eneo's audi
   };
   const timed = await recordFor(90 * 60);
   assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);
-  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide, as before");
+  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide");
 });
 
 test("the last chosen mode is remembered per flow and used when it is still offered", async () => {
@@ -584,13 +584,13 @@ test("each mode has its own primary action", () => {
   assert.equal(primaryActionLabel("ladda-upp", true, true), "Skapa text");
 });
 
-test("the action says text exactly when Eneo gives the result back as text in the run, else a document as before", () => {
+test("the action says text exactly when Eneo gives the result back as text in the run, else a document", () => {
   const label = (finalOutput: RunContract["final_output"]) => createActionLabel(makesText(finalOutput));
   assert.equal(label({ output_type: "text", delivery: "payload" }), "Skapa text");
   assert.equal(label({ output_type: "json", delivery: "payload" }), "Skapa text", "data the result view shows as text");
   for (const type of ["pdf", "docx"]) assert.equal(label({ output_type: type, delivery: "artifact" }), "Skapa dokument", type);
-  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver: as before");
-  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how: as before");
+  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver");
+  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how");
   assert.equal(label(null), "Skapa dokument", "a flow without steps");
   assert.equal(label(undefined), "Skapa dokument");
 });

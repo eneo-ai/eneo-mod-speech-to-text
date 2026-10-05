@@ -410,7 +410,7 @@ test("the same parts given again change nothing; new parts start from the beginn
   assert.deepEqual([playback.getSnapshot().withinMs, playback.getSnapshot().started], [0, false]);
 });
 
-test("the position slider is keyboard operable as before: an arrow moves a second, Page Up and Page Down ten, Home and End the ends", async () => {
+test("the position slider is keyboard operable: an arrow moves a second, Page Up and Page Down ten, Home and End the ends", async () => {
   const { playback } = started([{ url: "/a", durationMs: 60_000 }]);
   const view = await mount(createElement(AudioPlayer, { playback, label: "Inspelning" }));
   const thumb = view.container.querySelector<HTMLElement>('[role="slider"]')!;

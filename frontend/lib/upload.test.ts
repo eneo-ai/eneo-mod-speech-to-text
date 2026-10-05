@@ -70,7 +70,7 @@ test("once every byte is sent, the upload waits the server's published response 
   const policy = { min_timeout_seconds: 30, seconds_per_mebibyte: 3, max_timeout_seconds: 900, idle_timeout_seconds: 120 };
   // Eneo measures audio before it answers, and says how long that may take.
   assert.equal(resolveRuntimeUploadResponseTimeoutMs(1024, { ...policy, response_timeout_seconds: 660 }), 660_000);
-  // An Eneo that says nothing: as before, the longer of the start and idle waits.
+  // An Eneo that says nothing: the longer of the start and idle waits.
   assert.equal(resolveRuntimeUploadResponseTimeoutMs(100 * 1024 * 1024, policy), 300_000);
   assert.equal(resolveRuntimeUploadResponseTimeoutMs(1024, { ...policy, response_timeout_seconds: 0 }), 120_000);
 });

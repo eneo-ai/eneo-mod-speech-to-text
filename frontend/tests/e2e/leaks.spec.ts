@@ -2,7 +2,7 @@
  * An overlay that is opened and closed leaves nothing behind: no DOM nodes, no event listeners, no memory.
  * Chromium's own counters, read after a garbage collection, before and after 40 openings of each overlay.
  * A leak grows with every cycle (a listener an effect never removes, a portal that is never unmounted), so it
- * would show as about 40. A new overlay surface is added here in the phase that ports it.
+ * would show as about 40. A new overlay is added here with the page that owns it.
  */
 import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
 import { backLink, chooseMode, open, record, result, reviewEditor, run, setup, stop } from "./screens";
