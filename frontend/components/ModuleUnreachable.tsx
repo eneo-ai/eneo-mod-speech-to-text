@@ -1,6 +1,7 @@
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { Brand } from "@/components/Brand";
@@ -17,13 +18,17 @@ export const UNREACHABLE = "Kunde inte kontakta modulen. Försök igen.";
 export function ModuleUnreachable({ onRetry }: { onRetry: () => void }) {
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
-      <VStack gap={4} maxWidth={640}>
-        <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-        <Banner status="error" title={UNREACHABLE} collapsible={false} />
-        <HStack>
-          <Button label="Försök igen" onClick={onRetry} />
-        </HStack>
-      </VStack>
+      <Layout height="auto" contentWidth={640} padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={4} paddingBlockStart={6}>
+            <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
+            <Banner status="error" title={UNREACHABLE} collapsible={false} />
+            <HStack>
+              <Button label="Försök igen" onClick={onRetry} />
+            </HStack>
+          </VStack>
+        </LayoutContent>
+      </Layout>
     </ModuleShell>
   );
 }
