@@ -91,6 +91,14 @@ class WaiverTests(unittest.TestCase):
         self.assertIn("the check itself broke", out)
 
 
+class EnvelopeTests(unittest.TestCase):
+    def test_a_fraction_of_what_the_module_serves_of_the_visit_is_a_rate_of_visits_whatever_the_machine(self) -> None:
+        # 100 visits/s served: a third is 35 visits/s. A machine that serves 60 gets the same share of its own, not the laptop's visits a second.
+        self.assertEqual(checks.envelope_rate(0.35, 100), 35.0)
+        self.assertEqual(checks.envelope_rate(0.35, 60.4), 21.1)
+        self.assertEqual(checks.envelope_rate(0.8, 60.4), 48.3)
+
+
 class WaiverFileTests(unittest.TestCase):
     def read(self, entries: object) -> dict[int, dict[str, str]]:
         with tempfile.TemporaryDirectory() as folder:
