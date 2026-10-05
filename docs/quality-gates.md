@@ -123,7 +123,7 @@ Flera utcheckningar (git worktrees) kan köra testerna samtidigt på egna portpa
 
 ### Arbeta med en rättning
 
-Reproducera felet i dess läge och profil, med ett riktat test och en skärmbild. Rätta i den komponent eller det tema som äger beteendet, kör de berörda testerna och granska bilddiffen. Kör sedan hela matrisen på en stabil kandidat: ändra inte källkod, testfiler eller byggda filer medan den körs. En separat utcheckning skyddar kandidaten när annat arbete pågår. Egna portar skyddar bara servrarna; de skyddar inte filer som ett annat bygge skriver över.
+Gör den avgränsade granskningen av kod, beteende och bilder först. Reproducera fyndet i dess läge och profil, med ett riktat test och en skärmbild. Rätta i den komponent eller det tema som äger beteendet, kör de berörda testerna och granska bilddiffen. Kör sedan hela matrisen på en stabil kandidat: ändra inte dess källkod, testfiler eller byggda filer medan den körs. En separat kopia skyddar kandidaten när annat arbete pågår. Egna portar skyddar bara servrarna; de skyddar inte filer som ett annat bygge skriver över. Om ett nytt verifierat fel kräver en annan kandidat redovisas en stoppad körning som avbruten.
 
 Kör dokumentation och faktauppslag parallellt med verifieringen. Samordna byggsteg och begränsa antalet webbläsararbetare när flera körningar delar dator, så att ett överbelastat testsystem inte döljer resultatet. Efter en ändring av kandidaten körs kontrollerna som påverkas; en tidigare grön körning gäller den kod den faktiskt testade.
 
@@ -139,7 +139,7 @@ npm run verify:candidate -- --checks lint,unit,prod --app-port 4061 --stub-port 
 npm run verify:candidate -- --checks dev,real --grep "one focus frame"
 ```
 
-Skriptet skriver kandidatens sökväg, källornas SHA-256 och varje stegs logg. `candidate.json` sparar urvalet, kontrollsummorna och resultaten; webbläsarrapporter och bilder ligger under kandidatens `frontend/test-results/` respektive `frontend/ux-shots/`. Kandidaten behålls även vid fel. `--workers 1` minskar belastningen, `--prepare-only` tar en kopia utan att köra tester och `--verify <kandidatens sökväg>` kontrollerar att den är oförändrad. `BACKEND_PYTHON` väljer Python-miljö som för de vanliga testerna. Imagens acceptans och dokumentationssajten har kvar sina egna kommandon och körs separat.
+Skriptet skriver kandidatens sökväg, källornas SHA-256 och varje stegs logg. `candidate.json` sparar urvalet, kontrollsummorna och resultaten; webbläsarrapporter och bilder ligger under kandidatens `frontend/test-results/` respektive `frontend/ux-shots/`. Kandidaten behålls även vid fel. `--status <kandidatens sökväg>` läser en kort sammanställning med stegstatus och färdiga webbläsarrapporters testantal. Den verifierar inga kontrollsummor; `--verify <kandidatens sökväg>` gör det. Ett resultat gäller kandidatens fångade filer, även när arbetskatalogen senare har ändrats. `--workers 1` minskar belastningen och `--prepare-only` tar en kopia utan att köra tester. `BACKEND_PYTHON` väljer Python-miljö som för de vanliga testerna. Imagens acceptans och dokumentationssajten har kvar sina egna kommandon och körs separat.
 
 ## Läsa ett fel
 
@@ -155,6 +155,8 @@ Skriptet skriver kandidatens sökväg, källornas SHA-256 och varje stegs logg. 
 Resultaten finns i `frontend/test-results/a11y/*/findings.json` och i HTML-rapporten (`npx playwright show-report test-results/a11y-report`), där `manual check` listas. Ett spår behålls för misslyckade tester (`npx playwright show-trace <mapp>/trace.zip`). Skärmbilder: `SHOTS=1 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-390-light` skriver `test-results/shots/<projekt>/<läge>.png`. Se ett enskilt läge i en webbläsare med fönster: `npm run state -- "<läge>"`.
 
 Före och efter en ändring av gränssnittet: `npm run ux:shots` fotograferar varje läge i 23 storlekar (telefoner stående och liggande, surfplattor, 1000 px, laptops och breda skärmar upp till 3840 × 2160) i ljust och mörkt, till `frontend/ux-shots/<etikett>/<läge>/<bredd>x<höjd>-<färgläge>.png` med ett kontaktark, `index.html`. Etiketten är den korta commiten (`-dirty` med ändrade filer), `--name <namn>` lägger till ett namn och `--label <etikett>` sätter den. `--sizes 1000x800,390x844` och Playwrights `-g "<läge>"` smalnar av. `npm run ux:shots -- --compare <före> <efter>` skriver en rapport, `frontend/ux-shots/compare/<före>__<efter>/index.html`, med före, efter och de ändrade pixlarna i rött, de mest ändrade först. Bilderna checkas aldrig in (`ux-shots/` ignoreras).
+
+Varje storlek får också en `.first.png` av det verkliga fönstret. Alla fönsterbilder tas före helsidesbilderna, och skriptet kontrollerar att pekarläget stämmer med enheten. Chromiums helsidesinfångning kan ändra pekskärmsläget och hur fasta lager ritas. Bedöm kontrollstorlek och placering i `.first.png` och med gatens mätningar; helsidesbilden ger sammanhang för resten av sidan.
 
 En ny skärm eller ett nytt överlägg: [Frontend](frontend.md#lägga-till-en-skärm).
 

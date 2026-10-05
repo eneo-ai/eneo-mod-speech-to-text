@@ -144,7 +144,27 @@ async function run(candidate, manifest, name, command, commandArgs, cwd, env) {
 
 async function main() {
   if (flag("--help")) {
-    console.log("npm run verify:candidate -- [--checks lint,unit,backend,dev,real,prod,review,branding,shots] [--grep <Playwright pattern>] [--workers 2] [--app-port 4051] [--stub-port 9051]\n--prepare-only captures without running. --source selects a working tree. --verify <candidate> checks its recorded inputs and assets.\nThe default runs every listed check and the full screenshot matrix. Candidates and reports remain in the printed temporary directory.");
+    console.log("npm run verify:candidate -- [--checks lint,unit,backend,dev,real,prod,review,branding,shots] [--grep <Playwright pattern>] [--workers 2] [--app-port 4051] [--stub-port 9051]\n--prepare-only captures without running. --source selects a working tree. --verify <candidate> checks its recorded inputs and assets. --status <candidate> reads a compact receipt without verifying hashes.\nThe default runs every listed check and the full screenshot matrix. Candidates and reports remain in the printed temporary directory.");
+    return;
+  }
+  const reporting = option("--status");
+  if (reporting) {
+    if (args.length) throw new Error(`Unknown arguments: ${args.join(" ")}`);
+    const manifest = JSON.parse(readFileSync(join(reporting, "candidate.json"), "utf8"));
+    const steps = (manifest.steps ?? []).map((step) => {
+      const report = join(reporting, "frontend/test-results", `${step.name}.json`);
+      const stats = step.finishedAt && existsSync(report) ? JSON.parse(readFileSync(report, "utf8")).stats : undefined;
+      return {
+        name: step.name, status: step.status, exitCode: step.exitCode ?? null,
+        startedAt: step.startedAt, finishedAt: step.finishedAt ?? null, log: step.log,
+        tests: stats ? { passed: stats.expected, failed: stats.unexpected, flaky: stats.flaky, skipped: stats.skipped } : null,
+      };
+    });
+    console.log(JSON.stringify({
+      candidate: resolve(reporting), source: manifest.source, createdAt: manifest.createdAt,
+      sourceHash: manifest.sourceHash, assetsHash: manifest.assetsHash ?? null,
+      status: manifest.status, selection: manifest.selection, error: manifest.error ?? null, steps,
+    }, null, 2));
     return;
   }
   const checking = option("--verify");

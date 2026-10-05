@@ -4,11 +4,11 @@
  *
  * A state is reached once per device class and colour mode, at the class's first size where it exists, and then the
  * window is resized through the class's other sizes: what a person sees who turns the device or resizes the window.
- * Each size writes a full-page picture and, for a page taller than the window, the first screen as well:
- * ux-shots/<label>/<state>/<width>x<height>-<mode>.png and …-<mode>.first.png.
+ * Each size writes the first screen, then a full-page picture after all sizes have their first screen:
+ * ux-shots/<label>/<state>/<width>x<height>-<mode>.first.png and …-<mode>.png.
  */
 import { mkdirSync } from "node:fs";
-import { test, type TestInfo } from "@playwright/test";
+import { expect, test, type TestInfo } from "@playwright/test";
 import { STATES } from "../e2e/screens";
 
 export type DeviceClass = "phone" | "tablet" | "desktop";
@@ -70,9 +70,16 @@ for (const state of STATES) {
       await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
       await page.waitForTimeout(250);
       const base = `${OUT}/${state.name}/${width}x${height}-${mode}`;
+      expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches), "the viewport picture keeps the device's pointer").toBe(Boolean(info.project.use.hasTouch));
+      await page.screenshot({ path: `${base}.first.png`, animations: "disabled" });
+    }
+    // Chromium's full-page capture can reset touch emulation. Capture every real viewport before taking full pages;
+    // fixed layers and touch density in a full-page image are context, not proof of their viewport geometry.
+    for (const [, width, height] of sizes) {
+      await page.setViewportSize({ width, height });
+      await page.waitForTimeout(250);
+      const base = `${OUT}/${state.name}/${width}x${height}-${mode}`;
       await page.screenshot({ path: `${base}.png`, fullPage: true, animations: "disabled" });
-      const tall = await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight + 1);
-      if (tall) await page.screenshot({ path: `${base}.first.png`, animations: "disabled" });
     }
   });
 }
