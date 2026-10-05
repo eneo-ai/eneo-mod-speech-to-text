@@ -1,5 +1,6 @@
 /* The module's identity on the default theme: its accent, system fonts and focus ring (frontend/kit/theme/eneo.theme.ts). */
 :root {
+  --scroll-shadow: rgba(22, 24, 29, 0.22);
   --vp-font-family-base: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --vp-font-family-mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
 
@@ -35,6 +36,7 @@
 }
 
 .dark {
+  --scroll-shadow: rgba(236, 238, 242, 0.2);
   --vp-c-bg: #0e1115;
   --vp-c-bg-alt: #14171c;
   --vp-c-bg-elv: #191c1f;
@@ -71,7 +73,12 @@ pre.mermaid {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   overflow-x: auto;
-  background: none;
+  /* A shadow at the edge that has more behind it: the box scrolls. */
+  background:
+    linear-gradient(to right, var(--vp-c-bg), transparent) left center / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--vp-c-bg), transparent) right center / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--scroll-shadow), transparent) left center / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--scroll-shadow), transparent) right center / 12px 100% no-repeat scroll;
   white-space: pre;
   font-family: var(--vp-font-family-mono);
   font-size: 0.8125rem;
@@ -284,13 +291,13 @@ pre.mermaid p {
 
 /* ---------- API reference (Scalar) ---------- */
 
-.api-page > h1,
+.api-page > .api-title,
 .api-page > p {
   max-width: 1152px;
   margin-inline: auto;
   padding-inline: 24px;
 }
-.api-page > h1 {
+.api-page > .api-title {
   padding-top: 40px;
   font-size: 2rem;
   line-height: 1.2;
@@ -354,5 +361,152 @@ html:not(.dark) .scalar-app {
   .VPHome .vp-doc ul li > a:first-child {
     display: inline-block;
     padding-block: 10px;
+  }
+}
+
+/* ---------- Menus, tables, outline, code and pictures ---------- */
+
+/* A closed drawer is not on the page: its links are not tab stops. */
+@media (max-width: 959px) {
+  html .VPSidebar:not(.open) {
+    visibility: hidden;
+    transition: opacity 0.5s, transform 0.25s ease, visibility 0s linear 0.5s;
+  }
+}
+
+/* The outline wraps a long heading instead of cutting it. */
+.VPDocAsideOutline .outline-link,
+.VPLocalNavOutlineDropdown .outline-link {
+  white-space: normal;
+  line-height: 1.4;
+  padding-block: 5px;
+}
+
+/* The copied label of a code block, in Swedish (the title is a setting). A comment in the high-contrast theme is 4.43:1 on
+   the page's grey, so the block is a lighter grey in light mode. */
+:root {
+  --vp-code-copy-copied-text-content: 'Kopierat';
+  --vp-code-block-bg: #f6f7fb;
+}
+.dark {
+  --vp-code-block-bg: var(--vp-c-bg-alt);
+}
+
+/* On a narrow screen a table row is a card, with each cell's column name above it: a variable and its rule sit together. */
+@media (max-width: 640px) {
+  .vp-doc table {
+    display: block;
+    overflow: visible;
+    border: 0;
+  }
+  .vp-doc thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .vp-doc tbody {
+    display: block;
+  }
+  .vp-doc tr {
+    display: block;
+    margin: 0 0 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--vp-c-divider);
+    border-radius: 8px;
+    background: var(--vp-c-bg);
+  }
+  .vp-doc td {
+    display: block;
+    padding: 6px 0 0;
+    border: 0;
+  }
+  .vp-doc td:first-child {
+    padding-top: 0;
+    font-weight: 600;
+  }
+  .vp-doc td:empty {
+    display: none;
+  }
+  .vp-doc td:not(:first-child)::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--vp-c-text-2);
+  }
+}
+
+/* The architecture picture has a white ground and 1536 px of text: it is dimmed in dark mode and left out where it cannot be read. */
+.dark .vp-doc img[src*='arkitektur-oversikt'] {
+  filter: brightness(0.85);
+}
+@media (max-width: 640px) {
+  .vp-doc img[src*='arkitektur-oversikt'] {
+    display: none;
+  }
+}
+
+/* The endpoint list under a tag shows every endpoint: no height cap, so no box inside the page that scrolls. */
+.api-reference ul[aria-label^='Anrop i'],
+.api-reference .scalar-card-content:has(> ul[aria-label^='Anrop i']) {
+  max-height: none;
+  overflow: visible;
+}
+
+/* A long path wraps in the endpoint list instead of being cut and made to scroll. */
+.api-reference .endpoint,
+.api-reference .endpoint-path {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* A response's description is shown whole: Scalar cuts it at three lines inside a small box that scrolls. */
+.api-reference .response-description-markdown {
+  max-height: none;
+}
+
+/* The dark theme's edge labels are #ccc on #585858, 4.43:1. */
+.dark pre.mermaid .edgeLabel,
+.dark pre.mermaid .edgeLabel p {
+  color: #f2f2f2 !important;
+}
+
+/* Scalar's menu button (open and close are one button) is a finger's target on a narrow screen. */
+@media (max-width: 959px) {
+  .api-reference button.scalar-icon-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Scalar's sections stop under VitePress's bar when a link scrolls to them. */
+.api-reference [id] {
+  scroll-margin-top: calc(var(--vp-nav-height) + 16px);
+}
+
+/* The site's own controls are 44 px high where a finger is the pointer (WCAG 2.5.8 asks 24; the project's rule is 44). */
+@media (max-width: 959px), (pointer: coarse) {
+  .VPSidebarItem .link {
+    min-height: 44px;
+    align-items: center;
+  }
+  .VPSidebarItem .caret {
+    width: 44px;
+    height: 44px;
+  }
+  .VPLocalNav .menu,
+  .VPLocalNavOutlineDropdown > button {
+    min-height: 44px;
+  }
+  .VPLocalNavOutlineDropdown .outline-link {
+    display: flex;
+    align-items: center;
+    min-height: 44px;
+  }
+  .vp-doc [class*='language-'] > button.copy {
+    width: 44px;
+    height: 44px;
   }
 }

@@ -23,6 +23,11 @@ export function localizeHtml(html: string) {
 }
 
 function localizeDom(root: ParentNode) {
+  // A sidebar heading that does not fold is not a button: the theme gives every group one, with a tab stop that does nothing.
+  for (const item of root.querySelectorAll('.VPSidebarItem:not(.collapsible) > .item[role="button"]')) {
+    item.removeAttribute('role')
+    item.removeAttribute('tabindex')
+  }
   for (const node of root.querySelectorAll<HTMLElement>('[aria-label], .visually-hidden')) {
     const label = node.getAttribute('aria-label')
     if (label && TEXTS[label]) node.setAttribute('aria-label', TEXTS[label])
