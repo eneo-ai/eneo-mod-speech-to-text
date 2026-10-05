@@ -248,6 +248,23 @@ export async function runReconnecting(page: Page) {
   return { mend: () => void (failing = false) };
 }
 
+/**
+ * A finished run whose result is blank, its audio in Eneo so that a new run can use it (the stub's runs say neither;
+ * its steps do not name the file that went in).
+ */
+export async function emptyResult(page: Page) {
+  await page.route(`**/runs/${ids.runs.plain}/`, async (route) => {
+    const body = await (await route.fetch()).json();
+    return route.fulfill({ json: { ...body, result: { kind: "inline_text", text: "" } } });
+  });
+  await page.route(`**/runs/${ids.runs.plain}/steps/`, async (route) => {
+    const steps: object[] = await (await route.fetch()).json();
+    return route.fulfill({ json: steps.map((step) => ({ ...step, runtime_input_file_ids: [ids.files.audioA] })) });
+  });
+  await run(page, ids.runs.plain);
+  await heading(page, "Resultatet är tomt");
+}
+
 /** The finished run with its transcript loaded. */
 export async function result(page: Page) {
   await run(page, ids.runs.done);
@@ -770,6 +787,7 @@ export const STATES: State[] = [
       await expect(page.getByRole("columnheader", { name: "Ärende" })).toBeVisible();
     },
   },
+  { name: "result-empty", go: emptyResult },
   {
     name: "result-steps-open",
     go: async (page) => {

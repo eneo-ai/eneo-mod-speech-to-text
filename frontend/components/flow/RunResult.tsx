@@ -47,6 +47,7 @@ export function RunResult({
   audio = true,
   onNewRecording,
   onRegenerated,
+  onStartAgain,
   contract = null,
 }: {
   flowId: string;
@@ -62,13 +63,18 @@ export function RunResult({
   onNewRecording: () => void;
   /** A new run was started from the reviewed transcript; the page follows it. */
   onRegenerated: (run: FlowRunPublic) => void;
+  /** A new run with the same audio and details; absent when the run has no audio to start again with. */
+  onStartAgain?: () => void;
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
   const delivered = run.result?.kind === "outbound_http";
   const words = outputWords(runOutput(run, contract));
-  const heading = usePhaseHeading(`Klart · ${flowName}`);
-  const { text, note } = runResultView(run.result);
+  const { text: shown, note } = runResultView(run.result);
+  // Blank text is no text, and a run with no file either has nothing to show: the page says that, not that it is ready.
+  const text = shown?.trim() ? shown : null;
+  const empty = !delivered && !text && files.length === 0;
+  const heading = usePhaseHeading(empty ? `Resultatet är tomt · ${flowName}` : `Klart · ${flowName}`);
   const finished = run.finished_at ?? run.created_at;
   // The document's file is the result's own (Eneo's run.result, not any step's file) that can be fetched; any other
   // run files are listed under it.
@@ -118,6 +124,16 @@ export function RunResult({
   const documentColumn = (
     <>
       {note && <Text as="p">{note}</Text>}
+      {empty && (
+        <VStack gap={3}>
+          <Text as="p">Körningen blev klar, men flödet gav inget att visa.</Text>
+          {onStartAgain && (
+            <HStack>
+              <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} />} onClick={onStartAgain} />
+            </HStack>
+          )}
+        </VStack>
+      )}
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
@@ -161,7 +177,7 @@ export function RunResult({
       <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
         <VStack gap={1}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            {delivered ? "Resultatet är skickat" : words.ready}
+            {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
           </Heading>
           {finished && (
             <Text as="p" type="supporting">

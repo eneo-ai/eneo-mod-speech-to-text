@@ -697,6 +697,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           contract={contract}
           audio={inputStep?.input_format?.toLowerCase() === "audio"}
           onNewRecording={onRunAgain}
+          onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
           onRegenerated={(regenerated) => {
             // The new run is followed like any other, from its progress to its own result.
             setRunError(null);
