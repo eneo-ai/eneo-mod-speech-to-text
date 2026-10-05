@@ -24,11 +24,11 @@ os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 
-from fastapi.routing import APIRoute  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
 from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
+from app_routes import http_routes  # noqa: E402
 
 BACKEND = Path(__file__).resolve().parents[1]
 COMMITTED = BACKEND.parent / "docs" / "api" / "openapi.json"
@@ -82,13 +82,9 @@ class DocumentTests(unittest.TestCase):
     def test_every_route_of_the_app_and_every_allowlist_entry_is_in_the_file_and_nothing_else(self) -> None:
         expected = {
             (method, route.path_format)
-            for route in main.app.routes
-            if isinstance(route, APIRoute) and route.path_format != CATCH_ALL
+            for route in http_routes()
+            if route.path_format != CATCH_ALL
             for method in route.methods
-        }
-        # The auth router is included under /api/auth and the app lists it as one object: its routes are the router's.
-        expected |= {
-            (method, f"/api/auth{route.path}") for route in main.module_auth.router.routes for method in route.methods
         }
         expected |= {(method, template) for methods, template in main.PROXY_ROUTES for method in methods}
 

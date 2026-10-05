@@ -18,9 +18,10 @@ os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 
-from fastapi.routing import APIRoute, APIWebSocketRoute  # noqa: E402
+from fastapi.routing import APIWebSocketRoute  # noqa: E402
 
 from app import main  # noqa: E402
+from app_routes import http_routes  # noqa: E402
 
 PAGE = (Path(__file__).resolve().parents[2] / "docs" / "backend.md").read_text()
 
@@ -36,16 +37,7 @@ class BackendPageTests(unittest.TestCase):
         for paths, methods in re.findall(r"^\| (`/[^|]+) \| ([A-Za-z, ]+) \|", section("Rutter"), re.M):
             for path in re.findall(r"`([^`]+)`", paths):
                 listed |= {(method.strip().upper(), path) for method in methods.split(",")}
-        # The auth router is included under /api/auth and the app lists it as one object: its routes are the router's.
-        routes = {
-            (method, route.path_format)
-            for route in main.app.routes
-            if isinstance(route, APIRoute)
-            for method in route.methods
-        }
-        routes |= {
-            (method, f"/api/auth{route.path}") for route in main.module_auth.router.routes for method in route.methods
-        }
+        routes = {(method, route.path_format) for route in http_routes() for method in route.methods}
         routes |= {("WEBSOCKET", route.path) for route in main.app.routes if isinstance(route, APIWebSocketRoute)}
 
         self.assertEqual(sorted(listed - routes), [], "in the table, not in the app")

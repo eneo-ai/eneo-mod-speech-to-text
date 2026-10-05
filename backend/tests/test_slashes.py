@@ -24,6 +24,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
 from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
+from app_routes import http_routes  # noqa: E402
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 REDIRECTS = {301, 302, 307, 308}
@@ -64,13 +65,6 @@ def frontend_paths() -> set[str]:
     return paths
 
 
-def http_routes() -> list[tuple[str, set[str]]]:
-    """The path and methods of every HTTP route of the app. The auth router is included under /api/auth and the app lists
-    it as one object, so its routes are the router's."""
-    routes = [(route.path, route.methods) for route in main.app.routes if isinstance(route, APIRoute)]
-    return routes + [(f"/api/auth{route.path}", route.methods) for route in main.module_auth.router.routes]
-
-
 def fill(template: str) -> str:
     """A template path of a route with ids in its parameters (a proxied path is any rest)."""
     return PARAMETER.sub(lambda match: UUID if match[1] in ("flow_id", "step_id") else "x", template).replace("x/x", "x")
@@ -108,16 +102,16 @@ class SlashCase(unittest.TestCase):
 class NoRedirectTests(SlashCase):
     def test_no_route_of_the_app_answers_a_redirect_for_its_path_or_its_slash_twin(self) -> None:
         checked = 0
-        for route_path, methods in http_routes():
-            for method in sorted(methods - {"OPTIONS"}):
-                for path in (fill(route_path), twin(fill(route_path))):
+        for route in http_routes():
+            for method in sorted(route.methods - {"OPTIONS"}):
+                for path in (fill(route.path), twin(fill(route.path))):
                     for client in (self.anonymous, self.client):
                         with self.subTest(method=method, path=path, signed_in=client is self.client):
                             response = client.request(method, path)
 
                             self.assertNotIn(response.status_code, REDIRECTS, response.headers.get("location"))
                             checked += 1
-        paths = {route_path for route_path, _ in http_routes()}
+        paths = {route.path for route in http_routes()}
         for expected in (
             "/health",
             "/api/branding",
