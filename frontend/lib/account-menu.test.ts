@@ -153,31 +153,54 @@ test("Logga ut asks the page's leave question first, and does nothing until the 
   assert.equal(router.state.historyAction, "REPLACE", "in place of the page, not on top of it");
 });
 
-test("while signing out it says so, cannot be pressed again, and the page is left however the answer came", async (t) => {
-  for (const answer of [() => Promise.resolve(new Response("{}", { status: 200 })), () => Promise.reject(new TypeError("Failed to fetch")), () => Promise.resolve(new Response("{}", { status: 500 }))]) {
-    let finish: () => void = () => {};
-    const gate = new Promise<void>((resolve) => (finish = resolve));
-    const { open, item, act, requests, router, unmount } = await openAccountMenu(t, { logout: () => gate.then(answer) });
+test("while signing out it says so and cannot be pressed again, and the page is left when the session has ended", async (t) => {
+  let finish: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (finish = resolve));
+  const { open, item, act, requests, router } = await openAccountMenu(t, { logout: () => gate.then(() => new Response("{}", { status: 200 })) });
+  await open();
+  await act(async () => {
+    item("Logga ut").click();
+    await settle();
+  });
+  const running = item("Loggar ut…");
+  assert.ok(running, "says so on the item, which the menu stays open to show");
+  assert.ok(running.getAttribute("aria-disabled") === "true" || running.hasAttribute("disabled"), "cannot be chosen again");
+  await act(async () => {
+    running.click();
+    await settle();
+  });
+  assert.deepEqual(requests, ["POST /api/auth/logout"], "one request");
+  assert.equal(router.state.location.pathname, "/flows", "still here while it runs");
+  await act(async () => {
+    finish();
+    await settle();
+  });
+  assert.equal(router.state.location.pathname, "/", "and gone to the sign-in page when it ended");
+  assert.equal(router.state.historyAction, "REPLACE");
+});
+
+test("a sign-out that did not go through leaves the person here, says so, and can be tried again: the session is still the backend's", async (t) => {
+  // The sign-in page sends someone who is still signed in on to the flows, so going there would hide the failure.
+  for (const failure of [() => Promise.reject(new TypeError("Failed to fetch")), () => Promise.resolve(new Response("{}", { status: 500 })), () => Promise.resolve(new Response("{}", { status: 403 }))]) {
+    let answer: () => Promise<Response> = failure;
+    const { open, item, act, requests, router, unmount } = await openAccountMenu(t, { logout: () => answer() });
     await open();
     await act(async () => {
       item("Logga ut").click();
       await settle();
     });
-    const running = item("Loggar ut…");
-    assert.ok(running, "says so on the item, which the menu stays open to show");
-    assert.ok(running.getAttribute("aria-disabled") === "true" || running.hasAttribute("disabled"), "cannot be chosen again");
+    assert.equal(router.state.location.pathname, "/flows", "not gone anywhere");
+    const failed = item("Det gick inte att logga ut. Försök igen.");
+    assert.ok(failed, "the item says what happened");
+    assert.ok(failed.getAttribute("aria-disabled") !== "true" && !failed.hasAttribute("disabled"), "and can be chosen again");
+
+    answer = () => Promise.resolve(new Response("{}", { status: 200 }));
     await act(async () => {
-      running.click();
+      failed.click();
       await settle();
     });
-    assert.deepEqual(requests, ["POST /api/auth/logout"], "one request");
-    assert.equal(router.state.location.pathname, "/flows", "still here while it runs");
-    await act(async () => {
-      finish();
-      await settle();
-    });
-    assert.equal(router.state.location.pathname, "/", "and gone to the sign-in page when it ended");
-    assert.equal(router.state.historyAction, "REPLACE");
+    assert.deepEqual(requests, ["POST /api/auth/logout", "POST /api/auth/logout"], "tried again");
+    assert.equal(router.state.location.pathname, "/", "and when it went through, the person is gone to the sign-in page");
     await unmount();
   }
 });

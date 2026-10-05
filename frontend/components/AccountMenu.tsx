@@ -26,19 +26,23 @@ export function AccountMenu() {
   const user = useAuthenticatedUser();
   const { mode, setMode } = useColorMode();
   const [loggingOut, setLoggingOut] = useState(false);
+  const [failed, setFailed] = useState(false);
   const displayName = userDisplayName(user);
   // Signing out leaves the page: asked first where that would lose something.
   const { leaveFirst } = useContext(LeaveContext);
 
   async function onLogout() {
+    setFailed(false);
     setLoggingOut(true);
     try {
       await logout();
     } catch {
-      // However the answer came, the page is left: the sign-in page says who is signed in.
-    } finally {
-      void navigate("/", { replace: true });
+      // Still signed in, and the sign-in page would send the person straight on to the flows: stay, and say so.
+      setLoggingOut(false);
+      setFailed(true);
+      return;
     }
+    void navigate("/", { replace: true });
   }
 
   // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
@@ -81,7 +85,7 @@ export function AccountMenu() {
       <DropdownMenuDivider />
       <DropdownMenuItem
         icon={loggingOut ? <Spinner size="sm" aria-hidden /> : LogOut}
-        label={loggingOut ? "Loggar ut…" : "Logga ut"}
+        label={loggingOut ? "Loggar ut…" : failed ? "Det gick inte att logga ut. Försök igen." : "Logga ut"}
         isDisabled={loggingOut}
         // The menu stays open to say that it is signing out, and for the leave question to give back to.
         hasCloseOnSelect={false}
