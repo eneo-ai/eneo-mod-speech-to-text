@@ -180,8 +180,9 @@ export async function result(page: Page) {
 }
 
 /**
- * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"): the development page's fixtures, the "bulk" case with its
- * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"): the development page's
+ * fixtures, the "bulk" case with its test audio. The setting that shows the editor in a run is off by default, so no
+ * run reaches it; this page does.
  */
 export async function reviewEditor(page: Page, testCase = "bulk") {
   await page.goto("/dev/speaker-review");
@@ -211,7 +212,7 @@ export interface State {
 
 /** Every screen and state the gate visits. */
 export const STATES: State[] = [
-  // The design system's parts beside the old ones (routes/dev/FoundationCheck).
+  // The design system's parts on one page (routes/dev/FoundationCheck).
   { name: "foundation", go: (page) => foundation(page) },
   {
     name: "foundation-dialog",
