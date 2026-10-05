@@ -73,7 +73,7 @@ test("words are located sequentially with a punctuation retry and uncertainty fl
     [[0, 4], [5, 7], [8, 14], [16, 20], [-1, -1]],
   );
   assert.deepEqual(words.map((w) => w.uncertain), [false, true, false, false, false]);
-  // Utan forced alignment betyder probability 0 inte osäkerhet.
+  // Without forced alignment a probability of 0 does not mean uncertainty.
   assert.equal(
     locateWords("x", [{ word: "x", start: 0, end: 1, probability: 0 }], "provider_words")[0]
       .uncertain,

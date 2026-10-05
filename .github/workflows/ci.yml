@@ -95,6 +95,8 @@ jobs:
         run: npm run test:prod
       - name: Accessibility gate, one phone and one laptop
         run: npx playwright test --project=phone-390-light --project=laptop-1440-light --workers=2
+      - name: Accessibility gate through the real backend under the strict policy, one phone and one laptop
+        run: npm run build:check && GATE_TARGET=real npx playwright test --project=phone-390-light --project=laptop-1440-dark --workers=2
       - name: Branding gate, a deployment with its own organisation and accent
         run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

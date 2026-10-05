@@ -247,6 +247,6 @@ test("the microphone is a labelled field like the others: the label above, the c
   const trigger = new RegExp(`<button[^>]*role="combobox"[^>]*id="${id}"[^>]*>`).exec(html)?.[0] ?? new RegExp(`<button[^>]*id="${id}"[^>]*role="combobox"[^>]*>`).exec(html)?.[0];
   assert.ok(trigger, "the label names the picker");
   assert.doesNotMatch(trigger, /aria-label=/, "no name that hides the chosen device");
-  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "not the browser's own list (Radix keeps a hidden one for forms)");
+  assert.doesNotMatch(html, /<select(?![^>]*aria-hidden="true")/, "not the browser's own list");
   assert.match(html, />Testa mikrofonen</);
 });

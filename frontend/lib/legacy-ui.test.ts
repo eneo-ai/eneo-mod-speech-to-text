@@ -8,6 +8,8 @@ import { join } from "node:path";
 // with a class string, which was Tailwind's. A module styles through the design system's props, or a CSS Module
 // (className={styles.x}).
 const GONE = /from "(?:@\/components\/ui\/|@radix-ui\/|class-variance-authority"|clsx"|tailwind-merge"|tailwindcss|@\/lib\/utils")/;
+// The server framework the module ran on before the static build, and its colour-mode package: not imported again.
+const NEXT = /(?:from|import\()\s*["']next(?:-themes|\/[^"']*)?["']/;
 const CLASS_STRING = /className=(?:"|\{`|\{cn\()/;
 
 const sources = (dir: string): string[] =>
@@ -20,5 +22,6 @@ const sources = (dir: string): string[] =>
 test("the old UI system stays gone: no import of what it was made of, no class string", () => {
   const files = [...["routes", "components", "kit", "lib"].flatMap(sources), "main.tsx", "routes.tsx"].filter((file) => !file.endsWith("legacy-ui.test.ts"));
   assert.deepEqual(files.filter((file) => GONE.test(readFileSync(file, "utf8"))), [], "an import of the removed UI libraries");
+  assert.deepEqual(files.filter((file) => NEXT.test(readFileSync(file, "utf8"))), [], "an import of next or next-themes: the pages are routes of react-router");
   assert.deepEqual(files.filter((file) => CLASS_STRING.test(readFileSync(file, "utf8"))), [], "a class string: use the design system's props or a CSS Module");
 });

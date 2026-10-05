@@ -17,7 +17,9 @@ test("a direct visit to a route of the app renders that page, in Swedish", async
   ];
 
   for (const [path, title] of visits) {
-    const response = await page.goto(path);
+    // Settled before the next visit: leaving the result page while its audio requests are still going can leave
+    // Firefox's next page without a load event for good (the visits below it are the page's own, not a test of that).
+    const response = await page.goto(path, { waitUntil: "networkidle" });
 
     expect(response?.status(), path).toBe(200);
     await expect(page, path).toHaveTitle(title);

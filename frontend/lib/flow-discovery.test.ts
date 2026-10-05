@@ -109,7 +109,7 @@ test("an unsent recording's action on the flow list follows how its flow gives t
   const label = listCreateLabels(groups);
   assert.equal(label("text"), "Skapa text");
   assert.equal(label("pdf"), "Skapa dokument");
-  assert.equal(label("older"), "Skapa dokument", "an Eneo whose list does not say: as before");
+  assert.equal(label("older"), "Skapa dokument", "an Eneo whose list does not say");
   assert.equal(label("gone"), "Skapa dokument", "a flow no longer listed");
   assert.equal(listCreateLabels(null)("text"), "Skapa dokument", "while the list is read");
 });

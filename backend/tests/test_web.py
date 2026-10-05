@@ -192,6 +192,14 @@ class SecurityHeadersTests(HeadersCase):
         self.assertEqual(default_headers()["X-Frame-Options"], "DENY")
         self.assertEqual(default_headers()["Referrer-Policy"], "no-referrer")
 
+    def test_no_directive_lets_a_page_load_from_a_data_url(self) -> None:
+        # The build inlines nothing (assetsInlineLimit is 0), and the gate's sentinel shows nothing loads a data: image.
+        policy = default_headers()["Content-Security-Policy"]
+        directives = {part.split()[0]: part.split()[1:] for part in policy.split("; ")}
+
+        self.assertNotIn("data:", policy)
+        self.assertEqual(directives["img-src"], ["'self'", "blob:"])
+
     def test_the_microphone_stays_on_for_this_page_and_the_dangerous_features_are_off(self) -> None:
         features = dict(part.split("=", 1) for part in default_headers()["Permissions-Policy"].split(", "))
 

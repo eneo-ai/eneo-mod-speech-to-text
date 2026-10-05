@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
 
 const sessionEnded = () =>
@@ -122,7 +122,7 @@ test("the start page, which no signed-in page holds, never waits for a login", a
   try {
     await assert.rejects(getRunStatus("flow-1", "run-1"), (error: ApiError) => error.status === 401);
     assert.equal(loginState.signedOut, false);
-    assert.equal(calls, 1, "sent once, as before");
+    assert.equal(calls, 1, "sent once");
   } finally {
     globalThis.fetch = browserFetch;
   }

@@ -7,8 +7,8 @@
  * motion. The measurements go to findings.json in each test's output folder.
  */
 import { writeFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
-import { TEXT_SPACING, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { expect, test } from "./gate";
+import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
 
 for (const state of STATES) {
@@ -34,9 +34,9 @@ for (const state of STATES) {
     // Added text spacing is checked on both phone widths, the 1280 laptop and the widest screens: a 1280 x 800
     // laptop clipped the recording's warnings as surely as a phone.
     if (project === "phone-320-light" || project === "phone-390-light" || desktop) {
-      const style = await page.addStyleTag({ content: TEXT_SPACING });
+      const remove = await addStyles(page, TEXT_SPACING);
       spaced = await reflow(page);
-      await style.evaluate((element) => (element as Element).remove());
+      await remove();
     }
     const motion = info.project.use.reducedMotion === "reduce" ? await endlessAnimations(page) : [];
 
