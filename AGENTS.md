@@ -2,7 +2,7 @@
 
 Tal till text: an Eneo module. A FastAPI backend-for-frontend (BFF) serves the built React app (Vite, react-router) and
 the API on one port, in one process and one image.
-Documentation for people is Swedish and lives in `docs/` (start at `docs/README.md`). This file, `CLAUDE.md` and code
+Documentation for people is Swedish and lives in `docs/` (published as a site; `docs/index.md` is its start page). This file, `CLAUDE.md` and code
 comments are English. Everything above the last section is permanent. The last section is migration-only and is cut
 out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 
@@ -57,6 +57,7 @@ served by the backend under the strict policy), `npm run test:prod`, `npm run bu
 `npm run astryx -- doctor`; after a theme change `npm run theme:build` (CI fails if `kit/theme/built` differs); after a
 branding or accent-colour change `npm run test:a11y:branding`.
 From `backend/`: `.venv/bin/python -m unittest discover -s tests`.
+From `docs-site/`, after a change to `docs/` or the site: `npm run build` and `npm run check`.
 From the repository root: `docker compose --env-file .env.example config -q`.
 What each proves and how to read a failure: `docs/quality-gates.md`.
 
@@ -78,7 +79,8 @@ worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STU
 | `frontend/tests/prod/` | The production tests (headers, routes, first paint, stale chunks, a recording while chunks are gone, upstream, branding), the smoke test and the weight budget. |
 | `deploy/`, `Dockerfile`, `docker-compose*.yml` | The production image (`python -m app.serve`, one process, no Node) and Compose. |
 | `.github/workflows/` | CI and publishing. |
-| `docs/` | The documentation (Swedish). `docs/README.md` is the index, `docs/decisions/` the decisions. |
+| `docs/` | The documentation (Swedish). `docs/decisions/` holds the decisions. |
+| `docs-site/` | The documentation site (VitePress) built from `docs/`; its own package, never part of the image. |
 
 ## How to find things
 
@@ -111,6 +113,15 @@ worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STU
 - One fact in one place; link instead of repeating. Every claim about code carries a path, never a line number.
   Describe directories and conventions, not every file.
 - Diagrams are Mermaid (`flowchart` and `sequenceDiagram` only, short quoted labels), each with one sentence above it.
+- Write for the reader's next action. Lead each section with the fact, action or condition they need; say who does what;
+  keep prerequisites, limits, uncertainty and how to recover.
+- Cut filler: no praise without evidence, no sentence that restates its heading, no "in this section we go through". Make a
+  generic claim concrete or delete it. "Sätt miljövariablerna på tjänsten och starta om den" beats "I detta avsnitt går vi
+  igenom hur du konfigurerar modulen".
+- Paragraphs explain, lists hold steps or parallel facts, tables compare. Keep the glossary's words ("Begrepp" in
+  `docs/architecture.md`) and technical identifiers as they are. No emoji.
+- A person reviews changed prose in the pull request. The build checks links, the browser check checks the rendered
+  site; nothing checks authorship, so do not add a word blacklist or a length limit.
 - Pages describe the module as it is: no history, no plans, no status tables, no `docs/plans/` or `.beads/` links.
 - When the code and a page disagree, the code wins: fix the page.
 

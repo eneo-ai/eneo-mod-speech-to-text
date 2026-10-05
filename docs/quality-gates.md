@@ -13,6 +13,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
 | gaten, granskning | `npm run test:a11y:review` | samma, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan med granskningen på. |
 | gaten, branding | `npm run test:a11y:branding` | samma, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
 | produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden (`python -m app.serve`), stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
+| sajten | `npm run build` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Att inga länkar är döda, att startsidan och API-sidan saknar konsolfel och externa anrop och klarar axe, tangentbord och 390 px, och att varje diagram ritas. |
 | imagen | `npm run test:image` | den byggda imagen bakom Traefik, stubben som Eneo | Produktionsimagen: en process, headers, uppladdningar, WebSocket, minne, stopp. |
 
 Dessutom: `npm run astryx -- doctor` (uppsättningen), `npm run theme:build && git diff --exit-code -- kit/theme/built` (temat är aktuellt), `docker compose -f docker-compose.yml --env-file .env.example config -q` (Compose-filen, från roten). CI kör allt utom hela gaten: [Drift](operations.md#ci-och-utgåvor).
@@ -36,7 +37,6 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 
 - jsdom saknar `showModal` och Popover API. `frontend/lib/test-dom.ts` ersätter dem med attribut och händelser, men modalitet och förankring simuleras inte: de bevisas i gaten.
 - En CSS-modul i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`).
-- En ny Astryx-underväg som inte ligger under `dist/<Namn>` behöver en rad i `paths` i `frontend/tsconfig.test.json`.
 - `frontend/lib/test-router.ts` ger komponenttester en data-router; IndexedDB kommer från `fake-indexeddb`.
 
 ## Gaten
