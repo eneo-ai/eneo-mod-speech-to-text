@@ -125,10 +125,8 @@ class NoRedirectTests(SlashCase):
                 self.assertNotIn(response.status_code, REDIRECTS)
 
     def test_every_allowlisted_path_and_its_slash_twin_is_never_redirected(self) -> None:
-        for methods, pattern in main._PROXY_ROUTE_RULES:
-            path = "/api/eneo/" + re.sub(r"\[\^/\]\+", "x", pattern.pattern).replace("(?:published|run-contract|graph)", "published").replace(
-                "(?:status/)?", "").replace("(?:cancel|redispatch|retry)", "cancel").replace("(?:approve|reject|resume)", "approve").replace(
-                "(?:export)?", "").replace("$", "")
+        for methods, template in main.PROXY_ROUTES:
+            path = fill(template)
             for method in sorted(methods):
                 for candidate in (path, twin(path)):
                     with self.subTest(method=method, path=candidate):
@@ -169,7 +167,7 @@ class FrontendPathTests(SlashCase):
                         isinstance(route, APIRoute) and route.path != "/api/eneo/{path:path}" and route.path_regex.fullmatch(path)
                         for route in main.app.routes
                     )
-                    listed = any(pattern.fullmatch(path.removeprefix("/api/eneo/")) for _, pattern in main._PROXY_ROUTE_RULES)
+                    listed = any(pattern.fullmatch(path) for _, pattern in main._PROXY_PATTERNS)
                     self.assertTrue(dedicated or listed, "neither a route of its own nor on the allowlist, as spelled")
                 else:
                     response = self.anonymous.get(path)
