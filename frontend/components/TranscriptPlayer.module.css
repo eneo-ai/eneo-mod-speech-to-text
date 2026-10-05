@@ -97,7 +97,7 @@
 
 /* A large meeting on a narrow screen picks its speaker from a list, not from endless chips; from lg the chips are
    shown (they wrap, so none is cut off). */
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .chips[data-many] {
     display: none;
   }
@@ -239,7 +239,7 @@
 
 /* A tall sticky toolbar, or a card with its own height, must not cover the text when zoomed or on a phone. The
    caller's own max-height (a class it passes in) gives way here, hence the !important. */
-@media (max-width: 639px), (max-height: 600px) {
+@media (max-width: 639.98px), (max-height: 600px) {
   .player {
     max-block-size: none !important;
   }
@@ -312,7 +312,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 639px) {
+@media (max-width: 639.98px) {
   .skip,
   .rate {
     display: none;

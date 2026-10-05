@@ -200,3 +200,19 @@ test("a declaration with anchor-size() has a plain one of the same property befo
   });
   assert.deepEqual(unguarded, []);
 });
+
+// A window can be a fraction of a pixel wide (a browser's zoom makes it so): max-width: 639px and min-width: 640px leave
+// 639.5 to neither, so the complement of a min-width breakpoint is written 639.98px.
+test("a max-width breakpoint that complements a min-width one leaves no gap between them", () => {
+  const sheets = ["styles", "components", "routes", "kit"].flatMap((folder) =>
+    readdirSync(folder, { recursive: true, encoding: "utf8" })
+      .filter((file) => file.endsWith(".css") && !file.includes("built"))
+      .map((file) => `${folder}/${file}`),
+  );
+  const text = sheets.map((sheet) => [sheet, readFileSync(sheet, "utf8")] as const);
+  const mins = new Set(text.flatMap(([, css]) => [...css.matchAll(/min-width:\s*(\d+)px/g)].map((match) => Number(match[1]))));
+  const gaps = text.flatMap(([sheet, css]) =>
+    [...css.matchAll(/max-width:\s*(\d+)px/g)].filter((match) => mins.has(Number(match[1]) + 1)).map((match) => `${sheet}: max-width: ${match[1]}px`),
+  );
+  assert.deepEqual(gaps, []);
+});
