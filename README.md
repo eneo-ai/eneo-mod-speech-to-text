@@ -12,6 +12,8 @@ docker compose up --build
 open http://localhost:3001
 ```
 
+**Obs:** bakom Traefik v3.7 är `readTimeout` 60 s som standard, och det kapar uppladdningar som tar längre tid. Höj den på ingångspunkten: [Drift](docs/operations.md#vad-som-står-framför-modulen).
+
 Mer: [Lokal utveckling](docs/development.md) (utan Docker, utan Eneo), [Drift](docs/operations.md), [Arkitektur](docs/architecture.md) och [API-referens](docs/backend.md). Alla sidor finns också som webbplats: https://eneo-ai.github.io/eneo-mod-speech-to-text/. Arbetar du som AI-agent, börja med [`AGENTS.md`](AGENTS.md) (engelska).
 
 ## Licens
