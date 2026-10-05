@@ -1,11 +1,5 @@
 # Eneo-integration
 
-Syfte: Beskriva hur modulen bygger en körning av ett publicerat Eneo-flöde, hanterar granskning och talarmappning, och relayar live-text, så att kontraktet mot Eneo finns på ett ställe.
-
-Läs detta när: Du ändrar hur en körning startas eller följs, hur granskning och rättningar skickas, eller live-texten, eller när Eneos API ändras.
-
-Hör ihop med: [Backend](backend.md), [Inspelaren](recording.md), [Granska transkriptet](transcript-review.md), [Inloggning och session](auth-and-session.md), [Eneo-överlämningen](handover-eneo-transcript-editor-2026-09-15.md)
-
 ## Så byggs en körning
 
 Appen bygger körningen från Eneos publicerade flödeskontrakt:
@@ -27,7 +21,7 @@ Appen bygger körningen från Eneos publicerade flödeskontrakt:
 }
 ```
 
-Uppladdning och start går genom `frontend/lib/submit-run.ts`: nätverksfel, 408, 429 och 5xx provas igen med en väntetid som börjar på 1 s och fördubblas upp till 60 s, och direkt när anslutningen är tillbaka. Körningen startas med samma idempotensnyckel vid varje försök. Andra 4xx-fel stoppar med Eneos felmeddelande. Mer om det på användarens sida i [Inspelaren](recording.md#uppladdning-och-nya-försök).
+Uppladdning och start går genom `frontend/lib/submit-run.ts`, som provar om vid tillfälliga fel och startar körningen med samma idempotensnyckel vid varje försök: [Inspelaren](recording.md#uppladdning-och-nya-försök).
 
 Webbläsaren anropar alltid modulens `/api/eneo/...`; vilka rutter som finns står i [Backend](backend.md#tillåtelselistan-för-eneo-anrop).
 
@@ -70,7 +64,32 @@ Ljudet strömmas same-origin via modulens backend: `GET /api/eneo/flows/{flowId}
 
 Repliker kan rättas direkt i spelaren (hovra, penna) och en replikgrupp kan byta talare (klicka på namnet). Rättningarna är icke-destruktiva och sparas per ändring till Eneos `…/steps/{stepId}/transcript-corrections/` med replace-semantik och `expected_revision`; Eneo viker in dem i transkriptet när granskningen godkänns. Rättning kräver att steget lagrade `transcription.segments`: fallback-parsad text går inte att förankra. Samma spelare, skrivskyddad, visas på resultatsidan för alla körningar med ett transkriberingssteg, med namnen från ett eventuellt speaker-mapping-steg.
 
-Kontraktet för v3-rättningar (schema, hash, ankare) och det som återstår hos Eneo beskrivs i [Eneo-överlämningen](handover-eneo-transcript-editor-2026-09-15.md) och [leveransstatusen](speaker-review-rollout.md).
+Rättningarna skickas som ett komplett ersättningsset per transkriberingssteg (schema 3, `frontend/lib/transcript-corrections.ts`):
+
+```json
+PATCH /api/v1/flows/{flowId}/runs/{runId}/steps/{stepId}/transcript-corrections/
+{
+  "schema_version": 3,
+  "segments_hash": "<originalets 64-teckens hash från Eneo>",
+  "expected_revision": 8,
+  "occurrences": [],
+  "speaker_edits": [
+    { "segment_index": 0, "char_start": null, "char_end": null, "original": null,
+      "original_speaker": "SPEAKER_00", "speaker": "SPEAKER_00", "decision": "confirmed" }
+  ]
+}
+```
+
+- `expected_revision` är `null` för första setet och senast accepterade revision därefter. Ett beslut för ett helt källsegment har `null` som teckengränser och `original`; ett delbeslut har ett exakt, icke-tomt intervall och `original` med samma text. `decision: "unresolved"` har `speaker: null`; originalets talare kan själv vara `null`.
+- **Originalet är oföränderligt:** modellens talare, överlappens id, ordningen och råtexten sparas oberoende av rättningar. Hashen kommer från transkriberingens metadata eller ett kompatibelt, icke-föråldrat svar, aldrig från normaliserad text.
+- **Teckenpositioner är Unicode-kodpunkter** på tråden och UTF-16 i webbläsaren; modulen konverterar åt båda håll.
+- En markering kan korsa källsegment: modulen skapar motsvarande beslut för varje och skickar ett ersättningsset. Ett beslut att bekräfta samma talare räknas, och "olöst" är något annat än ogranskat.
+- En textändring gör berörda ordtider ogiltiga; orörda tider och originalets uppspelningsgränser bevaras. En rättning som inte kan samsas med talargränserna avvisas, och gränserna flyttas aldrig i tysthet.
+- Metadata är filspecifik (`transcription.speaker_review.files`); Eneos filprefixerade överlapp-id och filindex bevaras.
+- Konflikter förblir konflikter: en föråldrad hash, ett ogiltigt ankare eller en annan revision blir aldrig en lyckad överskrivning, och ett nytt försök behåller den ursprungliga revisionen.
+- Sparandet går i en kö som skriver hela listan i taget. Ett misslyckande behåller de lokala utkasten, blockerar senare ersättningar och hindrar att godkännandet rapporterar lyckat; osparade utkast kan laddas ned. Godkännandet väntar på kön, och uttryckligen olösta passager är tillåtna.
+
+Efter en rättning av en färdig körning kan dokumentet göras om ur det granskade transkriptet: `POST …/steps/{stepId}/transcript-regenerations/` skapar en ny körning med korrigeringsrevisionen som idempotensnyckel; källkörningen och dess filer ändras aldrig (`frontend/lib/regenerate.ts`). Webbläsarens egna bekräftelser av osäkra ord (`lib/confirmed-words.ts`) är lexikal granskning och sparas inte som talarbeslut.
 
 ## Live-text (Strömma)
 
@@ -120,6 +139,5 @@ Har `transcript.done` ett `transcript_id` sparas det med inspelningen på enhete
 ### Gränser och drift
 
 - Gränserna för meddelandestorlek, kö och skrivtid, och hur socketen följer sessionen, står i [Backend](backend.md#live-reläet).
-- Ingen ny miljövariabel behövs. Next proxar WebSocket-uppgraderingen genom samma `/api/*`-rewrite som övriga anrop, i `next dev`, i den fristående servern och i produktionsimagen.
-- Traefik släpper igenom uppgraderingen utan extra konfiguration. Uppgiften är verifierad av tidigare dokumentation med Next 16.3.4 och Traefik 3.7, även med en anslutning utan ljud i 90 sekunder, och har inte verifierats om här.
-- Går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom WebSocket-uppgraderingar till Eneo.
+- Traefik (v3.7) släpper igenom uppgraderingen och webbläsarens `Origin` utan extra konfiguration; imagens acceptans kör `/api/live` genom Traefik v3.7.13 ([Tester](quality-gates.md#imagens-acceptans)).
+- Vad som står framför modulen och Eneo: [Drift](operations.md#vad-som-står-framför-modulen).
