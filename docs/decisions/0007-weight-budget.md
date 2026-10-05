@@ -8,7 +8,7 @@ Modulen används på telefoner och på kommunala nät. Ett beroende, en ikonupps
 
 Vikt och läckor mäts på bygget som levereras, och ett test stoppar när mätvärdet överstiger budgeten:
 
-- `frontend/tests/prod/weight.spec.ts` stoppar när en sidas komprimerade JS och CSS överstiger `frontend/tests/prod/weight-budget.json`: `/flows` 250 KB JS och 30 KB CSS, `/flows/:id` 330 KB JS och 40 KB CSS. En budget är det uppmätta värdet avrundat uppåt till närmaste 5 KB.
+- `frontend/tests/prod/weight.spec.ts` stoppar när en sidas komprimerade JS och CSS överstiger `frontend/tests/prod/weight-budget.json`, som har ett tak per sida för JS och för CSS. En budget är det uppmätta värdet avrundat uppåt till närmaste 5 KB.
 - Det byggda temat ska användas: inget `<style data-astryx-theme*>` får finnas efter laddning, för det är temagenerering i webbläsaren vid varje sidladdning.
 - `frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums DOM-räknare, lyssnare och minne.
 - Varje sida är en egen bit som hämtas när sidan öppnas, så att den som är på inloggningssidan inte laddar inspelningen eller granskningen. Inget laddas som sidan inte använder: en språkfil, ikonuppsättning eller komponent importeras där den används, inte via en gemensam samlingsfil.

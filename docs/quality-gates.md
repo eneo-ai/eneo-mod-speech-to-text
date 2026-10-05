@@ -37,7 +37,6 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 
 - jsdom saknar `showModal` och Popover API. `frontend/lib/test-dom.ts` ersätter dem med attribut och händelser, men modalitet och förankring simuleras inte: de bevisas i gaten.
 - En CSS-modul i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`).
-- En ny Astryx-underväg som inte ligger under `dist/<Namn>` behöver en rad i `paths` i `frontend/tsconfig.test.json`.
 - `frontend/lib/test-router.ts` ger komponenttester en data-router; IndexedDB kommer från `fake-indexeddb`.
 
 ## Gaten
