@@ -3,7 +3,7 @@
  * where the speakers sit in a card that folds away: `npm run test:a11y:review`, which starts the app that way. Only there
  * are these tests run; the gate's own app has the setting off.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./gate";
 import { run } from "./screens";
 import ids from "../fixtures/ids.json";
 

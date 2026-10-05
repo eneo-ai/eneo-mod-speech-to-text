@@ -4,7 +4,8 @@
  * A leak grows with every cycle (a listener an effect never removes, a portal that is never unmounted), so it
  * would show as about 40. A new overlay surface is added here in the phase that ports it.
  */
-import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
+import { type CDPSession, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { backLink, chooseMode, open, record, result, reviewEditor, run, setup, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 

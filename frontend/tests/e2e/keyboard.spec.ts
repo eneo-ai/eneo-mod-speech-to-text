@@ -6,8 +6,9 @@
  * Dialogs and the account menu keep focus inside and give it back on Escape.
  */
 import { writeFileSync } from "node:fs";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
+import { type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
 import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
@@ -56,7 +57,7 @@ for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
   test(`tab through ${name} with the text spacing a reader may set`, async ({ page }, info) => {
     test.skip(!isPhone(info), "the docked action is a phone's");
     await STATES.find((s) => s.name === name)!.go(page, info);
-    await page.addStyleTag({ content: TEXT_SPACING });
+    await addStyles(page, TEXT_SPACING);
     const { stops, left } = await tabWalk(page);
     writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
     expect(stops.length, "something to focus").toBeGreaterThan(0);
