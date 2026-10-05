@@ -12,7 +12,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useSignedOut } from "@/components/AuthGate";
 import { BackToFlows } from "@/components/flow/BackToFlows";
-import { runElapsed, type StepView } from "@/lib/run-progress";
+import { runWait, type StepView } from "@/lib/run-progress";
 import { creatingHeading } from "@/lib/flow-output";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
@@ -57,7 +57,7 @@ export function RunProgress({
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
-  const elapsed = runElapsed(startedAt, now);
+  const wait = runWait(startedAt, now);
 
   async function cancel() {
     setCancelling(true);
@@ -76,15 +76,19 @@ export function RunProgress({
             {creatingHeading(makesText)}
           </Heading>
           <VStack gap={1}>
-            <HStack gap={2} align="center">
-              <Spinner size="sm" aria-hidden />
-              <Text as="p" role="status">
-                {stage}
-              </Text>
-            </HStack>
+            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way. */}
+            <VisuallyHidden as="p" role="status">
+              {stage}
+            </VisuallyHidden>
+            {steps.length === 0 && (
+              <HStack gap={2} align="center" aria-hidden>
+                <Spinner size="sm" />
+                <Text as="p">{stage}</Text>
+              </HStack>
+            )}
             {/* Outside the status region: the minutes count on without being read out. */}
             <Text as="p" type="supporting">
-              {elapsed && `${elapsed}. `}Det kan ta några minuter.
+              {wait}
             </Text>
           </VStack>
         </VStack>

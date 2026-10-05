@@ -160,6 +160,17 @@ export function runElapsed(createdAt: string | null | undefined, now: number): s
   return minutes >= 1 ? `Har pågått i ${formatDuration(minutes * 60_000)}` : null;
 }
 
+/** A run that has gone on this long is taking longer than such a run usually does. */
+const LONGER_THAN_USUAL_MINUTES = 30;
+
+/** The line under the run's stage: how long it has gone on, and whether that is still the few minutes a run takes. */
+export function runWait(createdAt: string | null | undefined, now: number): string {
+  const elapsed = runElapsed(createdAt, now);
+  if (!elapsed) return "Det kan ta några minuter.";
+  const minutes = Math.floor((now - Date.parse(createdAt ?? "")) / 60_000);
+  return `${elapsed}. ${minutes >= LONGER_THAN_USUAL_MINUTES ? "Det tar längre tid än vanligt." : "Det kan ta några minuter."}`;
+}
+
 /**
  * Whether a run labels speakers: its own choice as Eneo keeps it, else (null: it took the flow's default) the
  * default of the flow's version the contract describes. Unknown (an Eneo that does not say, another version) is

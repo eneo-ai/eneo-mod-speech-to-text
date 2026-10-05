@@ -5,6 +5,7 @@ import type { FlowGraph, FlowGraphNode, FlowReviewStepContract, FlowRunStep } fr
 import {
   finishedRun,
   runElapsed,
+  runWait,
   runLabelsSpeakers,
   runOutcome,
   runStage,
@@ -231,4 +232,14 @@ test("a run that goes on says for how long, whole minutes from its start, and no
   assert.equal(runElapsed(start, at(75)), "Har pågått i 1 h 15 min");
   assert.equal(runElapsed(undefined, at(5)), null, "a run whose start is not known yet");
   assert.equal(runElapsed(start, at(-3)), null, "a device clock behind Eneo's");
+});
+
+test("the wait under the stage says it can take minutes, and once the run takes much longer than that, says so", () => {
+  const start = "2026-09-23T10:00:00Z";
+  const at = (minutes: number) => Date.parse(start) + minutes * 60_000;
+  assert.equal(runWait(undefined, at(5)), "Det kan ta några minuter.");
+  assert.equal(runWait(start, at(0.5)), "Det kan ta några minuter.");
+  assert.equal(runWait(start, at(12)), "Har pågått i 12 min. Det kan ta några minuter.");
+  assert.equal(runWait(start, at(45)), "Har pågått i 45 min. Det tar längre tid än vanligt.");
+  assert.equal(runWait(start, at(263 * 60 + 33)), "Har pågått i 10 dygn 23 h. Det tar längre tid än vanligt.");
 });

@@ -663,3 +663,9 @@ test("a transcript still being read shows only skeletons the screen reader skips
   assert.deepEqual(names(html), []);
   assert.equal(html.replace(/<[^>]*>/g, ""), "", "no words, no heading");
 });
+
+test("the stage is said once: read out from its status region, shown by the step list where there is one", () => {
+  const html = markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", onCancel: async () => undefined }));
+  assert.equal(text(html).split("Tar fram texten").length - 1, 1, "once in the page's text");
+  assert.ok(statuses(html).some((status) => status === "Tar fram texten"), "and that once is the status region");
+});
