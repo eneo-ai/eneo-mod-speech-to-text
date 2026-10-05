@@ -53,6 +53,7 @@ async function open(path, { width = 1440, scheme = 'light' } = {}) {
   page.on('console', (message) => message.type() === 'error' && note(label, `console error: ${message.text()}`))
   page.on('pageerror', (error) => note(label, `page error: ${error.message}`))
   page.on('request', (request) => new URL(request.url()).hostname !== 'localhost' && note(label, `external request: ${request.url()}`))
+  page.on('request', (request) => /AgentScalarDrawer/.test(request.url()) && note(label, 'the API page loaded Scalar\'s agent'))
   await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle' })
   return { page, context, label }
 }
@@ -65,6 +66,13 @@ for (const path of ['/', '/api-referens']) {
       note(label, `axe ${violation.id}: ${violation.nodes.length} node(s), e.g. ${violation.nodes[0].target.join(' ')}`)
     }
     if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
+    // The default theme's own screen-reader text is English; it must be Swedish after the page has been hydrated.
+    const english = await page.evaluate(() =>
+      [...document.querySelectorAll('[aria-label], .visually-hidden')]
+        .map((node) => node.getAttribute('aria-label') ?? node.textContent.trim())
+        .filter((text) => /^(Main Navigation|Sidebar Navigation|Pager|mobile navigation|extra navigation|toggle section)$|^Permalink to/.test(text)),
+    )
+    if (english.length) note(label, `English screen-reader text: ${english.join(', ')}`)
     await context.close()
   }
 }

@@ -5,7 +5,7 @@ titleTemplate: false
 hero:
   name: Tal till text
   text: Gör text av ett möte
-  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: ett transkript, en sammanfattning eller filer."
+  tagline: "Spela in ett samtal i webbläsaren eller ladda upp en ljudfil. Modulen skickar ljudet till ett flöde i Eneo, och flödet avgör vad du får tillbaka: ett transkript, en sammanfattning eller filer.<span class=\"hero-note\">Det här är dokumentationen. Själva modulen öppnar du i din organisations Eneo.</span>"
   actions:
     - theme: brand
       text: Driftsätt modulen
@@ -17,15 +17,13 @@ hero:
 
 ## Så fungerar det
 
-1. **Du lägger in ljudet.** Spela in i webbläsaren och se texten växa medan du pratar, eller ladda upp en ljudfil som du redan har.
-2. **Ett flöde i Eneo bearbetar det.** Modulen skickar ljudet till ett publicerat flöde i din organisations Eneo. Flödet bestämmer vad som händer med ljudet.
-3. **Du får resultatet.** Det som flödet är gjort för att ge: ett transkript, en sammanfattning eller filer att ladda ner.
+1. **Du lägger in ljudet.** Spela in i webbläsaren och se texten växa medan du pratar, eller ladda upp en ljudfil.
+2. **Ett flöde i Eneo tar över.** Modulen skickar ljudet till ett publicerat flöde i din organisations Eneo.
+3. **Du får resultatet.** Det visas i modulen när flödet är klart.
 
 ## Modulen och Eneo
 
 Modulen är en egen webbapplikation som körs bredvid Eneo. Du loggar in med ditt vanliga Eneo-konto, och allt som ska sparas, som flöden, körningar och resultat, ligger kvar i Eneo. Modulen har ingen egen databas.
-
-Den här webbplatsen är modulens dokumentation. Själva modulen öppnar du från din organisations Eneo.
 
 ## Läs vidare
 
@@ -41,4 +39,4 @@ Eneos modulkit samlar det varje modul behöver: inloggningen mot Eneo, sessionen
 
 ## Källkod
 
-[Eneo på GitHub](https://github.com/eneo-ai/eneo), [organisationens projekt](https://github.com/eneo-ai) och [den här modulens källkod](https://github.com/eneo-ai/eneo-mod-speech-to-text).
+[Eneo på GitHub](https://github.com/eneo-ai/eneo), [Eneo-organisationen på GitHub](https://github.com/eneo-ai) och [den här modulens källkod](https://github.com/eneo-ai/eneo-mod-speech-to-text).

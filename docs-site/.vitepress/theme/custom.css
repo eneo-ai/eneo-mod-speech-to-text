@@ -115,6 +115,16 @@ pre.mermaid svg {
   color: var(--vp-c-text-2);
   text-wrap: pretty;
 }
+.VPHome .VPHero .hero-note {
+  display: block;
+  margin-top: 12px;
+  font-size: 1rem;
+}
+/* The project's touch target is 44 px; VitePress's medium button is 40. */
+.VPHome .VPHero .VPButton.medium {
+  line-height: 42px;
+  border-radius: 22px;
+}
 .VPHome .VPHero .image-container {
   width: 100%;
   height: auto;
@@ -158,8 +168,11 @@ pre.mermaid svg {
 }
 
 /* The page body: a heading and its text side by side, one hairline between sections. */
+.VPContent .VPHome {
+  margin-bottom: 0;
+}
 .VPHome .vp-doc.container {
-  padding-bottom: 64px;
+  padding-bottom: 0;
 }
 .VPHome .vp-doc > div > div {
   display: grid;
@@ -211,7 +224,9 @@ pre.mermaid svg {
   }
   .VPHome .vp-doc h2 ~ :not(h2) {
     grid-column: 2;
+    /* About 70 characters of text; the hairline above it still runs the full width. */
     padding-left: 48px;
+    padding-right: max(0px, calc(100% - 36em - 48px));
   }
   /* The first element of a section sits on the same line as its heading. */
   .VPHome .vp-doc h2 + * {
@@ -262,6 +277,7 @@ pre.mermaid svg {
   .VPHome .vp-doc h2#så-fungerar-det + ol {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     padding-left: 0;
+    padding-right: 0;
   }
 }
 
@@ -277,6 +293,7 @@ pre.mermaid svg {
   padding-top: 40px;
   font-size: 2rem;
   line-height: 1.2;
+  font-weight: 700;
   letter-spacing: -0.02em;
 }
 .api-page > p {
@@ -327,4 +344,14 @@ html:not(.dark) .scalar-app {
 .scalar-app button[aria-expanded] {
   min-width: 24px;
   min-height: 24px;
+}
+
+@media (max-width: 959px) {
+  .VPHome .vp-doc ul li {
+    padding-bottom: 0;
+  }
+  .VPHome .vp-doc ul li > a:first-child {
+    display: inline-block;
+    padding-block: 10px;
+  }
 }
