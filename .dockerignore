@@ -11,3 +11,9 @@
 **/__pycache__
 **/node_modules
 docs-site
+.beads
+.codex
+.playwright-mcp
+frontend/ux-shots
+frontend/test-results
+frontend/playwright-report
