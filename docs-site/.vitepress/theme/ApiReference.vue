@@ -17,8 +17,9 @@ async function show() {
     url: spec,
     withDefaultFonts: false,
     hideTestRequestButton: true,
+    // The page is called by the module's own page with its session cookie: samples in other languages would mislead.
+    hiddenClients: true,
     hideClientButton: true,
-    defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
     hideDarkModeToggle: true,
     showDeveloperTools: 'never',
     telemetry: false,
