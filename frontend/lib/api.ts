@@ -1002,6 +1002,11 @@ export function inputFileAudioUrl(
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
 }
 
+/** The first byte of a run's file: whether it can be fetched, asked before a person is sent to it. */
+export async function checkRunArtifact(flowId: string, runId: string, fileId: string): Promise<void> {
+  await request<string>(runArtifactUrl(flowId, runId, fileId), { headers: { Accept: "*/*", Range: "bytes=0-0" } });
+}
+
 /**
  * Same-origin address of a file the run generated. The module backend streams
  * it from Eneo the same way, under the name Eneo gave it; a PDF can open

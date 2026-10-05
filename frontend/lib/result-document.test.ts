@@ -38,6 +38,56 @@ function widthOf(t: TestContext, pixels: number) {
   };
 }
 
+// What the module answers for a run's file when a person asks for it: the first byte, or why not.
+const INLINE = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=inline";
+const ATTACHMENT = "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/content?disposition=attachment";
+const present = () => new Response("%", { status: 206, headers: { "content-type": "application/pdf" } });
+const missing = () => Response.json({ detail: "File not found" }, { status: 404 });
+
+function filesAnswer(t: TestContext, answer: () => Response) {
+  const asked: { url: string; range: string | null }[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    asked.push({ url: String(input), range: new Headers(init?.headers).get("Range") });
+    return answer();
+  }) as typeof fetch;
+  t.after(() => void (globalThis.fetch = real));
+  return asked;
+}
+
+/** Presses a link as a person does, so the page's own handler runs and what a link would do is up to it. */
+const press = (link: Element) => link.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+
+/** The downloads the page starts, by the link it makes for each. */
+function downloads(t: TestContext) {
+  const started: string[] = [];
+  t.mock.method(window.HTMLAnchorElement.prototype, "click", function (this: HTMLAnchorElement) {
+    started.push(`${this.getAttribute("href")}${this.hasAttribute("download") ? " (download)" : ""}`);
+  });
+  return started;
+}
+
+/** The tabs the page opens: blank at first, so that the press itself opens it, and sent to the file when it is there. */
+function tabs(t: TestContext) {
+  const opened: { url: string; opener: unknown; closed: boolean; location: { replace(to: string): void }; close(): void }[] = [];
+  const real = window.open;
+  window.open = ((url?: string | URL) => {
+    const tab = {
+      url: String(url ?? ""),
+      opener: {} as unknown,
+      closed: false,
+      location: { replace: (to: string) => void (tab.url = to) },
+      close: () => void (tab.closed = true),
+    };
+    opened.push(tab);
+    return tab;
+  }) as unknown as typeof window.open;
+  t.after(() => void (window.open = real));
+  return opened;
+}
+
+const alertsOf = (within: ParentNode) => [...within.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+
 const pdf: ResultFileView = {
   fileId: "file-1",
   name: "Protokoll kommunstyrelsen 2026-09-24.pdf",
@@ -212,6 +262,7 @@ test("Dela only where the browser can share, and then the file itself when the d
 
 test("the PDF opens on its title, with its actions and Stäng before the viewer, and is fetched only then", async (t) => {
   widthOf(t, 1280);
+  filesAnswer(t, present);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
@@ -236,6 +287,7 @@ test("the PDF opens on its title, with its actions and Stäng before the viewer,
 
 test("the PDF preview is closed while the login has ended, and is back with its viewer when it is", async (t) => {
   widthOf(t, 1280);
+  filesAnswer(t, present);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const { loginState } = await import("./login-state");
@@ -260,6 +312,7 @@ test("the PDF preview is closed while the login has ended, and is back with its 
 
 test("the PDF preview stays open, with its viewer, when the window crosses the breakpoint, and focus stays in it", async (t) => {
   const resize = widthOf(t, 1280);
+  filesAnswer(t, present);
   const { createElement } = await import("react");
   const { ResultFiles } = await import("../components/flow/ResultFiles");
   const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
@@ -796,4 +849,111 @@ test("the document is the file Eneo names as the run's result, not the first fil
   assert.match(view.container.querySelector("[data-file-row]")?.textContent ?? "", /Protokoll kommunstyrelsen/, "the final step's file");
   const more = view.container.querySelector('section[aria-labelledby="result-files"]');
   assert.match(more?.textContent ?? "", /Fler filerUnderlag\.pdf/, "the earlier step's file listed under it");
+});
+
+
+test("a run's file is asked for, first byte only, before a person is sent to it", async () => {
+  const { checkRunArtifact } = await import("./api");
+  const { ApiError } = await import("./api");
+  const seen: { url: string; range: string | null }[] = [];
+  const real = globalThis.fetch;
+  let answer: () => Response = present;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    seen.push({ url: String(input), range: new Headers(init?.headers).get("Range") });
+    return answer();
+  }) as typeof fetch;
+  try {
+    await checkRunArtifact("flow-1", "run-1", "file-1");
+    assert.deepEqual(seen, [{ url: ATTACHMENT, range: "bytes=0-0" }]);
+    answer = missing;
+    await assert.rejects(checkRunArtifact("flow-1", "run-1", "file-1"), (error: unknown) => error instanceof ApiError && error.status === 404);
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("a PDF that Eneo no longer has is not opened: no raw answer in the viewer, the row says so, and Försök igen asks again", async (t) => {
+  widthOf(t, 1280);
+  let gone = true;
+  const asked = filesAnswer(t, () => (gone ? missing() : present()));
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const open = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-haspopup") === "dialog")!;
+
+  await view.act(async () => open.click());
+  assert.equal(asked.length, 1);
+  assert.equal(asked[0].range, "bytes=0-0", "the first byte, not the file");
+  assert.equal(document.querySelector("dialog[open]"), null, "no dialog");
+  assert.equal(document.querySelector("iframe"), null, "no viewer to show the module's answer in");
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+  assert.doesNotMatch(document.body.textContent ?? "", /File not found/, "Eneo's words are not shown");
+
+  gone = false;
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.equal(asked.length, 2);
+  assert.ok(document.querySelector("dialog[open] iframe"), "opened now");
+  assert.equal(document.querySelector("iframe")!.getAttribute("src"), INLINE);
+  assert.deepEqual(alertsOf(view.container), [], "the notice is gone");
+});
+
+test("a download starts only once the file is known to be there; if it is not, the row says why and Försök igen tries again", async (t) => {
+  widthOf(t, 1280);
+  let answer: () => Response = missing;
+  const asked = filesAnswer(t, () => answer());
+  const started = downloads(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  // The closed preview dialog holds a download link of its own; this is the row's.
+  const link = () => [...view.container.querySelectorAll<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)].find((a) => !a.closest("dialog"))!;
+
+  await view.act(async () => void press(link()));
+  assert.equal(asked.length, 1);
+  assert.deepEqual(started, [], "nothing is saved: it would be the module's answer under the file's name");
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+
+  answer = () => new Response("Service Unavailable", { status: 503 });
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.deepEqual(alertsOf(view.container), ["Servern kunde inte nås just nu. Försök igen om en stund.Försök igen"], "another failure, in its own words");
+
+  answer = present;
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.deepEqual(started, [`${ATTACHMENT} (download)`], "saved once, by the link the page makes");
+  assert.deepEqual(alertsOf(view.container), []);
+});
+
+test("narrower than a laptop the tab opens at the press and goes to the file once it is there; a file that is not closes it again", async (t) => {
+  widthOf(t, 390);
+  let answer: () => Response = missing;
+  filesAnswer(t, () => answer());
+  const opened = tabs(t);
+  const { createElement } = await import("react");
+  const { ResultFiles } = await import("../components/flow/ResultFiles");
+  const view = await inProviders(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [pdf] }));
+  const link = () => view.container.querySelector<HTMLAnchorElement>('a[target="_blank"]')!;
+
+  await view.act(async () => void press(link()));
+  assert.equal(opened.length, 1, "opened by the press itself, which no pop-up blocker stops");
+  assert.equal(opened[0].closed, true, "closed again: there is no file to show in it");
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
+
+  answer = present;
+  await view.act(async () => button(view.container, "Försök igen")!.click());
+  assert.equal(opened.length, 2);
+  assert.equal(opened[1].closed, false);
+  assert.equal(opened[1].url, INLINE, "sent to the file");
+  assert.equal(opened[1].opener, null, "which cannot reach back to this page");
+  assert.deepEqual(alertsOf(view.container), []);
+});
+
+test("the document's own download is checked the same way", async (t) => {
+  widthOf(t, 390);
+  filesAnswer(t, missing);
+  const started = downloads(t);
+  const view = await document_({ text, file: pdf });
+  const link = view.container.querySelector<HTMLAnchorElement>(`a[href="${ATTACHMENT}"]`)!;
+  await view.act(async () => void press(link));
+  assert.deepEqual(started, []);
+  assert.deepEqual(alertsOf(view.container), ["Filen finns inte kvar hos Eneo.Försök igen"]);
 });

@@ -13,8 +13,10 @@ import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
 import { CopyStatus, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
+import { ProblemAlert } from "./ProblemAlert";
 import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
+import { pressing, useFileAccess } from "./useFileAccess";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -176,6 +178,7 @@ export function ResultDocument({
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
   const share = useShare(file, download, text);
+  const access = useFileAccess(flowId, runId);
   const [copyState, copy] = useCopy(text ?? "");
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
@@ -188,6 +191,7 @@ export function ResultDocument({
       variant="primary"
       icon={<Icon icon={Download} />}
       label={`Ladda ner ${file.typeLabel}, ${file.name}`}
+      onClick={pressing(access, file.fileId, "download")}
     >
       {`Ladda ner ${file.typeLabel}`}
     </Button>
@@ -207,6 +211,7 @@ export function ResultDocument({
               rel="noopener noreferrer"
               icon={<Icon icon="externalLink" />}
               label={`Öppna ${file.typeLabel} i en ny flik`}
+              onClick={pressing(access, file.fileId, "tab")}
             >
               {`Öppna ${file.typeLabel}`}
             </Button>
@@ -226,6 +231,8 @@ export function ResultDocument({
           )}
         </HStack>
       )}
+
+      {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
         {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
@@ -262,7 +269,7 @@ export function ResultDocument({
             <Item
               data-file-row
               startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name /> : <Text>{file.name}</Text>}
+              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
               description={file.meta}
             />
           </>

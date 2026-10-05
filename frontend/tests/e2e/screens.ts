@@ -789,6 +789,17 @@ export const STATES: State[] = [
     },
   },
   {
+    // The module cannot get the document's file from Eneo: said in words, never as its raw answer.
+    name: "file-missing",
+    expects: [{ console: /status of 404.*\/artifacts\// }],
+    go: async (page) => {
+      await page.route("**/artifacts/*/content*", (route) => route.fulfill({ status: 404, json: { detail: "File not found" } }));
+      await result(page);
+      await page.getByRole("link", { name: /^Ladda ner PDF/ }).click();
+      await expect(page.getByRole("alert").filter({ hasText: "Filen finns inte kvar hos Eneo." })).toBeVisible();
+    },
+  },
+  {
     name: "result-transcript-tab",
     only: (info) => !isLaptop(info),
     go: async (page) => {

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ApiError } from "./api";
 import { unavailableCopy } from "../components/flow/FlowPageStates";
-import { errorAdvice, friendlyError, reviewPauseEnded } from "./errors";
+import { errorAdvice, FILE_GONE, fileProblem, friendlyError, reviewPauseEnded } from "./errors";
 
 const eneo = (status: number, code: string | undefined, message: string) =>
   new ApiError(status, message, { code, message }, code);
@@ -179,4 +179,13 @@ test("an answer that says the review is over is told from one that only asks for
   }
   assert.equal(reviewPauseEnded(new TypeError("Failed to fetch")), false);
   assert.equal(reviewPauseEnded(new ApiError(500, "Server error", null)), false);
+});
+
+test("a file Eneo no longer has says so; any other failure to fetch it says what the failure is", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  assert.equal(fileProblem(eneo(404, undefined, "File not found")), "Filen finns inte kvar hos Eneo.");
+  assert.equal(fileProblem(eneo(404, "flow_run_file_not_accessible", "The file is not available for this run.")), FILE_GONE);
+  assert.equal(fileProblem(new ApiError(410, "Gone", null)), FILE_GONE);
+  assert.equal(fileProblem(new ApiError(503, "Service Unavailable", null)), "Servern kunde inte nås just nu. Försök igen om en stund.");
+  assert.equal(fileProblem(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");
 });
