@@ -44,3 +44,14 @@ test("each tab keeps its own place on the page, and the first visit to a tab sta
   await choose("Transkript");
   expect(Math.abs((await scrollY()) - inTranscript), "and in the transcript").toBeLessThanOrEqual(2);
 });
+
+test("Visa i transkriptet on the docked player takes the person to the transcript's tab, with the focus on it", async ({ page }) => {
+  await result(page);
+  await page.getByRole("tab", { name: "Transkript" }).click();
+  await page.getByRole("button", { name: "Spela upp", exact: true }).first().click();
+  await page.getByRole("tab", { name: "Dokument" }).click();
+  // The button that was pressed goes with the tab it was on: the focus does not fall to the page.
+  await page.getByRole("button", { name: "Visa i transkriptet" }).click();
+  await expect(page.getByRole("tab", { name: "Transkript" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Transkript" })).toBeFocused();
+});
