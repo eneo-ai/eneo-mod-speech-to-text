@@ -496,6 +496,31 @@ test("files are uploaded one at a time as the ordered files of one run, skipping
   });
 });
 
+test("the progress shown never goes past the file: the request's own bytes (the form around it) are not the file's", async () => {
+  const shown: Array<[number, number, number]> = [];
+  const deps: SubmitDeps = {
+    upload: async (_flowId, _stepId, _blob, _filename, options) => {
+      // The browser counts the form's boundary and headers with the file: 100 bytes of file, 160 sent.
+      options?.onProgress?.({ loaded: 80, total: 160, percent: 50 });
+      options?.onProgress?.({ loaded: 160, total: 160, percent: 100 });
+      return { id: "file" };
+    },
+    startRun: async () => queuedRun,
+  };
+  await submitRun(
+    params({
+      files: [{ blob: new Blob(["x".repeat(100)]), filename: "mote.webm" }],
+      onProgress: ({ loaded, total, percent }) => void shown.push([loaded, total, percent]),
+    }),
+    deps,
+  );
+  assert.deepEqual(shown, [
+    [0, 100, 0],
+    [80, 100, 80],
+    [100, 100, 100],
+  ]);
+});
+
 test("files the step cannot take stop the send before anything is uploaded", async () => {
   let uploads = 0;
   const deps: SubmitDeps = {

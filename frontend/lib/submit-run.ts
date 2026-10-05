@@ -161,13 +161,11 @@ export async function submitRun(
 
   const total = files.reduce((sum, file) => sum + (file.fileId ? 0 : file.blob.size), 0);
   let sent = 0;
-  const report = (filename: string, loaded: number) =>
-    params.onProgress?.({
-      filename,
-      loaded,
-      total,
-      percent: total > 0 ? Math.round((loaded / total) * 100) : 100,
-    });
+  // The browser counts the request's own bytes (the form around a file) with the file's: never more than the files.
+  const report = (filename: string, sentBytes: number) => {
+    const loaded = Math.min(sentBytes, total);
+    params.onProgress?.({ filename, loaded, total, percent: total > 0 ? Math.round((loaded / total) * 100) : 100 });
+  };
 
   const fileIds: string[] = [];
   for (const [index, file] of files.entries()) {
