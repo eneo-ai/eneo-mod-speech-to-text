@@ -7,7 +7,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axe, blocking } from "./checks";
-import { backLink, flows, NO_CONFIRMED_WORDS, open, record, setup } from "./screens";
+import { backLink, flows, NO_CONFIRMED_WORDS, record, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -201,7 +201,7 @@ test("the three /inloggad states keep their own titles, and a navigation to one 
   };
   for (const [query, title] of Object.entries(TITLES)) {
     // As the first page: its own title, nothing said, nothing moved.
-    await open(page, `/inloggad${query}`);
+    await page.goto(`/inloggad${query}`);
     await expect.poll(() => page.title(), { timeout: 2_000 }).toBe(title);
     await page.waitForTimeout(400);
     expect(await said(page), `${query || "plain"}: a first load says nothing`).toEqual([]);

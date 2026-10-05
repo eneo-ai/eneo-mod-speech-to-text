@@ -13,8 +13,8 @@ import {
 } from "./speaker-mapping";
 import { isSpeakerMappingReviewStep } from "./api";
 
-// Formen Eneo skriver in i checkpointens current_payload_json för ett
-// speaker-mapping-steg (se eneo: flows/runtime/step_handlers/speaker_mapping.py).
+// The shape Eneo writes into the checkpoint's current_payload_json for a speaker-mapping step
+// (see eneo: flows/runtime/step_handlers/speaker_mapping.py).
 const payload = {
   text: "[00:00:00 - 00:00:04] Anna: Hej.\n[00:00:05 - 00:00:09] SPEAKER_01: Hallå.",
   structured: {

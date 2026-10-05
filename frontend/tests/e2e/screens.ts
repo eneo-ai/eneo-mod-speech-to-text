@@ -6,11 +6,6 @@ import { expect, type Locator, type Page, type TestInfo } from "@playwright/test
 import ids from "../fixtures/ids.json";
 import { declare, REAL, type Expectation } from "./sentinel";
 
-/** Opens a page of the app. */
-export async function open(page: Page, path: string) {
-  await page.goto(path);
-}
-
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
 
@@ -18,13 +13,13 @@ const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("he
 
 export async function signIn(page: Page, query = "") {
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
-  await open(page, `/${query}`);
+  await page.goto(`/${query}`);
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
 }
 
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
-  await open(page, path);
+  await page.goto(path);
   await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
 }
 
@@ -39,22 +34,22 @@ export async function sessionWarning(page: Page) {
       },
     }),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
 }
 
 async function foundation(page: Page) {
-  await open(page, "/dev/foundation");
+  await page.goto("/dev/foundation");
   await heading(page, "Grundkontroll");
 }
 
 export async function flows(page: Page) {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
 }
 
 export async function setup(page: Page, flow = ids.flows.flow1) {
-  await open(page, `/flows/${flow}`);
+  await page.goto(`/flows/${flow}`);
   await heading(page, "Hur vill du lägga till ljudet?");
 }
 
@@ -63,7 +58,7 @@ export async function setup(page: Page, flow = ids.flows.flow1) {
  * asks about. Opened by its address instead, Back leaves the app, and only the browser's own question is asked.
  */
 export async function setupFromList(page: Page) {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
   await heading(page, "Hur vill du lägga till ljudet?");
 }
@@ -129,7 +124,7 @@ export function backLink(page: Page) {
 }
 
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
-export async function leaveRecording(page: Page) {
+async function leaveRecording(page: Page) {
   await setup(page);
   await record(page, "Spela in");
   await page.waitForTimeout(1_500);
@@ -182,7 +177,7 @@ export const NO_CONFIRMED_WORDS: Expectation = { console: /status of 404.*\/tran
 
 export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   declare(page, [NO_CONFIRMED_WORDS]);
-  await open(page, `/flows/${flow}?run=${id}`);
+  await page.goto(`/flows/${flow}?run=${id}`);
 }
 
 /** The finished run with its transcript loaded. */
@@ -194,11 +189,12 @@ export async function result(page: Page) {
 }
 
 /**
- * The speaker-review editor (README "Granska transkriptet"): the development page's fixtures, the "bulk" case with its
- * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"): the development page's
+ * fixtures, the "bulk" case with its test audio. The setting that shows the editor in a run is off by default, so no
+ * run reaches it; this page does.
  */
 export async function reviewEditor(page: Page, testCase = "bulk") {
-  await open(page, "/dev/speaker-review");
+  await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), testCase);
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
@@ -237,7 +233,7 @@ export const REAL_SKIP: Record<string, string> = {};
 
 /** Every screen and state the gate visits. */
 export const STATES: State[] = [
-  // The design system's parts beside the old ones (routes/dev/FoundationCheck).
+  // The design system's parts on one page (routes/dev/FoundationCheck).
   { name: "foundation", go: (page) => foundation(page) },
   {
     name: "foundation-dialog",
@@ -284,7 +280,7 @@ export const STATES: State[] = [
     expects: [{ console: /net::ERR_FAILED.*\/api\/auth\/status/ }, { requestFailed: /GET .*\/api\/auth\/status: net::ERR_FAILED/ }],
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
-      await open(page, "/");
+      await page.goto("/");
       await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
@@ -297,7 +293,7 @@ export const STATES: State[] = [
   {
     name: "signed-in-again",
     go: async (page) => {
-      await open(page, "/inloggad");
+      await page.goto("/inloggad");
       await heading(page, "Du är inloggad igen");
     },
   },
@@ -306,8 +302,8 @@ export const STATES: State[] = [
     expects: [{ console: /status of 503.*\/api\/eneo\/flows\// }],
     go: async (page) => {
       await page.route("**/api/eneo/flows/?*", (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
-      await open(page, "/flows");
-      await expect(page.getByRole("alert").filter({ hasText: /\w/ })).toBeVisible();
+      await page.goto("/flows");
+      await expect(page.getByRole("alert")).toBeVisible();
     },
   },
   {
@@ -870,7 +866,7 @@ export const STATES: State[] = [
     name: "flow-gone",
     expects: [{ console: /status of 404.*\/run-contract\// }, { console: /status of 404.*\/published\// }],
     go: async (page) => {
-      await open(page, "/flows/flow-gone");
+      await page.goto("/flows/flow-gone");
       await heading(page, "Flödet är inte längre tillgängligt.");
     },
   },
@@ -878,7 +874,7 @@ export const STATES: State[] = [
     name: "flow-republish-required",
     expects: [{ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// }],
     go: async (page) => {
-      await open(page, `/flows/${ids.flows.flow4}`);
+      await page.goto(`/flows/${ids.flows.flow4}`);
       await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
     },
   },

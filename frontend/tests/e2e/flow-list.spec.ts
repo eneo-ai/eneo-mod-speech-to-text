@@ -6,7 +6,7 @@ import { type Page, type Route } from "@playwright/test";
 import { expect, test } from "./gate";
 import { axe, blocking, endlessAnimations, reflow, targetSizes, unnamedControls } from "./checks";
 import ids from "../fixtures/ids.json";
-import { open } from "./screens";
+
 
 test.beforeEach(({}, info) =>
   test.skip(
@@ -22,8 +22,7 @@ const flow = (id: string, name: string, extra: object = {}) => ({ id, name, is_p
 const answer = (items: object[], hasMore = false) => (route: Route) =>
   route.fulfill({ json: { items, has_more: hasMore, count: items.length } });
 
-/** What a person reads of an alert: Next's route announcer is an empty one that is always there. */
-const alert = (page: Page) => page.getByRole("alert").filter({ hasText: /\w/ });
+const alert = (page: Page) => page.getByRole("alert");
 
 const clean = async (page: Page) => {
   expect(blocking((await axe(page)).violations).map((v) => `${v.id}: ${v.help}`), "axe").toEqual([]);
@@ -36,7 +35,7 @@ const clean = async (page: Page) => {
 
 test("while the flows load a status says so, the placeholder rows are hidden from a screen reader, and nothing moves or loops", async ({ page }) => {
   await page.route(FLOWS, () => {});
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("status").filter({ hasText: "Laddar flödena…" })).toBeAttached();
   await expect(page.getByRole("heading", { name: "Välj ett flöde", level: 1 })).toBeVisible();
   const rows = page.locator('ul[aria-hidden="true"] > li');
@@ -53,7 +52,7 @@ test("while the flows load a status says so, the placeholder rows are hidden fro
 
 test("no flows to run says so in the user's words, in the outline, and shows no list", async ({ page }) => {
   await page.route(FLOWS, answer([]));
-  await open(page, "/flows");
+  await page.goto("/flows");
   const main = page.getByRole("main");
   await expect(main.getByRole("heading", { name: "Det finns inga publicerade flöden som du kan använda än.", level: 2 })).toBeVisible();
   await expect(main.getByText("När ett flöde publiceras i Eneo visas det här.")).toBeVisible();
@@ -69,7 +68,7 @@ test("a list Eneo cut at the cap says how many are shown", async ({ page }) => {
     const offset = Number(new URL(route.request().url()).searchParams.get("offset"));
     return answer(Array.from({ length: 200 }, (_, i) => flow(`flow-${offset + i}`, `Flöde ${offset + i + 1}`)), true)(route);
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByText(/Visar de första 1\s000 flödena\./)).toBeVisible();
   await expect(page.getByRole("main").getByRole("link")).toHaveCount(1000);
 });
@@ -77,7 +76,7 @@ test("a list Eneo cut at the cap says how many are shown", async ({ page }) => {
 test("a list that cannot be shown says what and why, and offers no retry where trying again cannot help", async ({ page, sentinel }) => {
   sentinel.expect({ console: /status of 403.*\/api\/eneo\/flows\// });
   await page.route(FLOWS, (route) => route.fulfill({ status: 403, json: { detail: "Forbidden" } }));
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(alert(page)).toContainText("Flödena kunde inte visas.");
   await expect(alert(page)).toContainText("Du har inte behörighet till det här.");
   await expect(page.getByRole("button", { name: "Försök igen" })).toHaveCount(0);
@@ -90,7 +89,7 @@ test("a failed list is tried again from the notice, and the flows then replace i
   // In development React asks twice, so the answer is a failure until the person has seen it and pressed the button.
   let failing = true;
   await page.route(FLOWS, (route) => (failing ? route.fulfill({ status: 503, json: { code: "internal_error" } }) : route.fallback()));
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(alert(page)).toContainText("Flödena kunde inte visas.");
   failing = false;
   const retried = page.waitForRequest(FLOWS);
@@ -113,7 +112,7 @@ test("long names stay whole, descriptions keep to two lines, and every row is a 
       flow("d", "Okänd indata", { description: "Ett flöde som tar emot något Eneo hittat på.", input_type: "video" }),
     ]),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("link", { name: /^Utan beskrivning$/ })).toBeVisible();
 
   const rows = await page.getByRole("main").locator("li").evaluateAll((items) =>
@@ -152,7 +151,7 @@ test("long names stay whole, descriptions keep to two lines, and every row is a 
 });
 
 test("the whole row opens the flow: the icon, the chevron and the row's own padding as much as its words", async ({ page }) => {
-  await open(page, "/flows");
+  await page.goto("/flows");
   const first = page.getByRole("link", { name: /^Nämndmöte till rapport/ });
   await expect(first).toBeVisible();
   const row = page.getByRole("main").locator("li", { has: first });
@@ -168,7 +167,7 @@ test("the whole row opens the flow: the icon, the chevron and the row's own padd
     ["the chevron", await at("svg", true)],
     ["the row's padding", await at()],
   ] as const) {
-    await open(page, "/flows");
+    await page.goto("/flows");
     await expect(first).toBeVisible();
     await page.mouse.click(...point);
     await expect(page, what).toHaveURL(FLOW_1);
@@ -176,7 +175,7 @@ test("the whole row opens the flow: the icon, the chevron and the row's own padd
 });
 
 test("opening a flow is a navigation inside the page, not a page load", async ({ page }) => {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await page.evaluate(() => ((window as unknown as { __marker: boolean }).__marker = true));
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
   await expect(page).toHaveURL(FLOW_1);

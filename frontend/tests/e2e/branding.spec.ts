@@ -13,7 +13,7 @@ const VARIANT = process.env.STUB_BRANDING;
 const ACCENT = { light: "rgb(30, 123, 52)", dark: "rgb(42, 174, 74)" } as const; // #1E7B34, and #2AAE4A derived from it
 const states = STATES.filter((state) => state.name.startsWith("branding-"));
 
-test.beforeEach(({}, info) =>
+test.beforeEach(() =>
   test.skip(!VARIANT, "needs the stub as a deployment with its own organisation: npm run test:a11y:branding"),
 );
 
@@ -52,7 +52,7 @@ for (const state of states) {
       for (const element of document.querySelectorAll("body *")) {
         const style = getComputedStyle(element);
         if (style.display === "none" || style.visibility === "hidden") continue;
-        // A shadow layer of no size paints nothing: Tailwind's ring, 0 0 0 0 in its default blue, sits in every shadow.
+        // A shadow layer of no size paints nothing, whatever its colour.
         const painted = style.boxShadow
           .split(/,(?![^(]*\))/)
           .filter((layer) => (layer.replace(/(rgba?|color)\([^)]*\)/g, "").match(/-?[\d.]+px/g) ?? []).some((length) => parseFloat(length) !== 0))

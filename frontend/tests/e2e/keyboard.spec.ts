@@ -9,7 +9,7 @@ import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
+import { backLink, isLaptop, isPhone, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 const WALKS = [
@@ -254,7 +254,7 @@ test("the warning before the login ends takes focus, holds it, and gives it back
       json: { authenticated: true, user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
     }),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   // Focus somewhere on the page before the warning opens (at five minutes before the end).
   const link = page.getByRole("link", { name: /Nämndmöte till rapport/ });
   await link.focus();
@@ -322,10 +322,7 @@ test("the input modes change with the arrow keys", async ({ page }) => {
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  await page.keyboard.down("ArrowDown");
-  await page.waitForTimeout(60);
-  await page.keyboard.up("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   await expect(cards.nth(1)).toBeFocused();
   await expect(cards.nth(1), "the arrow key chooses the mode it moves to").toBeChecked();
 });
@@ -376,14 +373,8 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  const arrow = async (key: string) => {
-    await page.keyboard.down(key);
-    await page.waitForTimeout(60);
-    await page.keyboard.up(key);
-  };
   for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
-    await arrow(key);
+    await page.keyboard.press(key);
     await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
     await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
     await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);

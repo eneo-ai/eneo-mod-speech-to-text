@@ -29,7 +29,7 @@ export async function addStyles(page: Page, css: string) {
     });
 }
 
-export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
 export async function settle(page: Page) {
@@ -116,8 +116,8 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {
-          // The thumb is small by design; a press anywhere on the slider's control moves it. The design system's control
-          // is the box (its rail is 4 px and hidden from the tree); Radix's root, still on the old widgets, is the other.
+          // The thumb is small by design; a press anywhere on the slider's control moves it. The control is the box
+          // (its rail is 4 px and hidden from the tree).
           const control = el.parentElement?.closest(".astryx-slider-control, [data-orientation]");
           if (control) out.push(box(control.getBoundingClientRect()));
         }
@@ -187,7 +187,7 @@ const TOGGLES = ["checked", "pressed", "expanded", "selected"];
 const FLAGS = ["disabled", "invalid", "required", "readonly", "busy"];
 
 /** The states a screen reader reads out, from Chromium's properties: "checked=true", "expanded=false" and so on. */
-export function axState(properties: AxProperty[] = []): string {
+function axState(properties: AxProperty[] = []): string {
   return properties
     .filter((p) => p.value.value !== undefined && (TOGGLES.includes(p.name) || (FLAGS.includes(p.name) && ![false, "false"].includes(p.value.value as string))))
     .map((p) => `${p.name}=${String(p.value.value)}`)
@@ -408,12 +408,6 @@ function probeFocus(page: Page) {
       return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
-    const luminance = ([r, g, b]: Rgba) =>
-      [r, g, b].map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
-    const contrast = (a: Rgba, b: Rgba) => {
-      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-      return (hi + 0.05) / (lo + 0.05);
-    };
     // The colour a box shows: its own background over those behind it.
     const background = (e: Element | null): Rgba => {
       if (!e) return [255, 255, 255, 1];

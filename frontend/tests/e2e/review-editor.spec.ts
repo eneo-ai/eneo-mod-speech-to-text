@@ -1,11 +1,12 @@
 /**
- * The speaker-review editor (README "Granska transkriptet"), the part of the review the flag keeps out of every run and
- * the gate's states cannot work: selection with the keyboard, a speaker given to the words and taken back, a word that
- * moves the playback, and the way between the text and its tools. The development page's fixtures carry it.
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"), the part of the review the flag
+ * keeps out of every run and the gate's states cannot work: selection with the keyboard, a speaker given to the words
+ * and taken back, a word that moves the playback, and the way between the text and its tools. The development page's
+ * fixtures carry it.
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { open, pick, reviewEditor } from "./screens";
+import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -46,7 +47,7 @@ test("words selected with Shift and the arrows are given to a speaker, and Ångr
 });
 
 test("a click on a word moves the playback to it", async ({ page }) => {
-  await open(page, "/dev/speaker-review");
+  await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), "operator");
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(transcript(page)).toBeVisible();

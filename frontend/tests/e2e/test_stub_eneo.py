@@ -2,7 +2,7 @@
 
     backend/.venv/bin/python -m unittest frontend/tests/e2e/test_stub_eneo.py     (from the repository root)
 
-Two processes of this repository on two ports of 8470-8479: the stub (stub-server.py, the one fake Eneo of Plan B) and
+Two processes of this repository on two ports of 8470-8479: the stub (stub-server.py, the fake Eneo) and
 `python -m app.serve --api-only` with the stub as ENEO_BACKEND_URL. Every test signs in on its own, through the real
 module-login handshake, so no test shares a session. The same checks run in a browser as tests/prod/upstream.spec.ts.
 """
@@ -21,7 +21,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import websockets.asyncio.client as websocket_client
-from websockets.exceptions import ConnectionClosed
+from websockets.exceptions import ConnectionClosed, InvalidStatus
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 BACKEND = REPOSITORY / "backend"
@@ -393,13 +393,14 @@ class LiveTests(SignedIn):
         self.assertEqual(self.run_live(scenario, user=None), (1008, "user_changed"))
         self.assertEqual(self.stats()["live_tickets"], 0)
 
-    def test_a_ticket_is_one_use_and_the_stub_refuses_a_socket_without_one(self) -> None:
+    def test_the_stub_refuses_a_socket_whose_ticket_it_did_not_give_with_403(self) -> None:
         async def scenario():
-            with self.assertRaises(Exception):
+            with self.assertRaises(InvalidStatus) as refused:
                 async with websocket_client.connect(f"ws://127.0.0.1:{self.stub}/api/v1/live-transcription", subprotocols=["eneo-live.v1", "ticket.nope"], open_timeout=5):
                     pass
+            return refused.exception.response.status_code
 
-        asyncio.run(scenario())
+        self.assertEqual(asyncio.run(scenario()), 403)
 
 
 class UploadTests(SignedIn):

@@ -2,11 +2,11 @@
  * An overlay that is opened and closed leaves nothing behind: no DOM nodes, no event listeners, no memory.
  * Chromium's own counters, read after a garbage collection, before and after 40 openings of each overlay.
  * A leak grows with every cycle (a listener an effect never removes, a portal that is never unmounted), so it
- * would show as about 40. A new overlay surface is added here in the phase that ports it.
+ * would show as about 40. A new overlay is added here with the page that owns it.
  */
 import { type CDPSession, type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { backLink, chooseMode, open, record, result, reviewEditor, run, setup, stop } from "./screens";
+import { backLink, chooseMode, record, result, reviewEditor, run, setup, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
@@ -32,7 +32,7 @@ type Overlay = {
 
 /** How a page mounts a confirmation (routes/dev/DialogLeakFixture): once, for each opening, and a dialog that really leaks. */
 const dialogLeaks = async (page: Page) => {
-  await open(page, "/dev/dialog-leak");
+  await page.goto("/dev/dialog-leak");
   await expect(page.getByRole("heading", { name: "Dialogläckor" })).toBeVisible();
 };
 
@@ -55,7 +55,7 @@ const OVERLAYS: Record<string, Overlay> = {
   // The module's account menu, as every page has it: the avatar, the colour mode and Logga ut (only it has that item).
   "account menu": {
     go: async (page) => {
-      await open(page, "/flows");
+      await page.goto("/flows");
       await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
     },
     show: (page) => page.getByRole("button", { name: /^Öppna konto för/ }).click(),
@@ -186,7 +186,7 @@ const OVERLAYS: Record<string, Overlay> = {
           },
         }),
       );
-      await open(page, "/flows");
+      await page.goto("/flows");
       await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
       await page.keyboard.press("Escape");
     },
@@ -275,7 +275,7 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
     test.setTimeout(180_000);
     if (overlay.go) await overlay.go(page);
     else {
-      await open(page, "/dev/foundation");
+      await page.goto("/dev/foundation");
       await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
     }
     const cdp = await page.context().newCDPSession(page);
