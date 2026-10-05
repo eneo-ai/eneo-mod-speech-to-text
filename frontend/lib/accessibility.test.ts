@@ -154,3 +154,31 @@ test("no stylesheet of the module fixes a font size in pixels", () => {
   const fixed = sheets.flatMap((sheet) => readFileSync(sheet, "utf8").split("\n").flatMap((line, index) => (/font-size:\s*[\d.]+px/.test(line) ? [`${sheet}:${index + 1}`] : [])));
   assert.deepEqual(fixed, []);
 });
+
+// Forced colours (Windows' high contrast) drop every tint and shadow: a state that a tint alone shows (the word being
+// played, the marked word, the turn and the sentence being read aloud) would not show. Each is outlined there.
+test("the states shown by a tint alone are outlined in forced colours", () => {
+  const forcedColours = (css: string) => {
+    const blocks: string[] = [];
+    for (let at = css.indexOf("@media (forced-colors: active)"); at >= 0; at = css.indexOf("@media (forced-colors: active)", at + 1)) {
+      let depth = 0;
+      for (let i = css.indexOf("{", at); i < css.length; i += 1) {
+        depth += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
+        if (depth === 0) {
+          blocks.push(css.slice(css.indexOf("{", at) + 1, i));
+          break;
+        }
+      }
+    }
+    return blocks.join("\n");
+  };
+  const markers: [string, string[]][] = [
+    ["components/TranscriptEditor.module.css", [".word[data-active]", ".word[data-selected]"]],
+    ["components/TranscriptPlayer.module.css", ['.turn[data-active="true"]', ".sentenceActive"]],
+  ];
+  const unoutlined = markers.flatMap(([file, selectors]) => {
+    const forced = forcedColours(readFileSync(file, "utf8"));
+    return selectors.filter((selector) => !new RegExp(`${selector.replace(/[.[\]"=()]/g, "\\$&")}[^{}]*\\{[^}]*outline:`).test(forced)).map((selector) => `${file} ${selector}`);
+  });
+  assert.deepEqual(unoutlined, []);
+});

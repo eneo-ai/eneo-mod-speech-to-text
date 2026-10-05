@@ -540,6 +540,15 @@
     background: Highlight;
     color: HighlightText;
   }
+
+  /* The turn and the sentence being read aloud are shown by a tint, which is dropped here. */
+  .turn[data-active="true"] {
+    outline: 2px solid Highlight;
+  }
+
+  .sentenceActive {
+    outline: 1px dotted Highlight;
+  }
 }
 
 /* "Ordet stämmer": a check set after an uncertain word. The button is 24 px (44 px for a finger) and lies over the

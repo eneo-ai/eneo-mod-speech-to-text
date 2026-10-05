@@ -472,6 +472,15 @@
     outline: 2px solid Highlight;
   }
 
+  /* Their tints are dropped here: the word being played and the words marked are outlined. */
+  .word[data-active] {
+    outline: 1px dotted Highlight;
+  }
+
+  .word[data-selected] {
+    outline: 2px solid Highlight;
+  }
+
   .text:focus-visible [data-caret-paragraph="true"] {
     box-shadow: none;
     border-inline-start: 3px solid Highlight;
