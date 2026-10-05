@@ -84,6 +84,10 @@ pre.mermaid svg {
   display: block;
   margin: 0 auto;
 }
+/* Mermaid sizes a label with the page's line height; inside .vp-doc its paragraphs get VitePress's taller one and the last line is cut. */
+pre.mermaid p {
+  line-height: inherit;
+}
 @media (max-width: 640px) {
   pre.mermaid svg {
     min-width: 600px;
