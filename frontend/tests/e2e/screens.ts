@@ -388,6 +388,23 @@ export const STATES: State[] = [
     },
   },
   {
+    // Names longer than a phone's line beside names of two letters: each chip keeps to the field's column, its remove
+    // button in reach.
+    name: "setup-participants-long",
+    go: async (page) => {
+      await setup(page);
+      await chooseMode(page, "Strömma");
+      await addParticipants(page, [
+        "Anna-Karin Bostadsförvaltningsnämndsordförande-Östergren",
+        "Li",
+        "Maria Magdalena Christina Andersson-Svensson",
+        "Åsa",
+        "Karl-Johan von Sydow af Ekenstierna",
+        "Erik Lund",
+      ]);
+    },
+  },
+  {
     name: "setup-microphone-check",
     go: async (page) => {
       await setup(page);

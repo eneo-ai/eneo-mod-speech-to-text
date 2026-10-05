@@ -30,12 +30,13 @@ test("a field is not an unnamed group", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("group", { name: /^Deltagare/ })).toHaveCount(1);
 });
 
-test("the added names are a named list the field points to", async ({ page }) => {
+test("the added names are a named list, the field's status says each one, and its help text holds no count", async ({ page }) => {
   await setup(page);
   await addParticipants(page, ["Anna Berg", "Erik Lund"]);
   await expect(page.getByRole("list", { name: "Tillagda namn" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Erik Lund har lagts till." })).toBeAttached();
   const field = await axNode(page.getByRole("textbox", { name: /^Deltagare/ }));
-  expect(field.description).toContain("2 namn tillagda");
+  expect(field.description).toBe("Skriv ett namn och välj Lägg till. Skilj flera namn med komma.");
 });
 
 test("the sending view is a page with a heading that takes focus, a named progress bar and a spoken stage", async ({ page }) => {

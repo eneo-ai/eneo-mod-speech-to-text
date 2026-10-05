@@ -16,10 +16,11 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
     createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
+  assert.equal(button(view.container, "Lägg till")?.disabled, true, "Lägg till is there, and off, while nothing is typed");
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
-  assert.ok(add, "Lägg till shows while a name is typed");
+  assert.equal(add.disabled, false, "and on while a name is typed");
   // Tab to the button: not yet added, the button adds it.
   await view.act(async () => add.focus());
   assert.deepEqual(changes, []);
@@ -45,6 +46,7 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
+  assert.equal(add.disabled, true, "and Lägg till is off again, beside the empty field");
   await view.unmount();
 });
 

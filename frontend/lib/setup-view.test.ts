@@ -10,6 +10,7 @@ import { COUNT_FROM_NAMES, DetailsForm, SpeakerCountField } from "../components/
 import { ModeCards } from "../components/flow/ModeCards";
 import { ParticipantsInput } from "../components/flow/ParticipantsInput";
 import type { FlowSecurityClassification, FormField } from "./api";
+import { parse } from "./test-dom";
 
 const noop = () => {};
 
@@ -52,7 +53,7 @@ test("the modes are one radio group under the question, named by it, and only th
   assert.equal(new Set([...html.matchAll(/<input[^>]*type="radio"[^>]*name="([^"]+)"/g)].map(([, name]) => name)).size, 1);
 });
 
-test("each participant chip has its own remove button named after the person, and the field says how many it holds", () => {
+test("each participant chip has its own remove button named after the person, and the field is described by its help text alone", () => {
   const html = renderToStaticMarkup(
     createElement(ParticipantsInput, {
       label: "Deltagare",
@@ -60,6 +61,7 @@ test("each participant chip has its own remove button named after the person, an
       onChange: noop,
       suggestions: ["Sara Holm", "Anna Berg"],
       fieldName: "deltagare",
+      description: "Skilj flera namn med komma.",
     }),
   );
   assert.deepEqual(
@@ -71,11 +73,14 @@ test("each participant chip has its own remove button named after the person, an
   // Earlier names are offered, except those already added.
   assert.deepEqual([...html.matchAll(/<option value="([^"]+)"/g)].map(([, name]) => name), ["Sara Holm"]);
   assert.match(html, /<p[^>]*role="status"/, "additions and removals are announced");
-  // The input is named by the field's label with its own, and described by the count the group holds.
+  // The input is named by the field's label with its own, and described by the help text: the status says each
+  // change, so the help text keeps no count of the names.
   const input = control(html, "deltagare");
   assert.equal(referenced(html, input, "aria-labelledby"), "Deltagare Lägg till namn");
-  assert.equal(referenced(html, input, "aria-describedby"), "2 namn tillagda.");
-  assert.doesNotMatch(html, /Lägg till<\/span>/, "no Lägg till button while nothing is typed");
+  assert.equal(referenced(html, input, "aria-describedby"), "Skilj flera namn med komma.");
+  // Lägg till stands beside the field from the start, off until a name is typed, so the field never changes its width.
+  const add = [...parse(html).querySelectorAll("button")].find((b) => b.textContent?.trim() === "Lägg till");
+  assert.equal(add?.disabled, true, "Lägg till is there, and off, while nothing is typed");
 });
 
 test("labels are sentence case with Valfritt on optional fields, and a missing required field says so at the field", () => {

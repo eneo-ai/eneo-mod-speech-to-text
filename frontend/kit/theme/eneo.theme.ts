@@ -90,8 +90,16 @@ export const eneoTheme = defineTheme({
     // A label longer than its line wraps and the button grows with it: the design system keeps one line, cuts the rest
     // off with an ellipsis and fixes the height (WCAG 1.4.10 reflow at 320 px, 1.4.4 resize at 200 %). The block padding
     // is small enough that a one-line label still fills the size's own height: 28, 32 and 36 px.
+    // A button after the field in an input group (the participants' Lägg till) is one piece with it, as the group's own
+    // addons are: square where they meet. The design system squares the field's corners there, not the button's.
     button: {
-      base: {whiteSpace: 'normal', height: 'auto', minHeight: 'var(--size-element-md)', paddingBlock: 'var(--spacing-0-5)'},
+      base: {
+        whiteSpace: 'normal',
+        height: 'auto',
+        minHeight: 'var(--size-element-md)',
+        paddingBlock: 'var(--spacing-0-5)',
+        ':is(.astryx-input-group > :not(:first-child))': {borderStartStartRadius: '0', borderEndStartRadius: '0'},
+      },
       'size:sm': {minHeight: 'var(--size-element-sm)'},
       'size:lg': {minHeight: 'var(--size-element-lg)'},
     },
