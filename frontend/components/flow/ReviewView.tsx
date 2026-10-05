@@ -16,6 +16,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -368,7 +369,10 @@ export function ReviewView({
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
-  const rejectSection = showReject && !decided ? (
+  // While the reason form is open it is the decision, with its own Avbryt and Bekräfta avvisning: Avvisa and Godkänn
+  // are not shown beside it.
+  const rejecting = showReject && !decided;
+  const rejectSection = rejecting ? (
     <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
       <TextArea
         ref={reasonField}
@@ -390,23 +394,27 @@ export function ReviewView({
             setRejectReason("");
           }}
         />
-        <Button variant="primary" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
       </HStack>
     </VStack>
   ) : null;
 
-  const actions = (
-    <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
+  // The choice as a pair at the end of the bar, of one height: Avvisa, then the action the page exists for.
+  const actions = rejecting ? null : (
+    <HStack gap={3} hAlign="end" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
       {decided ? (
-        <Text as="p" type="supporting">
-          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-        </Text>
+        <StackItem size="fill">
+          <Text as="p" type="supporting">
+            {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+          </Text>
+        </StackItem>
       ) : (
         <Button
           ref={rejectButton}
-          variant="ghost"
+          variant="secondary"
+          size="lg"
           label="Avvisa"
-          isDisabled={busy || showReject}
+          isDisabled={busy}
           onClick={() => {
             handOff.current = reasonField;
             setShowReject(true);
@@ -415,6 +423,7 @@ export function ReviewView({
       )}
       <Button
         variant="primary"
+        size="lg"
         icon={<CheckCircle2 aria-hidden />}
         label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
         isLoading={working === "approve"}

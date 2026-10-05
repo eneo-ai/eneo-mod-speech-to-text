@@ -203,6 +203,23 @@ test("an approved text review shows the saved decision; a draft from before it i
   expect(writes).toEqual(["resume"]);
 });
 
+test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height of at least 48 px", async ({ page }, info) => {
+  for (const state of ["review", "review-text-edit"]) {
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const avvisa = page.getByRole("button", { name: "Avvisa" });
+    const [reject, approve, bar] = await Promise.all([
+      avvisa.boundingBox(),
+      page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox(),
+      avvisa.locator("..").boundingBox(),
+    ]);
+    expect(reject!.height, `${state}: one height`).toBe(approve!.height);
+    expect(approve!.height, `${state}: the height of the action a screen exists for`).toBeGreaterThanOrEqual(48);
+    expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(bar!.x + bar!.width, 0);
+    // Beside it, or above it where the bar wraps: never at the bar's other end.
+    expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
+  }
+});
+
 test("the review's text fields are labelled", async ({ page }, info) => {
   await STATES.find((s) => s.name === "review-reject")!.go(page, info);
   expect(await axNode(page.getByRole("main").locator("textarea"))).toEqual({
