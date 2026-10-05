@@ -160,10 +160,10 @@ VitePress hero buttons, 44px tall (the project's touch target; the default is 40
 Ordered list, each item under a 2px accent top rule with a CSS-counter numeral in accent above a bold title and text-2 body.
 
 ### Mermaid diagrams
-Neutral theme in light, dark theme in dark; the source is shown as mono text until drawn; wide diagrams scroll sideways.
+Mermaid 12.1.0, drawn in the browser by `theme/diagrams.ts`: neutral theme in light, dark theme in dark; the source is shown as mono text until drawn; below 640px a diagram keeps 600px and scrolls sideways. Its labels take the page's line height (`pre.mermaid p`), because VitePress's taller paragraph height cut the last line of every wrapped label.
 
 ### Scalar API reference
-Scalar's background, text, accent, border, link and button variables are mapped from the VitePress variables. VitePress resets headings outside any cascade layer, which beats Scalar's layered styles, so headings inside `.scalar-app` inherit their size and weight again. Light-mode method colours are darkened for 4.5:1 on the sidebar grey (green #05704c, blue #0b5cad, red #b3171c, orange #a83a00, yellow #7a5600). Sidebar toggle buttons have a 24px minimum target (WCAG 2.5.8).
+Scalar's background, text, accent, border, link and button variables are mapped from the VitePress variables. VitePress resets headings outside any cascade layer, which beats Scalar's layered styles, so headings inside `.scalar-app` inherit their size and weight again. Light-mode method colours are darkened for 4.5:1 on the sidebar grey (green #05704c, blue #0b5cad, red #b3171c, orange #a83a00, yellow #7a5600). Sidebar toggle buttons have a 24px minimum target (WCAG 2.5.8). The page is called only by the module's own page with a session cookie, so it shows no client-language samples, no "open API client" button and no test request; each operation shows its request line and its responses.
 
 ## Do's and Don'ts
 
@@ -187,4 +187,5 @@ Scalar's background, text, accent, border, link and button variables are mapped 
   - `vitepress` <=1.6.4, moderate: only through `vite`.
   - Six low findings under `@scalar/api-reference` (`@scalar/agent-chat`, `ai`, `@ai-sdk/*`; for example GHSA-866g-f22w-33x8, uncontrolled resource consumption in the AI SDK's provider utilities). Scalar's agent is switched off on the page and its chunk is never requested (`npm run check` fails if it is).
   - VitePress 1.6.4 pins Vite 5, whose line is out of support. They go away with the move to VitePress 2.0 once it is stable; that move is one deliberate change.
+- `theme/labels.ts` replaces the default theme's hard-coded English screen-reader text (build-time replacement plus a small observer, because Vue draws the English text again after hydration). At the move to VitePress 2.0, check whether those labels have become configurable and drop `labels.ts` if they have; `npm run check` is the proof that nothing English remains.
 
