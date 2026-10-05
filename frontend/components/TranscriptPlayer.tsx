@@ -64,6 +64,7 @@ import {
   correctionWriteProblem,
   MAX_SPEAKER_EDITS,
   renderReviewedTranscript,
+  sameCorrections,
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
@@ -511,6 +512,8 @@ export function TranscriptPlayer(
     } catch (e) {
       return e instanceof Error ? e.message : "Talaren kunde inte ändras.";
     }
+    // A passage with no speaker of Eneo's has nothing to move: say so rather than save a set that changes nothing.
+    if (sameCorrections(next, corrections)) return "Talaren kan inte ändras för det här inlägget.";
     // Eneo refuses a set with more speaker edits than it holds; say so before sending.
     if (next.speaker_edits.length > MAX_SPEAKER_EDITS) {
       return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriptet, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
