@@ -809,6 +809,60 @@ test("an optional file never turns a send from the unsent list into an empty run
   await starting;
 });
 
+test("Avbryt while the browser still asks for the microphone ends the wait at once, and an answer that comes later records nothing and says nothing", async () => {
+  let grant: (stream: MediaStream) => void = () => undefined;
+  const stream = new FakeStream();
+  const { session, store } = await setup({ getStream: () => new Promise((resolve) => (grant = resolve)) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  const starting = session.start();
+  await until(() => session.getSnapshot().phase === "starting");
+
+  session.cancelStart();
+  assert.equal(session.getSnapshot().phase, "setup", "the page stops waiting: the person may start again, or choose something else");
+  grant(stream as unknown as MediaStream);
+  await starting;
+  await settle();
+  const after = session.getSnapshot();
+  assert.deepEqual([after.phase, after.problem], ["setup", null], "nothing recorded, no problem for an answer nobody waits for");
+  assert.equal(stream.track.readyState, "ended", "a microphone that was granted late is let go");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "no empty recording is left");
+});
+
+test("after cancelling an unanswered microphone question, a new recording starts before the old question is answered", async () => {
+  for (const answer of ["grant", "deny"] as const) {
+    let grant: (stream: MediaStream) => void = () => undefined;
+    let deny: (error: Error) => void = () => undefined;
+    const oldStream = new FakeStream();
+    const newStream = new FakeStream();
+    let requests = 0;
+    const { session, store } = await setup({
+      getStream: () => ++requests === 1
+        ? new Promise((resolve, reject) => { grant = resolve; deny = reject; })
+        : Promise.resolve(newStream as unknown as MediaStream),
+    });
+    session.setContract(audioContract());
+    session.selectMode("spela-in");
+    const first = session.start();
+    await until(() => requests === 1);
+    session.cancelStart();
+    await settle();
+
+    await session.start();
+    assert.equal(session.getSnapshot().phase, "recording", "the unanswered question does not block the new attempt");
+    if (answer === "grant") grant(oldStream as unknown as MediaStream);
+    else deny(new DOMException("Permission denied", "NotAllowedError"));
+    await first;
+    await settle();
+    assert.equal(session.getSnapshot().phase, "recording", "the old answer does not stop the new recording");
+    assert.equal(session.getSnapshot().problem, null);
+    assert.equal(newStream.track.readyState, "live", "the new microphone stays on");
+    if (answer === "grant") assert.equal(oldStream.track.readyState, "ended", "only the old stream is released");
+    await session.stop();
+    assert.equal((await store.listUnsent("user-1")).length, 1, "only the new recording is kept");
+  }
+});
+
 test("a chosen file becomes the document's input in Ladda upp; an unsent recording from the list goes the same way", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const { session, store } = await setup();

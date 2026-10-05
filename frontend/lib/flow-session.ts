@@ -501,6 +501,8 @@ export class FlowSession {
   // only, since a bound from a list that misses someone would merge voices.
   private countFollowsNames = true;
   private starting = false;
+  /** Which start the page is waiting for; a cancelled one is no longer it. */
+  private startAttempt = 0;
   private ready: StoredRecording | null = null;
   // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
   private file: ChosenFile | null = null;
@@ -543,10 +545,11 @@ export class FlowSession {
     this.capture = new RecordingCapture(options.openStore, {
       ...options.captureDeps,
       getStream: async (constraints) => {
+        const attempt = this.startAttempt;
         try {
           return await options.captureDeps.getStream(constraints);
         } catch (error) {
-          this.microphoneError = error instanceof DOMException ? error.name : null;
+          if (attempt === this.startAttempt) this.microphoneError = error instanceof DOMException ? error.name : null;
           throw error;
         }
       },
@@ -640,6 +643,7 @@ export class FlowSession {
     this.problem = null;
     this.microphoneError = null;
     this.starting = true;
+    const attempt = ++this.startAttempt;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
     // Named ahead, so live text names the recording to Eneo from its first sample.
     const recordingId = crypto.randomUUID();
@@ -660,12 +664,27 @@ export class FlowSession {
         this.limits(),
       );
     } finally {
-      this.starting = false;
+      if (attempt === this.startAttempt) this.starting = false;
     }
+    // Cancelled meanwhile (`cancelStart`): its answer is nobody's to wait for.
+    if (attempt !== this.startAttempt) return;
     if (this.capture.getSnapshot().status !== "recording") {
       this.problem = microphoneProblem(this.microphoneError);
       this.closeLive();
     }
+    this.emit();
+  }
+
+  /**
+   * Avbryt while the browser still asks for the microphone: the page stops waiting at once (the question is the
+   * browser's, and may never be answered). An answer that comes later starts no recording and says nothing.
+   */
+  cancelStart(): void {
+    if (!this.starting) return;
+    this.startAttempt += 1;
+    this.starting = false;
+    void this.capture.stop();
+    this.closeLive();
     this.emit();
   }
 

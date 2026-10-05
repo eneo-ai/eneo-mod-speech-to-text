@@ -581,6 +581,7 @@ test("Stoppa while 'Fortsätt spela in' waits for the microphone starts no recor
   await continuing;
 
   assert.equal(recorders.length, 1, "no recorder after Stoppa");
+  await until(() => streams[1]?.track.readyState === "ended", "the cancelled microphone request releases its late stream");
   assert.equal(streams[1].track.readyState, "ended", "the late microphone is let go");
   assert.equal(capture.getSnapshot().status, "stopped");
   assert.equal(await store.lease(stopped!.id), true, "nothing holds the recording");
