@@ -49,7 +49,9 @@ test("a navigation of the built app is announced through a live region, with not
   await page.goto("/flows");
   await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
   await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
-  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  // The flow's own heading: every engine has it, where "Hur vill du lägga till ljudet?" is there only for one that can record
+  // (WebKit on Linux has no MediaRecorder, and its page offers an upload alone).
+  await expect(page.getByRole("heading", { level: 1, name: "Nämndmöte till rapport" })).toBeVisible();
   // The design system's live region sets its hidden style from script, which the policy allows (no 'unsafe-inline').
   await expect(page.locator('[data-astryx-live-region="polite"]')).toHaveText("Nämndmöte till rapport · Tal till text");
   expect(violations).toEqual([]);
