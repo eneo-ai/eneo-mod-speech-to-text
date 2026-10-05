@@ -95,6 +95,7 @@ function FlowsListPage() {
               <ProblemAlert
                 problem={{ title: "Flödena kunde inte visas.", detail: problem.message, retry: problem.retry }}
                 onRetry={retry}
+                focusRetry={attempt > 0}
               />
             ) : groups === null ? (
               <>

@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -15,7 +16,12 @@ export const UNREACHABLE = "Kunde inte kontakta modulen. Försök igen.";
  * The page where the session's answer did not come (the module is down, the connection dropped): it says so and offers
  * another try, at the address the person opened, so a link into a run is still there when the module is back.
  */
-export function ModuleUnreachable({ onRetry }: { onRetry: () => void }) {
+export function ModuleUnreachable({ onRetry, retried = false }: { onRetry: () => void; retried?: boolean }) {
+  // Shown again after a Försök igen that failed: the new page's Försök igen takes the focus the pressed one had.
+  const retry = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (retried) retry.current?.focus();
+  }, []);
   return (
     <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <Layout height="auto" contentWidth={640} padding={4}>
@@ -24,7 +30,7 @@ export function ModuleUnreachable({ onRetry }: { onRetry: () => void }) {
             <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
             <Banner status="error" title={UNREACHABLE} collapsible={false} />
             <HStack>
-              <Button label="Försök igen" onClick={onRetry} />
+              <Button ref={retry} label="Försök igen" onClick={onRetry} />
             </HStack>
           </VStack>
         </LayoutContent>

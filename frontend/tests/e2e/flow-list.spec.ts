@@ -181,3 +181,28 @@ test("opening a flow is a navigation inside the page, not a page load", async ({
   await expect(page).toHaveURL(FLOW_1);
   expect(await page.evaluate(() => (window as unknown as { __marker?: boolean }).__marker), "the page was not reloaded").toBe(true);
 });
+
+test("a retry that fails again leaves the focus on Försök igen, so the keyboard can try once more (WCAG 2.4.3)", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 503.*\/api\/eneo\/flows\// });
+  await page.route(FLOWS, (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
+  await page.goto("/flows");
+  await expect(alert(page)).toContainText("Flödena kunde inte visas.");
+  const retried = page.waitForResponse(FLOWS);
+  await page.getByRole("button", { name: "Försök igen" }).focus();
+  await page.keyboard.press("Enter");
+  await retried;
+  await expect(alert(page)).toContainText("Flödena kunde inte visas.");
+  await expect(page.getByRole("button", { name: "Försök igen" })).toBeFocused();
+});
+
+test("the module page's Försök igen, failing again, keeps the focus", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/api\/auth\/status/ }, { requestFailed: /GET .*\/api\/auth\/status: net::ERR_FAILED/ });
+  await page.route("**/api/auth/status", (route) => route.abort());
+  await page.goto("/flows");
+  const retry = page.getByRole("button", { name: "Försök igen" });
+  await expect(retry).toBeVisible();
+  await retry.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+  await expect(retry).toBeFocused();
+});

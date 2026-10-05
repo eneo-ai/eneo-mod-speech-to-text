@@ -9,6 +9,7 @@ import { LoadingShell } from "@/components/LoadingShell";
 import { Brand, BrandingProvider } from "@/components/Brand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
+import { keepFocusThroughBusy } from "@/lib/focus-keeper";
 import { readBranding } from "@/lib/read-branding";
 import { RouteEffects } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
@@ -38,6 +39,8 @@ function Frame({ children }: { children: ReactNode }) {
 
 /** The frame of every page: its providers and the page the route names. */
 export function Root() {
+  // A button its action disabled gets the keyboard focus back when it is enabled again (lib/focus-keeper).
+  useEffect(() => keepFocusThroughBusy(document), []);
   return (
     <Frame>
       <RouteEffects />
