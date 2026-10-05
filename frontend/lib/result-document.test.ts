@@ -171,12 +171,11 @@ test("the result's own headings sit under the page's h1: its top heading is an h
   );
 });
 
-test("on a narrower screen Kopiera texten sits under Fler alternativ, a labelled menu", async () => {
+test("on a narrower screen the one more action beside the download is a button, not a menu of one", async () => {
   const view = await document_({ text, file: pdf });
-  const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
-  await view.act(async () => more.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-  const items = [...document.querySelectorAll('[role="menuitem"]')].map((item) => item.textContent?.trim());
-  assert.deepEqual(items, ["Kopiera texten"], "no Dela without a share sheet");
+  const buttons = [...view.container.querySelectorAll("button")].map(nameOf);
+  assert.ok(buttons.includes("Kopiera texten"), "Kopiera texten, where it can be seen");
+  assert.ok(!buttons.includes("Fler alternativ"), "no menu for a single action");
 });
 
 test("Dela only where the browser can share, and then the file itself when the device takes its type", async () => {
@@ -193,13 +192,21 @@ test("Dela only where the browser can share, and then the file itself when the d
   });
   globalThis.fetch = (async () => new Response(new Blob(["%PDF"], { type: "application/pdf" }))) as typeof fetch;
   try {
+    // Dela alone: a button of its own, not a menu of one.
+    const alone = await document_({ text: null, file: pdf });
+    await alone.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    const names = [...alone.container.querySelectorAll("button")].map(nameOf);
+    assert.ok(names.includes("Dela") && !names.includes("Fler alternativ"), `Dela is a button and no menu holds it (${names})`);
+    await alone.unmount();
+
+    // Beside Kopiera texten there are two: a menu.
     const view = await document_({ text, file: pdf });
     await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
     const more = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === "Fler alternativ")!;
     await view.act(async () => more.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
-    const dela = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((item) => item.textContent?.trim() === "Dela")!;
-    assert.ok(dela, "Dela appears");
-    await view.act(async () => dela.click());
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    assert.deepEqual(items.map((item) => item.textContent?.trim()), ["Kopiera texten", "Dela"]);
+    await view.act(async () => items[1].click());
     assert.equal(shared.length, 1);
     assert.equal(shared[0].files?.[0].name, "Protokoll kommunstyrelsen 2026-09-24.pdf");
     assert.equal(shared[0].title, "Nämndmöte till rapport");

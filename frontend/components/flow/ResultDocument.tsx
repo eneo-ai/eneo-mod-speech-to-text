@@ -193,10 +193,12 @@ export function ResultDocument({
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
+  // Copying the text is one of the more actions when the file is the filled one above it.
+  const copyMore = Boolean(text && file);
 
   return (
     <>
-      {/* Narrower: above the document, the download first, opening the file beside it, the rest under Fler alternativ. */}
+      {/* Narrower: above the document, the download first, opening the file beside it, then the more actions. */}
       {!wide && (
         <HStack wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
@@ -214,15 +216,20 @@ export function ResultDocument({
           {text && !file && (
             <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
           )}
-          {((text && file) || share) && (
+          {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
+          {copyMore && share ? (
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
               alignment="end"
             >
-              {text && file && <DropdownMenuItem icon="copy" label="Kopiera texten" onClick={() => void copy()} />}
-              {share && <DropdownMenuItem icon={Share2} label="Dela" onClick={() => void runShare(share, title, text)} />}
+              <DropdownMenuItem icon="copy" label="Kopiera texten" onClick={() => void copy()} />
+              <DropdownMenuItem icon={Share2} label="Dela" onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
+          ) : copyMore ? (
+            <Button icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
+          ) : (
+            share && <Button icon={<Icon icon={Share2} />} label="Dela" onClick={() => void runShare(share, title, text)} />
           )}
         </HStack>
       )}
