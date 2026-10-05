@@ -63,19 +63,15 @@ test("the way back to the flows is offered when the problem asks for it", async 
   assert.equal(back?.getAttribute("href"), "/flows");
 });
 
-/** What the alert is asked to scroll into view, and with which motion. */
-function scrolled(t: TestContext, reduceMotion = false) {
+/** What the alert is asked to scroll into view, and how. */
+function scrolled(t: TestContext) {
   const calls: { element: Element; options: unknown }[] = [];
   const original = window.Element.prototype.scrollIntoView;
   window.Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
     calls.push({ element: this, options });
   };
-  const matchMedia = window.matchMedia;
-  const reduced = (query: string) => ({ ...matchMedia(query), matches: reduceMotion && query === "(prefers-reduced-motion: reduce)" });
-  Object.defineProperty(window, "matchMedia", { value: reduced, configurable: true, writable: true });
   t.after(() => {
     window.Element.prototype.scrollIntoView = original;
-    Object.defineProperty(window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
   });
   return calls;
 }
@@ -94,12 +90,12 @@ async function host(t: TestContext) {
   return { container: element, render: (ui: ReturnType<typeof createElement>) => act(async () => root.render(ui)) };
 }
 
-test("an alert that is to be revealed scrolls into view once per problem, gently", async (t) => {
+test("an alert that is to be revealed scrolls into view once per problem, with a jump", async (t) => {
   const calls = scrolled(t);
   const { container, render } = await host(t);
   const first: Problem = { title: "Det gick inte att skapa dokumentet." };
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
-  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "smooth" }]);
+  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
   assert.ok(calls[0].element.contains(alerts(container)[0]), "the alert itself");
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
   assert.equal(calls.length, 1, "the same problem drawn again is not scrolled to again");
@@ -107,8 +103,8 @@ test("an alert that is to be revealed scrolls into view once per problem, gently
   assert.equal(calls.length, 2, "another problem is");
 });
 
-test("an alert that need not be revealed stays where it is, and reduced motion scrolls without animation", async (t) => {
-  const calls = scrolled(t, true);
+test("an alert that need not be revealed stays where it is", async (t) => {
+  const calls = scrolled(t);
   const quiet = await host(t);
   await quiet.render(createElement(ProblemAlert, { problem: { title: "Ingen scroll." } }));
   assert.equal(calls.length, 0);
