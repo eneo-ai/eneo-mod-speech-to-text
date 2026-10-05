@@ -13,13 +13,14 @@ import {
   getRunContract,
   retryFlowRunFromFailedStep,
   startRun,
+  uploadAborted,
   uploadStepRuntimeFile,
   type FlowRunPublic,
   type FlowRunStep,
   type Json,
   type RunContract,
 } from "./api";
-import { friendlyError } from "./errors";
+import { friendlyError, TOO_MANY_RUNS } from "./errors";
 import { filledValue, labelsSpeakers, oneRecordingLimitSeconds, speakerLabelsFor } from "./flow-session";
 import type { OnlineStatus } from "./online-status";
 import { formatBytes, formatDuration } from "./format";
@@ -51,8 +52,6 @@ function isRetryable(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-const cancelled = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
-
 // An upload's tries against a server answering with errors: each one sends the whole file
 // again. Run requests and polling keep waiting, since giving up there can lose a run or its view.
 const UPLOAD_SERVER_ERROR_TRIES = 4;
@@ -64,7 +63,7 @@ export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Pr
   let serverErrors = 0;
   for (let attempt = 0; ; attempt += 1) {
     // A cancel between attempts, or before the first, sends nothing more.
-    if (opts.signal?.aborted) throw cancelled();
+    if (opts.signal?.aborted) throw uploadAborted();
     try {
       return await op();
     } catch (error) {
@@ -89,7 +88,7 @@ function waitToRetry(delayMs: number, { online, signal, onWait }: RetryOptions):
       else resolve();
     };
     const retryNow = () => finish();
-    const cancel = () => finish(cancelled());
+    const cancel = () => finish(uploadAborted());
     const timer = setTimeout(retryNow, delayMs);
     const stopListening = online.subscribe((isOnline) => isOnline && retryNow());
     signal?.addEventListener("abort", cancel, { once: true });
@@ -399,7 +398,7 @@ const RETRY_REFUSALS: Record<string, [message: string, startAgain: boolean]> = {
   ],
   flow_run_retry_source_not_failed: [`Bara en misslyckad körning kan fortsätta där den stannade. ${START_AGAIN}`, true],
   flow_run_access_denied: ["Bara den som startade körningen kan fortsätta den.", false],
-  flow_run_concurrency_limit_reached: ["För många körningar pågår just nu. Försök igen om en stund.", false],
+  flow_run_concurrency_limit_reached: [TOO_MANY_RUNS, false],
   not_found: ["Körningen finns inte längre och kan inte fortsätta.", false],
 };
 

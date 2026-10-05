@@ -27,6 +27,10 @@ const FILE_UNUSABLE = "Filen kunde inte användas. Ladda upp den igen.";
 const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för flödet om du behöver det.";
 const MODULE_ACCESS = "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.";
 const REVIEW_CHANGED = "Granskningen har ändrats. Ladda om sidan och försök igen.";
+/** What a refused request and a finished run say alike of a review and of a busy server. */
+export const REVIEW_REJECTED = "Resultatet avvisades i granskningen och körningen avslutades.";
+export const REVIEW_EXPIRED = "Tiden för granskningen har gått ut och körningen har avbrutits.";
+export const TOO_MANY_RUNS = "För många körningar pågår just nu. Försök igen om en stund.";
 
 // The one responsible for the flow fixes these; trying again cannot help.
 const OWNER_CODES: Record<string, string> = {
@@ -86,7 +90,7 @@ const CODES: Record<string, string> = {
   flow_input_invalid_list_type: FIELDS,
   flow_run_idempotency_conflict: "Inspelningen har redan skickats med andra uppgifter. Ladda om sidan för att se körningen.",
   flow_run_invalid_idempotency_key: "Dokumentet kunde inte skapas. Ladda om sidan och försök igen.",
-  flow_run_concurrency_limit_reached: "För många körningar pågår just nu. Försök igen om en stund.",
+  flow_run_concurrency_limit_reached: TOO_MANY_RUNS,
   flow_dispatch_failed: "Körningen kunde inte startas just nu. Försök igen om en stund.",
   flow_live_transcription_unavailable: "Livetexten är inte tillgänglig. Spela in som vanligt, texten skapas när du är klar.",
   flow_run_input_file_not_found: "Ljudfilen för den här körningen kunde inte hittas.",
@@ -100,7 +104,7 @@ const CODES: Record<string, string> = {
   // Review pauses (among them, confirming who is who).
   flow_review_stale_revision:
     "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats — kontrollera och försök igen.",
-  flow_review_expired: "Tiden för granskningen har gått ut och körningen har avbrutits.",
+  flow_review_expired: REVIEW_EXPIRED,
   flow_review_not_active: "Granskningen är inte längre aktiv.",
   flow_review_already_resumed: "Flödet har redan återupptagits.",
   flow_review_edit_not_allowed: "Det här steget kan bara godkännas, inte redigeras.",
@@ -114,7 +118,7 @@ const CODES: Record<string, string> = {
   flow_review_not_approved: "Godkänn granskningen innan flödet kan fortsätta.",
   flow_review_reject_reason_required: "Skriv varför du avvisar resultatet.",
   flow_review_reject_reason_too_long: "Motiveringen är för lång. Korta den och försök igen.",
-  flow_review_rejected: "Resultatet avvisades i granskningen och körningen avslutades.",
+  flow_review_rejected: REVIEW_REJECTED,
   typed_io_contract_violation: "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
   typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget.",
   // Correcting a transcript.

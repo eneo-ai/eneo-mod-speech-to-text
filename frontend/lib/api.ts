@@ -544,6 +544,9 @@ interface UploadRequestOptions {
   runtimeUploadPolicy?: FlowRuntimeUploadPolicy | null;
 }
 
+/** An upload the page itself stopped. */
+export const uploadAborted = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
+
 function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   switch (reason) {
     case "not_started":
@@ -670,11 +673,7 @@ function requestMultipartWithProgress<T>(
       );
     };
 
-    xhr.onabort = () => {
-      rejectOnce(
-        new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted"),
-      );
-    };
+    xhr.onabort = () => rejectOnce(uploadAborted());
 
     opts.signal?.addEventListener(
       "abort",
