@@ -88,7 +88,7 @@ Eneo ger en kortlivad signerad URL per fil, och den är en bärartoken. Webbläs
 
 Säkerhetsheadrarna står i `backend/app/security_headers.json`, den enda definitionen, och sätts på varje svar, API och filströmmar inräknade. En header som en rutt själv sätter vinner (till exempel den inline PDF:ens ramning). Mikrofonen är det enda en sida får be om (`Permissions-Policy`), och varje svar under `/api` får `Cache-Control: no-store` om det inte själv säger något annat.
 
-CSP:n är försvar på djupet. Den stoppar injicerad inline-kod och händelsehanterare och begränsar XSS-vägar till ljudet i IndexedDB; den gör inte XSS omöjlig. Utdatakodning (React-textnoder, `react-markdown` utan rå HTML) och BFF:ens kontroller är de primära skydden. Skript och stilar tillåter varken `'unsafe-inline'` eller `'unsafe-eval'`.
+CSP:n är försvar på djupet. Den stoppar injicerad inline-kod och händelsehanterare och begränsar XSS-vägar till ljudet i IndexedDB; den gör inte XSS omöjlig. Utdatakodning (React-textnoder, Astryx `Markdown`, som visar rå HTML som text) och BFF:ens kontroller är de primära skydden. Skript och stilar tillåter varken `'unsafe-inline'` eller `'unsafe-eval'`.
 
 ## Säkerhetsegenskaper
 

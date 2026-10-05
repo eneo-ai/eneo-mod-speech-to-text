@@ -13,7 +13,6 @@ import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
 import { CopyStatus, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
-import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
@@ -75,7 +74,7 @@ function FilePreview({ text }: { text: string }) {
       <Text as="p" id={`${id}-name`} type="supporting">
         Förhandsvisning av texten i filen
       </Text>
-      <article id={`${id}-text`} className={styles.prose}>
+      <article id={`${id}-text`}>
         <Markdown>{whole || !first ? text : first}</Markdown>
       </article>
       {first && (
@@ -249,7 +248,7 @@ export function ResultDocument({
         )}
 
         {text && (
-          <VStack as="article" padding={6} className={styles.prose}>
+          <VStack as="article" padding={6}>
             <Markdown>{text}</Markdown>
           </VStack>
         )}

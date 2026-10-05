@@ -17,28 +17,31 @@
       - region "Förhandsvisning av texten i filen":
         - paragraph: Förhandsvisning av texten i filen
         - article:
-          - heading "Beslut" [level=2]
-          - paragraph: Kommunstyrelsen fattade tre beslut.
-          - table:
-            - rowgroup:
-              - row "Ärende Beslut Belopp, tkr":
-                - columnheader "Ärende"
-                - columnheader "Beslut"
-                - columnheader "Belopp, tkr"
-            - rowgroup:
-              - row /Budget \d+ Ramen höjs 1 \d+/:
-                - cell /Budget \d+/
-                - cell "Ramen höjs"
-                - cell /1 \d+/
-              - row /Skolskjutsar Nya turer \d+/:
-                - cell "Skolskjutsar"
-                - cell "Nya turer"
-                - cell /\d+/
-              - row /Bredband Utbyggnad norrut \d+/:
-                - cell "Bredband"
-                - cell "Utbyggnad norrut"
-                - cell /\d+/
-          - paragraph: Förvaltningen återkommer i oktober.
+          - document:
+            - heading "Beslut" [level=2]
+            - paragraph: Kommunstyrelsen fattade tre beslut.
+            - group "Tabell":
+              - group "Tabell":
+                - table:
+                  - rowgroup:
+                    - row "Ärende Beslut Belopp, tkr":
+                      - columnheader "Ärende"
+                      - columnheader "Beslut"
+                      - columnheader "Belopp, tkr"
+                  - rowgroup:
+                    - row /Budget \d+ Ramen höjs 1 \d+/:
+                      - cell /Budget \d+/
+                      - cell "Ramen höjs"
+                      - cell /1 \d+/
+                    - row /Skolskjutsar Nya turer \d+/:
+                      - cell "Skolskjutsar"
+                      - cell "Nya turer"
+                      - cell /\d+/
+                    - row /Bredband Utbyggnad norrut \d+/:
+                      - cell "Bredband"
+                      - cell "Utbyggnad norrut"
+                      - cell /\d+/
+            - paragraph: Förvaltningen återkommer i oktober.
       - status
     - region "Fler filer":
       - heading "Fler filer" [level=2]
