@@ -413,7 +413,7 @@ def refusals(op: Op) -> dict[str, Any]:
         responses["411"] = reply("`Content-Length` saknas.", json_of(ERROR))
     if op.origin:
         responses["403"] = {"$ref": "#/components/responses/OriginRefused"}
-    if op.user == "required":
+    if op.user is not None:
         responses["409"] = {"$ref": "#/components/responses/UserChanged"}
     if op.too_large is not None:
         responses["413"] = reply(

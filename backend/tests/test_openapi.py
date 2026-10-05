@@ -252,12 +252,17 @@ class WhoMayCallTests(unittest.TestCase):
 
                         self.assertEqual(response.status_code, 409)
                         self.assertEqual(response.json(), {"detail": "user_changed"})
+                        self.assertIn("409", operation["responses"])
 
     def test_an_operation_that_may_name_the_user_answers_409_for_another_and_not_for_none(self) -> None:
         for (method, path), operation in self.operations.items():
             if "ExpectedUserOptional" in self.parameter_names(operation):
                 with self.subTest(method=method, path=path):
-                    self.assertEqual(self.call(method, path, user="someone-else").status_code, 409)
+                    response = self.call(method, path, user="someone-else")
+
+                    self.assertEqual(response.status_code, 409)
+                    self.assertEqual(response.json(), {"detail": "user_changed"})
+                    self.assertIn("409", operation["responses"])
                     self.assertEqual(self.call(method, path).status_code, 200)
 
 
