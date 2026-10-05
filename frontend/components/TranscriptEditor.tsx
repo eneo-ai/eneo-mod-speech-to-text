@@ -9,6 +9,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { wordKey } from "@/lib/confirmed-words";
 import { formatClock } from "@/lib/format";
 import { playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
+import { scrollBehavior } from "@/lib/motion";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
 import { confirmSpeakerSuggestions, pendingSpeakerSuggestions, displayedSourceOffset, replaceTranscriptText, anchorTextSelection, selectionSpeakerSuggestion, wholePassageSelection, assignTextSelection, displayedSelectionBounds, selectedTranscriptText, transcriptParagraphs, type DisplaySelectionSpan, type TextSelectionSpan } from "@/lib/transcript-selection";
@@ -63,7 +64,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     if (focus) requestAnimationFrame(() => {
       const first = next[0];
       const index = shown.findIndex((s, i) => first && displayedSelectionBounds(first, s, i, corrections));
-      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     });
   }
   function captureSelection() {

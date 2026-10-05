@@ -9,6 +9,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
+import { scrollBehavior } from "@/lib/motion";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 import styles from "./LiveSheet.module.css";
 
@@ -29,10 +30,6 @@ const Pieces = memo(
   },
   (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
 );
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-}
 
 /**
  * Strömma's workspace: the draft on a document sheet. Committed pieces form a
@@ -68,7 +65,7 @@ export function LiveSheet({
   function showLatest() {
     const element = scroller.current;
     if (!element) return;
-    element.scrollTo({ top: element.scrollHeight, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    element.scrollTo({ top: element.scrollHeight, behavior: scrollBehavior() });
     setFollowing(true);
     // The button goes away; the text it showed takes the focus.
     element.focus();

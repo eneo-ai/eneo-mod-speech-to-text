@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { prefersReducedMotion } from "@/lib/motion";
 import styles from "./LevelMeter.module.css";
 
 /** 0 at −60 dBFS and below, 1 at −10 dBFS and above: speech lands in the middle. */
@@ -54,10 +55,6 @@ export function useInputLevel(
       listener.current(0, false, 0);
     };
   }, [stream]);
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**

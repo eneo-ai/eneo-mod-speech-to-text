@@ -28,6 +28,8 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { downloadBlob } from "@/lib/download";
+import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
@@ -419,7 +421,7 @@ export function TranscriptPlayer(
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [activeIndex, follow, editingIndex]);
 
   // The search's current hit is brought into view, and playback stops pulling the text away from it.
@@ -429,7 +431,7 @@ export function TranscriptPlayer(
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;
     setFollow(false);
-    el.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [currentHit, query]);
 
   function onUserScroll() {
@@ -717,11 +719,7 @@ export function TranscriptPlayer(
           icon={<Download aria-hidden />}
           label="Hämta granskat transkript"
           className={styles.download}
-          onClick={() => {
-            const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
-            const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }}
+          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskat-transkript.txt")}
         />
       )}
 

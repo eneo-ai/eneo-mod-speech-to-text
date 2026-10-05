@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import type { CorrectionsSaveState } from "./TranscriptPlayer";
 import { ApiError, saveTranscriptCorrections } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/errors";
 import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet } from "@/lib/transcript-corrections";
 
@@ -62,9 +63,10 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     onCorrectionsChange(corrections);
   }
   function downloadUnsavedCorrections() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ flowId, runId, stepId: transcript.stepId, ...corrections, revision: revisionRef.current }, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = "osparade-rattningar.json"; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadBlob(
+      new Blob([JSON.stringify({ flowId, runId, stepId: transcript.stepId, ...corrections, revision: revisionRef.current }, null, 2)], { type: "application/json" }),
+      "osparade-rattningar.json",
+    );
   }
   return { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections };
 }
