@@ -18,7 +18,8 @@
     "test:a11y:branding": "STUB_BRANDING=custom playwright test --config playwright.branding.config.ts && STUB_BRANDING=name playwright test --config playwright.branding.config.ts",
     "test:a11y:review": "SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
     "test:prod": "npm run build && npm run build:check && playwright test --config playwright.prod.config.ts",
-    "test:image": "../deploy/acceptance.sh"
+    "test:image": "../deploy/acceptance.sh",
+    "ux:shots": "node scripts/ux-shots.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.3",
