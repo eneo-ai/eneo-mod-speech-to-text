@@ -6,15 +6,17 @@ Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus 
 
 ## Inspelningen sparas på enheten
 
-Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). En omladdning, en krasch eller en utgången session förlorar därför högst den senaste biten.
+Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch eller en utgången session; den senaste biten kan gå förlorad.
 
-- Inspelningen visas som osänd i flödeslistan och på flödets sida, med **Skicka**, **Spara som fil** och **Ta bort**, för den som spelade in den.
+- Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**.
 - Den lokala kopian tas bort först när Eneo har tagit emot körningen.
 - Utan IndexedDB (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
 
+Om lagringen slutar fungera, till exempel när webbplatsdata rensas under inspelningen, visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
+
 ## Fortsätta en inspelning
 
-Tappar inspelningen mikrofonen, till exempel vid ett samtal eller när en telefon lägger sidan i bakgrunden, pausas den och **Fortsätt spela in** startar en ny del.
+Om mikrofonens ljud tillfälligt försvinner men dess ljudspår finns kvar, visar inspelaren en varning. Ljudet kommer tillbaka automatiskt när mikrofonen är tillgänglig igen. Om ljudspåret avslutas avbryts inspelningen; **Fortsätt spela in** öppnar då mikrofonen och startar en ny del av samma inspelning.
 
 - Det går också efter en omladdning: en inspelning som avbröts utan stopp visas som osänd på flödets sida, och **Fortsätt spela in** spelar in i en ny del av samma inspelning. Efter **Stoppa** finns knappen också bredvid **Skapa dokument**, tills inspelningen har börjat skickas.
 - En dold sida eller en flik som stängs sparar den pågående biten direkt. Att sidan bara döljs pausar inte, eftersom en laptop spelar in vidare i en bakgrundsflik.
@@ -25,10 +27,14 @@ Innan en del når flödets största filstorlek startar nästa del på samma mikr
 
 ## En flik i taget
 
-En inspelning används av en flik i taget. Den flik som spelar in den, skickar den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när fliken stängs eller kraschar. Andra flikar visar inte inspelningen som osänd så länge, och **Skicka** eller **Ta bort** där nekas med ett meddelande. Utan Web Locks (Safari före 15.4) kan bara fliken som spelade in en inspelning skicka, fortsätta eller ta bort den; andra flikar kan spara den som fil.
+En inspelning används av en flik i taget. Den flik som spelar in den, skickar den eller tar bort den håller ett lås (Web Locks) som webbläsaren släpper när fliken stängs eller kraschar. Andra flikar visar inte inspelningen som osänd så länge. Om en annan flik hinner ta låset innan en åtgärd sker nekas åtgärden med ett meddelande. Utan Web Locks (Safari före 15.4) kan bara fliken som spelade in en inspelning skicka, fortsätta eller ta bort den; andra flikar kan spara den som fil.
 
 ## Uppladdning och nya försök
 
-Uppladdning och start av körning försöker igen vid tillfälliga fel (nätverksfel, 408, 429 och 5xx) och direkt när anslutningen är tillbaka; körningen startas med samma idempotensnyckel vid varje försök (`frontend/lib/submit-run.ts`). Andra 4xx-fel stoppar med Eneos felmeddelande. Ett avbrott i nätet väntas ut hur länge som helst.
+Uppladdning och start av körning försöker igen vid tillfälliga fel (nätverksfel, 408, 429 och 5xx) och när anslutningen är tillbaka. Andra 4xx-fel stoppar med Eneos felmeddelande (`frontend/lib/submit-run.ts`).
 
-Efter fyra försök som ger serverfel visas "Det gick inte att skicka". Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen".
+Under uppladdningen väntas nätavbrott ut tills anslutningen är tillbaka eller användaren väljer **Avbryt**. Efter fyra uppladdningsförsök som ger 408 eller 5xx visas ett fel. Inspelningen ligger kvar och kan skickas igen med **Försök igen**.
+
+När filen är uppladdad visas **Startar flödet**. **Avbryt** finns från början och behåller filen för ett nytt försök. Starten får tio automatiska försök under ungefär fem minuter. Därefter visas **Försök igen** och **Avbryt**. Ett nytt försök använder den redan uppladdade filen och samma idempotensnyckel, så att det inte skapar dubbla körningar. För inspelningar finns också **Spara som fil**.
+
+En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Filen finns kvar på datorn.
