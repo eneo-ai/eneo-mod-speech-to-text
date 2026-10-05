@@ -1,7 +1,8 @@
 /**
- * The speaker-review editor (README "Granska transkriptet"), the part of the review the flag keeps out of every run and
- * the gate's states cannot work: selection with the keyboard, a speaker given to the words and taken back, a word that
- * moves the playback, and the way between the text and its tools. The development page's fixtures carry it.
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"), the part of the review the flag
+ * keeps out of every run and the gate's states cannot work: selection with the keyboard, a speaker given to the words
+ * and taken back, a word that moves the playback, and the way between the text and its tools. The development page's
+ * fixtures carry it.
  */
 import { expect, test, type Page } from "@playwright/test";
 import { open, pick, reviewEditor } from "./screens";

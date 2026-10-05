@@ -185,7 +185,7 @@ export async function result(page: Page) {
 }
 
 /**
- * The speaker-review editor (README "Granska transkriptet"): the development page's fixtures, the "bulk" case with its
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"): the development page's fixtures, the "bulk" case with its
  * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
  */
 export async function reviewEditor(page: Page, testCase = "bulk") {
