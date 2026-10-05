@@ -36,7 +36,7 @@ This is the module's own documentation, not Eneo's. The module has no database a
 
 - Swedish only (`sv-SE`).
 - Required links: https://eneo.ai ("Läs mer om Eneo"), https://github.com/eneo-ai/eneo, https://github.com/eneo-ai, the module's repository, and a section "Är du också intresserad av att bygga moduler?" that links to https://github.com/eneo-ai/eneo-module-kit.
-- The module kit repository says it is not built yet and that the module is the source it is extracted from; copy about it must say that.
+- The module kit repository's README says it is not built yet; the lead says the kit has code and the README is stale (a docs task for that repository). The start page says the kit is "under uppbyggnad" and that this module is the source it is taken from; keep that wording until the kit's README says otherwise.
 - Speaker review of the transcript is a build-time option and a published image has it off; the start page must not promise it.
 - Undecided: whether the site shows a mark besides the name (assumed: a small drawn mark, not the Sundsvall logo, because the logo is the default deployment's, not the module's).
 

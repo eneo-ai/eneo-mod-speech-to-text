@@ -39,7 +39,7 @@ typography:
   section-heading:
     fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
     fontSize: "1.375rem"
-    fontWeight: 700
+    fontWeight: 600
     lineHeight: 1.3
     letterSpacing: "-0.01em"
   step-numeral:
@@ -47,6 +47,26 @@ typography:
     fontSize: "1.5rem"
     fontWeight: 700
     lineHeight: 1
+  hero-name-narrow:
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
+    fontSize: "2.5rem"
+    fontWeight: 700
+    lineHeight: 1.12
+    letterSpacing: "-0.025em"
+  hero-note:
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
+    fontSize: "1rem"
+    fontWeight: 400
+  step-title:
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
+    fontSize: "1.0625rem"
+    fontWeight: 600
+  api-title:
+    fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, \"Segoe UI\", Arial, sans-serif"
+    fontSize: "2rem"
+    fontWeight: 700
+    lineHeight: 1.2
+    letterSpacing: "-0.02em"
   code:
     fontFamily: "ui-monospace, \"SFMono-Regular\", Consolas, monospace"
     fontSize: "0.8125rem"
@@ -109,11 +129,11 @@ One blue on cool neutrals. Values come from the module token and feed VitePress 
 
 ### Hierarchy
 - **Hero name and headline** (700, 2.5rem below 640px, 3.5rem from 640px, line-height 1.12, -0.025em, balanced wrapping): name in accent over the headline.
-- **Tagline** (400, 1.125rem, 1.6, text-2, max 34em, pretty wrapping).
-- **Start-page section heading** (1.375rem, 1.3, -0.01em, balanced).
+- **Tagline** (400, 1.125rem, 1.6, text-2, max 34em, pretty wrapping), and under it the **hero note** (1rem, text-2) that says this is the documentation and where the module itself opens.
+- **Start-page section heading** (600, 1.375rem, 1.3, -0.01em, balanced).
 - **Step numeral** (700, 1.5rem, accent); step title 1.0625rem in text-1.
-- **API page title** (2rem, 1.2, -0.02em).
-- **Body**: VitePress default size and measure; do not widen or narrow it.
+- **API page title** (700, 2rem, 1.2, -0.02em).
+- **Body**: VitePress default size and measure; do not widen or narrow it. Start-page row text is capped at about 70 characters (36em), by padding, so the hairline above it still runs the full width.
 - **Diagram source** (mono, 0.8125rem, text-2).
 
 ### Named Rules
@@ -121,7 +141,7 @@ One blue on cool neutrals. Values come from the module token and feed VitePress 
 
 ## Layout
 
-VitePress default layout. Start page: hero (text left, drawing right at up to 460px; below 960px one left-aligned column, actions before the drawing, drawing up to 280px), then a three-step strip (three equal columns from 960px, one column below, 32px gap), then heading-and-text rows. From 960px rows are a 5fr/11fr grid with heading left, text right (48px inset), each row under a hairline; below 960px one column. API page: title and intro capped at 1152px with 24px side padding, Scalar below a top hairline, Scalar header height tied to `--vp-nav-height`. Mermaid diagrams are centred, and below 640px keep a 600px minimum width and scroll sideways.
+VitePress default layout. Start page: hero (text left, drawing right at up to 460px; below 960px one left-aligned column, actions before the drawing, drawing up to 280px), then a three-step strip (three equal columns from 960px, one column below, 32px gap), then heading-and-text rows. From 960px rows are a 5fr/11fr grid with heading left, text right (48px inset, text capped at 36em), each row under a full-width hairline; below 960px one column. API page: title and intro capped at 1152px with 24px side padding, Scalar below a top hairline, Scalar header height tied to `--vp-nav-height`. Mermaid diagrams are centred, and below 640px keep a 600px minimum width and scroll sideways.
 
 ## Elevation & Depth
 
@@ -134,7 +154,7 @@ Rounded bars: the mark and the hero drawing are fully rounded rectangles (radius
 ## Components
 
 ### Buttons
-VitePress hero buttons. **Brand:** accent fill, white label (light); Sky Blue fill, #0B1118 label (dark). Hover: #003a80 light, #7CC3FF dark; active: #003672 light, #3fa3f5 dark. **Alt:** VitePress default quiet button. Focus: 2px accent outline, 2px offset.
+VitePress hero buttons, 44px tall (the project's touch target; the default is 40). **Brand:** accent fill, white label (light); Sky Blue fill, #0B1118 label (dark). Hover: #003a80 light, #7CC3FF dark; active: #003672 light, #3fa3f5 dark. **Alt:** VitePress default quiet button. Focus: 2px accent outline, 2px offset.
 
 ### Three-step strip
 Ordered list, each item under a 2px accent top rule with a CSS-counter numeral in accent above a bold title and text-2 body.
@@ -143,7 +163,7 @@ Ordered list, each item under a 2px accent top rule with a CSS-counter numeral i
 Neutral theme in light, dark theme in dark; the source is shown as mono text until drawn; wide diagrams scroll sideways.
 
 ### Scalar API reference
-Scalar's background, text, accent, border, link and button variables are mapped from the VitePress variables. Light-mode method colours are darkened for 4.5:1 on the sidebar grey (green #05704c, blue #0b5cad, red #b3171c, orange #a83a00, yellow #7a5600). Sidebar toggle buttons have a 24px minimum target (WCAG 2.5.8).
+Scalar's background, text, accent, border, link and button variables are mapped from the VitePress variables. VitePress resets headings outside any cascade layer, which beats Scalar's layered styles, so headings inside `.scalar-app` inherit their size and weight again. Light-mode method colours are darkened for 4.5:1 on the sidebar grey (green #05704c, blue #0b5cad, red #b3171c, orange #a83a00, yellow #7a5600). Sidebar toggle buttons have a 24px minimum target (WCAG 2.5.8).
 
 ## Do's and Don'ts
 
@@ -158,3 +178,13 @@ Scalar's background, text, accent, border, link and button variables are mapped 
 - **Don't** import the Astryx stylesheet or load fonts, scripts or styles from other origins.
 - **Don't** add shadows or a second accent hue.
 - **Don't** change the body measure.
+
+## Known items
+
+- `npm audit` on `docs-site/` reports 9 findings, none of which reaches the published site (static files built by `vitepress build`; there is no server and the Pages workflow runs no audit gate):
+  - `esbuild` <=0.24.2, moderate (GHSA-67mh-4wv8-2f99): any website can send requests to esbuild's development server. Only while `npm run dev` runs.
+  - `vite` <=6.4.2: path traversal in optimized-deps `.map` handling (moderate, GHSA-4w7w-66w2-5vf9), `server.fs.deny` bypass on Windows alternate paths (high, GHSA-fx2h-pf6j-xcff) and launch-editor NTLMv2 hash disclosure on Windows (moderate, GHSA-v6wh-96g9-6wx3). All concern Vite's development server.
+  - `vitepress` <=1.6.4, moderate: only through `vite`.
+  - Six low findings under `@scalar/api-reference` (`@scalar/agent-chat`, `ai`, `@ai-sdk/*`; for example GHSA-866g-f22w-33x8, uncontrolled resource consumption in the AI SDK's provider utilities). Scalar's agent is switched off on the page and its chunk is never requested (`npm run check` fails if it is).
+  - VitePress 1.6.4 pins Vite 5, whose line is out of support. They go away with the move to VitePress 2.0 once it is stable; that move is one deliberate change.
+
