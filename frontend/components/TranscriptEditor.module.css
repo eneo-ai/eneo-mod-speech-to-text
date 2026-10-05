@@ -435,7 +435,7 @@
 @media (forced-colors: active) {
   .span,
   .span[data-review] {
-    text-decoration-color: CanvasText !important;
+    text-decoration-color: CanvasText;
   }
 
   .word[aria-current="true"] {
