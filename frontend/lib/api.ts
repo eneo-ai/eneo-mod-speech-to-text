@@ -28,26 +28,31 @@ export class ApiError extends Error {
   }
 }
 
-async function parseError(res: Response): Promise<ApiError> {
-  let body: unknown = null;
+/**
+ * The error an answer stands for. Eneo answers `{ code, detail }`; the module's own proxy answers
+ * `{ error: "upstream_unreachable", detail }`. Both name their `code`.
+ */
+function apiErrorFrom(status: number, text: string): ApiError {
+  let body: unknown = text || null;
   let code: string | undefined;
   let detail: string | undefined;
   try {
-    body = await res.json();
+    body = text ? JSON.parse(text) : null;
     if (body && typeof body === "object") {
       const b = body as Record<string, unknown>;
       if (typeof b.code === "string") code = b.code;
-      // Vår egen proxy svarar `{ error: "upstream_unreachable", detail: "..." }`.
-      // Eneo svarar `{ code: "...", detail: "..." }`. Båda mappas till `code`.
       else if (typeof b.error === "string") code = b.error;
       if (typeof b.detail === "string") detail = b.detail;
       else if (typeof b.message === "string") detail = b.message;
     }
   } catch {
-    // ignore — body stays null
+    // Not JSON: the body stays its text.
   }
-  const msg = detail || code || `HTTP ${res.status}`;
-  return new ApiError(res.status, msg, body, code);
+  return new ApiError(status, detail || code || `HTTP ${status}`, body, code);
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  return apiErrorFrom(res.status, await res.text().catch(() => ""));
 }
 
 /** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
@@ -641,23 +646,7 @@ function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   }
 }
 
-function parseXhrError(xhr: XMLHttpRequest): ApiError {
-  let body: unknown = null;
-  let code: string | undefined;
-  let detail: string | undefined;
-  try {
-    body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-    if (body && typeof body === "object") {
-      const b = body as Record<string, unknown>;
-      if (typeof b.code === "string") code = b.code;
-      if (typeof b.detail === "string") detail = b.detail;
-      else if (typeof b.message === "string") detail = b.message;
-    }
-  } catch {
-    body = xhr.responseText || null;
-  }
-  return new ApiError(xhr.status, detail || code || `HTTP ${xhr.status}`, body, code);
-}
+const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText);
 
 function requestMultipartWithProgress<T>(
   path: string,
