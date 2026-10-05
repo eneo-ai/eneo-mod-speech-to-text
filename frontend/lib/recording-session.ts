@@ -69,9 +69,6 @@ export interface CaptureSnapshot {
   recording: StoredRecording | null;
   /** The microphone stream of the running part, for a level meter. */
   stream: MediaStream | null;
-  partBytes: number;
-  /** Every part's bytes, the running one included. */
-  recordedBytes: number;
   error: string | null;
   lowSpace: boolean;
   persistent: boolean;
@@ -182,8 +179,6 @@ export class RecordingCapture {
     status: "idle",
     recording: null,
     stream: null,
-    partBytes: 0,
-    recordedBytes: 0,
     error: null,
     lowSpace: false,
     persistent: true,
@@ -256,7 +251,7 @@ export class RecordingCapture {
         return;
       }
       this.prepare(limits, 0, 0);
-      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent, refused: null });
+      this.set({ recording, lowSpace, persistent: store.persistent, refused: null });
       this.record(stream);
       await this.takeWakeLock();
     } catch (error) {
@@ -341,7 +336,7 @@ export class RecordingCapture {
     }
     const ended = this.endParts("stop");
     // The hardware does not wait for the database: the recorders have been told to stop and still hand over their last
-    // data, which lands in the store as before.
+    // data, which lands in the store.
     this.stopMicrophone();
     this.set({ stopping: true });
     let stopped: StoredRecording | null = null;
@@ -366,7 +361,7 @@ export class RecordingCapture {
   /** "Spela in på nytt": the stored recording stays until it is sent or deleted. */
   reset(): void {
     if (this.snapshot.status === "stopped") {
-      this.set({ status: "idle", recording: null, partBytes: 0, error: null, remainingMs: null, limitReached: false });
+      this.set({ status: "idle", recording: null, error: null, remainingMs: null, limitReached: false });
     }
   }
 
@@ -438,7 +433,6 @@ export class RecordingCapture {
       this.prepare(limits, filesIn(found), found.durationMs);
       this.set({
         recording: found,
-        recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
         lowSpace,
         persistent: store.persistent,
         refused: store.refused(found.id),
@@ -518,11 +512,10 @@ export class RecordingCapture {
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
         void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
       }
-      this.set({ recordedBytes: this.snapshot.recordedBytes + data.size });
       // A full part's overlap belongs to its own file, not to the running one.
       if (part !== this.part) return;
       this.largestChunk = Math.max(this.largestChunk, data.size);
-      this.set({ partBytes: part.bytes, remainingMs: this.remaining(part) });
+      this.set({ remainingMs: this.remaining(part) });
       if (!part.ending) this.checkLimit(part);
     };
 
@@ -539,7 +532,7 @@ export class RecordingCapture {
         this.part = null;
         this.clearHandover();
         // A stop nobody asked for means the microphone went away.
-        if ((part.ending ?? "interrupt") === "interrupt") await this.pause();
+        if ((part.ending ?? "interrupt") === "interrupt") await this.interrupt();
       }
       ended();
     };
@@ -553,7 +546,7 @@ export class RecordingCapture {
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
-    this.set({ status: "recording", stream, partBytes: 0, remainingMs: this.remaining(part) });
+    this.set({ status: "recording", stream, remainingMs: this.remaining(part) });
     return part;
   }
 
@@ -714,7 +707,7 @@ export class RecordingCapture {
   }
 
   /** The microphone went away: keep what was recorded, paused, for "Fortsätt spela in". */
-  private async pause() {
+  private async interrupt() {
     await this.endOverlap();
     this.stopMicrophone();
     this.releaseWakeLock();
@@ -730,7 +723,7 @@ export class RecordingCapture {
       // The recorder has stopped whatever the device said: the page goes on as interrupted, and says what failed.
       kept = { error: notOnDevice(error) ? NOT_ON_DEVICE : PAUSE_UNCONFIRMED };
     }
-    this.set({ status: "interrupted", stream: null, partBytes: 0, remainingMs: this.remaining(null), ...kept });
+    this.set({ status: "interrupted", stream: null, remainingMs: this.remaining(null), ...kept });
   }
 
   private onMicrophoneLost = () => void this.endParts("interrupt");

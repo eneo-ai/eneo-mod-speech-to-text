@@ -374,7 +374,6 @@ test("a recording cut off by a reload records on at once in a new part of the sa
   assert.deepEqual(constraints, [{ audio: { channelCount: 1 } }]);
   assert.equal(capture.getSnapshot().recording?.id, id);
   assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
-  assert.equal(capture.getSnapshot().recordedBytes, 1, "and so does the size");
   assert.deepEqual(await store.listUnsent("user-1"), [], "this tab holds it now");
 
   now = 91_000;
@@ -919,7 +918,6 @@ test("before a part is too large to send, a new part starts, and the two overlap
   assert.equal(recorders[0].state, "inactive", "until 150 ms later");
   await settle(); // its last chunk
   assert.equal(capture.elapsedMs(), 10_150, "the overlap counts once");
-  assert.equal(capture.getSnapshot().partBytes, 0, "the full part's last chunk is its own");
   assert.equal(capture.getSnapshot().remainingMs, 16_700, "the new part and one more");
   assert.equal(streams.length, 1, "the same microphone: no new permission");
   assert.equal(streams[0].track.readyState, "live");
@@ -927,7 +925,6 @@ test("before a part is too large to send, a new part starts, and the two overlap
   assert.equal(capture.getSnapshot().error, null);
 
   recorders[1].emit("new");
-  assert.equal(capture.getSnapshot().recordedBytes, 5 * 8_000 + 1 + 3, "the size shown counts every part");
   const stopped = await capture.stop();
   const files = await store.readParts(stopped!.id);
   assert.deepEqual(

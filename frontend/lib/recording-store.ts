@@ -91,7 +91,7 @@ const DB_NAME = "tal-till-text";
 const DB_VERSION = 1;
 const RECORDINGS = "recordings";
 const CHUNKS = "chunks";
-// About three hours of speech at 64 kbit/s; below this the recorder warns.
+// 100 MiB: about 7 hours of speech at the recorder's 32 kbit/s (about 4 at the 54 kbit/s WebKit gives); below this the recorder warns.
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
 
 interface Chunk {
