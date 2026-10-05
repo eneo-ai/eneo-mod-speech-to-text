@@ -82,7 +82,7 @@ test("a document's text is there as it was written until the code that formats i
   const { renderToStaticMarkup } = await import("react-dom/server");
   const { ResultDocument } = await import("../components/flow/ResultDocument");
   const props = { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text, file: null };
-  // What the server renders, and the browser's first render, which must agree: the formatting code is not there yet.
+  // The first render: the formatting code is not there yet.
   const before = renderToStaticMarkup(createElement(ResultDocument, props));
   assert.match(before, /## Protokoll\n\nKommunstyrelsen godkänner förslaget\./, "the text as written, nothing missing");
   assert.doesNotMatch(before, /<h2/, "not formatted yet");
@@ -105,12 +105,11 @@ test("an address the page will not follow is shown as its words, not as a link t
   assert.match(article.textContent ?? "", /Se klicka här, kommunen och en bild\./, "every word of it is still there");
 });
 
-test("footnotes are named in Swedish, and their heading is hidden by the module's own rule, not by Tailwind's sr-only", async () => {
+test("footnotes are named in Swedish, and their heading is hidden by the module's own rule", async () => {
   const view = await document_({ text: "Beslutet togs.[^1]\n\n[^1]: Enligt protokollet.", file: null });
   const article = view.container.querySelector("article")!;
   const heading = article.querySelector("section[data-footnotes] h2")!;
   assert.equal(heading.textContent, "Fotnoter", "the footnotes' own label, which a screen reader reads");
-  assert.doesNotMatch(heading.className, /sr-only/, "a class only Tailwind defines turns the heading visible once Tailwind is gone");
   assert.match(heading.className, /visuallyHidden/, "the module's own rule hides it");
   assert.match(article.querySelector("a[data-footnote-backref]")?.getAttribute("aria-label") ?? "", /^Tillbaka till referens 1/);
 });

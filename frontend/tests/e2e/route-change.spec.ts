@@ -4,9 +4,10 @@
  * page behind AuthGate is a spinner until the session answers, so RouteEffects waits for the page to say it has its
  * content. A change of the address's query alone is the page's own state: nothing happens.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axe, blocking } from "./checks";
-import { backLink, flows, open, record, setup } from "./screens";
+import { backLink, flows, NO_CONFIRMED_WORDS, record, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -193,7 +194,8 @@ test("a control the page focused itself keeps the focus, and the title is still 
   expect(now, "the control the page focused is still focused").toMatchObject({ tag: "input", heading: false, inMain: true });
 });
 
-test("a change of the address's query alone is the page's own: no title, announcement, focus or scroll", async ({ page }, info) => {
+test("a change of the address's query alone is the page's own: no title, announcement, focus or scroll", async ({ page, sentinel }, info) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
   await page.addInitScript(listen);
   await page.setViewportSize({ width: info.project.use.viewport!.width, height: 380 });
   await setup(page);
@@ -231,7 +233,7 @@ test("the three /inloggad states keep their own titles, and a navigation to one 
   };
   for (const [query, title] of Object.entries(TITLES)) {
     // As the first page: its own title, nothing said, nothing moved.
-    await open(page, `/inloggad${query}`);
+    await page.goto(`/inloggad${query}`);
     await expect.poll(() => page.title(), { timeout: 2_000 }).toBe(title);
     await page.waitForTimeout(400);
     expect(await said(page), `${query || "plain"}: a first load says nothing`).toEqual([]);

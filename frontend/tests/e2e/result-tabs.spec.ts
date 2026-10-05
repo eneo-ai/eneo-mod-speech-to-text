@@ -2,7 +2,7 @@
  * The result's two tabs below a laptop's width, as a person uses them: the keyboard's way along the strip, and the place
  * each tab keeps. Both are behaviour the design system's tab strip and layout must not change.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./gate";
 import { isLaptop, result } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(isLaptop(info) || info.project.name === "reduced-motion", "the tabs are below a laptop's width"));

@@ -4,7 +4,8 @@
  * while the reader is at the end, and "Visa senaste" brings it back after a scroll up. A stage that grows with its text
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
 import { record, setup } from "./screens";
 

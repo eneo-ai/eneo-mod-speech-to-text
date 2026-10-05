@@ -26,18 +26,18 @@ const segments: TranscriptSegment[] = [
   { fileIndex: 0, start: 1, end: 2, speaker: "SPEAKER_01", text: "Hej", words: [word("Hej", 1, true)] },
 ];
 
-test("nyckeln skiljer på segment även för identiska ord", () => {
+test("the key tells segments apart, also for identical words", () => {
   assert.notEqual(wordKey(0, segments[0].words![0]), wordKey(1, segments[1].words![0]));
 });
 
-test("räknar bekräftade och återstående osäkra ord", () => {
+test("counts the confirmed and the remaining uncertain words", () => {
   const none = countUncertain(segments, new Set());
   assert.deepEqual(none, { remaining: 2, confirmed: 0 });
   const one = countUncertain(segments, new Set([wordKey(1, segments[1].words![0])]));
   assert.deepEqual(one, { remaining: 1, confirmed: 1 });
 });
 
-test("toggle lägger till och tar bort utan att ändra originalet", () => {
+test("toggling adds and removes without changing the original", () => {
   const base = new Set<string>();
   const added = toggleConfirmed(base, "a");
   assert.equal(base.size, 0);
@@ -45,7 +45,7 @@ test("toggle lägger till och tar bort utan att ändra originalet", () => {
   assert.equal(toggleConfirmed(added, "a").size, 0);
 });
 
-test("lagringen är rundtursäker och tål skräp", () => {
+test("storage round-trips and survives garbage", () => {
   const store = new Map<string, string>();
   const storage = {
     getItem: (k: string) => store.get(k) ?? null,

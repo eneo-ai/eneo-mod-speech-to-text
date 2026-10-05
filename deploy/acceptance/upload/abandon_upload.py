@@ -1,4 +1,4 @@
-"""Leave an upload half-way, from inside the image (B4.2 check 9): send a request's head and some of its body to the module over loopback,
+"""Leave an upload half-way, from inside the image (check 9): send a request's head and some of its body to the module over loopback,
 then close the connection with a reset, as a browser tab does that is closed in the middle of an upload.
 
     python - '{"port": 3001, "send": "POST ... HTTP/1.1\\r\\n...", "chunks": 150, "hold": 5}' < abandon_upload.py     (docker exec -i, standard library only)

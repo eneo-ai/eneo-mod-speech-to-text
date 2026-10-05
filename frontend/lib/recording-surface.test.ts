@@ -169,7 +169,6 @@ test("the live sheet's jump button shows when the reader has scrolled up, and gi
 test("the live sheet says the speakers come when you are done, only when the flow labels speakers", async () => {
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
-  const { labelsSpeakers } = await import("./flow-session");
   const live = liveOf({ status: "live", started: true, pieces: [], pending: "" });
   const heading = async (speakers: boolean) =>
     (await mount(createElement(LiveSheet, { live, recorder: "recording", speakers }))).container.querySelector("h2")?.textContent;

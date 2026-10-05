@@ -8,7 +8,6 @@ import { JSDOM } from "jsdom";
 
 const GLOBALS = [
   "window",
-  "self",
   "document",
   "navigator",
   "localStorage",

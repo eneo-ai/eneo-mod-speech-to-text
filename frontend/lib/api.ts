@@ -837,7 +837,7 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-// --- Cancel / redispatch / list ---
+// --- Cancel / retry / list ---
 
 export async function cancelRun(flowId: string, runId: string) {
   return request<FlowRunPublic>(
@@ -880,7 +880,7 @@ export async function listOwnRuns(flowId: string, { limit, offset }: { limit: nu
   );
 }
 
-// --- Step rerun + step runtime-files ---
+// --- Step runtime-files ---
 
 export async function uploadStepRuntimeFile(
   flowId: string,
@@ -1074,8 +1074,6 @@ export async function regenerateTranscript(
     { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
   );
 }
-
-// --- Evidence ---
 
 // --- Review checkpoints ---
 

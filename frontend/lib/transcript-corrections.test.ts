@@ -64,7 +64,7 @@ test("two edits in one line become two anchored spans, not one", () => {
     [["rörelse.", "rörelsee."], ["paus.", "pauss."]],
   );
   assert.equal(correctedSegmentText(raw, occ), edited);
-  // Insättning av ett ord mitt i: grannbokstaven tas med, resten orört.
+  // A word inserted in the middle: the neighbouring letter is taken along, the rest is left alone.
   const ins = occurrencesForLine(0, "Hej välkomna hit.", "Hej och välkomna hit.");
   assert.equal(ins.length, 1);
   assert.equal(correctedSegmentText("Hej välkomna hit.", ins), "Hej och välkomna hit.");
@@ -97,7 +97,7 @@ test("display ranges point at the corrected spans and untouched words keep their
   assert.equal(r.length, 1);
   assert.equal(shown[0].text.slice(r[0].start, r[0].end), "jättemycket.");
   assert.equal(r[0].original, "mycket.");
-  // "mycket." föll bort; "Hej" och "då." flyttades med +5 tecken.
+  // "mycket." was dropped; "Hej" and "då." moved by 5 characters.
   assert.deepEqual(
     shown[0].words!.map((w) => [w.word, w.charStart, w.charEnd]),
     [["Tack", 0, 4], ["så", 5, 7], ["Hej", 21, 24], ["då.", 25, 28]],
@@ -113,12 +113,12 @@ test("applyCorrections rewrites text, drops words on corrected lines and reassig
   set = withSpeakerEdit(set, 0, "SPEAKER_00", "SPEAKER_01");
   const { segments: shown, corrected } = applyCorrections(segments, set);
   assert.equal(shown[1].text, "Tack så jättemycket.");
-  // Ordet som rättades ("mycket.") försvinner; "Tack" (orört) finns kvar.
+  // The word that was corrected ("mycket.") goes; "Tack", which was not, stays.
   assert.deepEqual(shown[1].words!.map((w) => w.word), ["Tack"]);
   assert.equal(shown[0].speaker, "SPEAKER_01");
   assert.equal(shown[0].text, "Hej och välkomna.");
   assert.deepEqual([...corrected], [1]);
-  // Rådata orörd.
+  // The raw data is untouched.
   assert.equal(segments[1].text, "Tack så mycket.");
   assert.equal(segments[1].words?.length, 1);
 });
@@ -127,7 +127,7 @@ test("re-editing a line replaces its occurrence; reverting removes it", () => {
   let set = withLineCorrection(EMPTY_CORRECTIONS, 0, occurrencesForLine(0, "abc def", "abc deg"));
   set = withLineCorrection(set, 0, occurrencesForLine(0, "abc def", "xyz def"));
   assert.equal(set.occurrences.length, 1);
-  // Skillnaden räknas per ord: hela ordet blir spannet.
+  // The difference is counted per word: the whole word is the span.
   assert.deepEqual([set.occurrences[0].original, set.occurrences[0].corrected], ["abc", "xyz"]);
   set = withLineCorrection(set, 0, null);
   assert.equal(set.occurrences.length, 0);

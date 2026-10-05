@@ -1,6 +1,7 @@
 /**
- * React-router is an ES module, and the unit tests are compiled to CommonJS by tsc and run by node:test. These tests
- * say the router can be loaded and driven that way, on the Node floor the repository declares.
+ * react-router is an ES module, and the unit tests are compiled to CommonJS by tsc and run by node:test. These tests show
+ * that the router loads and can be driven that way, on the Node floor the repository declares, and that `withRouter`
+ * gives a component the data router the app has: links, Back and `useBlocker`.
  */
 
 import assert from "node:assert/strict";

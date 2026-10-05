@@ -6,9 +6,9 @@ import type { FlowRunStep } from "./api";
 import { finishedRun } from "./run-progress";
 import { loadTranscriptContext } from "./transcript-context";
 
-const FLOW = "5c9d1a27-836a-4a37-a8b6-9180e5eb9aae";
-const RUN = "13fc3e4f-5182-44ea-996b-4c08a2f16c42";
-const STEP = "5d5dc851-8aec-4c81-8cab-cebdbdbb4a92";
+const FLOW = "00000000-0000-4000-8000-000000000001";
+const RUN = "00000000-0000-4000-8000-000000000002";
+const STEP = "00000000-0000-4000-8000-000000000005";
 const HASH = "a".repeat(64);
 const realSteps = fixture.steps as unknown as FlowRunStep[];
 
@@ -48,7 +48,7 @@ test("a real transcription without segments reaches the result page: its text, i
 
   assert.equal(ctx.correctionProblem, null);
   assert.equal(ctx.stepId, STEP);
-  assert.deepEqual(ctx.fileIds, ["606abea0-e4fe-4e2a-9d33-0a6a03928cdc"], "the recording to play along");
+  assert.deepEqual(ctx.fileIds, ["00000000-0000-4000-8000-000000000007"], "the recording to play along");
   assert.deepEqual(
     ctx.segments.map((segment) => [segment.fileIndex, segment.start, segment.end]),
     [[0, 0, 24]],
