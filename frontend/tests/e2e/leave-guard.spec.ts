@@ -8,7 +8,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import ids from "../fixtures/ids.json";
-import { addParticipants, backLink, chooseFile, open, record, setup, setupFromList } from "./screens";
+import { addParticipants, backLink, chooseFile, record, setup, setupFromList } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width"));
 
@@ -105,7 +105,7 @@ test("Back from the first page of a visit is the browser's own question, once th
 });
 
 test("the page writing ?run= (a run starts) asks nothing and adds no history entry; Back from the run then goes to the list once", async ({ page }) => {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
   await chooseFile(page);
   const before = await page.evaluate(() => history.length);
@@ -147,7 +147,7 @@ test("Logga ut asks before the logout request is sent: Stanna kvar sends none, L
       return set.call(this, key, value);
     };
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
   await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
   await addParticipants(page, ["Anna Berg"]);
@@ -201,7 +201,7 @@ test("a reload asks only through the browser's beforeunload", async ({ page }) =
 
 test("the gate is not run again by any of this: the status is read once for each page, and its own way to the start when the first read says nobody is signed in is not asked", async ({ page }) => {
   const reads = countStatusReads(page);
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
   // What one page reads (the dev server runs its effects twice).
   const perPage = reads.length;
@@ -223,14 +223,14 @@ test("the gate is not run again by any of this: the status is read once for each
   // Nobody signed in: the page's own way to the start is a navigation, but the question is not yet active.
   const second = await page.context().newPage();
   await second.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
-  await open(second, `/flows/${ids.flows.flow1}`);
+  await second.goto(`/flows/${ids.flows.flow1}`);
   await expect(second).toHaveURL(/\/$/);
   await expect(question(second)).toHaveCount(0);
 });
 
 test("/inloggad?fel=utgangen opened while signed out shows its page, with its title, and neither redirects nor asks", async ({ page }) => {
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
-  await open(page, "/inloggad?fel=utgangen");
+  await page.goto("/inloggad?fel=utgangen");
   await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   await page.waitForTimeout(500);

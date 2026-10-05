@@ -5,7 +5,7 @@
  * fixtures carry it.
  */
 import { expect, test, type Page } from "@playwright/test";
-import { open, pick, reviewEditor } from "./screens";
+import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -46,7 +46,7 @@ test("words selected with Shift and the arrows are given to a speaker, and Ångr
 });
 
 test("a click on a word moves the playback to it", async ({ page }) => {
-  await open(page, "/dev/speaker-review");
+  await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), "operator");
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(transcript(page)).toBeVisible();

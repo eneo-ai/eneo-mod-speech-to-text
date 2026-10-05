@@ -8,7 +8,7 @@
 import { writeFileSync } from "node:fs";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
+import { backLink, isLaptop, isPhone, run, setup, signIn, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 const WALKS = [
@@ -253,7 +253,7 @@ test("the warning before the login ends takes focus, holds it, and gives it back
       json: { authenticated: true, user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
     }),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   // Focus somewhere on the page before the warning opens (at five minutes before the end).
   const link = page.getByRole("link", { name: /Nämndmöte till rapport/ });
   await link.focus();

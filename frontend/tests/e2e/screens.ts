@@ -5,11 +5,6 @@
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 
-/** Opens a page of the app. */
-export async function open(page: Page, path: string) {
-  await page.goto(path);
-}
-
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
 
@@ -17,13 +12,13 @@ const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("he
 
 export async function signIn(page: Page, query = "") {
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
-  await open(page, `/${query}`);
+  await page.goto(`/${query}`);
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
 }
 
 async function loading(page: Page, path: string) {
   await page.route("**/api/auth/status", () => {});
-  await open(page, path);
+  await page.goto(path);
   await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
 }
 
@@ -38,22 +33,22 @@ export async function sessionWarning(page: Page) {
       },
     }),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
 }
 
 async function foundation(page: Page) {
-  await open(page, "/dev/foundation");
+  await page.goto("/dev/foundation");
   await heading(page, "Grundkontroll");
 }
 
 export async function flows(page: Page) {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
 }
 
 export async function setup(page: Page, flow = ids.flows.flow1) {
-  await open(page, `/flows/${flow}`);
+  await page.goto(`/flows/${flow}`);
   await heading(page, "Hur vill du lägga till ljudet?");
 }
 
@@ -62,7 +57,7 @@ export async function setup(page: Page, flow = ids.flows.flow1) {
  * asks about. Opened by its address instead, Back leaves the app, and only the browser's own question is asked.
  */
 export async function setupFromList(page: Page) {
-  await open(page, "/flows");
+  await page.goto("/flows");
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
   await heading(page, "Hur vill du lägga till ljudet?");
 }
@@ -173,7 +168,7 @@ export async function sending(page: Page) {
 }
 
 export async function run(page: Page, id: string, flow = ids.flows.flow1) {
-  await open(page, `/flows/${flow}?run=${id}`);
+  await page.goto(`/flows/${flow}?run=${id}`);
 }
 
 /** The finished run with its transcript loaded. */
@@ -189,7 +184,7 @@ export async function result(page: Page) {
  * test audio. The setting that shows the editor in a run is off by default, so no run reaches it; this page does.
  */
 export async function reviewEditor(page: Page, testCase = "bulk") {
-  await open(page, "/dev/speaker-review");
+  await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), testCase);
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" })).toBeVisible();
@@ -262,7 +257,7 @@ export const STATES: State[] = [
     name: "signin-unreachable",
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
-      await open(page, "/");
+      await page.goto("/");
       await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
@@ -275,7 +270,7 @@ export const STATES: State[] = [
   {
     name: "signed-in-again",
     go: async (page) => {
-      await open(page, "/inloggad");
+      await page.goto("/inloggad");
       await heading(page, "Du är inloggad igen");
     },
   },
@@ -283,7 +278,7 @@ export const STATES: State[] = [
     name: "flow-list-error",
     go: async (page) => {
       await page.route("**/api/eneo/flows/?*", (route) => route.fulfill({ status: 503, json: { code: "internal_error" } }));
-      await open(page, "/flows");
+      await page.goto("/flows");
       await expect(page.getByRole("alert")).toBeVisible();
     },
   },
@@ -845,14 +840,14 @@ export const STATES: State[] = [
   {
     name: "flow-gone",
     go: async (page) => {
-      await open(page, "/flows/flow-gone");
+      await page.goto("/flows/flow-gone");
       await heading(page, "Flödet är inte längre tillgängligt.");
     },
   },
   {
     name: "flow-republish-required",
     go: async (page) => {
-      await open(page, `/flows/${ids.flows.flow4}`);
+      await page.goto(`/flows/${ids.flows.flow4}`);
       await heading(page, /^Flödet (kan inte användas just nu|kunde inte laddas)\.$/);
     },
   },
