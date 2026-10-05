@@ -31,7 +31,7 @@ export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Pr
         actions ? (
           <HStack gap={2} wrap="wrap" align="center">
             {problem.retry && onRetry && <Button label="Försök igen" variant="secondary" onClick={onRetry} />}
-            {problem.back && <BackToFlows variant="outline" size="default" />}
+            {problem.back && <BackToFlows size="md" />}
           </HStack>
         ) : undefined
       }

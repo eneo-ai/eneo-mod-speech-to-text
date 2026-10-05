@@ -68,7 +68,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
           {detail}
         </Text>
         <HStack gap={3} wrap="wrap">
-          <BackToFlows variant="default" size="default" />
+          <BackToFlows variant="primary" size="md" />
           {retry && <Button label="Försök igen" variant="secondary" onClick={() => window.location.reload()} />}
         </HStack>
       </VStack>

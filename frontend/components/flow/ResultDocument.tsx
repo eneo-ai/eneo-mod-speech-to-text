@@ -16,9 +16,6 @@ import { Markdown } from "./Markdown";
 import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
 
-// A result's headings go under the page's h1; the review's text does the same (ReviewView).
-export { remarkResultHeadings } from "./Markdown";
-
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
 // and when no blank line comes before this many, the last line end or word boundary before it.

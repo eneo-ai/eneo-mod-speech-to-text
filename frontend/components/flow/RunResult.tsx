@@ -174,7 +174,7 @@ export function RunResult({
         </VStack>
         <HStack vAlign="center" gap={2}>
           <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={onNewRecording} />
-          {wide && <BackToFlows size="default" />}
+          {wide && <BackToFlows size="md" />}
         </HStack>
       </HStack>
 

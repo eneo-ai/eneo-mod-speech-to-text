@@ -244,8 +244,7 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
-  const [wakeLock, setWakeLock] = useState(true);
-  useEffect(() => setWakeLock("wakeLock" in navigator), []);
+  const wakeLock = "wakeLock" in navigator;
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
@@ -330,9 +329,8 @@ function SetupWorkspace({
   const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
-  const focusCount = focusSpeakerCount;
   const onContinue = modes.includes("spela-in")
-    ? (recording: StoredRecording) => (countInvalid ? focusCount() : void session.continueCutOff(recording))
+    ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
     : undefined;
   // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
   const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
@@ -344,7 +342,7 @@ function SetupWorkspace({
         : primaryActionLabel(mode, file != null, text);
 
   function primary() {
-    if (countInvalid) focusCount();
+    if (countInvalid) focusSpeakerCount();
     else if (recordingMode) void session.start();
     else if (mode === "ladda-upp" && !file && !optionalFile) fileInput.current?.click();
     else void createDocument(session);
@@ -375,7 +373,7 @@ function SetupWorkspace({
         sendLabel={() => create}
         evictable={input.evictable}
         onSend={(recording) => {
-          if (countInvalid) return focusCount();
+          if (countInvalid) return focusSpeakerCount();
           session.adopt(recording);
           void createDocument(session);
         }}

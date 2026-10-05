@@ -1,5 +1,4 @@
 import { AudioLines, Mic, Upload, type LucideIcon } from "lucide-react";
-import { forwardRef } from "react";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
@@ -17,13 +16,10 @@ export const MODE_TEXT: Record<InputMode, { name: string; line: string; icon: Lu
  * selects; the arrow keys move between them. The heading takes the focus when the setup appears, the group is
  * named by the same words.
  */
-export const ModeCards = forwardRef<
-  HTMLHeadingElement,
-  { modes: InputMode[]; mode: InputMode | null; onSelect: (mode: InputMode) => void }
->(function ModeCards({ modes, mode, onSelect }, heading) {
+export function ModeCards({ modes, mode, onSelect }: { modes: InputMode[]; mode: InputMode | null; onSelect: (mode: InputMode) => void }) {
   return (
     <VStack gap={4}>
-      <Heading level={2} ref={heading} data-phase-heading tabIndex={-1}>
+      <Heading level={2} data-phase-heading tabIndex={-1}>
         Hur vill du lägga till ljudet?
       </Heading>
       <RadioList label="Hur vill du lägga till ljudet?" isLabelHidden value={mode ?? ""} onChange={(value) => onSelect(value as InputMode)}>
@@ -34,4 +30,4 @@ export const ModeCards = forwardRef<
       </RadioList>
     </VStack>
   );
-});
+}
