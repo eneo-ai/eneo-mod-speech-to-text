@@ -834,20 +834,25 @@ class EneoLive:
 
     def __init__(self) -> None:
         self.closed, self.close_code, self.received = threading.Event(), None, []
+        self.echo_after = 0.0  # how long Eneo takes over an answer: a loaded Eneo is a slow one
 
     async def __call__(self, scope, receive, send) -> None:
         await receive()
         await send({"type": "websocket.accept", "subprotocol": "eneo-live.v1"})
         await send({"type": "websocket.send", "text": json.dumps({"type": "ready"})})
-        while True:
-            message = await receive()
-            if message["type"] == "websocket.disconnect":
-                self.close_code = message.get("code")
-                self.closed.set()
-                return
-            self.received.append(message)
-            if message.get("bytes") is not None:
-                await send({"type": "websocket.send", "bytes": message["bytes"]})
+        try:
+            while True:
+                message = await receive()
+                if message["type"] == "websocket.disconnect":
+                    self.close_code = message.get("code")
+                    break
+                self.received.append(message)
+                if message.get("bytes") is not None:
+                    await asyncio.sleep(self.echo_after)
+                    await send({"type": "websocket.send", "bytes": message["bytes"]})
+        except OSError:
+            pass  # uvicorn refuses an answer to a client that has gone (ClientDisconnected): the close arrives as this
+        self.closed.set()
 
 
 class LiveCase(BoundaryCase):
@@ -923,6 +928,26 @@ class LiveSessionEndTests(LiveCase):
                 while True:
                     await browser.send(b"\x01" * 64)
                     await asyncio.sleep(0.2)
+
+            sender = asyncio.ensure_future(audio())
+            try:
+                await self.assert_ended(browser, 6)
+            finally:
+                sender.cancel()
+
+        self.through(session, scenario)
+
+    def test_a_session_that_expires_while_eneo_is_answering_a_frame_closes_both_sockets(self) -> None:
+        # Eneo is slow to echo, so a frame is always on its way back when the session ends and the module closes Eneo's
+        # socket: Eneo's answer to it then meets a closed socket, and its end must still be seen as the close it is.
+        self.live.echo_after = 0.3
+        session = a_session("token-short", lifetime=2)
+
+        async def scenario(browser):
+            async def audio():
+                while True:
+                    await browser.send(b"\x01" * 64)
+                    await asyncio.sleep(0.05)
 
             sender = asyncio.ensure_future(audio())
             try:
