@@ -29,3 +29,21 @@ for (const action of ["Spara ändring", "Spara och fortsätt"]) {
     await expect(field).toHaveValue("Beslutet som Eneo inte kunde spara.");
   });
 }
+
+test("a refused approval shows its reason and keeps focus for another attempt", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 503.*\/approve\// });
+  let release!: () => void;
+  const response = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("**/review-checkpoints/*/approve/", async (route) => {
+    await response;
+    return route.fulfill({ status: 503, json: { code: "upstream_unreachable" } });
+  });
+  await run(page, ids.runs.reviewText);
+  const approve = page.getByRole("button", { name: "Godkänn och fortsätt", exact: true });
+  await approve.click();
+  await expect(approve).toBeDisabled();
+  release();
+  await expect(page.getByRole("alert").filter({ hasText: "Eneo gick inte att nå just nu. Försök igen om en stund." })).toBeVisible();
+  await expect(approve).toBeEnabled();
+  await expect(approve).toBeFocused();
+});
