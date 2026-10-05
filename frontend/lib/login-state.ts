@@ -10,9 +10,7 @@
  * Answers come back in any order: a request sent under a login that a renewal
  * has since replaced may be refused late, and a status read asked before the
  * end may say "signed in" after it. The state is the one owner of the login's
- * revision, so neither moves it (`Question`). The shape follows the module
- * kit's session state (packages/ui/src/session/state.ts), which this module
- * moves onto.
+ * revision, so neither moves it (`Question`).
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";

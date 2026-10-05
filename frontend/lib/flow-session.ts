@@ -282,7 +282,7 @@ export const MAX_SPEAKER_COUNT = 20;
 
 /**
  * A speaker count as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1
- * to `ceiling` (this module's own Antal talare stops at 20; a flow's own field has no ceiling).
+ * to `ceiling` (this module's own Antal talare stops at MAX_SPEAKER_COUNT; a flow's own field has no ceiling).
  */
 export function readSpeakerCount(text: string | null, ceiling = MAX_SPEAKER_COUNT): number | undefined | "invalid" {
   const trimmed = text?.trim() ?? "";
@@ -507,7 +507,7 @@ export class FlowSession {
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
   // Bumped when the page goes away: a document prepared before that is not sent. A page set up
-  // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
+  // again (React Strict Mode runs a cleanup between two setups) sends documents again.
   private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.

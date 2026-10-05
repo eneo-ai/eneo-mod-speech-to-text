@@ -50,7 +50,7 @@ export function resolveRuntimeUploadIdleTimeoutMs(
 
 /**
  * How long to wait for the answer once every byte is sent: Eneo measures audio before it answers and says how long
- * that may take. An Eneo that says nothing gets the longer of the start and idle waits, as before.
+ * that may take. An Eneo that says nothing gets the longer of the start and idle waits.
  */
 export function resolveRuntimeUploadResponseTimeoutMs(
   fileSizeBytes: number,

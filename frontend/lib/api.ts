@@ -1,8 +1,7 @@
 import { correctionWriteProblem } from "./transcript-corrections";
-// All requests go to same-origin /api/* — Next rewrites these to the backend.
-// The backend in turn proxies /api/eneo/* to Eneo with the module's service
-// key and, in Eneo SSO mode, the short-lived module-user token from its
-// HttpOnly session.
+// Every request goes to same-origin /api/*: the Vite dev server proxies it to the backend, and in production the backend
+// serves the page and the API. The backend proxies /api/eneo/* to Eneo with the module's service key and, in Eneo SSO
+// mode, the short-lived module-user token from its HttpOnly session.
 
 import { loginState } from "./login-state";
 import { limitedToModule } from "./upload-limit";
@@ -326,7 +325,6 @@ export interface ResultFile {
   mimetype?: string | null;
   size?: number;
   file_type?: FileType | string;
-  // Nya fält i den refaktorerade Eneo-specen (samtliga valfria här):
   step_id?: string;
   step_order?: number;
   attempt_no?: number;
@@ -365,7 +363,7 @@ export interface FlowRunError {
 export interface FlowRunPublic {
   id: string;
   flow_id: string;
-  status: string; // se FlowRunStatus — behåll string för forward-compat
+  status: string;
   result?: FlowRunResult | null;
   result_files?: ResultFile[];
   error?: FlowRunError | null;
@@ -373,7 +371,6 @@ export interface FlowRunPublic {
   updated_at?: string;
   started_at?: string;
   finished_at?: string;
-  // Nya fält i den refaktorerade specen:
   flow_version?: number;
   trace_id?: string;
   revision?: number;
@@ -389,10 +386,6 @@ export interface FlowRunPublic {
 export interface FlowRunStep {
   id: string;
   step_id: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_name?: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_label?: string;
   step_order?: number;
   status: string; // se FlowStepResultStatus
   started_at?: string;

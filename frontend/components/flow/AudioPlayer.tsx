@@ -62,7 +62,6 @@ export function AudioPlayer({
         data-loading={state.starting || undefined}
         icon={
           state.starting ? (
-            // The audio loads: a spinner takes the place of the pause sign.
             <span aria-hidden>
               <Spinner size="sm" shade="inherit" />
             </span>

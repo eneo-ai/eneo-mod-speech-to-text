@@ -117,8 +117,7 @@ function rateLabel(rate: number): string {
 type EditorProps = ComponentProps<typeof TranscriptEditor>;
 
 // The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
-// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
-// and the server and the browser's first render agree, since neither has the code yet.
+// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place.
 const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components/TranscriptEditor").then((module) => module.TranscriptEditor));
 /** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
 export const preloadTranscriptEditor = () => editor.load();
@@ -412,7 +411,6 @@ export function TranscriptPlayer(
     else playback.skip(action.skipMs);
   }
 
-  // Följ uppspelningen: rulla den aktiva repliken till mitten.
   useEffect(() => {
     if (!follow || activeIndex < 0 || !listRef.current || editingIndex >= 0) return;
     const el = listRef.current.querySelector<HTMLElement>(
@@ -556,14 +554,13 @@ export function TranscriptPlayer(
     );
   }
 
-  // Parts are read in order, each under its own heading when the recording has more than one.
   const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
   for (const turn of visibleTurns) {
     const last = parts[parts.length - 1];
     if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
     else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
   }
-  // Search works on any transcript; the speaker row only where the flow labelled speakers.
+  // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".

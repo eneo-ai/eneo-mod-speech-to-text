@@ -147,7 +147,7 @@ export function withWebmDuration(bytes: Uint8Array, durationMs: number): Uint8Ar
 /**
  * A WebM part's first chunk with its recorded duration written in, or as it was
  * (not WebM, a header this does not recognise, or bytes that did not come in time).
- * Reading and patching the header touches at most its first 16 KB; building the part's
+ * Reading and patching the header touches at most its first HEADER_BYTES; building the part's
  * file afterwards copies its bytes as any Blob does.
  */
 export async function withRecordedDuration(

@@ -137,7 +137,7 @@ async function wholeText(flowId: string, runId: string, text: TranscriptText): P
   return text;
 }
 
-// ponytail: 200 pages of 200 segments bound a read at 40 000 segments (days of audio); a longer one fails loudly.
+// 200 pages of 200 segments bound a read at 40 000 segments (days of audio); a longer one fails loudly.
 const MAX_SOURCE_PAGES = 200;
 
 /**

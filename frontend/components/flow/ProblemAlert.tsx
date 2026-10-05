@@ -19,7 +19,7 @@ export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Pr
   }, [reveal, problem]);
 
   const actions = (problem.retry && onRetry) || problem.back;
-  // A warning, as before: "try again" is not a failure of the person's. Title and detail are plain text, not headings.
+  // A warning: "try again" is not a failure of the person's. Title and detail are plain text, not headings.
   return (
     <Banner
       ref={ref}

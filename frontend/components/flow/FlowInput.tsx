@@ -169,7 +169,6 @@ export function FlowInput({
             </HStack>
           ) : undefined
         }
-        // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
         aside={
           <FlowAside
             published={published}
@@ -179,6 +178,7 @@ export function FlowInput({
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
+            // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
             className={group === "capture" ? styles.capturePane : undefined}
           />
         }

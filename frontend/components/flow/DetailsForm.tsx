@@ -95,7 +95,7 @@ export function DetailsForm({
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
   onNamesAdded: (names: string[]) => void;
-  /** A line under a field for now, by its name: where its value came from. */
+  /** A line under a field, by its name, until the person edits it: where its value came from. */
   notes?: Record<string, string>;
   /** The flow's own field that asks for the speaker count: a whole number, like Antal talare. */
   countField?: string | null;
