@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
-import { PHASE_HEADING } from "@/components/flow/usePhaseHeading";
 import { LoadingShell } from "@/components/LoadingShell";
 import { ModuleUnreachable } from "@/components/ModuleUnreachable";
 import { SessionEndWarning } from "@/components/SessionEndWarning";
@@ -11,6 +10,7 @@ import { keepOnlyConfirmedWordsOf } from "@/lib/confirmed-words";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, SESSION_CHANNEL, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
+import { PHASE_HEADING } from "@/routes/RouteEffects";
 import { sessionUser } from "@/lib/user-identity";
 
 // Exported for component tests; pages get the user through AuthGate.

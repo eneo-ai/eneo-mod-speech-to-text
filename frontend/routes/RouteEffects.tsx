@@ -1,7 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useMatches, useNavigationType, type NavigationType } from "react-router";
 import { useAnnounce } from "@astryxdesign/core/hooks";
-import { PHASE_HEADING } from "@/components/flow/usePhaseHeading";
 
 /** What a route says about itself beside its page: the title, which the page itself may refine. */
 export interface RouteHandle {
@@ -19,6 +18,9 @@ interface Navigation {
   /** Its page has said it has its content, and the rest is set for the next frame. */
   scheduled: boolean;
 }
+
+/** What takes the focus when a page or a phase appears: the phase's heading, or an h1 made focusable for it. */
+export const PHASE_HEADING = "[data-phase-heading], h1[tabindex]";
 
 /** The one RouteEffects that is mounted, to which a page says it has its content. */
 let pageIsReady: ((path: string) => void) | null = null;
