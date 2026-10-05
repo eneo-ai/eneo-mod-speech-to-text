@@ -178,7 +178,7 @@ export async function sending(page: Page) {
  * as "none yet". The browser logs every failed resource as a console error all the same. Optional: a run without a
  * transcript does not ask.
  */
-const NO_CONFIRMED_WORDS: Expectation = { console: /status of 404.*\/transcript-words\//, optional: true };
+export const NO_CONFIRMED_WORDS: Expectation = { console: /status of 404.*\/transcript-words\//, optional: true };
 
 export async function run(page: Page, id: string, flow = ids.flows.flow1) {
   declare(page, [NO_CONFIRMED_WORDS]);
