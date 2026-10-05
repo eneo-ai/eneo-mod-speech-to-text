@@ -34,6 +34,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "signed-out-recording", region: (page) => page.getByRole("alertdialog") },
   { state: "review-din-version", region: (page) => page.getByRole("main") },
   { state: "flow-republish-required", region: (page) => page.locator("[data-app-shell]") },
+  { state: "flows-unreachable", region: (page) => page.locator("[data-app-shell]") },
 ];
 
 for (const { state, region, fixedTime } of SNAPSHOTS) {

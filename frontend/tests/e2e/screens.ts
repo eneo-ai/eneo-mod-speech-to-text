@@ -285,6 +285,19 @@ export const STATES: State[] = [
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
+  {
+    // A page behind AuthGate whose first status read fails keeps its address: a link into a run is still there when the
+    // module is back.
+    name: "flows-unreachable",
+    expects: [{ console: /net::ERR_FAILED.*\/api\/auth\/status/ }, { requestFailed: /GET .*\/api\/auth\/status: net::ERR_FAILED/ }],
+    go: async (page) => {
+      await page.route("**/api/auth/status", (route) => route.abort());
+      await page.goto("/flows");
+      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
+      await expect(page).toHaveURL(/\/flows$/);
+    },
+  },
   // The sign-in page and a signed-in page while the session is still being asked for.
   { name: "signin-loading", go: (page) => loading(page, "/") },
   { name: "page-loading", go: (page) => loading(page, "/flows") },
