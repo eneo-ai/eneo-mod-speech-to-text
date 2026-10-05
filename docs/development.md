@@ -1,5 +1,17 @@
 # Lokal utveckling
 
+## Kom igång
+
+```bash
+git clone https://github.com/eneo-ai/eneo-mod-speech-to-text && cd eneo-mod-speech-to-text
+cp .env.example .env   # fyll i ENEO_BACKEND_URL, ENEO_PUBLIC_URL, ENEO_API_KEY, SESSION_SECRET
+                       # lokalt också MODULE_PUBLIC_URL=http://localhost:3001 och COOKIE_SECURE=false
+docker compose up --build
+open http://localhost:3001
+```
+
+Har du inget Eneo att peka på kör du stubben som Eneo, [nedan](#den-riktiga-backenden-utan-ett-eneo), eller bara gränssnittet mot stubben med `npm run dev:stub` i `frontend/`. Mikrofonen fungerar på `localhost` men kräver HTTPS på en annan adress ([Drift](operations.md#vad-som-står-framför-modulen)).
+
 ## Portar
 
 | Port | Vad |
@@ -8,25 +20,12 @@
 | 3002 | `npm run dev`: Vites utvecklingsserver, som vidarebefordrar `/api` och `/health` till backend. |
 | 8000 | Backend i utveckling (`--api-only`, alltså utan gränssnitt). |
 | 3401 och 8401 | Gaten och `npm run dev:stub`: app och stubbackend. |
-| 5173 och 4173 | Dokumentationssajten: `npm run dev` och `npm run preview` i `docs-site/`. |
-| 3411 till 3413 och 8411 | `npm run test:prod`: tre riktiga backends med varsitt bygge, och stubben som Eneo. |
-| 8480 till 8482 | `npm run test:image`: Traefik, stubben som Eneo och imagens egen port. |
 
-Utvecklingsservern ligger på 3002 för att Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Gatens och testernas portar flyttas med `A11Y_APP_PORT` och `A11Y_STUB_PORT` ([Tester](quality-gates.md#portar-och-flera-utcheckningar)).
+Utvecklingsservern ligger på 3002 för att Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Testernas övriga portar och hur de flyttas: [Tester](quality-gates.md#portar-och-flera-utcheckningar).
 
 ## Med Docker
 
-Från repots rot bygger `docker compose up --build` imagen lokalt (`docker-compose.override.yml`) och publicerar port 3001:
-
-```bash
-cp .env.example .env
-# Fyll i ENEO_BACKEND_URL, ENEO_PUBLIC_URL, ENEO_API_KEY och SESSION_SECRET. För lokal körning:
-# MODULE_PUBLIC_URL=http://localhost:3001 och COOKIE_SECURE=false (http godtas bara för localhost, 127.0.0.1 och [::1]).
-docker compose up --build
-open http://localhost:3001
-```
-
-`SESSION_SECRET` (minst 32 tecken): `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Loggar: `docker compose logs -f speech-to-text`. Granskningen av transkriptet slås på när imagen byggs: `SPEAKER_REVIEW_ENABLED=true` i `.env`.
+`docker compose up --build` bygger imagen lokalt (`docker-compose.override.yml`) och publicerar port 3001. `SESSION_SECRET` är minst 32 tecken: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Loggar: `docker compose logs -f speech-to-text`. Granskningen av transkriptet slås på när imagen byggs: `SPEAKER_REVIEW_ENABLED=true` i `.env`.
 
 Imagen utan Compose:
 
@@ -63,7 +62,7 @@ Vite vidarebefordrar `/api` (också WebSocket, som live-texten använder) och `/
 | `MODULE_PUBLIC_URL` | `http://localhost:3002` |
 | `COOKIE_SECURE` | `false` |
 
-Modulen installeras i Eneo med callback `http://localhost:3002/api/auth/callback`, och servicenyckeln (`sk_`, service, `flows = write`) skapas i Eneos admin.
+Registrera modulen som i [Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo), med callback `http://localhost:3002/api/auth/callback`.
 
 ### Den riktiga backenden utan ett Eneo
 
@@ -98,15 +97,4 @@ Det startar stubben och appen på `http://127.0.0.1:3401` (andra portar: `A11Y_A
 
 ## Dokumentationen
 
-Sidorna i `docs/` är källan till dokumentationssajten i `docs-site/` (VitePress). Sajten är ett eget paket som aldrig når imagen eller frontendbygget. Från `docs-site/`:
-
-```bash
-npm ci
-npm run dev       # sajten på http://localhost:5173, med omladdning vid ändringar
-npm run build     # bygger till .vitepress/dist, och misslyckas på en länk som inte leder någonstans
-npm run check     # öppnar den byggda sajten i en webbläsare: startsidan, API-sidan och varje diagram
-```
-
-Första gången: `npx playwright install chromium`. Kontrollen startar sin egen server på 4173; `DOCS_PORT` flyttar den, till exempel när flera utcheckningar körs samtidigt.
-
-Sidorna är vanlig Markdown med sin rubrik och utan frontmatter, så att de läses likadant på GitHub. Två sidor finns bara för sajten: `docs/index.md` (startsidan) och `docs/api-referens.md` (ritar `docs/api/openapi.json` med Scalar). Sidomenyn och sidhuvudets länkar står i `docs-site/.vitepress/config.mts`, så en ny sida läggs till där. Mermaid-diagram skrivs som vanliga kodblock och ritas i webbläsaren. Gestaltning och färger: `docs-site/DESIGN.md`.
+Sidorna i `docs/` är källan till dokumentationssajten i `docs-site/` (VitePress, ett eget paket som aldrig når imagen). Från `docs-site/`: `npm ci`, sedan `npm run dev` (på `http://localhost:5173`), `npm run build` (misslyckas på en död länk) och `npm run check` (webbläsarkontroll av den byggda sajten; första gången `npx playwright install chromium`). Sidorna är vanlig Markdown med sin rubrik och utan frontmatter, så att de läses likadant på GitHub; bara `docs/index.md` och `docs/api-referens.md` är till för sajten. Sidomenyn står i `docs-site/.vitepress/config.mts`. Mer om sajten, dess gestaltning och beroenden: `docs-site/DESIGN.md`.

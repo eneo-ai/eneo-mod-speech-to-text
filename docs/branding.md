@@ -42,26 +42,11 @@ Ett namn utan logga visas som text. En organisation kan alltså byta enbart namn
 
 ## Accentfärgen
 
-`ORGANIZATION_ACCENT` ersätter modulens blå överallt där den förekommer, i ljust och mörkt läge. Backend kontrollerar
-färgen mot sidans ytor när den startar, och en färg som inte är läsbar stoppar starten.
+`ORGANIZATION_ACCENT` ersätter modulens blå överallt där den förekommer, i ljust och mörkt läge. Accenten är också textfärgen på länkar och ikoner och färgen på fokusramen, så den måste vara läsbar mot sidan: backend kontrollerar vid start att den når minst **4,5:1** i WCAG-kontrast mot sidans ytor i båda lägena (och att texten på accenten och den sekundära texten på dess ton gör det), och en färg som inte gör det stoppar starten. Det betyder en mörk färg i ljust läge och en ljus i mörkt.
 
-Accenten är också textfärgen på länkar och ikoner och färgen på fokusramen, så den måste vara läsbar mot sidan.
-Kraven är WCAG-kontrast (samma beräkning som WCAG 2.2) och är alla minst **4,5:1**:
+**Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
 
-| Vad som mäts | Ljust läge | Mörkt läge |
-| --- | --- | --- |
-| Texten på accentfärgen (vit eller nästan svart, den som syns bäst) | mot accenten | mot accenten |
-| Accentfärgen mot sidans ytor | mot `#FBFCFF`, `#F0F0F6` | mot `#191C1F`, `#0E1115`, `#2E3135` |
-| Den sekundära texten på accentfärgens ton (valda rader) | mot sidans ytor | mot sidans ytor |
-
-I ljust läge betyder det en mörk färg (ungefär en luminans under 0,15) och i mörkt läge en ljus. Fokusramen är
-accenten och omfattas därför av samma krav, som är högre än WCAG:s 3:1 för ramar.
-
-**Mörkt läge.** Utelämnar du `ORGANIZATION_ACCENT_DARK` gör backend färgen ljusare tills kraven nås och behåller
-nyans och mättnad. Vill du styra det själv anger du en egen färg, som kontrolleras på samma sätt.
-
-**Exempel som godkänns:** `#1E7B34` (grön), `#004595` (blå), `#B3261E` (röd), `#6B1EFD` (violett), `#00695C`
-(blågrön). Du kan pröva en färg utan att starta tjänsten, från mappen `backend`:
+**Exempel som godkänns:** `#1E7B34` (grön), `#004595` (blå), `#B3261E` (röd), `#6B1EFD` (violett), `#00695C` (blågrön). Du kan pröva en färg utan att starta tjänsten, från mappen `backend`:
 
 ```sh
 .venv/bin/python -c "from app.accent import resolve_accent; print(resolve_accent('#1E7B34', None))"
@@ -76,10 +61,7 @@ speech-to-text`. Det är alltid ett enda meddelande som anger vad som mättes oc
 | --- | --- |
 | `ORGANIZATION_ACCENT=#FFD700: accentfärgen mot sidans ytor når 1,23:1 i ljust läge men måste nå minst 4,50:1. Välj en mörkare färg.` | Färgen är för ljus för att läsas mot sidan. Välj en mörkare. |
 | `ORGANIZATION_ACCENT_DARK=#1E7B34: accentfärgen mot sidans ytor når 2,45:1 i mörkt läge men måste nå minst 4,50:1. Välj en ljusare färg.` | Den mörka färgen är för mörk mot mörk bakgrund. Välj en ljusare eller utelämna variabeln. |
-| `ORGANIZATION_ACCENT_DARK=#FFFFFF: den sekundära texten på accentfärgens ton (valda rader) når 3,28:1 i mörkt läge men måste nå minst 4,50:1. Välj en mindre ljus färg.` | Den mörka färgen är så ljus att grå text på valda rader blir svårläst. Välj en mindre ljus. |
 | `ORGANIZATION_ACCENT måste vara en färg på formen #RRGGBB, till exempel #1E7B34 (fick 'grön')` | Färgen ska vara `#` följt av sex hexadecimala siffror. Namn som `green` och korta former som `#1b3` godtas inte. |
-| `ORGANIZATION_ACCENT_DARK kräver ORGANIZATION_ACCENT: den mörka färgen hör till en ljus.` | Sätt också `ORGANIZATION_ACCENT`. |
-| `ORGANIZATION_ACCENT=…: ingen mörk variant av färgen går att härleda som når kraven i mörkt läge. Ange ORGANIZATION_ACCENT_DARK.` | Färgen går inte att göra läsbar i mörkt läge genom att göra den ljusare. Ange en egen mörk färg. |
 
 ## Exempel med docker compose
 
@@ -119,11 +101,6 @@ om sidan, eller öppna den i ett privat fönster.
 2. **Titta på stilmallen:** `curl -i https://din-modul.example/api/branding/theme.css`. Utan
    `ORGANIZATION_ACCENT` är den en enda kommentar. Med den innehåller den din färg, och färgen i mörkt läge efter
    `light-dark(`.
-3. **Kör grindens branding-tillstånd** (från mappen `frontend`): `npm run test:a11y:branding`. Det startar en
-   tjänst som är en grön organisation med långt namn och bred logga, och kör inloggning, flödeslista, uppsättning och
-   inspelning genom axe, målstorlekar på 44 px, fokusindikator, omflöde vid 320 px och 200 % zoom, mörkt läge och
-   tvingade färger, och kontrollerar att inget i sidan behåller den blå färgen. Grindens färg och logga ligger i
-   `frontend/tests/e2e/stub-server.py`. Din egen färg provar du med kommandot ovan.
 
 ## Vad som inte kan ändras utan kod
 

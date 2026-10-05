@@ -47,7 +47,7 @@ out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 - A new Eneo route for the browser needs a row in `PROXY_ROUTES` (`backend/app/main.py`) and a test in
   `backend/tests/test_eneo_proxy_auth.py`. The proxy denies everything that is not listed.
 - A new backend setting is read and validated in `backend/app/config.py`, with a test in `backend/tests/test_config.py`
-  and a row in the settings table of `docs/backend.md`.
+  and a row in the settings table of `docs/operations.md`.
 
 ## Checks
 
