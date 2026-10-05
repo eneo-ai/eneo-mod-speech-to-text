@@ -320,10 +320,10 @@ export function ReviewView({
   }
 
   /**
-   * Godkänn / Spara och fortsätt, from the page or the naming dialog: the page's edit or the names, saved when the
-   * pause does not hold them yet, then approved and resumed (onContinue). Returns why it did not go on, or null.
+   * Godkänn och fortsätt / Spara och fortsätt / Fortsätt: the page's edit, saved when the pause does not hold it yet,
+   * then approved and resumed (onContinue). Returns why it did not go on, or null.
    */
-  function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
+  function saveAndApprove(): Promise<string | null> {
     return exclusively("approve", async () => {
       // Pågående korrigeringssparningar måste landa före godkännandet, som
       // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
@@ -332,11 +332,10 @@ export function ReviewView({
         return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
       }
       // Approved already: nothing is saved any more, the run is only resumed.
-      const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+      const edit = decided ? null : dirty ? pendingEditedValue() : null;
       // The version sent, as its draft holds it: only that is dropped once Eneo has it.
-      const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
+      const sent: ReviewEdit = isSpeakerMapping ? { speakerRows } : { text };
       return onContinue(checkpoint, edit, {
-        describe: names ? (err) => namingRefusal(err, names) : undefined,
         // Saved now or held already, whether or not this view is shown again before the run goes on.
         onSaved: () => draft.drop(sent),
       });
@@ -483,8 +482,6 @@ export function ReviewView({
             onStopListening={stopListening}
             listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
             onSave={saveNames}
-            onSaveAndContinue={saveAndApprove}
-            continueDisabled={continueBlocked}
             decided={decided}
             draftKey={namesDraftKey}
           >

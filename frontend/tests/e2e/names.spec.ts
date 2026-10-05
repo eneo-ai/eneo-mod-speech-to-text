@@ -72,7 +72,7 @@ test("a step that will stop for the person says what it asks while it is ahead, 
   await expect(page.getByRole("listitem").filter({ hasText: "Transkribera" })).not.toContainText("Här ");
 });
 
-test("naming the speakers and going on is one action: a changed name is saved, then the run goes on", async ({ page }, info) => {
+test("the dialog saves the names; the page's Godkänn och fortsätt then lets the run go on with them", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
   const saved: { edited_value: { speakers: { label: string; name: string | null }[] } }[] = [];
   page.on("request", (request) => {
@@ -80,10 +80,14 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   });
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
-  await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
-  expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
+  await dialog.getByRole("button", { name: "Spara namnen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("listitem").filter({ hasText: "Talare 2" }), "the page shows the saved name").toContainText("Sara Holm");
+  expect(saved, "the changed name was saved").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
+  await page.getByRole("button", { name: "Godkänn och fortsätt" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
+  expect(saved, "approving saves nothing again").toHaveLength(1);
 });
 
 test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
@@ -160,7 +164,10 @@ test("an approved pause whose resume did not go through shows the saved names re
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: /^Spara/ })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  // The page's Fortsätt goes on; the dialog's one action closes it (the footer's Stäng, after the header's own).
+  await expect(dialog.getByRole("button", { name: /Fortsätt|Avbryt/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Stäng", exact: true }).last().click();
+  await expect(dialog).toBeHidden();
 
   const writes: string[] = [];
   page.on("request", (request) => {
