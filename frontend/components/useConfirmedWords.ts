@@ -1,39 +1,28 @@
-"use client";
-
-import { useCallback, useEffect, useState } from "react";
-import {
-  readConfirmedWords,
-  toggleConfirmed,
-  writeConfirmedWords,
-} from "@/lib/confirmed-words";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { browserStorage } from "@/lib/browser-storage";
+import { readConfirmedWords, toggleConfirmed, writeConfirmedWords } from "@/lib/confirmed-words";
 
 const EMPTY: ReadonlySet<string> = new Set();
 
 /**
- * The uncertain words a reviewer has confirmed for a transcription step, kept on this device. `storageKey` is null
- * before the step is known: the set is then empty and a toggle is ignored.
+ * The confirmations of uncertain words kept in this browser for a transcription step. `storageKey` is null until the
+ * step is known: the set is then empty and a toggle is ignored.
  */
-export function useConfirmedWords(
-  storageKey: string | null,
-): [ReadonlySet<string>, (key: string) => void] {
+export function useConfirmedWords(storageKey: string | null): [ReadonlySet<string>, (key: string) => void] {
   const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(EMPTY);
+  const current = useRef(EMPTY);
 
   useEffect(() => {
-    if (!storageKey) {
-      setConfirmed(EMPTY);
-      return;
-    }
-    setConfirmed(readConfirmedWords(window.localStorage, storageKey));
+    current.current = storageKey ? readConfirmedWords(browserStorage(), storageKey) : EMPTY;
+    setConfirmed(current.current);
   }, [storageKey]);
 
   const toggle = useCallback(
     (key: string) => {
       if (!storageKey) return;
-      setConfirmed((prev) => {
-        const next = toggleConfirmed(prev, key);
-        writeConfirmedWords(window.localStorage, storageKey, next);
-        return next;
-      });
+      current.current = toggleConfirmed(current.current, key);
+      setConfirmed(current.current);
+      writeConfirmedWords(browserStorage(), storageKey, current.current);
     },
     [storageKey],
   );

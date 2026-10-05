@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";

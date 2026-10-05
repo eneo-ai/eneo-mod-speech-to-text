@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   attachWords,
   computeTurns,
-  countUncertainWords,
   fileIdsFromTranscription,
   findActiveSegmentIndex,
   findActiveWordIndex,
@@ -73,7 +72,7 @@ test("words are located sequentially with a punctuation retry and uncertainty fl
     [[0, 4], [5, 7], [8, 14], [16, 20], [-1, -1]],
   );
   assert.deepEqual(words.map((w) => w.uncertain), [false, true, false, false, false]);
-  // Utan forced alignment betyder probability 0 inte osäkerhet.
+  // Without forced alignment a probability of 0 does not mean uncertainty.
   assert.equal(
     locateWords("x", [{ word: "x", start: 0, end: 1, probability: 0 }], "provider_words")[0]
       .uncertain,
@@ -100,7 +99,6 @@ test("attachWords joins by segment_index and ignores stale or empty payloads", (
   });
   assert.equal(withWords[2].words?.length, 2);
   assert.equal(withWords[0].words, undefined);
-  assert.equal(countUncertainWords(withWords), 1);
   assert.equal(attachWords(segments, { stale: true, segments: [] })[2].words, undefined);
   assert.equal(attachWords(segments, null)[2].words, undefined);
 });

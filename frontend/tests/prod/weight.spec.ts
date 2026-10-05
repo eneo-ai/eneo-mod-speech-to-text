@@ -3,8 +3,8 @@
  * against weight-budget.json, and that the built theme is used instead of being generated in the browser.
  * Chromium only (`@chromium` in the titles): it is the engine that reports each request's transfer size.
  *
- * Each budget is the measured value rounded up to the next 5 KB (numbers and dates: docs/adr/0007, and the pull request
- * that last changed them). A change that raises one says why in its pull request.
+ * Each budget is the measured value rounded up to the next 5 KB (docs/decisions/0007-weight-budget.md). A change that
+ * raises one says why in its pull request.
  */
 import { expect, type Page } from "@playwright/test";
 import { test } from "../e2e/auth";
@@ -50,7 +50,7 @@ for (const path of Object.keys(budget) as Path[]) {
     expect(session.user).toBeTruthy();
     const { jsKB, cssKB } = await transferredKB(page, path);
     console.log(`${path}: ${jsKB.toFixed(1)} KB of JS, ${cssKB.toFixed(1)} KB of CSS`);
-    const rule = "Raise the budget only with a reason in the pull request; Phase 8 returns it to the 2026-10-01 baseline.";
+    const rule = "Raise the budget only with a reason in the pull request (docs/decisions/0007-weight-budget.md).";
     expect.soft(jsKB, `${path} loads ${jsKB.toFixed(1)} KB of JS, the budget is ${budget[path].jsKB} KB. ${rule}`).toBeLessThanOrEqual(budget[path].jsKB);
     expect.soft(cssKB, `${path} loads ${cssKB.toFixed(1)} KB of CSS, the budget is ${budget[path].cssKB} KB. ${rule}`).toBeLessThanOrEqual(budget[path].cssKB);
   });

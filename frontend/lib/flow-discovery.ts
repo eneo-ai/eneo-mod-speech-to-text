@@ -17,7 +17,7 @@ export interface FlowSpaceGroup {
   flows: FlowSparsePublic[];
 }
 
-export interface FlowDiscovery {
+interface FlowDiscovery {
   groups: FlowSpaceGroup[];
   /** The page cap was reached before Eneo had no more. */
   truncated: boolean;

@@ -6,20 +6,23 @@
 
 import type { KeyValueStorage } from "./browser-storage";
 
-const SEPARATORS = /[,;\n\r]+/;
+const SEPARATOR = /[,;\n\r]/;
 const RECENT_MAX = 30;
+
+/** Whether `text` holds a separator, so it is a list and not one name. */
+export const hasSeparator = (text: string): boolean => SEPARATOR.test(text);
 
 /** "Anna Berg, Erik Lund;\nSara Holm" → three names, trimmed, empties dropped. */
 export function splitNames(text: string): string[] {
   return text
-    .split(SEPARATORS)
+    .split(new RegExp(`${SEPARATOR.source}+`))
     .map((name) => name.trim())
     .filter(Boolean);
 }
 
 /** The complete names in typed text, and what follows the last separator. */
 export function takeNames(text: string): { names: string[]; rest: string } {
-  const parts = text.split(/[,;\n\r]/);
+  const parts = text.split(SEPARATOR);
   const rest = parts.pop() ?? "";
   return { names: splitNames(parts.join(",")), rest };
 }

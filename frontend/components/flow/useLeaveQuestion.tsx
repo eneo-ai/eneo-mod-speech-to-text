@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useEffect, useRef, useState } from "react";
 import { useBlocker } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";

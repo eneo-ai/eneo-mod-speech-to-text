@@ -52,7 +52,7 @@ async function openAccountMenu(
   const view = await mount(tree);
   const trigger = () => [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
   const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
-  /** Opens it as a pointer does: the press, then the click (Radix opens on the press, the design system on the click). */
+  /** Opens it as a pointer does: the press, then the click. */
   const open = () =>
     view.act(async () => {
       trigger().dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));

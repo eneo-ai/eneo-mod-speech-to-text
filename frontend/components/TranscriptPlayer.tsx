@@ -1,5 +1,3 @@
-"use client";
-
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
   type ComponentProps,
@@ -30,6 +28,8 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { downloadBlob } from "@/lib/download";
+import { scrollBehavior } from "@/lib/motion";
 import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
@@ -66,6 +66,7 @@ import {
   correctionWriteProblem,
   MAX_SPEAKER_EDITS,
   renderReviewedTranscript,
+  sameCorrections,
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
@@ -116,8 +117,7 @@ function rateLabel(rate: number): string {
 type EditorProps = ComponentProps<typeof TranscriptEditor>;
 
 // The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
-// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
-// and the server and the browser's first render agree, since neither has the code yet.
+// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place.
 const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components/TranscriptEditor").then((module) => module.TranscriptEditor));
 /** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
 export const preloadTranscriptEditor = () => editor.load();
@@ -289,7 +289,6 @@ export function TranscriptPlayer(
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
-  const searchId = useId();
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
@@ -408,7 +407,6 @@ export function TranscriptPlayer(
     else playback.skip(action.skipMs);
   }
 
-  // Follows the playback: the active turn is scrolled to the middle.
   useEffect(() => {
     if (!follow || activeIndex < 0 || !listRef.current || editingIndex >= 0) return;
     const el = listRef.current.querySelector<HTMLElement>(
@@ -417,7 +415,7 @@ export function TranscriptPlayer(
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [activeIndex, follow, editingIndex]);
 
   // The search's current hit is brought into view, and playback stops pulling the text away from it.
@@ -427,7 +425,7 @@ export function TranscriptPlayer(
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;
     setFollow(false);
-    el.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [currentHit, query]);
 
   function onUserScroll() {
@@ -510,6 +508,8 @@ export function TranscriptPlayer(
     } catch (e) {
       return e instanceof Error ? e.message : "Talaren kunde inte ändras.";
     }
+    // A passage with no speaker of Eneo's has nothing to move: say so rather than save a set that changes nothing.
+    if (sameCorrections(next, corrections)) return "Talaren kan inte ändras för det här inlägget.";
     // Eneo refuses a set with more speaker edits than it holds; say so before sending.
     if (next.speaker_edits.length > MAX_SPEAKER_EDITS) {
       return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriptet, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
@@ -550,14 +550,13 @@ export function TranscriptPlayer(
     );
   }
 
-  // Parts are read in order, each under its own heading when the recording has more than one.
   const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
   for (const turn of visibleTurns) {
     const last = parts[parts.length - 1];
     if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
     else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
   }
-  // Search works on any transcript; the speaker row only where the flow labelled speakers.
+  // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
@@ -713,11 +712,7 @@ export function TranscriptPlayer(
           icon={<Download aria-hidden />}
           label="Hämta granskat transkript"
           className={styles.download}
-          onClick={() => {
-            const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
-            const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }}
+          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskat-transkript.txt")}
         />
       )}
 

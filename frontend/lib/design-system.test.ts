@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import test, { afterEach } from "node:test";
 import { createElement } from "react";
 import { cleanup, installDom, mount } from "./test-dom";
@@ -42,4 +43,14 @@ test("the shell gives a page its skip link, its navigation landmark and one main
   assert.equal(view.container.querySelectorAll('[role="main"], main').length, 1, "one main region");
   assert.ok(view.container.querySelector('nav[aria-label="Tal till text"]'), "a named navigation landmark");
   assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
+});
+
+test("nothing of Next.js is left: no package, no script, no file", () => {
+  const { dependencies = {}, devDependencies = {}, scripts = {} } = JSON.parse(readFileSync("package.json", "utf8"));
+  const installed = Object.keys({ ...dependencies, ...devDependencies });
+  assert.deepEqual(installed.filter((name) => name === "next" || name === "next-themes" || name.startsWith("@next/")), []);
+  assert.deepEqual(Object.entries(scripts).filter(([, command]) => /\bnext\b\s+(dev|build|start)/.test(String(command))), []);
+  for (const file of ["next.config.mjs", "next-env.d.ts", "lib/backend-base.mjs", "tests/prod/serve.mjs", "components/theme-provider.tsx"]) {
+    assert.equal(existsSync(file), false, `${file} belonged to Next`);
+  }
 });

@@ -12,7 +12,7 @@ import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
 
-export type RecordingState =
+type RecordingState =
   | "recording"
   | "paused"
   | "stopped"
@@ -20,10 +20,10 @@ export type RecordingState =
   | "uploaded"
   | "submitted";
 
-export type RecordingInputMode = "record" | "stream";
+type RecordingInputMode = "record" | "stream";
 export type DeviceRefusal = "full" | "failed";
 
-export interface RecordingPart {
+interface RecordingPart {
   index: number;
   startedAt: number;
   durationMs: number;
@@ -91,7 +91,7 @@ const DB_NAME = "tal-till-text";
 const DB_VERSION = 1;
 const RECORDINGS = "recordings";
 const CHUNKS = "chunks";
-// About three hours of speech at 64 kbit/s; below this the recorder warns.
+// 100 MiB: about 7 hours of speech at the recorder's 32 kbit/s (about 4 at the 54 kbit/s WebKit gives); below this the recorder warns.
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
 
 interface Chunk {
@@ -250,7 +250,7 @@ export function continuable(recording: StoredRecording): boolean {
 }
 
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
-export function recordingFilename(recording: StoredRecording, index: number): string {
+function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
@@ -357,7 +357,7 @@ export class RecordingStore {
     return this.serial(async () => {
       const recording = await this.load(id);
       const current = recording?.parts[part];
-      if (!recording || !current) return;
+      if (!recording || !current) throw new Error(NOT_ON_DEVICE);
       const parts = recording.parts.map((p) =>
         p.index === part
           ? {

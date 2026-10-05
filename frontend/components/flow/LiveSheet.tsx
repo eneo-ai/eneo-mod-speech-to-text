@@ -1,5 +1,3 @@
-"use client";
-
 import { memo, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
@@ -11,6 +9,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import type { LiveSession } from "@/lib/flow-session";
 import type { LivePiece } from "@/lib/live-transcriber";
 import type { CaptureStatus } from "@/lib/recording-session";
+import { scrollBehavior } from "@/lib/motion";
 import { atBottom, liveStatusLine } from "@/lib/recording-view";
 import styles from "./LiveSheet.module.css";
 
@@ -23,18 +22,14 @@ export function paragraphs(pieces: LivePiece[]): LivePiece[][] {
   return out;
 }
 
-// Committed text only grows at its end, so over a long meeting a paragraph
-// renders again only when it gains a piece, not with every word.
+// A paragraph renders again only when one of its pieces is another (a new one, or the relay's final text in place of a
+// session's), not with every word still arriving.
 const Pieces = memo(
   function Pieces({ pieces }: { pieces: LivePiece[] }) {
     return pieces.map((piece, i) => <span key={i}>{(i > 0 ? " " : "") + piece.text}</span>);
   },
-  (before, after) => before.pieces.length === after.pieces.length && before.pieces[0] === after.pieces[0],
+  (before, after) => before.pieces.length === after.pieces.length && before.pieces.every((piece, i) => piece === after.pieces[i]),
 );
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-}
 
 /**
  * Strömma's workspace: the draft on a document sheet. Committed pieces form a
@@ -70,7 +65,7 @@ export function LiveSheet({
   function showLatest() {
     const element = scroller.current;
     if (!element) return;
-    element.scrollTo({ top: element.scrollHeight, behavior: prefersReducedMotion() ? "auto" : "smooth" });
+    element.scrollTo({ top: element.scrollHeight, behavior: scrollBehavior() });
     setFollowing(true);
     // The button goes away; the text it showed takes the focus.
     element.focus();

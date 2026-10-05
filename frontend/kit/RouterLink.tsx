@@ -1,5 +1,4 @@
-// Copied in shape from eneo-module-kit-ui, template/web/src/main.tsx (RouterLink), commit 1559766, and made to tell a
-// page of the app from a file.
+// The shape of eneo-module-kit-ui's RouterLink (template/web/src/main.tsx), made to tell a page of the app from a file.
 
 import type { AnchorHTMLAttributes } from "react";
 import { Link } from "react-router";

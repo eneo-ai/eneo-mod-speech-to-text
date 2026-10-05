@@ -15,12 +15,12 @@
 //     talaren oavgjord. Återställning tar bort beslutsöverlägget.
 //   - Talaretiketter måste ha formen SPEAKER_NN.
 
-import { effectiveSpeakerLabel, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
 
 /** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
 export const MAX_SPEAKER_EDITS = 2000;
 
-export interface CorrectionOccurrence {
+interface CorrectionOccurrence {
   segment_index: number;
   char_start: number;
   char_end: number;
@@ -28,7 +28,7 @@ export interface CorrectionOccurrence {
   corrected: string;
 }
 
-export interface SpeakerEdit {
+interface SpeakerEdit {
   segment_index: number;
   char_start: number | null;
   char_end: number | null;
@@ -142,7 +142,7 @@ export function applyCorrections(
     const occurrences = bySegment.get(index);
     const speaker = speakerBySegment.get(index);
     if (!occurrences && speaker === undefined) return segment;
-    const next: TranscriptSegment = { ...segment, modelSpeaker: segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker };
+    const next: TranscriptSegment = { ...segment, modelSpeaker: modelSpeakerOf(segment) };
     if (occurrences && occurrences.length > 0) {
       next.text = correctedSegmentText(segment.text, occurrences);
       const display = displayRanges(segment.text, occurrences);
@@ -196,7 +196,7 @@ export function applyCorrections(
       const sourceWords = raw.words?.filter((w) => w.charStart >= 0 && w.charStart < to && w.charEnd > from);
       const next: TranscriptSegment = {
         ...segment, sourceSegmentIndex: index, sourceCharStart: from, sourceCharEnd: to,
-        modelSpeaker: raw.modelSpeaker === undefined ? raw.speaker : raw.modelSpeaker,
+        modelSpeaker: modelSpeakerOf(raw),
         text: segment.text.slice(start, end),
         ...(edit ? { speaker: edit.speaker, decision: edit.decision ?? "confirmed" } : {}),
         ...(edits.length && sourceWords?.length ? { start: Math.min(...sourceWords.map((w) => w.start)), end: Math.max(...sourceWords.map((w) => w.end)) } : {}),
@@ -210,17 +210,6 @@ export function applyCorrections(
     }
   });
   return { segments: displayed, corrected: displayedCorrected, ranges: displayedRanges };
-}
-
-/** Råtexten för ett segment som redan har en korrigering — för "Rättad från". */
-export function originalTextFor(
-  segments: readonly TranscriptSegment[],
-  set: CorrectionSet,
-  segmentIndex: number,
-): string | null {
-  return set.occurrences.some((o) => o.segment_index === segmentIndex)
-    ? (segments[segmentIndex]?.text ?? null)
-    : null;
 }
 
 const TOKEN_RE = /\s+|[^\s]+/g;
@@ -321,15 +310,6 @@ export function occurrencesForLine(
   }));
 }
 
-/** Bakåtkompatibelt: första spannet, eller null om raden är oförändrad. */
-export function occurrenceForLine(
-  segmentIndex: number,
-  rawText: string,
-  newText: string,
-): CorrectionOccurrence | null {
-  return occurrencesForLine(segmentIndex, rawText, newText)[0] ?? null;
-}
-
 /** Ersätter segmentets korrigeringar (tom lista eller null tar bort dem). */
 export function withLineCorrection(
   set: CorrectionSet,
@@ -377,10 +357,6 @@ export function sameCorrections(a: CorrectionSet, b: CorrectionSet): boolean {
     JSON.stringify([a.occurrences, a.speaker_edits]) ===
     JSON.stringify([b.occurrences, b.speaker_edits])
   );
-}
-
-export function correctionCount(set: CorrectionSet): number {
-  return set.occurrences.length + set.speaker_edits.length;
 }
 
 /** Validate before allowing a replace-style save. Never erase a newer overlay. */
@@ -445,11 +421,14 @@ export function correctionsFromResponse(response: {
   return set;
 }
 
+/** The hash of the segments a set of corrections is made against: 64 hex digits. */
+export const isSegmentsHash = (value: unknown): value is string => typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+
 /** Guard full-list writes until the original base hash is known. */
 export function correctionWriteProblem(set: CorrectionSet): string | null {
   const version = set.schemaVersion ?? 2;
   if (![1, 2, 3].includes(version)) return "Rättningarnas version stöds inte. Uppdatera Tal till text.";
-  if (version >= 3 && !/^[0-9a-f]{64}$/.test(set.segmentsHash ?? "")) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
+  if (version >= 3 && !isSegmentsHash(set.segmentsHash)) return "Transkriptets originalunderlag saknas. Läs in sidan igen innan du sparar.";
   if (version < 3 && set.speaker_edits.some((e) => e.decision === "unresolved" || e.speaker === null || e.original_speaker === null || e.speaker === e.original_speaker)) {
     return "Talarbeslut kräver Eneos uppdaterade transkriptunderlag.";
   }
@@ -515,7 +494,7 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
     if (!segment.text.trim()) continue;
     if (multiple && segment.fileIndex !== file) { lines.push(`## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
     const label = effectiveSpeakerLabel(segment, (s) => s ? names[s]?.trim() || s : "");
-    const marker = label === "Överlappande tal – osäker talare" || label === "Talare går inte att avgöra";
+    const marker = label === OVERLAP_SPEAKER || label === UNDECIDED_SPEAKER;
     lines.push(`[${textTimestamp(segment.start)} - ${textTimestamp(segment.end)}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
   }
   return lines.join("\n");

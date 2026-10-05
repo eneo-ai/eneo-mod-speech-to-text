@@ -192,3 +192,23 @@ test("a status that says nobody is signed in goes to the sign-in page", async (t
   assert.equal(router.state.location.pathname, "/");
   assert.equal(router.state.historyAction, "REPLACE");
 });
+
+test("a person signing in clears the confirmed words that another person left in this browser", async (t) => {
+  const { createElement } = await import("react");
+  const { AuthGate } = await import("../components/AuthGate");
+  const { confirmedWordsStorageKey } = await import("./confirmed-words");
+  const theirs = confirmedWordsStorageKey("user-2", "flow", "run", "step");
+  const mine = confirmedWordsStorageKey(anna.id, "flow", "run", "step");
+  window.localStorage.setItem(theirs, JSON.stringify(["0:0:Hej"]));
+  window.localStorage.setItem(mine, JSON.stringify(["1:1:du"]));
+  const browserFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request) => (String(url).startsWith("/api/auth/status") ? json(signedIn) : json({}))) as typeof fetch;
+  t.after(() => {
+    globalThis.fetch = browserFetch;
+    window.localStorage.clear();
+  });
+  const { container, act } = await mount(withRouter(createElement(AuthGate, null, createElement("p", null, "Sidan")), { path: "/flows", entries: ["/flows"] }).tree);
+  for (let i = 0; i < 10 && !container.textContent?.includes("Sidan"); i += 1) await act(settle);
+  assert.equal(window.localStorage.getItem(theirs), null, "the one before's confirmations are gone");
+  assert.ok(window.localStorage.getItem(mine), "her own stay");
+});

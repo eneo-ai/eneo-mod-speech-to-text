@@ -1,6 +1,5 @@
-// A copy of eneo-module-kit-ui's packages/ui/src/color-mode.tsx (commit 9eb66af), with its tests in lib/color-mode.test.ts.
-// It differs in one comment, and in that a switch of the mode marks `<html>` so that the page's colour transitions are
-// off for it (markSwitching).
+// The colour mode of eneo-module-kit-ui (packages/ui/src/color-mode.tsx; its tests are lib/color-mode.test.ts). A switch of
+// the mode also marks `<html>`, so the page's colour transitions are off for it (markSwitching).
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 

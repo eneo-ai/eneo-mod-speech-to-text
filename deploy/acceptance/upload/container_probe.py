@@ -4,8 +4,9 @@
     container_probe.py snapshot              one JSON line: [{pid, role, rss_kb, hwm_kb, cpu_ticks, args}]
     container_probe.py sample FILE MS        append {"t", "p": [...]} to FILE every MS ms until /tmp/upload-probe-stop exists
 
-role is frontend (the Next server, whose process calls itself next-server), backend (uvicorn, or `python -m app.serve`) or
-supervisord; anything else is named by its executable. The image's own health check (python -c ... urlopen) is left out.
+role is backend (`python -m app.serve`; uvicorn in the baseline image of baseline.json, which the probe measures too) and, in
+that baseline image only, frontend (its Next server, whose process calls itself next-server) or supervisord; anything else is
+named by its executable. The image's own health check (python -c ... urlopen) is left out.
 """
 import json, os, sys, time
 

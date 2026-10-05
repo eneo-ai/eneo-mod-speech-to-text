@@ -1,5 +1,5 @@
-// What a page costs the server in memory after a visitor has used it: B0.1's "loaded" row (resident memory after /flows was loaded 20
-// times), repeated by B4.2 check 14.
+// What a page costs the server in memory after a visitor has used it: the "loaded" row of baseline.json (resident memory after /flows
+// was loaded 20 times), which check 14 holds the image against.
 //
 // usage: node loads.cjs <frontend dir with node_modules> <base url> <path> <count>
 //   <frontend dir>  any directory whose node_modules hold @playwright/test (1.63.0, its Chromium installed)

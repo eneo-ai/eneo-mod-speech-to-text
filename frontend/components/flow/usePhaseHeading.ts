@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef } from "react";
 import { useDocumentTitle } from "./recording-hooks";
 import { documentTitle } from "@/lib/product";

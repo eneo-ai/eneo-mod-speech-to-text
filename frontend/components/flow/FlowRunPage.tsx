@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, type ReactNode } from "react";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { VStack } from "@astryxdesign/core/VStack";

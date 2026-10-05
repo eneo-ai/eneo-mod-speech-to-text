@@ -2,7 +2,7 @@
  * The gate's own checks against pages built to fail them: a check that passes
  * these would pass the app's faults too. They run once, at one width.
  */
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axe, blocking, focusStop, tabWalk, targetSizes } from "./checks";
 import { STATES } from "./screens";
 

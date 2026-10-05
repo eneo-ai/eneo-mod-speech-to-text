@@ -46,7 +46,7 @@ export interface PageVisibility {
   onVisible(callback: () => void): () => void;
 }
 
-export interface FollowOptions {
+interface FollowOptions {
   signal: AbortSignal;
   onSnapshot: (snapshot: RunSnapshot) => void;
   page?: PageVisibility;

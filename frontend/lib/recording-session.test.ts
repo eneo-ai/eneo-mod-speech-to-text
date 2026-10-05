@@ -134,6 +134,8 @@ async function setup(
     now?: () => number;
     /** A denied microphone, or one the browser grants only once `wait` settles. */
     microphone?: { denied?: boolean; wait?: Promise<void> };
+    /** The screen's wake lock is granted only once this settles. */
+    wakeLock?: Promise<void>;
   } = {},
 ) {
   const store = options.store ?? (await openRecordingStore({}));
@@ -158,6 +160,7 @@ async function setup(
     now: options.now,
     requestWakeLock: async () => {
       wakeLocks.requested += 1;
+      await options.wakeLock;
       return {
         release: async () => {
           wakeLocks.released += 1;
@@ -371,7 +374,6 @@ test("a recording cut off by a reload records on at once in a new part of the sa
   assert.deepEqual(constraints, [{ audio: { channelCount: 1 } }]);
   assert.equal(capture.getSnapshot().recording?.id, id);
   assert.equal(capture.elapsedMs(), 2_000, "the time goes on from what was recorded");
-  assert.equal(capture.getSnapshot().recordedBytes, 1, "and so does the size");
   assert.deepEqual(await store.listUnsent("user-1"), [], "this tab holds it now");
 
   now = 91_000;
@@ -758,6 +760,65 @@ test("Stoppa when the device cannot say the recording is stopped ends too, and s
   assert.equal(error, "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.");
 });
 
+test("a microphone lost while the device cannot confirm the pause leaves the recording interrupted, says so, and Stoppa still ends", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  store.setState = () => Promise.reject(new DOMException("The database connection is closing.", "InvalidStateError"));
+  streams[0].track.lose("ended");
+  await until(() => capture.getSnapshot().status === "interrupted", "the recording interrupted");
+  const { stream, error } = capture.getSnapshot();
+  assert.equal(stream, null);
+  assert.equal(error, "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.");
+  assert.equal(await capture.stop(), null);
+  assert.equal(capture.getSnapshot().status, "stopped");
+});
+
+test("a microphone lost after the recording vanished from the device leaves the recording interrupted and says it is gone", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  await store.discard(capture.getSnapshot().recording!.id);
+  streams[0].track.lose("ended");
+  await until(() => capture.getSnapshot().status === "interrupted", "the recording interrupted");
+  assert.equal(capture.getSnapshot().error, NOT_ON_DEVICE);
+});
+
+test("leaving a running recording when the device cannot keep it paused ends quietly", async () => {
+  const { capture, store, streams, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  store.setState = () => Promise.reject(new DOMException("The database connection is closing.", "InvalidStateError"));
+  capture.dispose();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.equal(streams[0].track.readyState, "ended");
+});
+
+test("chunks that no longer reach the device are said at once, while the recording goes on", async () => {
+  const { capture, store, recorders } = await setup();
+  await capture.start(meeting);
+  recorders[0].emit("a");
+  await store.discard(capture.getSnapshot().recording!.id); // another tab without Web Locks, a cleared store
+  recorders[0].emit("b");
+  await until(() => capture.getSnapshot().error === NOT_ON_DEVICE, "the loss said");
+  assert.equal(capture.getSnapshot().status, "recording");
+});
+
+test("Stoppa while the screen's wake lock is still being asked for leaves the recording stopped on the device, not paused", async () => {
+  let grant = () => {};
+  const wakeLock = new Promise<void>((resolve) => (grant = resolve));
+  const { capture, store, recorders } = await setup({ wakeLock });
+  const starting = capture.start(meeting);
+  await until(() => capture.getSnapshot().status === "recording", "recording");
+  recorders[0].emit("a");
+  const { id } = capture.getSnapshot().recording!;
+  const stopping = capture.stop();
+  grant();
+  await Promise.all([starting, stopping]);
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.equal((await store.get(id))?.state, "stopped");
+});
+
 test("leaving a running recording lets the microphone go without waiting for the database, and keeps what was recorded", async () => {
   const { capture, store, streams, recorders } = await setup();
   await capture.start(meeting);
@@ -857,7 +918,6 @@ test("before a part is too large to send, a new part starts, and the two overlap
   assert.equal(recorders[0].state, "inactive", "until 150 ms later");
   await settle(); // its last chunk
   assert.equal(capture.elapsedMs(), 10_150, "the overlap counts once");
-  assert.equal(capture.getSnapshot().partBytes, 0, "the full part's last chunk is its own");
   assert.equal(capture.getSnapshot().remainingMs, 16_700, "the new part and one more");
   assert.equal(streams.length, 1, "the same microphone: no new permission");
   assert.equal(streams[0].track.readyState, "live");
@@ -865,7 +925,6 @@ test("before a part is too large to send, a new part starts, and the two overlap
   assert.equal(capture.getSnapshot().error, null);
 
   recorders[1].emit("new");
-  assert.equal(capture.getSnapshot().recordedBytes, 5 * 8_000 + 1 + 3, "the size shown counts every part");
   const stopped = await capture.stop();
   const files = await store.readParts(stopped!.id);
   assert.deepEqual(

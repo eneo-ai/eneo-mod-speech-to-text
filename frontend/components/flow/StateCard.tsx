@@ -1,5 +1,3 @@
-"use client";
-
 import type { ComponentProps } from "react";
 import { Card } from "@astryxdesign/core/Card";
 import { VStack } from "@astryxdesign/core/VStack";

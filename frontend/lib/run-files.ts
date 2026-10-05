@@ -1,7 +1,6 @@
 /**
- * A run's generated files as people see them: the name Eneo gave each file
- * (eneo-ewq1 makes it readable at the source), its type and size in Swedish,
- * and whether the browser's own viewer can show it. The page names nothing.
+ * A run's generated files as people see them: the name Eneo gave each file, its type and size in Swedish, and whether
+ * the browser's own viewer can show it.
  */
 
 import type { FlowRunStep, ResultFile } from "./api";

@@ -141,8 +141,8 @@ test("the page for a flow that cannot be opened has one h1, and Försök igen on
   assert.ok([...down.container.querySelectorAll("button")].some((b) => b.textContent === "Försök igen"));
 });
 
-test("a state's card passes its attributes to the card and holds what it is given", async () => {
+test("a state's card passes its attributes to the card", async () => {
   const { StateCard } = await import("../components/flow/StateCard");
-  const view = await mount(createElement(StateCard, { "aria-busy": "true", children: createElement("h1", { tabIndex: -1 }, "Dokumentet skapas") }));
-  assert.ok(view.container.querySelector('[aria-busy="true"] h1[tabindex="-1"]'));
+  const view = await mount(createElement(StateCard, { "aria-busy": "true", children: createElement("p", null, "Dokumentet skapas") }));
+  assert.equal(view.container.querySelector('[aria-busy="true"]')?.textContent, "Dokumentet skapas");
 });

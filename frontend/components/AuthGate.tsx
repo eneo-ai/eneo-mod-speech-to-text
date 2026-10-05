@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
 import { PHASE_HEADING } from "@/components/flow/usePhaseHeading";
@@ -8,6 +6,8 @@ import { ModuleUnreachable } from "@/components/ModuleUnreachable";
 import { SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
 import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { browserStorage } from "@/lib/browser-storage";
+import { keepOnlyConfirmedWordsOf } from "@/lib/confirmed-words";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, SESSION_CHANNEL, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
@@ -22,8 +22,8 @@ export const SignedOutSlot = createContext<HTMLElement | null>(null);
 /**
  * Whether the page's login has ended. A native dialog of the page is in the top layer and escapes the cover's inert,
  * hidden wrapper: it stays visible and focusable above the page. So each page dialog closes itself while this holds
- * and opens again after the new login, with its state kept above it. Without it a dialog stays on a covered page
- * (tests/e2e/session-cover.spec.ts runs each).
+ * and opens again after the new login, with its state kept above it. Taking this away fails the cover specs of every
+ * dialog (tests/e2e/session-cover.spec.ts).
  */
 export function useSignedOut(): boolean {
   return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
@@ -152,6 +152,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         setUser(sessionIdentity);
         // Someone else's unsent details and edits are not this person's to see.
         keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
+        keepOnlyConfirmedWordsOf(browserStorage(), sessionIdentity.id);
         endPage = loginState.begin(sessionIdentity, recheck);
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.

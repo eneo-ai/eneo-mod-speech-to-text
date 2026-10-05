@@ -1,5 +1,3 @@
-"use client";
-
 import { useNavigate } from "react-router";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@astryxdesign/core/EmptyState";

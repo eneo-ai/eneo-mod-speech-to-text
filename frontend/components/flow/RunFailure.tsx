@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -15,7 +13,7 @@ import { Text } from "@astryxdesign/core/Text";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
-import type { StepView } from "@/lib/run-progress";
+import { runOutcome, type StepView } from "@/lib/run-progress";
 import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
@@ -65,7 +63,7 @@ export function RunFailure({
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
-  const cancelled = run.status.toLowerCase() === "cancelled";
+  const cancelled = runOutcome(run.status) === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
   const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));

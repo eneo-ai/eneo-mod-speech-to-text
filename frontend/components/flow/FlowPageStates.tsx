@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -71,7 +69,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
           {detail}
         </Text>
         <HStack gap={3} wrap="wrap">
-          <BackToFlows variant="default" size="default" />
+          <BackToFlows variant="primary" size="md" />
           {retry && <Button label="Försök igen" variant="secondary" onClick={() => window.location.reload()} />}
         </HStack>
       </VStack>

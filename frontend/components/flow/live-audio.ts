@@ -1,5 +1,3 @@
-"use client";
-
 import type { LiveClient, LiveSession } from "@/lib/flow-session";
 import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps } from "@/lib/live-transcriber";
 import { loginState } from "@/lib/login-state";
@@ -17,7 +15,7 @@ export function supportsLiveText(): boolean {
 }
 
 /** What live text needs of the browser; tests give their own. */
-export interface LiveEnv {
+interface LiveEnv {
   audioContext(): AudioContext;
   workletNode(context: AudioContext, options: AudioWorkletNodeOptions): AudioWorkletNode;
   /** The transcriber's connection to the relay for one step and recording, and its timers. */

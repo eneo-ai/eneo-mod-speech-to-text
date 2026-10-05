@@ -1,5 +1,3 @@
-"use client";
-
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { remarkResultHeadings } from "./Markdown";
@@ -12,8 +10,7 @@ const COMPONENTS: Components = {
   img: ({ node: _node, src, alt, ...props }) => (src ? <img src={src} alt={alt} {...props} /> : <>{alt}</>),
 };
 
-// The footnotes' words are English by default, and their heading is hidden by Tailwind's `sr-only`, a class the page
-// has only while Tailwind is: the module's own rule hides it, and a screen reader still reads it.
+// The footnotes' words default to English. Their heading is hidden by the module's own rule, which a screen reader still reads.
 const REHYPE = {
   footnoteLabel: "Fotnoter",
   footnoteLabelProperties: { className: [styles.visuallyHidden] },

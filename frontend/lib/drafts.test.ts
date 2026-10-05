@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { clearDraft, isRecord, keepOnlyDraftsOf, readDraft, unstoredDrafts, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, keepOnlyDraftsOf, readDraft, unstoredDrafts, writeDraft, type DraftStorage } from "./drafts";
+import { isRecord } from "./is-record";
 
 /** What a reader of names needs: a list of text. */
 const isNames = (value: unknown): value is string[] => Array.isArray(value) && value.every((name) => typeof name === "string");

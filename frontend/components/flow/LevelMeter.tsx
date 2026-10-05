@@ -1,10 +1,9 @@
-"use client";
-
 import { useEffect, useRef } from "react";
+import { prefersReducedMotion } from "@/lib/motion";
 import styles from "./LevelMeter.module.css";
 
 /** 0 at −60 dBFS and below, 1 at −10 dBFS and above: speech lands in the middle. */
-export function levelFromRms(rms: number): number {
+function levelFromRms(rms: number): number {
   const decibels = 20 * Math.log10(Math.max(rms, 1e-6));
   return Math.min(1, Math.max(0, (decibels + 60) / 50));
 }
@@ -56,10 +55,6 @@ export function useInputLevel(
       listener.current(0, false, 0);
     };
   }, [stream]);
-}
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 }
 
 /**

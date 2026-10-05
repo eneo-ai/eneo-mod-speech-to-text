@@ -15,6 +15,7 @@ Modulens backend är en FastAPI-app i en process. Den håller inloggningen, slä
 | `backend/app/upstream.py` | Den enda HTTP-klienten mot Eneo och dess gränser för vad den läser. |
 | `backend/app/config.py` | Alla inställningar och deras validering vid start. |
 | `backend/app/accent.py` | Organisationens accentfärg: kontroll mot sidans ytor, härledd mörk färg, stilmallen. |
+| `backend/export_openapi.py`, `docs/api/openapi.json` | API-beskrivningen (OpenAPI), skriven ur appen med `python export_openapi.py` i `backend/`. |
 | `backend/tests/` | `unittest`, en fil per ansvar. [Tester](quality-gates.md) |
 | `backend/requirements.txt`, `backend/requirements.lock` | Direkta paket med exakta versioner, och alla paket med hashar. [Drift](operations.md#uppdatera-beroenden-och-fästa-versioner) |
 
@@ -37,15 +38,14 @@ Alla rutter ligger under `/api` utom `/health` och det byggda gränssnittet. "Se
 |---|---|---|---|---|
 | `/health`, `/api/healthz` | GET, HEAD | nej | nej | `{"ok": true}`. Riktiga rutter: ett trasigt bygge av gränssnittet kan inte svara hälsokontrollen med en sida. |
 | `/api/branding` | GET | nej | nej | Organisationen som visas i sidhuvudet, med varje logotyps proportioner så att sidan reserverar plats. Ingen session: inloggningssidan visar organisationen före inloggningen. |
-| `/api/branding/logo/{light\|dark}` | GET | nej | nej | Organisationens logotyp, 404 om ingen är konfigurerad. Från modulens egen origin, med `nosniff`, `no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kör något. |
+| `/api/branding/logo/{variant}` | GET | nej | nej | Organisationens logotyp, `variant` är `light` eller `dark`; 404 om ingen är konfigurerad. Från modulens egen origin, med `nosniff`, `no-cache` och en egen `Content-Security-Policy` (`default-src 'none'; style-src 'unsafe-inline'; sandbox`) så att en SVG som öppnas för sig inte kör något. |
 | `/api/branding/theme.css` | GET | nej | nej | Accentfärgens stilmall, bara en redan kontrollerad accent i en fast mall; en tom kommentar utan `ORGANIZATION_ACCENT`. `public, max-age=300`, `ETag` (304 vid matchande `If-None-Match`). |
 | `/api/auth/login` | GET | nej | nej | Startar inloggningen mot Eneo. Frågeparametrar: `next`, `renew`. |
 | `/api/auth/callback` | GET | nej | nej | Tar emot ticket och state från Eneo. |
 | `/api/auth/logout` | POST | nej | ja | Tar bort sessionen. |
 | `/api/auth/status` | GET | nej | nej | `authenticated`, `user`, `session_ends_in`, `refresh_in` och `max_upload_bytes` (vad sidan får skicka i en uppladdning). |
-| `/api/eneo/flows/{flow_id}/files` | POST | ja | ja | Uppladdning, se [Uppladdningar](#uppladdningar). |
-| `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files` | POST | ja | ja | Uppladdning till flödets ljudsteg. |
-| `/api/eneo/flows/{flow_id}/template-files` | POST | ja | ja | Uppladdning av mallfil. |
+| `/api/eneo/flows/{flow_id}/files/` | POST | ja | ja | Uppladdning, se [Uppladdningar](#uppladdningar). |
+| `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/` | POST | ja | ja | Uppladdning till flödets ljudsteg. |
 | `/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio` | GET | ja | nej | Strömmar körningens indatafil med Range. |
 | `/api/eneo/flows/{flow_id}/runs/{run_id}/artifacts/{file_id}/content` | GET | ja | nej | Strömmar en genererad fil. `?disposition=inline` ger inline bara för PDF. |
 | `/api/eneo/{path}` | GET, POST, PATCH | ja | ja | Allt annat mot Eneo, bara det [tillåtelselistan](#tillåtelselistan-för-eneo-anrop) räknar upp. |
@@ -53,35 +53,39 @@ Alla rutter ligger under `/api` utom `/health` och det byggda gränssnittet. "Se
 | övriga GET och HEAD | | nej | nej | Det byggda gränssnittet, se [Statiska filer](#statiska-filer-och-säkerhetsheaders). |
 
 - Rutterna matchas som de stavas: en variant med eller utan avslutande snedstreck som inte är en rutt är 404, aldrig en omdirigering. FastAPIs egna dokumentationsrutter (`/docs`, `/redoc`, `/openapi.json`) finns inte.
+- Rutterna är beskrivna maskinläsbart i `docs/api/openapi.json`: vem som får anropa, uppladdningens fält `upload_file`, filströmmarna och felkoderna. Filen skrivs av `python export_openapi.py` i `backend/` och ett test misslyckas när den skiljer sig från appen. WebSocketen beskrivs bara här.
 - Allt som ändrar något under `/api/eneo/` (uppladdningarna inräknade) och live-socketen kräver att sidan namnger sessionens användare; en GET under `/api/eneo/` får sakna namn, och GET av ljud och genererade filer kontrollerar inte alls. [Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik)
 - Varje HTTP-rutt har ett tak för request-body, se [Gränser](#gränser).
 - Märke och accent: [Byt organisation](branding.md). Accenten kontrolleras vid start (`backend/app/accent.py`): en färg som inte är `#RRGGBB`, eller som inte når 4,5:1 mot sidans ytor i båda lägena, stoppar starten. Skälen: [beslut 0006](decisions/0006-white-label-branding.md).
 
 ## Tillåtelselistan för Eneo-anrop
 
-Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`. Allt som inte räknas upp här får `403 Eneo resource is not exposed`. Sökvägarna är relativa till `/api/v1/` och matchas som de stavas, med avslutande snedstreck; `{x}` matchar ett enda segment.
+Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`. Allt som inte räknas upp här får `403 Eneo resource is not exposed`. Sökvägarna matchas som de stavas, med avslutande snedstreck; `{namn}` matchar ett enda segment. Bara det sidan anropar är med.
 
 | Metod | Sökväg |
 |---|---|
-| GET | `flows/` |
-| GET | `flows/{flow}/published/`, `flows/{flow}/run-contract/`, `flows/{flow}/graph/` |
-| GET, POST | `flows/{flow}/runs/` |
-| GET | `flows/{flow}/runs/{run}/` och `flows/{flow}/runs/{run}/status/` |
-| GET | `flows/{flow}/runs/{run}/steps/` |
-| GET | `flows/{flow}/runs/{run}/steps/{step}/transcript-words/` |
-| GET | `flows/{flow}/runs/{run}/transcript-corrections/` |
-| GET | `flows/{flow}/runs/{run}/steps/{step}/attempts/{attempt}/transcript-source/` |
-| PATCH | `flows/{flow}/runs/{run}/steps/{step}/transcript-corrections/` |
-| POST | `flows/{flow}/runs/{run}/cancel/`, `.../redispatch/`, `.../retry/` |
-| POST | `flows/{flow}/runs/{run}/steps/{step}/transcript-regenerations/` |
-| POST | `flows/{flow}/runs/{run}/steps/{step}/rerun/` |
-| GET | `flows/{flow}/runs/{run}/evidence/` och `.../evidence/export` |
-| GET | `flows/{flow}/runs/{run}/review-checkpoints/active/` |
-| PATCH | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/` |
-| POST | `flows/{flow}/runs/{run}/review-checkpoints/{checkpoint}/approve/`, `.../reject/`, `.../resume/` |
-| GET | `flows/{flow}/template-files/` |
+| GET | `/api/eneo/flows/` |
+| GET | `/api/eneo/flows/{flow_id}/published/` |
+| GET | `/api/eneo/flows/{flow_id}/run-contract/` |
+| GET | `/api/eneo/flows/{flow_id}/graph/` |
+| GET, POST | `/api/eneo/flows/{flow_id}/runs/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/status/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/` |
+| PATCH | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/retry/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/` |
+| GET | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/` |
+| PATCH | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/` |
+| POST | `/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/` |
 
-Källan är `_PROXY_ROUTE_RULES` i `backend/app/main.py`.
+Källan är `PROXY_ROUTES` i `backend/app/main.py`. Ett test, `backend/tests/test_backend_page.py`, håller den här tabellen och tabellen över rutter ovan lika med appen.
 
 **Sökvägen.** En sökväg med `?`, `#`, ett kontrolltecken, ett bakstreck eller ett segment som efter avkodning är `.` eller `..` avvisas med 403 före matchningen. Sökvägen är avkodad en gång när den godkänns, så varje segment kodas om som det ett segment det är när URL:en till Eneo byggs (`_upstream_url`, den enda platsen där en utgående Eneo-URL görs): ett `%2F` i ett id blir ett id och ingen sökvägsgräns hos Eneo. En URL över 65 536 tecken får 414.
 
@@ -91,7 +95,7 @@ Källan är `_PROXY_ROUTE_RULES` i `backend/app/main.py`.
 
 **Fel.** Når BFF:en inte Eneo är svaret `502` med `{"error": "upstream_unreachable"}`; se [Svar från Eneo](#svar-från-eneo) för `upstream_too_large` och `upstream_redirect`.
 
-**Lägga till en rutt.** Lägg en rad i `_PROXY_ROUTE_RULES` med exakt de metoder och den sökväg som behövs, med avslutande snedstreck, och ett test i `backend/tests/test_eneo_proxy_auth.py`: rutten når Eneo, och en närliggande rutt (annan metod, extra segment, varianten utan snedstreck) nekas. Filer laddas upp och strömmas med de särskilda rutterna, inte med listan. En header en ny rutt behöver läggs i `_FORWARDED_REQUEST_HEADERS`.
+**Lägga till en rutt.** Lägg en rad i `PROXY_ROUTES` med exakt de metoder och den sökväg som behövs, med avslutande snedstreck och ett eget namn för varje id, en rad i tabellen ovan och en text i `ENEO_SUMMARIES` i `backend/export_openapi.py`, och kör `python export_openapi.py` i `backend/`. Lägg ett test i `backend/tests/test_eneo_proxy_auth.py`: rutten når Eneo, och en närliggande rutt (annan metod, extra segment, varianten utan snedstreck) nekas. Filer laddas upp och strömmas med de särskilda rutterna, inte med listan. En header en ny rutt behöver läggs i `_FORWARDED_REQUEST_HEADERS`.
 
 ## Gränser
 
@@ -100,7 +104,7 @@ Värdena (standard och regler) står i [Drift](operations.md#miljövariabler). H
 | Gräns | Gäller | Överskridet ger |
 |---|---|---|
 | `MAX_BODY_BYTES` | Varje request-body utom uppladdningarna: JSON och allt annat, med eller utan session, även inloggningens. WebSocket berörs inte. | 413 med `max_body_bytes` i svaret. En ogiltig `Content-Length` ger 400. |
-| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till de tre uppladdningsrutterna, hela request-bodyn inräknad. | 413 med `max_upload_bytes` i svaret; 411 utan `Content-Length`. |
+| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till de två uppladdningsrutterna, hela request-bodyn inräknad. | 413 med `max_upload_bytes` i svaret; 411 utan `Content-Length`. |
 | `MAX_RESPONSE_BYTES` | Ett enskilt svar från Eneo som modulen läser (proxyn och uppladdningens svar). En fil som strömmas räknas inte. | `502 upstream_too_large` |
 | små svar, 1 MiB | Svar som bär en token eller en URL (ticketväxling, sessionskontroll, förnyelse, signerad URL, live-ticket) och kroppen i ett misslyckat filsvar. | Ett misslyckat anrop: ticketväxlingen avslutas utan session, en signerad URL ger `502 upstream_invalid`, en live-ticket händelsen `upstream_unreachable`; ett misslyckat filsvar behåller sin status men får en standardtext i stället för Eneos kropp. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | Hela vidarebefordran av en uppladdning, inte bara varje läsning. | `504 upstream_upload_timeout` |

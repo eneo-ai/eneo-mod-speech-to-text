@@ -1,5 +1,3 @@
-"use client";
-
 import { useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { InputGroup } from "@astryxdesign/core/InputGroup";
@@ -7,7 +5,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { addNames, splitNames, takeNames } from "@/lib/participants";
+import { addNames, hasSeparator, splitNames, takeNames } from "@/lib/participants";
 
 const ADD_NAME = "Lägg till namn";
 
@@ -131,7 +129,7 @@ export function ParticipantsInput({
             onPaste={(event) => {
               // A single-line input drops line breaks, so split the pasted list here.
               const pasted = event.clipboardData.getData("text");
-              if (!/[,;\n\r]/.test(pasted)) return;
+              if (!hasSeparator(pasted)) return;
               event.preventDefault();
               add(splitNames(text + pasted));
               setText("");

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Memory of a running image under big multipart uploads: the method the baseline (B0.1) used and the acceptance (B4.2, check 9) repeats.
+"""Memory of a running image under big multipart uploads: the method of baseline.json and of check 9.
 
     measure.py CONTAINER BASE_URL ENEO_URL CASE [CASE ...]
 
@@ -11,8 +11,8 @@
                 (upstream.py's record format: request_line, content_length, transfer_encoding, bytes_received, how, seconds,
                 started_at, finished_at) and GET /__reset clears the list
 
-Environment: PW_DIR (a frontend directory with node_modules, for xhr cases), UPLOAD_PATH (default
-/api/eneo/flows/flow-1/steps/step-1/runtime-files/), UPLOAD_FILES_DIR (default <tmp>/stt-upload-files), EXPECTED_USER (default user-1),
+Environment: PW_DIR (a frontend directory with node_modules, for xhr cases), UPLOAD_PATH (required: the upload route of a flow's step,
+/api/eneo/flows/<flow>/steps/<step>/runtime-files/), UPLOAD_FILES_DIR (default <tmp>/stt-upload-files), EXPECTED_USER (default user-1),
 UPLOAD_ORIGIN (the Origin the write names; default BASE_URL: set it to the module's public address when BASE_URL is the image's own port).
 Prints one JSON row per case. Start a fresh container per case for a clean "before"; the script stops nothing it did not start.
 """
@@ -20,7 +20,7 @@ import http.client, json, os, statistics, subprocess, sys, tempfile, time
 from urllib.parse import quote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-PATH = os.environ.get("UPLOAD_PATH", "/api/eneo/flows/flow-1/steps/step-1/runtime-files/")
+PATH = os.environ["UPLOAD_PATH"]
 FILES = os.environ.get("UPLOAD_FILES_DIR", os.path.join(tempfile.gettempdir(), "stt-upload-files"))
 USER = os.environ.get("EXPECTED_USER", "user-1")
 ORIGIN = os.environ.get("UPLOAD_ORIGIN")

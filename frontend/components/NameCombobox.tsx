@@ -1,5 +1,3 @@
-"use client";
-
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IconButton } from "@astryxdesign/core/IconButton";
