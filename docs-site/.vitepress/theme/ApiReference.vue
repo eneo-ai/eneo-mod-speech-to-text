@@ -1,13 +1,9 @@
 <script setup lang="ts">
-// Mounts Scalar on this page only. It is fetched when the page opens, and reads the spec from the site's own files.
+// Mounts Scalar on this page only. It is fetched when the page opens, and reads docs/api/openapi.json from the site's own files.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useData } from 'vitepress'
-import placeholder from '../../api-placeholder.json?url'
+import spec from '../../../docs/api/openapi.json?url'
 import { translations } from './scalar-sv'
-
-// docs/api/openapi.json when it exists, else the placeholder beside this package.
-const generated = import.meta.glob('../../../docs/api/openapi.json', { query: '?url', import: 'default', eager: true })
-const spec = (Object.values(generated)[0] as string | undefined) ?? placeholder
 
 const host = ref<HTMLElement>()
 const { isDark } = useData()
