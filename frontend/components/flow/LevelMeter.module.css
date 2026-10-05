@@ -1,5 +1,6 @@
 /* The level meter's bars: decorative, driven fifteen times a second from the audio frames (LevelMeter.tsx). */
-.meter {
+/* Without specificity of its own, so that a consumer's class (Recorder's stageMeter hides it) wins whatever the order of the stylesheets. */
+:where(.meter) {
   display: flex;
   align-items: center;
 }
@@ -50,6 +51,9 @@
   .steps .bar,
   .wave .bar {
     forced-color-adjust: none;
+  }
+
+  .steps .bar {
     background: GrayText;
   }
 
