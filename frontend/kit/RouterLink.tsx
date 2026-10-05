@@ -1,5 +1,5 @@
 // Copied in shape from eneo-module-kit-ui, template/web/src/main.tsx (RouterLink), commit 1559766, and made to tell a
-// page of the app from a file. Plan C task stt-plan-c-module-kit-gwh.3 deletes this copy for the kit's own.
+// page of the app from a file.
 
 import type { AnchorHTMLAttributes } from "react";
 import { Link } from "react-router";
