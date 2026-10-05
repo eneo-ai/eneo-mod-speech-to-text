@@ -202,3 +202,17 @@ export function errorAdvice(err: unknown): ErrorAdvice {
 export function friendlyError(err: unknown): string {
   return errorAdvice(err).message;
 }
+
+// Eneo's answers that say the pause is over, whatever was asked of it: trying the same again can only fail.
+const REVIEW_OVER = new Set([
+  "flow_review_expired",
+  "flow_review_not_active",
+  "flow_review_already_resumed",
+  "flow_review_cancelled",
+  "flow_review_rejected",
+]);
+
+/** The pause is over: it ran out, was decided or resumed elsewhere, or the run ended. The run is what to look at then. */
+export function reviewPauseEnded(err: unknown): boolean {
+  return err instanceof ApiError && err.code !== undefined && REVIEW_OVER.has(err.code);
+}

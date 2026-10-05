@@ -42,7 +42,7 @@ import {
 } from "@/lib/api";
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
-import { friendlyError } from "@/lib/errors";
+import { friendlyError, reviewPauseEnded } from "@/lib/errors";
 import { RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
@@ -408,6 +408,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return null;
     } catch (err) {
       const message = describe(err);
+      if (reviewPauseEnded(err)) {
+        readRunAgain(runId);
+        return message;
+      }
       setRunError(message);
       // The pause as Eneo has it now (a newer revision, or approved), so trying again starts from it.
       const latest = await getActiveReviewCheckpoint(flowId, runId).catch(() => null);
@@ -441,6 +445,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return updated;
     } catch (err) {
       const message = describe(err);
+      if (reviewPauseEnded(err)) {
+        readRunAgain(checkpoint.flow_run_id);
+        return { error: message };
+      }
       setRunError(message);
       // After e.g. a stale revision: the current checkpoint is read, so that the form follows the server's version
       // before the person tries again.
@@ -469,8 +477,18 @@ function FlowDetail({ flowId }: { flowId: string }) {
       // The run is cancelled: followed to its end, so that its steps and result are read as usual.
       void follow(runId);
     } catch (err) {
+      if (reviewPauseEnded(err)) return readRunAgain(runId);
       setRunError(friendlyError(err));
     }
+  }
+
+  /**
+   * The review is over (it ran out, was decided elsewhere, or the run ended), so its buttons would only fail: the run
+   * is read again, and its state, whatever it is, replaces the review.
+   */
+  function readRunAgain(runId: string) {
+    setRunError(null);
+    void follow(runId);
   }
 
   /** A new recording: the same flow and details (the participants); the session let go of the audio when it was sent. */
