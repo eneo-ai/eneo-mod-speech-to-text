@@ -117,12 +117,6 @@ const ALLOWED: Record<string, string> = {
 
 /** Raw values to be replaced by a token, and with which: the design lane empties this list, and an entry that no longer occurs fails the test. */
 const TO_REPLACE: Record<string, string> = {
-  "components/TranscriptEditor.module.css | .editor:has(.text:focus-visible) .focusLabel | border-radius: 2px": "a --radius-* token",
-  "components/TranscriptEditor.module.css | .text [data-turn-index] | scroll-margin-block: var(--transcript-toolbar-height, 0px) 1rem": "var(--spacing-4) (16px)",
-  "components/TranscriptEditor.module.css | @media (pointer: coarse) > .span | padding-block: 0.8em": "a --spacing-* token (a coarse pointer's taller target)",
-  "components/TranscriptEditor.module.css | .word | border-radius: 2px": "a --radius-* token",
-  "components/TranscriptPlayer.module.css | .skipLink | margin: -1px": "the design system's VisuallyHidden, not a hand-written copy of its rule",
-  "components/flow/LiveSheet.module.css | @media (max-height: 340px) > .heading | margin: -1px": "the design system's VisuallyHidden, not a hand-written copy of its rule",
   "components/flow/Markdown.module.css | .visuallyHidden | margin: -1px": "the design system's VisuallyHidden, not a hand-written copy of its rule",
   "components/flow/ResultDocument.module.css | .prose code | font-size: 0.9em": "a --font-size-* token",
 };
