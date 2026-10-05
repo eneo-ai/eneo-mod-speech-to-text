@@ -484,6 +484,9 @@
           }
         ],
         "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
           "400": {
             "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal.",
             "content": {
@@ -542,6 +545,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -616,6 +622,9 @@
           }
         ],
         "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
           "400": {
             "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal.",
             "content": {
@@ -674,6 +683,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -739,6 +751,9 @@
           }
         ],
         "responses": {
+          "200": {
+            "$ref": "#/components/responses/EneoAnswer"
+          },
           "400": {
             "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal.",
             "content": {
@@ -797,6 +812,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       },
@@ -828,14 +846,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -852,6 +863,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1128,14 +1142,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1152,6 +1159,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1185,14 +1195,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1209,6 +1212,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1242,14 +1248,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1266,6 +1265,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1299,14 +1301,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1323,6 +1318,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1356,14 +1354,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1380,6 +1371,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       },
@@ -1424,14 +1418,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1461,6 +1448,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1503,14 +1493,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1527,6 +1510,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1569,14 +1555,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1593,6 +1572,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1635,14 +1617,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1659,6 +1634,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1710,14 +1688,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1734,6 +1705,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1776,14 +1750,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1800,6 +1767,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1860,14 +1830,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1884,6 +1847,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -1948,14 +1914,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -1985,6 +1944,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2040,14 +2002,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2077,6 +2032,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2132,14 +2090,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2169,6 +2120,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2224,14 +2178,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2261,6 +2208,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2325,14 +2275,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2362,6 +2305,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2426,14 +2372,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2463,6 +2402,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2505,14 +2447,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2529,6 +2464,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2571,14 +2509,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2595,6 +2526,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2637,14 +2571,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2661,6 +2588,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2725,14 +2655,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2762,6 +2685,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2826,14 +2752,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2863,6 +2782,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -2927,14 +2849,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -2964,6 +2879,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -3028,14 +2946,7 @@
         ],
         "responses": {
           "200": {
-            "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`).",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EneoPayload"
-                }
-              }
-            }
+            "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
             "$ref": "#/components/responses/Unauthenticated"
@@ -3065,6 +2976,9 @@
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoAnswer"
           }
         }
       }
@@ -3123,6 +3037,16 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/Error"
+            }
+          }
+        }
+      },
+      "EneoAnswer": {
+        "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EneoPayload"
             }
           }
         }

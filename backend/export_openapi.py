@@ -143,11 +143,11 @@ def header(name: str, description: str, *, required: bool = False) -> dict[str, 
 
 
 REDIRECT = {"Location": {"description": "Dit webbläsaren går härnäst.", "schema": {"type": "string"}}}
-ENEO_ANSWER = reply(
-    "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar "
-    "blir `502 upstream_too_large`).",
-    {"application/json": {"schema": {"$ref": "#/components/schemas/EneoPayload"}}},
-)
+# Eneo's answer to a call the module forwards is the module's own: any status Eneo gives, and what Eneo sends.
+ENEO_ANSWERS = {
+    "200": {"$ref": "#/components/responses/EneoAnswer"},
+    "default": {"$ref": "#/components/responses/EneoAnswer"},
+}
 UPLOAD_BODY = {
     "required": True,
     "description": "Exakt en filpart med namnet `upload_file` och inga andra fält. Filnamn och innehållstyp får sakna "
@@ -280,6 +280,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         origin=True,
         user="required",
         body=UPLOAD_BODY,
+        success=ENEO_ANSWERS,
         parameters=(UPLOAD_TIMEOUT,),
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
@@ -292,6 +293,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         origin=True,
         user="required",
         body=UPLOAD_BODY,
+        success=ENEO_ANSWERS,
         parameters=(UPLOAD_TIMEOUT,),
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
@@ -304,6 +306,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         origin=True,
         user="required",
         body=UPLOAD_BODY,
+        success=ENEO_ANSWERS,
         parameters=(UPLOAD_TIMEOUT,),
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
@@ -466,7 +469,7 @@ def eneo_operation(method: str, template: str) -> dict[str, Any]:
         session=True,
         origin=method != "GET",
         user="optional" if method == "GET" else "required",
-        success={"200": ENEO_ANSWER},
+        success=ENEO_ANSWERS,
         errors=PROXY_ERRORS,
         body=None
         if method == "GET"
@@ -510,6 +513,11 @@ COMPONENTS: dict[str, Any] = {
             "Ingen giltig session. Sidan går till inloggningen.",
             json_of(ERROR),
             {"X-Auth-Required": {"description": "Alltid `session`.", "schema": {"type": "string"}}},
+        ),
+        "EneoAnswer": reply(
+            "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett "
+            "längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
+            json_of({"$ref": "#/components/schemas/EneoPayload"}),
         ),
         "OriginRefused": reply("`Origin` är inte modulens egen.", json_of(ERROR)),
         "UserChanged": reply(

@@ -196,7 +196,16 @@ class AppCase(unittest.TestCase):
             )
         )
 
-    def call(self, method: str, path: str, *, session: bool = True, origin: str | None = None, user: str | None = None):
+    def call(
+        self,
+        method: str,
+        path: str,
+        *,
+        session: bool = True,
+        origin: str | None = None,
+        user: str | None = None,
+        files: dict | None = None,
+    ):
         client = TestClient(main.app, raise_server_exceptions=False, follow_redirects=False)
         if session:
             client.cookies.set(SESSION_COOKIE, self.session)
@@ -206,7 +215,7 @@ class AppCase(unittest.TestCase):
         if user is not None:
             headers["X-Expected-User"] = user
         url = re.sub(r"\{(\w+)\}", lambda match: "light" if match[1] == "variant" else "x", path)
-        return client.request(method, url, headers=headers)
+        return client.request(method, url, headers=headers, files=files)
 
     @staticmethod
     def parameter_names(operation: dict) -> set[str]:
@@ -296,6 +305,28 @@ class AnswerTests(AppCase):
             else:
                 self.assertLessEqual(set(organization["required"]), set(body["organization"]))
                 self.assertLessEqual(set(body["organization"]), set(organization["properties"]))
+
+    def test_what_eneo_answers_comes_back_as_its_own_and_the_file_says_it_may(self) -> None:
+        upload = {"upload_file": ("meeting.webm", b"audio", "audio/webm")}
+        files = "/api/eneo/flows/{flow_id}/files/"
+        cases = (
+            ("GET", "/api/eneo/flows/", None, 200, b'{"items": []}'),
+            ("GET", "/api/eneo/flows/", None, 404, b'{"detail": "Not found"}'),
+            ("POST", "/api/eneo/flows/{flow_id}/runs/", None, 201, b'{"id": "run-1"}'),
+            ("POST", files, upload, 200, b'{"id": "file-1"}'),
+            ("POST", files, upload, 422, b'{"detail": "Unsupported"}'),
+        )
+        for method, path, body, status, content in cases:
+            with self.subTest(method=method, path=path, status=status):
+                main.http_client = Eneo(status, content)
+
+                response = self.call(method, path, origin=main.settings.module_origin, user="user-id", files=body)
+
+                self.assertEqual((response.status_code, response.content), (status, content))
+                responses = self.operations[(method, path)]["responses"]
+                shared = {"$ref": "#/components/responses/EneoAnswer"}
+                self.assertEqual(responses.get(str(status), responses.get("default")), shared)
+                self.assertEqual((responses["200"], responses["default"]), (shared, shared))
 
 
 if __name__ == "__main__":
