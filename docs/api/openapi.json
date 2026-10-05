@@ -488,7 +488,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "400": {
-            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal.",
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; här står det modulens.",
             "content": {
               "application/json": {
                 "schema": {
@@ -626,7 +626,7 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "400": {
-            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal.",
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; här står det modulens.",
             "content": {
               "application/json": {
                 "schema": {

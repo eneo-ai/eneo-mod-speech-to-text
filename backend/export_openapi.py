@@ -390,7 +390,8 @@ def refusals(op: Op) -> dict[str, Any]:
     if op.too_large == "max_upload_bytes":  # an upload: what the module itself checks before it forwards a byte
         responses["400"] = reply(
             "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en "
-            "`Content-Length` som inte är ett tal.",
+            "`Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; "
+            "här står det modulens.",
             json_of(ERROR),
         )
         responses["411"] = reply("`Content-Length` saknas.", json_of(ERROR))
