@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The live relay under static load: Task B4.2, check 15.
+"""The live relay under static load: check 15.
 
 Static files, uploads and the WebSocket relay share one event loop in the image. One live session streams audio at 20 frames a second
 and the round trip from a frame to the event the relay answers with is measured, first alone and then while the module is loaded.

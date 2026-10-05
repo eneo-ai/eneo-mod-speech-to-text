@@ -44,7 +44,7 @@ out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 - Never lower a gate threshold, delete a gate state or add an axe exclusion to get a green gate.
 - Credentials never reach the browser: the service key, the module-user token, the login ticket and Eneo's signed file
   URLs stay in the backend. Do not put them in a response, in a URL the browser sees, or in a log.
-- A new Eneo route for the browser needs a row in `_PROXY_ROUTE_RULES` (`backend/app/main.py`) and a test in
+- A new Eneo route for the browser needs a row in `PROXY_ROUTES` (`backend/app/main.py`) and a test in
   `backend/tests/test_eneo_proxy_auth.py`. The proxy denies everything that is not listed.
 - A new backend setting is read and validated in `backend/app/config.py`, with a test in `backend/tests/test_config.py`
   and a row in the settings table of `docs/backend.md`.
@@ -83,7 +83,7 @@ checkout, so stop your own `npm run dev` before the gate. Never `pkill -f`; stop
 
 ## How to find things
 
-- Which Eneo routes may the browser reach: `_PROXY_ROUTE_RULES` in `backend/app/main.py`.
+- Which Eneo routes may the browser reach: `PROXY_ROUTES` in `backend/app/main.py`.
 - Which settings exist: `backend/app/config.py`; all of them with values per environment: `docs/operations.md`.
 - Who owns a piece of state or a rule: the first comment in the file in `frontend/lib/` ("The one owner of ..."), and
   "Var tillståndet bor" in `docs/frontend.md`.

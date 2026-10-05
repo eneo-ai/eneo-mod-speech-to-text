@@ -1,4 +1,4 @@
-"""What the backend answers as a web server: the security headers on every response, /health, and (B1.3, B1.4) the built UI.
+"""What the backend answers as a web server: the security headers on every response, /health, and the built UI.
 
 The header set is ``app/security_headers.json``, the one definition; a header an endpoint sets itself wins.
 """
@@ -691,7 +691,7 @@ class StaticServingTests(BuiltUiCase):
                     self.assertEqual(response.headers.get_list(name), [value], f"{name} on {path}")
 
     def test_health_answers_json_even_for_a_folder_with_no_page(self) -> None:
-        # The launcher refuses to start without index.html (B1.1); the route is not what checks it.
+        # The launcher refuses to start without index.html; the route is not what checks it.
         empty = tempfile.TemporaryDirectory()
         self.addCleanup(empty.cleanup)
         client = TestClient(load_app(Path(empty.name)).app, raise_server_exceptions=False)
@@ -714,8 +714,7 @@ PLAIN_JS = "console.log('plain')"
 
 
 class JsonCompressionTests(HeadersCase):
-    """Next gzipped a proxied JSON answer (880,050 bytes to 87,342, measured in B0.1) and the backend alone does not: a
-    large JSON answer of the proxy is compressed for a client that accepts it, and nothing else is ever touched."""
+    """A large JSON answer of the proxy is compressed for a client that accepts it, and nothing else is ever touched."""
 
     LARGE = json.dumps({"items": [{"id": f"flow-{n}", "name": "Nämndmöte till rapport", "description": "x" * 40} for n in range(2000)]}).encode()
     FLOWS = "/api/eneo/flows/"
