@@ -146,6 +146,7 @@ const OWN_CODES = new Set([
   "not_started",
   "stalled",
   "server_not_responding",
+  "request_timed_out",
 ]);
 
 // "Failed to fetch" in Chromium, "NetworkError when attempting to fetch resource." in Firefox, "Load failed" in Safari.
@@ -200,4 +201,25 @@ export function errorAdvice(err: unknown): ErrorAdvice {
 /** What happened and what to do next, in plain Swedish. */
 export function friendlyError(err: unknown): string {
   return errorAdvice(err).message;
+}
+
+// Eneo's answers that say the pause is over, whatever was asked of it: trying the same again can only fail.
+const REVIEW_OVER = new Set([
+  "flow_review_expired",
+  "flow_review_not_active",
+  "flow_review_already_resumed",
+  "flow_review_cancelled",
+  "flow_review_rejected",
+]);
+
+/** The pause is over: it ran out, was decided or resumed elsewhere, or the run ended. The run is what to look at then. */
+export function reviewPauseEnded(err: unknown): boolean {
+  return err instanceof ApiError && err.code !== undefined && REVIEW_OVER.has(err.code);
+}
+
+export const FILE_GONE = "Filen finns inte kvar hos Eneo.";
+
+/** What a file that could not be fetched says: gone from Eneo, or whatever the failure is; trying again is always offered. */
+export function fileProblem(err: unknown): string {
+  return err instanceof ApiError && (err.status === 404 || err.status === 410) ? FILE_GONE : friendlyError(err);
 }

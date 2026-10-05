@@ -6,14 +6,18 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { FlowFrame } from "@/components/flow/FlowFrame";
+import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
 import { documentTitle, PRODUCT_NAME } from "@/lib/product";
 
-/** The flow page's shape while it loads, so nothing moves when it arrives. */
-export function FlowSkeleton() {
+/**
+ * The flow page's shape while it loads, so nothing moves when it arrives. A load that goes on says so and offers to
+ * load again.
+ */
+export function FlowSkeleton({ onRetry }: { onRetry: () => void }) {
   return (
     <FlowFrame
       aside={
@@ -33,6 +37,7 @@ export function FlowSkeleton() {
       <VisuallyHidden as="p" role="status">
         Laddar flödet…
       </VisuallyHidden>
+      <SlowWait onRetry={onRetry} />
       <VStack gap={3} aria-busy="true">
         <Skeleton width={224} height={24} />
         {[0, 1, 2].map((card) => (

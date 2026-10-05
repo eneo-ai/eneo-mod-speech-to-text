@@ -9,6 +9,12 @@
   min-inline-size: 0;
 }
 
+/* Why a file could not be had, under its row, on a line of its own. */
+.problem {
+  flex: 1 1 100%;
+  padding: 0 var(--spacing-2) var(--spacing-2);
+}
+
 /* A file's name as a button: its words line up with the size under it, not with the button's padding. */
 .name {
   margin-inline-start: calc(var(--spacing-3) * -1);

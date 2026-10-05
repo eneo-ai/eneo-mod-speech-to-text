@@ -250,7 +250,7 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.doesNotMatch(html, /<main|role="main"/);
 });
 
-const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
+const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = [], extra: { onStartAgain?: () => void } = {}) =>
   markup(
     createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
@@ -262,8 +262,39 @@ const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
       showTranscript: false,
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
+      ...extra,
     })),
   );
+
+test("a finished run with nothing to show says so and offers a new run; it never says the result is ready", () => {
+  for (const result of [{ kind: "inline_text", text: "" }, { kind: "inline_text", text: "  \n" }, null, undefined]) {
+    const html = resultOf({ created_at: created, result }, [], { onStartAgain: () => undefined });
+    const words = text(html);
+    assert.match(html, /<h1[^>]*>Resultatet är tomt<\/h1>/, JSON.stringify(result));
+    assert.doesNotMatch(words, /är klar|är klart/, "no success heading over a blank page");
+    assert.match(words, /Körningen blev klar, men flödet gav inget att visa\./);
+    assert.match(words, /Starta en ny körning/);
+    assert.doesNotMatch(html, /aria-label="Dokumentet"|aria-label="Texten"/, "no empty document card");
+  }
+});
+
+test("an empty result of a run with no audio to start again with offers only the header's new recording", () => {
+  const words = text(resultOf({ created_at: created, result: { kind: "inline_text", text: "" } }));
+  assert.match(words, /Resultatet är tomt/);
+  assert.doesNotMatch(words, /Starta en ny körning/);
+  assert.match(words, /Ny inspelning/);
+});
+
+test("a result with something to show, or that was sent on, or whose files cannot be fetched, is not called empty", () => {
+  const text_ = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], { onStartAgain: () => undefined });
+  assert.match(text_, /<h1[^>]*>Texten är klar<\/h1>/);
+  assert.doesNotMatch(text(text_), /Starta en ny körning|Resultatet är tomt/);
+  assert.match(resultOf({ created_at: created, result: { kind: "outbound_http" } }, [], { onStartAgain: () => undefined }), /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  const purged = { ...report, available: false, previewable: false, meta: "Filen har tagits bort." };
+  const document_ = resultOf({ created_at: created, result: { kind: "artifact", files: [] } }, [purged], { onStartAgain: () => undefined });
+  assert.match(document_, /<h1[^>]*>Dokumentet är klart<\/h1>/);
+  assert.match(text(document_), /Filen har tagits bort\./, "the file is there, with why it cannot be had");
+});
 
 test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
   const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });

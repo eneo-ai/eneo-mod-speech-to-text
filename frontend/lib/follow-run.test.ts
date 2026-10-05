@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import type { FlowGraph, FlowRunSummary } from "./api";
+import { ApiError, type FlowGraph, type FlowRunSummary } from "./api";
 import { HIDDEN_POLL_MS, VISIBLE_POLL_MS, followRun, readFinishedRun, type PageVisibility, type RunSnapshot } from "./follow-run";
 import { createOnlineStatus } from "./online-status";
 
@@ -210,4 +210,40 @@ test("reads that keep failing stop being retried once the page tears the follow 
   t.mock.timers.tick(120_000);
   await settle();
   assert.equal(reads, 1, "no read after the teardown");
+});
+
+test("a run whose status cannot be read is reported as in trouble from the first failed read until a read goes through", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let reads = 0;
+  const heard: boolean[] = [];
+  const snapshots: RunSnapshot[] = [];
+  const done = followRun("flow-1", "run-1", {
+    signal: new AbortController().signal,
+    onSnapshot: (snapshot) => snapshots.push(snapshot),
+    onTrouble: (failing) => heard.push(failing),
+    page: fakePage(false),
+    online: createOnlineStatus(),
+    deps: {
+      getStatus: async () => {
+        reads += 1;
+        if (reads === 1) throw new ApiError(503, "Service Unavailable", null);
+        if (reads === 2) throw new TypeError("Failed to fetch");
+        return run(reads === 3 ? "running" : "completed");
+      },
+      getGraph: async () => graph(null),
+    },
+  });
+
+  await until(() => heard.length === 1);
+  assert.deepEqual(heard, [true], "in trouble as soon as a read fails");
+  t.mock.timers.tick(1_000);
+  await until(() => reads === 2);
+  await settle();
+  assert.deepEqual(heard, [true], "a second failed read is no news");
+  t.mock.timers.tick(2_000);
+  await until(() => snapshots.length === 1);
+  assert.deepEqual(heard, [true, false], "out of trouble when a read goes through");
+  t.mock.timers.tick(VISIBLE_POLL_MS);
+  assert.equal((await done)?.run.status, "completed");
+  assert.deepEqual(heard, [true, false], "no news from reads that go through");
 });

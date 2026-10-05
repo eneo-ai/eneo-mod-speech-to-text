@@ -11,6 +11,7 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useSignedOut } from "@/components/AuthGate";
+import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { runElapsed, type StepView } from "@/lib/run-progress";
 import { creatingHeading } from "@/lib/flow-output";
@@ -27,6 +28,7 @@ export function RunProgress({
   startedAt,
   error = null,
   makesText = false,
+  retrying = null,
   onCancel,
 }: {
   flowName: string;
@@ -37,6 +39,8 @@ export function RunProgress({
   error?: string | null;
   /** The flow ends in text, not a file (lib/flow-output makesText). */
   makesText?: boolean;
+  /** Set while the run's status cannot be read: the page asks again by itself, and says so. */
+  retrying?: { onRetry: () => void } | null;
   onCancel: () => Promise<void>;
 }) {
   const heading = usePhaseHeading(`${makesText ? "Skapar text" : "Skapar dokument"} · ${flowName}`);
@@ -88,6 +92,14 @@ export function RunProgress({
               {elapsed && `${elapsed}. `}Det kan ta några minuter.
             </Text>
           </VStack>
+          {retrying && (
+            <VStack gap={3}>
+              <Text as="p" role="status">
+                Försöker igen. Körningen fortsätter i Eneo.
+              </Text>
+              <SlowWait onRetry={retrying.onRetry} />
+            </VStack>
+          )}
         </VStack>
         {steps.length > 0 && (
           <VStack as="section" aria-label="Flödets steg">
@@ -121,8 +133,11 @@ export function RunProgress({
   );
 }
 
-/** Opening an earlier run: the shape of the view until its state is known. */
-export function RunOpening() {
+/**
+ * Opening an earlier run: the shape of the view until its state is known. A wait that goes on says so and offers a way
+ * on; `retrying` is set while its status cannot be read, and the page asks again by itself.
+ */
+export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void; retrying?: boolean }) {
   return (
     <StateCard aria-busy="true">
       <VStack gap={6}>
@@ -130,6 +145,12 @@ export function RunOpening() {
         <VisuallyHidden as="p" role="status">
           Hämtar körningen…
         </VisuallyHidden>
+        {retrying && (
+          <Text as="p" role="status">
+            Försöker igen.
+          </Text>
+        )}
+        <SlowWait onRetry={onRetry} />
         <Skeleton width="66%" height={28} />
         <Skeleton width="50%" height={20} />
         <Skeleton width="100%" height={128} radius={4} />

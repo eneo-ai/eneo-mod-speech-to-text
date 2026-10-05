@@ -49,6 +49,8 @@ export interface PageVisibility {
 interface FollowOptions {
   signal: AbortSignal;
   onSnapshot: (snapshot: RunSnapshot) => void;
+  /** Heard when the status cannot be read (true, from the first failed read) and when a read goes through again (false). */
+  onTrouble?: (failing: boolean) => void;
   page?: PageVisibility;
   online?: OnlineStatus;
   deps?: { getStatus: typeof getRunStatus; getGraph: typeof getRunGraph };
@@ -61,16 +63,30 @@ export async function followRun(
   {
     signal,
     onSnapshot,
+    onTrouble,
     page = documentVisibility(),
     online = onlineStatus,
     deps = { getStatus: getRunStatus, getGraph: getRunGraph },
   }: FollowOptions,
 ): Promise<RunSnapshot | null> {
   let graph: FlowGraph | null = null;
+  let failing = false;
+  const inTrouble = (now: boolean) => {
+    if (now !== failing) onTrouble?.((failing = now));
+  };
   while (!signal.aborted) {
     // The run goes on in Eneo when the connection drops; follow it again when it is back.
     const [run, latest] = await withRetry(
-      () => Promise.all([deps.getStatus(flowId, runId), deps.getGraph(flowId, runId).catch(() => null)]),
+      async () => {
+        try {
+          const read = await Promise.all([deps.getStatus(flowId, runId), deps.getGraph(flowId, runId).catch(() => null)]);
+          inTrouble(false);
+          return read;
+        } catch (error) {
+          inTrouble(true);
+          throw error;
+        }
+      },
       { online, signal },
     );
     if (signal.aborted) break;

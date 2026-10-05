@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { ApiError } from "./api";
 import { unavailableCopy } from "../components/flow/FlowPageStates";
-import { errorAdvice, friendlyError } from "./errors";
+import { errorAdvice, FILE_GONE, fileProblem, friendlyError, reviewPauseEnded } from "./errors";
 
 const eneo = (status: number, code: string | undefined, message: string) =>
   new ApiError(status, message, { code, message }, code);
@@ -168,4 +168,24 @@ test("the app's own errors are shown as they are; what the browser raised is not
   for (const raised of [new DOMException("The quota has been exceeded.", "QuotaExceededError"), new DOMException("The operation was aborted.", "AbortError")]) {
     assert.equal(friendlyError(raised), "Ett okänt fel uppstod.", raised.name);
   }
+});
+
+test("an answer that says the review is over is told from one that only asks for another try", () => {
+  for (const code of ["flow_review_expired", "flow_review_not_active", "flow_review_already_resumed", "flow_review_cancelled", "flow_review_rejected"]) {
+    assert.equal(reviewPauseEnded(eneo(409, code, "The review is over.")), true, code);
+  }
+  for (const code of ["flow_review_stale_revision", "flow_review_edit_not_allowed", "flow_review_reject_reason_required", "upstream_unreachable"]) {
+    assert.equal(reviewPauseEnded(eneo(409, code, "Try again.")), false, code);
+  }
+  assert.equal(reviewPauseEnded(new TypeError("Failed to fetch")), false);
+  assert.equal(reviewPauseEnded(new ApiError(500, "Server error", null)), false);
+});
+
+test("a file Eneo no longer has says so; any other failure to fetch it says what the failure is", (t) => {
+  t.mock.method(console, "warn", () => undefined);
+  assert.equal(fileProblem(eneo(404, undefined, "File not found")), "Filen finns inte kvar hos Eneo.");
+  assert.equal(fileProblem(eneo(404, "flow_run_file_not_accessible", "The file is not available for this run.")), FILE_GONE);
+  assert.equal(fileProblem(new ApiError(410, "Gone", null)), FILE_GONE);
+  assert.equal(fileProblem(new ApiError(503, "Service Unavailable", null)), "Servern kunde inte nås just nu. Försök igen om en stund.");
+  assert.equal(fileProblem(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");
 });

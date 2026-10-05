@@ -42,7 +42,7 @@ import {
 } from "@/lib/api";
 import { unstoredDrafts } from "@/lib/drafts";
 import { EarlierRunsList } from "@/lib/earlier-runs";
-import { friendlyError } from "@/lib/errors";
+import { friendlyError, reviewPauseEnded } from "@/lib/errors";
 import { RECORDING_QUERY_PARAM } from "@/lib/flow-address";
 import type { SubmitRequest } from "@/lib/flow-session";
 import { makesText } from "@/lib/flow-output";
@@ -86,7 +86,7 @@ type RunState =
   | { kind: "idle" }
   | { kind: "submitting" }
   // An earlier run is being read; its state is not known yet.
-  | { kind: "opening" }
+  | { kind: "opening"; runId: string }
   // The run has ended, but its result or steps could not be read.
   | { kind: "unread"; runId: string; message: string }
   | { kind: "running"; run: Pick<FlowRunSummary, "id" | "status" | "flow_version" | "created_at">; graph: FlowGraph | null }
@@ -120,6 +120,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [published, setPublished] = useState<FlowPublished | null>(null);
   const [contract, setContract] = useState<RunContract | null>(null);
   const [loadError, setLoadError] = useState<unknown>(null);
+  // Counts the person's "Försök igen" on a flow that is slow to load; each one loads it again.
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  // The run's status cannot be read now, and is asked for again by itself.
+  const [pollTrouble, setPollTrouble] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
@@ -205,7 +209,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flowId]);
+  }, [flowId, loadAttempt]);
 
   useEffect(() => {
     return () => {
@@ -330,7 +334,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRunError(null);
     setRetryRefusal(null);
     writeRunIdToUrl(runId);
-    setRun({ kind: "opening" });
+    setRun({ kind: "opening", runId });
     void follow(runId);
   }
 
@@ -343,9 +347,11 @@ function FlowDetail({ flowId }: { flowId: string }) {
     const controller = new AbortController();
     followAbortRef.current = controller;
     const { signal } = controller;
+    setPollTrouble(false);
     try {
       const last = await followRun(flowId, runId, {
         signal,
+        onTrouble: (failing) => !signal.aborted && setPollTrouble(failing),
         onSnapshot: ({ run: current, graph: runGraph }) => {
           if (runOutcome(current.status) || current.status === "awaiting_review") return;
           setRun({ kind: "running", run: current, graph: runGraph });
@@ -376,6 +382,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun({ kind: "done", run: finished.run, steps: finished.steps, graph: last.graph });
     } catch (err) {
       if (signal.aborted) return;
+      setPollTrouble(false);
       setRunError(friendlyError(err));
       setRun({ kind: "idle" });
     }
@@ -413,6 +420,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return null;
     } catch (err) {
       const message = describe(err);
+      if (reviewPauseEnded(err)) {
+        readRunAgain(runId);
+        return message;
+      }
       setRunError(message);
       // The pause as Eneo has it now (a newer revision, or approved), so trying again starts from it.
       const latest = await getActiveReviewCheckpoint(flowId, runId).catch(() => null);
@@ -446,6 +457,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
       return updated;
     } catch (err) {
       const message = describe(err);
+      if (reviewPauseEnded(err)) {
+        readRunAgain(checkpoint.flow_run_id);
+        return { error: message };
+      }
       setRunError(message);
       // After e.g. a stale revision: the current checkpoint is read, so that the form follows the server's version
       // before the person tries again.
@@ -474,8 +489,18 @@ function FlowDetail({ flowId }: { flowId: string }) {
       // The run is cancelled: followed to its end, so that its steps and result are read as usual.
       void follow(runId);
     } catch (err) {
+      if (reviewPauseEnded(err)) return readRunAgain(runId);
       setRunError(friendlyError(err));
     }
+  }
+
+  /**
+   * The review is over (it ran out, was decided elsewhere, or the run ended), so its buttons would only fail: the run
+   * is read again, and its state, whatever it is, replaces the review.
+   */
+  function readRunAgain(runId: string) {
+    setRunError(null);
+    void follow(runId);
   }
 
   /** A new recording: the same flow and details (the participants); the session let go of the audio when it was sent. */
@@ -563,7 +588,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const holding = adopting && run.kind === "idle";
   useRouteReady(loadError !== null || (published !== null && contract !== null && !holding));
   if (loadError) return <FlowUnavailable error={loadError} />;
-  if (!published || !contract || holding) return <FlowSkeleton />;
+  if (holding) return <FlowSkeleton />;
+  if (!published || !contract) return <FlowSkeleton onRetry={() => setLoadAttempt((n) => n + 1)} />;
 
   // The views that can hold unsent work: the leave question, and their top bar's exits through it.
   const withLeave = (view: ReactNode) => (
@@ -640,7 +666,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
     );
   }
 
-  if (run.kind === "opening") return flowPage(<RunOpening />);
+  if (run.kind === "opening") return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.runId)} />);
 
   if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
@@ -658,6 +684,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
         )}
         startedAt={run.run.created_at}
         error={runError}
+        retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
         // Today's contract speaks only for a run of its own version.
         makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
         onCancel={() => onCancelRun(run.run.id)}
@@ -684,6 +711,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           contract={contract}
           audio={inputStep?.input_format?.toLowerCase() === "audio"}
           onNewRecording={onRunAgain}
+          onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
           onRegenerated={(regenerated) => {
             // The new run is followed like any other, from its progress to its own result.
             setRunError(null);

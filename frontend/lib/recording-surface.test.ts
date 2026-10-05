@@ -175,3 +175,106 @@ test("the live sheet says the speakers come when you are done, only when the flo
   assert.equal(await heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");
   assert.equal(await heading(false), "Preliminär text, den slutliga skapas när du är klar");
 });
+
+
+/** A live session whose status the test moves. */
+function movingLive(first: LiveSnapshot) {
+  let snapshot = first;
+  const listeners = new Set<() => void>();
+  const live: LiveSession = {
+    ...liveOf(first),
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
+  };
+  return {
+    live,
+    move: (next: Partial<LiveSnapshot>) => {
+      snapshot = { ...snapshot, ...next };
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
+const PAUSED = "Livetexten pausades. Inspelningen fortsätter.";
+
+test("a break in live text is said only once it has lasted 5 seconds, once, however often the connection flaps, and taken back after 5 seconds up", async (t) => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const { LIVE_SETTLE_MS } = await import("../components/flow/recording-hooks");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { live, move } = movingLive({ status: "live", started: true, pieces: [{ text: "Hej.", opensParagraph: true }], pending: "" });
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const region = view.container.querySelector('[role="log"]')!.parentElement!.nextElementSibling!;
+  assert.equal(region.getAttribute("role"), "status");
+  // Everything the region is told, as a screen reader would hear it.
+  const heard: string[] = [];
+  new window.MutationObserver(() => void heard.push(region.textContent ?? "")).observe(region, { childList: true, characterData: true, subtree: true });
+  const at = async (ms: number) => view.act(async () => t.mock.timers.tick(ms));
+  const change = (status: LiveSnapshot["status"]) => view.act(async () => move({ status }));
+
+  // A break that mends within the time is never said.
+  await change("reconnecting");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, "", "not yet");
+  await change("live");
+  await at(2 * LIVE_SETTLE_MS);
+  assert.deepEqual(heard, [], "a short break is not news");
+
+  // One that lasts is said when it has lasted.
+  await change("reconnecting");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, "");
+  await at(1);
+  assert.equal(region.textContent, PAUSED);
+  assert.deepEqual(heard, [PAUSED]);
+
+  // A connection that flaps does not take it back and say it again at every break.
+  for (let flap = 0; flap < 5; flap += 1) {
+    await change("live");
+    await at(1_000);
+    await change("reconnecting");
+    await at(1_000);
+  }
+  assert.equal(region.textContent, PAUSED);
+  assert.deepEqual(heard, [PAUSED], "said once");
+
+  // Up for as long as it took to be said, it is taken back.
+  await change("live");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, PAUSED);
+  await at(1);
+  assert.equal(region.textContent, "");
+});
+
+test("live text that cannot go on is said at once, also while a break has not yet been said", async (t) => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { live, move } = movingLive({ status: "live", started: true, pieces: [{ text: "Hej.", opensParagraph: true }], pending: "" });
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const region = () => view.container.querySelector('[role="log"]')!.parentElement!.nextElementSibling!.textContent;
+  await view.act(async () => move({ status: "reconnecting" }));
+  assert.equal(region(), "");
+  await view.act(async () => move({ status: "stopped" }));
+  assert.equal(region(), "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.");
+});
+
+test("with no text yet, the sheet says why in place of the promise of text, and only the failure's sentence is said", async () => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  for (const [status, started, sentence] of [
+    ["reconnecting", false, "Livetexten kan inte starta just nu. Inspelningen fortsätter."],
+    ["unavailable", false, "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar."],
+    ["stopped", true, "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar."],
+  ] as const) {
+    const view = await mount(createElement(LiveSheet, { live: liveOf({ status, started, pieces: [], pending: "" }), recorder: "recording" }));
+    const log = view.container.querySelector('[role="log"]')!;
+    assert.equal(log.textContent, sentence, `${status}: the sentence is where the promise was`);
+    assert.ok(!view.container.textContent?.includes("Texten visas här"), `${status}: no promise of text that will not come`);
+    assert.equal(log.querySelector("p")!.getAttribute("aria-hidden"), "true", "read once, from the status region");
+    const region = log.parentElement!.nextElementSibling!;
+    assert.equal(region.getAttribute("role"), "status");
+    assert.equal(region.textContent, sentence, "the status region still says it");
+    await view.unmount();
+  }
+});
