@@ -60,7 +60,7 @@ const durationHeadroom = (limitMs: number) => Math.max(limitMs < 20 * 60_000 ? l
 // The recording's target rate, in bytes per millisecond.
 const TARGET_BYTES_PER_MS = SPEECH_RECORDING.audioBitsPerSecond / 8 / 1000;
 // Re-read the storage estimate about once a minute.
-const SPACE_CHECK_EVERY_CHUNKS = 30;
+const SPACE_CHECK_EVERY_CHUNKS = Math.round(60_000 / CHUNK_MS);
 
 export type CaptureStatus = "idle" | "recording" | "paused" | "interrupted" | "stopped";
 
@@ -128,8 +128,10 @@ function recordingLeftMs({ maxRecordingMs }: CaptureLimits, parts: number, recor
   return maxRecordingMs - durationHeadroom(maxRecordingMs) - Math.max(0, parts - 1) * HANDOVER_ROOM_MS - recordedMs;
 }
 
+const SEND_OR_RESTART = "Skicka den, eller starta en ny inspelning för resten av mötet.";
+
 const noMoreTime = (maxRecordingMs: number) =>
-  `Inspelningen har nått flödets maxlängd ${formatDuration(maxRecordingMs)}. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+  `Inspelningen har nått flödets maxlängd ${formatDuration(maxRecordingMs)}. ${SEND_OR_RESTART}`;
 
 type EndReason = "stop" | "interrupt" | "leave";
 
@@ -566,7 +568,7 @@ export class RecordingCapture {
         remainingMs: 0,
         error:
           `Inspelningen nådde maxlängden ${formatDuration(maxRecordingMs)} och stoppades efter ` +
-          `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`,
+          `${formatDuration(this.elapsedMs())}. Den är sparad. ${SEND_OR_RESTART}`,
       });
       void this.stop();
       return;
@@ -586,11 +588,11 @@ export class RecordingCapture {
       // Eneo's part length filled the file slots before the longest recording: the slots are the limit.
       error =
         `Inspelningen stoppades efter ${formatDuration(this.elapsedMs())}: flödet tar emot högst ${maxFiles} ` +
-        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. ${SEND_OR_RESTART}`;
     } else {
       error =
         `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +
-        `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+        `${formatDuration(this.elapsedMs())}. Den är sparad. ${SEND_OR_RESTART}`;
     }
     this.set({ limitReached: true, remainingMs: 0, error });
     void this.stop();

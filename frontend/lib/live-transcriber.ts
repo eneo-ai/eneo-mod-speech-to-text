@@ -20,6 +20,7 @@
 
 import type { Question } from "./login-state";
 import type { OnlineStatus } from "./online-status";
+import { FRAME_BYTES } from "./pcm";
 
 /**
  * connecting: waiting for the first `ready`; live: text arrives;
@@ -88,7 +89,7 @@ export interface LiveDeps {
 // 30 s of 100 ms frames (about 1 MB) waits for `ready`; older audio is dropped.
 const MAX_BUFFERED_FRAMES = 300;
 // A connection with as much queued is not keeping up; a new session takes over.
-const MAX_QUEUED_BYTES = MAX_BUFFERED_FRAMES * 3_200;
+const MAX_QUEUED_BYTES = MAX_BUFFERED_FRAMES * FRAME_BYTES;
 // A pause in the words commits the whole words so far. A paragraph starts at a sentence's end after a longer
 // pause, or once the paragraph holds five sentences or a minute of speech.
 const COMMIT_AFTER_MS = 2_000;
