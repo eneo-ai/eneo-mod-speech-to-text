@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolveThemeTokens, type ResolvedThemeMode } from "@astryxdesign/core/theme/tokens";
 
 // WCAG relative luminance of the values the browser paints: the built theme's resolved tokens and the module's own
@@ -140,4 +140,17 @@ test("controls keep a mouse's density and grow to 44 px targets on a touch scree
   assert.equal(touch("sm"), 44, "sm on a touch screen");
   assert.equal(touch("md"), 44, "md on a touch screen");
   assert.ok(touch("lg") >= 44, "lg on a touch screen");
+});
+
+// Every size in the design system's tokens is in rem, so the page's text follows the size the reader has set in the browser
+// as long as nothing fixes the root's: a px font size on html or body would make a reader's setting do nothing.
+test("no stylesheet of the module fixes a font size in pixels", () => {
+  const sheets = ["styles", "components", "routes", "kit"].flatMap((folder) =>
+    readdirSync(folder, { recursive: true, encoding: "utf8" })
+      .filter((file) => file.endsWith(".css") && !file.includes("built"))
+      .map((file) => `${folder}/${file}`),
+  );
+  assert.ok(sheets.includes("styles/globals.css") && sheets.length > 10, "the module's stylesheets were found");
+  const fixed = sheets.flatMap((sheet) => readFileSync(sheet, "utf8").split("\n").flatMap((line, index) => (/font-size:\s*[\d.]+px/.test(line) ? [`${sheet}:${index + 1}`] : [])));
+  assert.deepEqual(fixed, []);
 });
