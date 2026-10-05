@@ -244,7 +244,7 @@ export function ReviewView({
   // mapping är json-steget vi redigerar strukturerat via talarrader.
   // Approved (and the resume still to go through): the saved decision is final, shown read-only, and the one
   // thing left is to go on.
-  const decided = Boolean(isReviewCheckpointApproved(checkpoint));
+  const decided = isReviewCheckpointApproved(checkpoint);
   const editable =
     !decided &&
     checkpoint.review_mode === "edit" &&

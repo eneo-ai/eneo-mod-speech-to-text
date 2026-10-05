@@ -509,9 +509,7 @@ export interface ReviewResumeResponse {
   run: FlowRunPublic;
 }
 
-export function isReviewCheckpointApproved(
-  checkpoint: FlowRunReviewCheckpointPublic | null | undefined,
-): checkpoint is FlowRunReviewCheckpointPublic {
+export function isReviewCheckpointApproved(checkpoint: FlowRunReviewCheckpointPublic | null | undefined): boolean {
   return checkpoint?.state === "approved" || checkpoint?.state === "resumed";
 }
 
