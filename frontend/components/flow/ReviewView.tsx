@@ -209,7 +209,7 @@ export function ReviewView({
   // korrigeringar för spelaren.
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
-  const [transcript] = useTranscriptContext({
+  const [transcript, , reloadTranscript] = useTranscriptContext({
     flowId,
     runId,
     enabled: isSpeakerMapping,
@@ -237,7 +237,7 @@ export function ReviewView({
   const [sample, setSample] = useState<string | null>(null);
   const listening = sounds ? sample : null;
 
-  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
+  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker

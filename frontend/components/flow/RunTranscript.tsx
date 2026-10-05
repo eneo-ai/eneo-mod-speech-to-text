@@ -35,7 +35,7 @@ export function useRunTranscript(flowId: string, runId: string, steps: readonly 
   const [confirmedWords] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
   );
-  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
   return { transcript, confirmedWords, editing, reload };
 }
 

@@ -426,6 +426,62 @@ test("a failed later save keeps the note that the document is older, and says wh
   assert.match(note()!.textContent ?? "", /inte sparad/);
 });
 
+test("a save refused as stale reads the saved corrections again, says so, and offers no retry of what could not be saved", async (t) => {
+  const { createElement } = await import("react");
+  const { RunResult } = await import("../components/flow/RunResult");
+  const original = globalThis.fetch;
+  t.after(() => void (globalThis.fetch = original));
+  const hash = "a".repeat(64);
+  let reads = 0;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    const path = String(url);
+    if (path.includes("transcript-words")) return Response.json({ code: "not_found" }, { status: 404 });
+    if (path.includes("transcript-corrections") && init?.method === "PATCH") {
+      return Response.json({ code: "flow_transcript_corrections_stale_revision" }, { status: 409 });
+    }
+    if (path.includes("transcript-corrections")) {
+      reads += 1;
+      return Response.json([{ flow_run_id: "run-1", step_id: "step-1", schema_version: 3, segments_hash: hash, occurrences: [], speaker_edits: [], revision: reads, stale: false, updated_at: "2026-09-24T10:00:00Z" }]);
+    }
+    return Response.json([]);
+  }) as typeof fetch;
+  const transcribe = {
+    id: "result-1", step_id: "step-1", step_order: 1, status: "completed",
+    input_payload_json: {
+      transcription: {
+        file_ids: [],
+        segments_hash: hash,
+        segments: [
+          { file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna till mötet." },
+          { file_index: 0, start: 2, end: 4, speaker: "SPEAKER_01", text: "Första punkten gäller budgeten." },
+        ],
+      },
+    },
+  };
+  const view = await mount(
+    await asPerson(createElement(RunResult, {
+      flowId: "flow-1",
+      flowName: "Nämndmöte till rapport",
+      run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
+      steps: [],
+      stepResults: [transcribe] as never,
+      files: [pdf],
+      onNewRecording: () => undefined,
+      onRegenerated: () => undefined,
+    })),
+  );
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  assert.equal(reads, 1);
+  await view.act(async () => button(view.container, "Talare 1, ändra talare")!.click());
+  await view.act(async () => document.querySelector<HTMLInputElement>('[data-popover-open] input[type="radio"][value="SPEAKER_01"]')!.click());
+  await view.act(async () => button(document.body, "Spara")!.click());
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+  assert.equal(reads, 2, "the saved corrections are read again");
+  assert.match(view.container.textContent ?? "", /har laddats om/);
+  assert.ok(!button(view.container, "Försök spara igen"), "nothing is left to retry: the correction is to be made again");
+  assert.ok(!(view.container.textContent ?? "").includes("osparade rättningar finns kvar"));
+});
+
 test("Dela reads a file ahead only when its size is known and under the cap, and stops reading when the page goes", async (t) => {
   const realFetch = globalThis.fetch;
   const fetched: { url: string; signal?: AbortSignal | null }[] = [];
