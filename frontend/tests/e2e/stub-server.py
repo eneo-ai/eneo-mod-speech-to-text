@@ -543,6 +543,8 @@ class Handler(BaseHTTPRequestHandler):
                     text({"type": "transcript.done", "text": " ".join(said)})
                     ws_send(self.wfile, 8, struct.pack(">H", 1000))
                     return
+                elif opcode == 9:  # a ping, as Eneo's server answers it: the backend's client closes a socket that does not pong in 20 s
+                    ws_send(self.wfile, 10, data)
                 elif opcode == 8:
                     ws_send(self.wfile, 8, data[:2])
                     return

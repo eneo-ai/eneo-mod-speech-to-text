@@ -403,6 +403,24 @@ class LiveTests(SignedIn):
         self.assertEqual(asyncio.run(scenario()), 403)
 
 
+    def test_the_stub_answers_a_ping_so_that_a_relay_that_pings_keeps_its_socket(self) -> None:
+        # The backend's client pings Eneo every 20 s and closes the socket with 1011 when no pong comes in 20 more: a stub that ignores
+        # pings ends every live session at 40 s, whatever is in front of it. Eneo's own server answers them.
+        key = {"X-API-Key": SERVICE_KEY}
+        status, _, answer, _ = call(self.stub, "POST", f"/api/v1/flows/{FLOW}/steps/{AUDIO_STEP}/live-transcription-sessions/", headers=key, body=json.dumps({"recording_id": self.recording}).encode())
+        self.assertEqual(status, 201)
+        ticket = json.loads(answer)["ticket"]
+
+        async def scenario():
+            async with websocket_client.connect(
+                f"ws://127.0.0.1:{self.stub}/api/v1/live-transcription", subprotocols=["eneo-live.v1", f"ticket.{ticket}"], open_timeout=5, ping_interval=None
+            ) as socket_:
+                self.assertEqual(json.loads(await socket_.recv())["type"], "ready")
+                await asyncio.wait_for(await socket_.ping(), 3)
+
+        asyncio.run(scenario())
+
+
 class UploadTests(SignedIn):
     PATH = f"/api/eneo/flows/{FLOW}/steps/{AUDIO_STEP}/runtime-files/"
 
