@@ -2,7 +2,7 @@
 
     backend/.venv/bin/python -m unittest frontend/tests/e2e/test_stub_eneo.py     (from the repository root)
 
-Two processes of this repository on two ports of 8470-8479: the stub (stub-server.py, the one fake Eneo of Plan B) and
+Two processes of this repository on two ports of 8470-8479: the stub (stub-server.py, the fake Eneo) and
 `python -m app.serve --api-only` with the stub as ENEO_BACKEND_URL. Every test signs in on its own, through the real
 module-login handshake, so no test shares a session. The same checks run in a browser as tests/prod/upstream.spec.ts.
 """

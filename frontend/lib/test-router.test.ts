@@ -1,7 +1,7 @@
 /**
- * The probe of Plan B task B2.1: react-router is an ES module, and the unit tests are compiled to CommonJS by tsc and
- * run by node:test. If the router cannot be loaded and driven that way, on the Node floor the repository declares, the
- * unit tests cannot be moved off Next's router; these tests are what says it can.
+ * react-router is an ES module, and the unit tests are compiled to CommonJS by tsc and run by node:test. These tests show
+ * that the router loads and can be driven that way, on the Node floor the repository declares, and that `withRouter`
+ * gives a component the data router the app has: links, Back and `useBlocker`.
  */
 
 import assert from "node:assert/strict";

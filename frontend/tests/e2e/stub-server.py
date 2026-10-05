@@ -1,4 +1,4 @@
-"""The one fake Eneo of Plan B, and a stand-in for the module backend in front of it. Dev and test only; never shipped.
+"""The one fake Eneo, and a stand-in for the module backend in front of it. Dev and test only; never shipped.
 
     python3 tests/e2e/stub-server.py [port]   # default 8401 (UPSTREAM_PORT, UPSTREAM_HOST)
 
