@@ -2,13 +2,13 @@ import { createContext, useContext, useEffect, useRef, useState, useSyncExternal
 import { useNavigate } from "react-router";
 import { LoadingShell } from "@/components/LoadingShell";
 import { ModuleUnreachable } from "@/components/ModuleUnreachable";
-import { SessionEndWarning } from "@/components/SessionEndWarning";
+import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
 import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
 import { browserStorage } from "@/lib/browser-storage";
 import { keepOnlyConfirmedWordsOf } from "@/lib/confirmed-words";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
-import { loginState, SESSION_CHANNEL, type Question } from "@/lib/login-state";
+import { loginState, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
 import { PHASE_HEADING } from "@/routes/RouteEffects";
 import { sessionUser } from "@/lib/user-identity";

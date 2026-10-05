@@ -16,9 +16,6 @@
 import type { AuthenticatedUser, AuthStatus } from "./api";
 import { sessionUser } from "./user-identity";
 
-/** Where the login window says it has signed in again (routes/SignedInAgain); every tab of the module listens (AuthGate). */
-export const SESSION_CHANNEL = "tal-till-text:session";
-
 /**
  * What a question to the backend (a status read, a request, a socket) remembers of the login when it was asked, to
  * tell when its answer comes whether it is still about the login the page has: the login's revision, and the

@@ -6,7 +6,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { authStatus } from "@/lib/api";
-import { SESSION_CHANNEL } from "@/lib/login-state";
+import { SESSION_CHANNEL } from "@/components/SessionEndWarning";
 import { userDisplayName } from "@/lib/user-identity";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { documentTitle } from "@/lib/product";

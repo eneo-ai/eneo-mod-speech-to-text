@@ -8,6 +8,9 @@ import styles from "@/components/SessionEndWarning.module.css";
 import type { AuthenticatedUser } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
+/** Where the login window says it has signed in again (routes/SignedInAgain); every tab of the module listens (AuthGate). */
+export const SESSION_CHANNEL = "tal-till-text:session";
+
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
 // The longest delay a timer holds: a longer one (a login set to last more than 24.8 days) fires at once.
