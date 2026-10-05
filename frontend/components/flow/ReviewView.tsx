@@ -681,7 +681,7 @@ export function ReviewView({
             collapsible={false}
           >
             <HStack gap={2} wrap="wrap">
-              <Button size="sm" variant="primary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
+              <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
               <Button size="sm" variant="ghost" label="Behåll den senaste" isDisabled={busy} onClick={() => draft.dropYours()} />
             </HStack>
           </Banner>

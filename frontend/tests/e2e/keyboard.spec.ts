@@ -12,6 +12,20 @@ import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems,
 import { backLink, isLaptop, isPhone, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
+test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith("phone-320-"), "the width where this table overflows");
+  await STATES.find((state) => state.name === "result-table")!.go(page, info);
+  const scroll = page.locator(".astryx-table-scroll-wrapper");
+  await scroll.focus();
+  await scroll.press("ArrowRight");
+  await scroll.press("ArrowRight");
+  await expect.poll(() => scroll.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const last = element.querySelector("th:last-child")!.getBoundingClientRect();
+    return last.left >= box.left - 1 && last.right <= box.right + 1 && element.scrollLeft > 0;
+  }), "the full header and amounts are reachable").toBe(true);
+});
+
 const WALKS = [
   "flow-list",
   "unsent-recordings",

@@ -63,6 +63,14 @@ export const eneoTheme = defineTheme({
     // A table's header cells keep one line and cut the rest off with an ellipsis, where the cells under them wrap: a
     // heading such as "Belopp, tkr" loses its unit on a phone (WCAG 1.4.10).
     'table-header-cell': {base: {whiteSpace: 'normal', textOverflow: 'clip', overflowWrap: 'break-word', wordBreak: 'break-word'}},
+    // Scroll shadows reveal that a narrow table has more columns, without another control or wrapper.
+    'table-scroll-wrapper': {base: {
+      backgroundImage: 'linear-gradient(to right, var(--color-background-card), transparent), linear-gradient(to left, var(--color-background-card), transparent), radial-gradient(farthest-side at 0 50%, var(--color-border), transparent), radial-gradient(farthest-side at 100% 50%, var(--color-border), transparent)',
+      backgroundPosition: 'left center, right center, left center, right center',
+      backgroundSize: 'var(--spacing-6) 100%, var(--spacing-6) 100%, var(--spacing-2) 100%, var(--spacing-2) 100%',
+      backgroundRepeat: 'no-repeat',
+      backgroundAttachment: 'local, local, scroll, scroll',
+    }},
     // A step's name keeps one line and is cut off with an ellipsis, with its state words beside it pushed out of the
     // card (WCAG 1.4.10): a flow's step names are its author's, as long as they like. It wraps, and the words follow it.
     'step-label': {base: {whiteSpace: 'normal', overflow: 'visible', textOverflow: 'clip', overflowWrap: 'anywhere'}},

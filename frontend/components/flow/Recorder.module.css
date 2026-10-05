@@ -74,8 +74,8 @@
   max-inline-size: 24rem;
 }
 
-/* A short screen (a phone on its side, 200 % zoom): compact, so the bar docked under the stage hides none of it. */
-@media (max-height: 480px) {
+/* Short screens need room for warnings as well as the timer, in either orientation. */
+@media (max-height: 480px), (max-width: 559.98px) and (max-height: 700px) {
   .stage {
     padding-block: var(--spacing-3);
   }
@@ -265,14 +265,14 @@
 }
 
 /*
- * A short, wide screen (a phone on its side, 200 % zoom): what the recording must always show is pinned in the
+ * A short screen: what the recording must always show is pinned in the
  * workspace's own scroll box, and what can be long gives way between. Spela in's stage (the dot and the timer) is pinned
  * at its top and the controls (Pausa, Stoppa, and in Strömma the status) at its bottom; the live text and the warnings,
  * which depend on how much there is to say and in what font, are what is left and what scrolls. So no number of warnings
  * and no font puts the timer or a button out of the window. The bar's own box gives its place to the controls', which
  * carry its look, so that they alone are pinned and the warnings stand above them.
  */
-@media (min-width: 560px) and (max-height: 480px) {
+@media (min-width: 560px) and (max-height: 480px), (max-width: 559.98px) and (max-height: 700px) {
   .bar,
   .barStack {
     display: contents;

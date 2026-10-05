@@ -100,7 +100,9 @@ export function UploadPanel({
                 </Text>
               </VStack>
             </StackItem>
-            <Button label="Byt fil" variant="secondary" onClick={openChooser} />
+            <StackItem>
+              <Button label="Byt fil" variant="secondary" onClick={openChooser} />
+            </StackItem>
           </HStack>
         </Card>
       </>

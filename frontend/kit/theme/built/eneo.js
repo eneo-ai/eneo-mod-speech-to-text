@@ -290,6 +290,15 @@ export const eneoTheme = {
         "wordBreak": "break-word"
       }
     },
+    "table-scroll-wrapper": {
+      "base": {
+        "backgroundImage": "linear-gradient(to right, var(--color-background-card), transparent), linear-gradient(to left, var(--color-background-card), transparent), radial-gradient(farthest-side at 0 50%, var(--color-border), transparent), radial-gradient(farthest-side at 100% 50%, var(--color-border), transparent)",
+        "backgroundPosition": "left center, right center, left center, right center",
+        "backgroundSize": "var(--spacing-6) 100%, var(--spacing-6) 100%, var(--spacing-2) 100%, var(--spacing-2) 100%",
+        "backgroundRepeat": "no-repeat",
+        "backgroundAttachment": "local, local, scroll, scroll"
+      }
+    },
     "step-label": {
       "base": {
         "whiteSpace": "normal",

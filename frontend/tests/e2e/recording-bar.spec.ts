@@ -32,3 +32,20 @@ for (const state of ["recording", "stromma"]) {
     }
   });
 }
+
+for (const state of ["disk-full", "silent-microphone", "time-left-5"]) {
+  test(`${state}: the timer can be read above the controls on a short portrait screen`, async ({ page }, info) => {
+    test.skip(!info.project.name.startsWith("phone-320-"), "the short portrait screen");
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const timer = page.getByText(/^\d+:\d\d$/).first();
+    await timer.scrollIntoViewIfNeeded();
+    await expect.poll(() => timer.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= innerHeight && [2, box.height / 2, box.height - 2].every((offset) => {
+        const top = document.elementFromPoint(box.x + box.width / 2, box.y + offset);
+        return !!top && (element.contains(top) || top.contains(element));
+      });
+    }), "the timer is whole and uncovered after scrolling to it").toBe(true);
+    for (const name of ["Pausa", "Stoppa"]) await expect(page.getByRole("button", { name, exact: true })).toBeInViewport();
+  });
+}
