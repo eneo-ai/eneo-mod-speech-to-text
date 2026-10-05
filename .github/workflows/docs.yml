@@ -1,0 +1,65 @@
+name: Docs
+
+# The documentation site (docs-site/, built from docs/). A pull request builds and checks it with read-only access; only a push to
+# main deploys it, from its own job, which is the only one that holds the Pages permissions. Every action is pinned to the commit of a
+# release, the release in the comment (the routine is in docs/operations.md).
+
+on:
+  pull_request:
+    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml"]
+  push:
+    branches: [main]
+    paths: ["docs/**", "docs-site/**", ".github/workflows/docs.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docs-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # Fails on a link that leads nowhere.
+      - name: Build the site
+        run: npm run build
+      - name: Install the browser
+        run: npx playwright install --with-deps chromium
+      # The start page and the API page (no console error, no external request, axe, keyboard, 390 px) and every diagram drawn.
+      - name: Check the built site in a browser
+        run: npm run check
+      - name: Upload the site
+        if: github.event_name == 'push'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs-site/.vitepress/dist
+
+  deploy:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
