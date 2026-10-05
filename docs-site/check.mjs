@@ -19,6 +19,21 @@ const route = (file) => '/' + file.replace(/\.md$/, '').replace(/(^|\/)README$/,
 const findings = []
 const note = (page, what) => findings.push(`${page}: ${what}`)
 
+{ // Every link to a heading on the site leads to an id that exists on the page it names.
+  const dist = new URL('.vitepress/dist/', import.meta.url)
+  const pages = new Map(readdirSync(dist, { recursive: true }).filter((file) => String(file).endsWith('.html')).map((file) => [String(file), readFileSync(new URL(String(file), dist), 'utf8')]))
+  const ids = new Map([...pages].map(([file, html]) => [file, new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]))]))
+  for (const [file, html] of pages) {
+    for (const [, href] of html.matchAll(/<a [^>]*href="([^"]*#[^"]*)"/g)) {
+      const [path, fragment] = href.split('#')
+      if (/^[a-z]+:/.test(path)) continue
+      const target = path ? new URL(path, `http://x/eneo-mod-speech-to-text/${file}`).pathname.replace('/eneo-mod-speech-to-text/', '') : file
+      const page = [target, `${target}.html`, `${target}index.html`, `${target}/index.html`].find((candidate) => ids.has(candidate))
+      if (page && !ids.get(page).has(decodeURIComponent(fragment))) note(file, `a link to ${href} has no heading with that id`)
+    }
+  }
+}
+
 const server = spawn('node', ['node_modules/vitepress/bin/vitepress.js', 'preview', '--port', String(PORT)], { stdio: 'ignore' })
 const stop = () => server.kill()
 process.on('exit', stop)
@@ -92,4 +107,4 @@ if (findings.length) {
   console.error(findings.map((finding) => `- ${finding}`).join('\n'))
   process.exit(1)
 }
-console.log(`docs site: ok (${2 * 4} start and API renderings, keyboard, menu, ${withDiagrams.reduce((n, [, c]) => n + c, 0)} diagrams on ${withDiagrams.length} pages)`)
+console.log(`docs site: ok (heading links, ${2 * 4} start and API renderings, keyboard, menu, ${withDiagrams.reduce((n, [, c]) => n + c, 0)} diagrams on ${withDiagrams.length} pages)`)

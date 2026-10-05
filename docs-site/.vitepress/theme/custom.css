@@ -221,11 +221,11 @@ pre.mermaid svg {
 }
 
 /* Three steps, each under its own rule. The numbers carry the order. */
-.VPHome .vp-doc h2#sa-fungerar-det {
+.VPHome .vp-doc h2#så-fungerar-det {
   grid-column: 1 / -1;
   padding-bottom: 24px;
 }
-.VPHome .vp-doc h2#sa-fungerar-det + ol {
+.VPHome .vp-doc h2#så-fungerar-det + ol {
   grid-column: 1 / -1;
   display: grid;
   gap: 32px;
@@ -235,7 +235,7 @@ pre.mermaid svg {
   list-style: none;
   counter-reset: step;
 }
-.VPHome .vp-doc h2#sa-fungerar-det + ol li {
+.VPHome .vp-doc h2#så-fungerar-det + ol li {
   margin: 0;
   padding-top: 16px;
   border-top: 2px solid var(--vp-c-brand-1);
@@ -243,7 +243,7 @@ pre.mermaid svg {
   color: var(--vp-c-text-2);
   line-height: 1.6;
 }
-.VPHome .vp-doc h2#sa-fungerar-det + ol li::before {
+.VPHome .vp-doc h2#så-fungerar-det + ol li::before {
   content: counter(step);
   display: block;
   margin-bottom: 8px;
@@ -252,14 +252,14 @@ pre.mermaid svg {
   line-height: 1;
   color: var(--vp-c-brand-1);
 }
-.VPHome .vp-doc h2#sa-fungerar-det + ol li strong {
+.VPHome .vp-doc h2#så-fungerar-det + ol li strong {
   display: block;
   margin-bottom: 4px;
   font-size: 1.0625rem;
   color: var(--vp-c-text-1);
 }
 @media (min-width: 960px) {
-  .VPHome .vp-doc h2#sa-fungerar-det + ol {
+  .VPHome .vp-doc h2#så-fungerar-det + ol {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     padding-left: 0;
   }

@@ -40,6 +40,8 @@ export default defineConfig({
   rewrites: { 'decisions/README.md': 'decisions/index.md' },
   head: [['link', { rel: 'icon', type: 'image/svg+xml', href: mark(ACCENT.light) }]],
   markdown: {
+    // The pages are written for GitHub, whose heading links keep å, ä and ö: the site's ids must be the same.
+    anchor: { slugify: (text: string) => text.trim().toLowerCase().replace(/[^\p{L}\p{N}_\- ]/gu, '').replace(/ /g, '-') },
     config(md) {
       // A diagram is plain text in the page; theme/diagrams.ts renders it in the browser, on the pages that have one.
       const fence = md.renderer.rules.fence!
