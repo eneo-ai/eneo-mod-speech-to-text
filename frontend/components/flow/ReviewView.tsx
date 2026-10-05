@@ -204,7 +204,7 @@ export function ReviewView({
   // korrigeringar för spelaren.
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
-  const [transcript, , reloadTranscript] = useTranscriptContext({
+  const [transcript, reloadTranscript] = useTranscriptContext({
     flowId,
     runId,
     enabled: isSpeakerMapping,

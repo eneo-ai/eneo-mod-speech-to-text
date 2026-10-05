@@ -19,7 +19,7 @@ export function useTranscriptContext({
   source?: { stepId: string | null; stepOrder: number | null };
   fallbackText?: string;
   labelFor?: (speaker: string) => string;
-}): [TranscriptContext, (patch: Partial<TranscriptContext>) => void, () => void] {
+}): [TranscriptContext, () => void] {
   const [ctx, setCtx] = useState<TranscriptContext>({ ...INITIAL_TRANSCRIPT, pending: enabled });
   const [attempt, setAttempt] = useState(0);
 
@@ -32,16 +32,14 @@ export function useTranscriptContext({
     return () => {
       cancelled = true;
     };
-    // Laddas om per körning och vid reload; övriga argument är härledda ur samma checkpoint/run.
+    // Read again per run and on reload; the other arguments follow from the same checkpoint or run.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [flowId, runId, enabled, attempt]);
 
-  const patch = (next: Partial<TranscriptContext>) =>
-    setCtx((prev) => ({ ...prev, ...next }));
-  /** Läser underlaget och de sparade rättningarna igen, t.ex. efter ett nätverksfel. */
+  /** Reads the transcript and its saved corrections again, as after a network error. */
   const reload = () => {
     setCtx({ ...INITIAL_TRANSCRIPT, pending: true });
     setAttempt((n) => n + 1);
   };
-  return [ctx, patch, reload];
+  return [ctx, reload];
 }

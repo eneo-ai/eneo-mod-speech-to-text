@@ -378,14 +378,6 @@ export function firstSegmentForSpeaker(
   return null;
 }
 
-export function countUncertainWords(segments: readonly TranscriptSegment[]): number {
-  let n = 0;
-  for (const s of segments) {
-    for (const w of s.words ?? []) if (w.uncertain) n++;
-  }
-  return n;
-}
-
 export const SPEAKER_COLOR_COUNT = 6;
 
 /** Stabil färgplats per etikett: SPEAKER_03 → 3 mod 6, annars en enkel hash. */

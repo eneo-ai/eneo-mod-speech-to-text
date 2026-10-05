@@ -1,13 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  applySpeakerNames,
   buildEditedMapping,
   buildSpeakerRows,
   getSpeakerMappingInferNames,
   getSpeakerMappingParticipants,
   isSpeakerMappingCheckpoint,
-  knownSpeakerNames,
   speakerNamesFromRows,
   unmappedSpeakerLabels,
 } from "./speaker-mapping";
@@ -94,31 +92,14 @@ test("edited value contains every inventory label exactly once with trimmed name
   });
 });
 
-test("names from rows and known names offered in the picker", () => {
+test("the names of the rows, and the labels still without one", () => {
   const rows = buildSpeakerRows(payload);
   rows[1] = { ...rows[1], name: "Cecilia" };
   assert.deepEqual(speakerNamesFromRows(rows), {
     SPEAKER_00: "Anna",
     SPEAKER_01: "Cecilia",
   });
-  assert.deepEqual(knownSpeakerNames(["Anna", "Bo"], rows), ["Anna", "Bo", "Cecilia"]);
   assert.deepEqual(unmappedSpeakerLabels(buildSpeakerRows(payload)), ["SPEAKER_01"]);
-});
-
-test("applySpeakerNames rewrites only the speaker token and keeps unmapped labels", () => {
-  const transcript = [
-    "[00:00:00 - 00:00:04] SPEAKER_00: Hej SPEAKER_01.",
-    "[00:00:05 - 00:00:09] SPEAKER_01: Hallå.",
-    "Fri text utan tidsstämpel SPEAKER_00: x",
-  ].join("\n");
-  assert.equal(
-    applySpeakerNames(transcript, { SPEAKER_00: "Anna" }),
-    [
-      "[00:00:00 - 00:00:04] Anna: Hej SPEAKER_01.",
-      "[00:00:05 - 00:00:09] SPEAKER_01: Hallå.",
-      "Fri text utan tidsstämpel SPEAKER_00: x",
-    ].join("\n"),
-  );
 });
 
 test("a speaker-mapping review step is recognised from the run contract", () => {

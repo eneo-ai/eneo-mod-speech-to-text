@@ -25,7 +25,7 @@ import styles from "./RunTranscript.module.css";
 /** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
 export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
   const user = useAuthenticatedUser();
-  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
+  const [transcript, reload] = useTranscriptContext({ flowId, runId, enabled, steps });
   const [confirmedWords] = useConfirmedWords(
     transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );

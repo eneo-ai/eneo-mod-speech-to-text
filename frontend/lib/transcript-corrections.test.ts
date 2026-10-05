@@ -6,7 +6,6 @@ import {
   correctedSegmentText,
   occurrenceForLine,
   occurrencesForLine,
-  originalTextFor,
   sameCorrections,
   withLineCorrection,
   withSpeakerEdit,
@@ -120,8 +119,6 @@ test("applyCorrections rewrites text, drops words on corrected lines and reassig
   assert.equal(shown[0].speaker, "SPEAKER_01");
   assert.equal(shown[0].text, "Hej och välkomna.");
   assert.deepEqual([...corrected], [1]);
-  assert.equal(originalTextFor(segments, set, 1), "Tack så mycket.");
-  assert.equal(originalTextFor(segments, set, 0), null);
   // Rådata orörd.
   assert.equal(segments[1].text, "Tack så mycket.");
   assert.equal(segments[1].words?.length, 1);

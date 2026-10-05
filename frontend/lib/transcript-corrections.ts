@@ -212,17 +212,6 @@ export function applyCorrections(
   return { segments: displayed, corrected: displayedCorrected, ranges: displayedRanges };
 }
 
-/** Råtexten för ett segment som redan har en korrigering — för "Rättad från". */
-export function originalTextFor(
-  segments: readonly TranscriptSegment[],
-  set: CorrectionSet,
-  segmentIndex: number,
-): string | null {
-  return set.occurrences.some((o) => o.segment_index === segmentIndex)
-    ? (segments[segmentIndex]?.text ?? null)
-    : null;
-}
-
 const TOKEN_RE = /\s+|[^\s]+/g;
 
 function tokenize(text: string): string[] {
@@ -377,10 +366,6 @@ export function sameCorrections(a: CorrectionSet, b: CorrectionSet): boolean {
     JSON.stringify([a.occurrences, a.speaker_edits]) ===
     JSON.stringify([b.occurrences, b.speaker_edits])
   );
-}
-
-export function correctionCount(set: CorrectionSet): number {
-  return set.occurrences.length + set.speaker_edits.length;
 }
 
 /** Validate before allowing a replace-style save. Never erase a newer overlay. */

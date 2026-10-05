@@ -207,44 +207,6 @@ export function speakerNamesFromRows(
   return names;
 }
 
-/** Namn att erbjuda i väljaren: deltagarlistan plus namn som redan skrivits in. */
-export function knownSpeakerNames(
-  participants: readonly string[],
-  rows: readonly SpeakerMappingRow[],
-): string[] {
-  const names = [...participants];
-  for (const row of rows) {
-    const name = row.name?.trim();
-    if (name && !names.includes(name)) names.push(name);
-  }
-  return names;
-}
-
-// Speglar Eneos SPEAKER_LINE_RE: "[hh:mm:ss - hh:mm:ss] SPEAKER_NN: text".
-const SPEAKER_LINE_RE =
-  /^(\[\d{2}:\d{2}:\d{2} - \d{2}:\d{2}:\d{2}\] )(SPEAKER_\d{2,}): (.*)$/;
-
-/**
- * Lokal förhandsvisning av transkriptet med namn insatta. Eneo gör samma
- * omskrivning server-side när mappningen sparas; etiketter utan namn
- * behålls som `SPEAKER_NN`.
- */
-export function applySpeakerNames(
-  transcript: string,
-  names: Record<string, string>,
-): string {
-  return transcript
-    .split("\n")
-    .map((line) => {
-      const m = SPEAKER_LINE_RE.exec(line);
-      if (!m) return line;
-      const [, prefix, label, text] = m;
-      const name = names[label];
-      return name ? `${prefix}${name}: ${text}` : line;
-    })
-    .join("\n");
-}
-
 /** Vilka etiketter som saknar namn och därför lämnas kvar i transkriptet. */
 export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],

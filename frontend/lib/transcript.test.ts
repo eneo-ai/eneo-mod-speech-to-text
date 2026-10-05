@@ -3,7 +3,6 @@ import test from "node:test";
 import {
   attachWords,
   computeTurns,
-  countUncertainWords,
   fileIdsFromTranscription,
   findActiveSegmentIndex,
   findActiveWordIndex,
@@ -100,7 +99,6 @@ test("attachWords joins by segment_index and ignores stale or empty payloads", (
   });
   assert.equal(withWords[2].words?.length, 2);
   assert.equal(withWords[0].words, undefined);
-  assert.equal(countUncertainWords(withWords), 1);
   assert.equal(attachWords(segments, { stale: true, segments: [] })[2].words, undefined);
   assert.equal(attachWords(segments, null)[2].words, undefined);
 });
