@@ -92,7 +92,7 @@
 
 .tools {
   padding: var(--spacing-1) var(--spacing-3) var(--spacing-3);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
 }
 
 /* A large meeting on a narrow screen picks its speaker from a list, not from endless chips; from lg the chips are
@@ -207,7 +207,7 @@
   padding-inline: var(--spacing-3);
   overflow: visible;
   clip: auto;
-  border: 1px solid var(--color-border-emphasized);
+  border: var(--border-width) solid var(--color-border-emphasized);
   border-radius: var(--radius-element);
   background: var(--color-background-surface);
   font-size: var(--font-size-sm);
@@ -283,7 +283,7 @@
   z-index: 10;
   padding: var(--spacing-2) var(--spacing-3);
   padding-block-end: max(var(--spacing-2), env(safe-area-inset-bottom));
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
   border-end-start-radius: var(--radius-container);
   border-end-end-radius: var(--radius-container);
   background: var(--color-background-surface);
@@ -566,7 +566,7 @@
   place-items: center;
   inline-size: var(--spacing-4);
   block-size: var(--spacing-4);
-  border: 1px solid var(--module-color-review);
+  border: var(--border-width) solid var(--module-color-review);
   border-radius: var(--radius-full);
   color: var(--module-color-review);
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
@@ -619,7 +619,7 @@
   flex-direction: column;
   gap: var(--spacing-0-5);
   padding: var(--spacing-3) var(--spacing-4);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
 }
 
 .pickerList {
@@ -630,7 +630,7 @@
 
 .pickerSection {
   padding: var(--spacing-3) var(--spacing-4);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
 }
 
 /* ---- Correcting a passage ---- */

@@ -83,7 +83,7 @@ html:has([data-docked-action], [data-docked-player]) {
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
    gives it back, for every button the design system draws. */
 @media (forced-colors: active) {
-  .astryx-button { border: 1px solid ButtonText; }
+  .astryx-button { border: var(--border-width) solid ButtonText; }
 }
 
 /* The slider is drawn with backgrounds only: the rail, the filled part and the thumb are gone in forced colours, which
