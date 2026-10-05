@@ -301,6 +301,13 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   assert.doesNotMatch(render(undefined), /role="alert"/);
 });
 
+test("the failed run's heading and its start time are no banner of their own inside the page's main region", () => {
+  const html = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", created_at: "2026-09-23T16:02:00Z" }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  assert.doesNotMatch(html, /<header/);
+});
+
 test("a failure Eneo said nothing about still says what happened, and shows no start time it was not given", () => {
   const html = markup(
     createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", error: null }, failure: null, steps: [], stepResults: [], files: [] }),
