@@ -869,6 +869,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {"checkpoint": dict(checkpoint, state="resumed"),
                                        "run": {"id": run_id, "flow_id": fid, "status": "running", "revision": 2,
                                                "flow_version": FLOWS[fid]["published"]["published_version"]}})
+            # A retry of a failed run: a child run that reuses the first step.
+            if len(rest) == 3 and rest[0] == "runs" and rest[2] == "retry":
+                run_id = new_run_id(next(NEW_RUN))
+                STARTED[run_id] = 0
+                return self.send(201, {"run": {"id": run_id, "flow_id": fid, "status": "queued",
+                                               "flow_version": FLOWS[fid]["published"]["published_version"]},
+                                       "created": True, "source_run_id": rest[1],
+                                       "first_executed_step_order": 2, "reused_step_orders": [1]})
             if rest == ["runs"]:
                 if fid == F3:
                     return self.send(409, {"code": "flow_run_stale_version", "detail": "The flow has a newer published version."})
