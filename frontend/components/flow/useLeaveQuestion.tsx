@@ -1,14 +1,19 @@
-import { createContext, useEffect, useRef, useState } from "react";
+import { createContext, useCallback, useEffect, useRef, useState } from "react";
 import { useBlocker } from "react-router";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
 
 /**
- * Signing out, which is a request and not a navigation: the question comes before the session is ended, so it is the
- * page that asks and then goes on.
+ * Actions that replace the view or end the session ask before they discard unsaved work, even without navigation.
  */
-export const LeaveContext = createContext<{ leaveFirst(goOn: () => void | Promise<void>): void }>({
+export const LeaveContext = createContext<{
+  leaveFirst(goOn: () => void | Promise<void>): void;
+  holdUnsavedCorrections(): () => void;
+}>({
   leaveFirst: (goOn) => void goOn(),
+  holdUnsavedCorrections: () => () => undefined,
 });
+
+const CORRECTIONS_LEAVE = "Du har rättningar som inte har sparats. De försvinner om du lämnar sidan.";
 
 /**
  * While `active`, leaving the flow page asks first, in the page's own dialog. The router's blocker asks for every
@@ -17,22 +22,28 @@ export const LeaveContext = createContext<{ leaveFirst(goOn: () => void | Promis
  * a reload, closing the tab, and Back from the first page of a visit.
  */
 export function useLeaveQuestion(active: boolean, warning: string, keepsWork = false) {
-  // Set by an answered sign-out question while its way on runs, so the way on to the start that follows it is not asked a
-  // second time. It ends with the way on: one that did not go through leaves no departure unasked.
+  const [correctionsHeld, setCorrectionsHeld] = useState(0);
+  const holdUnsavedCorrections = useCallback(() => {
+    setCorrectionsHeld((count) => count + 1);
+    return () => setCorrectionsHeld((count) => count - 1);
+  }, []);
+  const unsavedCorrections = correctionsHeld > 0;
+  const guarded = active || unsavedCorrections;
+  // A confirmed action may navigate too. Allow that navigation once, and reset if the action does not leave.
   const allowed = useRef(false);
   useEffect(() => {
     allowed.current = false;
-  }, [active]);
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => active && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
-  const [signingOut, setSigningOut] = useState<(() => void | Promise<void>) | null>(null);
+  }, [guarded]);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => guarded && !allowed.current && currentLocation.pathname !== nextLocation.pathname);
+  const [pendingAction, setPendingAction] = useState<(() => void | Promise<void>) | null>(null);
 
   const stay = () => {
-    setSigningOut(null);
+    setPendingAction(null);
     if (blocker.state === "blocked") blocker.reset();
   };
   const leave = () => {
-    const goOn = signingOut;
-    setSigningOut(null);
+    const goOn = pendingAction;
+    setPendingAction(null);
     if (blocker.state === "blocked") blocker.proceed();
     if (goOn) {
       allowed.current = true;
@@ -51,20 +62,19 @@ export function useLeaveQuestion(active: boolean, warning: string, keepsWork = f
   // Staying has the focus: leaving stops a recording or a sending.
   const question = (
     <AlertDialog
-      isOpen={blocker.state === "blocked" || signingOut !== null}
+      isOpen={blocker.state === "blocked" || pendingAction !== null}
       onOpenChange={(open) => !open && stay()}
       title="Lämna sidan?"
-      description={warning}
+      description={unsavedCorrections ? `${active ? `${warning} ` : ""}${CORRECTIONS_LEAVE}` : warning}
       cancelLabel="Stanna kvar"
       actionLabel="Lämna sidan"
       // Red only where leaving loses something (lib/recording-view leaveKeepsWork).
-      actionVariant={keepsWork ? "secondary" : "destructive"}
+      actionVariant={keepsWork && !unsavedCorrections ? "secondary" : "destructive"}
       // Answered: the question closes with the answer, whether or not the way off the page then goes through.
       onAction={leave}
     />
   );
-  /** Signing out: asked first, then `goOn`. */
-  const leaveFirst = (goOn: () => void | Promise<void>) => (active ? setSigningOut(() => goOn) : void goOn());
+  const leaveFirst = (goOn: () => void | Promise<void>) => (guarded ? setPendingAction(() => goOn) : void goOn());
 
-  return { leaveFirst, question };
+  return { leaveFirst, holdUnsavedCorrections, question };
 }

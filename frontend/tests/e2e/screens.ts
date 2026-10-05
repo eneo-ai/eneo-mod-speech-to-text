@@ -123,6 +123,23 @@ export function backLink(page: Page) {
   return page.getByRole("link", { name: "Alla flöden" }).filter({ visible: true }).first();
 }
 
+/** A speaker correction kept in the page after Eneo could not save it. */
+export async function unsavedCorrections(page: Page, view: "review" | "result" = "review") {
+  const reviewing = view === "review";
+  await run(page, reviewing ? ids.runs.review : ids.runs.done, reviewing ? ids.flows.flow2 : ids.flows.flow1);
+  if (!reviewing) {
+    await heading(page, "Dokumentet är klart");
+    const tab = page.getByRole("tab", { name: "Transkribering", exact: true });
+    if (await tab.isVisible()) await tab.click();
+  }
+  await page.route("**/transcript-corrections**", (route) => route.request().method() === "GET" ? route.fallback() : route.abort());
+  await page.getByRole("button", { name: reviewing ? "Anna Berg, ändra talare" : "Talare 1, ändra talare" }).first().click();
+  const picker = page.getByRole("dialog", { name: "Ändra talare" });
+  await picker.getByRole("radio", { name: reviewing ? /^Erik Lund\b/ : /^Talare 2\b/ }).click();
+  await picker.getByRole("button", { name: "Spara", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+}
+
 /** A recording left on the device: recorded, stopped, and the page left through "Lämna sidan?". */
 export async function leaveRecording(page: Page) {
   await setup(page);
@@ -635,6 +652,24 @@ export const STATES: State[] = [
       await setup(page);
       await record(page, "Spela in");
       await backLink(page).click();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
+    name: "corrections-leave-dialog",
+    expects: [{ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ }],
+    go: async (page) => {
+      await unsavedCorrections(page);
+      await backLink(page).click();
+      await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
+    },
+  },
+  {
+    name: "result-corrections-leave-dialog",
+    expects: [{ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ }],
+    go: async (page) => {
+      await unsavedCorrections(page, "result");
+      await page.getByRole("button", { name: "Ny inspelning", exact: true }).click();
       await expect(page.getByRole("alertdialog", { name: "Lämna sidan?" })).toBeVisible();
     },
   },

@@ -588,164 +588,164 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const holding = adopting && run.kind === "idle";
   useRouteReady(loadError !== null || (published !== null && contract !== null && !holding));
-  if (loadError) return <FlowUnavailable error={loadError} />;
-  if (holding) return <FlowSkeleton onRetry={() => window.location.reload()} />;
-  if (!published || !contract) return <FlowSkeleton onRetry={() => setLoadAttempt((n) => n + 1)} />;
+  const content = (): ReactNode => {
+    if (loadError) return <FlowUnavailable error={loadError} />;
+    if (holding) return <FlowSkeleton onRetry={() => window.location.reload()} />;
+    if (!published || !contract) return <FlowSkeleton onRetry={() => setLoadAttempt((n) => n + 1)} />;
 
-  // The views that can hold unsent work: the leave question, and their top bar's exits through it.
-  const withLeave = (view: ReactNode) => (
-    <LeaveContext.Provider value={leaving}>
-      {view}
-      {leaving.question}
-    </LeaveContext.Provider>
-  );
+    if (run.kind === "idle") {
+      return (
+        <FlowInput
+          published={published}
+          contract={contract}
+          input={input}
+          ownerId={user.id}
+          notice={runError}
+          earlierRuns={earlierRuns}
+          onOpenRun={resumeRun}
+          onMoreRuns={() => void earlier.more()}
+          unsent={unsent}
+          afterRun={shownRun}
+        />
+      );
+    }
 
-  if (run.kind === "idle") {
-    return withLeave(
-      <FlowInput
-        published={published}
-        contract={contract}
-        input={input}
-        ownerId={user.id}
-        notice={runError}
-        earlierRuns={earlierRuns}
-        onOpenRun={resumeRun}
-        onMoreRuns={() => void earlier.more()}
-        unsent={unsent}
-        afterRun={shownRun}
-      />,
+    // A run's states keep the flow's page, with the details it was started with; only the state's card changes.
+    const flowPage = (
+      view: ReactNode,
+      {
+        input = null,
+        version = null,
+        locked = false,
+        offline = null,
+      }: { input?: unknown; version?: number | null; locked?: boolean; offline?: OfflineWaiting } = {},
+    ) => (
+      <FlowRunPage published={published} contract={contract} input={input} version={version} locked={locked} offline={offline}>
+        {view}
+      </FlowRunPage>
     );
-  }
 
-  // A run's states keep the flow's page, with the details it was started with; only the state's card changes.
-  const flowPage = (
-    view: ReactNode,
-    {
-      input = null,
-      version = null,
-      locked = false,
-      offline = null,
-    }: { input?: unknown; version?: number | null; locked?: boolean; offline?: OfflineWaiting } = {},
-  ) => (
-    <FlowRunPage published={published} contract={contract} input={input} version={version} locked={locked} offline={offline}>
-      {view}
-    </FlowRunPage>
-  );
-
-  if (run.kind === "submitting") {
-    return withLeave(
-      flowPage(
+    if (run.kind === "submitting") {
+      return flowPage(
         <SubmittingView
           submission={submission}
           onCancelSubmission={onCancelSubmission}
           makesText={makesText(contract.final_output)}
         />,
         {
-        input: startedWith.input,
-        // Sent just now, from this contract's form.
-        version: contract.published_flow_version,
-        locked: true,
-        offline: submission.kind === "idle" ? "run" : "upload",
-      }),
-    );
-  }
+          input: startedWith.input,
+          // Sent just now, from this contract's form.
+          version: contract.published_flow_version,
+          locked: true,
+          offline: submission.kind === "idle" ? "run" : "upload",
+        },
+      );
+    }
 
-  if (run.kind === "awaiting_review") {
-    return withLeave(
-      // The review's own heading names the state, so the flow's name is not the heading.
-      <FlowFrame title={published.name} titleIsHeading={false}>
-        <ReviewView
-          flowId={flowId}
-          checkpoint={run.checkpoint}
-          runState={{ run: run.run, steps: run.steps }}
-          runError={runError}
-          onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
-          onSaveEdit={onSaveEdit}
-          onReject={(cp, reason) => onReject(cp, run.run.id, reason)}
-        />
-      </FlowFrame>,
-    );
-  }
+    if (run.kind === "awaiting_review") {
+      return (
+        // The review's own heading names the state, so the flow's name is not the heading.
+        <FlowFrame title={published.name} titleIsHeading={false}>
+          <ReviewView
+            flowId={flowId}
+            checkpoint={run.checkpoint}
+            runState={{ run: run.run, steps: run.steps }}
+            runError={runError}
+            onContinue={(cp, edit, options) => onContinue(cp, run.run.id, edit, options)}
+            onSaveEdit={onSaveEdit}
+            onReject={(cp, reason) => onReject(cp, run.run.id, reason)}
+          />
+        </FlowFrame>
+      );
+    }
 
-  if (run.kind === "opening") return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.runId)} />);
+    if (run.kind === "opening") return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.runId)} />);
 
-  if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
+    if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
-  if (run.kind === "running") {
-    const steps = runSteps(run.graph, run.run, [], contract);
-    return flowPage(
-      <RunProgress
-        flowName={published.name}
-        steps={steps}
-        stage={runStage(
-          steps,
-          run.run.status,
-          startedWith.runId === run.run.id &&
-            runLabelsSpeakers(startedWith.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
-        )}
-        startedAt={run.run.created_at}
-        error={runError}
-        retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
-        // Today's contract speaks only for a run of its own version.
-        makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
-        onCancel={() => onCancelRun(run.run.id)}
-      />,
-      { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },
-    );
-  }
-
-  const { steps, transcribed, stepLabels } = finishedRun(run.graph, run.run, run.steps);
-  const files = resultFileViews(run.run.result_files ?? []);
-  const inputStep = selectRuntimeInputStep(contract);
-  if (runOutcome(run.run.status) === "succeeded") {
-    return (
-      // The result has its own layout; its heading names the state, so the flow's name is not the heading.
-      <FlowFrame title={published.name} titleIsHeading={false}>
-        <RunResult
-          flowId={flowId}
+    if (run.kind === "running") {
+      const steps = runSteps(run.graph, run.run, [], contract);
+      return flowPage(
+        <RunProgress
           flowName={published.name}
-          run={run.run}
           steps={steps}
-          stepResults={run.steps}
-          files={files}
-          showTranscript={transcribed}
-          contract={contract}
-          audio={inputStep?.input_format?.toLowerCase() === "audio"}
-          onNewRecording={onRunAgain}
-          onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
-          onRegenerated={(regenerated) => {
-            // The new run is followed like any other, from its progress to its own result.
-            setRunError(null);
-            writeRunIdToUrl(regenerated.id);
-            setRun({ kind: "running", run: regenerated, graph: null });
-            void follow(regenerated.id);
-          }}
-        />
-      </FlowFrame>
+          stage={runStage(
+            steps,
+            run.run.status,
+            startedWith.runId === run.run.id &&
+              runLabelsSpeakers(startedWith.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
+          )}
+          startedAt={run.run.created_at}
+          error={runError}
+          retrying={pollTrouble ? { onRetry: () => void follow(run.run.id) } : null}
+          // Today's contract speaks only for a run of its own version.
+          makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
+          onCancel={() => onCancelRun(run.run.id)}
+        />,
+        { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },
+      );
+    }
+
+    const { steps, transcribed, stepLabels } = finishedRun(run.graph, run.run, run.steps);
+    const files = resultFileViews(run.run.result_files ?? []);
+    const inputStep = selectRuntimeInputStep(contract);
+    if (runOutcome(run.run.status) === "succeeded") {
+      return (
+        // The result has its own layout; its heading names the state, so the flow's name is not the heading.
+        <FlowFrame title={published.name} titleIsHeading={false}>
+          <RunResult
+            flowId={flowId}
+            flowName={published.name}
+            run={run.run}
+            steps={steps}
+            stepResults={run.steps}
+            files={files}
+            showTranscript={transcribed}
+            contract={contract}
+            audio={inputStep?.input_format?.toLowerCase() === "audio"}
+            onNewRecording={onRunAgain}
+            onStartAgain={startAgainRequest(run.run, run.steps, contract) !== null ? () => void onStartAgain(run) : undefined}
+            onRegenerated={(regenerated) => {
+              // The new run is followed like any other, from its progress to its own result.
+              setRunError(null);
+              writeRunIdToUrl(regenerated.id);
+              setRun({ kind: "running", run: regenerated, graph: null });
+              void follow(regenerated.id);
+            }}
+          />
+        </FlowFrame>
+      );
+    }
+    const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
+    // The same audio cannot help when the input itself has to change.
+    const sameInputHelps = !failure?.inputMustChange;
+    const cancelled = runOutcome(run.run.status) === "cancelled";
+    const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
+    return flowPage(
+      <RunFailure
+        flowId={flowId}
+        flowName={published.name}
+        run={run.run}
+        failure={failure}
+        steps={steps}
+        stepResults={run.steps}
+        files={files}
+        showTranscript={transcribed}
+        contract={contract}
+        error={runError}
+        refusal={retryRefusal}
+        onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
+        onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
+        onChooseInput={onRunAgain}
+      />,
+      { input: run.run.input_payload_json, version: run.run.flow_version },
     );
-  }
-  const failure = run.run.error ? runErrorView(run.run.error, stepLabels) : null;
-  // The same audio cannot help when the input itself has to change.
-  const sameInputHelps = !failure?.inputMustChange;
-  const cancelled = runOutcome(run.run.status) === "cancelled";
-  const startAgainOffered = sameInputHelps && startAgainRequest(run.run, run.steps, contract) !== null;
-  return flowPage(
-    <RunFailure
-      flowId={flowId}
-      flowName={published.name}
-      run={run.run}
-      failure={failure}
-      steps={steps}
-      stepResults={run.steps}
-      files={files}
-      showTranscript={transcribed}
-      contract={contract}
-      error={runError}
-      refusal={retryRefusal}
-      onRetry={sameInputHelps && !cancelled ? () => onRetry(run) : undefined}
-      onStartAgain={startAgainOffered ? () => onStartAgain(run) : undefined}
-      onChooseInput={onRunAgain}
-    />,
-    { input: run.run.input_payload_json, version: run.run.flow_version },
+  };
+
+  return (
+    <LeaveContext.Provider value={leaving}>
+      {content()}
+      {leaving.question}
+    </LeaveContext.Provider>
   );
 }

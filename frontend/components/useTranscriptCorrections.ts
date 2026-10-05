@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import type { CorrectionsSaveState } from "./TranscriptPlayer";
 import { ApiError, saveTranscriptCorrections } from "@/lib/api";
 import { downloadBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/errors";
 import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet } from "@/lib/transcript-corrections";
+import { LeaveContext } from "./flow/useLeaveQuestion";
 
 const STALE_REVISION = "flow_transcript_corrections_stale_revision";
 
@@ -24,6 +25,10 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
 
   // What is not saved is lost with the page: closing it asks first.
   const unsaved = saveState === "saving" || saveState === "error" || dropped !== null;
+  const { holdUnsavedCorrections } = useContext(LeaveContext);
+  useEffect(() => {
+    if (unsaved) return holdUnsavedCorrections();
+  }, [unsaved, holdUnsavedCorrections]);
   useEffect(() => {
     if (!unsaved) return;
     const ask = (event: BeforeUnloadEvent) => {

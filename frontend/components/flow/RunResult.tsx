@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
 import { Grid, GridSpan } from "@astryxdesign/core/Grid";
@@ -24,6 +24,7 @@ import { StepDetails } from "./StepDetails";
 import { usePlayback, usePlaybackState } from "./AudioPlayer";
 import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
+import { LeaveContext } from "./useLeaveQuestion";
 
 type View = "document" | "transcript";
 const PANELS: Record<View, { tab: string; panel: string }> = {
@@ -68,6 +69,7 @@ export function RunResult({
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
+  const { leaveFirst } = useContext(LeaveContext);
   const delivered = run.result?.kind === "outbound_http";
   const words = outputWords(runOutput(run, contract));
   const { text: shown, note } = runResultView(run.result);
@@ -135,7 +137,7 @@ export function RunResult({
           <Text as="p">Körningen blev klar, men flödet gav inget att visa.</Text>
           {onStartAgain && (
             <HStack>
-              <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} />} onClick={onStartAgain} />
+              <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} />} onClick={() => leaveFirst(onStartAgain)} />
             </HStack>
           )}
         </VStack>
@@ -195,7 +197,7 @@ export function RunResult({
           )}
         </VStack>
         <HStack vAlign="center" gap={2}>
-          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={onNewRecording} />
+          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
         </HStack>
       </HStack>
 

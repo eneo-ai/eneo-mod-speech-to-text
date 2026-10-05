@@ -365,7 +365,7 @@ export function ReviewView({
 
   const busy = working !== null;
   // The transcript's own changes must be saved before the flow goes on.
-  const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem));
+  const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem) || saveState === "error" || hasDropped);
   // Approval folded the transcript's corrections in; a correction made after it would never reach the document.
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;

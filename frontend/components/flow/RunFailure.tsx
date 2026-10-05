@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -21,6 +21,7 @@ import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
+import { LeaveContext } from "./useLeaveQuestion";
 
 /**
  * A run that did not finish: which step stopped and why, what never ran,
@@ -63,6 +64,7 @@ export function RunFailure({
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
+  const { leaveFirst } = useContext(LeaveContext);
   const cancelled = runOutcome(run.status) === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
@@ -114,7 +116,7 @@ export function RunFailure({
             {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
             <HStack gap={3} wrap="wrap">
               {offerChooseInput && (
-                <Button label="Välj nytt ljud" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={onChooseInput} />
+                <Button label="Välj nytt ljud" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
               )}
               {offerRetry && (
                 // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
@@ -123,11 +125,11 @@ export function RunFailure({
                   variant={run.error?.retryable ? "primary" : "secondary"}
                   isLoading={retrying}
                   icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
-                  onClick={() => void retry()}
+                  onClick={() => leaveFirst(retry)}
                 />
               )}
               {offerStartAgain && (
-                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => void onStartAgain?.()} />
+                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
               )}
             </HStack>
             {offerRetry && (

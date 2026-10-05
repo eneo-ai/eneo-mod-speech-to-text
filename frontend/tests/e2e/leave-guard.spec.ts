@@ -9,7 +9,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { addParticipants, backLink, chooseFile, record, setup, setupFromList } from "./screens";
+import { addParticipants, backLink, chooseFile, record, setup, setupFromList, unsavedCorrections } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width"));
 
@@ -133,6 +133,63 @@ test("the bar's way back asks once each time; Stanna kvar stays, and the brand b
   await expect(page.getByRole("link", { name: /^Tal till text/ })).toHaveCount(0);
   expect(await historyOf(page)).toEqual(before);
 });
+
+test("unsaved transcript corrections ask before leaving; a successful retry removes the question", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
+  await unsavedCorrections(page);
+  const held: Held = (p) => expect(p.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+  await held(page);
+  await expect(page.getByRole("button", { name: "Godkänn och fortsätt" }), "failed corrections cannot be approved").toBeDisabled();
+  await backLink(page).click();
+  await asked(page, held);
+  await expect(question(page)).toContainText("rättningar");
+  await stay(page, held);
+
+  await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+  await page.getByRole("menuitem", { name: "Logga ut" }).click();
+  await asked(page, held);
+  await stay(page, held);
+  await page.keyboard.press("Escape");
+
+  await page.unroute("**/transcript-corrections**");
+  await page.route("**/steps/*/transcript-corrections/", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const body = route.request().postDataJSON();
+    await route.fulfill({ json: {
+      ...body,
+      flow_run_id: ids.runs.review,
+      step_id: ids.steps.audio,
+      revision: (body.expected_revision ?? 0) + 1,
+      stale: false,
+      updated_at: "2026-09-25T20:00:00Z",
+    } });
+  });
+  await page.getByRole("button", { name: "Försök spara igen" }).click();
+  await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Godkänn och fortsätt" })).toBeEnabled();
+  await backLink(page).click();
+  await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
+  await expect(question(page)).toHaveCount(0);
+});
+
+for (const action of ["Alla flöden", "Ny inspelning"]) {
+  test(`unsaved result corrections survive cancelling ${action}`, async ({ page, sentinel }) => {
+    sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
+    await unsavedCorrections(page, "result");
+    const held: Held = (p) => expect(p.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
+    if (action === "Alla flöden") await backLink(page).click();
+    else await page.getByRole("button", { name: action, exact: true }).click();
+    await asked(page, held);
+    await stay(page, held);
+    await expect(page.getByRole("button", { name: "Talare 2, ändra talare" }).first()).toBeVisible();
+    if (action === "Alla flöden") await backLink(page).click();
+    else await page.getByRole("button", { name: action, exact: true }).click();
+    await asked(page, held);
+    await question(page).getByRole("button", { name: "Lämna sidan" }).click();
+    await expect(page.getByRole("heading", { name: action === "Alla flöden" ? "Välj ett flöde" : "Hur vill du lägga till ljudet?" })).toBeVisible();
+    await expect(question(page)).toHaveCount(0);
+  });
+}
 
 test("Logga ut asks before the logout request is sent: Stanna kvar sends none, Lämna sidan sends it once and the way on to the start is not asked again", async ({ page }) => {
   const logouts: string[] = [];
