@@ -306,6 +306,7 @@ REFUSED = (
     f"{RUN_PATH}/evidence/",
     f"{RUN_PATH}/evidence/export",
     f"flows/{FLOW}/template-files/",
+    f"flows/{FLOW}/files/",
     "flows",
     f"flows/{FLOW}/",
     f"flows/{FLOW}/runs/{RUN}/steps/{STEP}/",
@@ -419,6 +420,18 @@ class EneoProxyAllowlistTests(ProxyCase):
 
                 self.assertEqual(response.status_code, 403)
                 self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+        self.assertEqual(self.proxy_client.calls, [])
+
+    def test_a_file_cannot_be_uploaded_to_a_flow_itself(self) -> None:
+        # Eneo has no such route: files go to a step's runtime-files.
+        response = self.client.post(
+            f"/api/eneo/flows/{FLOW}/files/",
+            headers=ORIGIN,
+            files={"upload_file": ("meeting.webm", b"audio", "audio/webm")},
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
         self.assertEqual(self.proxy_client.calls, [])
 
     def test_an_unsafe_spelling_of_a_listed_path_is_refused_for_every_method(self) -> None:

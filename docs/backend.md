@@ -48,7 +48,7 @@ Värdena och reglerna för dem står i [Drift](operations.md#miljövariabler).
 | Gräns | Gäller | Överskridet ger |
 |---|---|---|
 | `MAX_BODY_BYTES` | Varje request-body utom uppladdningarna. | 413 med `max_body_bytes` |
-| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till uppladdningsrutterna. | 413 med `max_upload_bytes`; 411 utan `Content-Length` |
+| `MAX_UPLOAD_BYTES` | En `multipart/form-data` till uppladdningsrutten. | 413 med `max_upload_bytes`; 411 utan `Content-Length` |
 | `MAX_RESPONSE_BYTES` | Ett enskilt svar från Eneo som modulen läser; en fil som strömmas räknas inte. | `502 upstream_too_large` |
 | små svar, 1 MiB | Svar som bär en token eller en URL. | Ett misslyckat anrop, till exempel `502 upstream_invalid` |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | Hela vidarebefordran av en uppladdning. | `504 upstream_upload_timeout` |
@@ -58,7 +58,7 @@ Taket för request-body sitter först i kedjan (`backend/app/limits.py`), före 
 
 ## Uppladdningar
 
-Ljud laddas upp genom egna rutter i stället för den allmänna proxyn: Eneos lastbalanserare avvisade webbläsarens råa multipart-bytes, så BFF:en tar emot filen på disk och bygger om anropet. Session, origin och sidans användare kontrolleras innan en enda byte av bodyn läses, och bodyn måste vara exakt en fil, `upload_file`. En fil som blivit hel skickas klart även om webbläsaren går, eftersom ett avbrott mitt i kunde lämna Eneo med en del av filen. Svaren och felkoderna: [API-referens](api-referens.md).
+Ljud laddas upp genom en egen rutt, `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/`, i stället för den allmänna proxyn: Eneos lastbalanserare avvisade webbläsarens råa multipart-bytes, så BFF:en tar emot filen på disk och bygger om anropet. Session, origin och sidans användare kontrolleras innan en enda byte av bodyn läses, och bodyn måste vara exakt en fil, `upload_file`. En fil som blivit hel skickas klart även om webbläsaren går, eftersom ett avbrott mitt i kunde lämna Eneo med en del av filen. Svaren och felkoderna: [API-referens](api-referens.md).
 
 ## Svar från Eneo
 
