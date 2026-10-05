@@ -159,6 +159,7 @@ export function ResultDocument({
   file,
   title,
   preview = null,
+  textIsPreview = false,
   label = "Dokumentet",
 }: {
   flowId: string;
@@ -171,6 +172,8 @@ export function ResultDocument({
   title: string;
   /** Where there is no text: what the file says, see fileText. */
   preview?: string | null;
+  /** The text is only the beginning of the file-backed result. */
+  textIsPreview?: boolean;
   /** What the run makes, named ("Dokumentet", "Texten"; `outputWords`). */
   label?: string;
 }) {
@@ -197,6 +200,8 @@ export function ResultDocument({
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
+  const copyName = textIsPreview ? "Kopiera början" : "Kopiera texten";
+  const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";
   // Copying the text is one of the more actions when the file is the filled one above it.
   const copyMore = Boolean(text && file);
 
@@ -219,7 +224,7 @@ export function ResultDocument({
             </Button>
           )}
           {text && !file && (
-            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
+            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}
           {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
           {copyMore && share ? (
@@ -228,13 +233,13 @@ export function ResultDocument({
               hasChevron={false}
               alignment="end"
             >
-              <DropdownMenuItem icon="copy" label="Kopiera texten" onClick={() => void copy()} />
-              <DropdownMenuItem icon={Share2} label="Dela" onClick={() => void runShare(share, title, text)} />
+              <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+              <DropdownMenuItem icon={Share2} label={shareName} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
           ) : copyMore ? (
-            <Button icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
+            <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           ) : (
-            share && <Button icon={<Icon icon={Share2} />} label="Dela" onClick={() => void runShare(share, title, text)} />
+            share && <Button icon={<Icon icon={Share2} />} label={shareName} onClick={() => void runShare(share, title, text)} />
           )}
         </HStack>
       )}
@@ -250,10 +255,10 @@ export function ResultDocument({
                 <Button
                   variant={file ? "ghost" : "primary"}
                   icon={<Icon icon="copy" />}
-                  label={copyLabel ?? "Kopiera texten"}
+                  label={copyLabel ?? copyName}
                   onClick={copy}
                 >
-                  {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
+                  {copyLabel ?? (file && !textIsPreview ? "Kopiera" : copyName)}
                 </Button>
               )}
               {primaryDownload}
