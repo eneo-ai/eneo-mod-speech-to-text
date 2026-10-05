@@ -184,12 +184,11 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     return advice("Det gick inte att genomföra. Kontakta den som ansvarar för Tal till text om det fortsätter.");
   }
   if (err instanceof Error) {
-    if (err.name === "AbortError") return advice("Uppladdningen avbröts (tog för lång tid eller stannade upp).", true);
     if (looksLikeNetworkError(err.message)) {
       return advice("Anslutningen avbröts. Kontrollera nätverket och försök igen.", true);
     }
-    // This app's own errors, in Swedish.
-    return advice(err.message);
+    // This app's own errors are in Swedish; what the browser raised (a full device, an aborted request) is not shown.
+    if (err.name === "Error") return advice(err.message);
   }
   return advice("Ett okänt fel uppstod.");
 }
