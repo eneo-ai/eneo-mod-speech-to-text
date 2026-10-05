@@ -215,14 +215,14 @@ export function unmappedSpeakerLabels(
 }
 
 /**
- * A refused save of the names in words. An Eneo from before split speakers
- * could be named refuses the whole mapping for such a name; say which.
+ * A refused save of the names in words. When Eneo refuses the mapping and a speaker split off in the review is among
+ * the named, that name may be the cause: say which.
  */
 export function namingRefusal(err: unknown, rows: readonly SpeakerMappingRow[]): string {
   const split = rows.filter((row) => row.split && row.name?.trim());
   if (err instanceof ApiError && err.code === "typed_io_validation_failed" && split.length > 0) {
     const which = split.map((row) => row.label.replace(/^SPEAKER_(\d+)$/, (_, n) => `Talare ${Number(n) + 1}`)).join(", ");
-    return `Eneo tar ännu inte emot namn på en talare som delats upp i granskningen (${which}). Ta bort det namnet och spara igen.`;
+    return `Eneo tog inte emot namnet på en talare som delats upp i granskningen (${which}). Ta bort det namnet och spara igen.`;
   }
   return friendlyError(err);
 }

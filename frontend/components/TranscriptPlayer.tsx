@@ -292,7 +292,6 @@ export function TranscriptPlayer(
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
-  const searchId = useId();
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);

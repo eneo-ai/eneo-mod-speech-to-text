@@ -88,7 +88,6 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const container = await sheet({
     status: "reconnecting",
     started: true,
-    complete: false,
     pieces: [
       { text: "Välkomna till nämndens möte.", opensParagraph: true },
       { text: "Första punkten.", opensParagraph: false },
@@ -110,12 +109,12 @@ test("the live sheet is a named log of committed text; words still arriving are 
   assert.equal(status?.textContent, "Livetexten pausades. Inspelningen fortsätter.");
   assert.ok(!container.textContent?.includes("Visa senaste"), "following the text: no jump button");
 
-  const empty = await sheet({ status: "connecting", started: false, complete: false, pieces: [], pending: "" });
+  const empty = await sheet({ status: "connecting", started: false, pieces: [], pending: "" });
   assert.match(empty.textContent ?? "", /Texten visas här när du börjar prata\./);
   const emptyStatus = empty.querySelector('[role="log"]')?.nextElementSibling;
   assert.equal(emptyStatus?.getAttribute("role"), "status", "the status region is there before anything is said");
   assert.equal(emptyStatus?.textContent, "", "and says nothing");
-  const refused = await sheet({ status: "unavailable", started: false, complete: false, pieces: [], pending: "" });
+  const refused = await sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
   assert.ok(!refused.textContent?.includes("Texten visas här"), "no promise of text that will not come");
   assert.match(refused.textContent ?? "", /Livetexten kunde inte starta\./);
 });
@@ -124,7 +123,7 @@ test("the live sheet shows the relay's final text where a session's deltas were,
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
   const first = { text: "Hej alla.", opensParagraph: true };
-  let snapshot: LiveSnapshot = { status: "live", started: true, complete: false, pieces: [first, { text: "Vi börjar", opensParagraph: false }], pending: "" };
+  let snapshot: LiveSnapshot = { status: "live", started: true, pieces: [first, { text: "Vi börjar", opensParagraph: false }], pending: "" };
   const listeners = new Set<() => void>();
   const live: LiveSession = {
     ...liveOf(snapshot),
@@ -143,7 +142,7 @@ test("the live sheet's jump button shows when the reader has scrolled up, and gi
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
   const pieces = [{ text: "Välkomna till nämndens möte.", opensParagraph: true }];
-  const view = await mount(createElement(LiveSheet, { live: liveOf({ status: "live", started: true, complete: false, pieces, pending: "" }), recorder: "recording" }));
+  const view = await mount(createElement(LiveSheet, { live: liveOf({ status: "live", started: true, pieces, pending: "" }), recorder: "recording" }));
   const log = view.container.querySelector<HTMLElement>('[role="log"]')!;
   // A text taller than its box, read from the top: jsdom has no layout, so the log says how tall it is.
   let top = 0;
@@ -171,7 +170,7 @@ test("the live sheet says the speakers come when you are done, only when the flo
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
   const { labelsSpeakers } = await import("./flow-session");
-  const live = liveOf({ status: "live", started: true, complete: false, pieces: [], pending: "" });
+  const live = liveOf({ status: "live", started: true, pieces: [], pending: "" });
   const heading = async (speakers: boolean) =>
     (await mount(createElement(LiveSheet, { live, recorder: "recording", speakers }))).container.querySelector("h2")?.textContent;
   assert.equal(await heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");

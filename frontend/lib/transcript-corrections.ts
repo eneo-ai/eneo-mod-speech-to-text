@@ -310,15 +310,6 @@ export function occurrencesForLine(
   }));
 }
 
-/** Bakåtkompatibelt: första spannet, eller null om raden är oförändrad. */
-export function occurrenceForLine(
-  segmentIndex: number,
-  rawText: string,
-  newText: string,
-): CorrectionOccurrence | null {
-  return occurrencesForLine(segmentIndex, rawText, newText)[0] ?? null;
-}
-
 /** Ersätter segmentets korrigeringar (tom lista eller null tar bort dem). */
 export function withLineCorrection(
   set: CorrectionSet,

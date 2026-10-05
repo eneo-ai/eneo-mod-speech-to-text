@@ -3,7 +3,6 @@ import { useTranscriptCorrections } from "@/components/useTranscriptCorrections"
 import { CheckCircle2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
-  use,
   useEffect,
   useMemo,
   useRef,

@@ -440,7 +440,7 @@ const FINISHING_WAIT_MS = 20_000;
 
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
-  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
+  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false };
   return {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,

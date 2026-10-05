@@ -44,8 +44,6 @@ export interface LiveSnapshot {
   pending: string;
   /** A session has been live at least once. */
   started: boolean;
-  /** After the stop, the relay's final text came and the draft is it; false when the connection ended first. */
-  complete: boolean;
   /** Eneo's stored transcript of the whole recording, from the final text of a recording heard whole. */
   transcriptId?: string;
   /** The recording ended with a count, so its final text, still to come, may name a stored transcript. */
@@ -130,7 +128,7 @@ export function openLiveSocket(Socket: typeof WebSocket, url: string): LiveSocke
 type Failure = "retry" | "refused" | "idle" | null;
 
 export class LiveTranscriber {
-  private snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  private snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
   // The first piece of the current session: its final text replaces the session's pieces.
   private sessionStart = 0;
   private listeners = new Set<() => void>();
@@ -346,7 +344,7 @@ export class LiveTranscriber {
         if (this.stopping) {
           // Only a recording heard whole has a stored transcript of all of it.
           const transcriptId = this.whole && typeof event.transcript_id === "string" ? event.transcript_id : undefined;
-          if (final !== null) this.set({ complete: true, transcriptId });
+          if (final !== null && transcriptId) this.set({ transcriptId });
           this.finish();
         }
         break;

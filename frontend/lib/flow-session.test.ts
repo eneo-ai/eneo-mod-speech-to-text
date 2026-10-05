@@ -121,7 +121,7 @@ function fakeLiveClient() {
   const earlier: unknown[] = [];
   const streams: unknown[] = [];
   const listeners = new Set<() => void>();
-  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
   const client: LiveClient = {
     open(stepId, recordingId, pieces) {
       opened.push(stepId);
@@ -1674,7 +1674,7 @@ test("Strömma names the new recording to live text, and a clean session's store
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
 
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
@@ -1772,7 +1772,7 @@ test("a final text that comes while the stopped recording is still being stored 
   live.report({ finishing: true });
   const stopping = session.stop();
   await until(() => stored !== undefined, "the stop being stored");
-  live.report({ status: "ended", finishing: false, complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", finishing: false, transcriptId: "transcript-1" });
   await settle();
   stored!();
   await stopping;
@@ -1806,7 +1806,7 @@ test("a transcript never stays with a recording of two parts, and live text for 
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
 
