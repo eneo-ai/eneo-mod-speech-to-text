@@ -15,6 +15,7 @@ import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
 import type { Playback } from "@/lib/playback";
+import { useAuthenticatedUser } from "@/components/AuthGate";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
 import { CopyButton } from "./CopyButton";
@@ -31,9 +32,10 @@ function downloadText(text: string, filename: string) {
 
 /** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
 export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
+  const user = useAuthenticatedUser();
   const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
   const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
   const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
   return { transcript, confirmedWords, editing, reload };

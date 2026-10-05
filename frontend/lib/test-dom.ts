@@ -135,3 +135,10 @@ export function parse(html: string): Document {
 export function button(within: ParentNode, name: string): HTMLButtonElement | null {
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
 }
+
+/** `element` as a page behind AuthGate has it: with the signed-in person. */
+export async function asPerson(element: import("react").ReactElement, user = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }) {
+  const { createElement } = await import("react");
+  const { AuthenticatedUserContext } = await import("../components/AuthGate");
+  return createElement(AuthenticatedUserContext.Provider, { value: user }, element);
+}

@@ -3,8 +3,12 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { AuthenticatedUserContext } from "../components/AuthGate";
 import { EarlierRuns } from "../components/flow/EarlierRuns";
 import type { EarlierRunsSnapshot } from "./earlier-runs";
+
+/** The signed-in person a page behind AuthGate has. */
+const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
 
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
@@ -208,7 +212,7 @@ test("a Word file downloads; only a PDF offers Öppna", () => {
 
 test("the result names its time like a person, keeps the steps behind plain words and offers a new recording", () => {
   const html = markup(
-    createElement(RunResult, {
+    createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", created_at: created, finished_at: created, result: { kind: "artifact", files: [] } },
@@ -217,7 +221,7 @@ test("the result names its time like a person, keeps the steps behind plain word
       files: [report],
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   const words = text(html);
 
@@ -233,7 +237,7 @@ test("the result names its time like a person, keeps the steps behind plain word
 
 const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
   markup(
-    createElement(RunResult, {
+    createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", ...run } as never,
@@ -243,7 +247,7 @@ const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
       showTranscript: false,
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
 
 test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {

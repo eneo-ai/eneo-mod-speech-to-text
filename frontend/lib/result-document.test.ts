@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 import type { ReactElement } from "react";
 
-import { button, cleanup, installDom, mount } from "./test-dom";
+import { asPerson, button, cleanup, installDom, mount } from "./test-dom";
 import { withRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 
@@ -331,7 +331,7 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
     },
   };
   const view = await mount(
-    createElement(RunResult, {
+    await asPerson(createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
@@ -340,7 +340,7 @@ test("narrower than a laptop, Dokument and Transkript are tabs that keep each ot
       files: [pdf],
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const tab = (name: string) => tabsIn(view.container).find((b) => tabLabel(b) === name)!;
@@ -399,7 +399,7 @@ test("a failed later save keeps the note that the document is older, and says wh
     },
   };
   const view = await mount(
-    createElement(RunResult, {
+    await asPerson(createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
@@ -408,7 +408,7 @@ test("a failed later save keeps the note that the document is older, and says wh
       files: [pdf],
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   const note = () => view.container.querySelector('[role="note"]');
@@ -548,12 +548,12 @@ test("crossing the laptop breakpoint keeps an unfinished correction and its draf
   };
   const view = await mount(
     withRouter(
-      createElement(RunResult, {
+      await asPerson(createElement(RunResult, {
         flowId: "flow-1", flowName: "Nämndmöte till rapport",
         run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
         steps: [], stepResults: [transcribe] as never, files: [pdf],
         onNewRecording: () => undefined, onRegenerated: () => undefined,
-      }),
+      })),
     ).tree,
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
@@ -640,7 +640,7 @@ test("a finished run whose document is only its file previews the text its own s
   t.after(() => void (globalThis.fetch = original));
   globalThis.fetch = (async () => Response.json([])) as typeof fetch;
   const view = await mount(
-    createElement(RunResult, {
+    await asPerson(createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "artifact", files: [{ file_id: "file-1" }] } } as never,
@@ -653,7 +653,7 @@ test("a finished run whose document is only its file previews the text its own s
       showTranscript: false,
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   const preview = previewOf(view.container);
   assert.ok(preview, "the file's text under it");
@@ -682,7 +682,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
     ] } },
   };
   const view = await mount(
-    createElement(RunResult, {
+    await asPerson(createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Intervju till sammanfattning",
       run: { id: "run-1", flow_id: "flow-1", flow_version: 7, status: "completed", revision: 1, finished_at: "2026-09-24T09:02:00Z", result: { kind: "inline_text", text } } as never,
@@ -692,7 +692,7 @@ test("a flow that makes text says the text is ready, and offers to make the text
       files: [],
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   await view.act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   assert.equal(view.container.querySelector("h1")?.textContent, "Texten är klar");
@@ -751,7 +751,7 @@ test("the document is the file Eneo names as the run's result, not the first fil
   globalThis.fetch = (async () => Response.json([])) as typeof fetch;
   const earlier: ResultFileView = { ...pdf, fileId: "file-0", name: "Underlag.pdf", stepId: "step-1" };
   const view = await mount(
-    createElement(RunResult, {
+    await asPerson(createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: {
@@ -764,7 +764,7 @@ test("the document is the file Eneo names as the run's result, not the first fil
       showTranscript: false,
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   assert.match(view.container.querySelector("[data-file-row]")?.textContent ?? "", /Protokoll kommunstyrelsen/, "the final step's file");
   const more = view.container.querySelector('section[aria-labelledby="result-files"]');

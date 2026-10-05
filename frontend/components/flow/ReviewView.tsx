@@ -219,7 +219,7 @@ export function ReviewView({
   });
   // Bekräftade osäkra ord lagras lokalt per steg (ryms inte i Eneos modell).
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
 
   // One playback for the page: the transcript's player, and the speakers' samples in "Namnge talarna".
