@@ -396,7 +396,14 @@
             }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           }
         }
       }
@@ -488,60 +495,145 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "400": {
-            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; här står det modulens.",
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "411": {
-            "description": "`Content-Length` saknas.",
+            "description": "`Content-Length` saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "504": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -626,60 +718,145 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "400": {
-            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; här står det modulens.",
+            "description": "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en `Content-Length` som inte är ett tal. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "411": {
-            "description": "`Content-Length` saknas.",
+            "description": "`Content-Length` saknas. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/Error"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "504": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_upload_timeout`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -789,17 +966,49 @@
             }
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
-          },
-          "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`.",
-            "content": {
-              "application/json": {
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
                 }
               }
             }
+          },
+          "502": {
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoRefusal"
           }
         }
       }
@@ -917,27 +1126,66 @@
             }
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "422": {
-            "description": "Ett värde som inte är ett av de tillåtna.",
+            "description": "Ett värde som inte är ett av de tillåtna. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/HTTPValidationError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_redirect` eller `upstream_invalid`. Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
                 }
               }
             }
+          },
+          "default": {
+            "$ref": "#/components/responses/EneoRefusal"
           }
         }
       }
@@ -965,17 +1213,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1018,17 +1309,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1071,17 +1405,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1124,17 +1501,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1177,17 +1597,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1241,30 +1704,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1316,17 +1843,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1378,17 +1948,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1440,17 +2053,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1511,17 +2167,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1573,17 +2272,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1653,17 +2395,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1737,30 +2522,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1825,30 +2674,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -1913,30 +2826,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2010,30 +2987,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2085,17 +3126,60 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2169,30 +3253,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2266,30 +3414,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2363,30 +3575,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2460,30 +3736,94 @@
             "$ref": "#/components/responses/EneoAnswer"
           },
           "401": {
-            "$ref": "#/components/responses/Unauthenticated"
+            "description": "Ingen giltig session. Sidan går till inloggningen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "403": {
-            "$ref": "#/components/responses/OriginRefused"
+            "description": "`Origin` är inte modulens egen. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "409": {
-            "$ref": "#/components/responses/UserChanged"
+            "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
           },
           "413": {
-            "description": "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det modulens som blev passerat.",
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/TooLarge"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TooLarge"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
           },
           "502": {
-            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`.",
+            "description": "Modulen når inte Eneo, eller kan inte använda svaret. `error` är `upstream_unreachable` eller `upstream_too_large` eller `upstream_redirect`. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
-              "application/json": {
+              "*/*": {
                 "schema": {
-                  "$ref": "#/components/schemas/BffError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
                 }
               }
             }
@@ -2534,50 +3874,22 @@
       }
     },
     "responses": {
-      "Unauthenticated": {
-        "description": "Ingen giltig session. Sidan går till inloggningen.",
-        "headers": {
-          "X-Auth-Required": {
-            "description": "Alltid `session`.",
-            "schema": {
-              "type": "string"
-            }
-          }
-        },
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            }
-          }
-        }
-      },
       "EneoAnswer": {
         "description": "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
         "content": {
-          "application/json": {
+          "*/*": {
             "schema": {
               "$ref": "#/components/schemas/EneoPayload"
             }
           }
         }
       },
-      "OriginRefused": {
-        "description": "`Origin` är inte modulens egen.",
+      "EneoRefusal": {
+        "description": "Eneos felstatus. Eneos svar, vilken JSON det än är, står i `detail`.",
         "content": {
           "application/json": {
             "schema": {
-              "$ref": "#/components/schemas/Error"
-            }
-          }
-        }
-      },
-      "UserChanged": {
-        "description": "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`).",
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
+              "$ref": "#/components/schemas/EneoDetail"
             }
           }
         }
@@ -2637,7 +3949,18 @@
         "description": "Den gräns som blev passerad står med sitt värde."
       },
       "EneoPayload": {
-        "description": "Eneos innehåll, vilken JSON det än är. Modulen beskriver det inte: se Eneos egen beskrivning."
+        "description": "Eneos innehåll, av vilken typ det än är. Modulen beskriver det inte: se Eneos egen beskrivning."
+      },
+      "EneoDetail": {
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "properties": {
+          "detail": {
+            "description": "Eneos svar, vilken JSON det än är."
+          }
+        }
       },
       "Branding": {
         "type": "object",

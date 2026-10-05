@@ -26,6 +26,7 @@ os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
 
+import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app import main  # noqa: E402
@@ -100,6 +101,7 @@ class DocumentTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.document = json.loads(COMMITTED.read_text())
         cls.operations = operations(cls.document)
+        cls.components = cls.document["components"]
 
     def test_every_route_of_the_app_and_every_allowlist_entry_is_in_the_file_and_nothing_else(self) -> None:
         expected = {
@@ -121,7 +123,7 @@ class DocumentTests(unittest.TestCase):
 
         self.assertEqual(len(ids), len(set(ids)))
 
-    def test_every_reference_resolves(self) -> None:
+    def references(self) -> list[str]:
         found = []
 
         def walk(node: object) -> None:
@@ -135,12 +137,23 @@ class DocumentTests(unittest.TestCase):
                     walk(value)
 
         walk(self.document)
+        return found
+
+    def test_every_reference_resolves(self) -> None:
+        found = self.references()
         for reference in found:
             with self.subTest(reference=reference):
                 node = self.document
                 for part in reference.removeprefix("#/").split("/"):
                     node = node[part]
         self.assertGreater(len(found), 100)
+
+    def test_every_component_is_used(self) -> None:
+        used = set(self.references())
+        for kind in ("schemas", "responses", "parameters"):
+            unused = [name for name in self.components[kind] if f"#/components/{kind}/{name}" not in used]
+
+            self.assertEqual(unused, [], f"components.{kind} that nothing refers to")
 
     def test_every_error_code_the_backend_sends_is_in_the_file(self) -> None:
         sent = set(re.findall(r'"error": "(\w+)"', (BACKEND / "app" / "main.py").read_text()))
@@ -157,18 +170,30 @@ class DocumentTests(unittest.TestCase):
 
 
 class Eneo:
-    """The module's client, in process: every call is answered at once with the one answer it was given."""
+    """The module's client, in process: every call is answered at once with the one answer it was given, or fails."""
 
-    def __init__(self, status_code: int = 200, content: bytes = b"{}") -> None:
+    def __init__(
+        self,
+        status_code: int = 200,
+        content: bytes = b"{}",
+        content_type: str = "application/json",
+        failure: Exception | None = None,
+    ) -> None:
         self.answer = SimpleNamespace(
-            status_code=status_code, headers={"content-type": "application/json"}, content=content
+            status_code=status_code,
+            headers={"content-type": content_type},
+            content=content,
+            json=lambda: json.loads(content),
         )
+        self.failure = failure
 
     async def request(self, **kwargs):
+        if self.failure:
+            raise self.failure
         return self.answer
 
     async def post(self, url, **kwargs):
-        return self.answer
+        return await self.request()
 
 
 class AppCase(unittest.TestCase):
@@ -216,6 +241,48 @@ class AppCase(unittest.TestCase):
             headers["X-Expected-User"] = user
         url = re.sub(r"\{(\w+)\}", lambda match: "light" if match[1] == "variant" else "x", path)
         return client.request(method, url, headers=headers, files=files)
+
+    def resolve(self, node: dict) -> dict:
+        while "$ref" in node:
+            target = self.document
+            for part in node["$ref"].removeprefix("#/").split("/"):
+                target = target[part]
+            node = target
+        return node
+
+    def conforms(self, value: object, schema: dict) -> bool:
+        """Whether ``value`` is what ``schema`` allows: anyOf, type, required and properties are all the file uses."""
+        schema = self.resolve(schema)
+        if "anyOf" in schema:
+            return any(self.conforms(value, branch) for branch in schema["anyOf"])
+        kinds = {"object": dict, "string": str, "integer": int, "boolean": bool, "array": list, "null": type(None)}
+        types = schema.get("type", [])
+        types = [types] if isinstance(types, str) else types
+        if types and not any(isinstance(value, kinds[kind]) for kind in types):
+            return False
+        if isinstance(value, dict):
+            if any(name not in value for name in schema.get("required", [])):
+                return False
+            return all(
+                self.conforms(value[name], branch)
+                for name, branch in schema.get("properties", {}).items()
+                if name in value
+            )
+        return True
+
+    def assert_described(self, method: str, path: str, response) -> None:
+        """The answer is one the operation's response for its status (or its default) allows, by media type and body."""
+        responses = self.operations[(method, path)]["responses"]
+        entry = self.resolve(responses.get(str(response.status_code), responses.get("default", {})))
+        media = response.headers["content-type"].split(";")[0]
+        content = entry.get("content", {})
+        self.assertTrue(content, f"{response.status_code} has no content in the file")
+        described = content.get(media, content.get("*/*"))
+        self.assertIsNotNone(described, f"{response.status_code} has no {media} or */* in the file: {sorted(content)}")
+        body = response.json() if media == "application/json" else response.text
+        self.assertTrue(
+            self.conforms(body, described["schema"]), f"{response.status_code} {body!r} is not what the file allows"
+        )
 
     @staticmethod
     def parameter_names(operation: dict) -> set[str]:
@@ -306,27 +373,77 @@ class AnswerTests(AppCase):
                 self.assertLessEqual(set(organization["required"]), set(body["organization"]))
                 self.assertLessEqual(set(body["organization"]), set(organization["properties"]))
 
-    def test_what_eneo_answers_comes_back_as_its_own_and_the_file_says_it_may(self) -> None:
+    def test_what_eneo_answers_comes_back_as_its_own_and_the_file_allows_it(self) -> None:
         upload = {"upload_file": ("meeting.webm", b"audio", "audio/webm")}
         files = "/api/eneo/flows/{flow_id}/files/"
+        runs = "/api/eneo/flows/{flow_id}/runs/"
+        cancel = "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/"
+        as_json, as_text = "application/json", "text/plain"
         cases = (
-            ("GET", "/api/eneo/flows/", None, 200, b'{"items": []}'),
-            ("GET", "/api/eneo/flows/", None, 404, b'{"detail": "Not found"}'),
-            ("POST", "/api/eneo/flows/{flow_id}/runs/", None, 201, b'{"id": "run-1"}'),
-            ("POST", files, upload, 200, b'{"id": "file-1"}'),
-            ("POST", files, upload, 422, b'{"detail": "Unsupported"}'),
+            ("GET", "/api/eneo/flows/", None, 200, b'{"items": []}', as_json),
+            ("GET", "/api/eneo/flows/", None, 200, b"plain text", as_text),
+            ("GET", "/api/eneo/flows/", None, 400, b'{"errors": ["limit"]}', as_json),
+            ("GET", "/api/eneo/flows/", None, 401, b'{"message": "token"}', as_json),
+            ("GET", "/api/eneo/flows/", None, 404, b'{"detail": "Not found"}', as_json),
+            ("GET", "/api/eneo/flows/", None, 502, b"Bad Gateway", as_text),
+            ("POST", runs, None, 201, b'{"id": "run-1"}', as_json),
+            ("POST", cancel, None, 409, b'{"code": "revision"}', as_json),
+            ("POST", files, upload, 200, b'{"id": "file-1"}', as_json),
+            ("POST", files, upload, 400, b'{"errors": ["too big"]}', as_json),
+            ("POST", files, upload, 413, b'{"message": "too large"}', as_json),
+            ("POST", files, upload, 422, b'{"detail": "Unsupported"}', as_json),
+            ("POST", files, upload, 502, b'{"message": "bad gateway"}', as_json),
+            ("POST", files, upload, 504, b"Gateway Timeout", as_text),
         )
-        for method, path, body, status, content in cases:
-            with self.subTest(method=method, path=path, status=status):
-                main.http_client = Eneo(status, content)
+        for method, path, body, status, content, content_type in cases:
+            with self.subTest(method=method, path=path, status=status, content_type=content_type):
+                main.http_client = Eneo(status, content, content_type)
 
                 response = self.call(method, path, origin=main.settings.module_origin, user="user-id", files=body)
 
                 self.assertEqual((response.status_code, response.content), (status, content))
-                responses = self.operations[(method, path)]["responses"]
-                shared = {"$ref": "#/components/responses/EneoAnswer"}
-                self.assertEqual(responses.get(str(status), responses.get("default")), shared)
-                self.assertEqual((responses["200"], responses["default"]), (shared, shared))
+                self.assertEqual(response.headers["content-type"].split(";")[0], content_type)
+                self.assert_described(method, path, response)
+
+    def test_what_the_module_answers_itself_is_what_the_file_allows(self) -> None:
+        unreachable = Eneo(failure=httpx.ConnectError("no route"))
+        cases = (
+            ("GET", "/api/eneo/flows/", {"user": "someone-else"}, Eneo(), 409),
+            ("GET", "/api/eneo/flows/", {}, unreachable, 502),
+            (
+                "POST",
+                "/api/eneo/flows/{flow_id}/files/",
+                {"files": {"upload_file": ("a", b"", "text/plain")}},
+                unreachable,
+                502,
+            ),
+            ("POST", "/api/eneo/flows/{flow_id}/files/", {"origin": "https://elsewhere.example"}, Eneo(), 403),
+            ("POST", "/api/eneo/flows/{flow_id}/files/", {"session": False}, Eneo(), 401),
+            ("POST", "/api/eneo/flows/{flow_id}/files/", {}, Eneo(), 400),
+        )
+        for method, path, options, eneo, status in cases:
+            with self.subTest(method=method, path=path, status=status, options=sorted(options)):
+                main.http_client = eneo
+                options = {"origin": main.settings.module_origin, "user": "user-id", **options}
+
+                response = self.call(method, path, **options)
+
+                self.assertEqual(response.status_code, status, response.text)
+                self.assert_described(method, path, response)
+
+    def test_what_eneo_refuses_a_file_with_comes_back_in_detail_and_the_file_allows_it(self) -> None:
+        for path in (
+            "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
+            "/api/eneo/flows/{flow_id}/runs/{run_id}/artifacts/{file_id}/content",
+        ):
+            for status in (401, 404, 413, 502):
+                with self.subTest(path=path, status=status):
+                    main.http_client = Eneo(status, b'{"message": "no"}')
+
+                    response = self.call("GET", path)
+
+                    self.assertEqual((response.status_code, response.json()), (status, {"detail": {"message": "no"}}))
+                    self.assert_described("GET", path, response)
 
 
 if __name__ == "__main__":

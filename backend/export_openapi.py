@@ -115,6 +115,9 @@ class Op(NamedTuple):
     parameters: tuple[dict[str, Any], ...] = ()  # beside the path and query parameters of the signature
     errors: tuple[str, ...] = ()  # BFF error codes: {"error": code, "detail": ...}
     too_large: str | None = None  # the 413 of the body limit that applies: "max_body_bytes" or "max_upload_bytes"
+    eneo: str | None = (
+        None  # how an Eneo answer reaches the browser: "unchanged" (as it is) or "detail" (inside a detail)
+    )
 
 
 def reply(
@@ -148,6 +151,12 @@ ENEO_ANSWERS = {
     "200": {"$ref": "#/components/responses/EneoAnswer"},
     "default": {"$ref": "#/components/responses/EneoAnswer"},
 }
+ENEO_SHARES_STATUS = {
+    "unchanged": " Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen "
+    "här är modulens.",
+    "detail": " Samma status kan också vara Eneos felstatus; Eneos svar står då i `detail`, och formen här är "
+    "modulens.",
+}
 UPLOAD_BODY = {
     "required": True,
     "description": "Exakt en filpart med namnet `upload_file` och inga andra fält. Filnamn och innehållstyp får sakna "
@@ -173,6 +182,8 @@ PROXY_ERRORS = ("upstream_unreachable", "upstream_too_large", "upstream_redirect
 UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout")
 STREAM_ERRORS = ("upstream_unreachable", "upstream_redirect", "upstream_invalid")
 BFF_ERRORS = sorted({*PROXY_ERRORS, *UPLOAD_ERRORS, *STREAM_ERRORS})
+# What Eneo refuses a file with comes back with its status and its answer in `detail`.
+STREAM_ANSWERS = {"default": {"$ref": "#/components/responses/EneoRefusal"}}
 
 
 def file_answer(what: str) -> dict[str, Any]:
@@ -281,6 +292,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         user="required",
         body=UPLOAD_BODY,
         success=ENEO_ANSWERS,
+        eneo="unchanged",
         parameters=(UPLOAD_TIMEOUT,),
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
@@ -294,6 +306,7 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         user="required",
         body=UPLOAD_BODY,
         success=ENEO_ANSWERS,
+        eneo="unchanged",
         parameters=(UPLOAD_TIMEOUT,),
         errors=UPLOAD_ERRORS,
         too_large="max_upload_bytes",
@@ -305,9 +318,10 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "nyckel till filen och når aldrig webbläsaren. "
         "Ingen `X-Expected-User` behövs: en `<audio src>` kan inte skicka huvuden.",
         session=True,
-        success={"200": file_answer("Ljudfilen"), "206": file_answer("Det begärda intervallet")},
+        success={**STREAM_ANSWERS, "200": file_answer("Ljudfilen"), "206": file_answer("Det begärda intervallet")},
         parameters=(RANGE,),
         errors=STREAM_ERRORS,
+        eneo="detail",
     ),
     ("GET", "/api/eneo/flows/{flow_id}/runs/{run_id}/artifacts/{file_id}/content"): Op(
         "Filer",
@@ -315,9 +329,10 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Under det namn Eneo gav filen. En PDF med `disposition=inline` öppnas i webbläsaren och får `X-Frame-Options: "
         "SAMEORIGIN`; allt annat laddas ner.",
         session=True,
-        success={"200": file_answer("Filen"), "206": file_answer("Det begärda intervallet")},
+        success={**STREAM_ANSWERS, "200": file_answer("Filen"), "206": file_answer("Det begärda intervallet")},
         parameters=(RANGE,),
         errors=STREAM_ERRORS,
+        eneo="detail",
     ),
 }
 
@@ -383,26 +398,47 @@ def describe_generated(parameters: list[dict[str, Any]]) -> list[dict[str, Any]]
     return described
 
 
+def or_eneos(op: Op, response: dict[str, Any]) -> dict[str, Any]:
+    """The module's answer for a status that an Eneo answer can have as well, which is any status of a call it forwards.
+
+    Eneo's own answer with that status comes back as it is and is not shaped like the module's, so the entry allows
+    both and says which is which. This is the one place that is done.
+    """
+    module = response["content"]["application/json"]["schema"]
+    eneos = {
+        "$ref": "#/components/schemas/EneoPayload" if op.eneo == "unchanged" else "#/components/schemas/EneoDetail"
+    }
+    return {
+        **response,
+        "description": response["description"] + ENEO_SHARES_STATUS[op.eneo or ""],
+        "content": {"*/*": {"schema": {"anyOf": [module, eneos]}}},
+    }
+
+
 def refusals(op: Op) -> dict[str, Any]:
     responses: dict[str, Any] = {}
     if op.session:
-        responses["401"] = {"$ref": "#/components/responses/Unauthenticated"}
+        responses["401"] = reply(
+            "Ingen giltig session. Sidan går till inloggningen.",
+            json_of(ERROR),
+            {"X-Auth-Required": {"description": "Alltid `session`.", "schema": {"type": "string"}}},
+        )
     if op.too_large == "max_upload_bytes":  # an upload: what the module itself checks before it forwards a byte
         responses["400"] = reply(
             "Inte exakt en fil med namnet `upload_file`, ett filnamn eller en innehållstyp med styrtecken, eller en "
-            "`Content-Length` som inte är ett tal. Eneo kan också svara 400, och det kommer tillbaka från Eneo; "
-            "här står det modulens.",
+            "`Content-Length` som inte är ett tal.",
             json_of(ERROR),
         )
         responses["411"] = reply("`Content-Length` saknas.", json_of(ERROR))
     if op.origin:
-        responses["403"] = {"$ref": "#/components/responses/OriginRefused"}
+        responses["403"] = reply("`Origin` är inte modulens egen.", json_of(ERROR))
     if op.user is not None:
-        responses["409"] = {"$ref": "#/components/responses/UserChanged"}
+        responses["409"] = reply(
+            "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`).", json_of(ERROR)
+        )
     if op.too_large is not None:
         responses["413"] = reply(
-            "Kroppen är större än modulens tak. Eneo har egna tak, som kommer tillbaka från Eneo; här står det "
-            "modulens som blev passerat.",
+            "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat.",
             json_of({"$ref": "#/components/schemas/TooLarge"}),
         )
     for status in ("502", "504"):
@@ -425,11 +461,14 @@ def build_operation(method: str, path: str, op: Op, parameters: list[dict[str, A
         parameters = [*parameters, {"$ref": f"#/components/parameters/{name}"}]
     parameters = [*parameters, *op.parameters]
     checked = [p["schema"] for p in parameters if p.get("in") in ("path", "query")]
-    responses = {**(op.success or {}), **refusals(op)}
+    own = refusals(op)
     if any("enum" in schema or schema.get("type") == "boolean" for schema in checked):
-        responses["422"] = reply(
+        own["422"] = reply(
             "Ett värde som inte är ett av de tillåtna.", json_of({"$ref": "#/components/schemas/HTTPValidationError"})
         )
+    if op.eneo:
+        own = {status: or_eneos(op, response) for status, response in own.items()}
+    responses = {**(op.success or {}), **own}
     result: dict[str, Any] = {"tags": [op.tag], "summary": op.summary, "operationId": operation_id(method, path)}
     if op.description:
         result["description"] = op.description
@@ -453,6 +492,7 @@ def eneo_operation(method: str, template: str) -> dict[str, Any]:
         origin=method != "GET",
         user="optional" if method == "GET" else "required",
         success=ENEO_ANSWERS,
+        eneo="unchanged",
         errors=PROXY_ERRORS,
         body=None
         if method == "GET"
@@ -492,19 +532,14 @@ COMPONENTS: dict[str, Any] = {
         ),
     },
     "responses": {
-        "Unauthenticated": reply(
-            "Ingen giltig session. Sidan går till inloggningen.",
-            json_of(ERROR),
-            {"X-Auth-Required": {"description": "Alltid `session`.", "schema": {"type": "string"}}},
-        ),
         "EneoAnswer": reply(
             "Eneos svar, oförändrat: Eneos statuskod, innehållstyp och innehåll (högst `MAX_RESPONSE_BYTES`; ett "
             "längre svar blir `502 upstream_too_large`). Modulen lägger inget till och beskriver inget av det.",
-            json_of({"$ref": "#/components/schemas/EneoPayload"}),
+            {"*/*": {"schema": {"$ref": "#/components/schemas/EneoPayload"}}},
         ),
-        "OriginRefused": reply("`Origin` är inte modulens egen.", json_of(ERROR)),
-        "UserChanged": reply(
-            "Sidan är öppnad för en annan användare än sessionens (`detail` är `user_changed`).", json_of(ERROR)
+        "EneoRefusal": reply(
+            "Eneos felstatus. Eneos svar, vilken JSON det än är, står i `detail`.",
+            json_of({"$ref": "#/components/schemas/EneoDetail"}),
         ),
     },
     "schemas": {
@@ -526,8 +561,13 @@ COMPONENTS: dict[str, Any] = {
             "description": "Den gräns som blev passerad står med sitt värde.",
         },
         "EneoPayload": {
-            "description": "Eneos innehåll, vilken JSON det än är. Modulen beskriver det inte: se Eneos egen "
+            "description": "Eneos innehåll, av vilken typ det än är. Modulen beskriver det inte: se Eneos egen "
             "beskrivning."
+        },
+        "EneoDetail": {
+            "type": "object",
+            "required": ["detail"],
+            "properties": {"detail": {"description": "Eneos svar, vilken JSON det än är."}},
         },
         "Branding": {
             "type": "object",
