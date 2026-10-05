@@ -243,6 +243,9 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
     root = static_dir.resolve()
     index = root / "index.html"
     assets = index_files(root, index)
+    # Native document tabs request /favicon.ico without the app's HTML icon link.
+    if "favicon.svg" in assets:
+        assets.setdefault("favicon.ico", assets["favicon.svg"])
     # Read once, here: the page is the same for every request. A folder with no index.html answers no page (the
     # launcher refuses to start in that case; the app does not fail to import for it).
     page = _branded_page(index, branding) if index.is_file() else None
@@ -270,7 +273,7 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
         if path == "index.html" or (not in_assets and "." not in last):
             return answer_page(request)
         # Absent is a 404: a file the index does not hold (a raw ``a/../index.html``, a file with a trailing slash, one added
-        # since the start) is never served; a file has one URL and the page is only ever the processed one.
+        # since the start) is never served; the page is only ever the processed one.
         asset = assets.get(path)
         if asset is None:
             raise HTTPException(status_code=404)

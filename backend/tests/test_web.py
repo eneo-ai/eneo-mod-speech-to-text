@@ -504,7 +504,7 @@ class StaticServingTests(BuiltUiCase):
         self.assertEqual(asset.headers["cache-control"], "public, max-age=31536000, immutable")
         self.assertTrue(asset.headers["content-type"].startswith("text/javascript"))
         self.assertEqual(asset.text, "console.log(1)")
-        for path in ("/assets/x.js", "/assets/nope/x.js", "/logo.png", "/a/b/style.css", "/favicon.ico", "/x.js"):
+        for path in ("/assets/x.js", "/assets/nope/x.js", "/logo.png", "/a/b/style.css", "/x.js"):
             with self.subTest(path=path):
                 response = self.client.get(path)
 
@@ -541,6 +541,14 @@ class StaticServingTests(BuiltUiCase):
         self.assertEqual(response.text, "body{}")
         self.assertNotIn("content-encoding", response.headers)
         self.assertNotIn("vary", response.headers)
+
+    def test_native_document_tabs_can_request_the_default_favicon(self) -> None:
+        svg = self.client.get("/favicon.svg")
+        icon = self.client.get("/favicon.ico")
+        self.assertEqual((icon.status_code, icon.content), (200, svg.content))
+        self.assertEqual(icon.headers["content-type"], svg.headers["content-type"])
+        self.assertEqual(icon.headers["etag"], svg.headers["etag"])
+        self.assertEqual(self.client.get("/favicon.ico", headers={"If-None-Match": icon.headers["etag"]}).status_code, 304)
 
     def test_a_request_does_no_stat_and_no_resolve(self) -> None:
         # The files are known from the start: a request looks its path up and touches the file system for nothing else
