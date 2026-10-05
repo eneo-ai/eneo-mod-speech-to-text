@@ -36,6 +36,7 @@ import http.client
 import json
 import os
 import re
+import resource
 import socket
 import statistics
 import struct
@@ -726,8 +727,22 @@ def check_14() -> str:
     return "\n    ".join(out)
 
 
-RATES = (10, 45, 100)  # visits a second, for the arrival-rate envelope of check 15
-UNAFFECTED_UP_TO = 45  # visits a second: the owner's reason for accepting the stress result (waivers.json); a row up to here over twice idle is a failure
+# The arrival-rate envelope of check 15 is laid out in fractions of what the module serves of the very visit it replays, measured first with 200
+# clients that replay it with no pause, and not in visits a second: what a machine serves differs (a visit's 32 requests at the owner's laptop's
+# pace are about 80 visits a second, on a 4 vCPU runner about 60), and one event loop at four fifths of its capacity queues on either.
+FRACTIONS = (0.1, 0.35, 0.8)
+UNAFFECTED_UP_TO = 0.35  # the owner's reason for accepting the stress result (waivers.json): a row up to here over twice idle is a failure
+
+
+def envelope_rate(fraction: float, capacity: float) -> float:
+    """Visits a second that are ``fraction`` of ``capacity`` visits a second."""
+    return round(fraction * capacity, 1)
+
+
+def cpu_seconds_of_module() -> float:
+    """CPU the image's process has used so far, user and system, from its /proc."""
+    fields = exec_in(STACK.container, "cat", "/proc/1/stat").rsplit(")", 1)[1].split()
+    return (int(fields[11]) + int(fields[12])) / 100  # Linux counts 100 ticks a second
 
 
 @check(15, "the live relay under static load: the loaded p95 round trip is at most twice the idle p95")
@@ -738,12 +753,17 @@ def check_15() -> str:
     lines, problems, stop = [], [], []
 
     def relay(name: str, load_args: list[str]) -> tuple[dict, dict | None]:
-        """The round trips while the load runs: what was owed and received, the percentiles, the load's own totals."""
+        """The round trips while the load runs: what was owed and received, the percentiles, the load's own totals, and the CPU the image's
+        process and the load generator (this process's children) used, as a share of one core over the call: which of them was saturated."""
+        began, module_began, generator_began = time.monotonic(), cpu_seconds_of_module(), resource.getrusage(resource.RUSAGE_CHILDREN)
         try:
             trips, load = live_load.measure_under_load(STACK.direct, path, headers, 30, 20, ["--cookie", session.cookie, *load_args])
         except live_load.RelayError as error:
             problems.append(f"{name}: {error}")
             return {}, None
+        elapsed, generator_ended = time.monotonic() - began, resource.getrusage(resource.RUSAGE_CHILDREN)
+        load["module_cpu_percent"] = round((cpu_seconds_of_module() - module_began) / elapsed * 100)
+        load["generator_cpu_percent"] = round((generator_ended.ru_utime + generator_ended.ru_stime - generator_began.ru_utime - generator_began.ru_stime) / elapsed * 100)
         try:
             live_load.require_complete((name, trips))
         except live_load.Shortfall as error:
@@ -775,21 +795,35 @@ def check_15() -> str:
     stress, load = relay("stress, 200 clients", ["--clients", "200"])
     lines.append(f"idle: {idle}")
     if load:
-        lines.append(f"stress test, shell and assets, 200 clients with no pause: {stress}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors")
+        lines.append(f"stress test, shell and assets, 200 clients with no pause: {stress}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors; CPU of one core: the image {load['module_cpu_percent']} %, the generator {load['generator_cpu_percent']} %")
     if stress.get("p95_ms") is not None and idle.get("p95_ms") is not None and stress["p95_ms"] > 2 * idle["p95_ms"]:
         stop.append(f"the loaded p95 {stress['p95_ms']} ms is {stress['p95_ms'] / idle['p95_ms']:.1f} times the idle p95 {idle['p95_ms']} ms: the stop condition is more than twice")
 
-    # an envelope, not a verdict: the visit above at a controlled arrival rate (open loop)
-    with tempfile.NamedTemporaryFile("w", suffix=".json") as visit_file:
-        json.dump(visit, visit_file)
-        visit_file.flush()
-        for rate in RATES:
-            report, load = relay(f"{rate} visits/s", ["--rate", str(rate), "--visit", visit_file.name])
-            if load:
-                ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
-                if ratio and rate <= UNAFFECTED_UP_TO and report["p95_ms"] > 2 * idle["p95_ms"]:
-                    problems.append(f"{rate} visits/s: the relay p95 {report['p95_ms']} ms is over twice the idle p95 {idle['p95_ms']} ms, which the owner's acceptance of the stress result says it is not")
-                lines.append(f"arrival rate {rate} visits/s ({len(visit)} requests each): {report}{ratio}; {load['requests_per_second']} requests/s, {load['mbit_per_second']} Mbit/s, {load['errors']} errors, {load['dropped']} visits not started" + (" (2,000 were in flight: the offered rate is above what the module or the generator serves)" if load["dropped"] else ""))
+    # an envelope, not a verdict: the visit above at a controlled arrival rate (open loop), in fractions of what the module serves of that visit
+    if load:
+        with tempfile.NamedTemporaryFile("w", suffix=".json") as visit_file:
+            json.dump(visit, visit_file)
+            visit_file.flush()
+            report, row = relay("the visit, 200 clients with no pause", ["--clients", "200", "--visit", visit_file.name])
+            if row:
+                capacity = row["requests_per_second"] / len(visit)
+                lines.append(
+                    f"the visit's {len(visit)} requests replayed by 200 clients with no pause: {report}; {row['requests_per_second']} requests/s = {capacity:.1f} visits/s, {row['errors']} errors; "
+                    f"CPU of one core: the image {row['module_cpu_percent']} %, the generator {row['generator_cpu_percent']} %"
+                )
+                for fraction in FRACTIONS:
+                    rate = envelope_rate(fraction, capacity)
+                    label = f"{fraction:.0%} of {capacity:.1f} visits/s, {rate} visits/s"
+                    report, row = relay(label, ["--rate", str(rate), "--visit", visit_file.name])
+                    if row:
+                        ratio = f", {report['p95_ms'] / idle['p95_ms']:.1f} times idle" if report.get("p95_ms") is not None and idle.get("p95_ms") else ""
+                        if ratio and fraction <= UNAFFECTED_UP_TO and report["p95_ms"] > 2 * idle["p95_ms"]:
+                            problems.append(f"{label}: the relay p95 {report['p95_ms']} ms is over twice the idle p95 {idle['p95_ms']} ms, which the owner's acceptance of the stress result says it is not")
+                        lines.append(
+                            f"arrival rate, {label} ({len(visit)} requests each): {report}{ratio}; {row['requests_per_second']} requests/s, {row['mbit_per_second']} Mbit/s, {row['errors']} errors, "
+                            f"{row['dropped']} visits not started" + (" (2,000 were in flight: the offered rate is above what the module or the generator serves)" if row["dropped"] else "")
+                            + f"; CPU of one core: the image {row['module_cpu_percent']} %, the generator {row['generator_cpu_percent']} %"
+                        )
     lines.append("one machine: the load generator, the relay's client and the image share the host's CPUs (a second host is not available)")
     detail = "\n    ".join(lines)
     expect(not problems, "; ".join(problems + stop) + "\n    " + detail)

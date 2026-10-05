@@ -84,7 +84,7 @@ En uppladdning tas emot hel av modulen innan den skickas vidare, och Starlette l
 
 ## Kapacitet för live-texten
 
-Statiska filer, uppladdningar och live-reläets WebSocket delar en process och en händelseslinga. Mätt på en bärbar dator ryms en live-session och omkring 45 nya besök i sekunden utan märkbar fördröjning i reläet; vid omkring 100 besök i sekunden är processen mättad. Det är en observation, inget löfte för en annan maskin, och mer kapacitet än en process kräver ett delat sessionslager.
+Statiska filer, uppladdningar och live-reläets WebSocket delar en process och en händelseslinga. Mätt på en bärbar dator ryms en live-session och omkring 45 nya besök i sekunden utan märkbar fördröjning i reläet; vid omkring 100 besök i sekunden är processen mättad. Vad ett visst antal besök i sekunden betyder beror på maskinen (en körare med 4 vCPU i GitHub Actions klarar ungefär hälften så många anrop i sekunden), så acceptanskontrollen lägger sina rader som andelar av vad modulen klarar av ett riktigt besök, och "opåverkad" gäller upp till en tredjedel av det. Det är en observation, inget löfte för en annan maskin, och mer kapacitet än en process kräver ett delat sessionslager.
 
 ## Inget att säkerhetskopiera
 
