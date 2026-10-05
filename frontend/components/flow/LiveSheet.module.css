@@ -1,10 +1,9 @@
 /*
  * Strömma's document sheet: a card that fills the column, a log that scrolls inside it, a button that floats over the
- * log, and a status line under it. Colours, spacing and radii are the design system's tokens.
+ * log's end, and a status line under it. Colours, spacing and radii are the design system's tokens.
  */
 
 .sheet {
-  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -31,10 +30,20 @@
   line-height: 1.6;
 }
 
+/* The log and the button over its end: the button is placed by the log's own box, so the status line under it, however it
+   wraps, is never covered. */
+.logArea {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+}
+
 /* An overlay: in the flow it would shrink the log, move its scroll position and flip "following" back and forth. */
 .latest {
   position: absolute;
-  inset-block-end: calc(var(--spacing-12) + var(--spacing-4));
+  inset-block-end: var(--spacing-4);
   inset-inline-start: 50%;
   translate: -50% 0;
   border-radius: var(--radius-full);

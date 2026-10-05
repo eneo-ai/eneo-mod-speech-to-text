@@ -5,6 +5,7 @@
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
 import { type Page } from "@playwright/test";
+import { TEXT_SPACING } from "./checks";
 import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
 import { record, setup } from "./screens";
@@ -73,4 +74,30 @@ test("with the flow's details unfolded the page is taller than the window: the r
   });
   expect(reach.inside && reach.reached, `Stoppa is in the window and not covered (${JSON.stringify(reach)})`).toBe(true);
   expect(reach.log, "the text is still a text to read").toBeGreaterThanOrEqual(60);
+});
+
+test("Visa senaste stays above a status line that wraps, at larger text and with the spacing a reader may set", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-320-light", "the narrowest window, where the status line wraps most");
+  // Live text that arrives, then a connection that is lost and does not come back: the status line says so.
+  let connections = 0;
+  await page.routeWebSocket(/\/api\/live\//, (ws) => {
+    connections += 1;
+    if (connections > 1) return ws.close({ code: 1011 });
+    ws.send(JSON.stringify({ type: "ready", sample_rate: 16000, max_seconds: 18000 }));
+    for (let word = 0; word < 150; word += 1) ws.send(JSON.stringify({ type: "transcript.delta", text: (word ? " " : "") + "budgeten" }));
+    ws.close({ code: 1011 });
+  });
+  // Tall enough that the sheet holds its status line whole.
+  await page.setViewportSize({ width: 320, height: 900 });
+  await setup(page);
+  await record(page, "Strömma");
+  const status = page.getByText("Livetexten pausades. Inspelningen fortsätter.");
+  await expect(status).toBeVisible({ timeout: 30_000 });
+  await page.addStyleTag({ content: `html { font-size: 150%; } ${TEXT_SPACING}` });
+  await page.getByRole("log", { name: "Preliminär text" }).evaluate((log) => void (log.scrollTop = 0));
+  const latest = page.getByRole("button", { name: "Visa senaste" });
+  await expect(latest).toBeVisible();
+  const [button, line] = [(await latest.boundingBox())!, (await status.boundingBox())!];
+  expect(line.height, "the status line wraps to several lines").toBeGreaterThan(90);
+  expect(button.y + button.height, `the button ends above the status line (${JSON.stringify({ button, line })})`).toBeLessThanOrEqual(line.y + 1);
 });

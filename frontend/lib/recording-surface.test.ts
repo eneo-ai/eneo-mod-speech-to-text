@@ -104,14 +104,14 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const pending = log.querySelector('[aria-hidden="true"]');
   assert.equal(pending?.textContent?.trim(), "Ramen höjs", "words still arriving are shown, and not read");
   assert.ok(!log.querySelector('[role="status"]')?.textContent, "nothing of them in a live region");
-  const status = log.nextElementSibling;
-  assert.equal(status?.getAttribute("role"), "status", "the status line follows the log");
+  const status = log.parentElement?.nextElementSibling;
+  assert.equal(status?.getAttribute("role"), "status", "the status line follows the log and its jump button");
   assert.equal(status?.textContent, "Livetexten pausades. Inspelningen fortsätter.");
   assert.ok(!container.textContent?.includes("Visa senaste"), "following the text: no jump button");
 
   const empty = await sheet({ status: "connecting", started: false, pieces: [], pending: "" });
   assert.match(empty.textContent ?? "", /Texten visas här när du börjar prata\./);
-  const emptyStatus = empty.querySelector('[role="log"]')?.nextElementSibling;
+  const emptyStatus = empty.querySelector('[role="log"]')?.parentElement?.nextElementSibling;
   assert.equal(emptyStatus?.getAttribute("role"), "status", "the status region is there before anything is said");
   assert.equal(emptyStatus?.textContent, "", "and says nothing");
   const refused = await sheet({ status: "unavailable", started: false, pieces: [], pending: "" });

@@ -11,7 +11,7 @@ const LAST_AUDIO_WAIT_MS = 1_000;
 
 /** Strömma needs a socket and an AudioWorklet; without them the card is not offered. */
 export function supportsLiveText(): boolean {
-  return typeof window !== "undefined" && "WebSocket" in window && "AudioWorkletNode" in window;
+  return "WebSocket" in window && "AudioWorkletNode" in window;
 }
 
 /** What live text needs of the browser; tests give their own. */
