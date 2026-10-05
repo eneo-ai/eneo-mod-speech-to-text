@@ -351,7 +351,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
       });
       if (!last || signal.aborted) return;
       if (last.run.status === "awaiting_review") {
-        const checkpoint = await getActiveReviewCheckpoint(flowId, runId).catch(() => null);
+        // Eneo answers null while the pause is not visible yet; an error is not that, and ends the following below.
+        const checkpoint = await getActiveReviewCheckpoint(flowId, runId);
         if (signal.aborted) return;
         if (checkpoint) {
           // Pausad tills användaren agerat; granskningsvyn startar följningen igen.
