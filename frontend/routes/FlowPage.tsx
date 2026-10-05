@@ -123,6 +123,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+  // Opened to send a recording from the flow list: the page holds its loading state until that send has begun, and
+  // shows no screen of the flow on the way (the choice of audio, the finished recording).
+  const [adopting, setAdopting] = useState(() => new URLSearchParams(window.location.search).has(RECORDING_QUERY_PARAM));
+  useEffect(() => {
+    if (run.kind !== "idle") setAdopting(false);
+  }, [run.kind]);
   // A run's view has been shown here: the setup that takes its place announces itself, unlike on first load.
   const [shownRun, setShownRun] = useState(false);
   if (run.kind !== "idle" && !shownRun) setShownRun(true);
@@ -237,12 +243,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     recordingStore()
       .then((store) => store.get(recordingId))
       .then((recording) => {
-        if (recording?.ownerId === user.id && recording.flowId === flowId) {
-          session.adopt(recording);
-          void createDocument(session);
-        }
+        if (recording?.ownerId !== user.id || recording.flowId !== flowId) return;
+        session.adopt(recording);
+        return createDocument(session);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setAdopting(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
@@ -548,9 +554,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRun({ kind: "idle" });
   }
 
-  useRouteReady(loadError !== null || (published !== null && contract !== null));
+  const holding = adopting && run.kind === "idle";
+  useRouteReady(loadError !== null || (published !== null && contract !== null && !holding));
   if (loadError) return <FlowUnavailable error={loadError} />;
-  if (!published || !contract) return <FlowSkeleton />;
+  if (!published || !contract || holding) return <FlowSkeleton />;
 
   // The views that can hold unsent work: the leave question, and their top bar's exits through it.
   const withLeave = (view: ReactNode) => (
