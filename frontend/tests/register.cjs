@@ -1,4 +1,4 @@
-// Resolve the same source aliases as Next in the compiled component tests.
+// Resolve the `@/` source alias of tsconfig and Vite in the compiled tests.
 const Module = require("node:module");
 const path = require("node:path");
 const resolve = Module._resolveFilename;
