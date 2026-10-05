@@ -526,6 +526,9 @@ test("a stopped recording is not continued while another tab holds it, once it i
   const limits = { maxBytes: LIMIT, maxFiles: 3 };
   const { capture, store, streams, stopped } = await stoppedCapture({ store: await openRecordingStore(device) });
   const otherTab = await openRecordingStore(device);
+  // This tab's page has let the recording go (it is no longer on its screen), and another tab sends it.
+  store.letGo(stopped.id);
+  for (let i = 0; i < 5; i += 1) await settle();
   assert.equal(await otherTab.lease(stopped.id), true);
   await capture.continueStopped(stopped.id, limits);
   assert.deepEqual(
@@ -845,6 +848,35 @@ test("the device cleared in the middle of a recording is said at once, the recor
   assert.equal(stopped?.state, "stopped");
   assert.deepEqual(await texts(await store.readParts(id)), ["Hbc."], "the header and what came after");
   assert.deepEqual(await texts(await store.readPartsToSend(id)), ["Hbc."]);
+});
+
+test("a stopped recording stays this page's while it is shown: another tab neither offers nor deletes it, until Spela in på nytt or the page goes", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const store = await openRecordingStore(device);
+  const otherTab = await openRecordingStore(device);
+  const ids = async () => (await otherTab.listUnsent("user-1")).map((r) => r.id);
+
+  const first = await setup({ store });
+  await first.capture.start(meeting);
+  first.recorders[0].emit("a");
+  const stopped = await first.capture.stop();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [], "the recording is on the first tab's screen");
+  await assert.rejects(otherTab.remove(stopped!.id), { message: "Inspelningen används i en annan flik." });
+
+  first.capture.reset(); // Spela in på nytt
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [stopped!.id], "offered once the page shows it no more");
+
+  const second = await setup({ store });
+  await second.capture.start(meeting);
+  second.recorders[0].emit("b");
+  const again = await second.capture.stop();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [stopped!.id], "the new one is held; the old one is the other's");
+  second.capture.dispose(); // the page goes away
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual((await ids()).sort(), [stopped!.id, again!.id].sort());
 });
 
 test("Stoppa while the screen's wake lock is still being asked for leaves the recording stopped on the device, not paused", async () => {

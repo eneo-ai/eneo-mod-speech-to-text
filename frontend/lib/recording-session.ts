@@ -348,6 +348,8 @@ export class RecordingCapture {
     } catch (error) {
       failure = notOnDevice(error) ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
     }
+    // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
+    if (stopped) store.hold(recording.id);
     this.finish();
     // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
     this.set(
@@ -361,6 +363,7 @@ export class RecordingCapture {
   /** "Spela in på nytt": the stored recording stays until it is sent or deleted. */
   reset(): void {
     if (this.snapshot.status === "stopped") {
+      if (this.snapshot.recording) this.store?.letGo(this.snapshot.recording.id);
       this.set({ status: "idle", recording: null, error: null, remainingMs: null, limitReached: false });
     }
   }
@@ -374,6 +377,7 @@ export class RecordingCapture {
       // A start that has the microphone and is still waiting for the device's storage (which may never answer): the
       // hardware goes now, not when the start gets round to checking whether the page is still here.
       if (this.starting) this.stopMicrophone();
+      if (recording && status === "stopped") store?.letGo(recording.id);
       return;
     }
     const ended = this.endParts("leave");

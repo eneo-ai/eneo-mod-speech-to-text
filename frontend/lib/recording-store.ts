@@ -283,6 +283,9 @@ export class RecordingStore {
   // The recordings this tab made: without Web Locks, the only ones it may change.
   private made = new Set<string>();
   private live = new Map<string, StoredRecording>();
+  // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
+  // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
+  private held = new Set<string>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
   // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
@@ -593,13 +596,28 @@ export class RecordingStore {
 
   release(id: string): void {
     if (!this.inUse.delete(id)) return;
-    // Part of its audio is only in this tab: no other tab may send or delete it without that part.
-    if (!this.overflowed.has(id)) {
-      this.leases.get(id)?.();
-      this.leases.delete(id);
-      this.live.delete(id);
-    }
+    // Part of its audio is only in this tab: no other tab may send or delete it without that part. A held recording is
+    // on this tab's screen.
+    if (!this.overflowed.has(id) && !this.held.has(id)) this.dropLease(id);
     this.notify();
+  }
+
+  /** A stopped recording the page shows keeps its lease through `release`, until `letGo` (or it is deleted). */
+  hold(id: string): void {
+    if (this.leases.has(id)) this.held.add(id);
+  }
+
+  /** The page no longer shows the recording: its lease ends, unless an operation is using it or part of it is only here. */
+  letGo(id: string): void {
+    if (!this.held.delete(id)) return;
+    if (!this.inUse.has(id) && !this.overflowed.has(id)) this.dropLease(id);
+    this.notify();
+  }
+
+  private dropLease(id: string): void {
+    this.leases.get(id)?.();
+    this.leases.delete(id);
+    this.live.delete(id);
   }
 
   /** What the browser already says of keeping this device's storage; nothing is asked of the user. */
@@ -735,6 +753,7 @@ export class RecordingStore {
   /** What this tab holds of the recording. */
   private async forget(id: string): Promise<void> {
     this.live.delete(id);
+    this.held.delete(id);
     this.heads.delete(id);
     this.overflowed.delete(id);
     await this.overflow.delete(id);
