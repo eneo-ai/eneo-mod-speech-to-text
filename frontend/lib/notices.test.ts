@@ -113,7 +113,7 @@ test("an alert that need not be revealed stays where it is", async (t) => {
   assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
 });
 
-const wait = (retryAt: number, retryNow = () => {}) => ({ retryAt, retryNow });
+const wait = (retryAt: number | null, retryNow = () => {}) => ({ retryAt, retryNow });
 
 test("without a wait the notice is only an empty status region, there for the change to be announced in", async () => {
   const { container } = await mount(createElement(RetryNotice, { wait: null }));
@@ -141,6 +141,17 @@ test("a waiting send says it in one sentence in the live region, and the countdo
 
   await act(async () => button(container, "Försök nu")!.click());
   assert.equal(now, 1, "Försök nu tries at once");
+});
+
+test("a send that has stopped trying by itself says so, with no countdown, and Försök igen tries at once", async () => {
+  let tried = 0;
+  const { container, act } = await mount(createElement(RetryNotice, { wait: wait(null, () => void tried++) }));
+  const [status] = container.querySelectorAll('[role="status"]');
+  assert.equal(status.textContent, "Det går fortfarande inte att skicka.");
+  assert.match(container.textContent ?? "", /Det går fortfarande inte att skicka\. Försök igen när du vill\./);
+  assert.doesNotMatch(container.textContent ?? "", / s\./, "no countdown");
+  await act(async () => button(container, "Försök igen")!.click());
+  assert.equal(tried, 1);
 });
 
 test("the countdown's timer is stopped when the notice goes", async (t) => {

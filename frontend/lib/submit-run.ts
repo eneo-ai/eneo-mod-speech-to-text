@@ -30,7 +30,8 @@ import { selectRuntimeInputStep } from "./upload";
 const MAX_RETRY_DELAY_MS = 60_000;
 
 export interface RetryWait {
-  retryAt: number;
+  /** When the next try is made by itself; null when it waits for the person (`retryNow`). */
+  retryAt: number | null;
   retryNow: () => void;
 }
 
@@ -41,6 +42,8 @@ interface RetryOptions {
   onWait?: (wait: RetryWait | null) => void;
   /** Tries a server answering with errors gets; unlimited unless given. */
   maxServerErrorTries?: number;
+  /** Tries made by themselves; after them the wait is the person's (`retryNow`), with nothing given up. Unlimited unless given. */
+  maxAutoTries?: number;
 }
 
 function isRetryable(error: unknown): boolean {
@@ -69,12 +72,13 @@ export async function withRetry<T>(op: () => Promise<T>, opts: RetryOptions): Pr
     } catch (error) {
       if (opts.signal?.aborted || !isRetryable(error)) throw error;
       if (serverError(error) && ++serverErrors >= (opts.maxServerErrorTries ?? Infinity)) throw error;
-      await waitToRetry(Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** attempt), opts);
+      const byItself = attempt + 1 < (opts.maxAutoTries ?? Infinity);
+      await waitToRetry(byItself ? Math.min(MAX_RETRY_DELAY_MS, 1_000 * 2 ** attempt) : null, opts);
     }
   }
 }
 
-function waitToRetry(delayMs: number, { online, signal, onWait }: RetryOptions): Promise<void> {
+function waitToRetry(delayMs: number | null, { online, signal, onWait }: RetryOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     let settled = false;
     const finish = (error?: ApiError) => {
@@ -89,10 +93,10 @@ function waitToRetry(delayMs: number, { online, signal, onWait }: RetryOptions):
     };
     const retryNow = () => finish();
     const cancel = () => finish(uploadAborted());
-    const timer = setTimeout(retryNow, delayMs);
+    const timer = delayMs === null ? undefined : setTimeout(retryNow, delayMs);
     const stopListening = online.subscribe((isOnline) => isOnline && retryNow());
     signal?.addEventListener("abort", cancel, { once: true });
-    onWait?.({ retryAt: Date.now() + delayMs, retryNow });
+    onWait?.({ retryAt: delayMs === null ? null : Date.now() + delayMs, retryNow });
   });
 }
 
@@ -209,8 +213,14 @@ export async function submitRun(
       body,
     }));
   await params.onStarting?.({ body, idempotencyKey: key });
-  return withRetry(() => deps.startRun(flowId, body, key, params.signal), params);
+  return askRun(() => deps.startRun(flowId, body, key, params.signal), params);
 }
+
+/** The run request, tried by itself for about five minutes (1 s doubling to 60 s), then the person's to repeat. */
+const RUN_START_AUTO_TRIES = 10;
+
+/** A run request is repeated until Eneo answers, or the person cancels: giving up could leave a run the page never learned of. */
+const askRun = <T>(op: () => Promise<T>, opts: RetryOptions) => withRetry(op, { ...opts, maxAutoTries: RUN_START_AUTO_TRIES });
 
 
 /**
@@ -289,7 +299,7 @@ async function sendLeased(
     }
   };
   const ask = (request: RunRequest) =>
-    withRetry(() => attempt(params.flowId, request.body, request.idempotencyKey, params.signal), params);
+    askRun(() => attempt(params.flowId, request.body, request.idempotencyKey, params.signal), params);
   // Once, when Eneo will not use the live transcript: it is forgotten, and the request without it is kept and asked.
   const withoutLive = async (error: unknown): Promise<FlowRunPublic> => {
     const refused = error instanceof ApiError && LIVE_TRANSCRIPT_REFUSALS.has(error.code ?? "");
@@ -511,10 +521,7 @@ export async function startAgain(
     const request = startAgainRequest(failed, steps, contract);
     if (!request) return null;
     if ("review" in request) return { kind: "review", message: request.review, contract };
-    const run = await withRetry(
-      () => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal),
-      opts,
-    );
+    const run = await askRun(() => deps.startRun(flowId, request.body, request.idempotencyKey, opts.signal), opts);
     return opts.signal?.aborted ? null : { kind: "started", run, contract };
   } catch (error) {
     if (opts.signal?.aborted) return null;

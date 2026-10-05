@@ -90,7 +90,7 @@ test("uploads retry network failures, 408, 429 and 5xx, waiting 1 s doubling to 
       if (failure) throw failure;
       return "file-1";
     },
-    { online: params().online, onWait: (wait) => void (wait && waits.push(wait.retryAt - Date.now())) },
+    { online: params().online, onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())) },
   );
 
   await settle();
@@ -116,7 +116,7 @@ test("with a try limit, a server answering with errors gets that many tries and 
       calls += 1;
       throw apiError(calls % 2 ? 503 : 408);
     },
-    { online: params().online, maxServerErrorTries: 4, onWait: (wait) => void (wait && waits.push(wait.retryAt - Date.now())) },
+    { online: params().online, maxServerErrorTries: 4, onWait: (wait) => void (wait && waits.push(wait.retryAt! - Date.now())) },
   );
   // The fourth try (a 408) is the error the page shows.
   const failed = assert.rejects(result, (error) => error instanceof ApiError && error.status === 408);
@@ -265,6 +265,41 @@ test("an upload a server keeps failing stops after four tries and starts no run;
   }
   assert.equal((await run).id, "run-1");
   assert.equal(new Set(keys).size, 1, "one run request, repeated under its key");
+});
+
+test("a run request Eneo keeps refusing is retried by itself ten times, then waits for the person, under the same key", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
+  const keys: string[] = [];
+  const waits: Array<RetryWait | null> = [];
+  let accepting = false;
+  const run = submitRun(
+    params({ files: [{ blob: new Blob(["audio"]), filename: "inspelning.webm" }], onWait: (wait) => void waits.push(wait) }),
+    {
+      upload: async () => ({ id: "file-1" }),
+      startRun: async (_flowId, _body, key) => {
+        keys.push(key);
+        if (!accepting) throw apiError(503);
+        return queuedRun;
+      },
+    },
+  );
+  for (let i = 1; i <= 9; i += 1) {
+    await until(() => keys.length === i && waits.at(-1) !== null);
+    assert.equal(typeof waits.at(-1)?.retryAt, "number", `the wait after try ${i} is a countdown`);
+    t.mock.timers.tick(60_000);
+  }
+  // The tenth refusal: no countdown, no more tries by themselves, and nothing given up.
+  await until(() => keys.length === 10 && waits.at(-1) !== null);
+  assert.equal(waits.at(-1)?.retryAt, null, "it waits for the person");
+  t.mock.timers.tick(3_600_000);
+  await settle();
+  assert.equal(keys.length, 10, "an hour later it has not tried again");
+
+  accepting = true;
+  waits.at(-1)!.retryNow();
+  assert.equal((await run).id, "run-1");
+  assert.equal(keys.length, 11);
+  assert.equal(new Set(keys).size, 1, "the person's try is the same request, under the same key");
 });
 
 test("run creation retries network failures with the same idempotency key", async (t) => {

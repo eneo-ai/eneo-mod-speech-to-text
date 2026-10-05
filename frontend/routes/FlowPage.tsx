@@ -171,6 +171,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
+  // The files Eneo holds from a send the person cancelled: the next send of the same file asks for the run from them, as
+  // the same request under the same key, instead of uploading again. Forgotten when a send fails any other way.
+  const uploadedFiles = useRef(new WeakMap<Blob, string>());
 
   const user = useAuthenticatedUser();
   // The input side (mode, details, recording, file) has one owner: the session.
@@ -284,7 +287,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
-        onStarting: () => setSubmission({ kind: "starting", wait: null }),
+        onStarting: () =>
+          setSubmission({ kind: "starting", wait: null, recordingId: runInput?.kind === "recording" ? runInput.recording.id : null }),
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };
@@ -293,7 +297,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
           ? await submitRecording(await recordingStore(), runInput.recording.id, params)
           : await submitRun({
               ...params,
-              files: runInput ? [{ blob: runInput.blob, filename: runInput.filename }] : [],
+              files: runInput ? [{ blob: runInput.blob, filename: runInput.filename, fileId: uploadedFiles.current.get(runInput.blob) }] : [],
+              onUploaded: (_index, fileId) => void (runInput?.kind === "file" && uploadedFiles.current.set(runInput.blob, fileId)),
             });
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
@@ -307,6 +312,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
+      if (!abortController.signal.aborted) uploadedFiles.current = new WeakMap();
       setRun({ kind: "idle" });
       setSubmission({ kind: "idle" });
       submitAbortRef.current = null;

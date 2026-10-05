@@ -146,16 +146,31 @@ test("every quarter of an upload is said once, and the counting percent never is
   assert.ok(statuses(uploading({ percent: 33 })).every((status) => !/33/.test(status)));
 });
 
-test("before the file moves there is no bar and no Avbryt; while the run starts a wait shows, still no Avbryt", () => {
+test("before the file moves there is no bar and no Avbryt; once the run is being started there is Avbryt, and a wait says the file is uploaded", () => {
   const send = (submission: SubmissionState) =>
     markup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
   const idle = send({ kind: "idle" });
   assert.deepEqual(statuses(idle), ["Skickar"]);
   assert.doesNotMatch(idle, /progressbar|Avbryt/);
+
+  const starting = send({ kind: "starting", wait: null });
+  assert.equal(statuses(starting)[0], "Startar flödet");
+  assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
+  assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
+
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
   assert.equal(statuses(waiting)[0], "Startar flödet");
-  assert.match(text(waiting), /Försöker igen om \d+ s\./);
-  assert.doesNotMatch(waiting, /progressbar|Avbryt/);
+  assert.match(text(waiting), /Filen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(waiting), /Försöker igen om \d+ s\. Försök nu Avbryt/);
+  assert.doesNotMatch(waiting, /progressbar/);
+
+  const stopped = send({ kind: "starting", wait: { retryAt: null, retryNow: () => undefined } });
+  assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
+  assert.match(text(stopped), /Det går fortfarande inte att skicka\. Försök igen när du vill\. Försök igen Avbryt/);
+
+  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recordingId: "rec-1" });
+  assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
