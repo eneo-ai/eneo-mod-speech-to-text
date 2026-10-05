@@ -37,8 +37,8 @@ export function useRouteReady(ready: boolean) {
 /**
  * What a navigation gives the person (WCAG 2.4.2, 2.4.3, 4.1.3). At once, the route's title. When the page says it has
  * its content (`useRouteReady`), in the next frame (a focus the page took itself in its own effects has happened by
- * then), once: its title said through the live region, the focus on its heading unless the page or a dialog already
- * has it, and the scroll, to the top for a link and to the entry's own offset for Back. Only a new path is a
+ * then), once: its title said through the live region, the focus on its heading if the navigation left it nowhere and
+ * the person has done nothing since, and the scroll, to the top for a link and to the entry's own offset for Back. Only a new path is a
  * navigation: a page that writes `?run=` into the address changes its own state. The first load, and the redirect the
  * first page sends the person on by before any page has its content, do none of it. This is the one place that
  * scrolls after a navigation.
@@ -52,6 +52,8 @@ export function RouteEffects() {
   const navigation = useRef<Navigation>({ path: pathname, key, type, waiting: false, scheduled: false });
   const loaded = useRef(false);
   const offsets = useRef(new Map<string, number>());
+  // The person pressed a key or the pointer since the page changed: what they did decides where the focus is.
+  const acted = useRef(false);
 
   // A layout effect, so the route's title is set before the new page's own effects, which name it more closely
   // (`useDocumentTitle`) and so have the last word. A route without a title leaves the title as it was.
@@ -59,6 +61,7 @@ export function RouteEffects() {
     if (title) document.title = title;
     if (navigation.current.path === pathname) return;
     navigation.current = { path: pathname, key, type, waiting: loaded.current || type !== "REPLACE", scheduled: false };
+    acted.current = false;
     // Only a new path retitles and waits; the title follows the path the matches belong to.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
@@ -66,7 +69,7 @@ export function RouteEffects() {
   useLayoutEffect(() => {
     const settle = (arrived: Navigation) => {
       announce(document.title);
-      moveFocusToHeading();
+      if (!acted.current) moveFocusToHeading();
       const top = arrived.type === "POP" ? (offsets.current.get(arrived.key) ?? 0) : 0;
       window.scrollTo({ left: 0, top, behavior: "instant" });
       arrived.waiting = false;
@@ -84,6 +87,18 @@ export function RouteEffects() {
     };
   }, [announce]);
 
+  useEffect(() => {
+    const note = () => {
+      acted.current = true;
+    };
+    document.addEventListener("keydown", note, true);
+    document.addEventListener("pointerdown", note, true);
+    return () => {
+      document.removeEventListener("keydown", note, true);
+      document.removeEventListener("pointerdown", note, true);
+    };
+  }, []);
+
   // Where each entry is scrolled to, for Back. Not while an entry is waiting for its page: a page that is shorter
   // than it was moves the window itself, and that is not where the person left the entry.
   useEffect(() => {
@@ -99,14 +114,13 @@ export function RouteEffects() {
 }
 
 /**
- * The page's heading takes the focus, unless the page, or a dialog, has put it somewhere already: a phase's heading
- * (`data-phase-heading`), else a heading made focusable for it, else the first one. It scrolls nothing: the scroll is the
- * navigation's own.
+ * The page's heading takes the focus when it is nowhere (the control that had it left with the old page): a phase's
+ * heading (`data-phase-heading`), else a heading made focusable for it, else the first one. Focus that is on any
+ * element, the page's own or the person's, stays. It scrolls nothing: the scroll is the navigation's own.
  */
 function moveFocusToHeading() {
   const main = document.querySelector<HTMLElement>('main, [role="main"]');
-  const active = document.activeElement;
-  if (active && active !== document.body && (main?.contains(active) || active.closest('dialog, [role="dialog"], [role="alertdialog"]'))) return;
+  if (document.activeElement && document.activeElement !== document.body) return;
   const heading = main?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]") ?? main?.querySelector<HTMLElement>("h1");
   if (!heading) return;
   if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
