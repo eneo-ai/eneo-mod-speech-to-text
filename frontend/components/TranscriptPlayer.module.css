@@ -287,6 +287,7 @@
   border-end-start-radius: var(--radius-container);
   border-end-end-radius: var(--radius-container);
   background: var(--color-background-surface);
+  /* The skip link moves the focus here from script: a place to start from, not a control, so it shows no ring. */
   outline: none;
 }
 
