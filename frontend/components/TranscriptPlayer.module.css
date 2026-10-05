@@ -373,14 +373,8 @@
   align-items: center;
   min-block-size: var(--spacing-6);
   min-inline-size: var(--spacing-6);
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-inner);
-  background: transparent;
-  font: inherit;
-  color: inherit;
   text-align: start;
-  cursor: pointer;
 }
 
 @media (pointer: coarse) {
@@ -560,14 +554,9 @@
   block-size: var(--spacing-6);
   margin-block: calc(-1 * var(--spacing-1));
   margin-inline: calc(-1 * var(--spacing-0-5)) calc(-1 * var(--spacing-1));
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-full);
-  background: transparent;
-  color: inherit;
   vertical-align: middle;
   translate: 0 -1px;
-  cursor: pointer;
 }
 
 @media (pointer: coarse) {

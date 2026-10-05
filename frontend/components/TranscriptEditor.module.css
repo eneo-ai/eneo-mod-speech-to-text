@@ -152,10 +152,6 @@
   line-height: var(--text-supporting-leading);
 }
 
-.details[hidden] {
-  display: none;
-}
-
 .details h2 {
   margin: 0;
   font-size: inherit;
@@ -208,13 +204,7 @@
 /* A control inside a sentence: a link in looks, a button in what it does. Its target is a finger's under a coarse
    pointer without making the line any taller. */
 .inline {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
   text-decoration: underline;
-  cursor: pointer;
 }
 
 .inline:disabled {
@@ -248,11 +238,6 @@
   .text {
     padding-inline: var(--spacing-7);
   }
-}
-
-.text:focus,
-.text:focus-visible {
-  outline: none;
 }
 
 .text [data-turn-index] {
@@ -314,12 +299,7 @@
 .speakerName {
   min-block-size: var(--spacing-6);
   min-inline-size: var(--spacing-6);
-  padding: 0;
-  border: 0;
-  background: none;
   color: var(--color-text-secondary);
-  font: inherit;
-  cursor: pointer;
 }
 
 .clock {

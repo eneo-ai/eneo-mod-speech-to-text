@@ -78,8 +78,7 @@
   color: var(--color-icon-secondary);
 }
 
-.option[data-kind="add"] .optionIcon,
-.option:not([data-kind]) .optionIcon {
+.option[data-kind="add"] .optionIcon {
   color: var(--color-icon-accent);
 }
 
