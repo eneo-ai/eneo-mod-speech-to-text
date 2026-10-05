@@ -46,8 +46,22 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 
 Modulen svarar på vanlig HTTP och litar inte på något `X-Forwarded-*`: den läser varken schema, värd eller klientadress. Allt som står framför den hör till driftsättningen och måste ha:
 
-- **HTTPS.** `MODULE_PUBLIC_URL` och `ENEO_PUBLIC_URL` är `https` och sessionscookien är `Secure`. Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
-- **Storlek och tid för uppladdningar.** `MAX_UPLOAD_BYTES` begränsar hela request-bodyn. Framför den står proxyns egna gränser, som är driftsättningens: Traefiks läs- och tomgångstidsgränser på ingångspunkten (`readTimeout` ska vara längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`; Traefiks standard är ingen läs- eller skrivgräns och 180 s tomgång) och en eventuell `maxRequestBodyBytes`. En uppladdning på `MAX_UPLOAD_BYTES` och en lång live-session måste rymmas inom dem. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
+- **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS, eftersom TLS är proxyns uppgift. I Traefik räcker en `headers`-middleware på routern, till exempel som Compose-etiketter: `traefik.http.middlewares.hsts.headers.stsSeconds=31536000` och `traefik.http.routers.<router>.middlewares=hsts`. `MODULE_PUBLIC_URL` och `ENEO_PUBLIC_URL` är `https` och sessionscookien är `Secure`: webbläsaren skickar den bara över HTTPS, så hela vägen från webbläsaren till proxyn måste vara HTTPS (proxyn talar vanlig HTTP med modulen). Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
+- **Storlek och tid för uppladdningar.** `MAX_UPLOAD_BYTES` begränsar hela request-bodyn, och framför den står proxyns egna gränser, som är driftsättningens. I Traefik v3.7 (kontrollerat mot v3.7.13 med `traefik --help`) har varje ingångspunkt tre tidsgränser: `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s. `readTimeout` gäller hela requesten inklusive bodyn, så en uppladdning som tar längre tid än 60 s att skicka kapas av proxyn, hur snabbt modulen än svarar.
+  - Sätt `readTimeout` på ingångspunkten till minst den tid det tar att skicka `MAX_UPLOAD_BYTES` över den långsammaste uppkoppling du räknar med: 1 GiB på 20 Mbit/s tar omkring 7 minuter, och 1800 s räcker för 1 GiB över 5 Mbit/s.
+  - `UPLOAD_PROXY_TIMEOUT_SECONDS` är nästa steg och en egen tid: när hela filen är hos modulen får den högst så länge på sig att skicka den vidare till Eneo. Proxyns `writeTimeout` på 0 gör att inget i proxyn kapar den delen.
+  - I Dokploy ligger ingångspunkterna (`web` och `websecure`) i Traefiks statiska konfiguration:
+
+    ```yaml
+    entryPoints:
+      websecure:
+        transport:
+          respondingTimeouts:
+            readTimeout: 1800s
+    ```
+
+    En ändring i den statiska konfigurationen kräver att Traefik startas om (`docker restart dokploy-traefik`).
+  - En eventuell `maxRequestBodyBytes` i proxyn ska rymma `MAX_UPLOAD_BYTES`, och en lång live-session ska rymmas inom proxyns gränser. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
 - **WebSocket.** Uppgraderingen till `/api/live/...` måste släppas igenom, och webbläsarens `Origin` måste komma fram oförändrad. Traefik gör det utan extra konfiguration (v3.7, se [Eneo-integration](eneo-integration.md#live-text-strömma)); går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom uppgraderingar. Traefik v3.7 varnar vid start när `aliasHeadersStrategy` saknas; det är ofarligt för modulen.
 - **Loggar.** Ingressens loggning ska inte skriva callbackens query string.
 
@@ -140,7 +154,7 @@ Kända sårbarheter hanteras manuellt: repot har ingen `.github/dependabot.yml`,
 | 502 vid uppladdning | Svaret säger varför: `upstream_unreachable` (Eneo nåddes inte, ofta ett lastbalanserarproblem: kolla loggen efter det exakta httpx-felet), `upstream_too_large` (Eneos svar var längre än `MAX_RESPONSE_BYTES` eller kodat) eller `upstream_redirect` (Eneo omdirigerade, vilket modulen aldrig följer). Ett 502 mitt i en uppladdning kan också vara proxyn som avbrutit den. |
 | 502 `upstream_invalid` på en fil | Eneos svar på begäran om en signerad URL gick inte att använda. Loggen har vägen. |
 | 504 vid uppladdning | Vidarebefordran till Eneo tog längre än `UPLOAD_PROXY_TIMEOUT_SECONDS`. |
-| Uppladdningen faller efter lång tid | Proxyns tidsgräns före modulen är kortare än uppladdningen: [Vad som står framför modulen](#vad-som-står-framför-modulen). |
+| Uppladdningen faller efter lång tid | Proxyns `readTimeout` (60 s som standard i Traefik v3.7) är kortare än uppladdningen: [Vad som står framför modulen](#vad-som-står-framför-modulen). |
 | "Det gick inte att skicka" under uppladdningen | Eneo svarade med serverfel på fyra försök att ladda upp samma fil (nätavbrott och 429 räknas inte). Inspelningen ligger kvar i webbläsaren och kan skickas igen med "Försök igen" ([Inspelaren](recording.md#uppladdning-och-nya-försök)). |
 | 413 | Ett tak för body nåddes. Svaret säger vilket: `max_body_bytes` (JSON-anrop) eller `max_upload_bytes` (uppladdning). Höj rätt variabel om gränsen är för snäv. Ett 413 utan det namnet är Eneos egen gräns. |
 | 411 vid uppladdning | En uppladdning utan `Content-Length`. Webbläsare skickar alltid en; en annan klient, eller en proxy som skickar bodyn i delar, är orsaken. |
