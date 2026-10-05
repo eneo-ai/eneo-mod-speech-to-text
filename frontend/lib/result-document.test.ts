@@ -482,6 +482,34 @@ test("a save refused as stale reads the saved corrections again, says so, and of
   assert.ok(!(view.container.textContent ?? "").includes("osparade rättningar finns kvar"));
 });
 
+test("Dela's read ahead does not start over when the page draws again with the same file", async (t) => {
+  const { createElement } = await import("react");
+  const { ModuleProviders } = await import("@/kit/ModuleProviders");
+  const { ResultDocument } = await import("../components/flow/ResultDocument");
+  const realFetch = globalThis.fetch;
+  const fetched: AbortSignal[] = [];
+  Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true });
+  Object.defineProperty(navigator, "canShare", { value: () => true, configurable: true });
+  globalThis.fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+    fetched.push(init!.signal!);
+    return new Promise<Response>(() => undefined);
+  }) as typeof fetch;
+  t.after(() => {
+    Reflect.deleteProperty(navigator, "share");
+    Reflect.deleteProperty(navigator, "canShare");
+    globalThis.fetch = realFetch;
+  });
+  const draw = (file: ResultFileView) =>
+    createElement(ModuleProviders, null, createElement(ResultDocument, { flowId: "flow-1", runId: "run-1", title: "Nämndmöte till rapport", text, file }));
+  const view = await mount(draw(pdf));
+  await view.act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  assert.equal(fetched.length, 1);
+  // The run's page builds its file views anew at every draw: the same file, another object.
+  await view.act(async () => view.rerender(draw({ ...pdf })));
+  assert.equal(fetched.length, 1, "no second read of the same file");
+  assert.equal(fetched[0].aborted, false, "and the first is not cut off");
+});
+
 test("Dela reads a file ahead only when its size is known and under the cap, and stops reading when the page goes", async (t) => {
   const realFetch = globalThis.fetch;
   const fetched: { url: string; signal?: AbortSignal | null }[] = [];
