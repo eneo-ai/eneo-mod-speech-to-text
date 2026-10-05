@@ -1,5 +1,3 @@
-"use client";
-
 import type { LiveClient, LiveSession } from "@/lib/flow-session";
 import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps } from "@/lib/live-transcriber";
 import { loginState } from "@/lib/login-state";
@@ -13,11 +11,11 @@ const LAST_AUDIO_WAIT_MS = 1_000;
 
 /** Strömma needs a socket and an AudioWorklet; without them the card is not offered. */
 export function supportsLiveText(): boolean {
-  return typeof window !== "undefined" && "WebSocket" in window && "AudioWorkletNode" in window;
+  return "WebSocket" in window && "AudioWorkletNode" in window;
 }
 
 /** What live text needs of the browser; tests give their own. */
-export interface LiveEnv {
+interface LiveEnv {
   audioContext(): AudioContext;
   workletNode(context: AudioContext, options: AudioWorkletNodeOptions): AudioWorkletNode;
   /** The transcriber's connection to the relay for one step and recording, and its timers. */

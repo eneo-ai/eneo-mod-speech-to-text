@@ -1,8 +1,7 @@
 import { correctionWriteProblem } from "./transcript-corrections";
-// All requests go to same-origin /api/*: the backend serves the app and the API on one origin.
-// The backend in turn proxies /api/eneo/* to Eneo with the module's service
-// key and, in Eneo SSO mode, the short-lived module-user token from its
-// HttpOnly session.
+// Every request goes to same-origin /api/*: the Vite dev server proxies it to the backend, and in production the backend
+// serves the page and the API. The backend proxies /api/eneo/* to Eneo with the module's service key and, in Eneo SSO
+// mode, the short-lived module-user token from its HttpOnly session.
 
 import { loginState } from "./login-state";
 import { limitedToModule } from "./upload-limit";
@@ -28,26 +27,31 @@ export class ApiError extends Error {
   }
 }
 
-async function parseError(res: Response): Promise<ApiError> {
-  let body: unknown = null;
+/**
+ * The error an answer stands for. Eneo answers `{ code, detail }`; the module's own proxy answers
+ * `{ error: "upstream_unreachable", detail }`. Both name their `code`.
+ */
+function apiErrorFrom(status: number, text: string): ApiError {
+  let body: unknown = text || null;
   let code: string | undefined;
   let detail: string | undefined;
   try {
-    body = await res.json();
+    body = text ? JSON.parse(text) : null;
     if (body && typeof body === "object") {
       const b = body as Record<string, unknown>;
       if (typeof b.code === "string") code = b.code;
-      // Vår egen proxy svarar `{ error: "upstream_unreachable", detail: "..." }`.
-      // Eneo svarar `{ code: "...", detail: "..." }`. Båda mappas till `code`.
       else if (typeof b.error === "string") code = b.error;
       if (typeof b.detail === "string") detail = b.detail;
       else if (typeof b.message === "string") detail = b.message;
     }
   } catch {
-    // ignore — body stays null
+    // Not JSON: the body stays its text.
   }
-  const msg = detail || code || `HTTP ${res.status}`;
-  return new ApiError(res.status, msg, body, code);
+  return new ApiError(status, detail || code || `HTTP ${status}`, body, code);
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  return apiErrorFrom(res.status, await res.text().catch(() => ""));
 }
 
 /** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
@@ -167,7 +171,7 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface PaginatedResponse<T> {
+interface PaginatedResponse<T> {
   items: T[];
   count?: number;
   total_count?: number;
@@ -241,7 +245,7 @@ export interface FlowReviewStepContract {
   output_contract?: Json | null;
 }
 
-export type LiveTranscriptionUnavailableReason =
+type LiveTranscriptionUnavailableReason =
   | "transcription_disabled"
   | "transcription_service_mode"
   | "model_unavailable"
@@ -308,7 +312,7 @@ export interface FlowPublished {
   published_version: number;
 }
 
-export interface FilePublic {
+interface FilePublic {
   id: string;
   filename?: string;
   mimetype?: string;
@@ -321,7 +325,6 @@ export interface ResultFile {
   mimetype?: string | null;
   size?: number;
   file_type?: FileType | string;
-  // Nya fält i den refaktorerade Eneo-specen (samtliga valfria här):
   step_id?: string;
   step_order?: number;
   attempt_no?: number;
@@ -360,7 +363,7 @@ export interface FlowRunError {
 export interface FlowRunPublic {
   id: string;
   flow_id: string;
-  status: string; // se FlowRunStatus — behåll string för forward-compat
+  status: string;
   result?: FlowRunResult | null;
   result_files?: ResultFile[];
   error?: FlowRunError | null;
@@ -368,7 +371,6 @@ export interface FlowRunPublic {
   updated_at?: string;
   started_at?: string;
   finished_at?: string;
-  // Nya fält i den refaktorerade specen:
   flow_version?: number;
   trace_id?: string;
   revision?: number;
@@ -384,10 +386,6 @@ export interface FlowRunPublic {
 export interface FlowRunStep {
   id: string;
   step_id: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_name?: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_label?: string;
   step_order?: number;
   status: string; // se FlowStepResultStatus
   started_at?: string;
@@ -400,35 +398,20 @@ export interface FlowRunStep {
 
 // ---------- Nya typer för refaktorerade Eneo-flows ----------
 
-export type FlowRunStatus =
-  | "queued"
-  | "running"
-  | "awaiting_review"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export type FlowStepResultStatus =
+type FlowStepResultStatus =
   | "pending"
   | "running"
   | "completed"
   | "failed"
   | "cancelled";
 
-export type FlowStepReviewMode = "view" | "edit";
+type FlowStepReviewMode = "view" | "edit";
 
-export type FlowOutputType = "text" | "json" | "pdf" | "docx";
-export type FlowOutputMode =
-  | "pass_through"
-  | "http_post"
-  | "transcribe_only"
-  | "template_fill";
-export type FlowOutputDelivery = "payload" | "artifact" | "outbound_http";
-export type FlowRuntimeInputFormat = "document" | "audio" | "file";
+type FlowOutputType = "text" | "json" | "pdf" | "docx";
+type FlowRuntimeInputFormat = "document" | "audio" | "file";
 export type FileType = "text" | "image" | "audio" | "document";
-export type ContentDisposition = "attachment" | "inline";
 
-export type FlowRunReviewCheckpointState =
+type FlowRunReviewCheckpointState =
   | "awaiting_review"
   | "edited"
   | "approved"
@@ -478,29 +461,27 @@ export interface FlowRunReviewCheckpointPublic {
  */
 export type ReviewEditedValue = string | Json | unknown[];
 
-export interface ReviewEditRequest {
+interface ReviewEditRequest {
   expected_checkpoint_revision: number;
   edited_value: ReviewEditedValue;
 }
 
-export interface ReviewApproveRequest {
+interface ReviewApproveRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewRejectRequest {
+interface ReviewRejectRequest {
   expected_checkpoint_revision: number;
   reason: string;
 }
-export interface ReviewResumeRequest {
+interface ReviewResumeRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewResumeResponse {
+interface ReviewResumeResponse {
   checkpoint: FlowRunReviewCheckpointPublic;
   run: FlowRunPublic;
 }
 
-export function isReviewCheckpointApproved(
-  checkpoint: FlowRunReviewCheckpointPublic | null | undefined,
-): checkpoint is FlowRunReviewCheckpointPublic {
+export function isReviewCheckpointApproved(checkpoint: FlowRunReviewCheckpointPublic | null | undefined): boolean {
   return checkpoint?.state === "approved" || checkpoint?.state === "resumed";
 }
 
@@ -552,7 +533,7 @@ export interface UploadProgress {
   percent: number | null;
 }
 
-export type RuntimeUploadTimeoutReason =
+type RuntimeUploadTimeoutReason =
   | "not_started"
   | "stalled"
   | "server_not_responding";
@@ -562,6 +543,9 @@ interface UploadRequestOptions {
   onProgress?: (progress: UploadProgress) => void;
   runtimeUploadPolicy?: FlowRuntimeUploadPolicy | null;
 }
+
+/** An upload the page itself stopped. */
+export const uploadAborted = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
 
 function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   switch (reason) {
@@ -574,23 +558,7 @@ function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   }
 }
 
-function parseXhrError(xhr: XMLHttpRequest): ApiError {
-  let body: unknown = null;
-  let code: string | undefined;
-  let detail: string | undefined;
-  try {
-    body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-    if (body && typeof body === "object") {
-      const b = body as Record<string, unknown>;
-      if (typeof b.code === "string") code = b.code;
-      if (typeof b.detail === "string") detail = b.detail;
-      else if (typeof b.message === "string") detail = b.message;
-    }
-  } catch {
-    body = xhr.responseText || null;
-  }
-  return new ApiError(xhr.status, detail || code || `HTTP ${xhr.status}`, body, code);
-}
+const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText);
 
 function requestMultipartWithProgress<T>(
   path: string,
@@ -705,11 +673,7 @@ function requestMultipartWithProgress<T>(
       );
     };
 
-    xhr.onabort = () => {
-      rejectOnce(
-        new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted"),
-      );
-    };
+    xhr.onabort = () => rejectOnce(uploadAborted());
 
     opts.signal?.addEventListener(
       "abort",
@@ -788,7 +752,7 @@ export interface FlowGraphNode {
   run_status?: FlowStepResultStatus | string | null;
 }
 
-export interface FlowGraphEdge {
+interface FlowGraphEdge {
   source: string;
   target: string;
   kind: string; // "flow_input" | "previous_step" | "flow_output" | "input_bindings.X"
@@ -883,7 +847,7 @@ export async function cancelRun(flowId: string, runId: string) {
 }
 
 /** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
-export interface FlowRunRetryPublic {
+interface FlowRunRetryPublic {
   run: FlowRunPublic;
   /** False when the same key replays a retry Eneo already accepted. */
   created: boolean;
@@ -909,7 +873,7 @@ export async function retryFlowRunFromFailedStep(flowId: string, runId: string, 
  * out, which Eneo would otherwise list for a space admin or the flow's owner;
  * a module session counts as its signed-in user.
  */
-export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { limit?: number; offset?: number } = {}) {
+export async function listOwnRuns(flowId: string, { limit, offset }: { limit: number; offset: number }) {
   const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: String(offset) });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
@@ -936,7 +900,7 @@ export async function uploadStepRuntimeFile(
 
 // --- Transkript: ordtider och ljud ---
 
-export interface TranscriptWordsResponse {
+interface TranscriptWordsResponse {
   flow_run_id: string;
   step_id: string;
   segments_hash: string;
@@ -971,7 +935,7 @@ export async function getRunArtifactText(flowId: string, runId: string, fileId: 
  * (the step's text is then the transcript). Unavailable: written before Eneo
  * kept sources.
  */
-export type TranscriptSourcePage =
+type TranscriptSourcePage =
   | {
       status: "present";
       source_hash: string;
@@ -1020,7 +984,7 @@ export function runArtifactUrl(flowId: string, runId: string, fileId: string, in
 
 // --- Transkriptkorrigeringar ---
 
-export interface TranscriptCorrectionsPublic {
+interface TranscriptCorrectionsPublic {
   schema_version?: number;
   segments_hash?: string | null;
   flow_run_id: string;
@@ -1057,7 +1021,7 @@ export async function listTranscriptCorrections(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export interface TranscriptCorrectionsEditRequest {
+interface TranscriptCorrectionsEditRequest {
   schema_version?: 2 | 3;
   segments_hash?: string;
   /** null skapar den första uppsättningen; annars senast kända revision. */
@@ -1081,7 +1045,7 @@ export async function saveTranscriptCorrections(
   );
 }
 
-export interface FlowTranscriptRegenerationPublic {
+interface FlowTranscriptRegenerationPublic {
   /** The new run: the source run, its document and files stay as they were. */
   run: FlowRunPublic;
   /** False when the same request and key replayed an accepted run. */

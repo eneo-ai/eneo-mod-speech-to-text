@@ -14,7 +14,8 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { clearDraft, isRecord, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { isRecord } from "./is-record";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
@@ -59,7 +60,7 @@ export interface SubmitRequest {
   maxSpeakers: number | undefined;
 }
 
-export interface SessionHandlers {
+interface SessionHandlers {
   /** Uploads and starts the run; throws when it could not. */
   submit: (request: SubmitRequest) => Promise<void>;
   /** Loads the published flow and its run contract again. */
@@ -166,7 +167,7 @@ function unsupported(accepted: string[] | undefined): Problem {
 }
 
 /** Whether the flow's input step takes this file, said in plain words when it does not. */
-export function fileProblem(
+function fileProblem(
   file: { name: string; type: string; size: number },
   step: RunContractStepInput | null,
 ): Problem | null {
@@ -179,7 +180,7 @@ export function fileProblem(
 }
 
 /** A failed send in the product's words, with the next step. */
-export function submitProblem(
+function submitProblem(
   error: unknown,
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
@@ -205,7 +206,7 @@ export function submitProblem(
   return { title: friendlyError(error) };
 }
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   modes: InputMode[];
   mode: InputMode | null;
   phase: SessionPhase;
@@ -281,7 +282,7 @@ export const MAX_SPEAKER_COUNT = 20;
 
 /**
  * A speaker count as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1
- * to `ceiling` (this module's own Antal talare stops at 20; a flow's own field has no ceiling).
+ * to `ceiling` (this module's own Antal talare stops at MAX_SPEAKER_COUNT; a flow's own field has no ceiling).
  */
 export function readSpeakerCount(text: string | null, ceiling = MAX_SPEAKER_COUNT): number | undefined | "invalid" {
   const trimmed = text?.trim() ?? "";
@@ -399,7 +400,7 @@ export function filledValue(value: unknown): boolean {
 }
 
 /** The details as the run's input_payload_json; empty ones are left out. */
-export function detailsPayload(
+function detailsPayload(
   fields: FormField[],
   details: Record<string, DetailValue>,
 ): Record<string, unknown> {
@@ -439,7 +440,7 @@ const FINISHING_WAIT_MS = 20_000;
 
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
-  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
+  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false };
   return {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
@@ -468,7 +469,7 @@ const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
   (value.count === undefined || typeof value.count === "string") &&
   (value.edited === undefined || typeof value.edited === "boolean");
 
-export interface FlowSessionOptions {
+interface FlowSessionOptions {
   flowId: string;
   flowName: string;
   ownerId: string;
@@ -506,7 +507,7 @@ export class FlowSession {
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
   // Bumped when the page goes away: a document prepared before that is not sent. A page set up
-  // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
+  // again (React Strict Mode runs a cleanup between two setups) sends documents again.
   private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
@@ -521,6 +522,7 @@ export class FlowSession {
   private keepTranscript: (() => void) | null = null;
   // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
   private keepInFlight = false;
+  private creating = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -685,6 +687,7 @@ export class FlowSession {
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
       const check = this.probeDuration?.(file)
+        .catch(() => null)
         .then((durationMs) => {
           if (this.file !== chosen) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
@@ -696,8 +699,7 @@ export class FlowSession {
             this.file = this.accepted = durationMs == null ? chosen : { ...chosen, durationMs };
           }
           this.emit();
-        })
-        .catch(() => undefined);
+        });
       if (!check) this.accepted = chosen;
     }
     this.emit();
@@ -737,6 +739,17 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
+    // A second press while the first is still checking or sending asks for no second run.
+    if (this.creating) return false;
+    this.creating = true;
+    try {
+      return await this.send();
+    } finally {
+      this.creating = false;
+    }
+  }
+
+  private async send(): Promise<boolean> {
     // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
     if (this.finishing) return false;
     if (this.keepInFlight && this.snapshot.phase === "ready") {

@@ -161,3 +161,11 @@ test("audio Eneo cannot take says why in Swedish; a server busy measuring is one
   assert.match(busy.message, /mäta/);
   assert.equal(busy.retry, true);
 });
+
+test("the app's own errors are shown as they are; what the browser raised is not shown in English", () => {
+  assert.equal(friendlyError(new Error("Inspelningen finns inte längre på enheten.")), "Inspelningen finns inte längre på enheten.");
+  assert.equal(friendlyError(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");
+  for (const raised of [new DOMException("The quota has been exceeded.", "QuotaExceededError"), new DOMException("The operation was aborted.", "AbortError")]) {
+    assert.equal(friendlyError(raised), "Ett okänt fel uppstod.", raised.name);
+  }
+});

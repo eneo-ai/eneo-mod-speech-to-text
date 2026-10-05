@@ -1,5 +1,3 @@
-"use client";
-
 import { FileAudio, FileText, Upload } from "lucide-react";
 import { useId, useState, type DragEvent, type Ref } from "react";
 import { Button } from "@astryxdesign/core/Button";

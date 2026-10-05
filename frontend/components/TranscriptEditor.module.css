@@ -2,7 +2,7 @@
  * The speaker-review editor: bespoke, because the text is content-editable and every word, passage and speaker change is
  * a span the code reads back (data-text-span, data-word-start, data-turn-index, data-segment-index). Semantic HTML and
  * design-system tokens only; the controls in the toolbar are the design system's own.
- * A speaker's colour is data-speaker-color (0 to 5, --module-speaker-N in styles/globals.css), never an inline style.
+ * A speaker's colour is data-speaker-color (0 to 5), which styles/globals.css turns into --tint; never an inline style.
  */
 
 .editor {
@@ -14,13 +14,6 @@
   outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
   outline-offset: var(--focus-outline-offset);
 }
-
-.editor [data-speaker-color="0"] { --tint: var(--module-speaker-0); }
-.editor [data-speaker-color="1"] { --tint: var(--module-speaker-1); }
-.editor [data-speaker-color="2"] { --tint: var(--module-speaker-2); }
-.editor [data-speaker-color="3"] { --tint: var(--module-speaker-3); }
-.editor [data-speaker-color="4"] { --tint: var(--module-speaker-4); }
-.editor [data-speaker-color="5"] { --tint: var(--module-speaker-5); }
 
 /* ---- The tools ---- */
 
@@ -136,7 +129,7 @@
 }
 
 /* A tall sticky toolbar must not cover the editor when zoomed or on a phone. */
-@media (max-width: 639px), (max-height: 600px) {
+@media (max-width: 639.98px), (max-height: 600px) {
   .toolbar {
     position: static;
   }
@@ -150,10 +143,6 @@
   background: var(--color-background-muted);
   font-size: var(--text-supporting-size);
   line-height: var(--text-supporting-leading);
-}
-
-.details[hidden] {
-  display: none;
 }
 
 .details h2 {
@@ -175,7 +164,7 @@
   .details summary {
     display: flex;
     align-items: center;
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
   }
 }
 
@@ -208,13 +197,7 @@
 /* A control inside a sentence: a link in looks, a button in what it does. Its target is a finger's under a coarse
    pointer without making the line any taller. */
 .inline {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
   text-decoration: underline;
-  cursor: pointer;
 }
 
 .inline:disabled {
@@ -248,11 +231,6 @@
   .text {
     padding-inline: var(--spacing-7);
   }
-}
-
-.text:focus,
-.text:focus-visible {
-  outline: none;
 }
 
 .text [data-turn-index] {
@@ -314,12 +292,7 @@
 .speakerName {
   min-block-size: var(--spacing-6);
   min-inline-size: var(--spacing-6);
-  padding: 0;
-  border: 0;
-  background: none;
   color: var(--color-text-secondary);
-  font: inherit;
-  cursor: pointer;
 }
 
 .clock {
@@ -357,8 +330,8 @@
 @media (pointer: coarse) {
   .clock,
   .speakerName {
-    min-block-size: var(--spacing-11);
-    min-inline-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
+    min-inline-size: var(--size-element-md);
   }
 }
 
@@ -462,13 +435,22 @@
 @media (forced-colors: active) {
   .span,
   .span[data-review] {
-    text-decoration-color: CanvasText !important;
+    text-decoration-color: CanvasText;
   }
 
   .word[aria-current="true"] {
     forced-color-adjust: none;
     background: Highlight;
     color: HighlightText;
+    outline: 2px solid Highlight;
+  }
+
+  /* Their tints are dropped here: the word being played and the words marked are outlined. */
+  .word[data-active] {
+    outline: 1px dotted Highlight;
+  }
+
+  .word[data-selected] {
     outline: 2px solid Highlight;
   }
 

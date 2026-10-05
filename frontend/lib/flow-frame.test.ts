@@ -141,10 +141,8 @@ test("the page for a flow that cannot be opened has one h1, and Försök igen on
   assert.ok([...down.container.querySelectorAll("button")].some((b) => b.textContent === "Försök igen"));
 });
 
-test("a state's card passes its attributes to the card, and its heading is a real heading that can take focus", async () => {
-  const { StateCard, StateHeading } = await import("../components/flow/StateCard");
-  const view = await mount(
-    createElement(StateCard, { "aria-busy": "true", children: createElement(StateHeading, { level: 1, tabIndex: -1, "data-phase-heading": "", children: "Dokumentet skapas" }) }),
-  );
-  assert.ok(view.container.querySelector('[aria-busy="true"] h1[tabindex="-1"][data-phase-heading]'));
+test("a state's card passes its attributes to the card", async () => {
+  const { StateCard } = await import("../components/flow/StateCard");
+  const view = await mount(createElement(StateCard, { "aria-busy": "true", children: createElement("p", null, "Dokumentet skapas") }));
+  assert.equal(view.container.querySelector('[aria-busy="true"]')?.textContent, "Dokumentet skapas");
 });

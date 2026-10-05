@@ -1,5 +1,3 @@
-"use client";
-
 import { WifiOff } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { Card } from "@astryxdesign/core/Card";
@@ -9,10 +7,8 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { onlineStatus } from "@/lib/online-status";
 
-const subscribe = (onChange: () => void) => onlineStatus.subscribe(onChange);
-
 function useOnlineStatus(): boolean {
-  return useSyncExternalStore(subscribe, () => onlineStatus.online, () => true);
+  return useSyncExternalStore(onlineStatus.subscribe, () => onlineStatus.online, () => true);
 }
 
 export type OfflineWaiting = "recording" | "upload" | "run" | null;

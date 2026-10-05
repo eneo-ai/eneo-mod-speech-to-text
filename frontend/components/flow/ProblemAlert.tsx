@@ -4,6 +4,7 @@ import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import type { Problem } from "@/lib/flow-session";
+import { scrollBehavior } from "@/lib/motion";
 
 /**
  * What happened and what to do next, with "Försök igen" when trying again can help. A problem without a detail is
@@ -14,12 +15,11 @@ export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Pr
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!reveal) return;
-    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    ref.current?.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+    ref.current?.scrollIntoView({ block: "nearest", behavior: scrollBehavior() });
   }, [reveal, problem]);
 
   const actions = (problem.retry && onRetry) || problem.back;
-  // A warning, as before: "try again" is not a failure of the person's. Title and detail are plain text, not headings.
+  // A warning: "try again" is not a failure of the person's. Title and detail are plain text, not headings.
   return (
     <Banner
       ref={ref}
@@ -31,7 +31,7 @@ export function ProblemAlert({ problem, onRetry, reveal = false }: { problem: Pr
         actions ? (
           <HStack gap={2} wrap="wrap" align="center">
             {problem.retry && onRetry && <Button label="Försök igen" variant="secondary" onClick={onRetry} />}
-            {problem.back && <BackToFlows variant="outline" size="default" />}
+            {problem.back && <BackToFlows size="md" />}
           </HStack>
         ) : undefined
       }

@@ -13,7 +13,7 @@ const HASH = "a".repeat(64);
 const realSteps = fixture.steps as unknown as FlowRunStep[];
 
 /** Eneo behind the module's proxy: `pages` answers the transcript source by start index; the rest is quiet. */
-function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, unknown> = {}, files: Record<string, string> = {}) {
+function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, unknown> = {}, files: Record<string, string> = {}, wordsStatus = 404) {
   const original = globalThis.fetch;
   const urls: string[] = [];
   const json = (body: unknown, status = 200) =>
@@ -26,6 +26,7 @@ function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, 
       return page ? json(page) : json({ detail: "fel" }, 500);
     }
     if (address.pathname.endsWith("/transcript-corrections/")) return json([]);
+    if (address.pathname.endsWith("/transcript-words/")) return json({ detail: "fel" }, wordsStatus);
     const artifact = /\/artifacts\/([^/]+)\/content$/.exec(address.pathname);
     if (artifact) {
       const content = files[artifact[1]];
@@ -95,6 +96,22 @@ test("segments come from Eneo's transcript source, page by page, with its hash f
     urls.filter((url) => url.includes("transcript-source")),
     [0, 2].map((start) => `/api/eneo/flows/${FLOW}/runs/${RUN}/steps/${STEP}/attempts/1/transcript-source/?start_segment_index=${start}`),
   );
+});
+
+test("a step with no word times is normal, and word times that cannot be read are said, so nothing is approved without the uncertain words", async (t) => {
+  const step = structuredClone(realSteps[0]);
+  const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
+    .transcription;
+  Object.assign(transcription.source.bounds, { segments_count: 1, segments_omitted_reason: null });
+  const pages = {
+    0: { status: "present", source_hash: HASH, next_segment_index: null, segments: [{ segment_index: 0, file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." }] },
+  };
+  stubEneo(t, pages, {}, 404);
+  assert.equal((await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] })).correctionProblem, null, "Eneo stored no word times: the transcript is as it is");
+  stubEneo(t, pages, {}, 500);
+  const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] });
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriptets ordtider/);
+  assert.equal(ctx.segments.length, 1, "the text is still there to read");
 });
 
 test("a transcript source that cannot be read shows the text and says so", async (t) => {

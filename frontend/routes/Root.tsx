@@ -11,6 +11,7 @@ import { ModuleShell } from "@/kit/ModuleShell";
 import { ModuleProviders } from "@/kit/ModuleProviders";
 import { readBranding } from "@/lib/read-branding";
 import { RouteEffects } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /**
  * What every screen stands in: the colour mode, the design system's providers and who the deployment is for. The
@@ -26,26 +27,31 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
+/** What every screen stands in: the providers, and the element the page's height and colours hang on. */
+function Frame({ children }: { children: ReactNode }) {
+  return (
+    <Providers>
+      <div data-app-shell>{children}</div>
+    </Providers>
+  );
+}
+
 /** The frame of every page: its providers and the page the route names. */
 export function Root() {
   return (
-    <Providers>
+    <Frame>
       <RouteEffects />
-      <div data-app-shell>
-        <Outlet />
-      </div>
-    </Providers>
+      <Outlet />
+    </Frame>
   );
 }
 
 /** While the first page's code arrives: the shell that every page shows while it asks who is signed in, so no frame is blank. */
 export function RootHydrateFallback() {
   return (
-    <Providers>
-      <div data-app-shell>
-        <LoadingShell />
-      </div>
-    </Providers>
+    <Frame>
+      <LoadingShell />
+    </Frame>
   );
 }
 
@@ -58,7 +64,7 @@ export function RouteError() {
   const error = useRouteError();
   useEffect(() => console.error("A page could not be shown:", error), [error]);
   return (
-    <ModuleShell label="Tal till text" heading={<Brand />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<Brand />}>
       <VStack gap={4} maxWidth={640}>
         <Heading level={1}>Sidan kunde inte visas.</Heading>
         <Text as="p" color="secondary">

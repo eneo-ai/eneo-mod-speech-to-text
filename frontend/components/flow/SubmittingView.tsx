@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
@@ -9,6 +7,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { formatBytes } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
+import { creatingHeading } from "@/lib/flow-output";
 import { StateCard } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
@@ -41,7 +40,7 @@ export function SubmittingView({
   makesText?: boolean;
 }) {
   // The run's own view follows under the same heading, so nothing moves when it starts.
-  const title = makesText ? "Texten skapas" : "Dokumentet skapas";
+  const title = creatingHeading(makesText);
   const heading = usePhaseHeading(title);
   const isUploading = submission.kind === "uploading";
   return (

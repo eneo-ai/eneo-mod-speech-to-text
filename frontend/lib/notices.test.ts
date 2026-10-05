@@ -114,7 +114,7 @@ test("an alert that need not be revealed stays where it is, and reduced motion s
   assert.equal(calls.length, 0);
   const revealed = await host(t);
   await revealed.render(createElement(ProblemAlert, { problem: { title: "Scrolla." }, reveal: true }));
-  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "auto" }]);
+  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
 });
 
 const wait = (retryAt: number, retryNow = () => {}) => ({ retryAt, retryNow });

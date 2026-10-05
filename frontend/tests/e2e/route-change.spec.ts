@@ -139,6 +139,38 @@ test("signing out: the sign-in page's title, announcement and heading, not the s
   expect(blocking((await axe(page)).violations), "axe passes on the sign-in page").toEqual([]);
 });
 
+test("a Tab pressed while the page is still loading: the shell it landed in is replaced, so the focus is given to the heading", async ({ page }) => {
+  await page.addInitScript(listen);
+  await flows(page);
+  await delaySession(page, 1_500);
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  // Tab from the page's start: the skip link, outside the main region.
+  await page.keyboard.press("Tab");
+  const person = await focused(page);
+  expect(person.tag, "Tab went to a control").toBe("a");
+  expect(person.inMain).toBe(false);
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  const title = await page.title();
+  await expect.poll(() => said(page), { timeout: 1_000 }).toEqual([title]);
+  await page.waitForTimeout(500);
+  // The gate replaced the shell the focus was in: the app took the focus away, so the app gives it back.
+  await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true });
+});
+
+test("a key that moves no focus is an action too: when the content comes the heading does not take the focus", async ({ page }) => {
+  await page.addInitScript(listen);
+  await flows(page);
+  await delaySession(page, 1_500);
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect.poll(() => said(page), { timeout: 1_000 }).toHaveLength(1);
+  await page.waitForTimeout(500);
+  expect((await focused(page)).heading, "no focus taken from a person who has acted").toBe(false);
+});
+
 test("a control the page focused itself keeps the focus, and the title is still said", async ({ page }) => {
   // The page takes the focus as its content appears, as a phase's view does with its heading (usePhaseHeading).
   await page.addInitScript(() => {

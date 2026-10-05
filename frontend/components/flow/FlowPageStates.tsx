@@ -1,5 +1,3 @@
-"use client";
-
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -12,6 +10,7 @@ import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
+import { documentTitle } from "@/lib/product";
 
 /** The flow page's shape while it loads, so nothing moves when it arrives. */
 export function FlowSkeleton() {
@@ -60,7 +59,7 @@ export function unavailableCopy(error: unknown): { title: string; detail: string
 /** The flow could not be loaded: unpublished (404) or another failure, with a way on. */
 export function FlowUnavailable({ error }: { error: unknown }) {
   const { title, detail, retry } = unavailableCopy(error);
-  useDocumentTitle(`${title.replace(/\.$/, "")} · Tal till text`);
+  useDocumentTitle(documentTitle(title.replace(/\.$/, "")));
   return (
     <FlowFrame>
       {/* A reading column on the frame's left edge, like the flow's own column beside the card. */}
@@ -70,7 +69,7 @@ export function FlowUnavailable({ error }: { error: unknown }) {
           {detail}
         </Text>
         <HStack gap={3} wrap="wrap">
-          <BackToFlows variant="default" size="default" />
+          <BackToFlows variant="primary" size="md" />
           {retry && <Button label="Försök igen" variant="secondary" onClick={() => window.location.reload()} />}
         </HStack>
       </VStack>

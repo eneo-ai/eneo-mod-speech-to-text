@@ -85,6 +85,7 @@ test("with nothing to play, the player is left out and the next steps are still 
   // The test document's store holds no parts of the recording: as when the device has lost them.
   const view = await ready();
   assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null, "no player for a recording it cannot read");
+  assert.doesNotMatch(view.container.textContent ?? "", /kunde inte läsas/, "a device with no parts is not an unreadable one");
   for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
 });
 
@@ -155,5 +156,23 @@ test("the delete question is covered while the login has ended, and is back, as 
     assert.equal(view.calls.discard, 0);
   } finally {
     release();
+  }
+});
+
+test("a recording the device cannot read says why there is no player, and the next steps are still there", async () => {
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const readParts = store.readParts;
+  store.readParts = async () => {
+    throw new Error("the database is not readable");
+  };
+  try {
+    const view = await ready();
+    await view.act(async () => undefined);
+    assert.match(view.container.textContent ?? "", /Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp\./);
+    assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null);
+    for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
+  } finally {
+    store.readParts = readParts;
   }
 });

@@ -7,7 +7,7 @@
   user-select: none;
   border-radius: var(--radius-full);
   font-weight: var(--font-weight-semibold);
-  background: var(--color-text-secondary);
+  background: var(--tint, var(--color-text-secondary));
   color: var(--color-background-surface);
 }
 
@@ -28,13 +28,6 @@
   block-size: var(--spacing-9);
   font-size: var(--font-size-sm);
 }
-
-.mark[data-speaker-color="0"] { background: var(--module-speaker-0); }
-.mark[data-speaker-color="1"] { background: var(--module-speaker-1); }
-.mark[data-speaker-color="2"] { background: var(--module-speaker-2); }
-.mark[data-speaker-color="3"] { background: var(--module-speaker-3); }
-.mark[data-speaker-color="4"] { background: var(--module-speaker-4); }
-.mark[data-speaker-color="5"] { background: var(--module-speaker-5); }
 
 /* ---- The player (TranscriptPlayer): the text, its words, the tools above it and the player docked under it. ---- */
 
@@ -70,7 +63,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3);
-  min-block-size: 28rem;
+  min-block-size: var(--module-transcript-min-height);
   padding: var(--spacing-4);
 }
 
@@ -99,12 +92,12 @@
 
 .tools {
   padding: var(--spacing-1) var(--spacing-3) var(--spacing-3);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
 }
 
 /* A large meeting on a narrow screen picks its speaker from a list, not from endless chips; from lg the chips are
    shown (they wrap, so none is cut off). */
-@media (max-width: 1023px) {
+@media (max-width: 1023.98px) {
   .chips[data-many] {
     display: none;
   }
@@ -214,7 +207,7 @@
   padding-inline: var(--spacing-3);
   overflow: visible;
   clip: auto;
-  border: 1px solid var(--color-border-emphasized);
+  border: var(--border-width) solid var(--color-border-emphasized);
   border-radius: var(--radius-element);
   background: var(--color-background-surface);
   font-size: var(--font-size-sm);
@@ -224,7 +217,7 @@
 
 @media (pointer: coarse) {
   .skipLink:focus {
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
   }
 }
 
@@ -246,7 +239,7 @@
 
 /* A tall sticky toolbar, or a card with its own height, must not cover the text when zoomed or on a phone. The
    caller's own max-height (a class it passes in) gives way here, hence the !important. */
-@media (max-width: 639px), (max-height: 600px) {
+@media (max-width: 639.98px), (max-height: 600px) {
   .player {
     max-block-size: none !important;
   }
@@ -290,10 +283,11 @@
   z-index: 10;
   padding: var(--spacing-2) var(--spacing-3);
   padding-block-end: max(var(--spacing-2), env(safe-area-inset-bottom));
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
   border-end-start-radius: var(--radius-container);
   border-end-end-radius: var(--radius-container);
   background: var(--color-background-surface);
+  /* The skip link moves the focus here from script: a place to start from, not a control, so it shows no ring. */
   outline: none;
 }
 
@@ -318,7 +312,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-@media (max-width: 639px) {
+@media (max-width: 639.98px) {
   .skip,
   .rate {
     display: none;
@@ -336,7 +330,7 @@
 
 @media (pointer: coarse) {
   .rate {
-    min-inline-size: var(--spacing-11);
+    min-inline-size: var(--size-element-md);
   }
 }
 
@@ -373,21 +367,15 @@
   align-items: center;
   min-block-size: var(--spacing-6);
   min-inline-size: var(--spacing-6);
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-inner);
-  background: transparent;
-  font: inherit;
-  color: inherit;
   text-align: start;
-  cursor: pointer;
 }
 
 @media (pointer: coarse) {
   .inline {
-    min-block-size: var(--spacing-11);
-    min-inline-size: var(--spacing-11);
-    margin-block: calc((var(--spacing-6) - var(--spacing-11)) / 2);
+    min-block-size: var(--size-element-md);
+    min-inline-size: var(--size-element-md);
+    margin-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
   }
 }
 
@@ -479,7 +467,7 @@
 @media (pointer: coarse) {
   .choosable {
     display: block;
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
     margin-block: var(--spacing-1);
     padding: var(--spacing-3) var(--spacing-2);
     background-clip: border-box;
@@ -540,6 +528,15 @@
     background: Highlight;
     color: HighlightText;
   }
+
+  /* The turn and the sentence being read aloud are shown by a tint, which is dropped here. */
+  .turn[data-active="true"] {
+    outline: 2px solid Highlight;
+  }
+
+  .sentenceActive {
+    outline: 1px dotted Highlight;
+  }
 }
 
 /* "Ordet stämmer": a check set after an uncertain word. The button is 24 px (44 px for a finger) and lies over the
@@ -551,21 +548,16 @@
   block-size: var(--spacing-6);
   margin-block: calc(-1 * var(--spacing-1));
   margin-inline: calc(-1 * var(--spacing-0-5)) calc(-1 * var(--spacing-1));
-  padding: 0;
-  border: 0;
   border-radius: var(--radius-full);
-  background: transparent;
-  color: inherit;
   vertical-align: middle;
   translate: 0 -1px;
-  cursor: pointer;
 }
 
 @media (pointer: coarse) {
   .confirmButton {
-    inline-size: var(--spacing-11);
-    block-size: var(--spacing-11);
-    margin-block: calc((var(--spacing-4) - var(--spacing-11)) / 2);
+    inline-size: var(--size-element-md);
+    block-size: var(--size-element-md);
+    margin-block: calc((var(--spacing-4) - var(--size-element-md)) / 2);
     margin-inline: calc(-1 * var(--spacing-3)) calc(-1 * (var(--spacing-3) + var(--spacing-0-5)));
   }
 }
@@ -575,7 +567,7 @@
   place-items: center;
   inline-size: var(--spacing-4);
   block-size: var(--spacing-4);
-  border: 1px solid var(--module-color-review);
+  border: var(--border-width) solid var(--module-color-review);
   border-radius: var(--radius-full);
   color: var(--module-color-review);
   transition: background-color var(--module-duration-quick) var(--module-ease-smooth-out);
@@ -588,7 +580,7 @@
 
 .confirmButton:hover .confirmMark {
   background: var(--module-color-review);
-  color: var(--color-text-primary);
+  color: var(--color-background-surface);
 }
 
 .confirmMarkDone {
@@ -628,7 +620,7 @@
   flex-direction: column;
   gap: var(--spacing-0-5);
   padding: var(--spacing-3) var(--spacing-4);
-  border-block-end: 1px solid var(--color-border);
+  border-block-end: var(--border-width) solid var(--color-border);
 }
 
 .pickerList {
@@ -639,7 +631,7 @@
 
 .pickerSection {
   padding: var(--spacing-3) var(--spacing-4);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
 }
 
 /* ---- Correcting a passage ---- */

@@ -1,5 +1,3 @@
-"use client";
-
 import type { ComponentType } from "react";
 import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";
@@ -35,8 +33,7 @@ const formatter = lazyLoader<Formatted>(() => import("./MarkdownFormatted").then
  * Markdown as a page, its headings under the page's h1 (remarkResultHeadings) and bare addresses as links.
  *
  * Until the code that formats it has arrived the text is there, as it was written: nothing is missing and nothing is
- * announced twice, and the server and the first render of the browser agree, since neither has the code yet. If it
- * cannot be fetched (a page older than the deploy that replaced its files, a connection that dropped) the text stays
+ * announced twice. If it cannot be fetched (a page older than the deploy that replaced its files, a connection that dropped) the text stays
  * and a line offers the person's reload; nothing reloads by itself, since the page may hold work not yet saved.
  */
 export function Markdown({ children }: { children: string }) {

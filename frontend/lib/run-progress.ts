@@ -29,7 +29,7 @@ export interface StepView {
   note: string | null;
 }
 
-export type RunOutcome = "succeeded" | "failed" | "cancelled";
+type RunOutcome = "succeeded" | "failed" | "cancelled";
 
 const OUTCOMES: Record<string, RunOutcome> = {
   completed: "succeeded",

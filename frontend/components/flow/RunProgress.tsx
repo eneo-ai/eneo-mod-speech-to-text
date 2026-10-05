@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -15,6 +13,7 @@ import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useSignedOut } from "@/components/AuthGate";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { runElapsed, type StepView } from "@/lib/run-progress";
+import { creatingHeading } from "@/lib/flow-output";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
@@ -74,7 +73,7 @@ export function RunProgress({
       <VStack gap={6}>
         <VStack gap={2}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            {makesText ? "Texten skapas" : "Dokumentet skapas"}
+            {creatingHeading(makesText)}
           </Heading>
           <VStack gap={1}>
             <HStack gap={2} align="center">
@@ -154,7 +153,7 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
         </VStack>
         <HStack gap={3} wrap="wrap">
           <Button label="Försök igen" variant="primary" icon={<Icon icon={RotateCcw} size="sm" color="inherit" />} onClick={onRetry} />
-          <BackToFlows size="default" />
+          <BackToFlows size="md" />
         </HStack>
       </VStack>
     </StateCard>

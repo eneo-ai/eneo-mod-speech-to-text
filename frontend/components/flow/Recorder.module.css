@@ -131,7 +131,7 @@
   margin-block-start: auto;
   flex-shrink: 0;
   padding: var(--spacing-3) var(--bar-gutter) max(var(--spacing-3), env(safe-area-inset-bottom));
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
   background: var(--color-background-card);
 }
 
@@ -145,7 +145,7 @@
   .bar {
     margin-inline: 0;
     padding: var(--spacing-3) var(--spacing-5);
-    border: 1px solid var(--color-border);
+    border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-container);
   }
 }
@@ -205,7 +205,8 @@
 /* Wide enough for "Fortsätt", so pausing moves nothing. */
 .actions {
   display: grid;
-  grid-template-columns: minmax(8.5rem, 1fr) minmax(8.5rem, 1.4fr);
+  --action-width: 8.5rem;
+  grid-template-columns: minmax(var(--action-width), 1fr) minmax(var(--action-width), 1.4fr);
   gap: var(--spacing-3);
   inline-size: 100%;
 }
@@ -227,7 +228,7 @@
 
 @media (min-width: 640px) {
   .row[data-status] .actions {
-    grid-template-columns: repeat(2, 8.5rem);
+    grid-template-columns: repeat(2, var(--action-width));
     gap: var(--spacing-3);
   }
 }
@@ -305,7 +306,7 @@
     z-index: 1;
     gap: var(--spacing-1);
     padding: var(--spacing-2) var(--spacing-3);
-    border: 1px solid var(--color-border);
+    border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-container);
     background: var(--color-background-card);
   }

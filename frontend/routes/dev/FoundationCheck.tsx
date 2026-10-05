@@ -1,5 +1,3 @@
-"use client";
-
 import {useState} from "react";
 import {AppShell} from "@astryxdesign/core/AppShell";
 import {TopNav} from "@astryxdesign/core/TopNav";
@@ -15,6 +13,7 @@ import {VStack} from "@astryxdesign/core/VStack";
 import {Heading, Text} from "@astryxdesign/core/Text";
 import {Card} from "@astryxdesign/core/Card";
 import {useTheme} from "@astryxdesign/core/theme";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /** What the design system's JavaScript theme says, for the colour-mode test: it must agree with what is painted. */
 function ThemeProbe() {
@@ -39,8 +38,8 @@ export function FoundationCheck() {
       mobileNav={false}
       topNav={
         <TopNav
-          label="Tal till text"
-          heading={<Text weight="semibold">Tal till text</Text>}
+          label={PRODUCT_NAME}
+          heading={<Text weight="semibold">{PRODUCT_NAME}</Text>}
           endContent={<DropdownMenu button={{label: "Konto"}} items={[{label: "Logga ut", onClick() {}}]} />}
         />
       }>

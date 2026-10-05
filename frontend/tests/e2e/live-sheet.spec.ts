@@ -5,6 +5,7 @@
  * pushes the newest line out of the window and the bar's controls with it, which only a long text shows.
  */
 import { type Page } from "@playwright/test";
+import { TEXT_SPACING } from "./checks";
 import { expect, test } from "./gate";
 import { longLiveText, WORDS } from "./live-relay";
 import { record, setup } from "./screens";
@@ -74,3 +75,65 @@ test("with the flow's details unfolded the page is taller than the window: the r
   expect(reach.inside && reach.reached, `Stoppa is in the window and not covered (${JSON.stringify(reach)})`).toBe(true);
   expect(reach.log, "the text is still a text to read").toBeGreaterThanOrEqual(60);
 });
+
+/** Live text that arrives, then a connection that is lost and does not come back: the sheet's status line says so. */
+async function liveTextThenLostConnection(page: Page) {
+  let connections = 0;
+  await page.routeWebSocket(/\/api\/live\//, (ws) => {
+    connections += 1;
+    if (connections > 1) return ws.close({ code: 1011 });
+    ws.send(JSON.stringify({ type: "ready", sample_rate: 16000, max_seconds: 18000 }));
+    for (let word = 0; word < 150; word += 1) ws.send(JSON.stringify({ type: "transcript.delta", text: (word ? " " : "") + "budgeten" }));
+    ws.close({ code: 1011 });
+  });
+}
+
+const LOST = "Livetexten pausades. Inspelningen fortsätter.";
+
+test("Visa senaste stays above a status line that wraps, at larger text and with the spacing a reader may set", async ({ page }, info) => {
+  test.skip(info.project.name !== "phone-320-light", "the narrowest window, where the status line wraps most");
+  await liveTextThenLostConnection(page);
+  // Tall enough that the sheet holds its status line whole.
+  await page.setViewportSize({ width: 320, height: 900 });
+  await setup(page);
+  await record(page, "Strömma");
+  const status = page.getByText(LOST);
+  await expect(status).toBeVisible({ timeout: 30_000 });
+  await page.addStyleTag({ content: `html { font-size: 150%; } ${TEXT_SPACING}` });
+  await page.getByRole("log", { name: "Preliminär text" }).evaluate((log) => void (log.scrollTop = 0));
+  const latest = page.getByRole("button", { name: "Visa senaste" });
+  await expect(latest).toBeVisible();
+  const [button, line] = [(await latest.boundingBox())!, (await status.boundingBox())!];
+  expect(line.height, "the status line wraps to several lines").toBeGreaterThan(90);
+  expect(button.y + button.height, `the button ends above the status line (${JSON.stringify({ button, line })})`).toBeLessThanOrEqual(line.y + 1);
+});
+
+for (const [name, css] of [
+  ["a phone's own text size", ""],
+  ["larger text and the spacing a reader may set", `html { font-size: 150%; } ${TEXT_SPACING}`],
+] as const) {
+  test(`on a window of 320 x 568 with ${name}, the sheet holds its status line whole and a line of the text is in view`, async ({ page }, info) => {
+    test.skip(info.project.name !== "phone-320-light", "the narrowest window, where the status line wraps most");
+    await liveTextThenLostConnection(page);
+    await page.setViewportSize({ width: 320, height: 568 });
+    await setup(page);
+    await record(page, "Strömma");
+    await expect(page.getByText(LOST)).toBeVisible({ timeout: 30_000 });
+    if (css) await page.addStyleTag({ content: css });
+    // The page scrolls to its end, as a person does to read what the window cannot hold at once.
+    await page.evaluate(() => {
+      const main = document.getElementById("astryx-app-shell-main")!;
+      main.scrollTop = main.scrollHeight;
+    });
+    const sheet = await page.evaluate((lost) => {
+      const log = document.querySelector<HTMLElement>('[role="log"]')!;
+      const card = log.closest('[role="region"]')!.getBoundingClientRect();
+      const line = [...document.querySelectorAll("p")].find((p) => p.textContent === lost)!.getBoundingClientRect();
+      const style = getComputedStyle(log);
+      const room = log.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+      return { clipped: Math.round(line.bottom - card.bottom), lines: Math.round((room / parseFloat(getComputedStyle(log.querySelector("p")!).lineHeight)) * 10) / 10 };
+    }, LOST);
+    expect(sheet.clipped, `the status line ends inside the sheet (${JSON.stringify(sheet)})`).toBeLessThanOrEqual(1);
+    expect(sheet.lines, `a line of the text to read (${JSON.stringify(sheet)})`).toBeGreaterThanOrEqual(1);
+  });
+}

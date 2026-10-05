@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { InternationalizationProvider } from "@astryxdesign/core/i18n";
 import { LinkProvider } from "@astryxdesign/core/Link";

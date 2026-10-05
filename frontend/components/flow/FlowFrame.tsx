@@ -1,15 +1,14 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
 import { AccountMenu } from "@/components/AccountMenu";
-import { HeaderBrand } from "@/components/AppHeader";
+import { HeaderBrand } from "@/components/HeaderBrand";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { RouterLink } from "@/kit/RouterLink";
 import styles from "./FlowFrame.module.css";
+import { PRODUCT_NAME } from "@/lib/product";
 
 /**
  * The frame of every view of a flow's page: the top bar, the skip link, the one main region and the page's width.
@@ -62,7 +61,7 @@ export function FlowFrame({
   );
   return (
     <ModuleShell
-      label="Tal till text"
+      label={PRODUCT_NAME}
       heading={heading}
       start={
         title &&
