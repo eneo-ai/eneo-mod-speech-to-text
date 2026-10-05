@@ -22,10 +22,8 @@ import { STATES, type State } from "./screens";
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 test.use({ screenshot: "off", trace: "off" });
 
-/** Controls that are not activated, `<state> | <role> "<name>"`, and why. Never a pattern. */
-const SKIPPED: Record<string, string> = {
-  'signin-sso | button "Logga in med Eneo"': "starts the sign-in handshake, which the dev profile's stub does not answer (tests/prod and the real target do)",
-};
+/** Controls that are not activated (a press the shared fake Eneo could not take back), `<state> | <role> "<name>"`, and why. Never a pattern. None today. */
+const SKIPPED: Record<string, string> = {};
 
 /** Failures a control is meant to cause, `<state> | <role> "<name>"`, as a state declares its own (screens.ts). */
 const EXPECTS: Record<string, { reason: string; expects: Expectation[] }> = {};
