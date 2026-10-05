@@ -1,5 +1,3 @@
-"use client";
-
 import {useState} from "react";
 import {AppShell} from "@astryxdesign/core/AppShell";
 import {TopNav} from "@astryxdesign/core/TopNav";

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, CheckCheck, ChevronDown, Play, Undo2, X } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";

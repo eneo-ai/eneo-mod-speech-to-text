@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";

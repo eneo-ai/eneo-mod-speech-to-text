@@ -1,5 +1,3 @@
-"use client";
-
 import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";

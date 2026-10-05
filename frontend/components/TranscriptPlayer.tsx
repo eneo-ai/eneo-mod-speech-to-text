@@ -1,5 +1,3 @@
-"use client";
-
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
   type ComponentProps,

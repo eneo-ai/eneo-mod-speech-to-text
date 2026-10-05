@@ -1,5 +1,3 @@
-"use client";
-
 import type { LiveClient, LiveSession } from "@/lib/flow-session";
 import { LiveTranscriber, liveSocketUrl, openLiveSocket, type LiveDeps } from "@/lib/live-transcriber";
 import { loginState } from "@/lib/login-state";

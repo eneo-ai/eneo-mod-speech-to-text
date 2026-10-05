@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";

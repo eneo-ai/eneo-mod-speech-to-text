@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { Button, type ButtonProps } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";

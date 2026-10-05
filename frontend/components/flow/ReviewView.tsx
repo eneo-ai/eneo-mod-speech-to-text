@@ -1,5 +1,3 @@
-"use client";
-
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
 import { CheckCircle2, UsersRound } from "lucide-react";

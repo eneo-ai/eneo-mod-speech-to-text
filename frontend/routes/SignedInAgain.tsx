@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { Heading } from "@astryxdesign/core/Heading";

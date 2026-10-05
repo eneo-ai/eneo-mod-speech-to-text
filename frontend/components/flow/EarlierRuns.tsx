@@ -1,5 +1,3 @@
-"use client";
-
 import { CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@astryxdesign/core/Button";

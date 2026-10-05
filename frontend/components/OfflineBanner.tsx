@@ -1,5 +1,3 @@
-"use client";
-
 import { WifiOff } from "lucide-react";
 import { useSyncExternalStore } from "react";
 import { Card } from "@astryxdesign/core/Card";

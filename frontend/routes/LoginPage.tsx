@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Banner } from "@astryxdesign/core/Banner";

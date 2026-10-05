@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { TopNav } from "@astryxdesign/core/TopNav";

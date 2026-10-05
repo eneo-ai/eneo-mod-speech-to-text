@@ -1,5 +1,3 @@
-"use client";
-
 import { useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";

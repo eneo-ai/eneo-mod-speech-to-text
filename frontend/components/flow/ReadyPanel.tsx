@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, FileText, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";

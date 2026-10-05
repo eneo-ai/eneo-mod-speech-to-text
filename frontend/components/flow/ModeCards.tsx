@@ -1,5 +1,3 @@
-"use client";
-
 import { AudioLines, Mic, Upload, type LucideIcon } from "lucide-react";
 import { forwardRef } from "react";
 import { Heading } from "@astryxdesign/core/Heading";

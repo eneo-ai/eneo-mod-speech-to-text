@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState, useSyncExternalStore } from "react";
 import type { RunContract } from "@/lib/api";
 import { browserDrafts } from "@/lib/drafts";

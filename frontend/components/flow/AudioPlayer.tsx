@@ -1,5 +1,3 @@
-"use client";
-
 import { Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { HStack } from "@astryxdesign/core/HStack";

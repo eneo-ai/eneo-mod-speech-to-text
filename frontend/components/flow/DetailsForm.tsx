@@ -1,5 +1,3 @@
-"use client";
-
 import type { ComponentProps } from "react";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Selector } from "@astryxdesign/core/Selector";

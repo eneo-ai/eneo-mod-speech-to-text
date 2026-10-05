@@ -1,5 +1,3 @@
-"use client";
-
 import type { ComponentType } from "react";
 import { LoadFailure } from "@/components/LoadFailure";
 import { lazyLoader, useLoaded } from "@/lib/lazy-component";

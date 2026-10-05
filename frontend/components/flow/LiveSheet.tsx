@@ -1,5 +1,3 @@
-"use client";
-
 import { memo, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";

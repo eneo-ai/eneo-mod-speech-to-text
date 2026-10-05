@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import type { FlowRunStep } from "@/lib/api";
 import { INITIAL_TRANSCRIPT, loadTranscriptContext, type TranscriptContext } from "@/lib/transcript-context";

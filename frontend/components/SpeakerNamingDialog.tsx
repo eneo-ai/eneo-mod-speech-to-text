@@ -1,5 +1,3 @@
-"use client";
-
 import { cloneElement, useEffect, useId, useRef, useState, type ReactElement, type MouseEvent } from "react";
 import { Headphones, Pause } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";

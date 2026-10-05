@@ -1,5 +1,3 @@
-"use client";
-
 import { Pause, Play } from "lucide-react";
 import { useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";

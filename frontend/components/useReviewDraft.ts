@@ -1,5 +1,3 @@
-"use client";
-
 import { useRef, useState } from "react";
 import { browserDrafts, clearDraft, isRecord, readDraft, writeDraft } from "@/lib/drafts";
 

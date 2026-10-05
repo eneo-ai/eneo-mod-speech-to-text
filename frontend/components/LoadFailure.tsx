@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
