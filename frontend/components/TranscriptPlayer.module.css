@@ -588,7 +588,7 @@
 
 .confirmButton:hover .confirmMark {
   background: var(--module-color-review);
-  color: var(--color-text-primary);
+  color: var(--color-background-surface);
 }
 
 .confirmMarkDone {

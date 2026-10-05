@@ -98,6 +98,15 @@ for (const [index, mode] of (["light", "dark"] as const).entries()) {
     }
   });
 
+  test(`${mode}: the confirm mark's glyph is legible on the review colour that fills it on hover`, async () => {
+    const { token, module, atLeast } = await palette();
+    const hover = /\.confirmButton:hover \.confirmMark \{([^}]*)\}/.exec(readFileSync("components/TranscriptPlayer.module.css", "utf8"))?.[1] ?? "";
+    assert.match(hover, /background:\s*var\(--module-color-review\)/, "the mark fills with the review colour on hover");
+    const glyph = /(?:^|[\s;])color:\s*var\((--color-[a-z-]+)\)/.exec(hover)?.[1];
+    assert.ok(glyph, "and names a theme colour for its glyph");
+    atLeast(4.5, token(glyph), module("module-color-review"), `${glyph} on the review colour`);
+  });
+
   test(`${mode}: the first speaker is not the brand's blue, so a name never reads as a link`, async () => {
     const { token, module } = await palette();
     const apart = Math.abs(hue(module("module-speaker-0")) - hue(token("--color-accent")));
