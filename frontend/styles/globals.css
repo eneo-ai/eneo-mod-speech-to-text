@@ -24,13 +24,13 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   /* The page: full window width, so a bar's band spans it, on the design system's own page colours (the wrapper is
      inside its theme root, where they are defined). */
   [data-app-shell] {
-    min-height: 100vh;
+    min-height: 100dvh;
     background: var(--color-background-body);
     color: var(--color-text-primary);
     position: relative;

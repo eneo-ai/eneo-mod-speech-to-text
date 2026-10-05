@@ -182,3 +182,11 @@ test("the states shown by a tint alone are outlined in forced colours", () => {
   });
   assert.deepEqual(unoutlined, []);
 });
+
+// 100vh is the window with a phone's address bar drawn away: a page that is at least that tall always scrolls a little.
+test("the page's full-height rules measure the visible window, as the rest of the module does", () => {
+  assert.deepEqual(
+    readFileSync("styles/globals.css", "utf8").split("\n").filter((line) => /\b100vh\b/.test(line)),
+    [],
+  );
+});
