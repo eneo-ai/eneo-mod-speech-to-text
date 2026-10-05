@@ -110,15 +110,18 @@ class DeploymentComposeTests(unittest.TestCase):
             self.assertEqual(int(variables["MAX_RESPONSE_BYTES"]), defaults["max_response_bytes"].default)
         self.assertEqual((chosen["MAX_BODY_BYTES"], chosen["MAX_UPLOAD_BYTES"], chosen["MAX_RESPONSE_BYTES"]), ("2048", "5000000", "4096"))
 
-    def test_the_upload_timeout_the_cookie_flag_and_the_key_header_default_to_what_the_backend_defaults_to(self) -> None:
+    def test_the_upload_timeout_the_cookie_flag_the_key_header_and_the_session_age_default_to_the_backends(self) -> None:
         fields = Settings.model_fields
         environment = lambda config: config["services"][SERVICE]["environment"]
-        names = ("UPLOAD_PROXY_TIMEOUT_SECONDS", "COOKIE_SECURE", "ENEO_API_KEY_HEADER_NAME")
+        names = ("UPLOAD_PROXY_TIMEOUT_SECONDS", "COOKIE_SECURE", "ENEO_API_KEY_HEADER_NAME", "SESSION_MAX_AGE_MINUTES")
 
         for variables in (environment(compose_config()), environment(compose_config(**dict.fromkeys(names, "")))):
             self.assertEqual(float(variables["UPLOAD_PROXY_TIMEOUT_SECONDS"]), fields["upload_proxy_timeout_seconds"].default)
             self.assertEqual(variables["COOKIE_SECURE"], str(fields["cookie_secure"].default).lower())
             self.assertEqual(variables["ENEO_API_KEY_HEADER_NAME"], fields["eneo_api_key_header_name"].default)
+            self.assertEqual(int(variables["SESSION_MAX_AGE_MINUTES"]) * 60, fields["session_max_age_seconds"].default)
+        chosen = environment(compose_config(SESSION_MAX_AGE_MINUTES="90"))
+        self.assertEqual(chosen["SESSION_MAX_AGE_MINUTES"], "90")
 
 
 class BrandingSettingsReachTheBackendTests(unittest.TestCase):
