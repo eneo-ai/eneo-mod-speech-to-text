@@ -76,6 +76,8 @@ Läs diffen på ögonblicksbilderna innan du behåller dem.
 
 `frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
 
+`frontend/tests/e2e/result-playback.spec.ts` kontrollerar ordklick, ljudposition, markeringen när ljudet pausas, skillnaden mellan sökträff och aktuellt ord, kontrasten i båda färglägena, tangentbordslänken förbi transkriberingen och avståndet till rättningens knappar. `field-focus.spec.ts` kräver en enda fokusram för sökfält och rättningsfält.
+
 `frontend/tests/e2e/controls.spec.ts` trycker på varje synlig, aktiverad knapp, länk, menyval, flik, brytare, kryssruta och radioknapp i varje läge, var och en i en ny kopia av läget (en egen webbläsarkontext). Den kräver ett synligt svar (adressen, fokus, en överlagring, ett aria-tillstånd, en live-region eller innehållet ändras), inga konsol- eller nätverksfel som läget inte deklarerat och att det som öppnades går att stänga med Escape eller sin egen stängknapp. Det som inte trycks (`SKIPPED`), det som med avsikt inte svarar (`NO_RESPONSE`) och det som får ge ett fel (`EXPECTS`) står med skäl i filen; ett val som redan är gjort, eller en länk till sidan man är på, trycks inte. Den körs bara på dev-profilen, i `laptop-1440-light` och `phone-390-light`, och tar ungefär 20 minuter.
 
 ### Gaten på det riktiga målet
@@ -119,6 +121,26 @@ Budgetarna och skälen: [beslut 0007](decisions/0007-weight-budget.md).
 
 Flera utcheckningar (git worktrees) kan köra testerna samtidigt på egna portpar, till exempel `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run test:a11y -- ...`. Gaten kör fyra arbetare mot den enda utvecklingsservern; fler svälter den. Döda aldrig en process du inte startat och använd aldrig `pkill -f`: stoppa det du startat via dess PID eller port.
 
+### Arbeta med en rättning
+
+Reproducera felet i dess läge och profil, med ett riktat test och en skärmbild. Rätta i den komponent eller det tema som äger beteendet, kör de berörda testerna och granska bilddiffen. Kör sedan hela matrisen på en stabil kandidat: ändra inte källkod, testfiler eller byggda filer medan den körs. En separat utcheckning skyddar kandidaten när annat arbete pågår. Egna portar skyddar bara servrarna; de skyddar inte filer som ett annat bygge skriver över.
+
+Kör dokumentation och faktauppslag parallellt med verifieringen. Samordna byggsteg och begränsa antalet webbläsararbetare när flera körningar delar dator, så att ett överbelastat testsystem inte döljer resultatet. Efter en ändring av kandidaten körs kontrollerna som påverkas; en tidigare grön körning gäller den kod den faktiskt testade.
+
+`npm run verify:candidate` gör en separat kopia av aktuella källfiler, nya testfiler och installerade frontend-beroenden i en egen tillfällig katalog. Ocommittade ändringar följer med; ignorerade arbetsfiler följer inte med. Källfilerna skrivskyddas, de två byggena görs en gång och även deras filer skrivskyddas. Kontrollerna körs sedan i turordning med två arbetare och utan att återanvända befintliga servrar. Kontrollsummor före och efter varje steg gör att ändrade, saknade eller tillagda indata och byggfiler underkänner kandidaten.
+
+```bash
+# Hela matrisen: typer, enheter, backend, dev, riktigt mål, produktion,
+# granskning, båda branding-profilerna och alla bilder i 23 storlekar.
+npm run verify:candidate
+# Bara berörda kontroller, fortfarande på en separat kandidat.
+npm run verify:candidate -- --checks lint,unit,prod --app-port 4061 --stub-port 9061
+# En detalj i dev och byggd app, i samtliga skärmprofiler.
+npm run verify:candidate -- --checks dev,real --grep "one focus frame"
+```
+
+Skriptet skriver kandidatens sökväg, källornas SHA-256 och varje stegs logg. `candidate.json` sparar urvalet, kontrollsummorna och resultaten; webbläsarrapporter och bilder ligger under kandidatens `frontend/test-results/` respektive `frontend/ux-shots/`. Kandidaten behålls även vid fel. `--workers 1` minskar belastningen, `--prepare-only` tar en kopia utan att köra tester och `--verify <kandidatens sökväg>` kontrollerar att den är oförändrad. `BACKEND_PYTHON` väljer Python-miljö som för de vanliga testerna. Imagens acceptans och dokumentationssajten har kvar sina egna kommandon och körs separat.
+
 ## Läsa ett fel
 
 | Det du ser | Betyder | Gör så här |
@@ -135,3 +157,5 @@ Resultaten finns i `frontend/test-results/a11y/*/findings.json` och i HTML-rappo
 Före och efter en ändring av gränssnittet: `npm run ux:shots` fotograferar varje läge i 23 storlekar (telefoner stående och liggande, surfplattor, 1000 px, laptops och breda skärmar upp till 3840 × 2160) i ljust och mörkt, till `frontend/ux-shots/<etikett>/<läge>/<bredd>x<höjd>-<färgläge>.png` med ett kontaktark, `index.html`. Etiketten är den korta commiten (`-dirty` med ändrade filer), `--name <namn>` lägger till ett namn och `--label <etikett>` sätter den. `--sizes 1000x800,390x844` och Playwrights `-g "<läge>"` smalnar av. `npm run ux:shots -- --compare <före> <efter>` skriver en rapport, `frontend/ux-shots/compare/<före>__<efter>/index.html`, med före, efter och de ändrade pixlarna i rött, de mest ändrade först. Bilderna checkas aldrig in (`ux-shots/` ignoreras).
 
 En ny skärm eller ett nytt överlägg: [Frontend](frontend.md#lägga-till-en-skärm).
+
+Efter en riktad bildkörning i en befintlig bildmapp uppdaterar `npm run ux:shots -- --index <etikett>` kontaktarket utan att ta om bilderna.

@@ -19,7 +19,8 @@
     "test:a11y:review": "SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
     "test:prod": "npm run build && npm run build:check && playwright test --config playwright.prod.config.ts",
     "test:image": "../deploy/acceptance.sh",
-    "ux:shots": "node scripts/ux-shots.mjs"
+    "ux:shots": "node scripts/ux-shots.mjs",
+    "verify:candidate": "node scripts/verify-candidate.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.3",

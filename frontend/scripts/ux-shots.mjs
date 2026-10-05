@@ -198,6 +198,12 @@ if (pair) {
   process.exit(0);
 }
 
+const indexLabel = option("--index");
+if (indexLabel) {
+  console.log(`Contact sheet: ${contactSheet(indexLabel)}`);
+  process.exit(0);
+}
+
 const git = (...command) => execFileSync("git", command, { encoding: "utf8" }).trim();
 const name = option("--name");
 const sizes = option("--sizes");
