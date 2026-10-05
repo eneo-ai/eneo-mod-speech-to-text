@@ -231,7 +231,7 @@ export function ReviewView({
   const [sample, setSample] = useState<string | null>(null);
   const listening = sounds ? sample : null;
 
-  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
+  const { corrections, saveState, localError, hasDropped, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
@@ -430,6 +430,7 @@ export function ReviewView({
   const decision = (
     <VStack gap={4} className={styles.decision}>
       {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
+      {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
         <HStack gap={2} wrap="wrap">
           <Button variant="secondary" size="sm" label="Försök spara igen" onClick={retryCorrections} />

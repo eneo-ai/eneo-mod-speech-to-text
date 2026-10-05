@@ -94,11 +94,11 @@ test("a run with no steps shown yet has no step region, and one that could not b
   assert.match(failed, /role="alert"(?:(?!<button).)*Körningen kunde inte avbrytas just nu\./, "the sentence is in the alert");
 });
 
-test("opening an earlier run is a busy placeholder that says so once and has no heading to move to", () => {
+test("opening an earlier run is a busy placeholder that says so once, with the page's one h1 out of sight", () => {
   const html = markup(createElement(RunOpening));
   assert.match(html, /aria-busy="true"/);
   assert.deepEqual(statuses(html), ["Hämtar körningen…"]);
-  assert.doesNotMatch(html, /<h[1-6]/);
+  assert.deepEqual([...html.matchAll(/<h([1-6])[^>]*>(.*?)<\/h\1>/g)].map(([, level, words]) => `${level} ${text(words)}`), ["1 Tal till text"]);
 });
 
 const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>
@@ -146,16 +146,31 @@ test("every quarter of an upload is said once, and the counting percent never is
   assert.ok(statuses(uploading({ percent: 33 })).every((status) => !/33/.test(status)));
 });
 
-test("before the file moves there is no bar and no Avbryt; while the run starts a wait shows, still no Avbryt", () => {
+test("before the file moves there is no bar and no Avbryt; once the run is being started there is Avbryt, and a wait says the file is uploaded", () => {
   const send = (submission: SubmissionState) =>
     markup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
   const idle = send({ kind: "idle" });
   assert.deepEqual(statuses(idle), ["Skickar"]);
   assert.doesNotMatch(idle, /progressbar|Avbryt/);
+
+  const starting = send({ kind: "starting", wait: null });
+  assert.equal(statuses(starting)[0], "Startar flödet");
+  assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
+  assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
+
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
   assert.equal(statuses(waiting)[0], "Startar flödet");
-  assert.match(text(waiting), /Försöker igen om \d+ s\./);
-  assert.doesNotMatch(waiting, /progressbar|Avbryt/);
+  assert.match(text(waiting), /Filen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(waiting), /Försöker igen om \d+ s\. Försök nu Avbryt/);
+  assert.doesNotMatch(waiting, /progressbar/);
+
+  const stopped = send({ kind: "starting", wait: { retryAt: null, retryNow: () => undefined } });
+  assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
+  assert.match(text(stopped), /Det går fortfarande inte att skicka\. Försök igen när du vill\. Försök igen Avbryt/);
+
+  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recordingId: "rec-1" });
+  assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -299,6 +314,13 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   // The callout is a note the heading's focus has already announced, not an alert that interrupts it.
   assert.match(render(undefined), /role="note"/);
   assert.doesNotMatch(render(undefined), /role="alert"/);
+});
+
+test("the failed run's heading and its start time are no banner of their own inside the page's main region", () => {
+  const html = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", created_at: "2026-09-23T16:02:00Z" }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  assert.doesNotMatch(html, /<header/);
 });
 
 test("a failure Eneo said nothing about still says what happened, and shows no start time it was not given", () => {
@@ -572,6 +594,8 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     onCorrectionsChange: () => undefined,
     retryCorrections: async () => undefined,
     downloadUnsavedCorrections: () => undefined,
+    hasDropped: false,
+    downloadDropped: () => undefined,
   };
   const render = (correctionProblem: string | null) =>
     markup(
@@ -637,6 +661,8 @@ function transcriptView(overrides: Record<string, unknown>) {
         onCorrectionsChange: () => undefined,
         retryCorrections: async () => undefined,
         downloadUnsavedCorrections: () => undefined,
+        hasDropped: false,
+        downloadDropped: () => undefined,
       },
       onReload: () => undefined,
     }),

@@ -13,6 +13,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
+import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { StateCard } from "@/components/flow/StateCard";
@@ -92,6 +93,7 @@ export function ReadyPanel({
   problem,
   live = null,
   finishing = false,
+  finishQueued = false,
   makesText = false,
   onCreate,
   onContinue,
@@ -107,6 +109,8 @@ export function ReadyPanel({
   live?: LiveSession | null;
   /** Strömma's final text is on its way: Skapa dokument waits for it. */
   finishing?: boolean;
+  /** Skapa dokument was pressed meanwhile: it is made as soon as the final text is in. */
+  finishQueued?: boolean;
   /** The flow ends in text, not a file: the action and the lines say text. */
   makesText?: boolean;
   onCreate: () => void;
@@ -151,6 +155,7 @@ export function ReadyPanel({
 
   return (
     <StateCard>
+      <StoppedWhileSignedOut />
       <VStack gap={1}>
         <Heading level={2} data-phase-heading tabIndex={-1}>
           Inspelningen är klar
@@ -207,7 +212,7 @@ export function ReadyPanel({
         </Grid>
         {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
         <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
-          {finishing ? "Slutför texten…" : ""}
+          {finishing ? (finishQueued ? "Slutför texten… Det skapas så snart den är klar." : "Slutför texten…") : ""}
         </Text>
       </VStack>
 

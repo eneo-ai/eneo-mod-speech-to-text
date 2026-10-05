@@ -10,7 +10,7 @@ import { BackToFlows } from "@/components/flow/BackToFlows";
 import { useDocumentTitle } from "@/components/flow/recording-hooks";
 import { ApiError } from "@/lib/api";
 import { errorAdvice } from "@/lib/errors";
-import { documentTitle } from "@/lib/product";
+import { documentTitle, PRODUCT_NAME } from "@/lib/product";
 
 /** The flow page's shape while it loads, so nothing moves when it arrives. */
 export function FlowSkeleton() {
@@ -29,6 +29,7 @@ export function FlowSkeleton() {
         </VStack>
       }
     >
+      <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
       <VisuallyHidden as="p" role="status">
         Laddar flödet…
       </VisuallyHidden>

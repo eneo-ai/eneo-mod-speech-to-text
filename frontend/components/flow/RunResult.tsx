@@ -104,8 +104,11 @@ export function RunResult({
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
   const positions = useRef<Partial<Record<View, number>>>({});
-  const switchView = (next: View) => {
+  // A button of the tab being left (the docked player's) changes the tab: the focus goes to the tab it chose.
+  const focusTab = useRef(false);
+  const switchView = (next: View, { focus = false } = {}) => {
     positions.current[view] = window.scrollY;
+    focusTab.current = focus;
     setView(next);
   };
   useLayoutEffect(() => {
@@ -113,6 +116,8 @@ export function RunResult({
     const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
     const saved = positions.current[view];
     window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+    if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
+    focusTab.current = false;
   }, [view, tabs]);
 
   const documentColumn = (
@@ -192,7 +197,7 @@ export function RunResult({
           view === "document",
           <VStack gap={6}>
             {documentColumn}
-            {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
+            {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
           </VStack>,
         )}
         {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}

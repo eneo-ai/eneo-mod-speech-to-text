@@ -191,6 +191,49 @@ test("an active lease hides a recording from recovery and keeps other tabs from 
   assert.deepEqual(await texts(await otherTab.readParts(recording.id)), ["audio"]);
 });
 
+test("a stopped recording the page still shows is held by its tab: no other tab offers or deletes it until it is let go", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["audio"]), 2_000);
+  await recordingTab.setState(recording.id, "stopped");
+  recordingTab.hold(recording.id);
+  recordingTab.release(recording.id); // Stoppa
+  await settle();
+
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "it is on the first tab's screen: not offered elsewhere");
+  await assert.rejects(otherTab.remove(recording.id), { message: "Inspelningen används i en annan flik." });
+
+  // The tab's own send or delete takes the lease over, and gives it back to the hold.
+  assert.equal(await recordingTab.lease(recording.id), true);
+  recordingTab.release(recording.id);
+  await settle();
+  assert.deepEqual(await otherTab.listUnsent("user-1"), [], "still held after an operation that did not end it");
+
+  recordingTab.letGo(recording.id); // Spela in på nytt, or the page goes away
+  await settle();
+  assert.deepEqual((await otherTab.listUnsent("user-1")).map((r) => r.id), [recording.id]);
+});
+
+test("deleting a held recording ends the hold with it: the lease is not kept for what is gone", async () => {
+  const env = device();
+  const recordingTab = await openRecordingStore(env);
+  const otherTab = await openRecordingStore(env);
+  const recording = await recordingTab.create(meeting);
+  await recordingTab.startPart(recording.id);
+  await recordingTab.append(recording.id, 0, new Blob(["audio"]), 2_000);
+  await recordingTab.setState(recording.id, "stopped");
+  recordingTab.hold(recording.id);
+  recordingTab.release(recording.id);
+
+  await recordingTab.remove(recording.id);
+  await settle();
+  assert.deepEqual(await otherTab.listUnsent("user-1"), []);
+  assert.equal(await otherTab.lease(recording.id), true, "no lock is left behind for a recording that was deleted");
+});
+
 test("without Web Locks, only the tab that made a recording sends, continues or deletes it; other tabs save it as a file", async () => {
   // No Web Locks at all, or a browser that refuses them here.
   const refusing = {
@@ -534,6 +577,48 @@ test("a database connection the browser closed is reopened: what was kept is rea
   assert.deepEqual(await texts(await store.readParts(recording.id)), ["abc"]);
   closeConnections();
   assert.deepEqual((await store.listUnsent("user-1")).map((r) => r.id), [], "this tab's own, still leased");
+});
+
+test("a device cleared in the middle of a recording: the recording goes on in this tab, and what is kept saves as a file and can be sent", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  // The first chunk of a part holds its header; the rest of what was kept goes with the device's copy.
+  await store.append(recording.id, 0, new Blob(["H"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["a"]), 2_000);
+
+  closeConnections();
+  wipe();
+  await store.append(recording.id, 0, new Blob(["b"]), 3_000);
+  assert.equal(store.refused(recording.id), "lost", "said at once, not after the meeting");
+  assert.equal(store.persistent, false);
+  await store.append(recording.id, 0, new Blob(["c"]), 4_000);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["Hbc"], "the header and what came after");
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["Hbc"], "and that is what the send takes, whole");
+
+  // A new part (after a pause) is kept whole in this tab; the part the loss cut keeps what this tab has of it.
+  const second = await store.startPart(recording.id);
+  await store.append(recording.id, second, new Blob(["X"]), 1_000);
+  await store.append(recording.id, second, new Blob(["y"]), 2_000);
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["Hbc", "Xy"]);
+});
+
+test("a device cleared while an earlier part is done: only the part being recorded is left, with its header", async () => {
+  const { env, closeConnections, wipe } = closable();
+  const store = await openRecordingStore(env);
+  const recording = await store.create(meeting);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 0, new Blob(["H0"]), 1_000);
+  await store.append(recording.id, 0, new Blob(["a"]), 2_000);
+  await store.startPart(recording.id);
+  await store.append(recording.id, 1, new Blob(["H1"]), 1_000);
+  closeConnections();
+  wipe();
+  await store.append(recording.id, 1, new Blob(["b"]), 2_000);
+  assert.equal(store.refused(recording.id), "lost");
+  assert.deepEqual(await texts(await store.readParts(recording.id)), ["H1b"], "the done part went with the device's copy");
+  assert.deepEqual(await texts(await store.readPartsToSend(recording.id)), ["H1b"]);
 });
 
 test("audio the device refused and audio it kept are read together, in order, also after the connection was closed", async () => {

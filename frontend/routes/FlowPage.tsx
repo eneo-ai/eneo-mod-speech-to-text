@@ -123,6 +123,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
   const [runError, setRunError] = useState<string | null>(null);
 
   const [run, setRun] = useState<RunState>({ kind: "idle" });
+  // Opened to send a recording from the flow list: the page holds its loading state until that send has begun, and
+  // shows no screen of the flow on the way (the choice of audio, the finished recording).
+  const [adopting, setAdopting] = useState(() => new URLSearchParams(window.location.search).has(RECORDING_QUERY_PARAM));
+  useEffect(() => {
+    if (run.kind !== "idle") setAdopting(false);
+  }, [run.kind]);
   // A run's view has been shown here: the setup that takes its place announces itself, unlike on first load.
   const [shownRun, setShownRun] = useState(false);
   if (run.kind !== "idle" && !shownRun) setShownRun(true);
@@ -165,6 +171,9 @@ function FlowDetail({ flowId }: { flowId: string }) {
 
   const followAbortRef = useRef<AbortController | null>(null);
   const submitAbortRef = useRef<AbortController | null>(null);
+  // The files Eneo holds from a send the person cancelled: the next send of the same file asks for the run from them, as
+  // the same request under the same key, instead of uploading again. Forgotten when a send fails any other way.
+  const uploadedFiles = useRef(new WeakMap<Blob, string>());
 
   const user = useAuthenticatedUser();
   // The input side (mode, details, recording, file) has one owner: the session.
@@ -237,12 +246,12 @@ function FlowDetail({ flowId }: { flowId: string }) {
     recordingStore()
       .then((store) => store.get(recordingId))
       .then((recording) => {
-        if (recording?.ownerId === user.id && recording.flowId === flowId) {
-          session.adopt(recording);
-          void createDocument(session);
-        }
+        if (recording?.ownerId !== user.id || recording.flowId !== flowId) return;
+        session.adopt(recording);
+        return createDocument(session);
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setAdopting(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contract]);
 
@@ -278,7 +287,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         signal: abortController.signal,
         onProgress: (progress: SubmitProgress) =>
           setSubmission({ kind: "uploading", ...progress, wait: null }),
-        onStarting: () => setSubmission({ kind: "starting", wait: null }),
+        onStarting: () =>
+          setSubmission({ kind: "starting", wait: null, recordingId: runInput?.kind === "recording" ? runInput.recording.id : null }),
         onWait: (wait: RetryWait | null) =>
           setSubmission((prev) => (prev.kind === "idle" ? prev : { ...prev, wait })),
       };
@@ -287,7 +297,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
           ? await submitRecording(await recordingStore(), runInput.recording.id, params)
           : await submitRun({
               ...params,
-              files: runInput ? [{ blob: runInput.blob, filename: runInput.filename }] : [],
+              files: runInput ? [{ blob: runInput.blob, filename: runInput.filename, fileId: uploadedFiles.current.get(runInput.blob) }] : [],
+              onUploaded: (_index, fileId) => void (runInput?.kind === "file" && uploadedFiles.current.set(runInput.blob, fileId)),
             });
       submitAbortRef.current = null;
       setSubmission({ kind: "idle" });
@@ -301,6 +312,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
       setRun({ kind: "running", run: initialRun, graph: null });
       void follow(initialRun.id);
     } catch (err) {
+      if (!abortController.signal.aborted) uploadedFiles.current = new WeakMap();
       setRun({ kind: "idle" });
       setSubmission({ kind: "idle" });
       submitAbortRef.current = null;
@@ -548,9 +560,10 @@ function FlowDetail({ flowId }: { flowId: string }) {
     setRun({ kind: "idle" });
   }
 
-  useRouteReady(loadError !== null || (published !== null && contract !== null));
+  const holding = adopting && run.kind === "idle";
+  useRouteReady(loadError !== null || (published !== null && contract !== null && !holding));
   if (loadError) return <FlowUnavailable error={loadError} />;
-  if (!published || !contract) return <FlowSkeleton />;
+  if (!published || !contract || holding) return <FlowSkeleton />;
 
   // The views that can hold unsent work: the leave question, and their top bar's exits through it.
   const withLeave = (view: ReactNode) => (

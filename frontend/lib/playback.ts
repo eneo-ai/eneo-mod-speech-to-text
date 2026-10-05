@@ -301,6 +301,9 @@ export class Playback {
   onError = (): void => {
     this.unavailable = true;
     this.playing = false;
+    // Nothing is waiting for audio that has failed: no spinner for a press it answered. A retry comes back to this place.
+    this.pending = null;
+    this.stopAt = null;
     this.emit();
   };
 

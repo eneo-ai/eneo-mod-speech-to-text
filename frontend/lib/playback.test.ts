@@ -394,6 +394,18 @@ test("the speed carries over to the next part, and an audio error can be retried
   assert.equal(media.currentTime, 1.2);
 });
 
+test("audio that fails to load while it was asked to play stops waiting to play: no endless spinner, and a retry loads it again", () => {
+  const { playback, media } = started();
+  playback.seek(1, 0, true); // asked to play from the second part, which has to load first
+  assert.equal(playback.getSnapshot().starting, true, "waiting for the audio to play it");
+  playback.onError(); // the audio could not be fetched
+  const failed = playback.getSnapshot();
+  assert.deepEqual([failed.unavailable, failed.starting, failed.playing], [true, false, false]);
+  playback.reload();
+  assert.equal(playback.getSnapshot().starting, false, "a retry loads it and waits for a press");
+  assert.equal(media.loads.at(-1), "/b");
+});
+
 test("without audio the playhead still moves, for a transcript to highlight from", () => {
   const playback = new Playback([]);
   playback.seek(1, 3_000, true);

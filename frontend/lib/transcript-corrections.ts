@@ -15,7 +15,7 @@
 //     talaren oavgjord. Återställning tar bort beslutsöverlägget.
 //   - Talaretiketter måste ha formen SPEAKER_NN.
 
-import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { effectiveSpeakerLabel, modelSpeakerOf, OVERLAP_SPEAKER, speakerName, UNDECIDED_SPEAKER, type SpeakerDecision, type TranscriptSegment } from "./transcript";
 
 /** Eneo's cap on the speaker edits one correction set holds (MAX_SPEAKER_EDITS in transcript_corrections.py). */
 export const MAX_SPEAKER_EDITS = 2000;
@@ -493,7 +493,7 @@ export function renderReviewedTranscript(segments: readonly TranscriptSegment[],
   for (const segment of out) {
     if (!segment.text.trim()) continue;
     if (multiple && segment.fileIndex !== file) { lines.push(`## Del ${segment.fileIndex + 1}`, ""); file = segment.fileIndex; }
-    const label = effectiveSpeakerLabel(segment, (s) => s ? names[s]?.trim() || s : "");
+    const label = effectiveSpeakerLabel(segment, (s) => s ? speakerName(s, names) : "");
     const marker = label === OVERLAP_SPEAKER || label === UNDECIDED_SPEAKER;
     lines.push(`[${textTimestamp(segment.start)} - ${textTimestamp(segment.end)}] ${label ? (marker ? `[${label}]` : label) + ": " : ""}${segment.text.trim()}`);
   }

@@ -216,3 +216,24 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
     slot,
   );
 }
+
+/**
+ * Shown by the stopped recording's page. When it comes up under the cover (Stoppa was pressed in the sign-in dialog), the
+ * buttons that were pressed are gone with the recording's view: the dialog says the recording is stopped and kept, and
+ * the focus stays in it, on those words.
+ */
+export function StoppedWhileSignedOut() {
+  const slot = useContext(SignedOutSlot);
+  const underCover = useRef(slot !== null);
+  const line = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (underCover.current) line.current?.focus();
+  }, []);
+  if (!underCover.current || !slot) return null;
+  return createPortal(
+    <Text as="p" role="status" tabIndex={-1} ref={line}>
+      Inspelningen är stoppad och sparad.
+    </Text>,
+    slot,
+  );
+}

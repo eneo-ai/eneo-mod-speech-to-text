@@ -66,6 +66,10 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
+/** How long the browser's question about the microphone may be left before the page says where it is. */
+const MICROPHONE_ANSWER_WAIT_MS = 3_000;
+const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
+
 // Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
 const PHONE = "(max-width: 767.98px)";
 const subscribePhone = (onChange: () => void) => {
@@ -213,6 +217,7 @@ export function FlowInput({
               problem={snapshot.problem}
               live={snapshot.live}
               finishing={snapshot.finishing}
+              finishQueued={snapshot.finishQueued}
               makesText={text}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
@@ -314,6 +319,16 @@ function SetupWorkspace({
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
+  // The browser's question about the microphone may wait for an answer that does not come: after a moment the page says
+  // where the question is, and Avbryt stops waiting for it.
+  const [unanswered, setUnanswered] = useState(false);
+  const startButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    setUnanswered(false);
+    if (phase !== "starting") return;
+    const timer = setTimeout(() => setUnanswered(true), MICROPHONE_ANSWER_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
   // Only Ladda upp waits for a file's length; the recording modes keep their own start action.
   const checkingUpload = mode === "ladda-upp" && fileChecking;
   const speakerOption = contract.transcription?.speaker_labels;
@@ -352,7 +367,7 @@ function SetupWorkspace({
     speakerOption?.selectable && snapshot.speakerLabels !== null ? (
       <Switch
         label="Märk upp talare"
-        description="Tar längre tid efter inspelningen."
+        description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
         value={snapshot.speakerLabels}
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
@@ -424,6 +439,7 @@ function SetupWorkspace({
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
             <Button
+              ref={startButton}
               label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
               variant={resuming ? "secondary" : "primary"}
               size="lg"
@@ -437,8 +453,19 @@ function SetupWorkspace({
             />
             {/* The wait for a chosen file's length is said, not only written on the button. */}
             <VisuallyHidden as="p" role="status">
-              {checkingUpload ? "Kontrollerar filen…" : ""}
+              {checkingUpload ? "Kontrollerar filen…" : unanswered ? ASK_THE_BROWSER : ""}
             </VisuallyHidden>
+            {unanswered && (
+              <VStack gap={2} hAlign="center">
+                <Text as="p" type="supporting" justify="center" aria-hidden>
+                  {ASK_THE_BROWSER}
+                </Text>
+                <Button label="Avbryt" variant="secondary" onClick={() => {
+                  session.cancelStart();
+                  startButton.current?.focus();
+                }} />
+              </VStack>
+            )}
             {recordingMode && (
               <Text as="p" type="supporting" justify="center">
                 {storageLine(persistent, input.evictable)}

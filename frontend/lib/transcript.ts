@@ -404,6 +404,11 @@ export function speakerDisplayLabel(label: string): string {
   return m ? `Talare ${Number(m[1]) + 1}` : label;
 }
 
+/** What the page calls a speaker: the confirmed name, else "Talare N". */
+export function speakerName(label: string, names: Readonly<Record<string, string>>): string {
+  return names[label]?.trim() || speakerDisplayLabel(label);
+}
+
 /** A transcript without speaker labels reads as paragraphs: one block per timed segment, never one merged block. */
 export function paragraphTurns(segments: readonly TranscriptSegment[]): TranscriptTurn[] {
   return segments.map((segment, segmentIndex) => ({

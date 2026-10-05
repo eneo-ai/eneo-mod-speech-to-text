@@ -526,6 +526,9 @@ test("a stopped recording is not continued while another tab holds it, once it i
   const limits = { maxBytes: LIMIT, maxFiles: 3 };
   const { capture, store, streams, stopped } = await stoppedCapture({ store: await openRecordingStore(device) });
   const otherTab = await openRecordingStore(device);
+  // This tab's page has let the recording go (it is no longer on its screen), and another tab sends it.
+  store.letGo(stopped.id);
+  for (let i = 0; i < 5; i += 1) await settle();
   assert.equal(await otherTab.lease(stopped.id), true);
   await capture.continueStopped(stopped.id, limits);
   assert.deepEqual(
@@ -578,6 +581,7 @@ test("Stoppa while 'Fortsätt spela in' waits for the microphone starts no recor
   await continuing;
 
   assert.equal(recorders.length, 1, "no recorder after Stoppa");
+  await until(() => streams[1]?.track.readyState === "ended", "the cancelled microphone request releases its late stream");
   assert.equal(streams[1].track.readyState, "ended", "the late microphone is let go");
   assert.equal(capture.getSnapshot().status, "stopped");
   assert.equal(await store.lease(stopped!.id), true, "nothing holds the recording");
@@ -738,7 +742,7 @@ test("Stoppa on a recording that has vanished from the device still ends: the mi
   await capture.start(meeting);
   recorders[0].emit("a");
   const { id } = capture.getSnapshot().recording!;
-  await store.discard(id); // another tab without Web Locks, a cleared store
+  await store.discard(id); // deleted by this tab itself: nothing of it is left to keep
   const stopped = await capture.stop();
   assert.equal(stopped, null);
   assert.equal(streams[0].track.readyState, "ended");
@@ -798,10 +802,82 @@ test("chunks that no longer reach the device are said at once, while the recordi
   const { capture, store, recorders } = await setup();
   await capture.start(meeting);
   recorders[0].emit("a");
-  await store.discard(capture.getSnapshot().recording!.id); // another tab without Web Locks, a cleared store
+  await store.discard(capture.getSnapshot().recording!.id); // deleted by this tab itself: nothing of it is left to keep
   recorders[0].emit("b");
   await until(() => capture.getSnapshot().error === NOT_ON_DEVICE, "the loss said");
   assert.equal(capture.getSnapshot().status, "recording");
+});
+
+/** A device whose storage the browser can clear under an open recording: the next connection is to an empty database. */
+function wipeable() {
+  let underneath = new IDBFactory();
+  const connections: IDBDatabase[] = [];
+  const factory = {
+    open(name: string, version?: number) {
+      const request = underneath.open(name, version);
+      request.addEventListener("success", () => connections.push(request.result));
+      return request;
+    },
+  } as unknown as IDBFactory;
+  return {
+    env: { indexedDB: factory, keyRange: IDBKeyRange, locks: fakeWebLocks() },
+    wipe() {
+      connections.splice(0).forEach((connection) => connection.close());
+      underneath = new IDBFactory();
+    },
+  };
+}
+
+test("the device cleared in the middle of a recording is said at once, the recording goes on, and Stoppa leaves what is kept to save and send", async () => {
+  const { env, wipe } = wipeable();
+  const store = await openRecordingStore(env);
+  const { capture, recorders } = await setup({ store });
+  await capture.start(meeting);
+  const { id } = capture.getSnapshot().recording!;
+  recorders[0].emit("H");
+  recorders[0].emit("a");
+  await until(async () => (await store.get(id))?.parts[0]?.chunks === 2, "both chunks kept");
+
+  wipe();
+  recorders[0].emit("b");
+  await until(() => capture.getSnapshot().refused === "lost", "the loss said");
+  const { status, error, persistent } = capture.getSnapshot();
+  assert.deepEqual([status, error, persistent], ["recording", null, false], "it goes on, with no failure to stop it");
+
+  recorders[0].emit("c");
+  const stopped = await capture.stop();
+  assert.equal(stopped?.state, "stopped");
+  assert.deepEqual(await texts(await store.readParts(id)), ["Hbc."], "the header and what came after");
+  assert.deepEqual(await texts(await store.readPartsToSend(id)), ["Hbc."]);
+});
+
+test("a stopped recording stays this page's while it is shown: another tab neither offers nor deletes it, until Spela in på nytt or the page goes", async () => {
+  const device = { indexedDB: new IDBFactory(), keyRange: IDBKeyRange, locks: fakeWebLocks() };
+  const store = await openRecordingStore(device);
+  const otherTab = await openRecordingStore(device);
+  const ids = async () => (await otherTab.listUnsent("user-1")).map((r) => r.id);
+
+  const first = await setup({ store });
+  await first.capture.start(meeting);
+  first.recorders[0].emit("a");
+  const stopped = await first.capture.stop();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [], "the recording is on the first tab's screen");
+  await assert.rejects(otherTab.remove(stopped!.id), { message: "Inspelningen används i en annan flik." });
+
+  first.capture.reset(); // Spela in på nytt
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [stopped!.id], "offered once the page shows it no more");
+
+  const second = await setup({ store });
+  await second.capture.start(meeting);
+  second.recorders[0].emit("b");
+  const again = await second.capture.stop();
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual(await ids(), [stopped!.id], "the new one is held; the old one is the other's");
+  second.capture.dispose(); // the page goes away
+  for (let i = 0; i < 5; i += 1) await settle();
+  assert.deepEqual((await ids()).sort(), [stopped!.id, again!.id].sort());
 });
 
 test("Stoppa while the screen's wake lock is still being asked for leaves the recording stopped on the device, not paused", async () => {

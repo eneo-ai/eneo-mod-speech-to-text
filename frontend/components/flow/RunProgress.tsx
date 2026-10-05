@@ -14,6 +14,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { BackToFlows } from "@/components/flow/BackToFlows";
 import { runElapsed, type StepView } from "@/lib/run-progress";
 import { creatingHeading } from "@/lib/flow-output";
+import { PRODUCT_NAME } from "@/lib/product";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
@@ -125,6 +126,7 @@ export function RunOpening() {
   return (
     <StateCard aria-busy="true">
       <VStack gap={6}>
+        <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
         <VisuallyHidden as="p" role="status">
           Hämtar körningen…
         </VisuallyHidden>

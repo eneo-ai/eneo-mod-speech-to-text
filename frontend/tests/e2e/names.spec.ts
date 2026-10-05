@@ -114,8 +114,13 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  // The press that asked for the audio is not left spinning, and the message is an alert beside the player's controls.
+  const player = page.locator("[data-docked-player]");
+  await player.getByRole("button", { name: "Spela upp", exact: true }).click();
+  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas." })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Spela upp", exact: true }), "no spinner labelled as playing").toBeVisible();
   await page.unroute("**/input-files/*/audio");
-  await page.getByRole("button", { name: "Försök igen" }).click();
+  await player.getByRole("button", { name: "Försök igen" }).click();
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
 });
 

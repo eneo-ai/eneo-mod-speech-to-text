@@ -85,7 +85,7 @@ export function RunFailure({
       {/* What happened and what can be done, in the card; what the run left behind follows it. */}
       <StateCard>
         <VStack gap={6}>
-          <VStack as="header" gap={1}>
+          <VStack gap={1}>
             <Heading level={1} ref={heading} tabIndex={-1}>
               {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
             </Heading>

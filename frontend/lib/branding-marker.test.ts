@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach, beforeEach } from "node:test";
 import { readFileSync } from "node:fs";
 
-import { brandingMarker } from "./branding-marker";
+import { brandingMarker } from "./branding-marker.mjs";
 import { readBranding } from "./read-branding";
 import { cleanup, installDom } from "./test-dom";
 

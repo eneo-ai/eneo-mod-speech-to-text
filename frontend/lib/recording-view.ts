@@ -110,8 +110,14 @@ export function recordingNotices({
   }
   if (refused) {
     // Nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
-    const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
-    warnings.push({ title: cause, detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." });
+    // The device's copy gone (its data cleared) is more than a device that stops keeping: what came before may be lost.
+    const [cause, before] =
+      refused === "full"
+        ? ["Enheten har inte plats för att spara mer.", ""]
+        : refused === "lost"
+          ? ["Inspelningen kan inte längre sparas på enheten.", "Det som spelats in tidigare kan ha försvunnit. "]
+          : ["Enheten kan inte spara mer av inspelningen.", ""];
+    warnings.push({ title: cause, detail: `${before}Inspelningen fortsätter, men välj Spara som fil när du stoppar.` });
   } else if (!persistent) {
     notes.push(
       `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,

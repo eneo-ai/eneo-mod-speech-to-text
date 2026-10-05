@@ -809,6 +809,60 @@ test("an optional file never turns a send from the unsent list into an empty run
   await starting;
 });
 
+test("Avbryt while the browser still asks for the microphone ends the wait at once, and an answer that comes later records nothing and says nothing", async () => {
+  let grant: (stream: MediaStream) => void = () => undefined;
+  const stream = new FakeStream();
+  const { session, store } = await setup({ getStream: () => new Promise((resolve) => (grant = resolve)) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  const starting = session.start();
+  await until(() => session.getSnapshot().phase === "starting");
+
+  session.cancelStart();
+  assert.equal(session.getSnapshot().phase, "setup", "the page stops waiting: the person may start again, or choose something else");
+  grant(stream as unknown as MediaStream);
+  await starting;
+  await settle();
+  const after = session.getSnapshot();
+  assert.deepEqual([after.phase, after.problem], ["setup", null], "nothing recorded, no problem for an answer nobody waits for");
+  assert.equal(stream.track.readyState, "ended", "a microphone that was granted late is let go");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "no empty recording is left");
+});
+
+test("after cancelling an unanswered microphone question, a new recording starts before the old question is answered", async () => {
+  for (const answer of ["grant", "deny"] as const) {
+    let grant: (stream: MediaStream) => void = () => undefined;
+    let deny: (error: Error) => void = () => undefined;
+    const oldStream = new FakeStream();
+    const newStream = new FakeStream();
+    let requests = 0;
+    const { session, store } = await setup({
+      getStream: () => ++requests === 1
+        ? new Promise((resolve, reject) => { grant = resolve; deny = reject; })
+        : Promise.resolve(newStream as unknown as MediaStream),
+    });
+    session.setContract(audioContract());
+    session.selectMode("spela-in");
+    const first = session.start();
+    await until(() => requests === 1);
+    session.cancelStart();
+    await settle();
+
+    await session.start();
+    assert.equal(session.getSnapshot().phase, "recording", "the unanswered question does not block the new attempt");
+    if (answer === "grant") grant(oldStream as unknown as MediaStream);
+    else deny(new DOMException("Permission denied", "NotAllowedError"));
+    await first;
+    await settle();
+    assert.equal(session.getSnapshot().phase, "recording", "the old answer does not stop the new recording");
+    assert.equal(session.getSnapshot().problem, null);
+    assert.equal(newStream.track.readyState, "live", "the new microphone stays on");
+    if (answer === "grant") assert.equal(oldStream.track.readyState, "ended", "only the old stream is released");
+    await session.stop();
+    assert.equal((await store.listUnsent("user-1")).length, 1, "only the new recording is kept");
+  }
+});
+
 test("a chosen file becomes the document's input in Ladda upp; an unsent recording from the list goes the same way", async () => {
   const sent: Array<Parameters<Parameters<FlowSession["setHandlers"]>[0]["submit"]>[0]> = [];
   const { session, store } = await setup();
@@ -1679,7 +1733,7 @@ test("Strömma names the new recording to live text, and a clean session's store
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
 
-test("Skapa dokument waits while Strömma's final text is on its way, until its transcript is kept with the recording", async () => {
+test("Skapa dokument pressed while Strömma's final text is on its way is kept, and sends once its transcript is kept with the recording", async () => {
   const sent: unknown[] = [];
   const live = fakeLiveClient();
   const { session, store, recorders } = await setup({ live: live.client });
@@ -1693,14 +1747,18 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   await until(() => session.getSnapshot().phase === "ready");
 
   assert.equal(session.getSnapshot().finishing, true);
-  assert.equal(await session.createDocument(), false, "a press now sends nothing and leaves nothing pending");
+  assert.equal(session.getSnapshot().finishQueued, false, "nothing asked for yet");
+  assert.equal(await session.createDocument(), false, "a press now sends nothing yet");
   assert.deepEqual(sent, []);
+  assert.equal(session.getSnapshot().finishQueued, true, "but it is kept, and the page says so");
+  assert.equal(await session.createDocument(), false);
 
   live.report({ transcriptId: "transcript-1" });
   await until(() => !session.getSnapshot().finishing, "the transcript kept");
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1", "kept before a send could seal the recording");
-  assert.equal(await session.createDocument(), true);
-  assert.equal(sent.length, 1);
+  await until(() => sent.length === 1, "the kept press sent");
+  assert.equal(session.getSnapshot().finishQueued, false);
+  assert.equal(sent.length, 1, "one document, however many presses");
 });
 
 test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, says why while the text is still being kept, and nothing sends without one", async (t) => {

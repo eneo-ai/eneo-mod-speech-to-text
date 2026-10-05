@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
 import { ProgressBar } from "@astryxdesign/core/ProgressBar";
@@ -11,6 +13,7 @@ import { creatingHeading } from "@/lib/flow-output";
 import { StateCard } from "@/components/flow/StateCard";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { RetryNotice } from "@/components/RetryNotice";
+import { saveRecordingAsFiles } from "@/components/save-recording";
 
 export type SubmissionState =
   | { kind: "idle" }
@@ -22,7 +25,12 @@ export type SubmissionState =
       percent: number | null;
       wait: RetryWait | null;
     }
-  | { kind: "starting"; wait: RetryWait | null };
+  | {
+      kind: "starting";
+      wait: RetryWait | null;
+      /** A recording being sent: it can be kept as a file while Eneo does not answer. */
+      recordingId?: string | null;
+    };
 
 /**
  * A document on its way, in the flow page's card: the upload, then the run's start, before the run's own view.
@@ -61,10 +69,42 @@ export function SubmittingView({
         {isUploading ? (
           <UploadProgress submission={submission} onCancel={onCancelSubmission} />
         ) : (
-          submission.kind === "starting" && <RetryNotice wait={submission.wait} />
+          submission.kind === "starting" && <Starting submission={submission} onCancel={onCancelSubmission} />
         )}
       </VStack>
     </StateCard>
+  );
+}
+
+/**
+ * Eneo has the file and is asked to start the run. It may not answer for a while, so there is a way out at once: Avbryt
+ * keeps the file and the details, and a recording can be saved as a file meanwhile.
+ */
+function Starting({ submission, onCancel }: { submission: Extract<SubmissionState, { kind: "starting" }>; onCancel: () => void }) {
+  const [saveProblem, setSaveProblem] = useState(false);
+  const { wait, recordingId } = submission;
+  async function save() {
+    setSaveProblem(false);
+    try {
+      await saveRecordingAsFiles(recordingId!);
+    } catch {
+      setSaveProblem(true);
+    }
+  }
+  return (
+    <VStack gap={3} hAlign="start">
+      {wait && (
+        <Text as="p">
+          {recordingId ? "Inspelningen" : "Filen"} är uppladdad. {wait.retryAt === null ? "Flödet startar inte just nu." : "Vi försöker starta flödet igen."}
+        </Text>
+      )}
+      <RetryNotice wait={wait} />
+      <HStack gap={2} wrap="wrap">
+        <Button label="Avbryt" variant="secondary" onClick={onCancel} />
+        {recordingId && <Button label="Spara som fil" variant="secondary" onClick={() => void save()} />}
+      </HStack>
+      {saveProblem && <Banner status="error" title="Inspelningen kunde inte sparas som fil. Försök igen." collapsible={false} />}
+    </VStack>
   );
 }
 

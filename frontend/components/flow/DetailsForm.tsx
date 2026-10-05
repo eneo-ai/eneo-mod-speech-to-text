@@ -42,7 +42,8 @@ type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "descript
  */
 function DateField({ name, text, onChange, className, ...common }: DateFieldProps) {
   const { value: DateInput, failed } = useLoaded(calendar);
-  if (DateInput) return <DateInput {...common} className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
+  // A week starts on Monday here. A finger gets the platform's own picker, which keeps the device's.
+  if (DateInput) return <DateInput {...common} weekStartsOn="mon" className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
   return (
     <>
       <TextInput {...common} htmlName={name} autoComplete="off" value={text} onChange={onChange} />
