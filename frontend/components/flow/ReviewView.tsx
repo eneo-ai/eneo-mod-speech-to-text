@@ -122,7 +122,9 @@ export function ReviewView({
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
-    <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+    <Text as="p" type="supporting">
+      Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
+    </Text>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
@@ -451,7 +453,7 @@ export function ReviewView({
 
   const paused = (
     <Text as="p" type="supporting">
-      Pausat i steg {checkpoint.step_order}
+      Väntar på din granskning
     </Text>
   );
 
@@ -513,8 +515,8 @@ export function ReviewView({
           </Heading>
           <Text as="p" type="supporting" className={styles.description}>
             {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
-            {deadline}
           </Text>
+          {deadline}
         </VStack>
 
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
@@ -589,8 +591,8 @@ export function ReviewView({
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
-          {deadline}
         </Text>
+        {deadline}
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>
