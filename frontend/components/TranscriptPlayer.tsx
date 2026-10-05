@@ -649,7 +649,6 @@ export function TranscriptPlayer(
         {saveText}
       </VisuallyHidden>
       {(audioPending ||
-        audioUnavailable ||
         fileCount === 0 ||
         uncertainWords > 0 ||
         saveState !== "idle") && (
@@ -658,12 +657,6 @@ export function TranscriptPlayer(
             {audioPending && <Text as="p" type="supporting">Hämtar ljud…</Text>}
             {!audioPending && fileCount === 0 && (
               <Text as="p" type="supporting">Ljudet är inte tillgängligt för den här körningen.</Text>
-            )}
-            {audioUnavailable && (
-              <p className={styles.error}>
-                Ljudet kunde inte spelas.{" "}
-                <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
-              </p>
             )}
             {uncertainWords > 0 && (
               <Text as="p" type="supporting">
@@ -819,6 +812,13 @@ export function TranscriptPlayer(
               {rateLabel(rate)}
             </Button>
           </div>
+          {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
+          {audioUnavailable && (
+            <p role="alert" className={styles.error}>
+              Ljudet kunde inte spelas.{" "}
+              <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
+            </p>
+          )}
           <AudioPlayer playback={playback} label="Inspelningen">
             <IconButton
               variant="ghost"
