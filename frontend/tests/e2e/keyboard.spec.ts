@@ -51,6 +51,16 @@ for (const name of WALKS) {
   });
 }
 
+// A page with nothing but its message has two stops, and the second is the way on.
+test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
+  const { stops, left } = await tabWalk(page);
+  writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
+  expect(stops.map((stop) => stop.label)).toEqual(['a "Hoppa till innehåll"', 'button "Försök igen"']);
+  expect.soft(left, "focus leaves the page after the second stop (WCAG 2.1.2)").toBe(true);
+  expect.soft(stopProblems(stops), "focus visible and unobscured").toEqual([]);
+});
+
 // The docked action of a phone grows with its words and with the spacing a reader may set (WCAG 1.4.12): focus must
 // still stop above it, whatever its height is.
 for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
