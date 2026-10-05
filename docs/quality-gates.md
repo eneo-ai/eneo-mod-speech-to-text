@@ -55,7 +55,7 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 | Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. |
 | Platshållartext | Kontrast 4,5:1. |
 | Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
-| Reflow och textavstånd | Inget utanför kanten eller avklippt vid 320 px, 200 % zoom och ökat radavstånd, teckenavstånd och ordavstånd; en rubrik kapas inte. |
+| Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
 | Rörelse | Inga oändliga animationer med reducerad rörelse. |
 | Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
 | ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
@@ -122,7 +122,7 @@ Flera utcheckningar (git worktrees) kan köra testerna samtidigt på egna portpa
 |---|---|---|
 | `targets under 44 px on a coarse pointer (house bar)` | Ett pekmål är för litet | Rätta storleken i temat, inte på ett enskilt ställe. |
 | `axe: WCAG violations …` med regel-id och selektor | En axe-överträdelse | `findings.json` för testet har alla noder och förklaringen. |
-| `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör samma läge i `phone-320-light` och `zoom-200`; kontrollera långa svenska ord. |
+| `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör läget i projektet som felade (`npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=<projekt>`) och se det i alla storlekar med `npm run ux:shots -- -g "<läge>"`; leta efter en minsta bredd, en fast kolumn eller text som inte får brytas, och kontrollera långa svenska ord. |
 | `<sida> loads X KB of JS, the budget is Y KB` | Sidan blev tyngre än budgeten | Hitta importen som växte; höj budgeten bara med skäl. |
 | `a <style data-astryx-theme*> means the theme is built in the browser` | Temat byggs i webbläsaren | Importera det byggda temat, `kit/theme/built/eneo`. |
 | Konsolfel i ett produktionstest | Oftast en CSP-vägran | Felet anger vilket direktiv som stoppade vad. |

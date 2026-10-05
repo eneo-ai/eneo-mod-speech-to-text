@@ -215,7 +215,10 @@ export async function axNode(locator: Locator) {
   }
 }
 
-/** WCAG 1.4.10: no horizontal scroll, nothing past the right edge, nothing cut off; ellipsis is listed apart. */
+/**
+ * WCAG 1.4.10: no horizontal scroll, no text or control past the window's left or right edge, nothing cut off by a box that
+ * clips it (wider or taller than its overflow-hidden ancestor); ellipsis is listed apart.
+ */
 export function reflow(page: Page) {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -233,7 +236,8 @@ export function reflow(page: Page) {
       const scrollsX = (e: Element | null): boolean =>
         !!e && e !== document.body && (["auto", "scroll"].includes(getComputedStyle(e).overflowX) || scrollsX(e.parentElement));
       const text = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
-      if (r.right > width + 1 && (text || el.matches("button, a, input, select, textarea, img, svg")) && !scrollsX(el.parentElement)) {
+      const outside = r.right > width + 1 || r.left < -1;
+      if (outside && (text || el.matches("button, a, input, select, textarea, img, svg")) && !scrollsX(el.parentElement)) {
         beyond.push(describe(el));
       }
       const cutX = ["hidden", "clip"].includes(s.overflowX) && el.scrollWidth > el.clientWidth + 1;
