@@ -1,5 +1,0 @@
-/* The row's icon sits beside the recording's name, at the top: a row that goes on with its actions or its question is
-   tall, and ListItem centres what it holds. */
-.row {
-  align-items: flex-start;
-}

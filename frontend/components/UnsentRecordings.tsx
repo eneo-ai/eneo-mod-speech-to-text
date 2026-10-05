@@ -1,3 +1,4 @@
+import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -16,7 +17,6 @@ import {
   recordingStore,
   type StoredRecording,
 } from "@/lib/recording-store";
-import styles from "./UnsentRecordings.module.css";
 
 /** An unsent recording as listed: `exportOnly` when this tab may only save it as a file. */
 export type UnsentRecording = StoredRecording & { exportOnly?: boolean };
@@ -94,13 +94,14 @@ export function resumableRecording(recordings: UnsentRecording[]): UnsentRecordi
 
 /**
  * Recordings kept on this device that Eneo has not received yet; when the device cannot be read, a notice in
- * their place, so that the person is not left thinking there are none. Only "Fortsätt spela in" on a recording a
- * reload cut off is filled: the page has one filled action.
+ * their place, so that the person is not left thinking there are none. "Fortsätt spela in" on a recording a reload cut
+ * off is the page's one filled action, unless the person has chosen another way (`filled` false).
  */
 export function UnsentRecordings({
   list: { recordings, unreadable, retry },
   onSend,
   onContinue,
+  filled = true,
   withFlowName = false,
   sendLabel,
   evictable = false,
@@ -108,6 +109,8 @@ export function UnsentRecordings({
   list: UnsentList;
   onSend: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
+  /** False once the person has chosen another way on the page (a file): the page's own action is then the filled one. */
+  filled?: boolean;
   withFlowName?: boolean;
   /** What a recording's send says: what its flow makes (lib/flow-output createActionLabel). */
   sendLabel: (recording: StoredRecording) => string;
@@ -158,7 +161,7 @@ export function UnsentRecordings({
             sendLabel={sendLabel(recording)}
             onSend={onSend}
             onContinue={continuable(recording) ? onContinue : undefined}
-            primary={recording === resumable}
+            primary={filled && recording === resumable}
           />
         ))}
       </List>
@@ -220,23 +223,22 @@ function UnsentRecordingRow({
     }
   }
 
-  // The summary is the row's label; what can be done with the recording is its description, a body of its own.
+  // The recording, then what can be done with it, both from the row's edge; deleting stands apart on a line of its own.
   return (
     <ListItem
-      className={styles.row}
-      startContent={<Icon icon="microphone" color="accent" />}
       label={
-        <VStack id={summaryId} gap={0.5}>
-          <Text as="p" weight="semibold">
-            {recordingName(recording.startedAt)}
-          </Text>
-          <Text as="p" color="secondary">
-            {recordingDetails(recording, { withFlowName })}
-          </Text>
-        </VStack>
-      }
-      description={
-        <VStack gap={3} paddingBlockStart={3}>
+        <VStack gap={3}>
+          <HStack gap={3} align="start">
+            <Icon icon="microphone" color="accent" />
+            <VStack id={summaryId} gap={0.5}>
+              <Text as="p" weight="semibold">
+                {recordingName(recording.startedAt)}
+              </Text>
+              <Text as="p" color="secondary">
+                {recordingDetails(recording, { withFlowName })}
+              </Text>
+            </VStack>
+          </HStack>
           {recording.exportOnly ? (
             // Without Web Locks another tab may still hold it: here it is only read.
             <VStack gap={2} hAlign="start">
@@ -250,31 +252,34 @@ function UnsentRecordingRow({
               <Text as="p" id={questionId}>
                 Ta bort inspelningen från enheten? Det går inte att ångra.
               </Text>
-              <HStack gap={2} wrap="wrap">
+              <HStack gap={3} wrap="wrap">
                 <Button ref={cancelRef} label="Avbryt" onClick={() => setConfirming(false)} />
                 <Button label="Ta bort" variant="destructive" onClick={() => void remove()} />
               </HStack>
             </VStack>
           ) : (
-            <HStack gap={2} wrap="wrap" hAlign="start">
-              {onContinue && (
-                <Button
-                  label="Fortsätt spela in"
-                  variant={primary ? "primary" : "secondary"}
-                  aria-describedby={summaryId}
-                  onClick={() => onContinue(recording)}
-                />
-              )}
-              <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />
-              <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+            <VStack gap={2} hAlign="start">
+              <HStack gap={3} wrap="wrap">
+                {onContinue && (
+                  <Button
+                    label="Fortsätt spela in"
+                    variant={primary ? "primary" : "secondary"}
+                    aria-describedby={summaryId}
+                    onClick={() => onContinue(recording)}
+                  />
+                )}
+                <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />
+                <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
+              </HStack>
               <Button
                 ref={deleteRef}
                 label="Ta bort"
                 variant="ghost"
+                icon={<Icon icon={Trash2} size="sm" />}
                 aria-describedby={summaryId}
                 onClick={() => setConfirming(true)}
               />
-            </HStack>
+            </VStack>
           )}
           {problem && <Banner status="error" title={problem} collapsible={false} />}
         </VStack>

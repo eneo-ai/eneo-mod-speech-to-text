@@ -332,8 +332,9 @@ function SetupWorkspace({
   const onContinue = modes.includes("spela-in")
     ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
     : undefined;
-  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
-  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined;
+  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile, until the
+  // person chooses a file to send instead.
+  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined && !(mode === "ladda-upp" && file);
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? create
@@ -370,7 +371,9 @@ function SetupWorkspace({
     <VStack gap={6}>
       <UnsentRecordings
         list={unsent}
-        sendLabel={() => create}
+        // Said apart from the setup's own action, which sends a chosen file or a new recording.
+        sendLabel={() => `${create} av inspelningen`}
+        filled={resuming}
         evictable={input.evictable}
         onSend={(recording) => {
           if (countInvalid) return focusSpeakerCount();
@@ -427,7 +430,8 @@ function SetupWorkspace({
               label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
               variant={resuming ? "secondary" : "primary"}
               size="lg"
-              width="100%"
+              // Second to "Fortsätt spela in", it is a button of its own size: a bar of the muted colour reads as disabled.
+              width={resuming && !dock ? undefined : "100%"}
               icon={ActionIcon ? <Icon icon={ActionIcon} /> : undefined}
               // Busy, not disabled: that would drop keyboard focus while the browser asks for the microphone, and a
               // second press is refused by the session.

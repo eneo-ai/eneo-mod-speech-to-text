@@ -143,6 +143,14 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
 });
 
+test("once the person chooses another way on the page, a cut-off recording's Fortsätt spela in is no longer the filled action", async () => {
+  const cutOff = { ...recording("a", 60_000, at(23, 10, 12)), state: "recording" as const };
+  const { container } = await render({ recordings: [cutOff], onContinue: () => {}, filled: false });
+  assert.equal(container.querySelector("h2")?.textContent, "Inspelningen avbröts");
+  assert.deepEqual(filled(container), [], "the setup's own action is the filled one");
+  assert.ok(button(rowsOf(container)[0], "Fortsätt spela in"), "it is still offered");
+});
+
 const focused = () => (document.activeElement as HTMLElement | null)?.textContent?.trim();
 
 test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to Ta bort when it is not wanted", async () => {
