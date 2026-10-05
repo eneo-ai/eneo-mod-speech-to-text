@@ -521,6 +521,7 @@ export class FlowSession {
   private keepTranscript: (() => void) | null = null;
   // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
   private keepInFlight = false;
+  private creating = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -685,6 +686,7 @@ export class FlowSession {
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
       const check = this.probeDuration?.(file)
+        .catch(() => null)
         .then((durationMs) => {
           if (this.file !== chosen) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
@@ -696,8 +698,7 @@ export class FlowSession {
             this.file = this.accepted = durationMs == null ? chosen : { ...chosen, durationMs };
           }
           this.emit();
-        })
-        .catch(() => undefined);
+        });
       if (!check) this.accepted = chosen;
     }
     this.emit();
@@ -737,6 +738,17 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
+    // A second press while the first is still checking or sending asks for no second run.
+    if (this.creating) return false;
+    this.creating = true;
+    try {
+      return await this.send();
+    } finally {
+      this.creating = false;
+    }
+  }
+
+  private async send(): Promise<boolean> {
     // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
     if (this.finishing) return false;
     if (this.keepInFlight && this.snapshot.phase === "ready") {

@@ -405,6 +405,34 @@ test("a count goes with the run as maxSpeakers; empty or not asked sends none, a
   assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
 });
 
+test("two presses of Skapa dokument at once send the recording once", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const answers = await Promise.all([session.createDocument(), session.createDocument()]);
+  assert.equal(sent.length, 1, "one run is asked for");
+  assert.deepEqual(answers.slice().sort(), [false, true]);
+});
+
+test("a file whose length cannot be read is not left checking: its length is Eneo's to judge", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setProbeDuration(() => Promise.reject(new Error("the browser could not read it")));
+  session.setContract(audioContract());
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  await until(() => !session.getSnapshot().fileChecking, "the check over");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
+});
+
 const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
 /** Eneo names the speaker-mapping step's participants field; the count follows only that one. */
 const PARTICIPANTS = { form_field: null, participants_field: "motesdeltagare" };
