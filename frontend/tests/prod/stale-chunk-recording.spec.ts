@@ -134,7 +134,9 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     const again = await savedFile(page);
     expect(again.bytes.equals(saved.bytes), "the same audio, byte for byte").toBe(true);
     await page.getByRole("link", { name: /Nämndmöte till rapport/ }).click();
-    await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
+    // Its own page says it was cut off, not that it is one of the unsent (the list's words, which the list is still showing
+    // until the router has moved): neither heading is on both pages, so this waits for the flow's page.
+    await expect(page.getByRole("heading", { name: "Inspelningen avbröts" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Fortsätt spela in" })).toBeVisible();
   });
 }
