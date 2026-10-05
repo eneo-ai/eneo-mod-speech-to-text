@@ -27,26 +27,31 @@ function Providers({ children }: { children: ReactNode }) {
   );
 }
 
+/** What every screen stands in: the providers, and the element the page's height and colours hang on. */
+function Frame({ children }: { children: ReactNode }) {
+  return (
+    <Providers>
+      <div data-app-shell>{children}</div>
+    </Providers>
+  );
+}
+
 /** The frame of every page: its providers and the page the route names. */
 export function Root() {
   return (
-    <Providers>
+    <Frame>
       <RouteEffects />
-      <div data-app-shell>
-        <Outlet />
-      </div>
-    </Providers>
+      <Outlet />
+    </Frame>
   );
 }
 
 /** While the first page's code arrives: the shell that every page shows while it asks who is signed in, so no frame is blank. */
 export function RootHydrateFallback() {
   return (
-    <Providers>
-      <div data-app-shell>
-        <LoadingShell />
-      </div>
-    </Providers>
+    <Frame>
+      <LoadingShell />
+    </Frame>
   );
 }
 

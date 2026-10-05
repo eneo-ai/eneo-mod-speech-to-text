@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useNavigate } from "react-router";
+import { PHASE_HEADING } from "@/components/flow/usePhaseHeading";
 import { LoadingShell } from "@/components/LoadingShell";
 import { ModuleUnreachable } from "@/components/ModuleUnreachable";
 import { SessionEndWarning } from "@/components/SessionEndWarning";
@@ -70,7 +71,7 @@ export function SignedOutCover({
       const from = lost.current?.from ?? null;
       lost.current = null;
       const onPage = (element: HTMLElement | null) => !!element?.isConnected && !!container?.contains(element);
-      const heading = container?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]") ?? null;
+      const heading = container?.querySelector<HTMLElement>(PHASE_HEADING) ?? null;
       (onPage(from) ? from : onPage(before) ? before : heading)?.focus();
     };
   }

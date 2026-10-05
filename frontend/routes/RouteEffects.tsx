@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation, useMatches, useNavigationType, type NavigationType } from "react-router";
 import { useAnnounce } from "@astryxdesign/core/hooks";
+import { PHASE_HEADING } from "@/components/flow/usePhaseHeading";
 
 /** What a route says about itself beside its page: the title, which the page itself may refine. */
 export interface RouteHandle {
@@ -107,7 +108,7 @@ function moveFocusToHeading() {
   const main = document.querySelector<HTMLElement>('main, [role="main"]');
   const active = document.activeElement;
   if (active && active !== document.body && (main?.contains(active) || active.closest('dialog, [role="dialog"], [role="alertdialog"]'))) return;
-  const heading = main?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]") ?? main?.querySelector<HTMLElement>("h1");
+  const heading = main?.querySelector<HTMLElement>(PHASE_HEADING) ?? main?.querySelector<HTMLElement>("h1");
   if (!heading) return;
   if (!heading.hasAttribute("tabindex")) heading.tabIndex = -1;
   heading.focus({ preventScroll: true });
