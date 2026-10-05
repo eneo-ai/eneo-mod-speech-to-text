@@ -203,6 +203,6 @@ test("the module page's Försök igen, failing again, keeps the focus", async ({
   await expect(retry).toBeVisible();
   await retry.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
   await expect(retry).toBeFocused();
 });

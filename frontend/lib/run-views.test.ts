@@ -361,7 +361,7 @@ test("a failure the same input cannot pass offers another file as its one filled
   );
   const words = text(html);
   assert.match(words, /Steg 1, Transkribera ljud/);
-  assert.match(words, /Välj en annan fil/);
+  assert.match(words, /Välj nytt ljud/, "a recording or a file, whichever it was");
   assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
   assert.equal([...html.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1, "one filled action");
   // Eneo's words come as a note, not an alert: the heading's focus has announced the view already.

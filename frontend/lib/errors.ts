@@ -20,11 +20,11 @@ const OWNER_FIX = "Flödet har ett fel som den som ansvarar för det behöver r�
 const RELOAD = "Flödet har ändrats. Ladda om sidan och försök igen.";
 const FIELDS = "En uppgift har fel format. Kontrollera uppgifterna och försök igen.";
 const REQUIRED_FIELD = "Fyll i uppgifterna som krävs och försök igen.";
-const TOO_LARGE = "Filen är större än flödet tar emot.";
+const TOO_LARGE = "Det som skickades är större än flödet tar emot.";
 const TOO_MANY_FILES = "Det är fler filer än flödet tar emot.";
 const WRONG_TYPE = "Filtypen stöds inte.";
 const FILE_UNUSABLE = "Filen kunde inte användas. Ladda upp den igen.";
-const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för flödet om du behöver det.";
+const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för Eneo i din verksamhet om du behöver det.";
 const MODULE_ACCESS = "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.";
 const REVIEW_CHANGED = "Granskningen har ändrats. Ladda om sidan och försök igen.";
 /** What a refused request and a finished run say alike of a review and of a busy server. */
@@ -175,12 +175,12 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     if (err.status === 401) return err.code ? advice(MODULE_ACCESS) : advice("Inloggningen hade gått ut och det här skickades inte. Försök igen.", true);
     if (err.status === 403) return advice(NO_ACCESS);
     if (err.status === 404) return advice("Det du letade efter finns inte längre.");
-    if (err.status === 408 || err.status === 429) return advice("Eneo hann inte svara. Försök igen om en stund.", true);
+    if (err.status === 408) return advice("Eneo svarade inte i tid. Försök igen om en stund.", true);
+    if (err.status === 429) return advice("Eneo har många förfrågningar just nu. Försök igen om en stund.", true);
     if (err.status === 413) return advice(TOO_LARGE);
     if (err.status === 415) return advice(WRONG_TYPE);
-    if (err.status === 502 || err.status === 503 || err.status === 504) {
-      return advice("Servern kunde inte nås just nu. Försök igen om en stund.", true);
-    }
+    if (err.status === 504) return advice("Servern svarade inte i tid. Försök igen om en stund.", true);
+    if (err.status === 502 || err.status === 503) return advice("Servern kunde inte nås just nu. Försök igen om en stund.", true);
     if (err.status >= 500) return advice("Tjänsten svarade med ett fel. Försök igen om en stund.", true);
     if ((err.body as { retryable?: unknown } | null)?.retryable === true) {
       return advice("Det gick inte just nu. Försök igen om en stund.", true);

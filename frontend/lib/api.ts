@@ -550,9 +550,9 @@ export const uploadAborted = () => new ApiError(0, "Uppladdningen avbröts.", nu
 function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   switch (reason) {
     case "not_started":
-      return "Uppladdningen startade inte i tid.";
+      return "Uppladdningen kom inte igång. Kontrollera anslutningen och försök igen.";
     case "stalled":
-      return "Uppladdningen stannade utan nätverksprogress.";
+      return "Uppladdningen stannade: inget har skickats på en stund. Kontrollera anslutningen och försök igen.";
     case "server_not_responding":
       return "Filen skickades, men servern svarade inte i tid.";
   }

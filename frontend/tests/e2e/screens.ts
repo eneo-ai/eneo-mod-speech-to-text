@@ -281,7 +281,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/");
-      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
     },
   },
@@ -293,7 +293,7 @@ export const STATES: State[] = [
     go: async (page) => {
       await page.route("**/api/auth/status", (route) => route.abort());
       await page.goto("/flows");
-      await expect(page.getByRole("alert").filter({ hasText: "Kunde inte kontakta modulen" })).toBeVisible();
+      await expect(page.getByRole("alert").filter({ hasText: "Tal till text kan inte nås just nu" })).toBeVisible();
       await expect(page.getByRole("button", { name: "Försök igen" })).toBeVisible();
       await expect(page).toHaveURL(/\/flows$/);
     },

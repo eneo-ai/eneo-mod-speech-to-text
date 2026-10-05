@@ -10,7 +10,7 @@ import { ModuleShell } from "@/kit/ModuleShell";
 import { PRODUCT_NAME } from "@/lib/product";
 
 /** What a page says when the module could not be asked who is signed in. */
-export const UNREACHABLE = "Kunde inte kontakta modulen. Försök igen.";
+export const UNREACHABLE = "Tal till text kan inte nås just nu.";
 
 /**
  * The page where the session's answer did not come (the module is down, the connection dropped): it says so and offers

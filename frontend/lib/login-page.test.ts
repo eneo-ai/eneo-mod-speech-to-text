@@ -86,7 +86,7 @@ test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", 
 
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
   const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")));
-  assert.deepEqual(alerts(document.body).filter((text) => text.includes("Kunde inte")), ["Kunde inte kontakta modulen. Försök igen."]);
+  assert.deepEqual(alerts(document.body).filter((text) => text.includes("kan inte nås")), ["Tal till text kan inte nås just nu."]);
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelectorAll("input").length, 0);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
