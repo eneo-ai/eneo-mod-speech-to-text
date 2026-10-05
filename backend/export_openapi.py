@@ -24,6 +24,7 @@ import warnings
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, NamedTuple
+from unittest import mock
 
 PLACEHOLDERS = {
     "ENEO_BACKEND_URL": "https://eneo.example.org",
@@ -33,12 +34,13 @@ PLACEHOLDERS = {
     "ENEO_API_KEY": "placeholder",
     "SESSION_SECRET": "x" * 48,
 }
-for _name, _value in PLACEHOLDERS.items():
-    os.environ.setdefault(_name, _value)
 
 from starlette.routing import compile_path  # noqa: E402
 
-from app import main  # noqa: E402
+# The app reads its settings when it is imported. It reads these and nothing the shell has set, and the environment is
+# the shell's again afterwards.
+with mock.patch.dict(os.environ, PLACEHOLDERS, clear=True):
+    from app import main  # noqa: E402
 from app.module_auth import SESSION_COOKIE, STATE_COOKIE  # noqa: E402
 
 DEFAULT_PATH = Path(__file__).resolve().parents[1] / "docs" / "api" / "openapi.json"

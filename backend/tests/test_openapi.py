@@ -45,12 +45,26 @@ def operations(document: dict) -> dict[tuple[str, str], dict]:
     }
 
 
-def export(seed: str, destination: Path) -> bytes:
+# What a shell that runs a deployment, or a developer's own, can have set: none of it is the export's to read.
+INHERITED = {
+    "ENEO_API_KEY": "the-deployments",
+    "ENEO_API_KEY_HEADER_NAME": "X-Their-Key",
+    "COOKIE_SECURE": "false",
+    "MODULE_KEY": "their-module",
+    "MAX_UPLOAD_BYTES": "1000",
+    "STATIC_DIR": "/srv/web",
+    "SHOW_ORGANIZATION": "false",
+    "ORGANIZATION_NAME": "Umeå kommun",
+    "ORGANIZATION_ACCENT": "not a colour",
+}
+
+
+def export(seed: str, destination: Path, inherited: dict[str, str] | None = None) -> bytes:
     """What ``python export_openapi.py`` writes, run as a person runs it: nothing of the settings in its environment."""
     result = subprocess.run(
         [sys.executable, "export_openapi.py", str(destination)],
         cwd=BACKEND,
-        env={"PATH": os.environ["PATH"], "PYTHONHASHSEED": seed},
+        env={"PATH": os.environ["PATH"], "PYTHONHASHSEED": seed, **(inherited or {})},
         capture_output=True,
         text=True,
     )
@@ -71,6 +85,12 @@ class FreshExportTests(unittest.TestCase):
             first,
             "docs/api/openapi.json is not what the app says: run `python export_openapi.py` in backend/ and commit it",
         )
+
+    def test_settings_inherited_from_the_shell_do_not_reach_the_export(self) -> None:
+        with tempfile.TemporaryDirectory() as folder:
+            exported = export("3", Path(folder) / "inherited.json", INHERITED)
+
+        self.assertEqual(COMMITTED.read_bytes(), exported)
 
 
 class DocumentTests(unittest.TestCase):
