@@ -419,3 +419,26 @@ test("a filter whose speaker has gone shows everyone again", async () => {
   assert.deepEqual(passages(view.container), ["Talare 1, 0:00"]);
   assert.equal(chip(view.container, "Alla").getAttribute("aria-pressed"), "true");
 });
+
+test("the clock on a passage plays from there, also while the recording is paused", async () => {
+  const media = window.HTMLMediaElement.prototype;
+  const { play, pause, load } = media;
+  const played: string[] = [];
+  media.play = function (this: HTMLMediaElement) {
+    played.push(`${this.currentTime}`);
+    return Promise.resolve();
+  };
+  media.pause = () => undefined;
+  media.load = () => undefined;
+  try {
+    const view = await player(meeting, { fileCount: 1, audioSrcFor: () => "/audio/0" });
+    await view.act(async () => button(view.container, "Spela från 0:02")!.click());
+    // The audio has loaded: where the press asked to go, and whether to play on.
+    await view.act(async () => view.container.querySelector("audio")!.dispatchEvent(new window.Event("loadedmetadata")));
+    assert.deepEqual(played, ["2"], "the passage's own words promise it plays");
+  } finally {
+    media.play = play;
+    media.pause = pause;
+    media.load = load;
+  }
+});

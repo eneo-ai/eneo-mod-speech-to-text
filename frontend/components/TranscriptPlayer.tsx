@@ -794,7 +794,8 @@ export function TranscriptPlayer(
                     onCommitLine={commitLine}
                     onRevertLine={revertLine}
                     onReassign={(speaker, all) => reassign(turn, speaker, all)}
-                    onSeekTurn={() => seekTo(turn.fileIndex, turn.start, !paused)}
+                    // "Spela från": it plays, also from a pause.
+                    onSeekTurn={() => seekTo(turn.fileIndex, turn.start, true)}
                     onPartClick={onPartClick}
                   />
                 );
