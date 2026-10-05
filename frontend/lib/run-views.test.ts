@@ -45,7 +45,8 @@ test("the running view names the stage once in a status region and says each ste
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
   assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
-  assert.match(words, /Transkribera mötet Klar/);
+  // A finished step also carries the design system's own word for a screen reader, between its name and the page's.
+  assert.match(words, /Transkribera mötet (?:\S+ )?Klar/);
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);

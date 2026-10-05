@@ -284,6 +284,14 @@ export const eneoTheme = {
         "wordBreak": "break-word"
       }
     },
+    "step-label": {
+      "base": {
+        "whiteSpace": "normal",
+        "overflow": "visible",
+        "textOverflow": "clip",
+        "overflowWrap": "anywhere"
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",

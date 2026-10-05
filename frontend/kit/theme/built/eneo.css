@@ -408,6 +408,13 @@
     word-break: break-word;
   }
 
+  .astryx-step-label {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
+  }
+
   .astryx-token {
     overflow: visible;
     height: auto;
