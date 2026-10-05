@@ -70,7 +70,12 @@ for (const path of everyPage) {
   for (const [width, scheme] of [[1440, 'light'], [1440, 'dark'], [390, 'light'], [390, 'dark']]) {
     renderings++
     const { page, context, label } = await open(path, { width, scheme })
-    if (path === '/api-referens') await page.locator('.scalar-app').first().waitFor()
+    if (path === '/api-referens') {
+      await page.locator('.scalar-app').first().waitFor()
+      if (await page.locator('h1.api-title').textContent() !== 'API-referens') note(label, 'the API introduction lacks its heading')
+      const unclearLinks = await page.locator('.api-page > p a').evaluateAll((links) => links.filter((link) => !getComputedStyle(link).textDecorationLine.includes('underline')).length)
+      if (unclearLinks) note(label, `${unclearLinks} API introduction link(s) lack a visible underline`)
+    }
     for (const violation of (await new AxeBuilder({ page }).withTags(WCAG).analyze()).violations) {
       note(label, `axe ${violation.id}: ${violation.nodes.length} node(s), e.g. ${violation.nodes[0].target.join(' ')}`)
     }

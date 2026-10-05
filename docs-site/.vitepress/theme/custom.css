@@ -303,12 +303,21 @@ pre.mermaid p {
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: -0.02em;
+  color: var(--vp-c-text-1);
 }
 .api-page > p {
   margin-top: 12px;
   margin-bottom: 32px;
   color: var(--vp-c-text-2);
   line-height: 1.6;
+}
+.api-page > p a {
+  color: var(--vp-c-brand-1);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.api-page > p a:hover {
+  color: var(--vp-c-brand-2);
 }
 .api-reference {
   border-top: 1px solid var(--vp-c-divider);
