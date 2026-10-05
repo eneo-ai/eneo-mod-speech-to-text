@@ -217,7 +217,7 @@
 
 @media (pointer: coarse) {
   .skipLink:focus {
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
   }
 }
 
@@ -329,7 +329,7 @@
 
 @media (pointer: coarse) {
   .rate {
-    min-inline-size: var(--spacing-11);
+    min-inline-size: var(--size-element-md);
   }
 }
 
@@ -372,9 +372,9 @@
 
 @media (pointer: coarse) {
   .inline {
-    min-block-size: var(--spacing-11);
-    min-inline-size: var(--spacing-11);
-    margin-block: calc((var(--spacing-6) - var(--spacing-11)) / 2);
+    min-block-size: var(--size-element-md);
+    min-inline-size: var(--size-element-md);
+    margin-block: calc((var(--spacing-6) - var(--size-element-md)) / 2);
   }
 }
 
@@ -466,7 +466,7 @@
 @media (pointer: coarse) {
   .choosable {
     display: block;
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
     margin-block: var(--spacing-1);
     padding: var(--spacing-3) var(--spacing-2);
     background-clip: border-box;
@@ -554,9 +554,9 @@
 
 @media (pointer: coarse) {
   .confirmButton {
-    inline-size: var(--spacing-11);
-    block-size: var(--spacing-11);
-    margin-block: calc((var(--spacing-4) - var(--spacing-11)) / 2);
+    inline-size: var(--size-element-md);
+    block-size: var(--size-element-md);
+    margin-block: calc((var(--spacing-4) - var(--size-element-md)) / 2);
     margin-inline: calc(-1 * var(--spacing-3)) calc(-1 * (var(--spacing-3) + var(--spacing-0-5)));
   }
 }

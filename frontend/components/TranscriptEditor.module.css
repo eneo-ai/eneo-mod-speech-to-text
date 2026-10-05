@@ -164,7 +164,7 @@
   .details summary {
     display: flex;
     align-items: center;
-    min-block-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
   }
 }
 
@@ -330,8 +330,8 @@
 @media (pointer: coarse) {
   .clock,
   .speakerName {
-    min-block-size: var(--spacing-11);
-    min-inline-size: var(--spacing-11);
+    min-block-size: var(--size-element-md);
+    min-inline-size: var(--size-element-md);
   }
 }
 
