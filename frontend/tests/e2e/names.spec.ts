@@ -80,6 +80,8 @@ test("the dialog saves the names; the page's Godkänn och fortsätt then lets th
   });
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
+  // Typing opens the name list over what is below the field, as a list does: a press outside it closes it first.
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
   await dialog.getByRole("button", { name: "Spara namnen" }).click();
   await expect(dialog).toBeHidden();
   await expect(page.getByRole("listitem").filter({ hasText: "Talare 2" }), "the page shows the saved name").toContainText("Sara Holm");
