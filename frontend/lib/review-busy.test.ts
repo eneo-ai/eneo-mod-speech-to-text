@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import type { FlowPublished, FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
+import type { FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
 import { withRouter } from "./test-router";
 
@@ -89,13 +89,11 @@ async function review(start = pause, { saves = false } = {}) {
   const { ReviewView } = await import("../components/flow/ReviewView");
   const { continueFromPause } = await import("./review-continue");
   const run = { id: "run-1", flow_id: "flow-1", status: "awaiting_review" } as FlowRunPublic;
-  const published = { id: "flow-1", name: "Nämndmöte till rapport", published_version: 3 } as FlowPublished;
   // The page's own wiring: the pause's newer states reach the view, a failure says why.
   function Page() {
     const [checkpoint, setCheckpoint] = useState(start);
     return createElement(ReviewView, {
       flowId: "flow-1",
-      published,
       checkpoint,
       runState: { run, steps: [] },
       runError: null,

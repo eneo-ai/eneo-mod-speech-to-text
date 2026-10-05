@@ -5,7 +5,8 @@
  * change once, never the ticking timer. These are DOM text changes; what a
  * screen reader actually says is on the manual list.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
@@ -33,6 +34,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "signed-out-recording", region: (page) => page.getByRole("alertdialog") },
   { state: "review-din-version", region: (page) => page.getByRole("main") },
   { state: "flow-republish-required", region: (page) => page.locator("[data-app-shell]") },
+  { state: "flows-unreachable", region: (page) => page.locator("[data-app-shell]") },
 ];
 
 for (const { state, region, fixedTime } of SNAPSHOTS) {

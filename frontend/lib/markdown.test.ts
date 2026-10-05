@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createElement } from "react";
 
-import { button, cleanup, installDom, mount } from "./test-dom";
+import { cleanup, installDom, mount } from "./test-dom";
 
 installDom();
 afterEach(cleanup);

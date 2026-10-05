@@ -1,4 +1,5 @@
 import {
+  ApiError,
   getRunArtifactText,
   getRunSteps,
   getTranscriptSource,
@@ -24,6 +25,7 @@ import {
   EMPTY_CORRECTIONS,
   correctionsFromResponse,
   correctionWriteProblem,
+  isSegmentsHash,
   type CorrectionSet,
 } from "./transcript-corrections";
 
@@ -135,7 +137,7 @@ async function wholeText(flowId: string, runId: string, text: TranscriptText): P
   return text;
 }
 
-// ponytail: 200 pages of 200 segments bound a read at 40 000 segments (days of audio); a longer one fails loudly.
+// 200 pages of 200 segments bound a read at 40 000 segments (days of audio); a longer one fails loudly.
 const MAX_SOURCE_PAGES = 200;
 
 /**
@@ -218,7 +220,7 @@ export async function loadTranscriptContext({
     // Without segments the text is the transcript; a preview is read in full first.
     if (segments === null && stepText) stepText = await wholeText(flowId, runId, stepText);
     const hash = (transcription as { segments_hash?: unknown } | null)?.segments_hash;
-    const segmentsHash = typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash) ? hash : null;
+    const segmentsHash = isSegmentsHash(hash) ? hash : null;
     corrections = { ...EMPTY_CORRECTIONS, ...(segmentsHash ? { schemaVersion: 3, segmentsHash } : {}) };
     speakerReviews = speakerReviewsFromTranscription(transcription);
     fileIds = fileIdsFromTranscription(transcription);
@@ -230,9 +232,15 @@ export async function loadTranscriptContext({
     stepId = step?.step_id ?? null;
     speakerNames = speakerNamesFromSteps(steps);
     if (segments && stepId) {
+      let wordsProblem: string | null = null;
       const [words, sets] = await Promise.all([
-        // 404 är normalt: steget lagrade inga ordtider.
-        getTranscriptWords(flowId, runId, stepId).catch(() => null),
+        // A 404 is normal: the step stored no word times. Any other failure leaves the uncertain words unseen.
+        getTranscriptWords(flowId, runId, stepId).catch((error) => {
+          if (!(error instanceof ApiError && error.status === 404)) {
+            wordsProblem = "Kunde inte läsa transkriptets ordtider. Läs in sidan igen innan du redigerar eller godkänner.";
+          }
+          return null;
+        }),
         listTranscriptCorrections(flowId, runId).catch(() => {
           correctionProblem = "Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.";
           return [];
@@ -249,6 +257,7 @@ export async function loadTranscriptContext({
           correctionProblem = error instanceof Error ? error.message : "Rättningarna kunde inte läsas.";
         }
       }
+      correctionProblem ??= wordsProblem;
     }
   } catch {
     correctionProblem = "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner.";

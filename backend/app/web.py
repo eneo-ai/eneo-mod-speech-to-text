@@ -1,13 +1,8 @@
 """The backend as a web server: the security headers on every response, and the built UI.
 
-Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commit 6621163). The headers keep the kit's
-``setdefault`` precedence and the shape of its header set, but not its mechanism (a pure-ASGI middleware, because the
-kit's ``@app.middleware`` is Starlette's BaseHTTPMiddleware, which wraps the body of a streamed answer: this app streams
-audio and PDFs and must close its upstream when the browser leaves) and not its ``Permissions-Policy`` (the kit's empty
-microphone allowlist would stop the recording). ``serve_web`` is the kit's with four changes: the headers come from the
-middleware, assets are immutable and the rest revalidated, a path with a control character or a backslash, or too long a
-name, is a 404 and never the page or a 500, and HEAD is answered like GET. The files of dist/ are indexed once, at start,
-and a request looks its path up (``index_files``). Plan C (the module kit) deletes this copy.
+Adapted from the module kit's packages/bff/src/eneo_module_bff/web.py (kit commit 6621163): the header set's shape and the
+``setdefault`` precedence are the kit's, its ``Permissions-Policy`` is not (an empty microphone allowlist would stop the
+recording). The files of dist/ are indexed once, at start, and a request looks its path up (``index_files``).
 """
 
 from __future__ import annotations
@@ -94,6 +89,7 @@ BRANDING_MARKER = '<meta name="eneo-branding" content="">'
 # A file with one of these extensions that has a .br or .gz beside it is served compressed to a client that accepts it.
 COMPRESSIBLE = frozenset({".js", ".css", ".svg", ".json", ".html", ".txt"})
 ENCODINGS = (("br", ".br"), ("gzip", ".gz"))  # in order of preference
+COMPRESSED_SUFFIXES = tuple(suffix for _, suffix in ENCODINGS)
 ASSET_CACHE_CONTROL = "public, max-age=31536000, immutable"
 REVALIDATE = "no-cache"
 # The built UI's hashed files live here, and an old one that is gone is a 404, never the page.
@@ -125,9 +121,9 @@ def _accepted_encodings(accept_encoding: str | None) -> set[str]:
     return accepted
 
 
-# A JSON answer of the proxy of at least this many bytes is gzipped for a client that accepts it. Smaller ones cost more
-# to compress than they save. Next gzipped a proxied answer (880,050 bytes to 87,342, measured in B0.1) and the backend
-# alone does not, so the module does it now that Next is gone; only here, never for a streamed file (audio, a PDF).
+# A JSON answer of the proxy of at least this many bytes is gzipped for a client that accepts it: a run's steps are
+# 880,050 bytes and 87,342 gzipped, and a smaller answer costs more to compress than it saves. Only here, never for a
+# streamed file (audio, a PDF).
 JSON_COMPRESSION_MIN_BYTES = 1024
 
 
@@ -226,7 +222,7 @@ def index_files(root: Path, page: Path) -> dict[str, _Asset]:
                 found[relative] = target
     assets: dict[str, _Asset] = {}
     for relative, target in found.items():
-        if relative.endswith((".br", ".gz")) or target == page:
+        if relative.endswith(COMPRESSED_SUFFIXES) or target == page:
             continue
         siblings = {}
         if target.suffix in COMPRESSIBLE:
@@ -268,7 +264,7 @@ def serve_web(app: FastAPI, static_dir: Path, *, branding: str) -> None:
         if _NOT_A_NAME.search(asked) or asked.lstrip("/") == "api" or asked.lstrip("/").startswith("api/"):
             raise HTTPException(status_code=404)
         # A compressed sibling is served by negotiation only, never by its own name.
-        if last.endswith((".br", ".gz")):
+        if last.endswith(COMPRESSED_SUFFIXES):
             raise HTTPException(status_code=404)
         in_assets = path.startswith(ASSETS + "/")
         if path == "index.html" or (not in_assets and "." not in last):

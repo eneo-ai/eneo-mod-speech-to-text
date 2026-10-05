@@ -7,7 +7,7 @@
 import type { Plugin } from "vite";
 
 /** How long the dev server waits for the answer before it leaves the page with no organisation. */
-export const BRANDING_DEADLINE_MS = 2_000;
+const BRANDING_DEADLINE_MS = 2_000;
 
 const MARKER = /<meta name="eneo-branding" content=""\s*\/?>/g;
 const NOBODY = '{"organization":null}';

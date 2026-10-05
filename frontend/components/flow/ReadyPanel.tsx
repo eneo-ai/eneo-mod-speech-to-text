@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, FileText, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -27,9 +25,10 @@ import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
-/** Each part of the recording as something the player can play, over its known length. */
-function usePartSources(recording: StoredRecording): PlayerSource[] {
+/** Each part of the recording as something the player can play, over its known length; `unreadable` when the device could not be read. */
+function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; unreadable: boolean } {
   const [sources, setSources] = useState<PlayerSource[]>([]);
+  const [unreadable, setUnreadable] = useState(false);
   useEffect(() => {
     let cancelled = false;
     let urls: string[] = [];
@@ -38,17 +37,18 @@ function usePartSources(recording: StoredRecording): PlayerSource[] {
       .then((files) => {
         if (cancelled) return;
         urls = files.map((file) => URL.createObjectURL(file.blob));
+        setUnreadable(false);
         setSources(
           files.map((file, i) => ({ url: urls[i], durationMs: recording.parts[file.index]?.durationMs ?? 0 })),
         );
       })
-      .catch(() => undefined);
+      .catch(() => !cancelled && setUnreadable(true));
     return () => {
       cancelled = true;
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [recording]);
-  return sources;
+  return { sources, unreadable };
 }
 
 /** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
@@ -120,7 +120,7 @@ export function ReadyPanel({
 }) {
   // Eneo already has it: the run is among the earlier runs, and the copy here can go.
   const sent = problem?.sent === true;
-  const sources = usePartSources(recording);
+  const { sources, unreadable } = usePartSources(recording);
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   // The question is the page's: it is closed while the login has ended, and back with the same state after the new one.
@@ -161,6 +161,7 @@ export function ReadyPanel({
       </VStack>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
+      {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
       {live && <LiveDraft live={live} makesText={makesText} />}
 
       <HStack gap={4} wrap="wrap" align="center">

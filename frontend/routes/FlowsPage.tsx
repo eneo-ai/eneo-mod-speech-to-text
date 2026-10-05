@@ -1,5 +1,3 @@
-"use client";
-
 import { useNavigate } from "react-router";
 import { useCallback, useEffect, useState } from "react";
 import { EmptyState } from "@astryxdesign/core/EmptyState";
@@ -9,7 +7,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { AccountMenu } from "@/components/AccountMenu";
-import { HeaderBrand } from "@/components/AppHeader";
+import { HeaderBrand } from "@/components/HeaderBrand";
 import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
 import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
@@ -24,8 +22,10 @@ import {
   type FlowSpaceGroup,
 } from "@/lib/flow-discovery";
 import { browserStorage } from "@/lib/browser-storage";
+import { sendRecordingAddress } from "@/lib/flow-address";
 import { lastUsedFlow } from "@/lib/last-used-flow";
 import { useRouteReady } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 export default function FlowsPage() {
   return (
@@ -69,28 +69,25 @@ function FlowsListPage() {
     };
   }, [attempt]);
 
-  // The page has its content when the list has answered, or could not.
   useRouteReady(groups !== null || problem !== null);
 
   const empty = groups !== null && groups.every((group) => group.flows.length === 0);
   const createLabel = listCreateLabels(groups);
 
   return (
-    <ModuleShell label="Tal till text" heading={<HeaderBrand />} end={<AccountMenu />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand />} end={<AccountMenu />}>
       <Layout height="auto" contentWidth={960} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={8} paddingBlockStart={4}>
             <Heading level={1}>Välj ett flöde</Heading>
 
-            {unsent.length > 0 && (
-              <UnsentRecordings
-                recordings={unsent}
-                withFlowName
-                evictable={evictable}
-                sendLabel={(recording) => createLabel(recording.flowId)}
-                onSend={(recording) => void navigate(`/flows/${recording.flowId}?recording=${recording.id}`)}
-              />
-            )}
+            <UnsentRecordings
+              list={unsent}
+              withFlowName
+              evictable={evictable}
+              sendLabel={(recording) => createLabel(recording.flowId)}
+              onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
+            />
 
             {problem ? (
               <ProblemAlert

@@ -91,3 +91,18 @@ test("a module that cannot be reached is said, with a way to try again and nothi
   assert.equal(container.querySelectorAll("input").length, 0);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
 });
+
+test("coming Back from Eneo, with the page restored from the browser's cache, the sign-in can be pressed again", async (t) => {
+  t.mock.method(console, "error", () => undefined);
+  const { container, act } = await openLoginPage(t, signedOut);
+  await act(async () => button(container, "Logga in med Eneo")!.click());
+  assert.ok(button(container, "Öppnar Eneo…"), "pressed: Eneo opens");
+
+  // A page that is shown again from the cache has the state it left with; one that was loaded anew is not this event.
+  await act(async () => void window.dispatchEvent(new window.PageTransitionEvent("pageshow", { persisted: false })));
+  assert.ok(button(container, "Öppnar Eneo…"), "a pageshow of a new load changes nothing");
+  await act(async () => void window.dispatchEvent(new window.PageTransitionEvent("pageshow", { persisted: true })));
+  const again = button(container, "Logga in med Eneo");
+  assert.ok(again, "the way in is back");
+  assert.ok(!again.disabled && again.getAttribute("aria-disabled") !== "true", "and can be pressed");
+});

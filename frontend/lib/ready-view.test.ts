@@ -33,7 +33,7 @@ const hasButton = (html: string, name: string) => [...parse(html).querySelectorA
 
 test("for a flow that makes text, the ready state speaks of the text, never the document", () => {
   const live = {
-    getSnapshot: (): LiveSnapshot => ({ status: "ended", started: true, complete: true, pending: "", pieces: [{ text: "Hej.", opensParagraph: true }] }),
+    getSnapshot: (): LiveSnapshot => ({ status: "ended", started: true, pending: "", pieces: [{ text: "Hej.", opensParagraph: true }] }),
     subscribe: () => () => {},
     listen: noop,
     setRecording: noop,
@@ -104,7 +104,6 @@ test("after Stoppa, Strömma's live text stays to read and copy, marked as preli
   const snapshot: LiveSnapshot = {
     status: "ended",
     started: true,
-    complete: false,
     pending: "",
     pieces: [
       { text: "Välkomna till nämndens möte.", opensParagraph: true },

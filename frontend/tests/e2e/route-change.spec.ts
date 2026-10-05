@@ -4,9 +4,10 @@
  * page behind AuthGate is a spinner until the session answers, so RouteEffects waits for the page to say it has its
  * content. A change of the address's query alone is the page's own state: nothing happens.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axe, blocking } from "./checks";
-import { backLink, flows, open, record, setup } from "./screens";
+import { backLink, flows, NO_CONFIRMED_WORDS, record, setup } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -138,6 +139,38 @@ test("signing out: the sign-in page's title, announcement and heading, not the s
   expect(blocking((await axe(page)).violations), "axe passes on the sign-in page").toEqual([]);
 });
 
+test("a Tab pressed while the page is still loading: the shell it landed in is replaced, so the focus is given to the heading", async ({ page }) => {
+  await page.addInitScript(listen);
+  await flows(page);
+  await delaySession(page, 1_500);
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  // Tab from the page's start: the skip link, outside the main region.
+  await page.keyboard.press("Tab");
+  const person = await focused(page);
+  expect(person.tag, "Tab went to a control").toBe("a");
+  expect(person.inMain).toBe(false);
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  const title = await page.title();
+  await expect.poll(() => said(page), { timeout: 1_000 }).toEqual([title]);
+  await page.waitForTimeout(500);
+  // The gate replaced the shell the focus was in: the app took the focus away, so the app gives it back.
+  await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true });
+});
+
+test("a key that moves no focus is an action too: when the content comes the heading does not take the focus", async ({ page }) => {
+  await page.addInitScript(listen);
+  await flows(page);
+  await delaySession(page, 1_500);
+  await page.getByRole("link", { name: /Nämndmöte till rapport/ }).evaluate((link) => (link as HTMLElement).click());
+  await expect(page.getByRole("status", { name: "Laddar" })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" })).toBeVisible();
+  await expect.poll(() => said(page), { timeout: 1_000 }).toHaveLength(1);
+  await page.waitForTimeout(500);
+  expect((await focused(page)).heading, "no focus taken from a person who has acted").toBe(false);
+});
+
 test("a control the page focused itself keeps the focus, and the title is still said", async ({ page }) => {
   // The page takes the focus as its content appears, as a phase's view does with its heading (usePhaseHeading).
   await page.addInitScript(() => {
@@ -161,7 +194,8 @@ test("a control the page focused itself keeps the focus, and the title is still 
   expect(now, "the control the page focused is still focused").toMatchObject({ tag: "input", heading: false, inMain: true });
 });
 
-test("a change of the address's query alone is the page's own: no title, announcement, focus or scroll", async ({ page }, info) => {
+test("a change of the address's query alone is the page's own: no title, announcement, focus or scroll", async ({ page, sentinel }, info) => {
+  sentinel.expect(NO_CONFIRMED_WORDS);
   await page.addInitScript(listen);
   await page.setViewportSize({ width: info.project.use.viewport!.width, height: 380 });
   await setup(page);
@@ -199,7 +233,7 @@ test("the three /inloggad states keep their own titles, and a navigation to one 
   };
   for (const [query, title] of Object.entries(TITLES)) {
     // As the first page: its own title, nothing said, nothing moved.
-    await open(page, `/inloggad${query}`);
+    await page.goto(`/inloggad${query}`);
     await expect.poll(() => page.title(), { timeout: 2_000 }).toBe(title);
     await page.waitForTimeout(400);
     expect(await said(page), `${query || "plain"}: a first load says nothing`).toEqual([]);

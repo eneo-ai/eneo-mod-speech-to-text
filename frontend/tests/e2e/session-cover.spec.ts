@@ -3,9 +3,9 @@
  * had open. Proved in the browser as a person meets it (what is visible, what takes focus, what the accessibility
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
-import { expect, test, type Page } from "@playwright/test";
-import { clippedFocus } from "./checks";
-import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { chooseMode, endLogin, isLaptop, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -118,9 +118,8 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
   const png = (await page.screenshot()).toString("base64");
   return page.evaluate(
     async ([png, r, g, b]) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${png}`;
-      await image.decode();
+      // Decoded from its bytes: a data: URL would be an image the page's policy does not allow.
+      const image = await createImageBitmap(new Blob([Uint8Array.from(atob(png), (character) => character.charCodeAt(0))], { type: "image/png" }));
       const canvas = document.createElement("canvas");
       canvas.width = image.width;
       canvas.height = image.height;
@@ -139,7 +138,7 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
 
 test("a native dialog the page had open when the login ends is hidden behind the sign-in dialog, out of reach and out of the accessibility tree", async ({ page }) => {
   await setup(page);
-  // What a ported page dialog is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
+  // What a dialog of the page is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
   // here in a colour nothing else on the screen has, so that any pixel of it that shows is found.
   const MAGENTA: [number, number, number] = [255, 0, 255];
   await page.evaluate(() => {
@@ -277,10 +276,7 @@ test("signed out, a recording is stopped from the sign-in dialog, and is done wh
   await expect(page.getByRole("heading", { name: "Inspelningen är klar" })).toBeVisible();
 });
 
-test("the leave question can be answered with a mouse while a dialog of the old design system is open under it", async ({ page }) => {
-  // The page's own question to delete a recording is a modal of the old design system, which turns off pointer
-  // events on the body. (It also hides what was in the document when it opened from assistive technology, the
-  // question included; that is not asserted, and ends with the last modal of the old system.)
+test("the leave question can be answered with a mouse while the delete question is open under it", async ({ page }) => {
   await setupFromList(page);
   await record(page, "Spela in");
   await page.getByRole("button", { name: "Stoppa" }).click();
@@ -291,13 +287,12 @@ test("the leave question can be answered with a mouse while a dialog of the old 
   await page.goBack();
   const question = page.getByRole("alertdialog", { name: "Lämna sidan?" });
   await expect(question).toBeVisible();
-  // By its words, not its role: the old system's modal has taken it out of the accessibility tree.
-  await question.locator("button", { hasText: "Stanna kvar" }).click();
+  await question.getByRole("button", { name: "Stanna kvar" }).click();
   await expect(question).toBeHidden();
   await expect(deleting, "the page's own question is as it was").toBeVisible();
 });
 
-test("the sign-in button answers a mouse while a dialog of the old design system is open on the page, and the edit in that dialog is kept", async ({ page, context }) => {
+test("the sign-in button answers a mouse while a dialog of the page was open when the login ended, and the edit in that dialog is kept", async ({ page, context }) => {
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
@@ -306,8 +301,6 @@ test("the sign-in button answers a mouse while a dialog of the old design system
   await name.fill("Zara Testsson");
 
   await endLogin(page);
-  // A modal of the old design system turns off pointer events on the body, and takes the accessibility tree from
-  // what is outside it: neither may reach the sign-in dialog.
   const tree = await page.locator("body").ariaSnapshot();
   expect(tree).toContain('heading "Du behöver logga in igen"');
   expect(tree).toContain('button "Logga in igen"');
@@ -318,8 +311,7 @@ test("the sign-in button answers a mouse while a dialog of the old design system
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
-  // Pressing outside it closes a dialog of the old design system (its own rule): opened again, the edit is there.
-  if (!(await naming.isVisible())) await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(naming).toBeVisible();
   await expect(name).toHaveValue("Zara Testsson");
 });
 

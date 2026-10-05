@@ -8,13 +8,15 @@
 
 const OUTPUT_RATE = 16_000;
 const FRAME_SAMPLES = 1_600; // 100 ms
+/** The bytes of one frame of PCM16. */
+export const FRAME_BYTES = FRAME_SAMPLES * 2;
 
 export class Pcm16Encoder {
   // Input not yet used, and the index of its first sample in the whole stream.
   private buffer = new Float32Array(0);
   private bufferStart = 0;
   private produced = 0;
-  private frame = new DataView(new ArrayBuffer(FRAME_SAMPLES * 2));
+  private frame = new DataView(new ArrayBuffer(FRAME_BYTES));
   private filled = 0;
 
   constructor(

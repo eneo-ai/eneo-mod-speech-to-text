@@ -1,13 +1,9 @@
-"use client";
-
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
 import { CheckCircle2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
-  use,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -35,7 +31,6 @@ import { useReviewDraft } from "@/components/useReviewDraft";
 import {
   inputFileAudioUrl,
   isReviewCheckpointApproved,
-  type FlowPublished,
   type FlowRunPublic,
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
@@ -45,7 +40,6 @@ import {
 import {
   buildEditedMapping,
   buildSpeakerRows,
-  getSpeakerMappingInferNames,
   getSpeakerMappingParticipants,
   getSpeakerMappingSourceStep,
   isSpeakerMappingCheckpoint,
@@ -63,7 +57,7 @@ import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
-import { isRecord } from "@/lib/drafts";
+import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
 import styles from "./ReviewView.module.css";
 
@@ -87,10 +81,11 @@ const isReviewEdit = (value: unknown): value is ReviewEdit =>
   (value.text === undefined || typeof value.text === "string") &&
   (value.speakerRows === undefined || (Array.isArray(value.speakerRows) && value.speakerRows.every(isSpeakerRow)));
 
+const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
+
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
 export function ReviewView({
   flowId,
-  published,
   checkpoint,
   runState,
   runError,
@@ -99,7 +94,6 @@ export function ReviewView({
   onReject,
 }: {
   flowId: string;
-  published: FlowPublished;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
@@ -130,7 +124,6 @@ export function ReviewView({
     <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
-  const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
   // The mapping step's own proposal (name, confidence, evidence), before anyone edited it.
   const modelProposals = useMemo(
@@ -154,7 +147,6 @@ export function ReviewView({
   const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
-  const fieldId = useId();
 
   // A control that removes or disables itself hands the focus on once the view has changed, never to the page
   // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
@@ -211,7 +203,7 @@ export function ReviewView({
   // korrigeringar för spelaren.
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
-  const [transcript] = useTranscriptContext({
+  const [transcript, reloadTranscript] = useTranscriptContext({
     flowId,
     runId,
     enabled: isSpeakerMapping,
@@ -221,7 +213,7 @@ export function ReviewView({
   });
   // Bekräftade osäkra ord lagras lokalt per steg (ryms inte i Eneos modell).
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
 
   // One playback for the page: the transcript's player, and the speakers' samples in "Namnge talarna".
@@ -239,14 +231,14 @@ export function ReviewView({
   const [sample, setSample] = useState<string | null>(null);
   const listening = sounds ? sample : null;
 
-  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
+  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
   // mapping är json-steget vi redigerar strukturerat via talarrader.
   // Approved (and the resume still to go through): the saved decision is final, shown read-only, and the one
   // thing left is to go on.
-  const decided = Boolean(isReviewCheckpointApproved(checkpoint));
+  const decided = isReviewCheckpointApproved(checkpoint);
   const editable =
     !decided &&
     checkpoint.review_mode === "edit" &&
@@ -317,8 +309,6 @@ export function ReviewView({
       setWorking(null);
     }
   }
-  const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
-
   function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
     return exclusively("save", async () => {
       const sent = keepNames(rows);
@@ -369,10 +359,10 @@ export function ReviewView({
   function submitReject() {
     // Approved, the pause is final: only resuming is left, never a rejection typed before it.
     if (decided || !rejectReason.trim()) return;
-    void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()).catch(() => undefined), undefined);
+    void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()), undefined);
   }
 
-  const busy = working !== null || saving;
+  const busy = working !== null;
   // The transcript's own changes must be saved before the flow goes on.
   const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem));
   // Approval folded the transcript's corrections in; a correction made after it would never reach the document.
@@ -699,9 +689,5 @@ function extractCheckpointText(payload: Json | null | undefined): string {
   const text = (payload as { text?: unknown }).text;
   if (typeof text === "string") return text;
   // Fallback: visa payloaden som JSON så användaren ändå kan granska.
-  try {
-    return "```json\n" + JSON.stringify(payload, null, 2) + "\n```";
-  } catch {
-    return "";
-  }
+  return "```json\n" + JSON.stringify(payload, null, 2) + "\n```";
 }

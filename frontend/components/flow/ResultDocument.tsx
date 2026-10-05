@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
@@ -17,9 +15,6 @@ import { CopyStatus, useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import styles from "./ResultDocument.module.css";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
-
-// A result's headings go under the page's h1; the review's text does the same (ReviewView).
-export { remarkResultHeadings } from "./Markdown";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -114,19 +109,23 @@ type Share = { kind: "file"; file: File } | { kind: "text" };
  */
 function useShare(file: ResultFileView | null, url: string | null, text: string | null): Share | null {
   const [share, setShare] = useState<Share | null>(null);
+  // The file's own facts, not the object: the page builds its file views anew at every draw, and the read must not start over for them.
+  const name = file?.name ?? null;
+  const mimeType = file?.mimeType ?? "";
+  const sizeBytes = file?.sizeBytes ?? null;
   useEffect(() => {
-    if (typeof navigator === "undefined" || typeof navigator.share !== "function") return;
+    if (typeof navigator.share !== "function") return;
     const controller = new AbortController();
     const instead: Share | null = text ? { kind: "text" } : null;
-    const probe = file ? new File([""], file.name, { type: file.mimeType }) : null;
+    const probe = name !== null ? new File([""], name, { type: mimeType }) : null;
     const fileShareable =
-      file && url && probe && file.sizeBytes !== null && file.sizeBytes <= SHARE_LIMIT_BYTES &&
+      name !== null && url && probe && sizeBytes !== null && sizeBytes <= SHARE_LIMIT_BYTES &&
       typeof navigator.canShare === "function" && navigator.canShare({ files: [probe] });
     if (fileShareable) {
       fetch(url, { signal: controller.signal })
         .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
         .then((blob) => {
-          if (!controller.signal.aborted) setShare({ kind: "file", file: new File([blob], file.name, { type: blob.type || file.mimeType }) });
+          if (!controller.signal.aborted) setShare({ kind: "file", file: new File([blob], name, { type: blob.type || mimeType }) });
         })
         .catch(() => {
           if (!controller.signal.aborted) setShare(instead);
@@ -135,7 +134,7 @@ function useShare(file: ResultFileView | null, url: string | null, text: string 
       setShare(instead);
     }
     return () => controller.abort();
-  }, [file, url, text]);
+  }, [name, mimeType, sizeBytes, url, text]);
   return share;
 }
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -12,9 +10,11 @@ import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { authStatus } from "@/lib/api";
-import { HeaderBrand } from "@/components/AppHeader";
+import { HeaderBrand } from "@/components/HeaderBrand";
+import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { useRouteReady } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -39,13 +39,19 @@ export default function LoginPage() {
         }
       })
       .catch(() => {
-        setAuthError("Kunde inte kontakta modulen. Försök igen.");
+        setAuthError(UNREACHABLE);
         setChecking(false);
       });
   }, [navigate]);
 
-  // The page has its content once it has stopped asking who is signed in.
   useRouteReady(!checking);
+
+  // Back from Eneo, the browser may show this page again as it was left, with the button still opening Eneo.
+  useEffect(() => {
+    const shownAgain = (event: PageTransitionEvent) => event.persisted && setSubmitting(false);
+    window.addEventListener("pageshow", shownAgain);
+    return () => window.removeEventListener("pageshow", shownAgain);
+  }, []);
 
   function startLogin() {
     setSubmitting(true);
@@ -55,9 +61,9 @@ export default function LoginPage() {
 
   if (checking) {
     return (
-      <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+      <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
         <VStack hAlign="center" paddingBlock={10}>
-          <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
+          <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
           <Spinner aria-label="Laddar" />
         </VStack>
       </ModuleShell>
@@ -65,7 +71,7 @@ export default function LoginPage() {
   }
 
   return (
-    <ModuleShell label="Tal till text" heading={<HeaderBrand linked={false} />}>
+    <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand linked={false} />}>
       <Layout height="auto" contentWidth={640} padding={4}>
         <LayoutContent isScrollable={false}>
           <VStack gap={6} paddingBlockStart={6}>

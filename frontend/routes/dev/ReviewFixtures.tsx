@@ -1,4 +1,3 @@
-"use client";
 import { useEffect, useState } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { Button } from "@astryxdesign/core/Button";

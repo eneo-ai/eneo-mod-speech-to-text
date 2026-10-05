@@ -193,6 +193,18 @@ test("a transcript without speakers reads as paragraphs: no speaker row, marks o
   assert.ok(searchField(view.container));
 });
 
+test("Ändra talare on a passage Eneo gave no speaker changes nothing: nothing is sent, and the picker says why", async () => {
+  const unknown: TranscriptSegment[] = [{ ...meeting[0], speaker: null }, ...meeting.slice(1)];
+  const saved: CorrectionSet[] = [];
+  const view = await player(unknown, { editable: true, corrections: EMPTY, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
+  await view.act(async () => button(view.container, "Okänd talare, ändra talare")!.click());
+  await view.act(async () => pick("SPEAKER_01").click());
+  await view.act(async () => button(document.body, "Spara")!.click());
+  assert.equal(saved.length, 0, "nothing sent");
+  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /kan inte ändras/);
+  assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
+});
+
 test("a bulk change past Eneo's cap on speaker edits is refused before anything is sent", async () => {
   // 1 001 passages each for two speakers, and 1 000 edits already saved: moving all of Talare 1 would make 2 001.
   const many: TranscriptSegment[] = Array.from({ length: 2002 }, (_, i) => ({

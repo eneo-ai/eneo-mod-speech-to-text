@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import {
   Download,
@@ -39,8 +37,8 @@ export const FILE_ICONS: Record<FileKind, LucideIcon> = {
 };
 
 /**
- * Whether the window matches a media query, read where the page is shown. Before the page is read (and on a server)
- * it is taken to match: the wide layout, which is what a laptop shows first.
+ * Whether the window matches a media query, read where the page is shown. Before the first read it is taken to match:
+ * the wide layout, which is what a laptop shows first.
  */
 export function useMediaMatch(query: string): boolean {
   const subscribe = useCallback(

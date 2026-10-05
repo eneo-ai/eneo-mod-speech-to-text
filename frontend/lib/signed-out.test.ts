@@ -65,7 +65,8 @@ test("signed out: the dialog asks for a new login, says the page and a recording
 test("someone signing in here keeps only their own drafts: another person's typed details and review edits go", async (t) => {
   const { createElement } = await import("react");
   const { AuthGate } = await import("../components/AuthGate");
-  const { browserDrafts, isRecord, readDraft, writeDraft } = await import("./drafts");
+  const { browserDrafts, readDraft, writeDraft } = await import("./drafts");
+  const { isRecord } = await import("./is-record");
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () =>
     new Response(JSON.stringify({ authenticated: true, user: { id: "user-1", email: "anna@example.se" }, session_ends_in: 8 * 3600 }), {
@@ -353,4 +354,21 @@ test("before the end the warning can be closed, with Stäng or Escape; the page 
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
   });
   assert.ok(!dialog(), "Escape closes it");
+});
+
+test("a login that ends in more than 24.8 days sets no timer longer than a platform keeps: it would fire at once", async (t) => {
+  const { createElement } = await import("react");
+  const { SessionEndWarning } = await import("../components/SessionEndWarning");
+  const MOST = 2 ** 31 - 1;
+  const realSetTimeout = globalThis.setTimeout;
+  const delays: number[] = [];
+  // The delay is recorded as asked for and kept within what the platform holds, so that the test itself waits as long.
+  t.mock.method(globalThis, "setTimeout", (callback: () => void, delay?: number) => {
+    delays.push(Number(delay));
+    return realSetTimeout(callback, Math.min(Number(delay ?? 0), MOST));
+  });
+  const month = 30 * 24 * 3_600_000;
+  const { unmount } = await mount(createElement(SessionEndWarning, { endsAt: Date.now() + month }));
+  assert.ok(Math.max(...delays) <= MOST, `the longest delay asked for: ${Math.max(...delays)}`);
+  await unmount();
 });

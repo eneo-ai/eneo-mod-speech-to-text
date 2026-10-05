@@ -1,39 +1,40 @@
-/** What the recording states say: the tab title, the bar's line, the announcements. */
+/**
+ * The recording page's words and small rules: tab titles, notices, announcements, the leave warning, the details
+ * summary, the live text's status line and when its sheet follows new text.
+ */
 
 import type { FormField } from "./api";
-import type { DetailValue, Problem, SessionPhase } from "./flow-session";
+import type { Problem, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
+import { documentTitle } from "./product";
 
-const APP = "Tal till text";
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
   `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
 const MINUTE = 60_000;
 
+const SILENT_AFTER_MS = 15_000;
+// Two steps of 16-bit audio (about −84 dBFS).
+const SILENT_FLOOR = 2 / 32_768;
+
 /**
- * Digital silence for `afterMs`: every read's loudest sample below `floor`, which only a muted or wrong input
- * gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
+ * Digital silence for 15 s: every read's loudest sample below two steps of 16-bit audio, which only a muted or wrong
+ * input gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
  * the count over.
  */
 export class SilenceWatch {
   private quietSince: number | null = null;
 
-  constructor(
-    private readonly afterMs = 15_000,
-    // Two steps of 16-bit audio (about −84 dBFS).
-    private readonly floor = 2 / 32_768,
-  ) {}
-
   update(peak: number, now: number): boolean {
-    if (peak >= this.floor) {
+    if (peak >= SILENT_FLOOR) {
       this.quietSince = null;
       return false;
     }
     this.quietSince ??= now;
-    return now - this.quietSince >= this.afterMs;
+    return now - this.quietSince >= SILENT_AFTER_MS;
   }
 
   reset(): void {
@@ -48,15 +49,15 @@ export class SilenceWatch {
 export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string, sent = false): string {
   switch (phase) {
     case "recording":
-      return `Spelar in ${formatClock(elapsedMs)} · ${APP}`;
+      return documentTitle(`Spelar in ${formatClock(elapsedMs)}`);
     case "paused":
     case "interrupted":
-      return `Pausad · ${APP}`;
+      return documentTitle("Pausad");
     // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `${sent ? "Redan skickad" : "Inte skickad"} · ${APP}`;
+      return documentTitle(sent ? "Redan skickad" : "Inte skickad");
     default:
-      return flowName ? `${flowName} · ${APP}` : APP;
+      return documentTitle(flowName);
   }
 }
 
@@ -181,7 +182,7 @@ export function detailRows(fields: FormField[], values: Record<string, unknown>)
 }
 
 /** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
-export function detailsSummary(fields: FormField[], details: Record<string, DetailValue | unknown>): string {
+export function detailsSummary(fields: FormField[], details: Record<string, unknown>): string {
   const rows = detailRows(fields, details);
   return rows.length > 0 ? rows.map(({ label, text }) => `${label}: ${text}`).join(" · ") : "Inga uppgifter ifyllda";
 }

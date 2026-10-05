@@ -7,7 +7,7 @@ declare const __SPEAKER_REVIEW__: boolean;
 /** Review controls are opt-in; evidence is always preserved. */
 export const SPEAKER_REVIEW_ENABLED = typeof __SPEAKER_REVIEW__ !== "undefined" && __SPEAKER_REVIEW__;
 
-export interface SpeechOverlap {
+interface SpeechOverlap {
   id: string;
   fileIndex: number;
   start: number;
@@ -62,7 +62,7 @@ export function carriesTranscript(step: FlowRunStep | undefined): boolean {
 }
 
 
-export interface ReviewPassage {
+interface ReviewPassage {
   key: string;
   fileIndex: number;
   start: number;

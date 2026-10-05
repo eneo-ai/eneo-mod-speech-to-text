@@ -327,7 +327,6 @@ test("after a break no session heard the whole recording: the stop carries no co
   live.stop();
   assert.equal(sockets[1].sent.at(-1), JSON.stringify({ type: "stop" }));
   sockets[1].event({ type: "transcript.done", text: "Andra delen.", transcript_id: "transcript-2" });
-  assert.equal(live.getSnapshot().complete, true);
   assert.equal(live.getSnapshot().transcriptId, undefined);
 });
 
@@ -707,7 +706,6 @@ test("the relay's final text is the draft's last word: it replaces what the sess
   live.stop();
   sockets[0].event({ type: "transcript.done", text: "Hej världen" });
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Hej världen"]);
-  assert.equal(live.getSnapshot().complete, true);
   assert.equal(live.getSnapshot().status, "ended");
 });
 
@@ -721,7 +719,6 @@ test("a stop waits for the final text as long as the relay allows it, in the bac
   assert.notEqual(live.getSnapshot().status, "ended", "still waiting for the last words");
   sockets[0].event({ type: "transcript.done", text: "Budgeten för nästa år." });
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Budgeten för nästa år."]);
-  assert.equal(live.getSnapshot().complete, true);
 
   const late = setup();
   late.live.start();
@@ -729,7 +726,6 @@ test("a stop waits for the final text as long as the relay allows it, in the bac
   late.live.stop();
   late.elapse(60_000);
   assert.equal(late.live.getSnapshot().status, "ended");
-  assert.equal(late.live.getSnapshot().complete, false, "no final text came: unfinished");
 });
 
 test("a connection that closes after the stop, before its final text, leaves the draft unfinished", () => {
@@ -740,7 +736,6 @@ test("a connection that closes after the stop, before its final text, leaves the
   live.stop();
   sockets[0].drop(1000);
   assert.equal(live.getSnapshot().status, "ended");
-  assert.equal(live.getSnapshot().complete, false);
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Hej"], "what came is kept");
 });
 
@@ -770,7 +765,6 @@ test("an empty final text says the session heard nothing: its words go, the sess
   live.stop();
   sockets[1].event({ type: "transcript.done", text: "" });
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Första delen."]);
-  assert.equal(live.getSnapshot().complete, true);
 });
 
 test("a final message without its text leaves the words as they came and the draft unfinished", () => {
@@ -782,5 +776,4 @@ test("a final message without its text leaves the words as they came and the dra
   sockets[0].event({ type: "transcript.done" });
   assert.equal(live.getSnapshot().status, "ended");
   assert.deepEqual(live.getSnapshot().pieces.map((piece) => piece.text), ["Provisional words."]);
-  assert.equal(live.getSnapshot().complete, false);
 });

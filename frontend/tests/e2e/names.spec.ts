@@ -3,9 +3,10 @@
  * checks: names and descriptions as Chromium's own tree gives them, the
  * groups around them, and the page titles.
  */
-import { expect, test, type Route } from "@playwright/test";
+import { type Route } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axNode } from "./checks";
-import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
+import { addParticipants, backLink, chooseMode, isLaptop, result, run, sending, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
@@ -108,7 +109,8 @@ test("the name list opens with its chevron and closes with it again; a press out
   await expect(field).toBeFocused();
 });
 
-test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 404.*\/input-files\/.*\/audio/ });
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
   await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
@@ -117,7 +119,8 @@ test("audio that cannot be played says so, and Försök igen tries it again", as
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
 });
 
-test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page, sentinel }, info) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
   await STATES.find((s) => s.name === "review")!.go(page, info);
   // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
   await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
@@ -288,7 +291,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
     logins.push(url);
     return route.fulfill({ status: 303, headers: { location: url.searchParams.get("next") ?? "/flows" } });
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible();
   await expect(warning).toContainText(/Inloggningen upphör kl\. \d\d:\d\d/);
@@ -324,7 +327,7 @@ test("an old status answer that arrives after the renewal's moves neither the en
     }
     return route.fulfill({ json: answer });
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible();
 
@@ -369,7 +372,7 @@ test("on a phone the docked primary action is part of the page's main content", 
 });
 
 test("a renewal that signed in someone else says so and keeps the page's login", async ({ page }) => {
-  await open(page, "/inloggad?fel=annan-anvandare");
+  await page.goto("/inloggad?fel=annan-anvandare");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Du loggade in som en annan användare");
   await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
 });
@@ -380,7 +383,7 @@ test("a renewal after the login ended is refused: the window says so, stays, and
     (window as unknown as { said: unknown[] }).said = said;
     new BroadcastChannel("tal-till-text:session").addEventListener("message", (event) => said.push(event.data));
   });
-  await open(page, "/inloggad?fel=utgangen");
+  await page.goto("/inloggad?fel=utgangen");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
   // The window cannot know whether the other tab's recording is on the device, so it promises nothing and says how to keep it.
   await expect(page.getByRole("main")).toContainText(

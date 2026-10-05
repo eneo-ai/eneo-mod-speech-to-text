@@ -1,5 +1,3 @@
-"use client";
-
 import { Check, ChevronDown, Pencil, Plus, UserX } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -18,33 +16,33 @@ type Option =
   | { id: typeof NONE_ID; kind: "none" };
 
 /**
- * Ett fält som både är rullista och fritext: välj bland kända namn eller
- * skriv ett nytt. Fältets text är namnet självt — varje tangenttryckning
- * blir ett namn, så "Lägg till" i listan bekräftar bara det som står.
+ * A field that is both a list and free text: choose among known names or type a new one. The field's text is the
+ * name itself, so every keystroke is a name, and "Lägg till" in the list only confirms what is there.
  *
- * Designsystemets Typeahead väljer ett objekt ur sökträffar; här är texten i fältet själva värdet, så fältet
- * och listan är egna, byggda av designsystemets inmatning, ikonknapp och ytskikt (usePopover, som Typeahead).
+ * The design system's Typeahead picks an item out of search hits; here the text in the field is the value, so the field
+ * and the list are the module's own, built of the design system's input, icon button and surface (usePopover, as Typeahead).
  */
 export function NameCombobox({
   value,
   options,
   onChange,
   disabled = false,
-  placeholder = "Välj eller skriv namn",
-  noneLabel = "Ingen (behåll etiketten)",
+  placeholder,
+  noneLabel,
   writeLabel,
   optionNote,
   label,
   problem,
 }: {
-  /** Valt/skrivet namn, eller null för "ingen". */
+  /** The chosen or typed name, or null for none. */
   value: string | null;
-  /** Kända namn att välja bland. */
+  /** The known names to choose among. */
   options: readonly string[];
   onChange: (name: string | null) => void;
   disabled?: boolean;
-  placeholder?: string;
-  noneLabel?: string;
+  placeholder: string;
+  /** The row that clears the name, e.g. "Inget namn (behåll etiketten)". */
+  noneLabel: string;
   /** Offers a way to type a name of one's own, e.g. "Skriv ett annat namn": it selects the field's text. */
   writeLabel?: string;
   /** A quiet note after a name, e.g. whom it is already given to; never a check. */
@@ -73,8 +71,7 @@ export function NameCombobox({
   // The row the arrow keys or a moving pointer marked; until then the list marks the field's own name, so Enter
   // keeps what is in the field: a name opened by a click, and a name typed or pasted (never the first suggestion).
   const [moved, setMoved] = useState<number | null>(null);
-  // Listan filtreras bara medan användaren skriver; öppnad med klick visar
-  // den alla namn så att ett annat går att välja.
+  // The list is filtered only while the person types; opened by a click it shows every name, so another can be chosen.
   const [typing, setTyping] = useState(false);
 
   const text = value ?? "";
@@ -87,8 +84,8 @@ export function NameCombobox({
       typing && query ? options.filter((n) => n.toLowerCase().includes(query)) : [...options];
     const out: Option[] = [...new Set(names)].map((name) => ({ id: `name:${name}`, kind: "name", name }));
     if (trimmed && !exact) {
-      // Ett skrivet namn som inte finns bland alternativen: erbjud det som
-      // tillägg medan det skrivs, visa det som valt när listan öppnas igen.
+      // A typed name that is not among the options: offered as an addition while it is typed, and shown as chosen when
+      // the list is opened again.
       if (typing) out.push({ id: ADD_ID, kind: "add", name: trimmed });
       else out.unshift({ id: `name:${trimmed}`, kind: "name", name: trimmed });
     }

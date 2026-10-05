@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 import { createElement } from "react";
 
-import { button, cleanup, installDom, mount } from "./test-dom";
+import { cleanup, installDom, mount } from "./test-dom";
 import type { TranscriptSegment } from "./transcript";
 
 installDom();
@@ -71,7 +71,7 @@ test("a date field whose calendar cannot be loaded stays a text field with the s
   assert.deepEqual(changes, []);
 });
 
-test("before the calendar has arrived a date field is a text field with its label and value, the first render's as well as the server's", async () => {
+test("before the calendar has arrived a date field is a text field with its label and value", async () => {
   const { renderToStaticMarkup } = await import("react-dom/server");
   const { DetailsForm } = fresh<typeof import("../components/flow/DetailsForm")>("../components/flow/DetailsForm");
   const html = renderToStaticMarkup(

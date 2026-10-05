@@ -15,9 +15,7 @@
 }
 
 /* The PDF viewer fills the dialog, which is as tall as the window allows less its header, and no taller than 56rem: past
-   that the dialog is taller than a page is read, and on a very tall screen (2560 x 1440) its header lands on the page's
-   own header controls, where the gate's target-size check (axe) takes a control behind the dialog for one partly covered
-   by the dialog's actions. */
+   that the dialog is taller than a page is read, and on a very tall screen its header lands on the page's own header controls. */
 .viewer {
   display: block;
   inline-size: 100%;

@@ -2,6 +2,7 @@ import type { ComponentType } from "react";
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { Root, RootHydrateFallback, RouteError } from "@/routes/Root";
 import type { RouteHandle } from "@/routes/RouteEffects";
+import { documentTitle } from "@/lib/product";
 
 /**
  * One page. Its code is fetched when the route is first entered, so a person on the sign-in page does not download the
@@ -17,12 +18,12 @@ function page(where: { path: string } | { index: true }, title: string, load: ()
 const fixtures: RouteObject[] = [
   ...(import.meta.env.DEV || import.meta.env.MODE === "check"
     ? [
-        page({ path: "dev/foundation" }, "Tal till text", async () => (await import("./routes/dev/FoundationCheck")).FoundationCheck),
-        page({ path: "dev/speaker-review" }, "Tal till text", async () => (await import("./routes/dev/ReviewFixtures")).ReviewFixtures),
+        page({ path: "dev/foundation" }, documentTitle(), async () => (await import("./routes/dev/FoundationCheck")).FoundationCheck),
+        page({ path: "dev/speaker-review" }, documentTitle(), async () => (await import("./routes/dev/ReviewFixtures")).ReviewFixtures),
       ]
     : []),
   ...(import.meta.env.DEV
-    ? [page({ path: "dev/dialog-leak" }, "Tal till text", async () => (await import("./routes/dev/DialogLeakFixture")).DialogLeakFixture)]
+    ? [page({ path: "dev/dialog-leak" }, documentTitle(), async () => (await import("./routes/dev/DialogLeakFixture")).DialogLeakFixture)]
     : []),
 ];
 
@@ -35,11 +36,11 @@ export const router = createBrowserRouter([
         // A page that cannot be shown (its code is gone, or it threw) is replaced by this, inside the frame.
         ErrorBoundary: RouteError,
         children: [
-          page({ index: true }, "Logga in · Tal till text", async () => (await import("./routes/LoginPage")).default),
-          page({ path: "flows" }, "Välj ett flöde · Tal till text", async () => (await import("./routes/FlowsPage")).default),
+          page({ index: true }, documentTitle("Logga in"), async () => (await import("./routes/LoginPage")).default),
+          page({ path: "flows" }, documentTitle("Välj ett flöde"), async () => (await import("./routes/FlowsPage")).default),
           // The page sets its own titles as it loads; this is what stands until then.
-          page({ path: "flows/:id" }, "Tal till text", async () => (await import("./routes/FlowPage")).default),
-          page({ path: "inloggad" }, "Inloggad igen · Tal till text", async () => (await import("./routes/SignedInAgain")).default),
+          page({ path: "flows/:id" }, documentTitle(), async () => (await import("./routes/FlowPage")).default),
+          page({ path: "inloggad" }, documentTitle("Inloggad igen"), async () => (await import("./routes/SignedInAgain")).default),
           ...fixtures,
           { path: "*", element: <Navigate to="/" replace /> },
         ],

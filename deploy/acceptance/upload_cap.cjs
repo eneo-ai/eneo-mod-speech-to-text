@@ -1,4 +1,4 @@
-// A file above what the module takes, chosen in a real page of the image: the page refuses it, and no request carries it (B4.2 check 16).
+// A file above what the module takes, chosen in a real page of the image: the page refuses it, and no request carries it (check 16).
 //
 // usage: PW_DIR=<frontend dir with node_modules> node upload_cap.cjs <base url> <flow id> <file>
 //   <base url>  the module as a browser reaches it (its Eneo must be reachable from here: the sign-in handshake goes there)

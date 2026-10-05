@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -17,27 +15,21 @@ import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
 import type { Playback } from "@/lib/playback";
+import { useAuthenticatedUser } from "@/components/AuthGate";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { downloadBlob } from "@/lib/download";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
 import { CopyButton } from "./CopyButton";
 import styles from "./RunTranscript.module.css";
 
-function downloadText(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-
 /** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
 export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
-  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
+  const user = useAuthenticatedUser();
+  const [transcript, reload] = useTranscriptContext({ flowId, runId, enabled, steps });
   const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
-  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
   return { transcript, confirmedWords, editing, reload };
 }
 
@@ -138,7 +130,7 @@ export function RunTranscriptView({
             isDisabled={unread}
             icon={<Icon icon={Download} />}
             label="Ladda ner som text, transkriptet"
-            onClick={() => downloadText(plain, fileName)}
+            onClick={() => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName)}
           >
             Ladda ner som text
           </Button>

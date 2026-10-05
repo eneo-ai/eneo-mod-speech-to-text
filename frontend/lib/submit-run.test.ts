@@ -335,6 +335,20 @@ class FakeXhr {
   }
 }
 
+test("a refused upload names the code the module's proxy gave it, as any other request does", async () => {
+  const browserXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  FakeXhr.made = [];
+  try {
+    const sending = uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["audio"]), "inspelning.webm");
+    await until(() => FakeXhr.made.length === 1);
+    FakeXhr.made[0].answer(502, { error: "upstream_unreachable", detail: "Eneo could not be reached." });
+    await assert.rejects(sending, { status: 502, code: "upstream_unreachable" });
+  } finally {
+    globalThis.XMLHttpRequest = browserXhr;
+  }
+});
+
 test("an upload the server never answers times out, and the timeout is retried", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
   const browserXhr = globalThis.XMLHttpRequest;

@@ -1,5 +1,3 @@
-"use client";
-
 import { createContext, useContext, type ReactNode } from "react";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -7,6 +5,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { TopNavHeading } from "@astryxdesign/core/TopNav";
 import { RouterLink } from "@/kit/RouterLink";
 import type { Branding, Organization } from "@/lib/read-branding";
+import { PRODUCT_NAME } from "@/lib/product";
 
 // Without a provider there is no organisation to name: the page's branding marker (readBranding) is the one owner of who is shown.
 const BrandingContext = createContext<Branding>({ organization: null });
@@ -20,7 +19,7 @@ export function BrandingProvider({ value, children }: { value: Branding; childre
 }
 
 interface BrandProps {
-  /** Linka lockupen till denna sökväg. Utelämna för en statisk lockup (t.ex. inloggning). */
+  /** Links the lockup to this path. Left out, the lockup is static (the sign-in page). */
   href?: string;
 }
 
@@ -50,7 +49,7 @@ function OrganizationMark({ organization }: { organization: Organization }) {
   );
 }
 
-// Header-lockup: organisationens märke, avdelare och produktnamn; utan organisation bara produktnamnet.
+// The header lockup: the organisation's mark, a divider and the product name; without an organisation the product name alone.
 export function Brand({ href }: BrandProps) {
   const { organization } = useContext(BrandingContext);
   const mark = organization && (
@@ -66,10 +65,10 @@ export function Brand({ href }: BrandProps) {
     <TopNavHeading
       as={RouterLink}
       logo={mark}
-      heading="Tal till text"
+      heading={PRODUCT_NAME}
       headingHref={href}
       // A link says where it goes and for whom; a lockup that goes nowhere is just words.
-      aria-label={href ? (organization ? `Tal till text – ${organization.name}` : "Tal till text") : undefined}
+      aria-label={href ? (organization ? `${PRODUCT_NAME} – ${organization.name}` : PRODUCT_NAME) : undefined}
     />
   );
 }

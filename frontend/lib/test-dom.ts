@@ -8,7 +8,6 @@ import { JSDOM } from "jsdom";
 
 const GLOBALS = [
   "window",
-  "self",
   "document",
   "navigator",
   "localStorage",
@@ -56,8 +55,6 @@ export function installDom(): JSDOM {
   const matchMedia = (query: string) => ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false });
   Object.defineProperty(dom.window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
   Object.defineProperty(globalThis, "matchMedia", { value: matchMedia, configurable: true, writable: true });
-  // Next's Link prefetches in an idle callback that it reaches through `self`.
-  Object.defineProperty(globalThis, "self", { value: dom.window, configurable: true, writable: true });
   class ResizeObserver { observe() {} unobserve() {} disconnect() {} }
   Object.defineProperty(dom.window, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
   Object.defineProperty(globalThis, "ResizeObserver", { value: ResizeObserver, configurable: true, writable: true });
@@ -134,4 +131,11 @@ export function parse(html: string): Document {
 /** A button by its visible words or its accessible name, anywhere under `within`. */
 export function button(within: ParentNode, name: string): HTMLButtonElement | null {
   return [...within.querySelectorAll("button")].find((b) => b.textContent?.trim() === name || b.getAttribute("aria-label") === name) ?? null;
+}
+
+/** `element` as a page behind AuthGate has it: with the signed-in person. */
+export async function asPerson(element: import("react").ReactElement, user = { id: "user-1", email: "anna@example.se", username: "Anna Berg" }) {
+  const { createElement } = await import("react");
+  const { AuthenticatedUserContext } = await import("../components/AuthGate");
+  return createElement(AuthenticatedUserContext.Provider, { value: user }, element);
 }

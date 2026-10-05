@@ -1,12 +1,12 @@
-/* A flow's page: the width of every view of it, and from a laptop's width the flow in a column beside the working
-   card. Breakpoints are Tailwind's `md` and `lg` (768 and 1024 px), which the rest of the app still uses. */
+/* A flow's page: the width of every view of it, and from a laptop's width (1024 px) the flow in a column beside the
+   working card. From 768 px the page has a gutter of its own. */
 
 .page {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: 1180px;
+  max-width: var(--module-page-width);
   min-height: 100%;
   margin-inline: auto;
   padding-block-end: var(--spacing-8);
@@ -52,7 +52,7 @@
   height: 100%;
   /* The page's column, as the other views have it: they stand in the shell's own gutter (16 px) inside it, a recording
      owns its edges, so its box is that wider and the content starts where theirs does. */
-  max-width: calc(1180px + var(--spacing-8));
+  max-width: calc(var(--module-page-width) + var(--spacing-8));
   padding-inline: var(--spacing-4);
   padding-block: var(--spacing-3) 0;
 }
@@ -126,10 +126,10 @@
   box-sizing: border-box;
   min-height: var(--spacing-12);
   padding-inline: var(--spacing-4);
-  border: 1px solid var(--color-border);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
   font-size: var(--font-size-base);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
 }
 
 .fold > :global(.astryx-collapsible-content) {

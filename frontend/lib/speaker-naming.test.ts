@@ -112,7 +112,7 @@ async function nameField(value: string | null, options: string[]) {
   const { NameCombobox } = await import("../components/NameCombobox");
   function Field() {
     const [name, setName] = useState<string | null>(value);
-    return createElement(NameCombobox, { value: name, options, onChange: setName, label: "Vem är Talare 2?" });
+    return createElement(NameCombobox, { value: name, options, onChange: setName, label: "Vem är Talare 2?", placeholder: "Välj eller skriv ett namn", noneLabel: "Ingen (behåll etiketten)" });
   }
   const view = await mount(createElement(Field));
   const input = view.container.querySelector("input")!;
@@ -284,6 +284,7 @@ test("speaker names with spaces and punctuation produce valid unique option IDs,
   const view = await mount(
     createElement(NameCombobox, {
       value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => undefined, label: "Namn för Talare 1",
+      placeholder: "Välj eller skriv ett namn", noneLabel: "Ingen (behåll etiketten)",
     }),
   );
   const input = view.container.querySelector("input")!;

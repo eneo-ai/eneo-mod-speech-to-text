@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, CheckCheck, ChevronDown, Play, Undo2, X } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
@@ -10,7 +8,8 @@ import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { wordKey } from "@/lib/confirmed-words";
 import { formatClock } from "@/lib/format";
-import { playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
+import { modelSpeakerOf, playbackWordHighlights, needsSpeakerReview, speakerColorIndex, UNDECIDED_SPEAKER, type TranscriptSegment } from "@/lib/transcript";
+import { scrollBehavior } from "@/lib/motion";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
 import { confirmSpeakerSuggestions, pendingSpeakerSuggestions, displayedSourceOffset, replaceTranscriptText, anchorTextSelection, selectionSpeakerSuggestion, wholePassageSelection, assignTextSelection, displayedSelectionBounds, selectedTranscriptText, transcriptParagraphs, type DisplaySelectionSpan, type TextSelectionSpan } from "@/lib/transcript-selection";
@@ -65,7 +64,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     if (focus) requestAnimationFrame(() => {
       const first = next[0];
       const index = shown.findIndex((s, i) => first && displayedSelectionBounds(first, s, i, corrections));
-      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     });
   }
   function captureSelection() {
@@ -252,7 +251,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     const words = (segment.words ?? []).filter((w) => w.charStart >= 0);
     const cuts = [...new Set([0, segment.text.length, ...bounds.flatMap((b) => [b.start, b.end]), ...words.flatMap((w) => [w.charStart, w.charEnd])])].filter((n) => n >= 0 && n <= segment.text.length).sort((a, b) => a - b);
     const uncertain = needsSpeakerReview(segment) && !segment.decision;
-    const label = !labelled ? "" : segment.decision === "unresolved" ? "Talare går inte att avgöra" : uncertain ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)} · Inte granskat` : displayName(segment.speaker);
+    const label = !labelled ? "" : segment.decision === "unresolved" ? UNDECIDED_SPEAKER : uncertain ? `Förslag: ${displayName(modelSpeakerOf(segment))} · Inte granskat` : displayName(segment.speaker);
     const said = label ? ` ${label}` : "";
     return <span key={index} data-text-span={index} data-segment-index={index}
       role="button" tabIndex={0} aria-disabled={!uncertain && !audioAvailable ? true : undefined}
@@ -297,7 +296,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     </span>;
   }
   const speakerName = (segment: TranscriptSegment) =>
-    segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)}` : displayName(segment.speaker);
+    segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(modelSpeakerOf(segment))}` : displayName(segment.speaker);
   return <div ref={editorRoot} className={styles.editor}>
     <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Transkriptverktyg">
       <div className={styles.row}>
@@ -356,7 +355,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       <h2>Om markeringen</h2>
       {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className={styles.inline} disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
       {new Set(selectedSources.map((s) => s.fileIndex)).size > 1 && <p>Markeringen omfattar flera ljudfiler. Lyssna spelar den första delen.</p>}
-      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(s.modelSpeaker === undefined ? s.speaker : s.modelSpeaker)))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
+      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(modelSpeakerOf(s))))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
       {selectedSpans.some(needsSpeakerReview) && <p>Överlappande tal har markerats här. {selectedSpans.some((s) => !s.decision) ? "Talaren behöver granskas." : "Talarbeslutet ändrar inte den ursprungliga överlappsmarkeringen."}</p>}
       {selectedSpans.some((s) => s.decision === "unresolved") && <p>Granskad: talare går inte att avgöra.</p>}
       {reviews.some((r) => r.overlapDetection === "unavailable") && <p>Överlappningsanalys saknas för del {reviews.filter((r) => r.overlapDetection === "unavailable").map((r) => r.fileIndex + 1).join(", ")}.</p>}
@@ -390,7 +389,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const textIndices = indices.filter((i) => shown[i].text.trim());
         if (!textIndices.length) return null;
         const first = shown[textIndices[0]];
-        const suggested = first.modelSpeaker === undefined ? first.speaker : first.modelSpeaker;
+        const suggested = modelSpeakerOf(first);
         const same = textIndices.every((i) => shown[i].speaker === first.speaker && shown[i].decision !== "unresolved");
         const certain = same && textIndices.every((i) => !needsSpeakerReview(shown[i]) || shown[i].decision === "confirmed");
         const name = certain ? displayName(first.speaker) : same && suggested ? `Förslag: ${displayName(suggested)}` : [...new Set(textIndices.map((i) => shown[i].decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(shown[i]) && !shown[i].decision ? `Förslag: ${displayName(shown[i].speaker)}` : displayName(shown[i].speaker)))].join(", ");

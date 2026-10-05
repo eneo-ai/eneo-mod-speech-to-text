@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useRef, useState } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -10,11 +8,13 @@ import styles from "@/components/SessionEndWarning.module.css";
 import type { AuthenticatedUser } from "@/lib/api";
 import { userDisplayName } from "@/lib/user-identity";
 
-/** Where the login window says it has signed in again; every tab of the module listens. */
+/** Where the login window says it has signed in again (routes/SignedInAgain); every tab of the module listens (AuthGate). */
 export const SESSION_CHANNEL = "tal-till-text:session";
 
 // Long enough to finish what one is doing (WCAG 2.2.1 asks for at least 20 seconds).
 const WARN_BEFORE_MS = 5 * 60_000;
+// The longest delay a timer holds: a longer one (a login set to last more than 24.8 days) fires at once.
+const LONGEST_TIMER_MS = 2 ** 31 - 1;
 
 /**
  * The login ends at a fixed time, which only a new login can move. Five
@@ -55,10 +55,20 @@ export function SessionEndWarning({
     setOpen(false);
     setProblem(null);
     if (endsAt === null) return;
-    const timer = setTimeout(() => {
-      returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      setOpen(true);
-    }, Math.max(0, endsAt - WARN_BEFORE_MS - Date.now()));
+    let timer: ReturnType<typeof setTimeout>;
+    const arm = () => {
+      const wait = Math.max(0, endsAt - WARN_BEFORE_MS - Date.now());
+      timer = setTimeout(
+        wait > LONGEST_TIMER_MS
+          ? arm
+          : () => {
+              returnFocus.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+              setOpen(true);
+            },
+        Math.min(wait, LONGEST_TIMER_MS),
+      );
+    };
+    arm();
     return () => clearTimeout(timer);
   }, [endsAt]);
 
@@ -123,14 +133,14 @@ export function SessionEndWarning({
     wasShown.current = shown;
   }, [shown, onFocusBack]);
 
-  // In the tree only while it is shown: a modal dialog of the page that is open when it appears has hidden what was
-  // in the document by then from assistive technology (aria-hidden), and a dialog that was already there with it.
-  // Signed out, nothing but the new login closes it, and nothing of the page shows through (the stylesheet).
+  // Mounted only while shown: a page dialog that is open hides everything already in the document from assistive
+  // technology (aria-hidden), a closed warning included, so the warning is added when it is needed. Signed out, nothing
+  // but the new login closes it, and nothing of the page shows through (the stylesheet).
   if (!shown) return null;
   return (
     <Dialog
       ref={dialogRef}
-      isOpen={shown}
+      isOpen
       onOpenChange={setOpen}
       role="alertdialog"
       // Like the alert dialog it replaces, the warning does not close on a click beside it: it is the only notice.

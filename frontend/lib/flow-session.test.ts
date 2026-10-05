@@ -121,7 +121,7 @@ function fakeLiveClient() {
   const earlier: unknown[] = [];
   const streams: unknown[] = [];
   const listeners = new Set<() => void>();
-  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
   const client: LiveClient = {
     open(stepId, recordingId, pieces) {
       opened.push(stepId);
@@ -270,7 +270,7 @@ test("a recording keeps each file within the time the contract gives Eneo's audi
   };
   const timed = await recordFor(90 * 60);
   assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);
-  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide, as before");
+  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide");
 });
 
 test("the last chosen mode is remembered per flow and used when it is still offered", async () => {
@@ -403,6 +403,34 @@ test("a count goes with the run as maxSpeakers; empty or not asked sends none, a
   session.setSpeakerLabels(false);
   assert.equal(await session.createDocument(), true);
   assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
+});
+
+test("two presses of Skapa dokument at once send the recording once", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const answers = await Promise.all([session.createDocument(), session.createDocument()]);
+  assert.equal(sent.length, 1, "one run is asked for");
+  assert.deepEqual(answers.slice().sort(), [false, true]);
+});
+
+test("a file whose length cannot be read is not left checking: its length is Eneo's to judge", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setProbeDuration(() => Promise.reject(new Error("the browser could not read it")));
+  session.setContract(audioContract());
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  await until(() => !session.getSnapshot().fileChecking, "the check over");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
 });
 
 const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
@@ -584,13 +612,13 @@ test("each mode has its own primary action", () => {
   assert.equal(primaryActionLabel("ladda-upp", true, true), "Skapa text");
 });
 
-test("the action says text exactly when Eneo gives the result back as text in the run, else a document as before", () => {
+test("the action says text exactly when Eneo gives the result back as text in the run, else a document", () => {
   const label = (finalOutput: RunContract["final_output"]) => createActionLabel(makesText(finalOutput));
   assert.equal(label({ output_type: "text", delivery: "payload" }), "Skapa text");
   assert.equal(label({ output_type: "json", delivery: "payload" }), "Skapa text", "data the result view shows as text");
   for (const type of ["pdf", "docx"]) assert.equal(label({ output_type: type, delivery: "artifact" }), "Skapa dokument", type);
-  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver: as before");
-  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how: as before");
+  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver");
+  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how");
   assert.equal(label(null), "Skapa dokument", "a flow without steps");
   assert.equal(label(undefined), "Skapa dokument");
 });
@@ -1646,7 +1674,7 @@ test("Strömma names the new recording to live text, and a clean session's store
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
 
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
@@ -1744,7 +1772,7 @@ test("a final text that comes while the stopped recording is still being stored 
   live.report({ finishing: true });
   const stopping = session.stop();
   await until(() => stored !== undefined, "the stop being stored");
-  live.report({ status: "ended", finishing: false, complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", finishing: false, transcriptId: "transcript-1" });
   await settle();
   stored!();
   await stopping;
@@ -1778,7 +1806,7 @@ test("a transcript never stays with a recording of two parts, and live text for 
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
 

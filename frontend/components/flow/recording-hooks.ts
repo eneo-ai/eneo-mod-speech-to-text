@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { useInputLevel } from "@/components/flow/LevelMeter";
 import type { RecordingCapture } from "@/lib/recording-session";

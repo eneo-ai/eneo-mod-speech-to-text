@@ -15,7 +15,7 @@
 import { ApiError, type Json } from "./api";
 import { friendlyError } from "./errors";
 
-export type SpeakerConfidence = "low" | "medium" | "high";
+type SpeakerConfidence = "low" | "medium" | "high";
 
 export interface SpeakerMappingRow {
   label: string;
@@ -29,7 +29,7 @@ export interface SpeakerMappingRow {
 }
 
 // Type-alias (inte interface) så värdet är tilldelningsbart till Json/ReviewEditedValue.
-export type SpeakerMappingEditedValue = {
+type SpeakerMappingEditedValue = {
   speakers: {
     label: string;
     name: string | null;
@@ -207,44 +207,6 @@ export function speakerNamesFromRows(
   return names;
 }
 
-/** Namn att erbjuda i väljaren: deltagarlistan plus namn som redan skrivits in. */
-export function knownSpeakerNames(
-  participants: readonly string[],
-  rows: readonly SpeakerMappingRow[],
-): string[] {
-  const names = [...participants];
-  for (const row of rows) {
-    const name = row.name?.trim();
-    if (name && !names.includes(name)) names.push(name);
-  }
-  return names;
-}
-
-// Speglar Eneos SPEAKER_LINE_RE: "[hh:mm:ss - hh:mm:ss] SPEAKER_NN: text".
-const SPEAKER_LINE_RE =
-  /^(\[\d{2}:\d{2}:\d{2} - \d{2}:\d{2}:\d{2}\] )(SPEAKER_\d{2,}): (.*)$/;
-
-/**
- * Lokal förhandsvisning av transkriptet med namn insatta. Eneo gör samma
- * omskrivning server-side när mappningen sparas; etiketter utan namn
- * behålls som `SPEAKER_NN`.
- */
-export function applySpeakerNames(
-  transcript: string,
-  names: Record<string, string>,
-): string {
-  return transcript
-    .split("\n")
-    .map((line) => {
-      const m = SPEAKER_LINE_RE.exec(line);
-      if (!m) return line;
-      const [, prefix, label, text] = m;
-      const name = names[label];
-      return name ? `${prefix}${name}: ${text}` : line;
-    })
-    .join("\n");
-}
-
 /** Vilka etiketter som saknar namn och därför lämnas kvar i transkriptet. */
 export function unmappedSpeakerLabels(
   rows: readonly SpeakerMappingRow[],
@@ -253,14 +215,14 @@ export function unmappedSpeakerLabels(
 }
 
 /**
- * A refused save of the names in words. An Eneo from before split speakers
- * could be named refuses the whole mapping for such a name; say which.
+ * A refused save of the names in words. When Eneo refuses the mapping and a speaker split off in the review is among
+ * the named, that name may be the cause: say which.
  */
 export function namingRefusal(err: unknown, rows: readonly SpeakerMappingRow[]): string {
   const split = rows.filter((row) => row.split && row.name?.trim());
   if (err instanceof ApiError && err.code === "typed_io_validation_failed" && split.length > 0) {
     const which = split.map((row) => row.label.replace(/^SPEAKER_(\d+)$/, (_, n) => `Talare ${Number(n) + 1}`)).join(", ");
-    return `Eneo tar ännu inte emot namn på en talare som delats upp i granskningen (${which}). Ta bort det namnet och spara igen.`;
+    return `Eneo tog inte emot namnet på en talare som delats upp i granskningen (${which}). Ta bort det namnet och spara igen.`;
   }
   return friendlyError(err);
 }

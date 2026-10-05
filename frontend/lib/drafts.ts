@@ -37,11 +37,6 @@ export const unstoredDrafts = {
   },
 };
 
-/** An object that is neither a list nor null: the first thing a reader of a draft of named parts checks. */
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * A draft in the shape its reader needs, or null. The storage holds what an earlier page wrote, which may be of an older
  * shape or not a draft at all: `isDraft` is the reader's own check of what it is about to use. A draft that fails it, or
@@ -93,17 +88,25 @@ export function clearDraft(storage: DraftStorage | null | undefined, ownerId: st
   }
 }
 
-/** Someone signed in here: every other person's drafts go. */
-export function keepOnlyDraftsOf(storage: DraftStorage | null | undefined, ownerId: string): void {
+/**
+ * Removes every entry of `storage` named `prefix` + owner + ":" + anything that is not `ownerId`'s: what a person left
+ * here under a key of that shape is not for the next one.
+ */
+export function removeOtherOwners(storage: Pick<Storage, "key" | "length" | "removeItem"> | null | undefined, prefix: string, ownerId: string): void {
   try {
     if (!storage) return;
     for (let index = storage.length - 1; index >= 0; index -= 1) {
       const name = storage.key(index);
-      if (name?.startsWith(PREFIX) && !name.startsWith(key(ownerId, ""))) storage.removeItem(name);
+      if (name?.startsWith(prefix) && !name.startsWith(`${prefix}${ownerId}:`)) storage.removeItem(name);
     }
   } catch {
-    // A refused storage holds no drafts.
+    // A refused storage holds nothing.
   }
+}
+
+/** Someone signed in here: every other person's drafts go. */
+export function keepOnlyDraftsOf(storage: DraftStorage | null | undefined, ownerId: string): void {
+  removeOtherOwners(storage, PREFIX, ownerId);
 }
 
 /** This tab's sessionStorage, or null where the page may not use it. */

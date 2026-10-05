@@ -1,11 +1,13 @@
 /**
- * The one owner of the branding's shape and of how the page learns it: the backend writes the answer of
+ * The page's reader of the branding's shape, and how it learns it: the backend writes the answer of
  * `GET /api/branding` into `<meta name="eneo-branding">` when it starts (and the dev server does the same for each
  * page, lib/branding-marker.ts), so the organisation's mark is in the first frame and there is nothing to fetch.
  */
 
+import { isRecord } from "./is-record";
+
 /** A logo's proportions (a width and a height in whole numbers): the <img> keeps its room before the file arrives. */
-export interface LogoSize {
+interface LogoSize {
   width: number;
   height: number;
 }
@@ -26,7 +28,6 @@ export interface Branding {
   organization: Organization | null;
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 const isSize = (value: unknown): value is LogoSize =>
   isRecord(value) && Number.isInteger(value.width) && (value.width as number) > 0 && Number.isInteger(value.height) && (value.height as number) > 0;
 
