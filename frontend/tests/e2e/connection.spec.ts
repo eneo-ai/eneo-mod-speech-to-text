@@ -26,6 +26,10 @@ test("a module that does not answer is not called a lost connection, and a lost 
   await expect(page.getByText(/Ingen anslutning/)).toHaveCount(0);
 
   // Then the device loses its network.
+  sentinel.expect(
+    { console: /net::ERR_INTERNET_DISCONNECTED.*\/api\/eneo\/flows\/[^/]+\/graph\/\?run_id=[\da-f-]+\]$/, optional: true },
+    { requestFailed: /GET .*\/api\/eneo\/flows\/[^/]+\/graph\/\?run_id=[\da-f-]+: net::ERR_INTERNET_DISCONNECTED$/, optional: true },
+  );
   await context.setOffline(true);
   await expect(notice.getByText("Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.", { exact: true })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: /^Ingen anslutning/ })).toHaveCount(1);
