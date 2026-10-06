@@ -8,7 +8,7 @@ import math
 import re
 import time
 import unicodedata
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from email.message import Message
 from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
@@ -29,7 +29,9 @@ from fastapi import (
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.datastructures import UploadFile
+from python_multipart.multipart import parse_options_header
+from starlette.datastructures import FormData, UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
 from starlette.routing import compile_path
 from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
@@ -340,6 +342,39 @@ def _has_control_character(value: str | None) -> bool:
 # The dedicated upload route bypasses the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
+class _UploadParser(MultiPartParser):
+    def __init__(self, request: Request) -> None:
+        self._complete = False
+        super().__init__(request.headers, self._complete_stream(request.stream()), max_files=1, max_fields=0)
+
+    def on_end(self) -> None:
+        self._complete = True
+        super().on_end()
+
+    async def _complete_stream(self, stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
+        async for chunk in stream:
+            yield chunk
+        # python-multipart's finalize() does not validate EOF. Raising while Starlette is still parsing makes its
+        # error cleanup close every allocated file, including a part that never reached FormData.
+        if not self._complete:
+            raise MultiPartException("Incomplete multipart body")
+
+
+@contextlib.asynccontextmanager
+async def _upload_form(request: Request) -> AsyncIterator[FormData]:
+    if parse_options_header(request.headers.get("Content-Type"))[0] != b"multipart/form-data":
+        raise HTTPException(status_code=400, detail="Expected multipart/form-data")
+    try:
+        form = await _UploadParser(request).parse()
+    except MultiPartException as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    try:
+        yield form
+    finally:
+        with anyio.CancelScope(shield=True):
+            await form.close()
+
+
 async def _forward_upload(request: Request, path: str) -> Response:
     """Re-post the one file of the request's multipart body to Eneo's ``/api/v1/{path}``.
 
@@ -363,9 +398,9 @@ async def _forward_upload(request: Request, path: str) -> Response:
     # Only now, after the route's dependencies and these checks, is the body allowed to be as big as an upload; the
     # limit counts the bytes that arrive, so a Content-Length that lies gets no further than max_upload_bytes.
     allow_upload(request, settings.max_upload_bytes)
-    # max_fields=0: no text field beside the file. The files are closed when the block ends, and by Starlette
-    # if the parse fails.
-    async with request.form(max_files=1, max_fields=0) as form:
+    # No text field beside the file. Parsing also requires the final boundary; every temporary file is closed
+    # before an incomplete body is refused or forwarding finishes.
+    async with _upload_form(request) as form:
         parts = form.multi_items()
         if len(parts) != 1 or parts[0][0] != "upload_file" or not isinstance(parts[0][1], UploadFile):
             raise HTTPException(status_code=400, detail="Exactly one file, named upload_file, is required")

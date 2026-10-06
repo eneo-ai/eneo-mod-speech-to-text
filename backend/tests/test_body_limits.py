@@ -8,7 +8,6 @@ import os
 import tempfile
 import time
 import unittest
-import warnings
 
 import httpx
 
@@ -468,18 +467,19 @@ class UploadTests(Case):
         self.assertEqual(os.listdir(self.temporary), [])
 
     async def test_a_file_part_that_never_ends_is_a_400_and_leaves_nothing_behind(self) -> None:
-        files_before = self.open_files()
+        cases = {
+            "unfinished file part": b"",
+            "finished file part without the final boundary": f"\r\n--{BOUNDARY}\r\n".encode(),
+        }
+        for label, tail in cases.items():
+            with self.subTest(label):
+                files_before = self.open_files()
+                response = await self.upload(Lazy(4, multipart_head(), tail))
 
-        with warnings.catch_warnings():
-            # Starlette leaves the file of a part that never ends to be closed when its parser is collected, which
-            # CPython does at once; what the app is held to is that nothing is left open or on disk.
-            warnings.simplefilter("ignore", ResourceWarning)
-            response = await self.upload(Lazy(4, multipart_head(), b""))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(self.eneo.calls, [])
-        self.assertEqual(os.listdir(self.temporary), [])
-        self.assertEqual(self.open_files(), files_before)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.eneo.calls, [])
+                self.assertEqual(os.listdir(self.temporary), [])
+                self.assertEqual(self.open_files(), files_before)
 
     async def test_a_control_character_in_the_file_name_or_content_type_is_a_400_and_is_never_forwarded(self) -> None:
         # What a browser cannot send but an attacker can, and what Starlette hands on: a line break in the quoted
