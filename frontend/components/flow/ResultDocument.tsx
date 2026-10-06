@@ -11,7 +11,7 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
-import { CopyStatus, useCopy } from "./CopyButton";
+import { useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
 import { ProblemAlert } from "./ProblemAlert";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
@@ -292,7 +292,6 @@ export function ResultDocument({
             <FilePreview text={preview} />
           </>
         )}
-        <CopyStatus state={copyState} />
       </Card>
     </>
   );

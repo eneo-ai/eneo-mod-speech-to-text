@@ -21,7 +21,7 @@ async function copyButton(props: { text?: string; name?: string } = {}) {
   const { CopyButton } = await import("../components/flow/CopyButton");
   const view = await mount(createElement(CopyButton, { text: props.text ?? "Texten", label: "Kopiera", name: props.name }));
   const button = () => view.container.querySelector("button")!;
-  const status = () => view.container.querySelector(':scope > [role="status"]')!.textContent;
+  const status = () => document.querySelector('[data-astryx-live-region="polite"]')?.textContent ?? "";
   return { ...view, button, status };
 }
 
@@ -33,6 +33,7 @@ test("the button is named by more than its words where it says so, and says Kopi
   assert.equal(button().getAttribute("aria-label"), "Kopiera transkriberingen", "its name starts with the words it shows");
 
   await act(async () => button().click());
+  await new Promise(requestAnimationFrame);
   assert.deepEqual(written, ["Texten"]);
   assert.equal(button().textContent, "Kopierat");
   assert.equal(button().getAttribute("aria-label"), null, "the words are the name while it confirms");
@@ -44,6 +45,7 @@ test("a clipboard that refuses, or is not there, says so in words and returns to
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { button, status, act } = await copyButton();
   await act(async () => button().click());
+  await new Promise(requestAnimationFrame);
   assert.equal(button().textContent, "Kunde inte kopiera");
   assert.equal(status(), "Det gick inte att kopiera. Markera texten och kopiera den själv.");
 
@@ -52,13 +54,20 @@ test("a clipboard that refuses, or is not there, says so in words and returns to
   assert.equal(status(), "");
 });
 
-test("two quick presses leave one confirmation, not a stuck state", async (t) => {
+test("two quick copies announce each completed outcome in one persistent region", async (t) => {
   useClipboard(t, { writeText: async () => undefined });
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const { button, status, act, container } = await copyButton();
   await act(async () => button().click());
+  await new Promise(requestAnimationFrame);
+  const region = document.querySelector('[data-astryx-live-region="polite"]');
+  assert.ok(region, "an announcement region remains outside the changing button");
+  assert.equal(status(), "Kopierat");
   await act(async () => button().click());
-  assert.equal(container.querySelectorAll('[role="status"]').length, 2, "the button's own live region and the confirmation");
+  assert.equal(status(), "", "the previous outcome is cleared even when the copy state is already copied");
+  await new Promise(requestAnimationFrame);
+  assert.equal(document.querySelector('[data-astryx-live-region="polite"]'), region);
+  assert.equal(container.querySelectorAll('[role="status"]').length, 1, "only the design system button's empty busy region remains");
   assert.equal(status(), "Kopierat");
 
   await act(async () => t.mock.timers.tick(2_500));
