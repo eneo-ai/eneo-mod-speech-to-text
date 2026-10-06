@@ -6,7 +6,7 @@
 #   docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t eneo-mod-speech-to-text:review .
 
 # ---- the UI, built to static files (frontend/dist). engine-strict: the base image must meet the Node floor package.json declares.
-FROM node:22-bookworm-slim@sha256:43ac6c60b8f89723f746e8a92ce91abd5017e627ce1ddfe4238355d3a30b772c AS web
+FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS web
 WORKDIR /build/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci --engine-strict

@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # The production tests start the real backend (python -m app.serve) in front of the fake Eneo: it needs its packages.
@@ -147,7 +147,7 @@ jobs:
         run: docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t eneo-mod-speech-to-text:acceptance-review .
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       # The production tests start the real backend (python -m app.serve) in front of the fake Eneo: it needs its packages.

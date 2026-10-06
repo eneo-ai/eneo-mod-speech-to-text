@@ -51,7 +51,7 @@ out when the Astryx port ends (bead `stt-plan-a-astryx-port-57a.24`).
 
 ## Checks
 
-Node `>=22.22.2` (`frontend/package.json` `engines`: react-router 8.4 needs 22.22, the unit tests' jsdom 30 needs 22.22.2).
+Node `>=24.21.0` (`frontend/package.json` `engines`); the image, CI and devcontainer use the tested Node 24 LTS line.
 From `frontend/`: `npm run lint`, `npm test`, `npm run test:a11y` (the dev server), `npm run test:a11y:real` (the built UI
 served by the backend under the strict policy), `npm run test:prod`, `npm run build`,
 `npm run astryx -- doctor`; after a theme change `npm run theme:build` (CI fails if `kit/theme/built` differs); after a

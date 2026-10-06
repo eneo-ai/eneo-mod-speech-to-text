@@ -169,7 +169,7 @@ Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, bas
 - **Basimagerna** (`Dockerfile`, `deploy/acceptance/compose.yml`, `.github/workflows/`): hämta taggens nya digest och byt den där den står, efter att ha läst versionens ändringslista.
 
   ```
-  docker buildx imagetools inspect node:22-bookworm-slim --format '{{.Manifest.Digest}}'
+  docker buildx imagetools inspect node:24.21.0-bookworm-slim --format '{{.Manifest.Digest}}'
   ```
 
 - **GitHub Actions:** byt commit-sha och versionskommentaren på varje `uses:`. En ny huvudversion är ett eget beslut.

@@ -4,7 +4,7 @@
   "type": "module",
   "description": "The documentation site (Astro Starlight), built from ../docs. Separate from the module and its image.",
   "engines": {
-    "node": ">=22.22.2"
+    "node": ">=24.21.0"
   },
   "scripts": {
     "dev": "node scripts/prepare-content.mjs && astro dev --host 127.0.0.1",
