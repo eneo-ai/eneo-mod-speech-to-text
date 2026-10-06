@@ -8,7 +8,7 @@ async function draw() {
   const nodes = [...document.querySelectorAll<HTMLElement>(SELECTOR)].filter((node) => !node.dataset.drawn)
   if (!nodes.length) return
   const { default: mermaid } = await import('mermaid')
-  const dark = document.documentElement.classList.contains('dark')
+  const dark = document.documentElement.dataset.theme === 'dark'
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
@@ -16,7 +16,7 @@ async function draw() {
     fontFamily: getComputedStyle(document.body).fontFamily,
     // Natural size: a diagram wider than the column scrolls inside its own box instead of shrinking to unreadable text.
     flowchart: { useMaxWidth: false },
-    sequence: { useMaxWidth: false },
+    sequence: { useMaxWidth: false, diagramMarginX: 10, actorMargin: 30 },
   })
   for (const node of nodes) {
     node.dataset.source ??= node.textContent ?? ''
@@ -46,10 +46,10 @@ export function drawDiagrams() {
 /** A diagram is drawn for one colour mode; it is drawn again when the mode changes. */
 export function redrawOnColourMode() {
   new MutationObserver(() => {
-    const mode = document.documentElement.classList.contains('dark') ? 'dark' : 'light'
+    const mode = document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light'
     for (const node of document.querySelectorAll<HTMLElement>(`${SELECTOR}[data-drawn]`)) {
       if (node.dataset.drawn !== 'failed' && node.dataset.drawn !== mode) delete node.dataset.drawn
     }
     drawDiagrams()
-  }).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
 }

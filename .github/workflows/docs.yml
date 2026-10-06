@@ -33,19 +33,24 @@ jobs:
           cache-dependency-path: docs-site/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Check content generation and API labels
+        run: npm test
       # Fails on a link that leads nowhere.
       - name: Build the site
         run: npm run build
+      # Astro generates content types during the build, including OpenAPI pages.
+      - name: Check strict TypeScript
+        run: npm run typecheck
       - name: Install the browser
         run: npx playwright install --with-deps chromium
-      # The start page and the API page (no console error, no external request, axe, keyboard, 390 px) and every diagram drawn.
+      # Every documentation and API page in both themes, plus search, keyboard, narrow menus and diagrams.
       - name: Check the built site in a browser
         run: npm run check
       - name: Upload the site
         if: github.event_name == 'push'
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: docs-site/.vitepress/dist
+          path: docs-site/dist
 
   deploy:
     if: github.event_name == 'push'

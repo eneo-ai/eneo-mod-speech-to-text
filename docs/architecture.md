@@ -27,16 +27,16 @@ Sessionen, servicenyckeln och modultoken förklaras i [Inloggning och session](a
 Webbläsaren pratar bara med modulen, modulen pratar med Eneo, och webbläsaren skickas till Eneo bara för att logga in.
 
 ```mermaid
-flowchart LR
+flowchart TB
     accTitle: Systemkontext
     accDescr: Användaren i webbläsaren når modulens gränssnitt och API genom en omvänd proxy. API:t pratar med Eneo med servicenyckel och modultoken, och webbläsaren skickas till Eneo bara för att logga in.
-    user["Användare i webbläsaren"]
-    proxy["Omvänd proxy: HTTPS"]
-    subgraph module["Modulen: en container, en process, port 3001"]
-        ui["Statiska filer: det byggda gränssnittet"]
+    user["Användare<br/>i webbläsaren"]
+    proxy["Omvänd proxy:<br/>HTTPS"]
+    subgraph module["Modulen: en container,<br/>en process, port 3001"]
+        ui["Statiska filer:<br/>det byggda gränssnittet"]
         api["FastAPI: BFF"]
     end
-    eneo["Eneo: inloggning, flöden, körningar, filer"]
+    eneo["Eneo: inloggning, flöden,<br/>körningar och filer"]
     user -->|"HTTPS, same-origin"| proxy
     proxy -->|"HTTP"| ui
     proxy -->|"HTTP och WebSocket"| api

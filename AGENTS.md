@@ -80,7 +80,7 @@ worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STU
 | `deploy/`, `Dockerfile`, `docker-compose*.yml` | The production image (`python -m app.serve`, one process, no Node) and Compose. |
 | `.github/workflows/` | CI and publishing. |
 | `docs/` | The documentation (Swedish). `docs/decisions/` holds the decisions. |
-| `docs-site/` | The documentation site (VitePress) built from `docs/`; its own package, never part of the image. |
+| `docs-site/` | The documentation site (Astro Starlight) built from `docs/`; its own package, never part of the image. `scripts/prepare-content.mjs` generates the ignored Markdown copy; source pages retain their GitHub headings. |
 
 ## How to find things
 

@@ -1,198 +1,224 @@
-// The browser check of the built site (npm run build first): the start page, the API page and every page with a diagram.
-// Starts its own preview server on DOCS_PORT (default 4173) and stops it. Exits 1 on any finding.
-import { spawn } from 'node:child_process'
-import { readdirSync, readFileSync } from 'node:fs'
+// Browser proof for the built site, including generated OpenAPI pages and the local search index.
+import { preview } from 'astro'
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { chromium } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { BASE, routeFor } from './scripts/content.mjs'
+import { checkLinks } from './scripts/check-links.mjs'
 
+checkLinks(new URL('./dist/', import.meta.url))
 const PORT = Number(process.env.DOCS_PORT ?? 4173)
-const BASE = `http://localhost:${PORT}/eneo-mod-speech-to-text`
+const ORIGIN = `http://localhost:${PORT}`
+const URL_ROOT = `${ORIGIN}${BASE}`
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa']
-
-const docs = new URL('../docs/', import.meta.url)
-const withDiagrams = readdirSync(docs, { recursive: true })
-  .filter((file) => String(file).endsWith('.md') && !String(file).startsWith('plans'))
-  .map((file) => [String(file), (readFileSync(new URL(String(file), docs), 'utf8').match(/^```mermaid$/gm) ?? []).length])
-  .filter(([, count]) => count > 0)
-const route = (file) => '/' + file.replace(/\.md$/, '').replace(/(^|\/)README$/, '$1')
-
 const findings = []
 const note = (page, what) => findings.push(`${page}: ${what}`)
-
-{ // Every link to a heading on the site leads to an id that exists on the page it names.
-  const dist = new URL('.vitepress/dist/', import.meta.url)
-  const pages = new Map(readdirSync(dist, { recursive: true }).filter((file) => String(file).endsWith('.html')).map((file) => [String(file), readFileSync(new URL(String(file), dist), 'utf8')]))
-  const ids = new Map([...pages].map(([file, html]) => [file, new Set([...html.matchAll(/\bid="([^"]+)"/g)].map((match) => match[1]))]))
-  for (const [file, html] of pages) {
-    for (const [, href] of html.matchAll(/<a [^>]*href="([^"]*#[^"]*)"/g)) {
-      const [path, fragment] = href.split('#')
-      if (/^[a-z]+:/.test(path)) continue
-      const target = path ? new URL(path, `http://x/eneo-mod-speech-to-text/${file}`).pathname.replace('/eneo-mod-speech-to-text/', '') : file
-      const page = [target, `${target}.html`, `${target}index.html`, `${target}/index.html`].find((candidate) => ids.has(candidate))
-      if (page && !ids.get(page).has(decodeURIComponent(fragment))) note(file, `a link to ${href} has no heading with that id`)
-    }
-  }
+const audit = async (page, label) => {
+  for (const violation of (await new AxeBuilder({ page }).withTags(WCAG).analyze()).violations) note(label, `axe ${violation.id}: ${violation.nodes.length} node(s), ${violation.nodes[0].target.join(' ')}`)
 }
-
-const server = spawn('node', ['node_modules/vitepress/bin/vitepress.js', 'preview', '--port', String(PORT)], { stdio: 'ignore' })
-const stop = () => server.kill()
-process.on('exit', stop)
-for (let tries = 0; ; tries++) {
-  try {
-    if ((await fetch(`${BASE}/`)).ok) break
-  } catch {}
-  if (tries > 60) throw new Error('the preview server did not start')
-  await new Promise((resolve) => setTimeout(resolve, 500))
-}
-
+const server = await preview({ server: { host: '127.0.0.1', port: PORT } })
+const stop = () => server.stop()
 const browser = await chromium.launch()
 async function open(path, { width = 1440, scheme = 'light' } = {}) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, locale: 'sv-SE', reducedMotion: 'reduce' })
   const page = await context.newPage()
   const label = `${path} (${width}, ${scheme})`
-  page.on('console', (message) => message.type() === 'error' && note(label, `console error: ${message.text()}`))
+  page.on('console', (message) => message.type() === 'error' && note(label, `console: ${message.text()}`))
   page.on('pageerror', (error) => note(label, `page error: ${error.message}`))
-  page.on('request', (request) => new URL(request.url()).hostname !== 'localhost' && note(label, `external request: ${request.url()}`))
-  page.on('request', (request) => /AgentScalarDrawer/.test(request.url()) && note(label, 'the API page loaded Scalar\'s agent'))
-  await page.goto(`${BASE}${path}`, { waitUntil: 'networkidle' })
+  page.on('request', (request) => new URL(request.url()).origin !== ORIGIN && note(label, `external request: ${request.url()}`))
+  const response = await page.goto(`${URL_ROOT}${path}`, { waitUntil: 'networkidle' })
+  if (!response?.ok()) note(label, `HTTP ${response?.status()}`)
   return { page, context, label }
 }
-
-// Every page the build wrote, in both widths and both modes (the start page and the API page are among them).
-const distRoot = new URL('.vitepress/dist/', import.meta.url)
-const everyPage = readdirSync(distRoot, { recursive: true })
-  .map(String)
+const pages = readdirSync(new URL('./dist/', import.meta.url), { recursive: true }).map(String)
   .filter((file) => file.endsWith('.html') && file !== '404.html')
-  .map((file) => '/' + file.replace(/index\.html$/, '').replace(/\.html$/, ''))
-  .sort()
+  .map((file) => '/' + file.replace(/index\.html$/, '')).sort()
 let renderings = 0
-for (const path of everyPage) {
-  for (const [width, scheme] of [[1440, 'light'], [1440, 'dark'], [390, 'light'], [390, 'dark']]) {
-    renderings++
-    const { page, context, label } = await open(path, { width, scheme })
-    if (path === '/api-referens') {
-      await page.locator('.scalar-app').first().waitFor()
-      if (await page.locator('h1.api-title').textContent() !== 'API-referens') note(label, 'the API introduction lacks its heading')
-      const unclearLinks = await page.locator('.api-page > p a').evaluateAll((links) => links.filter((link) => !getComputedStyle(link).textDecorationLine.includes('underline')).length)
-      if (unclearLinks) note(label, `${unclearLinks} API introduction link(s) lack a visible underline`)
-    }
-    for (const violation of (await new AxeBuilder({ page }).withTags(WCAG).analyze()).violations) {
-      note(label, `axe ${violation.id}: ${violation.nodes.length} node(s), e.g. ${violation.nodes[0].target.join(' ')}`)
-    }
-    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
-    // The default theme's own screen-reader text is English; it must be Swedish after the page has been hydrated.
-    const english = await page.evaluate(() =>
-      [...document.querySelectorAll('[aria-label], .visually-hidden')]
-        .map((node) => node.getAttribute('aria-label') ?? node.textContent.trim())
-        .filter((text) => /^(Main Navigation|Sidebar Navigation|Pager|mobile navigation|extra navigation|toggle section)$|^Permalink to/.test(text)),
-    )
-    if (english.length) note(label, `English screen-reader text: ${english.join(', ')}`)
-    await context.close()
+let diagramPages = 0
+try {
+for (const path of pages) for (const [width, scheme] of [[1440, 'light'], [1440, 'dark'], [390, 'light'], [390, 'dark']]) {
+  const { page, context, label } = await open(path, { width, scheme })
+  renderings++
+  await audit(page, label)
+  if (await page.getByRole('heading', { level: 1 }).count() !== 1) note(label, 'the page does not have exactly one main heading')
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
+  if (!(await page.locator('html').getAttribute('lang'))?.startsWith('sv')) note(label, 'the page language is not Swedish')
+  if (path.startsWith('/api/')) {
+    const headings = await page.getByRole('heading').allTextContents()
+    if (headings.some((text) => ['Overview', 'Parameters', 'Request Body', 'Responses', 'Examples', 'Authentication'].includes(text.trim()))) note(label, 'an API heading is still English')
   }
+  if (process.env.DOCS_SHOTS_DIR) {
+    const folder = join(process.env.DOCS_SHOTS_DIR, path === '/' ? 'index' : path.replace(/^\/|\/$/g, '').replaceAll('/', '-'))
+    mkdirSync(folder, { recursive: true })
+    await page.screenshot({ path: join(folder, `${width}x900-${scheme}.first.png`) })
+  }
+  for (const table of await page.locator('.sl-markdown-content table').all()) {
+    if (width === 1440) {
+      const broken = await table.locator('td code').evaluateAll((codes) => codes
+        .filter((code) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(code.textContent ?? '') && code.getClientRects().length > 1)
+        .map((code) => code.textContent))
+      if (broken.length) note(label, `desktop table identifiers break across lines: ${broken.join(', ')}`)
+    }
+    const state = await table.evaluate((table) => ({
+      overflowing: table.scrollWidth > table.clientWidth + 1,
+      tabbable: table.getAttribute('tabindex') === '0',
+      named: !!(table.getAttribute('aria-label')?.trim() || table.querySelector('caption')?.textContent?.trim()
+        || table.getAttribute('aria-labelledby')?.split(/\s+/).some((id) => document.getElementById(id)?.textContent?.trim())),
+    }))
+    if (!state.overflowing) {
+      if (state.tabbable) note(label, 'a table that fits adds an unnecessary Tab stop')
+      continue
+    }
+    if (!state.tabbable || !state.named) note(label, 'an overflowing table has no named keyboard stop')
+    await table.evaluate((table) => { table.scrollLeft = 0 })
+    await table.press('ArrowRight')
+    await page.waitForTimeout(200)
+    if (!await table.evaluate((table) => table === document.activeElement && table.scrollLeft > 0)) note(label, 'the keyboard cannot scroll an overflowing table')
+  }
+  await context.close()
+  if (scheme === 'dark' && width === 390) console.log(`checked ${path}`)
 }
-
-{ // Keyboard: the skip link is first and lands in the content; the search opens and closes with the keyboard.
+for (const width of [320, 1440]) {
+  const { page, context, label } = await open('/', { width })
+  if (width < 800) await page.locator('.sl-menu-button').click()
+  const sidebar = page.locator('#starlight__sidebar')
+  if (!await sidebar.isVisible()) note(label, 'the homepage has no documentation navigation')
+  for (const path of ['quality-gates', 'auth-and-session', 'eneo-integration', 'backend', 'frontend', 'recording', 'decisions']) {
+    if (await sidebar.locator(`a[href="${BASE}/${path}/"]`).count() !== 1) note(label, `the homepage navigation lacks ${path}`)
+  }
+  await context.close()
+}
+{
   const { page, context, label } = await open('/')
   await page.keyboard.press('Tab')
-  if (!(await page.evaluate(() => document.activeElement?.classList.contains('VPSkipLink')))) note(label, 'the skip link is not the first stop')
+  if (!await page.getByRole('link', { name: 'Hoppa till innehåll', exact: true }).evaluate((link) => link === document.activeElement)) note(label, 'the skip link is not first')
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Tab')
+  if (!await page.evaluate(() => !!document.activeElement?.closest('main'))) note(label, 'the skip link does not bypass navigation')
   await page.keyboard.press('ControlOrMeta+k')
-  const box = page.locator('.VPLocalSearchBox')
-  await box.waitFor({ timeout: 5000 }).catch(() => note(label, 'the search does not open with Ctrl+K'))
+  const dialog = page.locator('site-search dialog')
+  await dialog.waitFor({ state: 'visible' })
+  await dialog.getByRole('textbox').fill('miljövariabler')
+  const result = dialog.locator('a[href*="/operations/"]').first()
+  await result.waitFor({ state: 'visible' })
   await page.keyboard.press('Escape')
-  await box.waitFor({ state: 'detached', timeout: 5000 }).catch(() => note(label, 'the search does not close with Escape'))
+  if (await dialog.isVisible()) note(label, 'Escape does not close search')
+  await page.keyboard.press('ControlOrMeta+k')
+  await dialog.getByRole('textbox').fill('miljövariabler')
+  await result.click()
+  await page.waitForURL(/\/operations\//)
   await context.close()
 }
-
-{ // A sidebar heading that does not fold is neither a button nor a tab stop.
-  const { page, context, label } = await open('/operations')
-  await page.locator('.VPSidebar').waitFor()
-  const deadStops = await page.evaluate(() => document.querySelectorAll('.VPSidebarItem:not(.collapsible) > .item[role="button"], .VPSidebarItem:not(.collapsible) > .item[tabindex]').length)
-  if (deadStops) note(label, `${deadStops} sidebar heading(s) are tab stops that do nothing`)
+for (const width of [320, 390, 1440]) for (const scheme of ['light', 'dark']) {
+  const { page, context, label } = await open('/operations/', { width, scheme })
+  await page.locator('site-search button[data-open-modal]').focus()
+  await page.keyboard.press('ControlOrMeta+k')
+  const dialog = page.locator('site-search dialog')
+  await dialog.getByRole('textbox').fill('miljövariabler')
+  await dialog.locator('a[href*="/operations/"]').first().waitFor({ state: 'visible' })
+  if (!await dialog.getByRole('textbox').evaluate((input) => {
+    const style = getComputedStyle(input)
+    return input === document.activeElement && style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0
+  })) note(label, 'the search field has no visible keyboard focus outline')
+  await audit(page, label + ', filled search')
+  const small = await dialog.locator('button').evaluateAll((nodes) => nodes.filter((node) => {
+    const box = node.getBoundingClientRect()
+    return box.width > 0 && box.height > 0 && Math.min(box.width, box.height) < 44
+  }).length)
+  if (small) note(label, `${small} search controls under 44 px`)
+  await dialog.getByRole('button', { name: 'Rensa sökningen' }).click()
+  if (await dialog.getByRole('textbox').inputValue() !== '') note(label, 'clear search does not empty the field')
+  if (width < 800) await dialog.getByRole('button', { name: 'Avbryt', exact: true }).click()
+  else await page.keyboard.press('Escape')
+  if (await dialog.isVisible()) note(label, 'search does not close')
+  if (!await page.locator('site-search button[data-open-modal]').evaluate((button) => button === document.activeElement)) note(label, 'closing search does not restore focus')
   await context.close()
 }
-
-{ // Mobile: the menu opens and its links work.
-  const { page, context, label } = await open('/', { width: 390 })
-  await page.getByRole('button', { name: 'Navigering' }).click()
-  await page.locator('.VPNavScreen').getByRole('link', { name: 'API-referens' }).click()
-  await page.waitForURL(/api-referens/)
-  await page.waitForFunction(() => document.title === 'API-referens · Tal till text', null, { timeout: 5000 }).catch(() => note(label, `the title did not change after navigation`))
-  await context.close()
-}
-
-{ // Narrow screens: a closed drawer has no tab stops, Escape closes it, targets are 44 px, tables fit, the copy button speaks Swedish.
-  const { page, context, label } = await open('/operations', { width: 390 })
-  const offscreen = await page.evaluate(() =>
-    [...document.querySelectorAll('.VPSidebar a, .VPSidebar button, .VPSidebar [tabindex="0"]')].filter((node) => getComputedStyle(node).visibility !== 'hidden').length,
-  )
-  if (offscreen) note(label, `${offscreen} links of the closed drawer can be tabbed to`)
-  const tables = await page.evaluate(() => [...document.querySelectorAll('.vp-doc table')].filter((table) => table.scrollWidth > table.clientWidth + 1).length)
-  if (tables) note(label, `${tables} table(s) are wider than the screen`)
-  const copy = await page.locator('button.copy').first().getAttribute('title')
-  if (copy !== 'Kopiera koden') note(label, `the copy button reads "${copy}"`)
+for (const width of [320, 390]) {
+  const { page, context, label } = await open('/operations/', { width })
+  if (await page.locator('#starlight__sidebar').isVisible()) note(label, 'the closed sidebar is visible')
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'tables overflow the page')
   const small = async (selector, what) => {
-    const sizes = await page.locator(selector).evaluateAll((nodes) =>
-      nodes.map((node) => node.getBoundingClientRect()).filter((box) => box.width > 0 && Math.min(box.width, box.height) < 44).length,
-    )
-    if (sizes) note(label, `${sizes} ${what} are under 44 px`)
+    const count = await page.locator(selector).evaluateAll((nodes) => nodes.filter((node) => {
+      const box = node.getBoundingClientRect()
+      return box.width > 0 && box.height > 0 && Math.min(box.width, box.height) < 44
+    }).length)
+    if (count) note(label, `${count} ${what} under 44 px`)
   }
-  await small('button.copy', 'copy buttons')
-  await small('.VPLocalNav .menu, .VPLocalNavOutlineDropdown > button', 'menu buttons')
-  await page.locator('.VPLocalNav button.menu').click()
-  await page.waitForTimeout(700)
-  await small('.VPSidebar.open .VPSidebarItem .link, .VPSidebar.open .VPSidebarItem .caret', 'sidebar links and carets')
+  await small('.sl-menu-button, site-search button[data-open-modal], .site-title, .expressive-code button', 'controls')
+  const opener = page.locator('.sl-menu-button')
+  await opener.click()
+  await page.locator('#starlight__sidebar').waitFor({ state: 'visible' })
+  await small('#starlight__sidebar a, #starlight__sidebar summary', 'sidebar targets')
   await page.keyboard.press('Escape')
-  await page.waitForTimeout(600)
-  if (await page.locator('.VPSidebar.open').count()) note(label, 'Escape does not close the menu')
-  if (!(await page.evaluate(() => document.activeElement?.classList.contains('menu')))) note(label, 'focus does not return to the menu button')
-  await page.locator('.VPLocalNavOutlineDropdown > button').click()
-  await small('.VPLocalNavOutlineDropdown .outline-link', 'outline links')
+  if (await page.locator('#starlight__sidebar').isVisible()) note(label, 'Escape does not close sidebar')
+  if (!await opener.evaluate((button) => button === document.activeElement)) note(label, 'Escape does not restore menu focus')
+  await opener.click()
+  await page.locator('#starlight__sidebar').getByRole('link', { name: 'API-referens', exact: true }).click()
+  await page.waitForURL(/\/api-referens\//)
+  await page.getByRole('link', { name: 'Öppna API-anropen' }).click()
+  await page.waitForURL(/\/api\/$/)
   await context.close()
 }
-
-{ // The API page's sidebar scrolls to what it names, on a wide screen and on a narrow one (where the menu closes).
-  for (const width of [1440, 390]) {
-    const { page, context, label } = await open('/api-referens', { width })
-    await page.locator('.scalar-app').first().waitFor()
-    if (width === 390) {
-      const opener = page.locator('.scalar-app button', { hasText: 'Öppna menyn' }).first()
-      const box = await opener.boundingBox()
-      if (!box || Math.min(box.width, box.height) < 44) note(label, "Scalar's menu button is under 44 px")
-      await opener.click()
-    }
-    const link = page.locator('.scalar-app a[href^="#tag/"]:visible').nth(1)
-    const hash = await link.getAttribute('href')
-    await link.click()
-    await page.waitForFunction(() => scrollY > 200, null, { timeout: 5000 }).catch(() => note(label, `a sidebar click on ${hash} does not scroll`))
-    if (width === 390 && (await page.locator('.scalar-app button', { hasText: 'Stäng menyn' }).count())) note(label, 'the menu stays open after a click')
-    await context.close()
-  }
+for (const width of [320, 390, 1440]) {
+  const { page, context, label } = await open('/decisions/0008-static-ui-served-by-the-bff/', { width })
+  if (width < 800) await page.locator('.sl-menu-button').click()
+  await page.waitForFunction(() => {
+    const sidebar = document.getElementById('starlight__sidebar')
+    const active = sidebar?.querySelector('a[aria-current="page"]')
+    if (!sidebar || !active) return false
+    const row = active.getBoundingClientRect(), bounds = sidebar.getBoundingClientRect()
+    return row.top >= bounds.top && row.bottom <= bounds.bottom
+  })
+  if (await page.evaluate(() => scrollY !== 0)) note(label, 'revealing the current page moved the document')
+  if (width < 800 && !await page.locator('.sl-menu-button').evaluate((button) => button === document.activeElement)) note(label, 'revealing the current page moved keyboard focus')
+  await context.close()
 }
-
-for (const [file, count] of withDiagrams) { // Every diagram is drawn, in both modes.
-  for (const scheme of ['light', 'dark']) {
-    const { page, context, label } = await open(route(file), { scheme })
-    await page.waitForFunction((n) => document.querySelectorAll('pre.mermaid[data-drawn]').length >= n, count, { timeout: 30000 }).catch(() => {})
-    const failed = await page.locator('pre.mermaid[data-drawn="failed"]').count()
-    const drawn = await page.locator(`pre.mermaid[data-drawn="${scheme}"] svg`).count()
-    if (failed || drawn !== count) note(label, `${drawn} of ${count} diagrams drawn, ${failed} failed`)
-    // Natural size: no diagram is drawn narrower than its viewBox, and none makes the page scroll sideways.
-    const shrunk = await page.evaluate(() =>
-      [...document.querySelectorAll('pre.mermaid svg')].filter((svg) => svg.getBoundingClientRect().width < svg.viewBox.baseVal.width - 1).length,
-    )
-    if (shrunk) note(label, `${shrunk} diagram(s) are scaled down`)
-    // A diagram is announced by its own title, not by a generic word.
-    const unnamed = await page.evaluate(() => [...document.querySelectorAll('pre.mermaid[data-drawn]')].filter((node) => !node.getAttribute('aria-label') || node.getAttribute('aria-label') === 'Diagram').length)
-    if (unnamed) note(label, `${unnamed} diagram(s) have no accessible title (accTitle)`)
-    if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) note(label, 'the page scrolls sideways')
-    await context.close()
-  }
+{
+  const { page, context } = await open('/architecture/')
+  const theme = page.locator('header starlight-theme-select')
+  const opener = theme.getByRole('button', { name: /^Välj tema:/ })
+  await opener.focus()
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Home')
+  if (!await theme.getByRole('menuitemradio', { name: 'Mörkt', exact: true }).evaluate((button) => button === document.activeElement)) note('/architecture/', 'theme menu keyboard navigation failed')
+  await page.keyboard.press('Enter')
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark')
+  if (!await opener.evaluate((button) => button === document.activeElement)) note('/architecture/', 'choosing a theme does not restore focus')
+  await page.waitForFunction(() => document.querySelector('pre.mermaid[data-drawn="dark"] svg'))
+  await opener.click()
+  await theme.getByRole('menuitemradio', { name: 'Ljust', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('pre.mermaid[data-drawn="light"] svg'))
+  await opener.click()
+  await page.keyboard.press('Escape')
+  if (await theme.getByRole('menu').isVisible()) note('/architecture/', 'Escape does not close the theme menu')
+  if (!await opener.evaluate((button) => button === document.activeElement)) note('/architecture/', 'Escape does not restore theme focus')
+  await context.close()
 }
-
-await browser.close()
-stop()
-if (findings.length) {
-  console.error(findings.map((finding) => `- ${finding}`).join('\n'))
-  process.exit(1)
+const docsRoot = new URL('../docs/', import.meta.url)
+const diagrams = readdirSync(docsRoot, { recursive: true }).map(String)
+  .filter((file) => file.endsWith('.md') && !file.startsWith('plans/'))
+  .map((file) => [file, (readFileSync(new URL(file, docsRoot), 'utf8').match(/^```mermaid$/gm) ?? []).length])
+  .filter(([, count]) => count)
+diagramPages = diagrams.length
+for (const [file, count] of diagrams) for (const scheme of ['light', 'dark']) {
+  const { page, context, label } = await open('/' + routeFor(file) + '/', { scheme })
+  await page.waitForFunction((n) => document.querySelectorAll('pre.mermaid[data-drawn]').length >= n, count, { timeout: 30000 }).catch(() => {})
+  if (await page.locator(`pre.mermaid[data-drawn="${scheme}"] svg`).count() !== count) note(label, 'a diagram did not render')
+  const invalid = await page.locator('pre.mermaid').evaluateAll((nodes) => nodes.filter((node) => {
+    const svg = node.querySelector('svg')
+    return !svg || svg.getBoundingClientRect().width < svg.viewBox.baseVal.width - 1 || !node.getAttribute('aria-label') || node.getAttribute('aria-label') === 'Diagram'
+  }).length)
+  if (invalid) note(label, `${invalid} diagram(s) shrunk or unnamed`)
+  if (await page.locator('pre.mermaid').evaluateAll((nodes) => nodes.some((node) => node.scrollWidth > node.clientWidth + 1))) note(label, 'a diagram does not fit the desktop reading column')
+  await context.close()
 }
-console.log(`docs site: ok (heading links, axe on ${everyPage.length} pages in ${renderings} renderings, keyboard, narrow menus, tables and targets, the API page's links, ${withDiagrams.reduce((n, [, c]) => n + c, 0)} diagrams on ${withDiagrams.length} pages)`)
+} finally {
+  await browser.close()
+  await stop()
+  console.log(`completed ${renderings} page renderings`)
+  if (findings.length) console.error(findings.map((finding) => `- ${finding}`).join('\n'))
+}
+if (findings.length) process.exit(1)
+console.log(`docs site: ok (links, axe on ${pages.length} pages in ${renderings} renderings, indexed search, keyboard, themes, homepage navigation, narrow menus, named keyboard scrolling for overflowing tables, touch targets and ${diagramPages} diagram pages)`)

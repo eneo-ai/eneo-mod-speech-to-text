@@ -15,7 +15,7 @@ Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`. **
 | gaten, branding | `npm run test:a11y:branding` | samma som gaten, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
 | produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden, stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
 | imagen | `npm run test:image` | den byggda imagen bakom Traefik, stubben som Eneo | Produktionsimagen: en process, headers, uppladdningar, WebSocket, minne, stopp. |
-| sajten | `npm run build` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Att inga länkar är döda, att startsidan och API-sidan klarar axe, tangentbord och 390 px utan konsolfel eller externa anrop, och att varje diagram ritas. |
+| sajten | `npm test`, `npm run build`, `npm run typecheck` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Alla dokumentations- och API-sidor vid 390 och 1440 px, ljust och mörkt: axe, lokala länkar och resurser, svensk sökning, tangentbord, menyer, tabeller och diagram. |
 
 Dessutom: `npm run astryx -- doctor` (uppsättningen), `npm run theme:build && git diff --exit-code -- kit/theme/built` (temat är aktuellt) och `docker compose -f docker-compose.yml --env-file .env.example config -q` (Compose-filen, från roten). CI kör allt utom hela gaten ([Drift](operations.md#ci-och-utgåvor)).
 

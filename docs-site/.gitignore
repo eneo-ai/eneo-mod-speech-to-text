@@ -1,4 +1,8 @@
 node_modules/
-.vitepress/cache/
-.vitepress/dist/
+dist/
+.astro/
+src/content/docs/
+public/images/
+public/api/
+public/favicon.svg
 test-results/

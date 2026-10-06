@@ -47,7 +47,7 @@
         "tags": [
           "Hälsa"
         ],
-        "summary": "Hälsokontroll",
+        "summary": "Hälsokontroll (/health)",
         "operationId": "get_health",
         "description": "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida.",
         "responses": {
@@ -72,7 +72,7 @@
         "tags": [
           "Hälsa"
         ],
-        "summary": "Hälsokontroll, bara huvudena",
+        "summary": "Hälsokontroll, endast huvuden (/health)",
         "operationId": "head_health",
         "responses": {
           "200": {
@@ -86,7 +86,7 @@
         "tags": [
           "Hälsa"
         ],
-        "summary": "Hälsokontroll",
+        "summary": "Hälsokontroll (/api/healthz)",
         "operationId": "get_api_healthz",
         "description": "Samma svar som `/health`.",
         "responses": {
@@ -111,7 +111,7 @@
         "tags": [
           "Hälsa"
         ],
-        "summary": "Hälsokontroll, bara huvudena",
+        "summary": "Hälsokontroll, endast huvuden (/api/healthz)",
         "operationId": "head_api_healthz",
         "responses": {
           "200": {

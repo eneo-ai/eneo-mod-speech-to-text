@@ -199,18 +199,18 @@ def file_answer(what: str) -> dict[str, Any]:
 OPERATIONS: dict[tuple[str, str], Op] = {
     ("GET", "/health"): Op(
         "Hälsa",
-        "Hälsokontroll",
+        "Hälsokontroll (/health)",
         "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida.",
         success={"200": reply("Backenden svarar.", json_of({"type": "object", "properties": {"ok": {"const": True}}}))},
     ),
-    ("HEAD", "/health"): Op("Hälsa", "Hälsokontroll, bara huvudena", success={"200": reply("Backenden svarar.")}),
+    ("HEAD", "/health"): Op("Hälsa", "Hälsokontroll, endast huvuden (/health)", success={"200": reply("Backenden svarar.")}),
     ("GET", "/api/healthz"): Op(
         "Hälsa",
-        "Hälsokontroll",
+        "Hälsokontroll (/api/healthz)",
         "Samma svar som `/health`.",
         success={"200": reply("Backenden svarar.", json_of({"type": "object", "properties": {"ok": {"const": True}}}))},
     ),
-    ("HEAD", "/api/healthz"): Op("Hälsa", "Hälsokontroll, bara huvudena", success={"200": reply("Backenden svarar.")}),
+    ("HEAD", "/api/healthz"): Op("Hälsa", "Hälsokontroll, endast huvuden (/api/healthz)", success={"200": reply("Backenden svarar.")}),
     ("GET", "/api/branding"): Op(
         "Märke",
         "Organisationen i sidhuvudet",

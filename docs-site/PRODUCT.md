@@ -10,7 +10,7 @@ web
 
 ## Stack
 
-VitePress 1.6.4, default layout, in an isolated `docs-site/` package. Markdown and CSS variables; no Vue except one client-only wrapper for the API reference. Fixed by the brief.
+Astro 7.3.5 and Starlight 0.42.5 with the ready-made Starlight MD3 0.2.2 theme, in an isolated `docs-site/` package. The source is Markdown in `docs/`; a generated copy provides the title metadata. Starlight OpenAPI 0.26.3 builds static operation pages from the backend specification. No Vue dependency or runtime. The owner approved Starlight on 2026-10-05 and delegated the choice between Lucode and MD3 for 2026-10-06. MD3 was selected after comparing both rendered themes and compatibility.
 
 ## Users
 
@@ -38,12 +38,12 @@ This is the module's own documentation, not Eneo's. The module has no database a
 - Required links: https://eneo.ai ("Läs mer om Eneo"), https://github.com/eneo-ai/eneo, https://github.com/eneo-ai, the module's repository, and a section "Är du också intresserad av att bygga moduler?" that links to https://github.com/eneo-ai/eneo-module-kit.
 - The module kit repository's README says it is not built yet; the lead says the kit has code and the README is stale (a docs task for that repository). The start page says the kit is "under uppbyggnad" and that this module is the source it is taken from; keep that wording until the kit's README says otherwise.
 - Speaker review of the transcript is a build-time option and a published image has it off; the start page must not promise it.
-- Undecided: whether the site shows a mark besides the name (assumed: a small drawn mark, not the Sundsvall logo, because the logo is the default deployment's, not the module's).
+- The start page uses Starlight's documentation template, native hero and sidebar; its introduction comes from the canonical Markdown.
 
 ## Brand Commitments
 
 - The name is "Tal till text", as text.
-- The module's own accent (`#004595` light, `#52B1FF` dark), system font stacks and focus ring, from `frontend/kit/theme/eneo.theme.ts`.
+- MD3 owns the visual system. Use its blue accent, comfortable density, high contrast and disabled decorative motion through the theme options. Keep the native layout, type and focus treatments.
 - Not the Sundsvall municipality logo.
 
 ## Evidence on Hand

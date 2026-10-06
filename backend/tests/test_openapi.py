@@ -124,6 +124,16 @@ class DocumentTests(unittest.TestCase):
 
         self.assertEqual(len(ids), len(set(ids)))
 
+    def test_health_titles_distinguish_the_path_and_response_body(self) -> None:
+        titles = {
+            (method, path): self.operations[(method, path)]["summary"]
+            for method in ("GET", "HEAD")
+            for path in ("/health", "/api/healthz")
+        }
+        self.assertEqual(len(set(titles.values())), 4, "API navigation must distinguish all four health operations")
+        for (_, path), title in titles.items():
+            self.assertIn(path, title)
+
     def references(self) -> list[str]:
         found = []
 

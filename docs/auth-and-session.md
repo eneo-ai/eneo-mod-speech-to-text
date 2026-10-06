@@ -14,16 +14,16 @@ sequenceDiagram
     participant M as Modulens BFF
     participant E as Eneo
     B->>M: GET /api/auth/login
-    M-->>B: 303 till Eneo /module-login, state-cookie
-    B->>E: /module-login med module_key, redirect_uri och state
-    E-->>B: användaren loggar in, 303 tillbaka med ticket och state
-    B->>M: GET /api/auth/callback med ticket och state
-    M->>M: jämför state med state-cookien
-    M->>E: POST /api/v1/module-auth/token/ med servicenyckel och ticket
-    E-->>M: modultoken, användare och Eneos sessionstak
-    M->>E: GET /api/v1/module-auth/MODULE_KEY/session/ med servicenyckel och token
-    E-->>M: samma modul, tenant och användare
-    M-->>B: 303 till modulens sida och HttpOnly-sessionscookie
+    M-->>B: 303 till Eneo /module-login<br/>state-cookie
+    B->>E: /module-login<br/>module_key, redirect_uri och state
+    E-->>B: användaren loggar in<br/>303 tillbaka med ticket och state
+    B->>M: GET /api/auth/callback<br/>ticket och state
+    M->>M: jämför state<br/>med state-cookien
+    M->>E: POST /api/v1/module-auth/token/<br/>servicenyckel och ticket
+    E-->>M: modultoken och användare<br/>Eneos sessionstak
+    M->>E: GET /api/v1/module-auth/<br/>MODULE_KEY/session/<br/>servicenyckel och token
+    E-->>M: samma modul, tenant<br/>och användare
+    M-->>B: 303 till modulens sida<br/>HttpOnly-sessionscookie
 ```
 
 - `state` är oförutsägbart och kortlivat, bundet till en HttpOnly-cookie och förbrukat vid callbacken (cookien raderas).

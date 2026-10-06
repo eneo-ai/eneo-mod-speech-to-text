@@ -1,0 +1,21 @@
+{
+  "heading.anchorLabel": "Länk till avsnittet {{title}}",
+  "builtWithStarlight.label": "Byggd med Starlight",
+  "page.draft": "Det här är ett utkast som inte publiceras.",
+  "aside.note": "Observera",
+  "aside.tip": "Tips",
+  "aside.caution": "Varning",
+  "aside.danger": "Viktigt",
+  "fileTree.directory": "Mapp",
+  "pagefind.clear_search": "Rensa sökningen",
+  "pagefind.load_more": "Visa fler träffar",
+  "pagefind.search_label": "Sök i dokumentationen",
+  "pagefind.filters_label": "Filter",
+  "pagefind.zero_results": "Inga träffar för [SEARCH_TERM]",
+  "pagefind.one_result": "En träff för [SEARCH_TERM]",
+  "pagefind.many_results": "[COUNT] träffar för [SEARCH_TERM]",
+  "pagefind.searching": "Söker efter [SEARCH_TERM]",
+  "expressiveCode.copyButtonCopied": "Kopierat",
+  "expressiveCode.copyButtonTooltip": "Kopiera koden",
+  "expressiveCode.terminalWindowFallbackTitle": "Terminal"
+}

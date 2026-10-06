@@ -178,7 +178,7 @@ Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, bas
   git ls-remote --tags https://github.com/actions/checkout 'refs/tags/v7.*'
   ```
 
-- **Dokumentationssajten:** `npm install --save-exact <paket>@<version>` i `docs-site/`; checka in `package.json` och `package-lock.json`. VitePress och Mermaid byts var för sig.
+- **Dokumentationssajten:** `npm install --save-exact <paket>@<version>` i `docs-site/`; checka in `package.json` och `package-lock.json`. Astro, Starlight, MD3-temat, OpenAPI-tillägget och Mermaid har exakta versioner; kontrollera deras kompatibilitetskrav vid en uppdatering.
 
 ## Vid problem
 
