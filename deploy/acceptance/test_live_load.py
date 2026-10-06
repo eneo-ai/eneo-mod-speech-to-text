@@ -278,6 +278,7 @@ class AssetsNamedTests(unittest.TestCase):
 class LoadGeneratorTests(unittest.TestCase):
     def test_an_arrival_rate_starts_that_many_visits_a_second_and_replays_the_visit_it_is_given(self) -> None:
         server = QuickWebServer()
+        self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
         visit = ["/flows/abc", "/assets/one.js", "/assets/two.js", "/api/auth/status"]
 
@@ -289,6 +290,7 @@ class LoadGeneratorTests(unittest.TestCase):
 
     def test_without_a_visit_it_fetches_the_page_and_the_assets_it_names(self) -> None:
         server = QuickWebServer()
+        self.addCleanup(server.server_close)
         self.addCleanup(server.shutdown)
 
         result = asyncio.run(live_load.run_load(server.url, 1, clients=2))
