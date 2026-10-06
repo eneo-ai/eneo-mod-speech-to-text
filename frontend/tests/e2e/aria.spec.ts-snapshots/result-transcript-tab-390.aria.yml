@@ -13,7 +13,6 @@
       - button "Kopiera transkriberingen":
         - text: ""
         - status
-      - status
       - button "Ladda ner som text, transkriberingen":
         - text: ""
         - status

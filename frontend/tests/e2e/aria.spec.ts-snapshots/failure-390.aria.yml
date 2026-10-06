@@ -19,7 +19,6 @@
     - button "Kopiera transkriberingen":
       - text: ""
       - status
-    - status
     - button "Ladda ner som text, transkriberingen":
       - text: ""
       - status
@@ -86,7 +85,6 @@
     - button "Kopiera körnings-ID":
       - text: ""
       - status
-    - status
     - button "Dölj teknisk information" [expanded]
     - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
     - paragraph: flow_step_failed

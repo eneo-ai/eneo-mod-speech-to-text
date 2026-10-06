@@ -126,6 +126,18 @@ async function review(start = pause, { saves = false } = {}) {
   );
 }
 
+test("speaker review exposes a named, readable list without adding keyboard stops", async (t) => {
+  eneo(t);
+  const view = await review(speakers);
+  const list = view.container.querySelector('ul[aria-label="Talare"]');
+  assert.ok(list, "the speaker collection has an accessible name");
+  const entries = Array.from(list.querySelectorAll("li"));
+  assert.equal(entries.length, 2);
+  assert.match(entries[0]!.textContent ?? "", /Talare 1.*Anna Berg/);
+  assert.match(entries[1]!.textContent ?? "", /Talare 2.*Inget namn/);
+  assert.equal(list.querySelectorAll('button, a, input, [tabindex="0"]').length, 0);
+});
+
 test("while Spara och fortsätt is under way the text cannot change, so nothing typed then is lost when the save's answer drops the draft", async (t) => {
   const server = eneo(t);
   const view = await review();

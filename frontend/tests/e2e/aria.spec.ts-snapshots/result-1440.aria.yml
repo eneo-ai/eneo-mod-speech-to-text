@@ -19,7 +19,6 @@
           - list:
             - listitem: Förvaltningen återkommer i oktober.
             - listitem: Nya skolskjutsturer gäller efter höstlovet.
-    - status
   - region "Fler filer":
     - heading "Fler filer" [level=2]
     - list:
@@ -31,7 +30,6 @@
   - region "Transkribering":
     - heading "Transkribering" [level=2]
     - button "Kopiera transkriberingen"
-    - status
     - button "Ladda ner som text, transkriberingen"
     - region "Inspelning och transkribering":
       - group "Visa talare":

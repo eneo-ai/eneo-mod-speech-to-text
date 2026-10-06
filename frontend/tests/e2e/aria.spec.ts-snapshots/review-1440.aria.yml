@@ -4,7 +4,7 @@
   - paragraph: Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter.
   - paragraph: /Granska senast 8 okt \d+:\d+\. Därefter avbryts körningen\./
   - group:
-    - list:
+    - list "Talare":
       - listitem: Talare 1 Anna Berg
       - listitem: Talare 2 Erik Lund
       - listitem: Talare 3 Inget namn

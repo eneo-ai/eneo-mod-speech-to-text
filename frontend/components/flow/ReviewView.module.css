@@ -73,36 +73,6 @@
   }
 }
 
-/* Who is who at a glance. */
-.speakers {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.speaker {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding-block: calc(var(--spacing-2) + var(--spacing-0-5));
-  border-block-end: var(--border-width) solid var(--color-border);
-}
-
-.speaker:first-child {
-  padding-block-start: 0;
-}
-
-.speaker:last-child {
-  border-block-end: 0;
-}
-
-.speakerLabel {
-  inline-size: 4.5rem;
-  flex-shrink: 0;
-}
-
 .selfStart {
   align-self: flex-start;
 }

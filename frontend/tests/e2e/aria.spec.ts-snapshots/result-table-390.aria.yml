@@ -42,7 +42,6 @@
                       - cell "Utbyggnad norrut"
                       - cell /\d+/
             - paragraph: Förvaltningen återkommer i oktober.
-      - status
     - region "Fler filer":
       - heading "Fler filer" [level=2]
       - list:

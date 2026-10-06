@@ -18,7 +18,6 @@
   - region "Transkribering":
     - heading "Transkribering" [level=2]
     - button "Kopiera transkriberingen"
-    - status
     - button "Ladda ner som text, transkriberingen"
     - region "Inspelning och transkribering":
       - group "Visa talare":
@@ -82,7 +81,6 @@
     - text: Körnings-ID
     - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
     - button "Kopiera körnings-ID"
-    - status
     - button "Dölj teknisk information" [expanded]
     - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
     - paragraph: flow_step_failed

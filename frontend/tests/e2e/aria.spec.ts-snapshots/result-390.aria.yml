@@ -26,7 +26,6 @@
             - list:
               - listitem: Förvaltningen återkommer i oktober.
               - listitem: Nya skolskjutsturer gäller efter höstlovet.
-      - status
     - region "Fler filer":
       - heading "Fler filer" [level=2]
       - list:

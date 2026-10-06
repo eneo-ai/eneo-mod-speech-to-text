@@ -16,6 +16,7 @@ import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { List, ListItem } from "@astryxdesign/core/List";
 import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
@@ -466,17 +467,16 @@ export function ReviewView({
         </Text>
       ) : (
         <VStack gap={3}>
-          <ul className={styles.speakers}>
+          <List aria-label="Talare" density="compact" hasDividers>
             {namingRows.map((row) => (
-              <li key={row.label} className={styles.speaker}>
-                <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
-                <Text weight="medium" className={styles.speakerLabel}>{speakerDisplayLabel(row.label)}</Text>
-                <Text maxLines={1} hasTruncateTooltip={false} color={row.name ? undefined : "secondary"}>
-                  {row.name ?? "Inget namn"}
-                </Text>
-              </li>
+              <ListItem
+                key={row.label}
+                label={speakerDisplayLabel(row.label)}
+                startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
+                description={<Text color={row.name ? undefined : "secondary"}>{row.name ?? "Inget namn"}</Text>}
+              />
             ))}
-          </ul>
+          </List>
           <SpeakerNamingDialog
             rows={namingRows}
             proposals={modelProposals}
