@@ -6,6 +6,7 @@
  */
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
+import { focusStop, stopProblems } from "./checks";
 import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
@@ -14,6 +15,59 @@ const transcript = (page: Page) => page.getByRole("textbox", { name: "Transkribe
 const tools = (page: Page) => page.getByRole("group", { name: "Verktyg för transkriberingen" });
 /** What the tools say about the last change: each design-system button holds a live region of its own, empty. */
 const said = (page: Page) => tools(page).getByRole("status").filter({ hasText: /\S/ });
+
+test("the review actions use arrows within one Tab stop, then Tab reaches the details", async ({ page }, info) => {
+  await reviewEditor(page);
+  const confirm = tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ });
+  const previous = tools(page).getByRole("button", { name: "Föregående passage som behöver talarbeslut" });
+  const next = tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" });
+  await confirm.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(previous).toBeFocused();
+  const actionFocus = await focusStop(page);
+  expect(actionFocus).not.toBeNull();
+  await page.keyboard.press("End");
+  await expect(next).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Tab");
+  const details = page.getByRole("button", { name: "Detaljer", exact: true });
+  await expect(details).toBeFocused();
+  const detailsFocus = await focusStop(page);
+  expect(detailsFocus).not.toBeNull();
+  const stops = [actionFocus!, detailsFocus!];
+  await info.attach("review-focus", { body: JSON.stringify(stops, null, 2), contentType: "application/json" });
+  expect(stopProblems(stops), "focus is visible and unobscured").toEqual([]);
+  await expect(details).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", { name: "Om markeringen" })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("heading", { name: "Om markeringen" })).toBeHidden();
+});
+
+test("selected-word actions keep the speaker picker's keyboard navigation and the correction field", async ({ page }) => {
+  await reviewEditor(page);
+  await tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+  const actions = page.getByRole("toolbar", { name: "Åtgärder för markerade ord" });
+  await actions.getByRole("button", { name: "Lyssna", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(actions.getByRole("button", { name: "Bekräfta Agne", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  const speaker = actions.getByRole("combobox", { name: "Tilldela talare" });
+  await expect(speaker).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(speaker).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(actions.getByRole("button", { name: "Rätta text", exact: true })).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeFocused();
+  await tools(page).getByRole("button", { name: "Avbryt", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeHidden();
+  await expect(tools(page).getByRole("button", { name: "Avmarkera", exact: true })).toBeFocused();
+});
 
 test("words selected with Shift and the arrows are given to a speaker, and Ångra takes the speaker back", async ({ page }) => {
   await reviewEditor(page);

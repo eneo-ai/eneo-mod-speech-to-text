@@ -27,19 +27,8 @@
   box-shadow: var(--shadow-low);
 }
 
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--spacing-1);
-}
-
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-1);
+.actionBar {
+  max-inline-size: 100%;
 }
 
 /* A speaker's name can be as long as the person gives it, with no place to break it ("Bekräfta programledare/intervjuare"):
@@ -87,13 +76,6 @@
   color: var(--color-text-secondary);
 }
 
-.tools {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--spacing-1);
-}
-
 .speakers {
   max-inline-size: 100%;
 }
@@ -138,9 +120,6 @@
 /* ---- What the text says about itself ---- */
 
 .details {
-  padding: var(--spacing-3) var(--spacing-5);
-  border-block-end: var(--border-width) solid var(--color-border);
-  background: var(--color-background-muted);
   font-size: var(--text-supporting-size);
   line-height: var(--text-supporting-leading);
 }
