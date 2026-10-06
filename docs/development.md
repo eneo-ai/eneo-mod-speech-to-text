@@ -10,7 +10,25 @@
    cp .env.example .env
    ```
 
-3. **Fyll i `.env`:** `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL`, `ENEO_API_KEY` och `SESSION_SECRET` (skapa den med `python -c "import secrets; print(secrets.token_urlsafe(48))"`). För lokal körning också `MODULE_PUBLIC_URL=http://localhost:3001` och `COOKIE_SECURE=false`. Kör Eneo på din egen dator, på port 8123 för API:t och 3000 för webben, är `ENEO_BACKEND_URL=http://host.docker.internal:8123` (så når containern din dator) och `ENEO_PUBLIC_URL=http://localhost:3000` (så når webbläsaren den).
+3. **Fyll i `.env`:** ange `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL` och `ENEO_API_KEY`. Skapa en hemlighet och klistra in svaret som värde för `SESSION_SECRET`:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+
+   För lokal körning lägger du också till:
+
+   ```dotenv
+   MODULE_PUBLIC_URL=http://localhost:3001
+   COOKIE_SECURE=false
+   ```
+
+   Kör Eneo på din egen dator, med API:t på port 8123 och webben på port 3000, använder du dessa adresser. Den första når datorn från containern; den andra når Eneos webb från webbläsaren.
+
+   ```dotenv
+   ENEO_BACKEND_URL=http://host.docker.internal:8123
+   ENEO_PUBLIC_URL=http://localhost:3000
+   ```
 4. **Starta:** `docker compose up --build`
 5. **Öppna** `http://localhost:3001` i webbläsaren.
 
