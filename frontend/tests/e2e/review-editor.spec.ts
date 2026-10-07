@@ -16,6 +16,18 @@ const tools = (page: Page) => page.getByRole("group", { name: "Verktyg för tran
 /** What the tools say about the last change: each design-system button holds a live region of its own, empty. */
 const said = (page: Page) => tools(page).getByRole("status").filter({ hasText: /\S/ });
 
+test("after confirming speakers, Tab brings the timestamp clear of the docked player", async ({ page }) => {
+  await reviewEditor(page);
+  await tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ }).click();
+  await expect(page.getByText("Inga väntande talarbeslut")).toBeVisible();
+  await transcript(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Flytta uppspelningen till 0:00", exact: true })).toBeFocused();
+  const stop = await focusStop(page);
+  expect(stop).not.toBeNull();
+  expect(stopProblems([stop!]), "the timestamp has visible focus and is fully unobscured").toEqual([]);
+});
+
 test("the review actions use arrows within one Tab stop, then Tab reaches the details", async ({ page }, info) => {
   await reviewEditor(page);
   const confirm = tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ });

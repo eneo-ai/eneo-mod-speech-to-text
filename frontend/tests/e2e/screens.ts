@@ -1076,6 +1076,7 @@ export const STATES: State[] = [
       await page.getByRole("button", { name: /^Bekräfta alla förslag/ }).click();
       await expect(page.getByRole("button", { name: "Ångra", exact: true })).toBeVisible();
       await expect(page.getByText("Inga väntande talarbeslut")).toBeVisible();
+      await readingTheText(page);
     },
   },
   {
