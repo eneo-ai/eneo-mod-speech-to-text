@@ -13,7 +13,7 @@ permissions:
 
 env:
   # skopeo 1.22.3 in a container pinned by digest (the same as ci.yml's).
-  SKOPEO: quay.io/skopeo/stable@sha256:249b92db7297e5c801e19172dbb3b56fde88094a49740a5ededac8c2958bf2c0
+  SKOPEO: quay.io/skopeo/stable@sha256:35f65ee53adbccedeead175ae4386b1ff06cf2b6827ed7cb7b578438471e0407
 
 jobs:
   ghcr:

@@ -127,9 +127,11 @@ jobs:
     env:
       CANDIDATE: localhost:5000/eneo-mod-speech-to-text
       # skopeo 1.22.3 in a container pinned by digest: it copies an image with its attestations and its digest intact.
-      SKOPEO: quay.io/skopeo/stable@sha256:249b92db7297e5c801e19172dbb3b56fde88094a49740a5ededac8c2958bf2c0
+      SKOPEO: quay.io/skopeo/stable@sha256:35f65ee53adbccedeead175ae4386b1ff06cf2b6827ed7cb7b578438471e0407
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check the image-copy tool before building
+        run: docker run --rm "$SKOPEO" --version
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           driver-opts: network=host
