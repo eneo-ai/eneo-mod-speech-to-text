@@ -211,7 +211,10 @@ for (const [file, count] of diagrams) for (const scheme of ['light', 'dark']) {
     return !svg || svg.getBoundingClientRect().width < svg.viewBox.baseVal.width - 1 || !node.getAttribute('aria-label') || node.getAttribute('aria-label') === 'Diagram'
   }).length)
   if (invalid) note(label, `${invalid} diagram(s) shrunk or unnamed`)
-  if (await page.locator('pre.mermaid').evaluateAll((nodes) => nodes.some((node) => node.scrollWidth > node.clientWidth + 1))) note(label, 'a diagram does not fit the desktop reading column')
+  const overflowing = await page.locator('pre.mermaid').evaluateAll((nodes) => nodes
+    .filter((node) => node.scrollWidth > node.clientWidth + 1)
+    .map((node) => `${node.scrollWidth} px in a ${node.clientWidth} px column`))
+  if (overflowing.length) note(label, `a diagram does not fit the desktop reading column: ${overflowing.join('; ')}`)
   await context.close()
 }
 } finally {

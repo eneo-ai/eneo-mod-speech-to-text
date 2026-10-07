@@ -52,9 +52,9 @@ sequenceDiagram
     participant B as Webbläsare
     participant M as Modulens BFF
     participant E as Eneo
-    B->>M: WebSocket /api/live/FLOW/STEP<br/>recording_id
+    B->>M: WebSocket<br/>/api/live/FLOW/STEP<br/>recording_id
     M->>M: kontrollera Origin<br/>och session, annars<br/>stäng med 1008
-    M->>E: POST live-transcription-sessions/<br/>servicenyckel och modultoken
+    M->>E: POST live-transcription-sessions/<br/>servicenyckel<br/>och modultoken
     E-->>M: ticket och websocket_path
     M->>E: öppna Eneos WebSocket<br/>ticketen som subprotokoll
     E-->>M: ready
@@ -62,11 +62,11 @@ sequenceDiagram
     B->>M: binära PCM-ramar
     M->>E: ramarna oförändrade
     E-->>M: transcript.delta
-    M-->>B: transcript.delta oförändrad
-    B->>M: stop med produced_samples
+    M-->>B: transcript.delta<br/>oförändrad
+    B->>M: stop<br/>med produced_samples
     M->>E: stop oförändrad
     E-->>M: transcript.done
-    M-->>B: transcript.done oförändrad<br/>sedan stängning
+    M-->>B: transcript.done<br/>oförändrad<br/>sedan stängning
 ```
 
 Webbläsaren öppnar en WebSocket till `/api/live/{flowId}/{stepId}?recording_id={id}` på modulens egen origin (`frontend/lib/live-transcriber.ts`) och skickar mono PCM16 LE i 16 kHz som binära ramar och till sist `{"type":"stop","produced_samples":n}`. Nekar Eneo ticketen, till exempel 409 `flow_live_transcription_unavailable`, får webbläsaren en enda `error`-händelse med Eneos `code` och sedan en normal stängning; når BFF:en inte Eneo blir koden `upstream_unreachable` med `retryable: true`. Vad BFF:en själv avgör (gränser, session, användare, ticket): [Backend](backend.md#live-reläet).
