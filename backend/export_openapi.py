@@ -179,8 +179,8 @@ UPLOAD_TIMEOUT = header(
 )
 RANGE = header("Range", "Ett byteintervall, som `bytes=0-1023`. Skickas vidare till Eneo; svaret är då `206`.")
 PROXY_ERRORS = ("upstream_unreachable", "upstream_too_large", "upstream_redirect")
-UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout")
-STREAM_ERRORS = ("upstream_unreachable", "upstream_redirect", "upstream_invalid")
+UPLOAD_ERRORS = (*PROXY_ERRORS, "upstream_upload_timeout", "upload_receive_timeout", "uploads_busy")
+STREAM_ERRORS = ("upstream_unreachable", "upstream_redirect", "upstream_invalid", "streams_busy")
 BFF_ERRORS = sorted({*PROXY_ERRORS, *UPLOAD_ERRORS, *STREAM_ERRORS})
 # What Eneo refuses a file with comes back with its status and its answer in `detail`.
 STREAM_ANSWERS = {"default": {"$ref": "#/components/responses/EneoRefusal"}}
@@ -285,7 +285,8 @@ OPERATIONS: dict[tuple[str, str], Op] = {
         "Uppladdning",
         "Ladda upp en fil till flödets ljudsteg",
         "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går "
-        "inte med. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
+        "inte med. Kapacitet reserveras före läsningen. Mottagningen har en total tidsgräns och en gräns för väntan "
+        "utan nya byte. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
         session=True,
         origin=True,
         user="required",
@@ -426,14 +427,20 @@ def refusals(op: Op) -> dict[str, Any]:
             "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat.",
             json_of({"$ref": "#/components/schemas/TooLarge"}),
         )
-    for status in ("502", "504"):
-        codes = [code for code in op.errors if (status == "504") == (code == "upstream_upload_timeout")]
+    error_status = {"upload_receive_timeout": "408", "uploads_busy": "503", "streams_busy": "503", "upstream_upload_timeout": "504"}
+    for status in ("408", "502", "503", "504"):
+        codes = [code for code in op.errors if error_status.get(code, "502") == status]
         if codes:
+            reason = {
+                "408": "Uppladdningen hann inte tas emot inom tidsgränsen.",
+                "503": "Kapaciteten är upptagen. Försök igen efter två sekunder.",
+            }.get(status, "Modulen når inte Eneo, eller kan inte använda svaret.")
             responses[status] = reply(
-                "Modulen når inte Eneo, eller kan inte använda svaret. `error` är "
+                reason + " `error` är "
                 + " eller ".join(f"`{code}`" for code in codes)
                 + ".",
                 json_of({"$ref": "#/components/schemas/BffError"}),
+                {"Retry-After": {"schema": {"const": "2"}}} if status == "503" else None,
             )
     return responses
 

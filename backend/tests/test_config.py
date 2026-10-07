@@ -124,6 +124,33 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, valid_environment(), clear=True):
             self.assertEqual(load_settings().upload_proxy_timeout_seconds, 1800.0)
 
+    def test_heavy_operation_limits_and_receive_deadlines_are_operator_settings(self) -> None:
+        environment = valid_environment() | {
+            "MAX_CONCURRENT_UPLOADS": "3", "MAX_CONCURRENT_HEAVY_IO": "8",
+            "UPLOAD_RECEIVE_TIMEOUT_SECONDS": "600", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS": "20.5",
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            settings = load_settings()
+        self.assertEqual((settings.max_concurrent_uploads, settings.max_concurrent_heavy_io), (3, 8))
+        self.assertEqual((settings.upload_receive_timeout_seconds, settings.upload_receive_idle_timeout_seconds), (600, 20.5))
+
+    def test_heavy_limits_cannot_take_the_connections_reserved_for_auth(self) -> None:
+        for name in ("MAX_CONCURRENT_UPLOADS", "MAX_CONCURRENT_HEAVY_IO"):
+            for raw in ("0", "-1", "1.5", "97", "999999999999999999999999999999"):
+                with self.subTest(name=name, raw=raw), patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
+        with patch.dict(os.environ, valid_environment() | {"MAX_CONCURRENT_UPLOADS": "9", "MAX_CONCURRENT_HEAVY_IO": "8"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "MAX_CONCURRENT_UPLOADS"):
+                load_settings()
+
+    def test_receive_deadlines_cannot_be_disabled_with_nonfinite_or_unbounded_values(self) -> None:
+        for name in ("UPLOAD_RECEIVE_TIMEOUT_SECONDS", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS"):
+            for raw in ("0", "-1", "inf", "nan", "", "86401"):
+                with self.subTest(name=name, raw=raw), patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
+
     def test_static_dir_is_the_folder_of_the_built_ui_or_nothing(self) -> None:
         for raw, expected in ((None, None), ("", None), ("/app/frontend/dist", Path("/app/frontend/dist"))):
             with self.subTest(raw=raw):

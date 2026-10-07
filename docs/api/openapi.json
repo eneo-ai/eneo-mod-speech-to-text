@@ -437,7 +437,7 @@
         ],
         "summary": "Ladda upp en fil till flödets ljudsteg",
         "operationId": "post_api_eneo_flows_flow_id_steps_step_id_runtime_files",
-        "description": "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går inte med. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
+        "description": "Modulen läser upp filen och skickar den vidare till Eneo som en ny förfrågan; webbläsarens egna rubriker går inte med. Kapacitet reserveras före läsningen. Mottagningen har en total tidsgräns och en gräns för väntan utan nya byte. En fil som är hel hos modulen lämnas alltid vidare, även om webbläsaren har gått.",
         "parameters": [
           {
             "name": "flow_id",
@@ -562,6 +562,23 @@
               }
             }
           },
+          "408": {
+            "description": "Uppladdningen hann inte tas emot inom tidsgränsen. error är upload_receive_timeout. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
           "409": {
             "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed). Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
             "content": {
@@ -615,6 +632,30 @@
           },
           "502": {
             "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_too_large eller upstream_redirect. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoPayload"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Kapaciteten är upptagen. Försök igen efter två sekunder. error är uploads_busy. Samma status kan också komma från Eneo och går då tillbaka oförändrad, med Eneos innehåll; formen här är modulens.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "2"
+                }
+              }
+            },
             "content": {
               "*/*": {
                 "schema": {
@@ -793,6 +834,30 @@
               }
             }
           },
+          "503": {
+            "description": "Kapaciteten är upptagen. Försök igen efter två sekunder. error är streams_busy. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "2"
+                }
+              }
+            },
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
           "default": {
             "$ref": "#/components/responses/EneoRefusal"
           }
@@ -955,6 +1020,30 @@
           },
           "502": {
             "description": "Modulen når inte Eneo, eller kan inte använda svaret. error är upstream_unreachable eller upstream_redirect eller upstream_invalid. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
+            "content": {
+              "*/*": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BffError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/EneoDetail"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Kapaciteten är upptagen. Försök igen efter två sekunder. error är streams_busy. Samma status kan också vara Eneos felstatus; Eneos svar står då i detail, och formen här är modulens.",
+            "headers": {
+              "Retry-After": {
+                "schema": {
+                  "const": "2"
+                }
+              }
+            },
             "content": {
               "*/*": {
                 "schema": {
@@ -3703,6 +3792,9 @@
           "error": {
             "type": "string",
             "enum": [
+              "streams_busy",
+              "upload_receive_timeout",
+              "uploads_busy",
               "upstream_invalid",
               "upstream_redirect",
               "upstream_too_large",

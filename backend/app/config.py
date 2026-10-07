@@ -61,6 +61,8 @@ class LogoFile(BaseModel):
 
 DEFAULT_ORGANIZATION = Organization(name="Sundsvalls kommun", logo="default")
 _LOGO_MAX_BYTES = 1024 * 1024
+UPSTREAM_CONNECTION_LIMIT = 100
+MAX_HEAVY_IO_LIMIT = UPSTREAM_CONNECTION_LIMIT - 4
 
 
 class Settings(BaseModel):
@@ -73,6 +75,10 @@ class Settings(BaseModel):
     session_secret: str
     cookie_secure: bool = True
     upload_proxy_timeout_seconds: float = 1800.0
+    upload_receive_timeout_seconds: float = Field(default=1800.0, gt=0, le=86400, allow_inf_nan=False)
+    upload_receive_idle_timeout_seconds: float = Field(default=30.0, gt=0, le=86400, allow_inf_nan=False)
+    max_concurrent_uploads: int = Field(default=1, gt=0, le=MAX_HEAVY_IO_LIMIT, strict=True)
+    max_concurrent_heavy_io: int = Field(default=64, gt=0, le=MAX_HEAVY_IO_LIMIT, strict=True)
     # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
     max_body_bytes: int = 10 * 1024 * 1024
     max_upload_bytes: int = 1024 * 1024 * 1024
@@ -90,6 +96,12 @@ class Settings(BaseModel):
     organization_logo_dark: LogoFile | None = None
     # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
     accent: Accent | None = None
+
+    @model_validator(mode="after")
+    def _capacity(self) -> Self:
+        if self.max_concurrent_uploads > self.max_concurrent_heavy_io:
+            raise ValueError("MAX_CONCURRENT_UPLOADS cannot exceed MAX_CONCURRENT_HEAVY_IO")
+        return self
 
     @property
     def module_origin(self) -> str:
@@ -394,6 +406,10 @@ def load_settings() -> Settings:
         session_secret=session_secret,
         cookie_secure=cookie_secure,
         upload_proxy_timeout_seconds=upload_timeout,
+        upload_receive_timeout_seconds=_positive_seconds("UPLOAD_RECEIVE_TIMEOUT_SECONDS", _default("upload_receive_timeout_seconds")),
+        upload_receive_idle_timeout_seconds=_positive_seconds("UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS", _default("upload_receive_idle_timeout_seconds")),
+        max_concurrent_uploads=_positive_int("MAX_CONCURRENT_UPLOADS", _default("max_concurrent_uploads"), maximum=MAX_HEAVY_IO_LIMIT),
+        max_concurrent_heavy_io=_positive_int("MAX_CONCURRENT_HEAVY_IO", _default("max_concurrent_heavy_io"), maximum=MAX_HEAVY_IO_LIMIT),
         max_body_bytes=_positive_int("MAX_BODY_BYTES", _default("max_body_bytes")),
         max_upload_bytes=_positive_int("MAX_UPLOAD_BYTES", _default("max_upload_bytes")),
         max_response_bytes=_positive_int("MAX_RESPONSE_BYTES", _default("max_response_bytes")),

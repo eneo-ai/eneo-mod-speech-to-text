@@ -11,7 +11,7 @@ from http.cookiejar import DefaultCookiePolicy
 
 import httpx
 
-from app.config import Settings
+from app.config import Settings, UPSTREAM_CONNECTION_LIMIT
 
 # The request extension that sets how much of that request's answer is read: a number of bytes, or None for none (a
 # file that streams). A request without it gets ``Settings.max_response_bytes``.
@@ -91,7 +91,8 @@ def make_client(settings: Settings) -> httpx.AsyncClient:
         response.stream = _Counted(response.stream, limit, request)
 
     client = httpx.AsyncClient(
-        timeout=httpx.Timeout(60.0, connect=CONNECT_TIMEOUT_SECONDS),
+        timeout=httpx.Timeout(60.0, connect=CONNECT_TIMEOUT_SECONDS, pool=5.0),
+        limits=httpx.Limits(max_connections=UPSTREAM_CONNECTION_LIMIT),
         follow_redirects=False,
         headers={"Accept-Encoding": "identity"},
         event_hooks={"response": [bound]},

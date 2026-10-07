@@ -259,6 +259,25 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
             browser.receive_json()
         self.assertEqual(ended.exception.code, code)
 
+    def test_heavy_capacity_refuses_live_with_retryable_event_before_requesting_a_ticket(self) -> None:
+        with patch.object(main.app.state, "heavy_io_slots", anyio.CapacityLimiter(1)):
+            with self.connect() as first:
+                self.assertEqual(first.receive_json(), READY)
+                with self.connect() as excess:
+                    event = excess.receive_json()
+                    self.assertEqual(event["type"], "error")
+                    self.assertEqual(event["code"], "live_busy")
+                    self.assertTrue(event["retryable"])
+                    self.assert_closed(excess)
+                self.assertEqual(len(self.eneo_api.calls), 1)
+                first.send_bytes(b"\x01\x00" * 160)
+                self.assertEqual(first.receive_json(), {"type": "transcript.delta", "text": "320 bytes "})
+                first.send_text(STOP)
+                self.assertEqual(first.receive_json()["type"], "transcript.done")
+                self.assert_closed(first)
+            with self.connect() as next_session:
+                self.assertEqual(next_session.receive_json(), READY)
+
     def test_signed_in_user_streams_to_eneo_and_reads_its_events_in_order(self) -> None:
         with self.connect() as browser:
             self.assertEqual(browser.receive_json(), READY)

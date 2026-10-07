@@ -18,6 +18,10 @@ The limits are read from the settings at each request, so the settings are the o
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import anyio
 from fastapi import HTTPException, Request
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -37,6 +41,21 @@ UPLOAD_TOO_LARGE = "Upload too large: the module accepts at most max_upload_byte
 BODY_LIMIT = "eneo_module.body_limit"
 # No body is as long as 10**19 bytes, and int() refuses more than 4300 digits (a ValueError, so a 500).
 _MAX_LENGTH_DIGITS = 19
+
+
+@contextmanager
+def capacity_slot(limiter: anyio.CapacityLimiter) -> Iterator[bool]:
+    """Refuse excess work without queueing; release only after the caller's resource cleanup."""
+    borrower = object()
+    try:
+        limiter.acquire_on_behalf_of_nowait(borrower)
+    except anyio.WouldBlock:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        limiter.release_on_behalf_of(borrower)
 
 
 class BodyTooLarge(HTTPException):
