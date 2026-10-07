@@ -1,11 +1,12 @@
-// Runs the existing checks on a private copy, so edits and builds in the working tree cannot alter a running gate.
+// Private sources, frontend dependencies and builds; external runtimes are checked before and after each step.
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, closeSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, readlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
-const CHECKS = ["lint", "unit", "backend", "dev", "real", "prod", "review", "branding", "shots"];
+const CHECKS = ["lint", "unit", "backend", "prod", "real", "review", "branding", "dev", "shots"];
 const args = process.argv.slice(2);
 function option(name, fallback) {
   const index = args.indexOf(name);
@@ -38,6 +39,36 @@ function digest(root, name) {
   const path = join(root, name);
   return lstatSync(path).isSymbolicLink() ? hash(`link:${readlinkSync(path)}`) : hash(readFileSync(path));
 }
+function runtimeIdentity(frontend, selection) {
+  const executable = (path) => ({ path, resolved: realpathSync(path), sha256: hash(readFileSync(realpathSync(path))) });
+  const node = JSON.parse(execFileSync("node", ["-p", "JSON.stringify({path:process.execPath,version:process.version})"], { encoding: "utf8" }));
+  const python = selection.python.map((command) => {
+    const details = JSON.parse(execFileSync(command, ["-c", `
+import hashlib, importlib.metadata, json, sys
+files = {}
+for distribution in importlib.metadata.distributions():
+    for name in distribution.files or []:
+        path = distribution.locate_file(name)
+        if path.is_file() and path.suffix != '.pyc':
+            files[str(path)] = hashlib.sha256(path.read_bytes()).hexdigest()
+print(json.dumps({'executable': sys.executable, 'version': sys.version,
+    'packagesHash': hashlib.sha256(json.dumps(sorted(files.items())).encode()).hexdigest()}))
+`], { encoding: "utf8", env: { ...process.env, PYTHONDONTWRITEBYTECODE: "1" } }));
+    return { command, ...details, binary: executable(details.executable) };
+  });
+  let browsers = null;
+  if (selection.browsers) {
+    const require = createRequire(join(frontend, "package.json"));
+    // The pinned Playwright registry includes the headless shell and WebKit's libraries, beyond executablePath().
+    const { registry } = require("playwright-core/lib/coreBundle").registry;
+    browsers = { version: require("playwright-core/package.json").version, installs: registry.defaultExecutables().map((browser) => ({
+      name: browser.name, directory: browser.directory,
+      filesHash: existsSync(browser.directory) ? fingerprint(Object.fromEntries(tree(browser.directory, browser.directory).map((name) => [name, digest(browser.directory, name)]))) : null,
+    })) };
+  }
+  return { platform: process.platform, arch: process.arch, runner: { version: process.version, ...executable(process.execPath) },
+    node: { version: node.version, ...executable(node.path) }, python, browsers };
+}
 function verify(candidate, manifest) {
   const changed = Object.entries(manifest.files).filter(([name, expected]) => !existsSync(join(candidate, name)) || digest(candidate, name) !== expected);
   const output = /^(logs\/|candidate\.json$|frontend\/tsconfig\.tsbuildinfo$|frontend\/(?:\.test-build|test-results|playwright-report|ux-shots)(?:\/|$))/;
@@ -46,6 +77,26 @@ function verify(candidate, manifest) {
   const added = manifest.status === undefined ? [] : tree(candidate, candidate)
     .filter((name) => !(name in manifest.files) && !output.test(name) && !(builds.test(name) && !manifest.assetsHash));
   if (changed.length || added.length) throw new Error(`Candidate changed: ${[...changed.map(([name]) => name), ...added].join(", ")}`);
+  if (manifest.runtime && hash(JSON.stringify(runtimeIdentity(join(candidate, "frontend"), manifest.runtimeSelection))) !== manifest.runtimeHash) {
+    throw new Error("External runtime changed: capture a new candidate before reusing its results");
+  }
+}
+function reportCounts(report) {
+  const counts = { passed: 0, failed: 0, flaky: 0, skipped: 0, interrupted: 0, notRun: 0 };
+  const visit = (suite) => {
+    for (const spec of suite.specs ?? []) for (const test of spec.tests) {
+      const last = test.results.at(-1);
+      if (!last) counts.notRun++;
+      else if (last.status === "interrupted") counts.interrupted++;
+      else if (last.status === "skipped") counts.skipped++;
+      else if (test.status === "expected") counts.passed++;
+      else if (test.status === "flaky") counts.flaky++;
+      else counts.failed++;
+    }
+    for (const child of suite.suites ?? []) visit(child);
+  };
+  for (const suite of report.suites) visit(suite);
+  return counts;
 }
 function protect(candidate, files) {
   for (const name of files) {
@@ -137,7 +188,13 @@ async function run(candidate, manifest, name, command, commandArgs, cwd, env) {
   step.finishedAt = new Date().toISOString();
   step.status = exitCode === 0 ? "passed" : "failed";
   save(candidate, manifest);
-  verify(candidate, manifest);
+  try { verify(candidate, manifest); }
+  catch (error) {
+    step.status = "failed";
+    step.error = String(error);
+    save(candidate, manifest);
+    throw error;
+  }
   if (exitCode !== 0 || interrupted) throw new Error(`${name} failed; see ${log}`);
   console.log(`${name}: passed`);
 }
@@ -153,17 +210,18 @@ async function main() {
     const manifest = JSON.parse(readFileSync(join(reporting, "candidate.json"), "utf8"));
     const steps = (manifest.steps ?? []).map((step) => {
       const report = join(reporting, "frontend/test-results", `${step.name}.json`);
-      const stats = step.finishedAt && existsSync(report) ? JSON.parse(readFileSync(report, "utf8")).stats : undefined;
+      const tests = step.finishedAt && existsSync(report) ? reportCounts(JSON.parse(readFileSync(report, "utf8"))) : null;
       return {
         name: step.name, status: step.status, exitCode: step.exitCode ?? null,
         startedAt: step.startedAt, finishedAt: step.finishedAt ?? null, log: step.log,
-        tests: stats ? { passed: stats.expected, failed: stats.unexpected, flaky: stats.flaky, skipped: stats.skipped } : null,
+        tests,
       };
     });
     console.log(JSON.stringify({
       candidate: resolve(reporting), source: manifest.source, createdAt: manifest.createdAt,
       sourceHash: manifest.sourceHash, assetsHash: manifest.assetsHash ?? null,
-      status: manifest.status, selection: manifest.selection, error: manifest.error ?? null, steps,
+      status: manifest.status, selection: manifest.selection, runtimeHash: manifest.runtimeHash ?? null, runtime: manifest.runtime ?? null,
+      error: manifest.error ?? null, steps,
     }, null, 2));
     return;
   }
@@ -196,6 +254,14 @@ async function main() {
   for (const name of ["GATE_TARGET", "STATIC_DIR", "STUB_BRANDING", "SPEAKER_REVIEW_ENABLED", "REAL_EXTERNAL_URL", "PROD_EXTERNAL_URL", "STUB_URL", "UX_SHOTS_DIR", "SHOTS_SIZES"]) delete env[name];
   const invoke = (name, command, argv, cwd = frontend, extra = {}) => run(candidate, manifest, name, command, argv, cwd, { ...env, ...extra });
   try {
+    const browsers = checks.some((name) => !["lint", "unit", "backend"].includes(name));
+    manifest.runtimeSelection = { browsers, python: [...new Set([
+      ...(checks.some((name) => ["backend", "real", "prod"].includes(name)) ? [env.BACKEND_PYTHON] : []),
+      ...(browsers ? ["python3"] : []),
+    ])] };
+    manifest.runtime = runtimeIdentity(frontend, manifest.runtimeSelection);
+    manifest.runtimeHash = hash(JSON.stringify(manifest.runtime));
+    save(candidate, manifest);
     for (const name of ["lint", "unit", "backend"].filter((name) => checks.includes(name))) {
       if (name === "backend") await invoke(name, env.BACKEND_PYTHON, ["-m", "unittest", "discover", "-s", "tests"], join(candidate, "backend"));
       else await invoke(name, "npm", ["run", name === "unit" ? "test" : "lint"]);
