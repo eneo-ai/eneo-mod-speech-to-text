@@ -127,22 +127,15 @@ worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STU
 
 ## Migration (temporary, removed by bead .24)
 
-The frontend is being ported from shadcn/Radix/Tailwind to Astryx. This section, the migration sections of `docs/`,
-`.beads/` and `docs/plans/` exist only for the port. They are removed when it is done (bead
-`stt-plan-a-astryx-port-57a.24`); do not build anything permanent on them.
+The Astryx port and single-process runtime are implemented on `feat/one-process`. This section, `.beads/` and
+`docs/plans/` remain until kit adoption and final acceptance are complete (bead `stt-plan-a-astryx-port-57a.24`).
+Keep permanent product guidance in `docs/`, not in these planning files.
 Plan: `docs/plans/2026-10-01-astryx-port-plan.md`. Design: `docs/plans/2026-10-01-module-platform-design.md`.
 
 - The old system (`frontend/components/ui/`, `components.json`, `tailwind.config.ts`, `postcss.config.mjs`, `lib/utils.ts`,
   Radix, Tailwind) is deleted. `frontend/lib/legacy-ui.test.ts` fails if an import of it or a class string comes back; it
   stays after the port.
-- The surfaces allowed a CSS Module during the port are named in the plan's surface cards.
-- A porting change does not touch `frontend/lib/` (except tests and `lib/test-dom.ts`), `backend/` or the CSP in
-  `backend/app/security_headers.json`; domain logic is not part of the port.
 - Work order and status live in Beads: `br ready --json`. The plan's checkboxes are a working aid, not the board.
-- Branches: phases merge into the integration branch `feat/astryx`; it goes to `main` once, after the last phase.
-- Cleanup checklist for bead `.24`: delete this section, `docs/plans/` and `.beads/`; cut every section headed
-  `## Migration (temporary, removed by bead .24)` (find them with `rg -l "Migration \(temporary" docs`) and the
-  "Migration" table in `docs/README.md`; then look for links that pointed into what was removed:
-  `rg -n "docs/plans|\.beads" README.md docs`. Also update the places that name the port as in progress: the
-  "Under arbete" row in the Status tables of `README.md` and `docs/architecture.md`, the Status line of
-  `docs/decisions/0001-astryx-over-shadcn.md`, and the status column of `docs/README.md`.
+- Before removing the planning files, export the board outside the repository and check the remaining conditions on
+  bead `.24`. Remove this section with those files, then check for broken references with
+  `rg -n "docs/plans|\.beads|Migration \\(temporary" README.md AGENTS.md CLAUDE.md docs`.
