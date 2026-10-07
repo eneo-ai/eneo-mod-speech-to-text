@@ -11,7 +11,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 const signedOut = () => json({ authenticated: false, user: null });
 
 /** The sign-in page under the providers every page has, with its server's answers and the router that says where it went. */
-async function openLoginPage(t: TestContext, answers: (url: string, init?: RequestInit) => Response | Promise<Response>) {
+async function openLoginPage(t: TestContext, answers: (url: string, init?: RequestInit) => Response | Promise<Response>, routeState?: unknown) {
   const { createElement } = await import("react");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { default: LoginPage } = await import("../routes/LoginPage");
@@ -28,7 +28,7 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
   // The page reads the address from the window, as in the browser, where the router writes it: a memory router does not,
   // so the entry it starts at is the window's too.
   const { router, tree } = withRouter(createElement(ModuleProviders, { children: createElement(LoginPage) }), {
-    entries: [`${window.location.pathname}${window.location.search}`],
+    entries: [{ pathname: window.location.pathname, search: window.location.search, state: routeState }],
   });
   const view = await mount(tree);
   // The page asks who is signed in first; let that answer land.
@@ -39,12 +39,14 @@ async function openLoginPage(t: TestContext, answers: (url: string, init?: Reque
 const alerts = (within: ParentNode) => [...within.querySelectorAll('[role="alert"]')].map((element) => element.textContent ?? "");
 
 test("while the session is asked for, the page is the shell's one main region, headed Tal till text, with a spinner that says so", async (t) => {
-  const { container } = await openLoginPage(t, () => new Promise<Response>(() => {}));
+  const response = Promise.withResolvers<Response>();
+  const { container, act } = await openLoginPage(t, () => response.promise);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
   assert.deepEqual([...container.querySelectorAll("h1")].map((heading) => heading.textContent), ["Tal till text"]);
   assert.ok(container.querySelector('[role="status"]'), "something says that it is loading");
   assert.match(container.textContent ?? "", /Hoppa till innehåll/, "the shell's skip link");
   assert.ok(container.querySelector('nav[aria-label="Tal till text"]'), "the shell's named navigation landmark");
+  await act(async () => response.resolve(signedOut()));
 });
 
 test("the Eneo sign-in page asks for one thing, and pressing it says that Eneo opens and cannot be pressed twice", async (t) => {
@@ -67,6 +69,17 @@ test("Eneo's login is the only way in: no field, no form, and nothing is sent bu
   assert.ok(button(container, "Logga in med Eneo"));
   assert.doesNotMatch(container.textContent ?? "", /åtkomstkod/i);
   assert.deepEqual(requests, ["GET /api/auth/status"]);
+  assert.doesNotMatch(container.textContent ?? "", /Du är utloggad/);
+});
+
+test("after logout, the confirmed signed-out page explains retention and how to recover without reading private recordings", async (t) => {
+  const { container, requests } = await openLoginPage(t, signedOut, { signedOut: true });
+  assert.equal(container.querySelector("h1")?.textContent, "Du är utloggad");
+  assert.match(container.textContent ?? "", /tills du skickar eller tar bort dem/);
+  assert.match(container.textContent ?? "", /Logga in med samma konto/);
+  assert.match(container.textContent ?? "", /egen webbläsarprofil/);
+  assert.ok(button(container, "Logga in med Eneo"));
+  assert.deepEqual(requests, ["GET /api/auth/status"]);
 });
 
 test("someone already signed in goes straight on to the flow list", async (t) => {
@@ -85,11 +98,12 @@ test("Eneo's refusal of the sign-in is said, and the address is cleaned of it", 
 });
 
 test("a module that cannot be reached is said, with a way to try again and nothing to fill in", async (t) => {
-  const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")));
+  const { container } = await openLoginPage(t, () => Promise.reject(new TypeError("Failed to fetch")), { signedOut: true });
   assert.deepEqual(alerts(document.body).filter((text) => text.includes("kan inte nås")), ["Tal till text kan inte nås just nu."]);
   assert.ok(button(container, "Försök igen"));
   assert.equal(container.querySelectorAll("input").length, 0);
   assert.equal(container.querySelectorAll('main, [role="main"]').length, 1, "one main region");
+  assert.doesNotMatch(container.textContent ?? "", /Du är utloggad/, "a missing server answer is not confirmation of the session state");
 });
 
 test("coming Back from Eneo, with the page restored from the browser's cache, the sign-in can be pressed again", async (t) => {

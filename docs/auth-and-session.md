@@ -46,6 +46,8 @@ Webbläsaren skickas till `/?auth_error=<kod>`. Sidan visar alltid samma svenska
 
 Webbläsaren har bara en cookie, `eneo_module_session`, med ett slumpmässigt, opakt ID (HttpOnly, SameSite=Lax, `Secure` när `COOKIE_SECURE=true`). Allt annat ligger i backendens minne: användaren, tenant, modultoken och inloggningens slut. En omstart av backend ger ny inloggning för alla, och en ny inloggning ersätter den gamla sessionen och stänger öppna live-sockets. Utloggning (`POST /api/auth/logout`) tar bort sessionen direkt.
 
+För osänt ljud efter utloggning, se [inspelningens lagring på enheten](recording.md#inspelningen-sparas-på-enheten).
+
 ### Hur länge en inloggning gäller
 
 Inloggningens fasta slut är det tidigaste av `SESSION_MAX_AGE_MINUTES` (standard 480, alltså 8 timmar) och Eneos eget sessionstak (`MODULE_AUTH_MAX_SESSION_HOURS` hos Eneo). Bara en ny inloggning kan flytta slutet. `GET /api/auth/status` talar om hur många sekunder som återstår.

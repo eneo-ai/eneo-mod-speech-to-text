@@ -379,6 +379,16 @@ export const STATES: State[] = [
   },
   { name: "signin-sso", go: (page) => signIn(page) },
   {
+    name: "signin-after-logout",
+    go: async (page) => {
+      await flows(page);
+      await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
+      await page.getByRole("button", { name: /^Öppna konto för/ }).click();
+      await page.getByRole("menuitem", { name: "Logga ut", exact: true }).click();
+      await heading(page, "Du är utloggad");
+    },
+  },
+  {
     name: "signin-error",
     go: async (page) => {
       await signIn(page, "?auth_error=1");

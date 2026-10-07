@@ -223,11 +223,16 @@ test("Logga ut asks before the logout request is sent: Stanna kvar sends none, L
 
   await signOut();
   await asked(page, namesTyped);
+  await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
   await question(page).getByRole("button", { name: "Lämna sidan" }).click();
   await expect.poll(() => logouts.length).toBe(1);
   await expect(page).not.toHaveURL(new RegExp(`/flows/${ids.flows.flow1}`));
   await expect(question(page), "the way on is not asked a second time").toHaveCount(0);
   expect(logouts).toHaveLength(1);
+  await expect(page.getByRole("heading", { name: "Du är utloggad" })).toBeFocused();
+  await expect(page.getByText(/Osända inspelningar ligger kvar/)).toBeVisible();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeFocused();
 });
 
 test("Logga ut while recording asks first, and Stanna kvar keeps the recording and the login", async ({ page }) => {

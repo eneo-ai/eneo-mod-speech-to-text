@@ -6,9 +6,9 @@
  */
 
 import { createElement, type ReactElement } from "react";
-import { createMemoryRouter, RouterProvider, StaticRouter } from "react-router";
+import { createMemoryRouter, RouterProvider, StaticRouter, type InitialEntry } from "react-router";
 
-export function withRouter(element: ReactElement, { path = "/", entries = [path] }: { path?: string; entries?: string[] } = {}) {
+export function withRouter(element: ReactElement, { path = "/", entries = [path] }: { path?: string; entries?: InitialEntry[] } = {}) {
   const router = createMemoryRouter([{ path, element }, { path: "*", element: null }], { initialEntries: entries });
   // Every address the router moved to, in order, for a test that asserts the page went nowhere (`[]`) or somewhere.
   const visited: string[] = [];

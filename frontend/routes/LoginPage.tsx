@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Heading } from "@astryxdesign/core/Heading";
@@ -15,14 +15,17 @@ import { UNREACHABLE } from "@/components/ModuleUnreachable";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { useRouteReady } from "@/routes/RouteEffects";
 import { PRODUCT_NAME } from "@/lib/product";
+import { isRecord } from "@/lib/is-record";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   // False when the module could not be asked who is signed in: the way in is then a second try.
   const [reachable, setReachable] = useState(false);
+  const signedOut = reachable && isRecord(location.state) && location.state.signedOut === true;
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -76,10 +79,13 @@ export default function LoginPage() {
         <LayoutContent isScrollable={false}>
           <VStack gap={6} paddingBlockStart={6}>
             <VStack gap={2}>
-              <Heading level={1}>Gör samtal och filer till text och dokument.</Heading>
+              <Heading level={1}>{signedOut ? "Du är utloggad" : "Gör samtal och filer till text och dokument."}</Heading>
               <Text as="p" color="secondary">
-                Logga in via Eneo för att fortsätta.
+                {signedOut
+                  ? "Osända inspelningar ligger kvar i den här webbläsaren tills du skickar eller tar bort dem. Logga in med samma konto för att fortsätta."
+                  : "Logga in via Eneo för att fortsätta."}
               </Text>
+              {signedOut && <Text as="p" color="secondary">Använd en egen webbläsarprofil om du delar dator med andra.</Text>}
             </VStack>
 
             {authError && <Banner status="error" title={authError} collapsible={false} />}

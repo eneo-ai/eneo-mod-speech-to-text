@@ -9,8 +9,10 @@ Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus 
 Inspelaren sparar en ljudbit varannan sekund i webbläsarens IndexedDB (`frontend/lib/recording-store.ts`). När lagringen fungerar finns de sparade bitarna kvar efter en omladdning, en krasch eller en utgången session; den senaste biten kan gå förlorad.
 
 - Inspelningen visas som osänd i flödeslistan och på flödets sida, för den som spelade in den. Knappen heter **Skapa text** eller **Skapa dokument**, beroende på flödets resultat; på flödets sida läggs **av inspelningen** till. Där finns också **Spara som fil** och **Ta bort**.
-- Den lokala kopian tas bort först när Eneo har tagit emot körningen.
+- Den lokala kopian tas bort när Eneo har tagit emot körningen eller när du väljer **Ta bort**. Appen har ingen automatisk tidsgräns för osända inspelningar.
 - Utan IndexedDB (vissa privata lägen) finns inspelningen bara i fliken, och det står i inspelaren.
+
+Utloggning tar inte bort sparade inspelningar. Inloggningssidan förklarar detta efter utloggning (`frontend/routes/LoginPage.tsx`); logga in med samma konto i samma webbläsarprofil för att fortsätta. Använd en egen webbläsarprofil om du delar dator med andra. Ljudet ligger i profilen, och modulens inloggning skyddar inte mot någon som kan läsa profilens lokala lagring.
 
 Om lagringen slutar fungera, till exempel när webbplatsdata rensas under inspelningen, visas en varning direkt. Inspelningen fortsätter i fliken, men tidigare ljud kan ha försvunnit. Välj **Spara som fil** efter **Stoppa** för att behålla det som finns kvar. Ljud som rensats från enheten går inte att återställa.
 

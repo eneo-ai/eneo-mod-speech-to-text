@@ -153,6 +153,7 @@ test("Logga ut asks the page's leave question first, and does nothing until the 
   });
   assert.deepEqual(requests, ["POST /api/auth/logout"]);
   assert.equal(router.state.location.pathname, "/", "gone to the sign-in page");
+  assert.deepEqual(router.state.location.state, { signedOut: true }, "the sign-in page can explain what remains on the device");
   assert.equal(router.state.historyAction, "REPLACE", "in place of the page, not on top of it");
 });
 

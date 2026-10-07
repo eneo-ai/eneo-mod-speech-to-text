@@ -40,7 +40,7 @@ export function AccountMenu() {
       setFailed(true);
       return;
     }
-    void navigate("/", { replace: true });
+    void navigate("/", { replace: true, state: { signedOut: true } });
   }
 
   // Not modal: a modal menu hides the page with aria-hidden while its links stay focusable (4.1.2).
