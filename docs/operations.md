@@ -162,7 +162,7 @@ Allt CI och imagen kör är fäst: backendens paket i en låsfil med hashar, bas
 - **Backendens paket:** ändra versionen i `backend/requirements.txt` och generera om låsfilen från repots rot. `backend/tests/test_dependency_lock.py` stoppar en ändring av den ena filen utan den andra.
 
   ```
-  uv pip compile backend/requirements.txt --python-version 3.12 --universal --generate-hashes \
+  uv pip compile backend/requirements.txt --python-version 3.14 --universal --generate-hashes \
     --exclude-newer <dagens datum>T00:00:00Z -o backend/requirements.lock
   ```
 

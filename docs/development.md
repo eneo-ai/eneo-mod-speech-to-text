@@ -59,7 +59,7 @@ curl -fsS http://localhost:3001/health
 
 ## Utan Docker
 
-Backend och Vite körs var för sig. Devcontainern (`.devcontainer/devcontainer.json`) har Python 3.12 och Node 24.21.0 LTS; frontend och dokumentationssajten kräver Node 24.21.0 eller senare (`engines` i `frontend/package.json`). Miljön i `backend/.venv` skapas i devcontainern (`.devcontainer/post-create.sh`) eller med `python -m venv .venv && .venv/bin/pip install -r requirements.txt`. Läs in `.env` i båda terminalerna, med `COOKIE_SECURE=false` och `MODULE_PUBLIC_URL=http://localhost:3002`:
+Backend och Vite körs var för sig. Devcontainern (`.devcontainer/devcontainer.json`) har Python 3.14 och Node 24.21.0 LTS; frontend och dokumentationssajten kräver Node 24.21.0 eller senare (`engines` i `frontend/package.json`). Miljön i `backend/.venv` skapas i devcontainern (`.devcontainer/post-create.sh`) eller med `python -m venv .venv && .venv/bin/pip install -r requirements.txt`. Läs in `.env` i båda terminalerna, med `COOKIE_SECURE=false` och `MODULE_PUBLIC_URL=http://localhost:3002`:
 
 ```bash
 # Backend (från backend/): utan gränssnitt, startar om vid kodändringar

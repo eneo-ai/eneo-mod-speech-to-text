@@ -18,13 +18,13 @@ ENV SPEAKER_REVIEW_ENABLED=$SPEAKER_REVIEW_ENABLED
 RUN npm run build
 
 # ---- the backend's packages: exactly the set backend/requirements.lock names, each checked against its hash, nothing resolved here.
-FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016 AS python-packages
+FROM python:3.14.8-slim@sha256:3353bb7e9ae99c7cce6cad2b2f2b174e8f22813ac43e3b13e7a742627d2b01d8 AS python-packages
 RUN python -m venv /opt/venv
 COPY backend/requirements.lock ./
 RUN /opt/venv/bin/pip install --no-cache-dir --require-hashes --no-deps -r requirements.lock
 
 # ---- what runs. The code is owned by root: the process (user `module`) can read it and cannot change it.
-FROM python:3.12-slim@sha256:dddfd7e07f9d15aeeca61529320492139d21cac7f0070c00609243e51e4e0016
+FROM python:3.14.8-slim@sha256:3353bb7e9ae99c7cce6cad2b2f2b174e8f22813ac43e3b13e7a742627d2b01d8
 RUN groupadd --system module && useradd --system --gid module --home-dir /app module
 COPY --from=python-packages /opt/venv /opt/venv
 WORKDIR /app
