@@ -258,9 +258,11 @@ The repository can be created now, and part of the kit can be built while this m
 | Module contract docs, template skeleton (Vite app, `main.py`, Dockerfile, compose, CI, devcontainer, stub Eneo) | Now | Greenfield. It is also where the one-process shape of Plan B is proven without touching this module. |
 | UI package: theme and providers | When Plan A's Phase 0 is on `main` | They are taken from `frontend/kit/`. |
 | UI package: shell and session client | When Plan A's Phase 1 is merged | They need the seams below, and Phase 1 is where the native-dialog contract is proven. |
-| Speech-to-text on the kit | After Plan A, Plan B and a released kit version | The kit's UI package assumes a static app (its colour mode reads the stored choice before React renders, with no server render), and the kit is SSO-only, so this module's temporary access-code login must be gone first. This adoption is what shows whether the kit's API fits. |
+| Speech-to-text on the kit | After the Astryx port and static-runtime technical exits, and a released kit version; before first deployment | The kit's UI package assumes a static app (its colour mode reads the stored choice before React renders, with no server render), and the kit is SSO-only, so this module's temporary access-code login must be gone first. This adoption is what shows whether the kit's API fits. |
 
 The kit has its own plan and its own Beads workspace in its repository (`docs/design.md`, `docs/plans/2026-10-01-module-kit-plan.md`, prefix `kit`). Nothing is moved out of this repository before the adoption step; until then the kit copies from here and this module stays the reference. Treat the kit's version as 0.x until that adoption is done.
+
+The technical exits are the completed Astryx removal (`stt-plan-a-astryx-port-57a.23`) and static-runtime implementation/docs (`stt-plan-b-one-process-runtime-bbs.23`). Adoption precedes capacity admission, resumable uploads and the final security audit, which must finish before the first deployment. Owner preview checks, physical Safari verification, deployment approval and the incident-free week remain separate rollout requirements. Final scaffolding cleanup follows adoption and the audit.
 
 ### Distribution
 
