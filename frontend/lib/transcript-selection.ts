@@ -1,5 +1,5 @@
 import { applyCorrections, correctedSegmentText, occurrencesForLine, withSpeakerDecision, type CorrectionSet } from "./transcript-corrections";
-import { needsSpeakerReview, type SpeakerDecision, type TranscriptSegment } from "./transcript";
+import { modelSpeakerOf, needsSpeakerReview, type SpeakerDecision, type TranscriptSegment } from "./transcript";
 
 export interface TextSelectionSpan { segmentIndex: number; start: number; end: number }
 export interface DisplaySelectionSpan { index: number; start: number; end: number }
@@ -49,9 +49,9 @@ function displayToRaw(offset: number, segmentIndex: number, set: CorrectionSet, 
 /** Offer one quick confirmation only when the selection has a single compatible suggestion. */
 export function selectionSpeakerSuggestion(spans: readonly TranscriptSegment[]): string | null {
   const words = spans.filter((s) => s.text.trim());
-  const suggestion = words[0]?.modelSpeaker === undefined ? words[0]?.speaker : words[0].modelSpeaker;
+  const suggestion = words[0] ? modelSpeakerOf(words[0]) : null;
   if (!suggestion || !/^SPEAKER_\d{2,}$/.test(suggestion)) return null;
-  return words.every((s) => (s.modelSpeaker === undefined ? s.speaker : s.modelSpeaker) === suggestion &&
+  return words.every((s) => modelSpeakerOf(s) === suggestion &&
     (!s.decision || s.decision === "confirmed" && s.speaker === suggestion)) ? suggestion : null;
 }
 
@@ -116,7 +116,7 @@ export function displayedSourceOffset(segment: TranscriptSegment, index: number,
 
 /** Exact character editing: never snap a caret to words or rewrite speaker decisions. */
 export function replaceTranscriptText(set: CorrectionSet, raw: readonly TranscriptSegment[], shown: readonly TranscriptSegment[], ranges: readonly DisplaySelectionSpan[], text: string) {
-  if (!ranges.length) throw new Error("Placera markören i transkripttexten.");
+  if (!ranges.length) throw new Error("Placera markören i transkriberingen.");
   let next = set;
   const first = ranges[0];
   if (!shown[first.index]) throw new Error("Markeringen behöver göras om.");

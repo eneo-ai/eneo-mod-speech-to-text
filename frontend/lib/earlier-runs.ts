@@ -6,7 +6,7 @@
 
 import { listOwnRuns, type FlowRunSummary } from "./api";
 
-export const EARLIER_RUNS_PAGE = 10;
+const EARLIER_RUNS_PAGE = 10;
 
 export interface EarlierRunsSnapshot {
   runs: readonly FlowRunSummary[];

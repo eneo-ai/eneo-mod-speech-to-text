@@ -11,19 +11,18 @@
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
-    - list:
-      - listitem: Transkribera Klar
+    - list "Flödets steg":
+      - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
-  - region "Transkript":
-    - heading "Transkript" [level=2]
-    - button "Kopiera transkriptet":
+  - region "Transkribering":
+    - heading "Transkribering" [level=2]
+    - button "Kopiera transkriberingen":
       - text: ""
       - status
-    - status
-    - button "Ladda ner som text, transkriptet":
+    - button "Ladda ner som text, transkriberingen":
       - text: ""
       - status
-    - region "Inspelning och transkript":
+    - region "Inspelning och transkribering":
       - group "Visa talare":
         - button "Alla" [pressed]:
           - text: ""
@@ -34,11 +33,11 @@
         - button "Talare 2":
           - text: ""
           - status
-      - text: Sök i transkriptet
-      - textbox "Sök i transkriptet"
+      - text: Sök i transkriberingen
+      - textbox "Sök i transkriberingen"
       - status
       - status
-      - link "Hoppa förbi transkriptet":
+      - link "Hoppa förbi transkriberingen":
         - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":
@@ -82,11 +81,10 @@
   - region "Kontakta support":
     - heading "Kontakta support" [level=2]
     - text: Körnings-ID
-    - code: run-failed
+    - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
     - button "Kopiera körnings-ID":
       - text: ""
       - status
-    - status
     - button "Dölj teknisk information" [expanded]
     - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
     - paragraph: flow_step_failed

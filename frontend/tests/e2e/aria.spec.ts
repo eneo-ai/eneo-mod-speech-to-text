@@ -5,19 +5,20 @@
  * change once, never the ticking timer. These are DOM text changes; what a
  * screen reader actually says is on the manual list.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
 import { STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
 const NOW = new Date("2026-09-24T12:00:00+02:00");
 
 const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean }[] = [
-  { state: "signin-access-code", region: (page) => page.locator("[data-app-shell]") },
   { state: "flow-list", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
   { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "setup-required-detail", region: (page) => page.getByRole("main") },
+  { state: "setup-date", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "recording", region: (page) => page.locator("[data-app-shell]") },
   { state: "stromma", region: (page) => page.getByRole("region", { name: "Ljudet" }) },
   { state: "leave-dialog", region: (page) => page.getByRole("alertdialog") },
@@ -25,6 +26,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "run-progress", region: (page) => page.getByRole("main") },
   { state: "result", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "result-transcript-tab", region: (page) => page.getByRole("main"), fixedTime: true },
+  { state: "result-table", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "result-regenerate", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "failure", region: (page) => page.getByRole("main"), fixedTime: true },
   { state: "review", region: (page) => page.getByRole("main"), fixedTime: true },
@@ -32,6 +34,7 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "signed-out-recording", region: (page) => page.getByRole("alertdialog") },
   { state: "review-din-version", region: (page) => page.getByRole("main") },
   { state: "flow-republish-required", region: (page) => page.locator("[data-app-shell]") },
+  { state: "flows-unreachable", region: (page) => page.locator("[data-app-shell]") },
 ];
 
 for (const { state, region, fixedTime } of SNAPSHOTS) {
@@ -64,7 +67,8 @@ function listen() {
       );
       const changed = target?.closest('[aria-live]:not([aria-live="off"]), [role="status"], [role="alert"], [role="log"], [role="timer"]');
       for (const live of changed ? [changed, ...alerts] : alerts) {
-        if (live.id === "__next-route-announcer__") continue;
+        // The route's announcement is RouteEffects' own and has its own test (route-change.spec.ts).
+        if (live.hasAttribute("data-astryx-live-region")) continue;
         const text = spoken(live).replace(/\s+/g, " ").trim();
         if (!text || last.get(live) === text) continue;
         last.set(live, text);

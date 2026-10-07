@@ -1,14 +1,10 @@
-"use client";
-
 import { FileText } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type MouseEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
-import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
-import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { FlowAside } from "@/components/flow/FlowAside";
@@ -31,7 +27,7 @@ import { useDocumentTitle, useElapsed, useSilence } from "@/components/flow/reco
 import { UploadPanel } from "@/components/flow/UploadPanel";
 import type { useFlowSession } from "@/components/flow/useFlowSession";
 import { OfflineBanner } from "@/components/OfflineBanner";
-import { resumableRecording, UnsentRecordings, type UnsentRecording } from "@/components/UnsentRecordings";
+import { resumableRecording, UnsentRecordings, type UnsentList } from "@/components/UnsentRecordings";
 import { speakerMappingReviewSteps, type FlowPublished, type RunContract } from "@/lib/api";
 import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import {
@@ -68,8 +64,12 @@ const PHASE_GROUP: Record<SessionPhase, "setup" | "capture" | "ready"> = {
   ready: "ready",
 };
 
-// Phone width, where the setup's primary action docks at the bottom of the page.
-const PHONE = "(max-width: 767px)";
+/** How long the browser's question about the microphone may be left before the page says where it is. */
+const MICROPHONE_ANSWER_WAIT_MS = 3_000;
+const ASK_THE_BROWSER = "Svara på frågan i webbläsaren.";
+
+// Phone width, where the setup's primary action docks at the bottom of the page: just under the 768 px where the CSS takes over.
+const PHONE = "(max-width: 767.98px)";
 const subscribePhone = (onChange: () => void) => {
   const query = window.matchMedia(PHONE);
   query.addEventListener("change", onChange);
@@ -95,8 +95,7 @@ export function FlowInput({
   earlierRuns,
   onOpenRun,
   onMoreRuns,
-  unsentRecordings,
-  onLeave,
+  unsent,
   afterRun = false,
 }: {
   published: FlowPublished;
@@ -108,9 +107,7 @@ export function FlowInput({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: UnsentRecording[];
-  /** The page's links off the flow: they ask first while leaving would lose something (the page owns the question). */
-  onLeave: (event: MouseEvent) => void;
+  unsent: UnsentList;
   /** In place of a run's view (Ny inspelning, Avbryt during an upload): the heading takes the focus, as on a change of state. */
   afterRun?: boolean;
 }) {
@@ -165,27 +162,16 @@ export function FlowInput({
       <TabTitle input={input} flowName={published.name} />
       <FlowFrame
         fill={group === "capture"}
-        onLeave={onLeave}
-        trailing={
-          holdsAudio && mode ? (
-            <HStack gap={1}>
-              {/* Alone, "Spela in" reads like a command. */}
-              <VisuallyHidden>Läge: </VisuallyHidden>
-              <Token label={MODE_TEXT[mode].name} color="blue" />
-            </HStack>
-          ) : undefined
-        }
-        // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
         aside={
           <FlowAside
             published={published}
             classification={contract.security_classification}
-            onLeave={onLeave}
             compact={holdsAudio}
             details={details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
+            // While recording the details scroll on their own; the side room keeps a focused field's outline inside the scroll box.
             className={group === "capture" ? styles.capturePane : undefined}
           />
         }
@@ -211,7 +197,7 @@ export function FlowInput({
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
               onMoreRuns={onMoreRuns}
-              unsentRecordings={unsentRecordings}
+              unsent={unsent}
             />
           ) : group === "ready" && snapshot.recording ? (
             <ReadyPanel
@@ -220,6 +206,7 @@ export function FlowInput({
               problem={snapshot.problem}
               live={snapshot.live}
               finishing={snapshot.finishing}
+              finishQueued={snapshot.finishQueued}
               makesText={text}
               onCreate={() => void createDocument(session)}
               onContinue={input.continueStopped}
@@ -247,12 +234,11 @@ export function FlowInput({
 
 /** Recording: the focused recorder (Spela in) or the document sheet (Strömma), above the bar, which never moves. */
 function CaptureWorkspace({ input, speakers, makesText }: { input: Session; speakers: boolean; makesText: boolean }) {
-  const { session, snapshot, capture, persistent, evictable } = input;
+  const { session, snapshot, capture, persistent } = input;
   const { phase, problem, live, mode } = snapshot;
   const streaming = mode === "stromma" && live !== null;
   const silent = useSilence(capture.stream, phase === "recording");
-  const [wakeLock, setWakeLock] = useState(true);
-  useEffect(() => setWakeLock("wakeLock" in navigator), []);
+  const wakeLock = "wakeLock" in navigator;
   const { warnings, notes } = recordingNotices({
     phase,
     silent,
@@ -274,7 +260,6 @@ function CaptureWorkspace({ input, speakers, makesText }: { input: Session; spea
           capture={session.capture}
           phase={phase}
           stream={capture.stream}
-          storageNote={persistent ? storageLine(true, evictable) : null}
         />
       )}
       <SignedOutControls
@@ -309,7 +294,7 @@ function SetupWorkspace({
   earlierRuns,
   onOpenRun,
   onMoreRuns,
-  unsentRecordings,
+  unsent,
 }: {
   contract: RunContract;
   input: Session;
@@ -318,10 +303,20 @@ function SetupWorkspace({
   earlierRuns: EarlierRunsSnapshot;
   onOpenRun: (runId: string) => void;
   onMoreRuns: () => void;
-  unsentRecordings: UnsentRecording[];
+  unsent: UnsentList;
 }) {
   const { session, snapshot, persistent } = input;
   const { modes, mode, phase, problem, file, fileChecking } = snapshot;
+  // The browser's question about the microphone may wait for an answer that does not come: after a moment the page says
+  // where the question is, and Avbryt stops waiting for it.
+  const [unanswered, setUnanswered] = useState(false);
+  const startButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    setUnanswered(false);
+    if (phase !== "starting") return;
+    const timer = setTimeout(() => setUnanswered(true), MICROPHONE_ANSWER_WAIT_MS);
+    return () => clearTimeout(timer);
+  }, [phase]);
   // Only Ladda upp waits for a file's length; the recording modes keep their own start action.
   const checkingUpload = mode === "ladda-upp" && fileChecking;
   const speakerOption = contract.transcription?.speaker_labels;
@@ -337,12 +332,12 @@ function SetupWorkspace({
   const create = createActionLabel(text);
   // The session refuses the setup's actions while the count is no count; its field takes the focus to put it right.
   const countInvalid = readSpeakerCount(snapshot.speakerCount) === "invalid";
-  const focusCount = focusSpeakerCount;
   const onContinue = modes.includes("spela-in")
-    ? (recording: StoredRecording) => (countInvalid ? focusCount() : void session.continueCutOff(recording))
+    ? (recording: StoredRecording) => (countInvalid ? focusSpeakerCount() : void session.continueCutOff(recording))
     : undefined;
-  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile.
-  const resuming = onContinue !== undefined && resumableRecording(unsentRecordings) !== undefined;
+  // A meeting a reload cut off goes on with its own "Fortsätt spela in", the one filled action meanwhile, until the
+  // person chooses a file to send instead.
+  const resuming = onContinue !== undefined && resumableRecording(unsent.recordings) !== undefined && !(mode === "ladda-upp" && file);
   const label =
     !mode || (mode === "ladda-upp" && optionalFile)
       ? create
@@ -351,7 +346,7 @@ function SetupWorkspace({
         : primaryActionLabel(mode, file != null, text);
 
   function primary() {
-    if (countInvalid) focusCount();
+    if (countInvalid) focusSpeakerCount();
     else if (recordingMode) void session.start();
     else if (mode === "ladda-upp" && !file && !optionalFile) fileInput.current?.click();
     else void createDocument(session);
@@ -361,7 +356,7 @@ function SetupWorkspace({
     speakerOption?.selectable && snapshot.speakerLabels !== null ? (
       <Switch
         label="Märk upp talare"
-        description="Tar längre tid efter inspelningen."
+        description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
         value={snapshot.speakerLabels}
         onChange={(on) => session.setSpeakerLabels(on)}
         labelPosition="start"
@@ -378,11 +373,13 @@ function SetupWorkspace({
   return (
     <VStack gap={6}>
       <UnsentRecordings
-        recordings={unsentRecordings}
-        sendLabel={() => create}
+        list={unsent}
+        // Said apart from the setup's own action, which sends a chosen file or a new recording.
+        sendLabel={() => `${create} av inspelningen`}
+        filled={resuming}
         evictable={input.evictable}
         onSend={(recording) => {
-          if (countInvalid) return focusCount();
+          if (countInvalid) return focusSpeakerCount();
           session.adopt(recording);
           void createDocument(session);
         }}
@@ -390,12 +387,15 @@ function SetupWorkspace({
       />
 
       {modes.length > 1 ? (
-        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} />
+        <ModeCards modes={modes} mode={mode} onSelect={(next) => session.selectMode(next)} note={snapshot.modesNote} />
       ) : (
-        // No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go.
-        <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
-          {modes[0] ? MODE_TEXT[modes[0]].name : create}
-        </VisuallyHidden>
+        <>
+          {/* No choice to ask about: the setup is named by its one way (or by what it makes), so focus has a place to go. */}
+          <VisuallyHidden as="h2" data-phase-heading tabIndex={-1}>
+            {modes[0] ? MODE_TEXT[modes[0]].name : create}
+          </VisuallyHidden>
+          {snapshot.modesNote && <Text as="p" color="secondary">{snapshot.modesNote}</Text>}
+        </>
       )}
 
       {/* The count belongs with the speaker choice, so the two stand closer than the setup's other parts. */}
@@ -433,10 +433,12 @@ function SetupWorkspace({
           // On a phone the one primary action stays in reach at the page's bottom, above the safe area.
           <VStack data-docked-action={dock ? "true" : undefined} gap={dock ? 2 : 3} className={dock ? styles.docked : undefined}>
             <Button
+              ref={startButton}
               label={phase === "starting" ? "Startar…" : checkingUpload ? "Kontrollerar filen…" : label}
               variant={resuming ? "secondary" : "primary"}
               size="lg"
-              width="100%"
+              // Second to "Fortsätt spela in", it is a button of its own size: a bar of the muted colour reads as disabled.
+              width={resuming && !dock ? undefined : "100%"}
               icon={ActionIcon ? <Icon icon={ActionIcon} /> : undefined}
               // Busy, not disabled: that would drop keyboard focus while the browser asks for the microphone, and a
               // second press is refused by the session.
@@ -446,8 +448,19 @@ function SetupWorkspace({
             />
             {/* The wait for a chosen file's length is said, not only written on the button. */}
             <VisuallyHidden as="p" role="status">
-              {checkingUpload ? "Kontrollerar filen…" : ""}
+              {checkingUpload ? "Kontrollerar filen…" : unanswered ? ASK_THE_BROWSER : ""}
             </VisuallyHidden>
+            {unanswered && (
+              <VStack gap={2} hAlign="center">
+                <Text as="p" type="supporting" justify="center" aria-hidden>
+                  {ASK_THE_BROWSER}
+                </Text>
+                <Button label="Avbryt" variant="secondary" onClick={() => {
+                  session.cancelStart();
+                  startButton.current?.focus();
+                }} />
+              </VStack>
+            )}
             {recordingMode && (
               <Text as="p" type="supporting" justify="center">
                 {storageLine(persistent, input.evictable)}

@@ -3,8 +3,12 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
+import { AuthenticatedUserContext } from "../components/AuthGate";
 import { EarlierRuns } from "../components/flow/EarlierRuns";
 import type { EarlierRunsSnapshot } from "./earlier-runs";
+
+/** The signed-in person a page behind AuthGate has. */
+const person = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
 
 const listed = (runs: EarlierRunsSnapshot["runs"]): EarlierRunsSnapshot => ({ runs, hasMore: false, loading: false, failed: null });
 import { ResultFiles } from "../components/flow/ResultFiles";
@@ -17,9 +21,12 @@ import { RunTranscriptView } from "../components/flow/RunTranscript";
 import type { TranscriptContext } from "./transcript-context";
 import { EMPTY_CORRECTIONS } from "./transcript-corrections";
 import { listOwnRuns } from "./api";
+import { inStaticRouter } from "./test-router";
 import type { ResultFileView } from "./run-files";
 import type { StepView } from "./run-progress";
 
+/** Markup as the page renders it once, inside the router that its way-back link needs. */
+const markup = (element: import("react").ReactElement) => renderToStaticMarkup(inStaticRouter(element));
 const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 // The words of every status region (a paragraph) in the markup, in order: what a screen reader is told when they change.
 const statuses = (html: string) => [...html.matchAll(/<p[^>]*role="status"[^>]*>(.*?)<\/p>/g)].map(([, inner]) => text(inner));
@@ -31,14 +38,15 @@ const running: StepView[] = [
 ];
 
 test("the running view names the stage once in a status region and says each step's state in words", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Analysera mötesinnehållet", onCancel: async () => undefined }),
   );
 
   assert.match(html, /<h1[^>]*tabindex="-1"[^>]*>Dokumentet skapas<\/h1>/);
   assert.deepEqual(statuses(html), ["Analysera mötesinnehållet"], "the stage, once, in the only status region");
   const words = text(html);
-  assert.match(words, /Transkribera mötet Klar/);
+  // A finished step also carries the design system's own word for a screen reader, between its name and the page's.
+  assert.match(words, /Transkribera mötet (?:\S+ )?Klar/);
   assert.match(words, /Analysera mötesinnehållet Pågår/);
   assert.match(words, /Skapa rapport Väntar Här granskar du resultatet\./, "a step that will stop for the person says so");
   assert.doesNotMatch(words, /I kö/);
@@ -51,7 +59,7 @@ test("the running view names the stage once in a status region and says each ste
 
 test("a flow that makes text says the text will be ready, as its action says Skapa text", () => {
   const words = text(
-    renderToStaticMarkup(
+    markup(
       createElement(RunProgress, { flowName: "Intervju", steps: running, stage: "Analysera mötesinnehållet", makesText: true, onCancel: async () => undefined }),
     ),
   );
@@ -59,7 +67,7 @@ test("a flow that makes text says the text will be ready, as its action says Ska
   assert.doesNotMatch(words, /Dokumentet blir klart/);
   assert.match(words, /^Texten skapas /, "the heading");
   assert.doesNotMatch(words, /[Dd]okument/);
-  const sending = renderToStaticMarkup(
+  const sending = markup(
     createElement(SubmittingView, { submission: { kind: "starting", wait: null }, onCancelSubmission: () => undefined, makesText: true }),
   );
   assert.match(sending, /<h1[^>]*>Texten skapas<\/h1>/, "the same heading while it is sent, so nothing changes when the run starts");
@@ -67,7 +75,7 @@ test("a flow that makes text says the text will be ready, as its action says Ska
 
 test("a long wait says how long the run has gone on and that it can take minutes, outside the stage's status region", () => {
   const view = (startedAt?: string) =>
-    renderToStaticMarkup(
+    markup(
       createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", startedAt, onCancel: async () => undefined }),
     );
   const html = view(new Date(Date.now() - 12 * 60_000 - 5_000).toISOString());
@@ -79,7 +87,7 @@ test("a long wait says how long the run has gone on and that it can take minutes
 
 test("a run with no steps shown yet has no step region, and one that could not be stopped says so once, as an alert", () => {
   const view = (extra: Record<string, unknown>) =>
-    renderToStaticMarkup(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined, ...extra }));
+    markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: [], stage: "Startar körningen", onCancel: async () => undefined, ...extra }));
   assert.doesNotMatch(view({}), /Flödets steg/);
   assert.doesNotMatch(view({}), /role="alert"/);
   const failed = view({ error: "Körningen kunde inte avbrytas just nu." });
@@ -87,15 +95,15 @@ test("a run with no steps shown yet has no step region, and one that could not b
   assert.match(failed, /role="alert"(?:(?!<button).)*Körningen kunde inte avbrytas just nu\./, "the sentence is in the alert");
 });
 
-test("opening an earlier run is a busy placeholder that says so once and has no heading to move to", () => {
-  const html = renderToStaticMarkup(createElement(RunOpening));
+test("opening an earlier run is a busy placeholder that says so once, with the page's one h1 out of sight", () => {
+  const html = markup(createElement(RunOpening));
   assert.match(html, /aria-busy="true"/);
   assert.deepEqual(statuses(html), ["Hämtar körningen…"]);
-  assert.doesNotMatch(html, /<h[1-6]/);
+  assert.deepEqual([...html.matchAll(/<h([1-6])[^>]*>(.*?)<\/h\1>/g)].map(([, level, words]) => `${level} ${text(words)}`), ["1 Tal till text"]);
 });
 
 const uploading = (extra: Partial<Extract<SubmissionState, { kind: "uploading" }>> = {}) =>
-  renderToStaticMarkup(
+  markup(
     createElement(SubmittingView, {
       submission: { kind: "uploading", filename: "möte.wav", loaded: 512, total: 2048, percent: 25, wait: null, ...extra },
       onCancelSubmission: () => undefined,
@@ -139,16 +147,31 @@ test("every quarter of an upload is said once, and the counting percent never is
   assert.ok(statuses(uploading({ percent: 33 })).every((status) => !/33/.test(status)));
 });
 
-test("before the file moves there is no bar and no Avbryt; while the run starts a wait shows, still no Avbryt", () => {
+test("before the file moves there is no bar and no Avbryt; once the run is being started there is Avbryt, and a wait says the file is uploaded", () => {
   const send = (submission: SubmissionState) =>
-    renderToStaticMarkup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
+    markup(createElement(SubmittingView, { submission, onCancelSubmission: () => undefined }));
   const idle = send({ kind: "idle" });
   assert.deepEqual(statuses(idle), ["Skickar"]);
   assert.doesNotMatch(idle, /progressbar|Avbryt/);
+
+  const starting = send({ kind: "starting", wait: null });
+  assert.equal(statuses(starting)[0], "Startar flödet");
+  assert.match(text(starting), /Avbryt/, "a way out from the first moment: the answer may never come");
+  assert.doesNotMatch(text(starting), /uppladdad|Spara som fil/, "nothing has gone wrong yet to explain");
+
   const waiting = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined } });
   assert.equal(statuses(waiting)[0], "Startar flödet");
-  assert.match(text(waiting), /Försöker igen om \d+ s\./);
-  assert.doesNotMatch(waiting, /progressbar|Avbryt/);
+  assert.match(text(waiting), /Filen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(waiting), /Försöker igen om \d+ s\. Försök nu Avbryt/);
+  assert.doesNotMatch(waiting, /progressbar/);
+
+  const stopped = send({ kind: "starting", wait: { retryAt: null, retryNow: () => undefined } });
+  assert.match(text(stopped), /Filen är uppladdad\. Flödet startar inte just nu\./);
+  assert.match(text(stopped), /Det går fortfarande inte att skicka\. Försök igen när du vill\. Försök igen Avbryt/);
+
+  const recording = send({ kind: "starting", wait: { retryAt: Date.now() + 5_000, retryNow: () => undefined }, recordingId: "rec-1" });
+  assert.match(text(recording), /Inspelningen är uppladdad\. Vi försöker starta flödet igen\./);
+  assert.match(text(recording), /Avbryt Spara som fil/, "a recording can be kept as a file meanwhile");
 });
 
 const created = new Date(2026, 8, 23, 16, 2).toISOString();
@@ -178,7 +201,7 @@ const tagsOf = (html: string, tag: string) =>
   );
 
 test("a generated file is a row with Eneo's name and its size, opened and downloaded on this origin", () => {
-  const html = renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
+  const html = markup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [report] }));
   const words = text(html);
 
   // text() folds the no-break space in "13,3 kB" like any other space.
@@ -198,14 +221,14 @@ test("a generated file is a row with Eneo's name and its size, opened and downlo
 
 test("a Word file downloads; only a PDF offers Öppna", () => {
   const word: ResultFileView = { ...report, fileId: "file-2", name: "Nämndmöte till rapport 2026-09-23.docx", kind: "word", meta: "Word, 85,8\u00a0kB", previewable: false };
-  const words = text(renderToStaticMarkup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [word] })));
+  const words = text(markup(createElement(ResultFiles, { flowId: "flow-1", runId: "run-1", files: [word] })));
   assert.doesNotMatch(words, /Öppna/);
   assert.match(words, /Ladda ner/);
 });
 
 test("the result names its time like a person, keeps the steps behind plain words and offers a new recording", () => {
-  const html = renderToStaticMarkup(
-    createElement(RunResult, {
+  const html = markup(
+    createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", created_at: created, finished_at: created, result: { kind: "artifact", files: [] } },
@@ -214,7 +237,7 @@ test("the result names its time like a person, keeps the steps behind plain word
       files: [report],
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+    })),
   );
   const words = text(html);
 
@@ -222,15 +245,15 @@ test("the result names its time like a person, keeps the steps behind plain word
   assert.match(words, /Skapad (i dag|i går|\d+ \w+) 16:02/);
   assert.match(words, /Hur resultatet togs fram 4 steg/);
   assert.match(words, /Ny inspelning/);
-  assert.match(words, /Alla flöden/);
+  assert.doesNotMatch(words, /Alla flöden/, "the way back is the page's bar, not the result's own");
   assert.doesNotMatch(html, /eyebrow|uppercase/);
   // The page's frame supplies the one main region and its width; the result is what goes in it.
   assert.doesNotMatch(html, /<main|role="main"/);
 });
 
-const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
-  renderToStaticMarkup(
-    createElement(RunResult, {
+const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = [], extra: { onStartAgain?: () => void } = {}) =>
+  markup(
+    createElement(AuthenticatedUserContext.Provider, { value: person }, createElement(RunResult, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
       run: { id: "run-1", flow_id: "flow-1", status: "completed", ...run } as never,
@@ -240,8 +263,39 @@ const resultOf = (run: Record<string, unknown>, files: ResultFileView[] = []) =>
       showTranscript: false,
       onNewRecording: () => undefined,
       onRegenerated: () => undefined,
-    }),
+      ...extra,
+    })),
   );
+
+test("a finished run with nothing to show says so and offers a new run; it never says the result is ready", () => {
+  for (const result of [{ kind: "inline_text", text: "" }, { kind: "inline_text", text: "  \n" }, null, undefined]) {
+    const html = resultOf({ created_at: created, result }, [], { onStartAgain: () => undefined });
+    const words = text(html);
+    assert.match(html, /<h1[^>]*>Resultatet är tomt<\/h1>/, JSON.stringify(result));
+    assert.doesNotMatch(words, /är klar|är klart/, "no success heading over a blank page");
+    assert.match(words, /Körningen blev klar, men flödet gav inget att visa\./);
+    assert.match(words, /Starta en ny körning/);
+    assert.doesNotMatch(html, /aria-label="Dokumentet"|aria-label="Texten"/, "no empty document card");
+  }
+});
+
+test("an empty result of a run with no audio to start again with offers only the header's new recording", () => {
+  const words = text(resultOf({ created_at: created, result: { kind: "inline_text", text: "" } }));
+  assert.match(words, /Resultatet är tomt/);
+  assert.doesNotMatch(words, /Starta en ny körning/);
+  assert.match(words, /Ny inspelning/);
+});
+
+test("a result with something to show, or that was sent on, or whose files cannot be fetched, is not called empty", () => {
+  const text_ = resultOf({ created_at: created, result: { kind: "inline_text", text: "Protokollet är klart." } }, [], { onStartAgain: () => undefined });
+  assert.match(text_, /<h1[^>]*>Texten är klar<\/h1>/);
+  assert.doesNotMatch(text(text_), /Starta en ny körning|Resultatet är tomt/);
+  assert.match(resultOf({ created_at: created, result: { kind: "outbound_http" } }, [], { onStartAgain: () => undefined }), /<h1[^>]*>Resultatet är skickat<\/h1>/);
+  const purged = { ...report, available: false, previewable: false, meta: "Filen har tagits bort." };
+  const document_ = resultOf({ created_at: created, result: { kind: "artifact", files: [] } }, [purged], { onStartAgain: () => undefined });
+  assert.match(document_, /<h1[^>]*>Dokumentet är klart<\/h1>/);
+  assert.match(text(document_), /Filen har tagits bort\./, "the file is there, with why it cannot be had");
+});
 
 test("a run that sent its result on says so, with no document, and dates itself by when it began if it has no end", () => {
   const sent = resultOf({ created_at: created, result: { kind: "outbound_http" } });
@@ -262,7 +316,7 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
     error: { code: "flow_provider_unavailable", message: "Upstream 503", retryable: true, step_order: 2 },
   };
   const render = (onRetry?: () => void) =>
-    renderToStaticMarkup(
+    markup(
       createElement(RunFailure, {
         flowId: "flow-1",
         flowName: "Nämndmöte till rapport",
@@ -294,8 +348,15 @@ test("a failure names the step, says Kördes inte for the rest, keeps the run id
   assert.doesNotMatch(render(undefined), /role="alert"/);
 });
 
+test("the failed run's heading and its start time are no banner of their own inside the page's main region", () => {
+  const html = markup(
+    createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", created_at: "2026-09-23T16:02:00Z" }, failure: null, steps: [], stepResults: [], files: [] }),
+  );
+  assert.doesNotMatch(html, /<header/);
+});
+
 test("a failure Eneo said nothing about still says what happened, and shows no start time it was not given", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "failed", error: null }, failure: null, steps: [], stepResults: [], files: [] }),
   );
   const words = text(html);
@@ -306,7 +367,7 @@ test("a failure Eneo said nothing about still says what happened, and shows no s
 });
 
 test("an Eneo detail with nothing in it offers no folded technical information", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunFailure, {
       flowId: "flow-1",
       flowName: "Flöde",
@@ -322,7 +383,7 @@ test("an Eneo detail with nothing in it offers no folded technical information",
 
 test("the same sentence from a refusal and from a failed new run is said once, not twice", () => {
   const message = "Det gick inte att starta en ny körning just nu.";
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunFailure, {
       flowId: "flow-1",
       flowName: "Flöde",
@@ -340,7 +401,7 @@ test("the same sentence from a refusal and from a failed new run is said once, n
 });
 
 test("a failure the same input cannot pass offers another file as its one filled action, with Eneo's words calm, not red", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunFailure, {
       flowId: "flow-1",
       flowName: "Nämndmöte till rapport",
@@ -354,7 +415,7 @@ test("a failure the same input cannot pass offers another file as its one filled
   );
   const words = text(html);
   assert.match(words, /Steg 1, Transkribera ljud/);
-  assert.match(words, /Välj en annan fil/);
+  assert.match(words, /Välj nytt ljud/, "a recording or a file, whichever it was");
   assert.doesNotMatch(words, /Försök igen|Starta en ny körning|Alla flöden/);
   assert.equal([...html.matchAll(/<button[^>]*data-variant="primary"/g)].length, 1, "one filled action");
   // Eneo's words come as a note, not an alert: the heading's focus has announced the view already.
@@ -370,7 +431,7 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   yesterday.setDate(today.getDate() - 1);
   yesterday.setHours(15, 40);
   const opened: string[] = [];
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(EarlierRuns, {
       list: listed([
         { id: "run-3", flow_id: "flow-1", status: "running", created_at: today.toISOString() },
@@ -389,8 +450,8 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
   assert.match(words, /I går 15:40 Misslyckades Öppna/);
   // Test runs from Eneo's editor are not this user's documents.
   assert.equal(words.match(/I går 15:40/g)?.length, 2);
-  assert.equal(renderToStaticMarkup(createElement(EarlierRuns, { list: listed([]), onOpen: () => undefined })), "");
-  const allShown = renderToStaticMarkup(
+  assert.equal(markup(createElement(EarlierRuns, { list: listed([]), onOpen: () => undefined })), "");
+  const allShown = markup(
     createElement(EarlierRuns, { list: listed([{ id: "run-1", flow_id: "flow-1", status: "completed" }]), onOpen: () => undefined, onMore: () => undefined }),
   );
   assert.doesNotMatch(allShown, /Visa fler körningar/, "no more to show");
@@ -399,7 +460,7 @@ test("earlier runs list this flow's runs by when and status, each one tap from i
 test("more earlier runs than a page: 'Visa fler körningar' below the list, with its own waiting and failure", () => {
   const run = { id: "run-1", flow_id: "flow-1", status: "completed", created_at: new Date().toISOString() };
   const render = (state: Partial<EarlierRunsSnapshot>) =>
-    renderToStaticMarkup(
+    markup(
       createElement(EarlierRuns, { list: { ...listed([run]), hasMore: true, ...state }, onOpen: () => undefined, onMore: () => undefined }),
     );
   // The design system's button holds its words in a span or two and a live region after them.
@@ -411,7 +472,7 @@ test("more earlier runs than a page: 'Visa fler körningar' below the list, with
   assert.match(failed, labelled("Visa fler körningar"), "another try");
 
   // The first page failed: said even with no run shown, with a try again whatever Eneo said about more.
-  const firstFailed = renderToStaticMarkup(
+  const firstFailed = markup(
     createElement(EarlierRuns, { list: { ...listed([]), failed: "first" }, onOpen: () => undefined, onMore: () => undefined }),
   );
   assert.match(firstFailed, /Tidigare körningar kunde inte hämtas\./);
@@ -442,7 +503,7 @@ test("earlier runs ask Eneo for the user's own runs only, never a colleague's", 
 });
 
 test("folded panels start closed, and the steps' own lines say what is and is not there", () => {
-  const failed = renderToStaticMarkup(
+  const failed = markup(
     createElement(RunFailure, {
       flowId: "flow-1",
       flowName: "Flöde",
@@ -453,17 +514,17 @@ test("folded panels start closed, and the steps' own lines say what is and is no
       files: [],
     }),
   );
-  const details = renderToStaticMarkup(createElement(StepDetails, { steps, version: 4 }));
+  const details = markup(createElement(StepDetails, { steps, version: 4 }));
   // What a screen reader hears of a folded panel: its trigger, collapsed. (Whether the content is then out of sight is CSS: tests/e2e.)
   const triggers = (html: string) => [...html.matchAll(/<button[^>]*aria-expanded="(\w+)"[^>]*>(.*?)<\/button>/g)].map(([, expanded, inner]) => [expanded, text(inner)]);
   assert.deepEqual(triggers(details), [["false", "Hur resultatet togs fram 4 steg"]]);
   assert.deepEqual(triggers(failed), [["false", "Visa teknisk information"]]);
 
   // Nothing to fold: no steps, no panel; a step without a note has no note; no version, no version line.
-  assert.equal(renderToStaticMarkup(createElement(StepDetails, { steps: [], version: 4 })), "");
-  assert.doesNotMatch(text(renderToStaticMarkup(createElement(StepDetails, { steps }))), /Flödets version/);
+  assert.equal(markup(createElement(StepDetails, { steps: [], version: 4 })), "");
+  assert.doesNotMatch(text(markup(createElement(StepDetails, { steps }))), /Flödets version/);
   assert.match(text(details), /Flödets version 4/);
-  const plain = renderToStaticMarkup(createElement(StepDetails, { steps: [{ order: 1, label: "Transkribera", state: "done", transcribes: true, note: null }] }));
+  const plain = markup(createElement(StepDetails, { steps: [{ order: 1, label: "Transkribera", state: "done", transcribes: true, note: null }] }));
   assert.equal(plain.match(/data-type="supporting"/g)?.length, 2, "the step count and the step's state, no note");
 });
 
@@ -472,7 +533,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   const failure = { step: "Steg 2, Analysera mötesinnehållet", summary: "Körningen tog för lång tid.", detail: "x", inputMustChange: false };
   const view = (extra: Record<string, unknown>) =>
     text(
-      renderToStaticMarkup(
+      markup(
         createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: failedRun, failure, steps, stepResults: [], files: [], ...extra }),
       ),
     );
@@ -481,7 +542,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(offered, /Försök igen fortsätter där körningen stannade\. Det som redan blev klart görs inte om\./);
   // Eneo marks this retry as not safe: the button stays secondary, as the advice to check first says.
   const retryButton = (run: typeof failedRun) =>
-    renderToStaticMarkup(
+    markup(
       createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run, failure, steps, stepResults: [], files: [], onRetry: async () => undefined }),
     ).match(/<button[^>]*data-variant="(\w+)"[^>]*>(?:(?!<\/button>).)*Försök igen/)![1];
   assert.equal(retryButton(failedRun), "secondary");
@@ -506,7 +567,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
 
   // Eneo continues only failed runs; after a cancellation the way on is a new run.
   const cancelled = text(
-    renderToStaticMarkup(
+    markup(
       createElement(RunFailure, {
         flowId: "flow-1",
         flowName: "Flöde",
@@ -523,7 +584,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
   assert.match(cancelled, /En ny körning använder samma ljud och uppgifter och gör om alla steg\./);
   assert.doesNotMatch(cancelled, /Försök igen/);
   // A cancellation is not an error: its callout is information, and the one filled action is the new run.
-  const cancelledHtml = renderToStaticMarkup(
+  const cancelledHtml = markup(
     createElement(RunFailure, { flowId: "flow-1", flowName: "Flöde", run: { id: "run-1", status: "cancelled", error: null }, failure: null, steps, stepResults: [], files: [], onStartAgain: () => undefined }),
   );
   assert.match(cancelledHtml, /role="note"[^>]*>(?:(?!<button).)*Körningen stoppades/);
@@ -534,7 +595,7 @@ test("Försök igen continues where the run stopped; a refusal says why and offe
 
 /**
  * Every button of the markup by what a screen reader hears, and whether it is off. The design system names a button by
- * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriptet").
+ * its `aria-label` where the visible words say less ("Kopiera" for "Kopiera transkriberingen").
  */
 const buttonsIn = (html: string) =>
   [...html.matchAll(/<button([^>]*)>((?:(?!<\/button>).)*)<\/button>/g)].map(
@@ -565,13 +626,15 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     onCorrectionsChange: () => undefined,
     retryCorrections: async () => undefined,
     downloadUnsavedCorrections: () => undefined,
+    hasDropped: false,
+    downloadDropped: () => undefined,
   };
   const render = (correctionProblem: string | null) =>
-    renderToStaticMarkup(
+    markup(
       createElement(RunTranscriptView, {
         flowId: "flow-1",
         runId: "run-1",
-        fileName: "transkript.txt",
+        fileName: "transkribering.txt",
         transcript: { ...transcript, correctionProblem },
         confirmedWords: new Set<string>(),
         editing,
@@ -580,18 +643,18 @@ test("the transcript is not copied or downloaded while its saved corrections cou
     );
 
   const readable = render(null);
-  assert.deepEqual(exportButtons(readable), [["Kopiera transkriptet", false], ["Ladda ner som text, transkriptet", false]]);
+  assert.deepEqual(exportButtons(readable), [["Kopiera transkriberingen", false], ["Ladda ner som text, transkriberingen", false]]);
   assert.ok(!names(readable).includes("Läs in igen"));
 
   // The hook's own words when reading the saved corrections failed; exporting now would drop them.
   const unread = render("Kunde inte läsa sparade rättningar. Läs in sidan igen innan du redigerar eller godkänner.");
-  assert.deepEqual(exportButtons(unread), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.deepEqual(exportButtons(unread), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.match(unread, /när rättningarna har lästs in/);
   assert.ok(names(unread).includes("Läs in igen"));
 });
 
 test("a finished run whose result could not be read says so and offers to read it again, never 'klart'", () => {
-  const html = renderToStaticMarkup(
+  const html = markup(
     createElement(RunUnread, { message: "Servern kunde inte nås just nu. Försök igen om en stund.", onRetry: () => undefined }),
   );
   assert.match(html, /<h1[^>]*>Resultatet kunde inte hämtas<\/h1>/);
@@ -603,11 +666,11 @@ test("a finished run whose result could not be read says so and offers to read i
 });
 
 function transcriptView(overrides: Record<string, unknown>) {
-  return renderToStaticMarkup(
+  return markup(
     createElement(RunTranscriptView, {
       flowId: "flow-1",
       runId: "run-1",
-      fileName: "transkript.txt",
+      fileName: "transkribering.txt",
       transcript: {
         pending: false,
         speakerReviews: [],
@@ -630,6 +693,8 @@ function transcriptView(overrides: Record<string, unknown>) {
         onCorrectionsChange: () => undefined,
         retryCorrections: async () => undefined,
         downloadUnsavedCorrections: () => undefined,
+        hasDropped: false,
+        downloadDropped: () => undefined,
       },
       onReload: () => undefined,
     }),
@@ -638,14 +703,14 @@ function transcriptView(overrides: Record<string, unknown>) {
 
 test("a preview of a longer transcript says so and is neither copied nor downloaded as the whole", () => {
   const html = transcriptView({ textPreview: true });
-  assert.match(html, /Förhandsvisning, hela transkriptet kunde inte hämtas/);
-  assert.deepEqual(exportButtons(html), [["Kopiera transkriptet", true], ["Ladda ner som text, transkriptet", true]]);
+  assert.match(html, /Förhandsvisning, hela transkriberingen kunde inte hämtas/);
+  assert.deepEqual(exportButtons(html), [["Kopiera transkriberingen", true], ["Ladda ner som text, transkriberingen", true]]);
   assert.ok(names(html).includes("Läs in igen"));
 });
 
 test("a transcript that could not be read shows why and Läs in igen, even with nothing to show", () => {
-  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriptets underlag. Läs in sidan igen innan du godkänner." });
-  assert.match(html, /Kunde inte läsa transkriptets underlag/);
+  const html = transcriptView({ segments: [], correctionProblem: "Kunde inte läsa transkriberingens underlag. Läs in sidan igen innan du godkänner." });
+  assert.match(html, /Kunde inte läsa transkriberingens underlag/);
   assert.deepEqual(names(html), ["Läs in igen"]);
   assert.equal(transcriptView({ segments: [] }), "", "nothing at all to say: no section");
 });
@@ -655,4 +720,10 @@ test("a transcript still being read shows only skeletons the screen reader skips
   assert.match(html, /^<div[^>]*aria-hidden="true"/, "hidden from the start");
   assert.deepEqual(names(html), []);
   assert.equal(html.replace(/<[^>]*>/g, ""), "", "no words, no heading");
+});
+
+test("the stage is said once: read out from its status region, shown by the step list where there is one", () => {
+  const html = markup(createElement(RunProgress, { flowName: "Nämndmöte", steps: running, stage: "Tar fram texten", onCancel: async () => undefined }));
+  assert.equal(text(html).split("Tar fram texten").length - 1, 1, "once in the page's text");
+  assert.ok(statuses(html).some((status) => status === "Tar fram texten"), "and that once is the status region");
 });

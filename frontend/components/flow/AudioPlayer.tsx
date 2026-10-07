@@ -1,5 +1,3 @@
-"use client";
-
 import { Pause, Play } from "lucide-react";
 import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -64,7 +62,6 @@ export function AudioPlayer({
         data-loading={state.starting || undefined}
         icon={
           state.starting ? (
-            // The audio loads: a spinner takes the place of the pause sign.
             <span aria-hidden>
               <Spinner size="sm" shade="inherit" />
             </span>

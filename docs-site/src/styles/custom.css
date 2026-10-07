@@ -1,0 +1,40 @@
+/* Content integrations only. Starlight MD3 owns the palette, type, spacing and controls. */
+/* The theme's comfortable control token meets the project's 44 px target requirement. */
+.site-title, site-search button[data-open-modal], starlight-theme-select button,
+.sidebar-content a, .sidebar-content summary, .expressive-code button,
+button[data-close-modal], .pagefind-ui__search-clear {
+  min-block-size: var(--md3-density-control-height);
+}
+.expressive-code button, .pagefind-ui__search-clear { min-inline-size: var(--md3-density-control-height); }
+/* Keep Starlight's cancel space; the theme otherwise places Clear beneath Cancel on mobile. */
+#starlight__search .pagefind-ui__search-input { inline-size: calc(100% - var(--sl-search-cancel-space)); }
+@layer starlight.core {
+  #starlight__search .pagefind-ui__search-clear {
+    inset-inline-end: calc(var(--sl-search-cancel-space) + 0.5rem) !important;
+  }
+}
+/* Restore MD3's base focus outline, which its search component resets. */
+@layer md3.components {
+  #starlight__search .pagefind-ui__search-input:focus-visible { outline: revert-layer; }
+}
+.sl-openapi-operation-method-path {
+  display: block !important;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  overflow-x: visible !important;
+}
+/* MD3 hides table overflow; restore Starlight's native horizontal scrolling. */
+.sl-markdown-content table { overflow-x: auto; }
+@media (max-width: 50rem) {
+  .sl-markdown-content :is(td, th) code { overflow-wrap: anywhere; }
+}
+pre.mermaid { overflow-x: auto; white-space: pre; }
+pre.mermaid[data-drawn] { white-space: normal; font-family: inherit; }
+pre.mermaid svg { display: block; margin-inline: auto; max-width: none; }
+pre.mermaid p { line-height: inherit; }
+:root[data-theme='dark'] pre.mermaid .edgeLabel,
+:root[data-theme='dark'] pre.mermaid .edgeLabel p { color: var(--md-sys-color-on-surface) !important; }
+@media (max-width: 640px) {
+  /* The diagram and surrounding text carry the same information at a readable size. */
+  .sl-markdown-content img[src*='arkitektur-oversikt'] { display: none; }
+}

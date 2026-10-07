@@ -10,13 +10,11 @@
  * Answers come back in any order: a request sent under a login that a renewal
  * has since replaced may be refused late, and a status read asked before the
  * end may say "signed in" after it. The state is the one owner of the login's
- * revision, so neither moves it (`Question`). The shape follows the module
- * kit's session state (packages/ui/src/session/state.ts), which this module
- * moves onto.
+ * revision, so neither moves it (`Question`).
  */
 
 import type { AuthenticatedUser, AuthStatus } from "./api";
-import { ACCESS_CODE_USER, sessionUser } from "./user-identity";
+import { sessionUser } from "./user-identity";
 
 /**
  * What a question to the backend (a status read, a request, a socket) remembers of the login when it was asked, to
@@ -28,14 +26,15 @@ export interface Question {
   readonly order: number;
 }
 
-export interface LoginState {
+interface LoginState {
   readonly signedOut: boolean;
   /**
    * The user the page was opened for, which the page names in what it sends to Eneo (api.ts) and to the live relay:
-   * the module refuses a request whose session is someone else's. Null where no page is open, and for the access
-   * code, which has no user.
+   * the module refuses a request whose session is someone else's. Null where no page is open.
    */
   readonly expectedUser: string | null;
+  /** The most the module takes in one upload, as its status said last (getRunContract holds the files to it); null before. */
+  readonly maxUploadBytes: number | null;
   /** Who is signed in instead of the page's user, while the page stays covered for them. */
   readonly otherUser: AuthenticatedUser | null;
   subscribe(listener: () => void): () => void;
@@ -66,8 +65,7 @@ export interface LoginState {
    */
   userChanged(question?: Question): boolean;
   /**
-   * A login window of the module says it is done (AuthGate hears it on the session channel, or an access code was
-   * entered): a new login is announced, also when the page was never covered. Everything asked before is about the
+   * A login window of the module says it is done (AuthGate hears it on the session channel): a new login is announced, also when the page was never covered. Everything asked before is about the
    * old login from now on, whenever its answer comes, and so is the old session's end time; the status read asked
    * next decides (the page's own user uncovers it, someone else's covers it).
    */
@@ -89,6 +87,7 @@ export function createLoginState(): LoginState {
   let revision = 0;
   let asked = 0;
   let answered = 0;
+  let maxUploadBytes: number | null = null;
   let waiting: Array<(renewed: boolean) => void> = [];
   const listeners = new Set<() => void>();
 
@@ -120,7 +119,10 @@ export function createLoginState(): LoginState {
       return otherUser;
     },
     get expectedUser() {
-      return owner && owner.id !== ACCESS_CODE_USER.id ? owner.id : null;
+      return owner ? owner.id : null;
+    },
+    get maxUploadBytes() {
+      return maxUploadBytes;
     },
     subscribe(listener) {
       listeners.add(listener);
@@ -147,6 +149,7 @@ export function createLoginState(): LoginState {
     observe(status, question = ask()) {
       if (question.revision !== revision || question.order <= answered) return false;
       answered = question.order;
+      if (status.max_upload_bytes !== undefined) maxUploadBytes = status.max_upload_bytes;
       clearTimeout(endTimer);
       const user = sessionUser(status);
       if (!user) {

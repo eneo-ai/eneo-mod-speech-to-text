@@ -1,5 +1,3 @@
-"use client";
-
 import { useId, useRef, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { InputGroup } from "@astryxdesign/core/InputGroup";
@@ -7,18 +5,24 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Token } from "@astryxdesign/core/Token";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { addNames, splitNames, takeNames } from "@/lib/participants";
+import styles from "@/components/flow/ParticipantsInput.module.css";
+import { addNames, hasSeparator, splitNames, takeNames } from "@/lib/participants";
 
 const ADD_NAME = "Lägg till namn";
+
+// The names an addition announces: "Anna Berg och Erik Lund". Each change names what changed, so two in a row never
+// say the same words, which a live region would not announce again.
+const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 
 // Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
 // them on to the input.
 const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter" } as Record<string, string>;
 
 /**
- * A `list` field as chips. "Lägg till" shows while a name is typed, so a
- * tap adds it on any device; Enter (a phone's return key) or a comma adds it
- * too, a pasted list is split on commas, semicolons and line breaks,
+ * A `list` field as chips. "Lägg till" stands beside the input, off until a
+ * name is typed, so a tap adds it on any device and the input keeps its width;
+ * Enter (a phone's return key) or a comma adds it too, a pasted list is split
+ * on commas, semicolons and line breaks,
  * Backspace in the empty input removes the last chip, and each chip has its
  * own remove button. Earlier names are offered as the browser's own
  * suggestions. Text left in the input becomes a chip when the field loses
@@ -62,7 +66,7 @@ export function ParticipantsInput({
     if (fresh.length === 0) return;
     onChange(next);
     onAdded?.(fresh);
-    setAnnouncement(fresh.length === 1 ? `${fresh[0]} har lagts till.` : `${fresh.length} namn har lagts till.`);
+    setAnnouncement(`${NAMES.format(fresh)} har lagts till.`);
   }
 
   function remove(name: string) {
@@ -79,10 +83,6 @@ export function ParticipantsInput({
     setText("");
   };
 
-  // The field says how many names it already holds, as part of what describes it.
-  const count = names.length === 1 ? "1 namn tillagt." : `${names.length} namn tillagda.`;
-  const described = [description, names.length > 0 ? count : null].filter(Boolean).join(" ") || undefined;
-
   return (
     <VStack gap={2}>
       {/* Leaving the field and its "Lägg till" together adds what was typed; moving between them does not. */}
@@ -94,7 +94,7 @@ export function ParticipantsInput({
       >
         <InputGroup
           label={label}
-          description={described}
+          description={description}
           isOptional={isOptional}
           isRequired={isRequired}
           status={error ? { type: "error", message: error } : undefined}
@@ -131,7 +131,7 @@ export function ParticipantsInput({
             onPaste={(event) => {
               // A single-line input drops line breaks, so split the pasted list here.
               const pasted = event.clipboardData.getData("text");
-              if (!/[,;\n\r]/.test(pasted)) return;
+              if (!hasSeparator(pasted)) return;
               event.preventDefault();
               add(splitNames(text + pasted));
               setText("");
@@ -146,22 +146,21 @@ export function ParticipantsInput({
               }
             }}
           />
-          {text.trim() && (
-            <Button
-              label="Lägg till"
-              variant="secondary"
-              // Keeps the focus, and a phone's keyboard, in the field for the next name.
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                addTyped();
-                input.current?.focus();
-              }}
-            />
-          )}
+          <Button
+            label="Lägg till"
+            variant="secondary"
+            isDisabled={!text.trim()}
+            // Keeps the focus, and a phone's keyboard, in the field for the next name.
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => {
+              addTyped();
+              input.current?.focus();
+            }}
+          />
         </InputGroup>
       </VStack>
       {names.length > 0 && (
-        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2}>
+        <HStack as="ul" aria-label="Tillagda namn" role="list" wrap="wrap" gap={2} className={styles.names}>
           {names.map((name) => (
             <li key={name}>
               <Token

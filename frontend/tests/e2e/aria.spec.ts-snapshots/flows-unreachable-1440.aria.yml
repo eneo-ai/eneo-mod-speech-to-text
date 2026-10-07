@@ -1,0 +1,12 @@
+- link "Hoppa till innehåll":
+  - /url: "#astryx-app-shell-main"
+- banner:
+  - navigation "Tal till text":
+    - img "Sundsvalls kommun"
+    - text: ""
+- main:
+  - heading "Tal till text" [level=1]
+  - alert: Tal till text kan inte nås just nu.
+  - button "Försök igen":
+    - text: ""
+    - status

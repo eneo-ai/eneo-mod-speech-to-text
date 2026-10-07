@@ -1,16 +1,15 @@
-/* From a laptop's width the document and the transcript sit side by side, the document the wider. Astryx's grid takes
-   equal columns or a minimum width, not a ratio. */
-.sideBySide {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 6fr);
-  column-gap: var(--spacing-8);
-  align-items: start;
+/* A panel is the only item of its span, a grid whose one column is as wide as its widest content (a table that does
+   not wrap) unless the item may shrink below it: it scrolls inside its own box instead of widening the page. */
+.panel {
+  min-inline-size: 0;
 }
 
-/* The transcript keeps in view while the document scrolls past it. */
+/* The transcript keeps in view while the document scrolls past it, from where it starts. Its column is as tall as the
+   document's, so the panel must not stretch to it. */
 .sticky {
   position: sticky;
   inset-block-start: var(--spacing-6);
+  align-self: start;
 }
 
 /* On a phone's Dokument tab, once the recording has played: its pause and time docked at the bottom, edge to edge

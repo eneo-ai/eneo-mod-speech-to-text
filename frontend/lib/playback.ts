@@ -30,6 +30,8 @@ export interface PlaybackSnapshot {
   /** The position on the whole recording, and its length. */
   atMs: number;
   totalMs: number;
+  /** At the recording's end, confirmed by the final part's known length. */
+  atEnd: boolean;
   /** The audio plays, as its own events tell. */
   playing: boolean;
   /** A start waits for the part's audio to load; toggle() and pause() cancel it. */
@@ -301,6 +303,9 @@ export class Playback {
   onError = (): void => {
     this.unavailable = true;
     this.playing = false;
+    // Nothing is waiting for audio that has failed: no spinner for a press it answered. A retry comes back to this place.
+    this.pending = null;
+    this.stopAt = null;
     this.emit();
   };
 
@@ -421,6 +426,7 @@ export class Playback {
       withinMs: this.withinMs,
       atMs: this.atMs(),
       totalMs: lengthsMs.reduce((sum, ms) => sum + ms, 0),
+      atEnd: this.part === this.sources.length - 1 && this.atPartEnd(),
       playing: this.playing,
       starting: this.pending?.play === true,
       started: this.started,

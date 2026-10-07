@@ -2,10 +2,12 @@
  * An overlay that is opened and closed leaves nothing behind: no DOM nodes, no event listeners, no memory.
  * Chromium's own counters, read after a garbage collection, before and after 40 openings of each overlay.
  * A leak grows with every cycle (a listener an effect never removes, a portal that is never unmounted), so it
- * would show as about 40. A new overlay surface is added here in the phase that ports it.
+ * would show as about 40. A new overlay is added here with the page that owns it.
  */
-import { expect, test, type CDPSession, type Locator, type Page } from "@playwright/test";
-import { backLink, chooseMode, open, record, result, reviewEditor, run, setup, stop } from "./screens";
+import { type CDPSession, type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { backLink, chooseMode, fileBackedText, record, result, reviewEditor, run, setup, stop } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "one width is enough; Chromium's counters"));
 // Playwright's trace snapshots add their own nodes and listeners to the page being counted.
@@ -28,9 +30,9 @@ type Overlay = {
   hide: (page: Page) => Promise<unknown>;
 };
 
-/** How a page mounts a confirmation (app/dev/dialog-leak): once, for each opening, and a dialog that really leaks. */
+/** How a page mounts a confirmation (routes/dev/DialogLeakFixture): once, for each opening, and a dialog that really leaks. */
 const dialogLeaks = async (page: Page) => {
-  await open(page, "/dev/dialog-leak");
+  await page.goto("/dev/dialog-leak");
   await expect(page.getByRole("heading", { name: "Dialogläckor" })).toBeVisible();
 };
 
@@ -39,7 +41,7 @@ let loginEndsIn = 200;
 
 /** A run paused for review, its transcript read: where the naming dialog opens. */
 async function reviewPage(page: Page) {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
 }
 
@@ -53,7 +55,7 @@ const OVERLAYS: Record<string, Overlay> = {
   // The module's account menu, as every page has it: the avatar, the colour mode and Logga ut (only it has that item).
   "account menu": {
     go: async (page) => {
-      await open(page, "/flows");
+      await page.goto("/flows");
       await expect(page.getByRole("heading", { name: "Välj ett flöde" })).toBeVisible();
     },
     show: (page) => page.getByRole("button", { name: /^Öppna konto för/ }).click(),
@@ -98,16 +100,12 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("textbox", { name: "Rätta markerad text" }),
     hide: (page) => page.getByRole("button", { name: "Avbryt", exact: true }).click(),
   },
-  // "Ändra talare" on a passage of the transcript: a popover of the page, one per passage, opened from the passage's name.
-  // The design system's focus handling (useFocusTrap) keeps the last element focused inside a popover, and with it that
-  // popover's closed form (88 nodes, 12 listeners), until the popover is opened again: one form per popover, never one per
-  // opening. It exists only if focus got inside before the popover was closed, so the opening waits for focus: else a
-  // warm-up that closed it too soon would be measured without that form and the 40 openings with it, as 88 nodes.
-  "change-speaker popover": {
+  // Wait for the dialog's initial focus before measuring an opening, including the warm-up cycles.
+  "change-speaker dialog": {
     go: (page) => reviewPage(page),
     show: async (page) => {
       await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
-      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("radio").first()).toBeFocused();
+      await expect(page.getByRole("dialog", { name: "Ändra talare" }).getByRole("heading", { name: "Ändra talare" })).toBeFocused();
     },
     shown: (page) => page.getByRole("dialog", { name: "Ändra talare" }),
     hide: (page) => page.keyboard.press("Escape"),
@@ -140,14 +138,14 @@ const OVERLAYS: Record<string, Overlay> = {
     shown: (page) => page.getByRole("dialog"),
     hide: (page) => page.keyboard.press("Escape"),
   },
-  // Fler alternativ is under a laptop's width, and holds Dela where the browser can share (headless Chromium has no
+  // File-backed text has both copy and share in Fler alternativ; inline text has its share button directly. Headless Chromium has no
   // share sheet, so a stand-in is defined before the page loads).
   "more options": {
     go: async (page) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.addInitScript(() => Object.defineProperty(navigator, "share", { value: async () => undefined, configurable: true }));
-      await run(page, "run-plain");
-      await expect(page.getByRole("heading", { name: "Texten är klar" })).toBeVisible();
+      await fileBackedText(page);
+      await expect(page.getByRole("button", { name: "Fler alternativ" })).toBeVisible();
     },
     show: (page) => page.getByRole("button", { name: "Fler alternativ" }).click(),
     shown: (page) => page.getByRole("menu"),
@@ -179,13 +177,12 @@ const OVERLAYS: Record<string, Overlay> = {
         route.fulfill({
           json: {
             authenticated: true,
-            auth_mode: "eneo_sso",
             user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
             session_ends_in: loginEndsIn,
           },
         }),
       );
-      await open(page, "/flows");
+      await page.goto("/flows");
       await expect(page.getByRole("alertdialog", { name: "Du loggas snart ut" })).toBeVisible();
       await page.keyboard.press("Escape");
     },
@@ -219,7 +216,7 @@ const OVERLAYS: Record<string, Overlay> = {
   },
   // A page dialog on the page that owns it: the run's own view while it runs.
   "cancel question": {
-    go: (page) => run(page, "run-running"),
+    go: (page) => run(page, ids.runs.running),
     show: (page) => page.getByRole("button", { name: "Avbryt körningen" }).click(),
     shown: (page) => page.getByRole("alertdialog", { name: "Avbryta körningen?" }),
     hide: (page) => page.getByRole("button", { name: "Kör vidare" }).click(),
@@ -245,7 +242,7 @@ async function counters(cdp: CDPSession) {
   return { nodes, listeners: jsEventListeners, heapMB: usedSize / 1024 ** 2 };
 }
 
-/** The counters once the page has stopped changing by itself: `next dev` builds its own indicator after the load. */
+/** The counters once the page has stopped changing by itself: a dev server's own client and the page's lazy chunks settle after the load. */
 async function settledCounters(page: Page, cdp: CDPSession) {
   let previous = await counters(cdp);
   for (let quiet = 0; quiet < 4; ) {
@@ -274,7 +271,7 @@ for (const [name, overlay] of Object.entries(OVERLAYS)) {
     test.setTimeout(180_000);
     if (overlay.go) await overlay.go(page);
     else {
-      await open(page, "/dev/foundation");
+      await page.goto("/dev/foundation");
       await expect(page.getByRole("heading", { name: "Grundkontroll" })).toBeVisible();
     }
     const cdp = await page.context().newCDPSession(page);

@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -13,8 +11,11 @@ import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { useSignedOut } from "@/components/AuthGate";
+import { SlowWait } from "@/components/SlowWait";
 import { BackToFlows } from "@/components/flow/BackToFlows";
-import { runElapsed, type StepView } from "@/lib/run-progress";
+import { runWait, type StepView } from "@/lib/run-progress";
+import { creatingHeading } from "@/lib/flow-output";
+import { PRODUCT_NAME } from "@/lib/product";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
@@ -27,6 +28,7 @@ export function RunProgress({
   startedAt,
   error = null,
   makesText = false,
+  retrying = null,
   onCancel,
 }: {
   flowName: string;
@@ -37,6 +39,8 @@ export function RunProgress({
   error?: string | null;
   /** The flow ends in text, not a file (lib/flow-output makesText). */
   makesText?: boolean;
+  /** Set while the run's status cannot be read: the page asks again by itself, and says so. */
+  retrying?: { onRetry: () => void } | null;
   onCancel: () => Promise<void>;
 }) {
   const heading = usePhaseHeading(`${makesText ? "Skapar text" : "Skapar dokument"} · ${flowName}`);
@@ -58,7 +62,7 @@ export function RunProgress({
     const timer = setInterval(() => setNow(Date.now()), 15_000);
     return () => clearInterval(timer);
   }, []);
-  const elapsed = runElapsed(startedAt, now);
+  const wait = runWait(startedAt, now);
 
   async function cancel() {
     setCancelling(true);
@@ -74,20 +78,32 @@ export function RunProgress({
       <VStack gap={6}>
         <VStack gap={2}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            {makesText ? "Texten skapas" : "Dokumentet skapas"}
+            {creatingHeading(makesText)}
           </Heading>
           <VStack gap={1}>
-            <HStack gap={2} align="center">
-              <Spinner size="sm" aria-hidden />
-              <Text as="p" role="status">
-                {stage}
-              </Text>
-            </HStack>
+            {/* The stage is read out from here; it is shown here only until the step list shows it as the step under way. */}
+            <VisuallyHidden as="p" role="status">
+              {stage}
+            </VisuallyHidden>
+            {steps.length === 0 && (
+              <HStack gap={2} align="center" aria-hidden>
+                <Spinner size="sm" />
+                <Text as="p">{stage}</Text>
+              </HStack>
+            )}
             {/* Outside the status region: the minutes count on without being read out. */}
             <Text as="p" type="supporting">
-              {elapsed && `${elapsed}. `}Det kan ta några minuter.
+              {wait}
             </Text>
           </VStack>
+          {retrying && (
+            <VStack gap={3}>
+              <Text as="p" role="status">
+                Försöker igen. Körningen fortsätter i Eneo.
+              </Text>
+              <SlowWait onRetry={retrying.onRetry} />
+            </VStack>
+          )}
         </VStack>
         {steps.length > 0 && (
           <VStack as="section" aria-label="Flödets steg">
@@ -121,14 +137,24 @@ export function RunProgress({
   );
 }
 
-/** Opening an earlier run: the shape of the view until its state is known. */
-export function RunOpening() {
+/**
+ * Opening an earlier run: the shape of the view until its state is known. A wait that goes on says so and offers a way
+ * on; `retrying` is set while its status cannot be read, and the page asks again by itself.
+ */
+export function RunOpening({ onRetry, retrying = false }: { onRetry: () => void; retrying?: boolean }) {
   return (
     <StateCard aria-busy="true">
       <VStack gap={6}>
+        <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
         <VisuallyHidden as="p" role="status">
           Hämtar körningen…
         </VisuallyHidden>
+        {retrying && (
+          <Text as="p" role="status">
+            Försöker igen.
+          </Text>
+        )}
+        <SlowWait onRetry={onRetry} />
         <Skeleton width="66%" height={28} />
         <Skeleton width="50%" height={20} />
         <Skeleton width="100%" height={128} radius={4} />
@@ -154,7 +180,7 @@ export function RunUnread({ message, onRetry }: { message: string; onRetry: () =
         </VStack>
         <HStack gap={3} wrap="wrap">
           <Button label="Försök igen" variant="primary" icon={<Icon icon={RotateCcw} size="sm" color="inherit" />} onClick={onRetry} />
-          <BackToFlows size="default" />
+          <BackToFlows size="md" />
         </HStack>
       </VStack>
     </StateCard>

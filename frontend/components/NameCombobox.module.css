@@ -28,6 +28,7 @@
 
 /* The positioned layer: as wide as the field, and never wider than the screen. */
 .layer {
+  min-inline-size: 12rem;
   min-inline-size: max(anchor-size(width), 12rem);
   max-inline-size: calc(100dvw - 2 * var(--spacing-4));
 }
@@ -65,7 +66,7 @@
 
 .option[data-kind="none"]:not(:first-child) {
   margin-block-start: var(--spacing-1);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
   border-start-start-radius: 0;
   border-start-end-radius: 0;
 }
@@ -77,8 +78,7 @@
   color: var(--color-icon-secondary);
 }
 
-.option[data-kind="add"] .optionIcon,
-.option:not([data-kind]) .optionIcon {
+.option[data-kind="add"] .optionIcon {
   color: var(--color-icon-accent);
 }
 

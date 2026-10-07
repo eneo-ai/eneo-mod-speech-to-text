@@ -6,7 +6,7 @@
   },
   "features": {
     "ghcr.io/devcontainers/features/node:1": {
-      "version": "22"
+      "version": "24.21.0"
     }
   },
   "workspaceFolder": "/workspaces/eneo-mod-speech-to-text",
@@ -14,7 +14,7 @@
   "forwardPorts": [3002, 8000],
   "portsAttributes": {
     "3002": {
-      "label": "Next.js frontend",
+      "label": "Vite dev server (frontend)",
       "onAutoForward": "notify"
     },
     "8000": {

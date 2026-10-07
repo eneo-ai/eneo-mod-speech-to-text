@@ -1,24 +1,28 @@
 /**
- * What a page costs to load, on the production build: the compressed JS and CSS it transfers against
- * weight-budget.json, and that the built theme is used instead of being generated in the browser.
- * Chromium only: it is the engine that reports each request's transfer size.
+ * What a page costs to load, on the build that ships, behind the real backend: the compressed JS and CSS it transfers
+ * against weight-budget.json, and that the built theme is used instead of being generated in the browser.
+ * Chromium only (`@chromium` in the titles): it is the engine that reports each request's transfer size.
  *
- * Each budget is the measured value rounded up to the next 5 KB (2026-10-02: /flows 331.7 KB of JS and 44.1 KB of CSS,
- * /flows/flow-1 432.6 and 45.9). A change that raises one says why in its pull request. This build carries
- * app/dev/foundation (FOUNDATION_CHECK=1, for the smoke tests), and that page moves shared chunks: about 6.5 KB more
- * than the image, which is built without it.
+ * Each budget is the measured value rounded up to the next 5 KB (docs/decisions/0007-weight-budget.md). A change that
+ * raises one says why in its pull request.
  */
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
+import { test } from "../e2e/auth";
+import ids from "../fixtures/ids.json";
 import budget from "./weight-budget.json";
-
-test.beforeEach(({}, info) => test.skip(info.project.name !== "chromium", "only Chromium reports transfer sizes"));
 
 type Path = keyof typeof budget;
 
 /** A heading each page shows once the stub has answered, so a page that shows an error is never measured. */
 const HEADING: Record<Path, string> = {
   "/flows": "Välj ett flöde",
-  "/flows/flow-1": "Hur vill du lägga till ljudet?",
+  "/flows/:id": "Hur vill du lägga till ljudet?",
+};
+
+/** The address behind each budget's label: the stub's first flow stands for any flow. */
+const ADDRESS: Record<Path, string> = {
+  "/flows": "/flows",
+  "/flows/:id": `/flows/${ids.flows.flow1}`,
 };
 
 /** Loads a page and returns the JS and CSS it transferred, in KB: compressed bodies plus headers. */
@@ -35,22 +39,25 @@ async function transferredKB(page: Page, path: Path) {
       }),
     );
   });
-  await page.goto(path, { waitUntil: "networkidle" });
+  await page.goto(ADDRESS[path], { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: HEADING[path] })).toBeVisible();
   await Promise.all(measured);
   return { jsKB: kb.script, cssKB: kb.stylesheet };
 }
 
 for (const path of Object.keys(budget) as Path[]) {
-  test(`${path} stays within its page-weight budget`, async ({ page }) => {
+  test(`${path} stays within its page-weight budget @chromium`, async ({ session, page }) => {
+    expect(session.user).toBeTruthy();
     const { jsKB, cssKB } = await transferredKB(page, path);
-    const rule = "Raise the budget only with a reason in the pull request; Phase 8 returns it to the 2026-10-01 baseline.";
+    console.log(`${path}: ${jsKB.toFixed(1)} KB of JS, ${cssKB.toFixed(1)} KB of CSS`);
+    const rule = "Raise the budget only with a reason in the pull request (docs/decisions/0007-weight-budget.md).";
     expect.soft(jsKB, `${path} loads ${jsKB.toFixed(1)} KB of JS, the budget is ${budget[path].jsKB} KB. ${rule}`).toBeLessThanOrEqual(budget[path].jsKB);
     expect.soft(cssKB, `${path} loads ${cssKB.toFixed(1)} KB of CSS, the budget is ${budget[path].cssKB} KB. ${rule}`).toBeLessThanOrEqual(budget[path].cssKB);
   });
 }
 
-test("the built theme is used: the browser generates no theme styles", async ({ page }) => {
+test("the built theme is used: the browser generates no theme styles @chromium", async ({ session, page }) => {
+  expect(session.user).toBeTruthy();
   await page.goto("/flows", { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: HEADING["/flows"] })).toBeVisible();
   await expect(

@@ -41,14 +41,14 @@ const status = (within: ParentNode) => within.querySelector('p[role="status"]')?
 const chip = (within: ParentNode, words: string) =>
   [...within.querySelectorAll<HTMLButtonElement>('[aria-label="Visa talare"] button')].find((b) => b.textContent?.includes(words))!;
 const searchField = (within: ParentNode) =>
-  [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriptet")!;
-// "Ändra talare" is a popover of the top layer; its choices are radios, named by their words.
-const picker = () => document.querySelector("[data-popover-open]");
-const radios = (within = "[data-popover-open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];
+  [...within.querySelectorAll<HTMLInputElement>("input")].find((input) => computeAccessibleName(input) === "Sök i transkriberingen")!;
+// "Ändra talare" uses a native dialog; its choices are radios, named by their words.
+const picker = () => document.querySelector("dialog[open]");
+const radios = (within = "dialog[open]") => [...document.querySelectorAll<HTMLInputElement>(`${within} input[type="radio"]`)];
 const radio = (name: string) => radios().find((input) => computeAccessibleName(input) === name)!;
 const pick = (value: string) => radios().find((input) => input.value === value)!;
 // The speakers to choose from are the picker's first group of radios; the scope ("Gäller") is the second.
-const speakerRadios = () => [...(document.querySelector('[data-popover-open] [role="radiogroup"]')?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
+const speakerRadios = () => [...(document.querySelector('dialog[open] [role="radiogroup"]')?.querySelectorAll<HTMLInputElement>('input[type="radio"]') ?? [])];
 
 test("search counts the hits, marks them, and steps through them with buttons and Enter", async () => {
   const view = await player(meeting);
@@ -193,6 +193,18 @@ test("a transcript without speakers reads as paragraphs: no speaker row, marks o
   assert.ok(searchField(view.container));
 });
 
+test("Ändra talare on a passage Eneo gave no speaker changes nothing: nothing is sent, and the picker says why", async () => {
+  const unknown: TranscriptSegment[] = [{ ...meeting[0], speaker: null }, ...meeting.slice(1)];
+  const saved: CorrectionSet[] = [];
+  const view = await player(unknown, { editable: true, corrections: EMPTY, onCorrectionsChange: (next: CorrectionSet) => saved.push(next) });
+  await view.act(async () => button(view.container, "Okänd talare, ändra talare")!.click());
+  await view.act(async () => pick("SPEAKER_01").click());
+  await view.act(async () => button(document.body, "Spara")!.click());
+  assert.equal(saved.length, 0, "nothing sent");
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /kan inte ändras/);
+  assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
+});
+
 test("a bulk change past Eneo's cap on speaker edits is refused before anything is sent", async () => {
   // 1 001 passages each for two speakers, and 1 000 edits already saved: moving all of Talare 1 would make 2 001.
   const many: TranscriptSegment[] = Array.from({ length: 2002 }, (_, i) => ({
@@ -213,7 +225,7 @@ test("a bulk change past Eneo's cap on speaker edits is refused before anything 
   await view.act(async () => pick("SPEAKER_02").click());
   await view.act(async () => button(document.body, "Spara")!.click());
   assert.equal(saved.length, 0, "nothing sent");
-  assert.match(document.querySelector('[role="dialog"] [role="alert"]')?.textContent ?? "", /fler än 2 000 talarändringar/);
+  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /fler än 2 000 talarändringar/);
   assert.ok(button(document.body, "Spara"), "the picker stays open with the choice");
 });
 
@@ -406,4 +418,27 @@ test("a filter whose speaker has gone shows everyone again", async () => {
   // Their two passages are one now, with no one between them: Talare 2 has none left, so all are shown.
   assert.deepEqual(passages(view.container), ["Talare 1, 0:00"]);
   assert.equal(chip(view.container, "Alla").getAttribute("aria-pressed"), "true");
+});
+
+test("the clock on a passage plays from there, also while the recording is paused", async () => {
+  const media = window.HTMLMediaElement.prototype;
+  const { play, pause, load } = media;
+  const played: string[] = [];
+  media.play = function (this: HTMLMediaElement) {
+    played.push(`${this.currentTime}`);
+    return Promise.resolve();
+  };
+  media.pause = () => undefined;
+  media.load = () => undefined;
+  try {
+    const view = await player(meeting, { fileCount: 1, audioSrcFor: () => "/audio/0" });
+    await view.act(async () => button(view.container, "Spela från 0:02")!.click());
+    // The audio has loaded: where the press asked to go, and whether to play on.
+    await view.act(async () => view.container.querySelector("audio")!.dispatchEvent(new window.Event("loadedmetadata")));
+    assert.deepEqual(played, ["2"], "the passage's own words promise it plays");
+  } finally {
+    media.play = play;
+    media.pause = pause;
+    media.load = load;
+  }
 });

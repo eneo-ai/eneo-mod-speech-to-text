@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -17,27 +15,21 @@ import type { TranscriptContext } from "@/lib/transcript-context";
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 import { inputFileAudioUrl, type FlowRunStep } from "@/lib/api";
 import type { Playback } from "@/lib/playback";
+import { useAuthenticatedUser } from "@/components/AuthGate";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
+import { downloadBlob } from "@/lib/download";
 import { renderReviewedTranscript } from "@/lib/transcript-corrections";
 import { CopyButton } from "./CopyButton";
 import styles from "./RunTranscript.module.css";
 
-function downloadText(text: string, filename: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: "text/plain;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1_000);
-}
-
 /** The run's transcript, its confirmed words and its corrections: read once, shared by the page that shows them. */
 export function useRunTranscript(flowId: string, runId: string, steps: readonly FlowRunStep[], enabled = true) {
-  const [transcript, , reload] = useTranscriptContext({ flowId, runId, enabled, steps });
+  const user = useAuthenticatedUser();
+  const [transcript, reload] = useTranscriptContext({ flowId, runId, enabled, steps });
   const [confirmedWords] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
-  const editing = useTranscriptCorrections(flowId, runId, transcript);
+  const editing = useTranscriptCorrections(flowId, runId, transcript, reload);
   return { transcript, confirmedWords, editing, reload };
 }
 
@@ -94,7 +86,7 @@ export function RunTranscriptView({
   /** Reads the transcript and its saved corrections again. */
   onReload: () => void;
 }) {
-  const { corrections, saveState, localError, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = editing;
+  const { corrections, saveState, localError, hasDropped, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = editing;
 
   if (transcript.pending) {
     return (
@@ -110,7 +102,7 @@ export function RunTranscriptView({
     return (
       <VStack as="section" aria-labelledby="run-transcript" gap={3} hAlign="start">
         <Heading level={2} id="run-transcript">
-          Transkript
+          Transkribering
         </Heading>
         <Banner status="error" collapsible={false} title={transcript.correctionProblem} />
         <Button icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
@@ -128,35 +120,36 @@ export function RunTranscriptView({
     <Card padding={0} role="region" aria-labelledby="run-transcript" className={styles.card}>
       <HStack hAlign="between" vAlign="center" wrap="wrap" gap={2} paddingInline={4} paddingBlockStart={3} paddingBlockEnd={2}>
         <Heading level={2} id="run-transcript">
-          Transkript
+          Transkribering
         </Heading>
         <HStack wrap="wrap" gap={1}>
-          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriptet" isDisabled={unread} />
+          <CopyButton text={plain} variant="ghost" size="sm" label="Kopiera" name="Kopiera transkriberingen" isDisabled={unread} />
           <Button
             variant="ghost"
             size="sm"
             isDisabled={unread}
             icon={<Icon icon={Download} />}
-            label="Ladda ner som text, transkriptet"
-            onClick={() => downloadText(plain, fileName)}
+            label="Ladda ner som text, transkriberingen"
+            onClick={() => downloadBlob(new Blob([plain], { type: "text/plain;charset=utf-8" }), fileName)}
           >
             Ladda ner som text
           </Button>
         </HStack>
       </HStack>
-      {(unread || localError || saveState === "error") && (
+      {(unread || localError || saveState === "error" || hasDropped) && (
         <VStack gap={2} hAlign="start" paddingInline={4} paddingBlockEnd={3}>
           {unread && (
             <HStack wrap="wrap" vAlign="center" gap={3}>
               <Text color="secondary">
                 {transcript.textPreview
-                  ? "Förhandsvisning, hela transkriptet kunde inte hämtas."
-                  : "Transkriptet kan kopieras och laddas ner när rättningarna har lästs in."}
+                  ? "Förhandsvisning, hela transkriberingen kunde inte hämtas."
+                  : "Transkriberingen kan kopieras och laddas ner när rättningarna har lästs in."}
               </Text>
               <Button size="sm" icon={<Icon icon={RotateCcw} />} label="Läs in igen" onClick={onReload} />
             </HStack>
           )}
           {localError && <Banner status="error" collapsible={false} title={localError} />}
+          {hasDropped && <Button variant="ghost" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
           {saveState === "error" && (
             <HStack wrap="wrap" gap={2}>
               <Button size="sm" label="Försök spara igen" onClick={retryCorrections} />

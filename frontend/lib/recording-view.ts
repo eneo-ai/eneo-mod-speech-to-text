@@ -1,39 +1,40 @@
-/** What the recording states say: the tab title, the bar's line, the announcements. */
+/**
+ * The recording page's words and small rules: tab titles, notices, announcements, the leave warning, the details
+ * summary, the live text's status line and when its sheet follows new text.
+ */
 
 import type { FormField } from "./api";
-import type { DetailValue, Problem, SessionPhase } from "./flow-session";
+import type { Problem, SessionPhase } from "./flow-session";
 import { formatClock } from "./format";
 import type { LiveStatus } from "./live-transcriber";
 import type { CaptureStatus } from "./recording-session";
 import type { DeviceRefusal } from "./recording-store";
+import { documentTitle } from "./product";
 
-const APP = "Tal till text";
 /** The recording bar's fixed line under Pausa and Stoppa, by what the flow makes. */
 export const stopLine = (makesText: boolean) =>
   `Stoppa avslutar inspelningen. Sedan kan du skapa ${makesText ? "texten" : "dokumentet"}.`;
 const MINUTE = 60_000;
 
+const SILENT_AFTER_MS = 15_000;
+// Two steps of 16-bit audio (about −84 dBFS).
+const SILENT_FLOOR = 2 / 32_768;
+
 /**
- * Digital silence for `afterMs`: every read's loudest sample below `floor`, which only a muted or wrong input
- * gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
+ * Digital silence for 15 s: every read's loudest sample below two steps of 16-bit audio, which only a muted or wrong
+ * input gives. A quiet room is not that: a real microphone's room tone stays far above it. Sound, or a reset, starts
  * the count over.
  */
 export class SilenceWatch {
   private quietSince: number | null = null;
 
-  constructor(
-    private readonly afterMs = 15_000,
-    // Two steps of 16-bit audio (about −84 dBFS).
-    private readonly floor = 2 / 32_768,
-  ) {}
-
   update(peak: number, now: number): boolean {
-    if (peak >= this.floor) {
+    if (peak >= SILENT_FLOOR) {
       this.quietSince = null;
       return false;
     }
     this.quietSince ??= now;
-    return now - this.quietSince >= this.afterMs;
+    return now - this.quietSince >= SILENT_AFTER_MS;
   }
 
   reset(): void {
@@ -48,15 +49,15 @@ export class SilenceWatch {
 export function pageTitle(phase: SessionPhase, elapsedMs: number, flowName: string, sent = false): string {
   switch (phase) {
     case "recording":
-      return `Spelar in ${formatClock(elapsedMs)} · ${APP}`;
+      return documentTitle(`Spelar in ${formatClock(elapsedMs)}`);
     case "paused":
     case "interrupted":
-      return `Pausad · ${APP}`;
+      return documentTitle("Pausad");
     // Stopped, not yet a document: "Klart" is the finished document's.
     case "ready":
-      return `${sent ? "Redan skickad" : "Inte skickad"} · ${APP}`;
+      return documentTitle(sent ? "Redan skickad" : "Inte skickad");
     default:
-      return flowName ? `${flowName} · ${APP}` : APP;
+      return documentTitle(flowName);
   }
 }
 
@@ -109,8 +110,14 @@ export function recordingNotices({
   }
   if (refused) {
     // Nothing stops, and Spara som fil after Stoppa keeps what only this tab has.
-    const cause = refused === "full" ? "Enheten har inte plats för att spara mer." : "Enheten kan inte spara mer av inspelningen.";
-    warnings.push({ title: cause, detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." });
+    // The device's copy gone (its data cleared) is more than a device that stops keeping: what came before may be lost.
+    const [cause, before] =
+      refused === "full"
+        ? ["Enheten har inte plats för att spara mer.", ""]
+        : refused === "lost"
+          ? ["Inspelningen kan inte längre sparas på enheten.", "Det som spelats in tidigare kan ha försvunnit. "]
+          : ["Enheten kan inte spara mer av inspelningen.", ""];
+    warnings.push({ title: cause, detail: `${before}Inspelningen fortsätter, men välj Spara som fil när du stoppar.` });
   } else if (!persistent) {
     notes.push(
       `Inspelningen sparas bara i den här fliken. Stäng inte fliken innan ${makesText ? "texten är skapad" : "dokumentet är skapat"}.`,
@@ -144,6 +151,14 @@ export function keepDetailsOpen(open: boolean, invalid: readonly string[]): bool
 
 /** What "Lämna sidan?" says when only typed work is at stake, which the browser could not keep. */
 export const UNSTORED_LEAVE = "Det du har skrivit kunde inte sparas i webbläsaren och försvinner om du lämnar sidan.";
+
+/**
+ * Whether leaving loses nothing: audio the device keeps (it waits among unsent recordings), nothing being sent and nothing
+ * typed that the browser could not keep. "Lämna sidan" is then a choice, not a warning.
+ */
+export function leaveKeepsWork(state: { persistent: boolean | null; holdsAudio: boolean; sending: boolean; unstored: boolean }): boolean {
+  return state.holdsAudio && state.persistent === true && !state.sending && !state.unstored;
+}
 
 /**
  * What "Lämna sidan?" says. A running recording stops: it does not go on in
@@ -181,7 +196,7 @@ export function detailRows(fields: FormField[], values: Record<string, unknown>)
 }
 
 /** "Deltagare: Anna Berg, Erik Lund · Mötets namn: KS", for the collapsed details. */
-export function detailsSummary(fields: FormField[], details: Record<string, DetailValue | unknown>): string {
+export function detailsSummary(fields: FormField[], details: Record<string, unknown>): string {
   const rows = detailRows(fields, details);
   return rows.length > 0 ? rows.map(({ label, text }) => `${label}: ${text}`).join(" · ") : "Inga uppgifter ifyllda";
 }

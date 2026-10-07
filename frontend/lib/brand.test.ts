@@ -5,19 +5,21 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { Brand, BrandingProvider } from "../components/Brand";
-import type { Branding } from "./api";
+import type { Branding } from "./read-branding";
+import { RootHydrateFallback } from "../routes/Root";
 import { cleanup, installDom, mount } from "./test-dom";
+import { inStaticRouter, withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
 
 const render = (branding: Branding, href?: string) =>
-  renderToStaticMarkup(createElement(BrandingProvider, { value: branding, children: createElement(Brand, { href }) }));
+  renderToStaticMarkup(inStaticRouter(createElement(BrandingProvider, { value: branding, children: createElement(Brand, { href }) })));
 
 const images = (html: string) => [...html.matchAll(/<img ([^>]*)\/>/g)].map(([, attributes]) => attributes);
 
 test("the default is Sundsvall's lockup: its mark, named, and the product's name", () => {
-  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false } }, "/flows");
+  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } }, "/flows");
   assert.match(html, /aria-label="Tal till text – Sundsvalls kommun"/);
   const [mark, ...others] = images(html);
   assert.deepEqual(others, [], "one mark");
@@ -28,7 +30,7 @@ test("the default is Sundsvall's lockup: its mark, named, and the product's name
 });
 
 test("another organisation's logo is served same-origin and named by its alt; one for each mode when it has both", () => {
-  const html = render({ organization: { name: "Umeå kommun", logo: "custom", dark_logo: true } }, "/flows");
+  const html = render({ organization: { name: "Umeå kommun", logo: "custom", dark_logo: true, logo_sizes: { light: { width: 600, height: 48 }, dark: { width: 160, height: 40 } } } }, "/flows");
   assert.match(html, /aria-label="Tal till text – Umeå kommun"/);
   const [light, dark, ...others] = images(html);
   assert.deepEqual(others, [], "one for light, one for dark");
@@ -38,14 +40,35 @@ test("another organisation's logo is served same-origin and named by its alt; on
   assert.match(dark, /data-brand-logo="dark"/);
   for (const image of [light, dark]) assert.doesNotMatch(image, /invert/, "a coloured logo is never inverted");
 
-  const lightOnly = render({ organization: { name: "Umeå kommun", logo: "custom", dark_logo: false } });
+  const lightOnly = render({ organization: { name: "Umeå kommun", logo: "custom", dark_logo: false, logo_sizes: { light: { width: 600, height: 48 }, dark: null } } });
   const [only, ...rest] = images(lightOnly);
   assert.deepEqual(rest, []);
   assert.match(only, /data-brand-logo="plain"/, "without a dark logo the light one shows in both modes");
 });
 
+test("every logo is drawn with its width and height, so its room is kept before the file arrives", () => {
+  const both = render({ organization: { name: "Umeå kommun", logo: "custom", dark_logo: true, logo_sizes: { light: { width: 600, height: 48 }, dark: { width: 160, height: 40 } } } });
+  const [light, dark] = images(both);
+  assert.match(light, /width="600" height="48"/);
+  assert.match(dark, /width="160" height="40"/);
+
+  // The bundled mark is a file of the page's own: its proportions are those of its viewBox (277.4 x 110.3), tenfold.
+  const [bundled] = images(render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } }));
+  assert.match(bundled, /width="2774" height="1103"/);
+  assert.match(readFileSync("public/brand/sundsvalls-kommun-logotyp.svg", "utf8"), /viewBox="0 0 277\.4 110\.3"/, "the constant is the file's");
+});
+
+test("the first frame, before any page has loaded, already names the organisation", () => {
+  document.head.innerHTML = `<meta name="eneo-branding" content="${JSON.stringify({
+    organization: { name: "Umeå kommun", logo: "custom", dark_logo: false, logo_sizes: { light: { width: 600, height: 48 }, dark: null } },
+  }).replace(/"/g, "&quot;")}">`;
+  const html = renderToStaticMarkup(inStaticRouter(createElement(RootHydrateFallback)));
+  const [mark] = images(html);
+  assert.match(mark, /src="\/api\/branding\/logo\/light" alt="Umeå kommun" width="600" height="48"/);
+});
+
 test("a name without a logo shows as text, and a hidden organisation leaves the product name alone", () => {
-  const named = render({ organization: { name: "Region Västernorrland", logo: null, dark_logo: false } }, "/flows");
+  const named = render({ organization: { name: "Region Västernorrland", logo: null, dark_logo: false, logo_sizes: null } }, "/flows");
   assert.doesNotMatch(named, /<img/);
   assert.match(named, />Region Västernorrland</);
   assert.match(named, /aria-label="Tal till text – Region Västernorrland"/);
@@ -57,51 +80,42 @@ test("a name without a logo shows as text, and a hidden organisation leaves the 
 });
 
 test("without a provider no organisation is named: the backend's branding is the one owner of who is shown", () => {
-  const html = renderToStaticMarkup(createElement(Brand, { href: "/flows" }));
+  const html = renderToStaticMarkup(inStaticRouter(createElement(Brand, { href: "/flows" })));
   assert.doesNotMatch(html, /<img|Sundsvall/);
   assert.match(html, /aria-label="Tal till text"/);
 });
 
 test("without a destination the lockup is not a link", () => {
-  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false } });
+  const html = render({ organization: { name: "Sundsvalls kommun", logo: "default", dark_logo: false, logo_sizes: null } });
   assert.doesNotMatch(html, /<a /);
   assert.match(html, />Tal till text</);
 });
 
 test("the stylesheet shows the logo of the colour mode and inverts Sundsvall's", () => {
-  const css = readFileSync("app/globals.css", "utf8");
-  assert.match(css, /html\.dark \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the black mark turns white in the dark mode");
-  assert.match(css, /html\.dark \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/, "the light logo gives way to the dark one");
-  assert.match(css, /html:not\(\.dark\) \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*none/, "and the dark one stays out of the light mode");
+  const css = readFileSync("styles/globals.css", "utf8");
+  const media = css.slice(css.indexOf("@media (prefers-color-scheme: dark)"));
+  // The mode is data-theme on <html> (light or dark; none is the system's, which the media query answers).
+  assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the black mark turns white in the dark mode");
+  assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/, "the light logo gives way to the dark one");
+  assert.match(css, /:root\[data-theme="dark"\] \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*block/, "and the dark one shows");
+  assert.match(css, /:root \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*none/, "while it stays out of every other mode");
+  assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="default"\]\s*\{[^}]*filter:\s*invert\(1\)/, "the same for a system that is dark and a person who chose nothing");
+  assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="light"\]\s*\{[^}]*display:\s*none/);
+  assert.match(media, /:root:not\(\[data-theme\]\) \[data-brand-logo="dark"\]\s*\{[^}]*display:\s*block/);
 });
 
-test("the brand's link asks before it leaves the page, and stays when told to", async () => {
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
-  const { HeaderBrand } = await import("../components/AppHeader");
-  const pushed: string[] = [];
-  const router = { push: (to: string) => pushed.push(to), replace() {}, prefetch() {}, back() {}, forward() {}, refresh() {} } as never;
-  const asked: boolean[] = [];
-  const { container, act } = await mount(
-    createElement(AppRouterContext.Provider, {
-      value: router,
-      children: createElement(HeaderBrand, {
-        linked: true,
-        onLeave: (event) => {
-          asked.push(true);
-          event.preventDefault();
-        },
-      }),
-    }),
-  );
+test("the brand's link is a router link to the flows: a navigation, which the page's blocker can stop", async () => {
+  const { HeaderBrand } = await import("../components/HeaderBrand");
+  const { router, tree } = withRouter(createElement(HeaderBrand, { linked: true }), { path: "/start" });
+  const { container, act } = await mount(tree);
   const link = container.querySelector("a")!;
   assert.equal(link.getAttribute("href"), "/flows");
   await act(async () => link.click());
-  assert.deepEqual(asked, [true], "asked once");
-  assert.deepEqual(pushed, [], "and the page was not left");
+  assert.equal(router.state.location.pathname, "/flows", "the router took it, the page was not loaded again");
 });
 
 test("the header brand of a page nobody has signed in to is not a link", async () => {
-  const { HeaderBrand } = await import("../components/AppHeader");
+  const { HeaderBrand } = await import("../components/HeaderBrand");
   const html = renderToStaticMarkup(createElement(HeaderBrand, { linked: false }));
   assert.doesNotMatch(html, /<a /);
   assert.match(html, />Tal till text</);

@@ -22,10 +22,6 @@ MIN_CONTRAST = 4.5
 # fullmatch, never `$`: that lets a trailing newline through.
 _HEX = re.compile(r"#[0-9a-fA-F]{6}")
 _NEUTRAL_ON_ACCENT = ("#FFFFFF", "#0B1118")
-# The selected tint of the old components (--primary-soft in app/globals.css), whose text contrast was tuned for it.
-_SOFT_LIGHT = (205, 0.43, 0.87)
-_SOFT_DARK = (209, 0.45, 0.22)
-_SOFT_MAX_SATURATION = 0.45
 
 
 class _Mode(NamedTuple):
@@ -36,13 +32,10 @@ class _Mode(NamedTuple):
     popover: str
     secondary_text: str
     tint: float
-    # What the old components' translucent hover states mix the accent with (--paper and --bg in app/globals.css), at
-    # the extreme that hurts most.
-    behind: str
 
 
-LIGHT = _Mode("ljust", ("#FBFCFF", "#F0F0F6"), "#FBFCFF", "#454650", 0.20, "#FFFFFF")
-DARK = _Mode("mörkt", ("#191C1F", "#0E1115"), "#2E3135", "#A5ACB6", 0.25, "#101014")
+LIGHT = _Mode("ljust", ("#FBFCFF", "#F0F0F6"), "#FBFCFF", "#454650", 0.20)
+DARK = _Mode("mörkt", ("#191C1F", "#0E1115"), "#2E3135", "#A5ACB6", 0.25)
 
 
 def parse_hex(value: str) -> RGB | None:
@@ -109,28 +102,6 @@ def _problem(accent: RGB, mode: _Mode) -> tuple[str, float, str] | None:
         ),
     )
     return next(((what, ratio, advice) for what, ratio, advice in checks if ratio < MIN_CONTRAST), None)
-
-
-def _legacy_holds(accent: RGB, mode: _Mode) -> bool:
-    """Whether the old components' hover states stay readable: `bg-primary/90` under the text on the accent, and
-    `bg-primary/20` under the accent as text (`text-primary`). They mix with what is behind, not with a tint."""
-    behind = _hex(mode.behind)
-    return (
-        contrast(_on_accent(accent), _blend(accent, behind, 0.9)) >= MIN_CONTRAST
-        and contrast(accent, _blend(accent, behind, 0.2)) >= MIN_CONTRAST
-    )
-
-
-def _legacy(accent: RGB, mode: _Mode) -> RGB:
-    """The accent the old components use: the accent itself, or the nearest shade that keeps their hover states readable
-    (darker in light mode, lighter in dark mode)."""
-    hue, lightness, saturation = _hls(accent)
-    first, last, step = (round(lightness * 200), 0, -1) if mode is LIGHT else (round(lightness * 200), 200, 1)
-    for half_percent in range(first, last + step, step):
-        candidate = _from_hls(hue, half_percent / 200, saturation)
-        if _legacy_holds(candidate, mode):
-            return accent if half_percent == first else candidate
-    return accent
 
 
 def _swedish(ratio: float) -> str:
@@ -210,28 +181,6 @@ def resolve_accent(light: str | None, dark: str | None) -> Accent | None:
     )
 
 
-def _soft(accent: RGB, target: tuple[int, float, float], round_up: bool) -> str:
-    """The accent's hue on the old selected tint's luminance, so every text colour keeps the contrast it was tuned for.
-
-    ``round_up``: in light mode a lighter tint is the safe side of the rounding, in dark mode a darker one.
-    """
-    hue, _, saturation = _hls(accent)
-    degrees, percent = round(hue * 360) % 360, round(min(saturation, _SOFT_MAX_SATURATION) * 100)
-    goal = luminance(_from_hls(target[0] / 360, target[2], target[1]))
-    low, high = 0.0, 1.0
-    for _ in range(30):
-        middle = (low + high) / 2
-        low, high = (middle, high) if luminance(_from_hls(degrees / 360, middle, percent / 100)) < goal else (low, middle)
-    tenths = math.ceil(high * 1000) if round_up else math.floor(low * 1000)
-    return f"{degrees} {percent}% {tenths / 10:g}%"
-
-
-def _triplet(rgb: RGB) -> str:
-    """The HSL triplet the old components read (`hsl(var(--primary))`)."""
-    hue, lightness, saturation = _hls(rgb)
-    return f"{round(hue * 360) % 360} {saturation * 100:.1f}% {lightness * 100:.1f}%"
-
-
 NO_ACCENT_CSS = "/* Ingen ORGANIZATION_ACCENT är satt: modulens standardfärg gäller. */\n"
 
 
@@ -239,8 +188,6 @@ def theme_css(accent: Accent | None) -> str:
     """The stylesheet that overrides the built theme's accent. Only an ``Accent`` (already checked) is formatted."""
     if accent is None:
         return NO_ACCENT_CSS
-    light, dark = _legacy(_hex(accent.light), LIGHT), _legacy(_hex(accent.dark), DARK)
-    on_light, on_dark = _on_accent(light), _on_accent(dark)
     return (
         f"/* Organisationens accentfärg: {accent.light}, mörkt läge {accent.dark}. Skapad av modulens backend. */\n"
         # The design system's tokens, on its theme root. Unlayered, so it wins over the layered built theme. The
@@ -248,17 +195,6 @@ def theme_css(accent: Accent | None) -> str:
         '[data-astryx-theme="eneo"] {\n'
         f"  --color-accent: light-dark({accent.light}, {accent.dark});\n"
         f"  --color-on-accent: light-dark({accent.on_light}, {accent.on_dark});\n"
-        "}\n"
-        # The old components' tokens (app/globals.css), as the HSL triplets they are written in.
-        ":root {\n"
-        f"  --primary: {_triplet(light)};\n"
-        f"  --primary-foreground: {_triplet(on_light)};\n"
-        f"  --primary-soft: {_soft(light, _SOFT_LIGHT, round_up=True)};\n"
-        "}\n"
-        ":root.dark {\n"
-        f"  --primary: {_triplet(dark)};\n"
-        f"  --primary-foreground: {_triplet(on_dark)};\n"
-        f"  --primary-soft: {_soft(dark, _SOFT_DARK, round_up=False)};\n"
         "}\n"
     )
 

@@ -1,5 +1,3 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
 import {
   Download,
@@ -26,7 +24,9 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { useSignedOut } from "@/components/AuthGate";
 import { runArtifactUrl } from "@/lib/api";
 import type { FileKind, ResultFileView } from "@/lib/run-files";
+import { ProblemAlert } from "./ProblemAlert";
 import styles from "./ResultFiles.module.css";
+import { pressing, useFileAccess, type FileAccess } from "./useFileAccess";
 
 export const FILE_ICONS: Record<FileKind, LucideIcon> = {
   pdf: FileText,
@@ -39,8 +39,8 @@ export const FILE_ICONS: Record<FileKind, LucideIcon> = {
 };
 
 /**
- * Whether the window matches a media query, read where the page is shown. Before the page is read (and on a server)
- * it is taken to match: the wide layout, which is what a laptop shows first.
+ * Whether the window matches a media query, read where the page is shown. Before the first read it is taken to match:
+ * the wide layout, which is what a laptop shows first.
  */
 export function useMediaMatch(query: string): boolean {
   const subscribe = useCallback(
@@ -63,7 +63,7 @@ export function DownloadLink(props: ComponentProps<"a">) {
   return <a {...props} download />;
 }
 
-/** The run's files under Eneo's names, each opened or downloaded through the module. */
+/** The run's files under Eneo's names, each opened or downloaded through the module once it is known to be there. */
 export function ResultFiles({
   flowId,
   runId,
@@ -75,6 +75,7 @@ export function ResultFiles({
   files: readonly ResultFileView[];
   title?: string;
 }) {
+  const access = useFileAccess(flowId, runId);
   return (
     <VStack as="section" aria-labelledby="result-files" gap={3}>
       <Heading level={2} id="result-files">
@@ -90,12 +91,23 @@ export function ResultFiles({
                 {file.available && (
                   <HStack wrap="wrap" gap={2} paddingInline={2} paddingBlockEnd={2}>
                     {file.previewable && (
-                      <OpenFile file={file} url={runArtifactUrl(flowId, runId, file.fileId, true)} download={download} />
+                      <OpenFile file={file} url={runArtifactUrl(flowId, runId, file.fileId, true)} download={download} access={access} />
                     )}
-                    <Button as={DownloadLink} href={download} icon={<Icon icon={Download} />} label={`Ladda ner ${file.name}`}>
+                    <Button
+                      as={DownloadLink}
+                      href={download}
+                      icon={<Icon icon={Download} />}
+                      label={`Ladda ner ${file.name}`}
+                      onClick={pressing(access, file.fileId, "download")}
+                    >
                       Ladda ner
                     </Button>
                   </HStack>
+                )}
+                {access.problem?.fileId === file.fileId && (
+                  <VStack className={styles.problem}>
+                    <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />
+                  </VStack>
                 )}
               </HStack>
             );
@@ -122,11 +134,14 @@ export function OpenFile({
   url,
   download,
   name = false,
+  access,
 }: {
   file: ResultFileView;
   url: string;
   download: string;
   name?: boolean;
+  /** How the file is reached: asked for before the dialog opens or the tab is sent to it. */
+  access: FileAccess;
 }) {
   const roomy = useMediaMatch(name ? LAPTOP : TABLET);
   const [open, setOpen] = useState(false);
@@ -144,7 +159,8 @@ export function OpenFile({
     wasOpen.current = open;
   }, [open]);
 
-  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer" } as const;
+  const newTab = { href: url, target: "_blank", rel: "noopener noreferrer", onClick: pressing(access, file.fileId, "tab") } as const;
+  const openDialog = () => access.start(file.fileId, { open: () => setOpen(true) });
   const opener = !roomy ? (
     name ? (
       <Button ref={trigger} {...newTab} variant="ghost" className={styles.name} endContent={<Icon icon="externalLink" />} label={`Öppna ${file.name} i en ny flik`}>
@@ -163,12 +179,12 @@ export function OpenFile({
       aria-haspopup="dialog"
       endContent={<Icon icon={Eye} />}
       label={`Öppna ${file.name}`}
-      onClick={() => setOpen(true)}
+      onClick={openDialog}
     >
       {file.name}
     </Button>
   ) : (
-    <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={() => setOpen(true)}>
+    <Button ref={trigger} aria-haspopup="dialog" icon={<Icon icon={Eye} />} label={`Öppna ${file.name}`} onClick={openDialog}>
       Öppna
     </Button>
   );
@@ -187,7 +203,7 @@ export function OpenFile({
               onOpenChange={setOpen}
               endContent={
                 <>
-                  <Button {...newTab} icon={<Icon icon="externalLink" />} label="Öppna i ny flik" />
+                  <Button href={url} target="_blank" rel="noopener noreferrer" icon={<Icon icon="externalLink" />} label="Öppna i ny flik" />
                   <Button as={DownloadLink} href={download} icon={<Icon icon={Download} />} label="Ladda ner" />
                 </>
               }

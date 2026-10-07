@@ -1,45 +1,34 @@
-"use client";
-
 import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import type { MouseEvent } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { Icon } from "@astryxdesign/core/Icon";
-
-// The old buttons' names for the design system's: the filled one is the page's main action.
-const VARIANT = { default: "primary", secondary: "secondary", outline: "secondary" } as const;
-const SIZE = { default: "md", sm: "sm" } as const;
+import { RouterLink } from "@/kit/RouterLink";
 
 /**
- * The way back to the flow list, named the same on every page, a button that reads as one at rest. An action row
- * may give it more weight.
+ * The way back to the flow list, named the same on every page: in the flow page's top bar a quiet button at every
+ * width; an error's action row may give it more weight.
  */
 export function BackToFlows({
-  onLeave,
   variant = "secondary",
   size = "sm",
   className,
 }: {
-  /** Asked before leaving; call preventDefault to stay. */
-  onLeave?: (event: MouseEvent) => void;
-  variant?: keyof typeof VARIANT;
-  size?: keyof typeof SIZE;
+  /** The filled one is the page's main action; the bar's is ghost. */
+  variant?: "primary" | "secondary" | "ghost";
+  size?: "sm" | "md";
   className?: string;
 }) {
   return (
     <Button
-      as={Link}
+      as={RouterLink}
       href="/flows"
       label="Alla flöden"
       icon={<Icon icon={ArrowLeft} />}
-      variant={VARIANT[variant]}
-      size={SIZE[size]}
+      variant={variant}
+      size={size}
       className={className}
-      onClick={onLeave}
     >
-      {/* A fragment, not the label's string: that makes the button name itself with aria-label. Its words are
-          otherwise in a part a modal's aria-hiding (the old dialogs') leaves empty, because the button holds a live
-          region that aria-hidden keeps visible, so the link stays and loses its name. */}
+      {/* A fragment, not the label's string: the button then names itself with aria-label. Inside an aria-hidden modal
+          its words would be hidden while the button's live region stays visible, and the link would lose its name. */}
       <>Alla flöden</>
     </Button>
   );

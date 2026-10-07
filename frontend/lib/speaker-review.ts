@@ -1,10 +1,13 @@
 import type { FlowRunStep } from "./api";
 import { needsSpeakerReview, type TranscriptSegment } from "./transcript";
 
-/** Review controls are opt-in; evidence is always preserved. */
-export const SPEAKER_REVIEW_ENABLED = process.env.NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED === "true";
+/** Set by the build from SPEAKER_REVIEW_ENABLED (`define` in vite.config.mts); not defined in the unit tests. */
+declare const __SPEAKER_REVIEW__: boolean;
 
-export interface SpeechOverlap {
+/** Review controls are opt-in; evidence is always preserved. */
+export const SPEAKER_REVIEW_ENABLED = typeof __SPEAKER_REVIEW__ !== "undefined" && __SPEAKER_REVIEW__;
+
+interface SpeechOverlap {
   id: string;
   fileIndex: number;
   start: number;
@@ -59,7 +62,7 @@ export function carriesTranscript(step: FlowRunStep | undefined): boolean {
 }
 
 
-export interface ReviewPassage {
+interface ReviewPassage {
   key: string;
   fileIndex: number;
   start: number;

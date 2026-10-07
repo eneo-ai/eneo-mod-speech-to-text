@@ -1,5 +1,5 @@
-/* What the flow's page needs of its frame that only the setup and the recording have. Breakpoints are Tailwind's
-   (md 768, lg 1024) and the short screen's (a phone on its side, 200 % zoom: 480 px high). */
+/* What the flow's page needs of its frame that only the setup and the recording have. Its breakpoints are 768 and 1024 px
+   wide, and the short screen's: a phone on its side or 200 % zoom, 480 px high. */
 
 /* Recording: the details column and the working card scroll on their own from a laptop's width, the bar of
    controls never moving. The side room keeps a focused control's outline inside the scroll box. A short, wide screen
@@ -34,8 +34,10 @@
 }
 
 
-/* The setup's card stands a little further from the details above it than the other states' do. */
+/* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it),
+   and at a form's measure on every width. */
 .setup {
+  max-width: var(--module-form-width);
   margin-block-start: var(--spacing-4);
 }
 
@@ -69,11 +71,11 @@
 /* The primary action docked at the page's bottom on a phone: a bar over the region's side padding, above the safe area. */
 .docked {
   padding: var(--spacing-3) var(--spacing-4) max(var(--spacing-3), env(safe-area-inset-bottom));
-  border-top: 1px solid var(--color-border);
+  border-top: var(--border-width) solid var(--color-border);
   background: var(--color-background-surface);
 }
 
-/* Earlier runs stand a little apart from the setup's actions above them. */
+/* Earlier runs start a section: a little further from the actions above them than the setup's parts stand apart. */
 .earlier {
-  padding-block-start: var(--spacing-4);
+  padding-block-start: var(--spacing-2);
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { createElement, type ComponentProps } from "react";
 
-import { recordingDetails, resumableRecording, UnsentRecordings } from "../components/UnsentRecordings";
+import { recordingDetails, resumableRecording, UnsentRecordings, type UnsentRecording } from "../components/UnsentRecordings";
 import { IN_USE_ELSEWHERE, type StoredRecording } from "./recording-store";
 import { button, cleanup, installDom, mount } from "./test-dom";
 
@@ -27,8 +27,11 @@ const recording = (id: string, durationMs: number, startedAt: number): StoredRec
   runId: null,
 });
 
-const render = (props: Partial<ComponentProps<typeof UnsentRecordings>> & Pick<ComponentProps<typeof UnsentRecordings>, "recordings">) =>
-  mount(createElement(UnsentRecordings, { onSend: () => {}, ...props }));
+const render = ({
+  recordings,
+  ...props
+}: Partial<Omit<ComponentProps<typeof UnsentRecordings>, "list">> & { recordings: UnsentRecording[] }) =>
+  mount(createElement(UnsentRecordings, { list: { recordings, unreadable: false, retry: () => {} }, onSend: () => {}, sendLabel: () => "Skapa dokument", ...props }));
 const rowsOf = (container: HTMLElement) => [...container.querySelectorAll("li")];
 const labels = (row: Element) => [...row.querySelectorAll("button")].map((b) => b.textContent!.trim());
 /** The element the row's actions say they are described by: what a screen reader reads after each button's name. */
@@ -140,6 +143,14 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   assert.equal(resumableRecording([{ ...cutOff("a"), exportOnly: true }]), undefined, "another tab's recording is only saved");
 });
 
+test("once the person chooses another way on the page, a cut-off recording's Fortsätt spela in is no longer the filled action", async () => {
+  const cutOff = { ...recording("a", 60_000, at(23, 10, 12)), state: "recording" as const };
+  const { container } = await render({ recordings: [cutOff], onContinue: () => {}, filled: false });
+  assert.equal(container.querySelector("h2")?.textContent, "Inspelningen avbröts");
+  assert.deepEqual(filled(container), [], "the setup's own action is the filled one");
+  assert.ok(button(rowsOf(container)[0], "Fortsätt spela in"), "it is still offered");
+});
+
 const focused = () => (document.activeElement as HTMLElement | null)?.textContent?.trim();
 
 test("Ta bort asks first, with the focus on Avbryt, and gives the focus back to Ta bort when it is not wanted", async () => {
@@ -183,4 +194,32 @@ test("a recording that cannot be saved or removed says so in an alert, and a rem
   assert.deepEqual(alert(), [IN_USE_ELSEWHERE]);
   assert.equal(row.querySelector('[role="group"]'), null, "the question is closed");
   assert.equal(focused(), "Ta bort", "and the focus is back where it was");
+});
+
+test("recordings the device's store cannot list are not passed over: a notice stands in the list's place, and Försök igen reads again", async () => {
+  const { useUnsentRecordings } = await import("../components/UnsentRecordings");
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const listUnsent = store.listUnsent;
+  let readable = false;
+  store.listUnsent = async () => {
+    if (!readable) throw new Error("the database is not readable");
+    return [recording("a", 60_000, at(23, 10, 12))];
+  };
+  function Unsent() {
+    return createElement(UnsentRecordings, { list: useUnsentRecordings("user-1"), onSend: () => {}, sendLabel: () => "Skapa dokument" });
+  }
+  try {
+    const { container, act } = await mount(createElement(Unsent));
+    await act(async () => undefined);
+    assert.match(container.textContent!, /Kunde inte läsa inspelningar som inte skickats på den här enheten\./);
+    assert.equal(rowsOf(container).length, 0, "no list to read as if it were the whole truth");
+
+    readable = true;
+    await act(async () => button(container, "Försök igen")!.click());
+    assert.doesNotMatch(container.textContent!, /Kunde inte läsa/);
+    assert.equal(rowsOf(container).length, 1, "the recording is listed once the store can be read");
+  } finally {
+    store.listUnsent = listUnsent;
+  }
 });

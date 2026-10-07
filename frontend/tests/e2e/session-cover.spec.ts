@@ -3,9 +3,10 @@
  * had open. Proved in the browser as a person meets it (what is visible, what takes focus, what the accessibility
  * tree holds), because a modal dialog leaves an inert ancestor's inertness and an attribute cannot show that.
  */
-import { expect, test, type Page } from "@playwright/test";
-import { clippedFocus } from "./checks";
-import { chooseMode, endLogin, isLaptop, open, record, result, run, sessionWarning, setup, stop } from "./screens";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { chooseMode, endLogin, isLaptop, record, result, run, sessionWarning, setup, setupFromList, stop } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
@@ -27,7 +28,7 @@ async function tabStaysInSignIn(page: Page) {
 }
 
 test("a page dialog open when the login ends is covered with the page, and is back with its edit after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -52,7 +53,7 @@ test("a page dialog open when the login ends is covered with the page, and is ba
 });
 
 test("a name list open when the login ends goes with its dialog, and the focus is inside the dialog again after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -71,23 +72,29 @@ test("a name list open when the login ends goes with its dialog, and the focus i
   expect(await page.evaluate(() => document.activeElement?.closest("dialog") !== null), "focus is in the dialog").toBe(true);
 });
 
-test("a change-speaker popover open when the login ends is covered with the page, and the page works after the new login", async ({ page }) => {
-  await run(page, "run-review", "flow-2");
+test("a change-speaker dialog closes while the login has ended and returns with its choice after the new login", async ({ page }) => {
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   const trigger = page.getByRole("button", { name: "Anna Berg, ändra talare" }).first();
   await trigger.click();
   const picker = page.getByRole("dialog", { name: "Ändra talare" });
   await expect(picker).toBeVisible();
+  await picker.getByRole("radio", { name: "Erik Lund", exact: true }).check();
 
   await endLogin(page);
-  // Not a modal: it is part of the page, so the cover's inertness reaches it, though it is in the top layer.
+  // A native dialog escapes the page's inert cover, so it must close itself.
   await expect(picker).toBeHidden();
   expect(await page.locator("body").ariaSnapshot()).not.toMatch(/Ändra talare|Anna Berg/);
+  await tabStaysInSignIn(page);
 
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
-  await expect(trigger).toBeVisible();
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole("radio", { name: "Erik Lund", exact: true })).toBeChecked();
+  await page.keyboard.press("Escape");
+  await expect(picker).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 test("the warning already open when the login ends becomes the sign-in dialog, which nothing but a new login closes", async ({ page }) => {
@@ -117,9 +124,8 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
   const png = (await page.screenshot()).toString("base64");
   return page.evaluate(
     async ([png, r, g, b]) => {
-      const image = new Image();
-      image.src = `data:image/png;base64,${png}`;
-      await image.decode();
+      // Decoded from its bytes: a data: URL would be an image the page's policy does not allow.
+      const image = await createImageBitmap(new Blob([Uint8Array.from(atob(png), (character) => character.charCodeAt(0))], { type: "image/png" }));
       const canvas = document.createElement("canvas");
       canvas.width = image.width;
       canvas.height = image.height;
@@ -138,7 +144,7 @@ async function pixelsOf(page: Page, [r, g, b]: [number, number, number]) {
 
 test("a native dialog the page had open when the login ends is hidden behind the sign-in dialog, out of reach and out of the accessibility tree", async ({ page }) => {
   await setup(page);
-  // What a ported page dialog is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
+  // What a dialog of the page is, as far as the cover can tell: a native modal dialog inside the page's own subtree,
   // here in a colour nothing else on the screen has, so that any pixel of it that shows is found.
   const MAGENTA: [number, number, number] = [255, 0, 255];
   await page.evaluate(() => {
@@ -175,7 +181,7 @@ test("a native dialog the page had open when the login ends is hidden behind the
 });
 
 test("Back after the login ended asks above the sign-in dialog, in reach, and answering leaves the sign-in dialog where it was", async ({ page }) => {
-  await setup(page);
+  await setupFromList(page);
   await record(page, "Spela in");
   await endLogin(page);
   const sign = page.getByRole("alertdialog", signIn);
@@ -193,7 +199,7 @@ test("Back after the login ended asks above the sign-in dialog, in reach, and an
   await expect(question).toBeHidden();
   await expect(sign).toBeVisible();
   await expect(sign.getByRole("heading", signIn), "focus is back where it was: in the sign-in dialog").toBeFocused();
-  // It asks again as long as the page is guarded, and nothing but a new login closes the dialog under it.
+  // It asks again for as long as the page holds work, and nothing but a new login closes the dialog under it.
   await page.goBack();
   await expect(question).toBeVisible();
   await question.getByRole("button", { name: "Stanna kvar" }).click();
@@ -206,10 +212,10 @@ test("the leave question opens above the warning that came while recording, and 
   // The warning opens five minutes before the end: here a few seconds into a recording.
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 305 },
+      json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 305 },
     }),
   );
-  await setup(page);
+  await setupFromList(page);
   await record(page, "Spela in");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible({ timeout: 15_000 });
@@ -228,7 +234,7 @@ test("someone else signing in leaves the page covered, and the dialog says whom 
   await page.unroute("**/api/auth/status");
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
+      json: { authenticated: true, user: { id: "user-2", email: "sara.holm@sundsvall.se", username: "Sara Holm" }, session_ends_in: 3600 },
     }),
   );
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -262,40 +268,6 @@ test("the new login in a window of its own gives the page and the focus back", a
   await expect(mode, "focus is back where it was on the page").toBeFocused();
 });
 
-test("with the access code, signed out, the code is entered in the dialog and the page comes back", async ({ page }) => {
-  let signedIn = true;
-  const answer = () => ({ authenticated: signedIn, auth_mode: "access_code", user: null, ...(signedIn ? { session_ends_in: 3600 } : {}) });
-  await page.route("**/api/auth/status", (route) => route.fulfill({ json: answer() }));
-  await open(page, "/flows/flow-1");
-  const setupHeading = page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" });
-  await expect(setupHeading).toBeVisible();
-  signedIn = false;
-  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-  const dialog = page.getByRole("alertdialog", signIn);
-  await expect(dialog).toBeVisible();
-  const code = dialog.getByLabel("Åtkomstkod");
-  await code.focus();
-  expect(await clippedFocus(page), "the field's focus ring is whole").toBeNull();
-
-  let accepted = false;
-  await page.route("**/api/auth/login", (route) => {
-    if (!accepted) return route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } });
-    signedIn = true;
-    return route.fulfill({ json: { ok: true } });
-  });
-  await code.fill("fel-kod");
-  await code.press("Enter");
-  await expect(dialog.getByText("Felaktig åtkomstkod.")).toBeVisible();
-  await expect(code, "a wrong code leaves the field to type it again").toBeFocused();
-  await expect(setupHeading, "and the page as it was, covered").toBeHidden();
-
-  accepted = true;
-  await code.fill("test-access-code-1234");
-  await dialog.getByRole("button", { name: "Logga in igen" }).click();
-  await expect(dialog).toBeHidden();
-  await expect(setupHeading).toBeVisible();
-});
-
 test("signed out, a recording is stopped from the sign-in dialog, and is done when the page is back", async ({ page }) => {
   await setup(page);
   await record(page, "Spela in");
@@ -303,6 +275,8 @@ test("signed out, a recording is stopped from the sign-in dialog, and is done wh
   const dialog = page.getByRole("alertdialog", signIn);
   await dialog.getByRole("button", { name: "Stoppa" }).click();
   await expect(dialog.getByRole("button", { name: "Stoppa" }), "nothing to stop once it is done").toHaveCount(0);
+  await expect(dialog.getByText("Inspelningen är stoppad och sparad."), "the dialog says it, where the button was").toBeVisible();
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement) && document.activeElement !== element), "the focus is still in the dialog").toBe(true);
   await expect(dialog, "and the page is still covered").toBeVisible();
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
@@ -310,11 +284,8 @@ test("signed out, a recording is stopped from the sign-in dialog, and is done wh
   await expect(page.getByRole("heading", { name: "Inspelningen är klar" })).toBeVisible();
 });
 
-test("the leave question can be answered with a mouse while a dialog of the old design system is open under it", async ({ page }) => {
-  // The page's own question to delete a recording is a modal of the old design system, which turns off pointer
-  // events on the body. (It also hides what was in the document when it opened from assistive technology, the
-  // question included; that is not asserted, and ends with the last modal of the old system.)
-  await setup(page);
+test("the leave question can be answered with a mouse while the delete question is open under it", async ({ page }) => {
+  await setupFromList(page);
   await record(page, "Spela in");
   await page.getByRole("button", { name: "Stoppa" }).click();
   await page.getByRole("button", { name: "Ta bort" }).click();
@@ -324,14 +295,13 @@ test("the leave question can be answered with a mouse while a dialog of the old 
   await page.goBack();
   const question = page.getByRole("alertdialog", { name: "Lämna sidan?" });
   await expect(question).toBeVisible();
-  // By its words, not its role: the old system's modal has taken it out of the accessibility tree.
-  await question.locator("button", { hasText: "Stanna kvar" }).click();
+  await question.getByRole("button", { name: "Stanna kvar" }).click();
   await expect(question).toBeHidden();
   await expect(deleting, "the page's own question is as it was").toBeVisible();
 });
 
-test("the sign-in button answers a mouse while a dialog of the old design system is open on the page, and the edit in that dialog is kept", async ({ page, context }) => {
-  await run(page, "run-review", "flow-2");
+test("the sign-in button answers a mouse while a dialog of the page was open when the login ended, and the edit in that dialog is kept", async ({ page, context }) => {
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
   await page.getByRole("button", { name: "Namnge talarna" }).click();
   const naming = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -339,8 +309,6 @@ test("the sign-in button answers a mouse while a dialog of the old design system
   await name.fill("Zara Testsson");
 
   await endLogin(page);
-  // A modal of the old design system turns off pointer events on the body, and takes the accessibility tree from
-  // what is outside it: neither may reach the sign-in dialog.
   const tree = await page.locator("body").ariaSnapshot();
   expect(tree).toContain('heading "Du behöver logga in igen"');
   expect(tree).toContain('button "Logga in igen"');
@@ -351,13 +319,12 @@ test("the sign-in button answers a mouse while a dialog of the old design system
   await page.unroute("**/api/auth/status");
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.getByRole("alertdialog", signIn)).toBeHidden();
-  // Pressing outside it closes a dialog of the old design system (its own rule): opened again, the edit is there.
-  if (!(await naming.isVisible())) await page.getByRole("button", { name: "Namnge talarna" }).click();
+  await expect(naming).toBeVisible();
   await expect(name).toHaveValue("Zara Testsson");
 });
 
 test("the cancel question open when the login ends is covered with the page, and is back after the new login", async ({ page }) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   const trigger = page.getByRole("button", { name: "Avbryt körningen" });
   await trigger.click();
   const question = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
@@ -502,7 +469,7 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
   {
     name: "the speaker naming dialog, with an edit in it",
     open: async (page) => {
-      await run(page, "run-review", "flow-2");
+      await run(page, ids.runs.review, ids.flows.flow2);
       await expect(page.getByRole("button", { name: /^Spela från/ }).first()).toBeVisible();
       await page.getByRole("button", { name: "Namnge talarna" }).click();
       const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
@@ -526,7 +493,7 @@ const PAGE_DIALOGS: { name: string; only?: (laptop: boolean) => boolean; open: (
   {
     name: "the cancel question",
     open: async (page) => {
-      await run(page, "run-running");
+      await run(page, ids.runs.running);
       await page.getByRole("button", { name: "Avbryt körningen" }).click();
       const dialog = page.getByRole("alertdialog", { name: "Avbryta körningen?" });
       await expect(dialog).toBeVisible();

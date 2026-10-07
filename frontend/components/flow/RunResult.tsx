@@ -1,15 +1,13 @@
-"use client";
-
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useContext, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Mic, Pause, Play, Plus } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
+import { Grid, GridSpan } from "@astryxdesign/core/Grid";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Tab, TabList } from "@astryxdesign/core/TabList";
 import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
-import { BackToFlows } from "@/components/flow/BackToFlows";
 import { inputFileAudioUrl, type FlowRunPublic, type FlowRunStep, type RunContract } from "@/lib/api";
 import { useDock } from "@/lib/dock";
 import { formatClock, formatRelativeDate } from "@/lib/format";
@@ -26,6 +24,7 @@ import { StepDetails } from "./StepDetails";
 import { usePlayback, usePlaybackState } from "./AudioPlayer";
 import styles from "./RunResult.module.css";
 import { usePhaseHeading } from "./usePhaseHeading";
+import { LeaveContext } from "./useLeaveQuestion";
 
 type View = "document" | "transcript";
 const PANELS: Record<View, { tab: string; panel: string }> = {
@@ -49,6 +48,7 @@ export function RunResult({
   audio = true,
   onNewRecording,
   onRegenerated,
+  onStartAgain,
   contract = null,
 }: {
   flowId: string;
@@ -64,13 +64,19 @@ export function RunResult({
   onNewRecording: () => void;
   /** A new run was started from the reviewed transcript; the page follows it. */
   onRegenerated: (run: FlowRunPublic) => void;
+  /** A new run with the same audio and details; absent when the run has no audio to start again with. */
+  onStartAgain?: () => void;
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
+  const { leaveFirst } = useContext(LeaveContext);
   const delivered = run.result?.kind === "outbound_http";
   const words = outputWords(runOutput(run, contract));
-  const heading = usePhaseHeading(`Klart · ${flowName}`);
-  const { text, note } = runResultView(run.result);
+  const { text: shown, note } = runResultView(run.result);
+  // Blank text is no text, and a run with no file either has nothing to show: the page says that, not that it is ready.
+  const text = shown?.trim() ? shown : null;
+  const empty = !delivered && !text && files.length === 0;
+  const heading = usePhaseHeading(empty ? `Resultatet är tomt · ${flowName}` : `Klart · ${flowName}`);
   const finished = run.finished_at ?? run.created_at;
   // The document's file is the result's own (Eneo's run.result, not any step's file) that can be fetched; any other
   // run files are listed under it.
@@ -102,12 +108,16 @@ export function RunResult({
   );
   const playback = usePlayback(sources);
   const tabs = !wide && showTranscript;
+  const sideBySide = wide && showTranscript;
   const [view, setView] = useState<View>("document");
   const tabList = useRef<HTMLElement | null>(null);
   // Each tab keeps its own reading position; the first visit starts at the top of the tab.
   const positions = useRef<Partial<Record<View, number>>>({});
-  const switchView = (next: View) => {
+  // A button of the tab being left (the docked player's) changes the tab: the focus goes to the tab it chose.
+  const focusTab = useRef(false);
+  const switchView = (next: View, { focus = false } = {}) => {
     positions.current[view] = window.scrollY;
+    focusTab.current = focus;
     setView(next);
   };
   useLayoutEffect(() => {
@@ -115,15 +125,27 @@ export function RunResult({
     const top = (tabList.current?.getBoundingClientRect().top ?? 0) + window.scrollY - 8;
     const saved = positions.current[view];
     window.scrollTo({ top: saved ?? Math.min(window.scrollY, top) });
+    if (focusTab.current) document.getElementById(PANELS[view].tab)?.focus({ preventScroll: true });
+    focusTab.current = false;
   }, [view, tabs]);
 
   const documentColumn = (
     <>
       {note && <Text as="p">{note}</Text>}
+      {empty && (
+        <VStack gap={3}>
+          <Text as="p">Körningen blev klar, men flödet gav inget att visa.</Text>
+          {onStartAgain && (
+            <HStack>
+              <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} />} onClick={() => leaveFirst(onStartAgain)} />
+            </HStack>
+          )}
+        </VStack>
+      )}
       {offer && (
         <RegenerateNotice offer={offer} saveState={editing.saveState} onStarted={onRegenerated} onReload={reload} thing={words.thing} />
       )}
-      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} label={words.named} />}
+      {(text || primary) && <ResultDocument flowId={flowId} runId={run.id} text={text} file={primary} title={flowName} preview={preview} textIsPreview={run.result?.kind === "file_backed_text"} label={words.named} />}
       {others.length > 0 && (
         <ResultFiles flowId={flowId} runId={run.id} files={others} title={primary ? "Fler filer" : "Filer"} />
       )}
@@ -151,7 +173,7 @@ export function RunResult({
       role={tabs ? "tabpanel" : undefined}
       aria-labelledby={tabs ? PANELS[view_].tab : undefined}
       hidden={tabs && !isChosen}
-      className={className}
+      className={className ? `${styles.panel} ${className}` : styles.panel}
     >
       {content}
     </section>
@@ -163,41 +185,50 @@ export function RunResult({
       <HStack hAlign="between" vAlign="end" wrap="wrap" gap={3}>
         <VStack gap={1}>
           <Heading level={1} ref={heading} tabIndex={-1}>
-            {delivered ? "Resultatet är skickat" : words.ready}
+            {delivered ? "Resultatet är skickat" : empty ? "Resultatet är tomt" : words.ready}
           </Heading>
           {finished && (
             <Text as="p" type="supporting">
               {/* On a phone the top bar already names the flow. */}
               {wide && `${flowName} · `}
               Skapad {formatRelativeDate(finished)}
-              {fromReviewed && " från det rättade transkriptet"}
+              {fromReviewed && " från den rättade transkriberingen"}
             </Text>
           )}
         </VStack>
         <HStack vAlign="center" gap={2}>
-          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={onNewRecording} />
-          {wide && <BackToFlows size="default" />}
+          <Button icon={<Icon icon={audio ? Mic : Plus} />} label={audio ? "Ny inspelning" : "Ny körning"} onClick={() => leaveFirst(onNewRecording)} />
         </HStack>
       </HStack>
 
       {/* One tree for every width, so the transcript (and a correction being written in it) stays mounted when the
-          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it. */}
-      <VStack gap={4} className={showTranscript && wide ? styles.sideBySide : undefined}>
+          window crosses the laptop breakpoint: tabs below it, the same two panels side by side from it, the document
+          7 columns of 13 and the transcript 6. Below it each panel spans the one column; a hidden panel is an empty
+          span, which takes no room between rows because the grid has no row gap. */}
+      <VStack gap={4}>
         {tabs && (
           <TabList ref={tabList} role="tablist" aria-label="Visa" value={view} onChange={(next) => switchView(next as View)}>
             <Tab value="document" id={PANELS.document.tab} panelId={PANELS.document.panel} label={words.tab} />
-            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkript" />
+            <Tab value="transcript" id={PANELS.transcript.tab} panelId={PANELS.transcript.panel} label="Transkribering" />
           </TabList>
         )}
-        {panel(
-          "document",
-          view === "document",
-          <VStack gap={6}>
-            {documentColumn}
-            {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript")} />}
-          </VStack>,
-        )}
-        {transcriptColumn && panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+        <Grid columns={sideBySide ? 13 : 1} columnGap={8}>
+          <GridSpan columns={sideBySide ? 7 : "full"}>
+            {panel(
+              "document",
+              view === "document",
+              <VStack gap={6}>
+                {documentColumn}
+                {tabs && <PausePlayback playback={playback} onShow={() => switchView("transcript", { focus: true })} />}
+              </VStack>,
+            )}
+          </GridSpan>
+          {transcriptColumn && (
+            <GridSpan columns={sideBySide ? 6 : "full"}>
+              {panel("transcript", view === "transcript", transcriptColumn, tabs ? undefined : styles.sticky)}
+            </GridSpan>
+          )}
+        </Grid>
       </VStack>
     </VStack>
   );
@@ -223,7 +254,7 @@ function PausePlayback({ playback, onShow }: { playback: Playback; onShow: () =>
       <Text type="supporting" hasTabularNumbers>
         {formatClock(state.atMs)} / {formatClock(state.totalMs)}
       </Text>
-      <Button variant="ghost" label="Visa i transkriptet" onClick={onShow} />
+      <Button variant="ghost" label="Visa i transkriberingen" onClick={onShow} />
     </HStack>
   );
 }

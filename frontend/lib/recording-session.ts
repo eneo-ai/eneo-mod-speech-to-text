@@ -28,7 +28,7 @@ import {
   type StoredRecording,
 } from "./recording-store";
 
-export const CHUNK_MS = 2_000;
+const CHUNK_MS = 2_000;
 
 /**
  * Speech, not music: one channel at 32 kbit/s, Opus where the browser records
@@ -48,7 +48,7 @@ export const SPEECH_RECORDING = { channelCount: 1, audioBitsPerSecond: 32_000 } 
  * overlap and no gap). A hidden tab may stretch the wait to about a second,
  * which a part's headroom has room for.
  */
-export const ROTATION_OVERLAP_MS = 150;
+const ROTATION_OVERLAP_MS = 150;
 
 /**
  * Room a part keeps below Eneo's time per file: the overlap with the next part, a timer a hidden tab fires late
@@ -60,18 +60,15 @@ const durationHeadroom = (limitMs: number) => Math.max(limitMs < 20 * 60_000 ? l
 // The recording's target rate, in bytes per millisecond.
 const TARGET_BYTES_PER_MS = SPEECH_RECORDING.audioBitsPerSecond / 8 / 1000;
 // Re-read the storage estimate about once a minute.
-const SPACE_CHECK_EVERY_CHUNKS = 30;
+const SPACE_CHECK_EVERY_CHUNKS = Math.round(60_000 / CHUNK_MS);
 
 export type CaptureStatus = "idle" | "recording" | "paused" | "interrupted" | "stopped";
 
-export interface CaptureSnapshot {
+interface CaptureSnapshot {
   status: CaptureStatus;
   recording: StoredRecording | null;
   /** The microphone stream of the running part, for a level meter. */
   stream: MediaStream | null;
-  partBytes: number;
-  /** Every part's bytes, the running one included. */
-  recordedBytes: number;
   error: string | null;
   lowSpace: boolean;
   persistent: boolean;
@@ -87,7 +84,7 @@ export interface CaptureSnapshot {
   stopping: boolean;
 }
 
-export interface WakeLockLike {
+interface WakeLockLike {
   release(): Promise<void>;
 }
 
@@ -128,14 +125,19 @@ function recordingLeftMs({ maxRecordingMs }: CaptureLimits, parts: number, recor
   return maxRecordingMs - durationHeadroom(maxRecordingMs) - Math.max(0, parts - 1) * HANDOVER_ROOM_MS - recordedMs;
 }
 
+const SEND_OR_RESTART = "Skicka den, eller starta en ny inspelning för resten av mötet.";
+
 const noMoreTime = (maxRecordingMs: number) =>
-  `Inspelningen har nått flödets maxlängd ${formatDuration(maxRecordingMs)}. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+  `Inspelningen har nått flödets maxlängd ${formatDuration(maxRecordingMs)}. ${SEND_OR_RESTART}`;
 
 type EndReason = "stop" | "interrupt" | "leave";
 
 const NOT_CONTINUABLE = "Inspelningen är avslutad och kan inte fortsätta.";
 const SEND_BEGUN = "Inspelningen skickas eller har redan skickats och kan inte fortsätta.";
 const STOP_UNCONFIRMED = "Inspelningen stoppades, men det gick inte att bekräfta att den sparades på enheten.";
+const PAUSE_UNCONFIRMED = "Inspelningen pausades, men det gick inte att bekräfta att den sparades på enheten.";
+
+const notOnDevice = (error: unknown) => error instanceof Error && error.message === NOT_ON_DEVICE;
 
 // A recording's files: its parts with audio.
 const filesIn = (recording: StoredRecording) => recording.parts.filter((part) => part.bytes > 0).length;
@@ -177,8 +179,6 @@ export class RecordingCapture {
     status: "idle",
     recording: null,
     stream: null,
-    partBytes: 0,
-    recordedBytes: 0,
     error: null,
     lowSpace: false,
     persistent: true,
@@ -198,7 +198,8 @@ export class RecordingCapture {
   private handover: ReturnType<typeof setTimeout> | null = null;
   private release: (() => void) | null = null;
   private wakeLock: WakeLockLike | null = null;
-  private starting = false;
+  private starting: number | null = null;
+  private microphoneRequest: AbortController | null = null;
   // Bumped by Stoppa and when the page goes away: a start begun before must not record.
   private generation = 0;
   private limits: CaptureLimits = {};
@@ -231,8 +232,8 @@ export class RecordingCapture {
 
   async start(init: NewRecording, limits: CaptureLimits = {}): Promise<void> {
     const { status } = this.snapshot;
-    if (this.starting || (status !== "idle" && status !== "stopped")) return;
-    this.starting = true;
+    if (this.starting !== null || (status !== "idle" && status !== "stopped")) return;
+    this.starting = this.generation;
     this.set({ error: null, limitReached: false });
     const generation = this.generation;
     let created: StoredRecording | null = null;
@@ -251,17 +252,17 @@ export class RecordingCapture {
         return;
       }
       this.prepare(limits, 0, 0);
-      this.set({ recording, recordedBytes: 0, lowSpace, persistent: store.persistent, refused: null });
+      this.set({ recording, lowSpace, persistent: store.persistent, refused: null });
       this.record(stream);
       await this.takeWakeLock();
-      if (generation !== this.generation) this.dispose();
     } catch (error) {
       // Nothing was recorded: do not leave an empty recording to recover.
       if (created) await this.store?.discard(created.id).catch(() => undefined);
+      if (generation !== this.generation) return;
       this.finish();
       this.set({ status: "idle", recording: null, error: microphoneError(error) });
     } finally {
-      this.starting = false;
+      if (this.starting === generation) this.starting = null;
     }
   }
 
@@ -284,7 +285,7 @@ export class RecordingCapture {
 
   /** "Fortsätt spela in" after an interruption: a new part of the same recording. */
   async continueRecording(): Promise<void> {
-    if (this.starting || this.snapshot.status !== "interrupted") return;
+    if (this.starting !== null || this.snapshot.status !== "interrupted") return;
     const { maxFiles } = this.limits;
     if (maxFiles !== undefined && this.partCount >= maxFiles) {
       this.set({ error: noMoreFiles(maxFiles) });
@@ -294,7 +295,7 @@ export class RecordingCapture {
       this.set({ error: noMoreTime(this.limits.maxRecordingMs!) });
       return;
     }
-    this.starting = true;
+    this.starting = this.generation;
     this.set({ error: null });
     const generation = this.generation;
     try {
@@ -303,10 +304,11 @@ export class RecordingCapture {
       this.record(stream);
       await this.takeWakeLock();
     } catch (error) {
+      if (generation !== this.generation) return;
       this.stopMicrophone();
       this.set({ error: microphoneError(error) });
     } finally {
-      this.starting = false;
+      if (this.starting === generation) this.starting = null;
     }
   }
 
@@ -332,12 +334,12 @@ export class RecordingCapture {
     if (!recording || !store || status === "idle" || status === "stopped") {
       // A start that has the microphone and is still waiting for the device's storage: the hardware goes now, and
       // the start finds out when the storage answers.
-      if (this.starting) this.stopMicrophone();
+      if (this.starting !== null) this.finish();
       return null;
     }
     const ended = this.endParts("stop");
     // The hardware does not wait for the database: the recorders have been told to stop and still hand over their last
-    // data, which lands in the store as before.
+    // data, which lands in the store.
     this.stopMicrophone();
     this.set({ stopping: true });
     let stopped: StoredRecording | null = null;
@@ -347,8 +349,10 @@ export class RecordingCapture {
       await store.setState(recording.id, "stopped");
       stopped = await store.get(recording.id);
     } catch (error) {
-      failure = error instanceof Error && error.message === NOT_ON_DEVICE ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
+      failure = notOnDevice(error) ? NOT_ON_DEVICE : STOP_UNCONFIRMED;
     }
+    // The stopped recording is on the page's screen: no other tab offers or deletes it until the page lets it go.
+    if (stopped) store.hold(recording.id);
     this.finish();
     // The recorders have stopped whatever the device said: the page goes on as stopped, and says what failed.
     this.set(
@@ -362,7 +366,8 @@ export class RecordingCapture {
   /** "Spela in på nytt": the stored recording stays until it is sent or deleted. */
   reset(): void {
     if (this.snapshot.status === "stopped") {
-      this.set({ status: "idle", recording: null, partBytes: 0, error: null, remainingMs: null, limitReached: false });
+      if (this.snapshot.recording) this.store?.letGo(this.snapshot.recording.id);
+      this.set({ status: "idle", recording: null, error: null, remainingMs: null, limitReached: false });
     }
   }
 
@@ -374,13 +379,18 @@ export class RecordingCapture {
     if (!recording || !store || status === "idle" || status === "stopped") {
       // A start that has the microphone and is still waiting for the device's storage (which may never answer): the
       // hardware goes now, not when the start gets round to checking whether the page is still here.
-      if (this.starting) this.stopMicrophone();
+      if (this.starting !== null) this.finish();
+      if (recording && status === "stopped") store?.letGo(recording.id);
       return;
     }
     const ended = this.endParts("leave");
     // The hardware does not wait for the database either.
     this.stopMicrophone();
-    void ended.then(() => store.setState(recording.id, "paused")).finally(() => this.finish());
+    // Nobody is left to tell if the device cannot keep it paused.
+    void ended
+      .then(() => store.setState(recording.id, "paused"))
+      .catch(() => undefined)
+      .finally(() => this.finish());
   }
 
   /**
@@ -393,8 +403,8 @@ export class RecordingCapture {
     refusal: (found: StoredRecording) => string | null,
   ): Promise<void> {
     const before = this.snapshot;
-    if (this.starting || (before.status !== "idle" && before.status !== "stopped")) return;
-    this.starting = true;
+    if (this.starting !== null || (before.status !== "idle" && before.status !== "stopped")) return;
+    this.starting = this.generation;
     this.set({ error: null, limitReached: false });
     const generation = this.generation;
     try {
@@ -430,20 +440,19 @@ export class RecordingCapture {
       this.prepare(limits, filesIn(found), found.durationMs);
       this.set({
         recording: found,
-        recordedBytes: found.parts.reduce((sum, part) => sum + part.bytes, 0),
         lowSpace,
         persistent: store.persistent,
         refused: store.refused(found.id),
       });
       this.record(stream);
       await this.takeWakeLock();
-      if (generation !== this.generation) this.dispose();
     } catch (error) {
+      if (generation !== this.generation) return;
       this.finish();
       const message = error instanceof Refusal ? error.message : "Inspelningen kunde inte öppnas.";
       this.set({ ...before, error: message });
     } finally {
-      this.starting = false;
+      if (this.starting === generation) this.starting = null;
     }
   }
 
@@ -503,16 +512,18 @@ export class RecordingCapture {
             this.set({ persistent: store.persistent, refused });
           }
         })
-        .catch(() => undefined);
+        .catch((error) => {
+          // The recording goes on, but nothing of it reaches the device any more: said at once, not after the meeting.
+          if (notOnDevice(error) && this.snapshot.error !== NOT_ON_DEVICE) this.set({ error: NOT_ON_DEVICE });
+        });
       this.chunks += 1;
       if (this.chunks % SPACE_CHECK_EVERY_CHUNKS === 0) {
         void store.lowOnSpace().then((lowSpace) => lowSpace !== this.snapshot.lowSpace && this.set({ lowSpace }));
       }
-      this.set({ recordedBytes: this.snapshot.recordedBytes + data.size });
       // A full part's overlap belongs to its own file, not to the running one.
       if (part !== this.part) return;
       this.largestChunk = Math.max(this.largestChunk, data.size);
-      this.set({ partBytes: part.bytes, remainingMs: this.remaining(part) });
+      this.set({ remainingMs: this.remaining(part) });
       if (!part.ending) this.checkLimit(part);
     };
 
@@ -529,7 +540,7 @@ export class RecordingCapture {
         this.part = null;
         this.clearHandover();
         // A stop nobody asked for means the microphone went away.
-        if ((part.ending ?? "interrupt") === "interrupt") await this.pause();
+        if ((part.ending ?? "interrupt") === "interrupt") await this.interrupt();
       }
       ended();
     };
@@ -543,7 +554,7 @@ export class RecordingCapture {
     // Counted before the deadline: the new part's handover room is in it.
     this.partCount += 1;
     this.scheduleHandover(part);
-    this.set({ status: "recording", stream, partBytes: 0, remainingMs: this.remaining(part) });
+    this.set({ status: "recording", stream, remainingMs: this.remaining(part) });
     return part;
   }
 
@@ -558,7 +569,7 @@ export class RecordingCapture {
         remainingMs: 0,
         error:
           `Inspelningen nådde maxlängden ${formatDuration(maxRecordingMs)} och stoppades efter ` +
-          `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`,
+          `${formatDuration(this.elapsedMs())}. Den är sparad. ${SEND_OR_RESTART}`,
       });
       void this.stop();
       return;
@@ -578,11 +589,11 @@ export class RecordingCapture {
       // Eneo's part length filled the file slots before the longest recording: the slots are the limit.
       error =
         `Inspelningen stoppades efter ${formatDuration(this.elapsedMs())}: flödet tar emot högst ${maxFiles} ` +
-        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+        `${maxFiles === 1 ? "fil" : "filer"}. Den är sparad. ${SEND_OR_RESTART}`;
     } else {
       error =
         `Inspelningen nådde maxlängden ${formatDuration(maxFiles * maxDurationMs!)} och stoppades efter ` +
-        `${formatDuration(this.elapsedMs())}. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.`;
+        `${formatDuration(this.elapsedMs())}. Den är sparad. ${SEND_OR_RESTART}`;
     }
     this.set({ limitReached: true, remainingMs: 0, error });
     void this.stop();
@@ -704,22 +715,23 @@ export class RecordingCapture {
   }
 
   /** The microphone went away: keep what was recorded, paused, for "Fortsätt spela in". */
-  private async pause() {
+  private async interrupt() {
     await this.endOverlap();
     this.stopMicrophone();
     this.releaseWakeLock();
     const { id } = this.snapshot.recording!;
     const store = this.store!;
-    await store.setState(id, "paused");
-    const recording = await store.get(id);
-    this.partCount = recording ? filesIn(recording) : this.partCount;
-    this.set({
-      status: "interrupted",
-      stream: null,
-      partBytes: 0,
-      recording,
-      remainingMs: this.remaining(null),
-    });
+    let kept: { recording: StoredRecording | null } | { error: string };
+    try {
+      await store.setState(id, "paused");
+      const recording = await store.get(id);
+      this.partCount = recording ? filesIn(recording) : this.partCount;
+      kept = { recording };
+    } catch (error) {
+      // The recorder has stopped whatever the device said: the page goes on as interrupted, and says what failed.
+      kept = { error: notOnDevice(error) ? NOT_ON_DEVICE : PAUSE_UNCONFIRMED };
+    }
+    this.set({ status: "interrupted", stream: null, remainingMs: this.remaining(null), ...kept });
   }
 
   private onMicrophoneLost = () => void this.endParts("interrupt");
@@ -738,14 +750,34 @@ export class RecordingCapture {
 
   /** The capture owns the stream from here: every way out stops it. */
   private async openMicrophone(): Promise<MediaStream> {
-    const stream = await this.deps.getStream({
-      audio: { channelCount: SPEECH_RECORDING.channelCount },
-    });
-    this.microphone = stream;
-    return stream;
+    const request = new AbortController();
+    this.microphoneRequest = request;
+    try {
+      return await new Promise<MediaStream>((resolve, reject) => {
+        request.signal.addEventListener("abort", () => reject(new DOMException("Cancelled", "AbortError")), { once: true });
+        // getUserMedia cannot be cancelled. Its eventual stream belongs only to this request, even after a new start.
+        void this.deps.getStream({ audio: { channelCount: SPEECH_RECORDING.channelCount } }).then(
+          (stream) => {
+            if (request.signal.aborted) stream.getTracks().forEach((track) => track.stop());
+            else {
+              this.microphone = stream;
+              resolve(stream);
+            }
+          },
+          reject,
+        );
+      });
+    } finally {
+      if (this.microphoneRequest === request) this.microphoneRequest = null;
+    }
   }
 
   private stopMicrophone() {
+    if (this.microphoneRequest) {
+      this.microphoneRequest.abort();
+      this.microphoneRequest = null;
+      this.starting = null;
+    }
     const stream = this.microphone;
     this.microphone = null;
     stream?.getAudioTracks().forEach((track) => {

@@ -63,11 +63,11 @@ test("the request names the run, the corrections and the source, under a key tha
 test("Eneo's refusals say what happened in Swedish, and which ones reading the page again solves", () => {
   const refused = (status: number, code: string) => regenerationRefusal(new ApiError(status, "x", null, code));
   assert.deepEqual(refused(400, "flow_transcript_corrections_stale_revision"), {
-    message: "Transkriptet eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
+    message: "Transkriberingen eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
     reload: true,
   });
   assert.match(refused(400, "flow_run_stale_version").message, /^Flödet har ändrats sedan dokumentet skapades/);
-  assert.match(refused(400, "flow_transcript_corrections_invalid_occurrence").message, /kan inte skapa dokumentet igen från ett rättat transkript/);
+  assert.match(refused(400, "flow_transcript_corrections_invalid_occurrence").message, /kan inte skapa dokumentet igen från en rättad transkribering/);
   assert.match(refused(403, "flow_run_access_denied").message, /behörighet att skapa dokumentet igen/);
   assert.deepEqual(refused(429, "flow_run_concurrency_limit_reached"), {
     message: "För många körningar pågår just nu. Försök igen om en stund.",
@@ -106,7 +106,7 @@ test("the notice starts the new run only when asked, and shows a refusal with th
   assert.equal(calls, 0, "never on its own");
   assert.match(
     view.container.textContent ?? "",
-    /^Dokumentet skapades före dina rättningarDen nya versionen görs från det rättade transkriptet\.Skapa dokumentet igen med rättningarna$/,
+    /^Dokumentet skapades före dina rättningarDen nya versionen görs från den rättade transkriberingen\.Skapa dokumentet igen med rättningarna$/,
     "a title, one short line and the button",
   );
   // The design system's warning is an alert; this one is there when the page opens and is not announced.

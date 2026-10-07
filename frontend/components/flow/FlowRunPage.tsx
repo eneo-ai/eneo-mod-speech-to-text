@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, type ReactNode } from "react";
 import { MetadataList, MetadataListItem } from "@astryxdesign/core/MetadataList";
 import { VStack } from "@astryxdesign/core/VStack";
@@ -48,7 +46,6 @@ export function FlowRunPage({
           published={published}
           classification={contract.security_classification}
           titleIsHeading={false}
-          locked={locked}
           compact
           details={
             rows.length > 0 && (

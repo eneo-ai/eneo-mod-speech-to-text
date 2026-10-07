@@ -50,10 +50,30 @@ test("the transcript's controls are the app's one player, with speed and skips, 
   assert.doesNotMatch(html, /<audio[^>]*controls|type="range"/, "never the browser's own controls");
 });
 
+test("an unknown audio length keeps forward skip available after moving the playhead", (t) => {
+  const playback = new Playback([{ url: "/audio/0", durationMs: null }], async () => null);
+  const media: MediaLike = {
+    src: "", currentTime: 0, duration: Number.NaN, paused: true, playbackRate: 1,
+    play: async () => undefined, pause: () => undefined, load: () => undefined,
+  };
+  playback.attach(media);
+  t.after(() => playback.attach(null));
+  playback.onLoadedMetadata();
+  media.currentTime = 10;
+  playback.onTimeUpdate();
+  const html = renderToStaticMarkup(createElement(TranscriptPlayer, {
+    segments, fileCount: 1, audioSrcFor: () => "/audio/0", speakerNames: {}, textFallback: "",
+    reviewEnabled: false, playback,
+  }));
+  const controls = parse(html);
+  assert.equal(controls.querySelector('button[aria-label="Framåt 10 sekunder"]')!.hasAttribute("disabled"), false);
+  assert.equal(controls.querySelector('button[aria-label="Bakåt 10 sekunder"]')!.hasAttribute("disabled"), false);
+});
+
 test("a link before the passages skips them: to the player under them, or past the transcript without audio", () => {
   for (const [fileCount, target] of [[2, /^<div[^>]*data-docked-player/], [0, /^<[a-z]+ id="[^"]+" tabindex="-1"/]] as const) {
     const html = render(fileCount);
-    const link = html.match(/<a[^>]*href="#([^"]+)"[^>]*>Hoppa förbi transkriptet<\/a>/);
+    const link = html.match(/<a[^>]*href="#([^"]+)"[^>]*>Hoppa förbi transkriberingen<\/a>/);
     assert.ok(link, `fileCount ${fileCount}: the skip link`);
     assert.ok(html.indexOf(link[0]) < html.indexOf("Välkomna till mötet."), "before the first passage");
     const at = html.indexOf(`id="${link[1]}"`);
@@ -84,7 +104,7 @@ test("while the transcript is being read it shows its shape, never the raw text 
   );
   assert.doesNotMatch(html, /saknar tidsmarkeringar|\[00:00:00/);
   assert.match(html, /aria-busy="true"/);
-  assert.match(html, /role="status"[^>]*>Hämtar transkriptet…</);
+  assert.match(html, /role="status"[^>]*>Hämtar transkriberingen…</);
 });
 
 test("the highlight follows the playhead in each part's own time, as the transcript counts it", () => {
@@ -249,7 +269,7 @@ test("the editor's place is held by a placeholder until its code has arrived, an
     );
     assert.match(html, /aria-busy="true"/);
     assert.match(html, /Hämtar granskningsverktygen…/);
-    assert.doesNotMatch(html, /Transkriptverktyg/, "none of the editor yet");
+    assert.doesNotMatch(html, /Verktyg för transkriberingen/, "none of the editor yet");
   } finally {
     if (kept) require.cache[path] = kept;
   }

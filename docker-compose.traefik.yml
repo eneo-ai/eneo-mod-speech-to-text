@@ -1,0 +1,81 @@
+# Valfritt tillägg för en värd som inte har någon omvänd proxy (en fristående Docker-värd, Portainer): Traefik med HTTPS från Let's Encrypt framför modulen.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d
+#
+# Dokploy har sin egen Traefik och ska inte ha den här filen. Filen är fristående (den inbyggda konfigurationen nedan behöver ingen fil bredvid sig), och
+# variablerna kommer från .env: MODULE_HOST är modulens värdnamn och MODULE_PUBLIC_URL ska vara https://<MODULE_HOST>; ACME_EMAIL får Let's Encrypts
+# meddelanden om certifikatet. Port 80 och 443 ska nå värden från internet (utmaningen för certifikatet går på 443).
+#
+# Traefik läser konfigurationen på ett enda sätt, så den statiska delen ligger här som flaggor (Compose fyller i variablerna i dem) och den dynamiska,
+# modulens väg, som en fil som filleverantören läser: ingen Docker-socket monteras in i Traefik. docs/operations.md förklarar tidsgränserna.
+services:
+  traefik:
+    # Samma Traefik som acceptansen kör (deploy/acceptance/compose.yml), fäst vid digest.
+    image: traefik:v3.7.13@sha256:24841fe2de7304c149343d877d2923b4c8800a38ba015dea9174c23b20e344a0
+    command:
+      - --providers.file.filename=/etc/traefik/dynamic.yml
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      # Tidsgränserna är ingångspunktens. Läsgränsen gäller hela requesten, bodyn inräknad: Traefiks standard på 60 s kapar varje uppladdning som tar längre tid
+      # att skicka (webbläsaren får 499). 1800 s räcker för 1 GiB över 5 Mbit/s; räkna om den om MAX_UPLOAD_BYTES eller den långsammaste uppkopplingen ändras.
+      # En WebSocket (live-texten) berörs inte: en uppgraderad anslutning har ingen gräns. Skrivgränsen 0 betyder ingen.
+      - --entrypoints.websecure.transport.respondingtimeouts.readtimeout=${PROXY_READ_TIMEOUT:-1800s}
+      - --entrypoints.websecure.transport.respondingtimeouts.writetimeout=0s
+      - --entrypoints.websecure.transport.respondingtimeouts.idletimeout=180s
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+      - --certificatesresolvers.letsencrypt.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --ping=true
+      # Ingen accesslogg: inloggningens callback har en engångsbiljett i sin adress.
+      - --log.level=WARN
+    ports:
+      - "80:80"
+      - "443:443"
+    configs:
+      - source: traefik_dynamic
+        target: /etc/traefik/dynamic.yml
+    volumes:
+      # Certifikaten: de ska finnas kvar när containern byts, annars begär Traefik nya vid varje start och når Let's Encrypts gräns.
+      - traefik-acme:/letsencrypt
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 15s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    # Inte read_only: Compose lägger den inbyggda konfigurationen i containern, och en skrivskyddad rot nekar det. Resten är låst som modulen.
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+configs:
+  traefik_dynamic:
+    content: |
+      http:
+        routers:
+          module:
+            entryPoints: [websecure]
+            rule: Host(`${MODULE_HOST}`)
+            service: module
+            middlewares: [hsts]
+            tls:
+              certResolver: letsencrypt
+        middlewares:
+          hsts:
+            headers:
+              stsSeconds: 31536000
+        services:
+          module:
+            loadBalancer:
+              servers:
+                - url: http://speech-to-text:3001
+
+volumes:
+  traefik-acme:

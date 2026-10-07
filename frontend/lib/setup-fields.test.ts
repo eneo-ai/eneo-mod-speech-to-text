@@ -9,17 +9,16 @@ afterEach(cleanup);
 const settle = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** Names in a ParticipantsInput that keeps its own list, as the form does, and what it reported as added. */
-async function mountNames(names: string[] = [], suggestions: string[] = []) {
+async function mountNames(names: string[] = [], suggestions: string[] = [], description?: string) {
   const { ParticipantsInput } = await import("../components/flow/ParticipantsInput");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
-  const { ThemeProvider } = await import("next-themes");
   const added: string[][] = [];
   function Field() {
     const [list, setList] = useState(names);
-    return createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: list, onChange: setList, suggestions, onAdded: (fresh: string[]) => added.push(fresh) });
+    return createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: list, onChange: setList, suggestions, description, onAdded: (fresh: string[]) => added.push(fresh) });
   }
   // In the page's providers, so the design system's own words (the remove buttons') are Swedish as they are there.
-  const view = await mount(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: createElement(Field) }) }));
+  const view = await mount(createElement(ModuleProviders, { children: createElement(Field) }));
   const input = () => view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
   const shown = () => [...view.container.querySelectorAll("ul[aria-label='Tillagda namn'] li")].map((li) => li.textContent);
   return { view, input, shown, added };
@@ -33,6 +32,42 @@ test("participants: a comma adds what came before it, and Backspace in the empty
   await view.act(async () => type(input(), ""));
   await view.act(async () => input().dispatchEvent(new window.KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true })));
   assert.deepEqual(shown(), ["Anna Berg"]);
+});
+
+test("participants: the help text holds no count, and each change is said once, by the field's one status", async () => {
+  const { view, input } = await mountNames(["Anna Berg"], [], "Skilj flera namn med komma.");
+  // Every text a live region of the field takes, in order.
+  const said: string[] = [];
+  const last = new Map<Element, string>();
+  const observer = new window.MutationObserver(() => {
+    for (const region of view.container.querySelectorAll('[role="status"], [role="alert"], [aria-live]:not([aria-live="off"])')) {
+      const text = region.textContent?.trim() ?? "";
+      if (text && text !== last.get(region)) said.push(text);
+      last.set(region, text);
+    }
+  });
+  observer.observe(view.container, { subtree: true, childList: true, characterData: true });
+  const key = (name: string) => input().dispatchEvent(new window.KeyboardEvent("keydown", { key: name, bubbles: true, cancelable: true }));
+  const paste = (text: string) => {
+    const event = new window.Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+    input().dispatchEvent(event);
+  };
+  await view.act(async () => type(input(), "Erik Lund"));
+  await view.act(async () => key("Enter"));
+  // Two lists of two in a row: the second is a change of its own, and is said too.
+  await view.act(async () => paste("Sara Holm, Olle Berg"));
+  await view.act(async () => paste("Li Ek; Åsa Lind"));
+  await view.act(async () => key("Backspace"));
+  observer.disconnect();
+  const described = (input().getAttribute("aria-describedby") ?? "").split(" ").map((id) => document.getElementById(id)?.textContent);
+  assert.deepEqual(described, ["Skilj flera namn med komma."], "the field's help text as the form gives it, without a count of the names");
+  assert.deepEqual(said, [
+    "Erik Lund har lagts till.",
+    "Sara Holm och Olle Berg har lagts till.",
+    "Li Ek och Åsa Lind har lagts till.",
+    "Åsa Lind har tagits bort.",
+  ]);
 });
 
 test("participants: a name's remove button takes it away and the focus goes back to the field", async () => {

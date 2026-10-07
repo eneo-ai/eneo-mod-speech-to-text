@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolveThemeTokens, type ResolvedThemeMode } from "@astryxdesign/core/theme/tokens";
 
 // WCAG relative luminance of the values the browser paints: the built theme's resolved tokens and the module's own
@@ -41,20 +41,15 @@ function hue([r, g, b]: RGBA) {
   return (h * 60 + 360) % 360;
 }
 
-const css = readFileSync("app/globals.css", "utf8");
+const css = readFileSync("styles/globals.css", "utf8");
 // A colour the module defines once for both modes: `--name: light-dark(<light>, <dark>)`.
 function pair(name: string): [string, string] {
   const match = new RegExp(`--${name}:\\s*light-dark\\(\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*,\\s*(hsl\\([^)]*\\)|#[0-9a-f]+)\\s*\\)`, "i").exec(css);
   assert.ok(match, `globals.css defines --${name} as light-dark(<light>, <dark>)`);
   return [match[1], match[2]];
 }
-// The recording colour is Phase 4's `--module-color-record`; until it exists, today's `--record` (an HSL triplet per mode).
-function recordPair(): [string, string] {
-  if (/--module-color-record:/.test(css)) return pair("module-color-record");
-  const triplet = (block: string) => /--record:\s*(\d+) (\d+)% (\d+)%/.exec(css.split(`${block} {`)[1])!;
-  const [light, dark] = [triplet(":root"), triplet(".dark")];
-  return [`hsl(${light[1]} ${light[2]}% ${light[3]}%)`, `hsl(${dark[1]} ${dark[2]}% ${dark[3]}%)`];
-}
+// The recording colour is `--module-color-record`.
+const recordPair = (): [string, string] => pair("module-color-record");
 
 const SPEAKERS = Array.from({ length: 6 }, (_, i) => `module-speaker-${i}`);
 
@@ -103,6 +98,15 @@ for (const [index, mode] of (["light", "dark"] as const).entries()) {
     }
   });
 
+  test(`${mode}: the confirm mark's glyph is legible on the review colour that fills it on hover`, async () => {
+    const { token, module, atLeast } = await palette();
+    const hover = /\.confirmButton:hover \.confirmMark \{([^}]*)\}/.exec(readFileSync("components/TranscriptPlayer.module.css", "utf8"))?.[1] ?? "";
+    assert.match(hover, /background:\s*var\(--module-color-review\)/, "the mark fills with the review colour on hover");
+    const glyph = /(?:^|[\s;])color:\s*var\((--color-[a-z-]+)\)/.exec(hover)?.[1];
+    assert.ok(glyph, "and names a theme colour for its glyph");
+    atLeast(4.5, token(glyph), module("module-color-review"), `${glyph} on the review colour`);
+  });
+
   test(`${mode}: the first speaker is not the brand's blue, so a name never reads as a link`, async () => {
     const { token, module } = await palette();
     const apart = Math.abs(hue(module("module-speaker-0")) - hue(token("--color-accent")));
@@ -136,4 +140,79 @@ test("controls keep a mouse's density and grow to 44 px targets on a touch scree
   assert.equal(touch("sm"), 44, "sm on a touch screen");
   assert.equal(touch("md"), 44, "md on a touch screen");
   assert.ok(touch("lg") >= 44, "lg on a touch screen");
+});
+
+// Every size in the design system's tokens is in rem, so the page's text follows the size the reader has set in the browser
+// as long as nothing fixes the root's: a px font size on html or body would make a reader's setting do nothing.
+test("no stylesheet of the module fixes a font size in pixels", () => {
+  const sheets = ["styles", "components", "routes", "kit"].flatMap((folder) =>
+    readdirSync(folder, { recursive: true, encoding: "utf8" })
+      .filter((file) => file.endsWith(".css") && !file.includes("built"))
+      .map((file) => `${folder}/${file}`),
+  );
+  assert.ok(sheets.includes("styles/globals.css") && sheets.length > 10, "the module's stylesheets were found");
+  const fixed = sheets.flatMap((sheet) => readFileSync(sheet, "utf8").split("\n").flatMap((line, index) => (/font-size:\s*[\d.]+px/.test(line) ? [`${sheet}:${index + 1}`] : [])));
+  assert.deepEqual(fixed, []);
+});
+
+// Forced colours (Windows' high contrast) drop every tint and shadow: a state that a tint alone shows (the word being
+// played, the marked word, the turn and the sentence being read aloud) would not show. Each is outlined there.
+test("the states shown by a tint alone are outlined in forced colours", () => {
+  const forcedColours = (css: string) => {
+    const blocks: string[] = [];
+    for (let at = css.indexOf("@media (forced-colors: active)"); at >= 0; at = css.indexOf("@media (forced-colors: active)", at + 1)) {
+      let depth = 0;
+      for (let i = css.indexOf("{", at); i < css.length; i += 1) {
+        depth += css[i] === "{" ? 1 : css[i] === "}" ? -1 : 0;
+        if (depth === 0) {
+          blocks.push(css.slice(css.indexOf("{", at) + 1, i));
+          break;
+        }
+      }
+    }
+    return blocks.join("\n");
+  };
+  const markers: [string, string[]][] = [
+    ["components/TranscriptEditor.module.css", [".word[data-active]", ".word[data-selected]"]],
+    ["components/TranscriptPlayer.module.css", ['.turn[data-active="true"]', ".sentenceActive"]],
+  ];
+  const unoutlined = markers.flatMap(([file, selectors]) => {
+    const forced = forcedColours(readFileSync(file, "utf8"));
+    return selectors.filter((selector) => !new RegExp(`${selector.replace(/[.[\]"=()]/g, "\\$&")}[^{}]*\\{[^}]*outline:`).test(forced)).map((selector) => `${file} ${selector}`);
+  });
+  assert.deepEqual(unoutlined, []);
+});
+
+// 100vh is the window with a phone's address bar drawn away: a page that is at least that tall always scrolls a little.
+test("the page's full-height rules measure the visible window, as the rest of the module does", () => {
+  assert.deepEqual(
+    readFileSync("styles/globals.css", "utf8").split("\n").filter((line) => /\b100vh\b/.test(line)),
+    [],
+  );
+});
+
+// A browser that does not know anchor-size() drops the whole declaration, so the same property is set before it.
+test("a declaration with anchor-size() has a plain one of the same property before it", () => {
+  const css = readFileSync("components/NameCombobox.module.css", "utf8").split("\n");
+  const unguarded = css.flatMap((line, index) => {
+    const property = /^\s*([a-z-]+):.*anchor-size\(/.exec(line)?.[1];
+    return property && !new RegExp(`^\\s*${property}:(?!.*anchor-size)`).test(css[index - 1] ?? "") ? [`line ${index + 1}`] : [];
+  });
+  assert.deepEqual(unguarded, []);
+});
+
+// A window can be a fraction of a pixel wide (a browser's zoom makes it so): max-width: 639px and min-width: 640px leave
+// 639.5 to neither, so the complement of a min-width breakpoint is written 639.98px.
+test("a max-width breakpoint that complements a min-width one leaves no gap between them", () => {
+  const sheets = ["styles", "components", "routes", "kit"].flatMap((folder) =>
+    readdirSync(folder, { recursive: true, encoding: "utf8" })
+      .filter((file) => file.endsWith(".css") && !file.includes("built"))
+      .map((file) => `${folder}/${file}`),
+  );
+  const text = sheets.map((sheet) => [sheet, readFileSync(sheet, "utf8")] as const);
+  const mins = new Set(text.flatMap(([, css]) => [...css.matchAll(/min-width:\s*(\d+)px/g)].map((match) => Number(match[1]))));
+  const gaps = text.flatMap(([sheet, css]) =>
+    [...css.matchAll(/max-width:\s*(\d+)px/g)].filter((match) => mins.has(Number(match[1]) + 1)).map((match) => `${sheet}: max-width: ${match[1]}px`),
+  );
+  assert.deepEqual(gaps, []);
 });

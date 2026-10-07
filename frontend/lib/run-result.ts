@@ -1,8 +1,9 @@
 import type { FlowRunError, FlowRunResult, RunContract } from "./api";
+import { REVIEW_EXPIRED, REVIEW_REJECTED } from "./errors";
 import { makesText } from "./flow-output";
 import { ofContractVersion } from "./run-progress";
 
-export interface RunResultView {
+interface RunResultView {
   /** Markdown att visa, eller null när resultatet inte är text. */
   text: string | null;
   /** Kort förklaring som visas före resultatet. */
@@ -45,7 +46,7 @@ export function runResultView(
 }
 
 /** What a run makes: text (JSON shown as text), a document, or null where neither can be said. */
-export type RunOutput = "text" | "document" | null;
+type RunOutput = "text" | "document" | null;
 
 /**
  * What a run makes, for its page's words. A finished run says so in its own result, whatever version it ran:
@@ -98,10 +99,8 @@ const STOPPED = "Körningen tog för lång tid eller slutade svara och avbröts.
 const RUN_ERROR_EXPLANATIONS: Record<string, string> = {
   flow_run_cancelled: CANCELLED,
   flow_run_user_cancelled: CANCELLED,
-  flow_review_rejected:
-    "Resultatet avvisades i granskningen och körningen avslutades.",
-  flow_review_expired:
-    "Tiden för granskningen har gått ut och körningen har avbrutits.",
+  flow_review_rejected: REVIEW_REJECTED,
+  flow_review_expired: REVIEW_EXPIRED,
   flow_run_abandoned:
     "Körningen väntade för länge på att fortsätta och avslutades.",
   typed_io_transcription_failed: "Transkriberingen av ljudet misslyckades.",

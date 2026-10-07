@@ -1,12 +1,8 @@
 - main:
-  - link "Alla flöden":
-    - /url: /flows
-    - text: ""
-    - status
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
-  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma. 2 namn tillagda.
+  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - group "Deltagare Valfritt":
     - text: Lägg till namn
     - textbox "Deltagare Valfritt Lägg till namn":

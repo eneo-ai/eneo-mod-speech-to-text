@@ -1,0 +1,13 @@
+---
+import Head from '@astrojs/starlight/components/Head.astro'
+---
+<Head />
+<script>
+  import { drawDiagrams, redrawOnColourMode } from '../diagrams'
+  import { followCurrentPage } from '../navigation'
+  import { makeTablesReachable } from '../tables'
+  followCurrentPage()
+  makeTablesReachable()
+  redrawOnColourMode()
+  void drawDiagrams()
+</script>

@@ -14,7 +14,8 @@ import {
   type RunContract,
   type RunContractStepInput,
 } from "./api";
-import { clearDraft, isRecord, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { clearDraft, readDraft, writeDraft, type DraftStorage } from "./drafts";
+import { isRecord } from "./is-record";
 import { errorAdvice, friendlyError } from "./errors";
 import { splitNames } from "./participants";
 import { RecordingCapture, type CaptureDeps, type CaptureLimits } from "./recording-session";
@@ -59,7 +60,7 @@ export interface SubmitRequest {
   maxSpeakers: number | undefined;
 }
 
-export interface SessionHandlers {
+interface SessionHandlers {
   /** Uploads and starts the run; throws when it could not. */
   submit: (request: SubmitRequest) => Promise<void>;
   /** Loads the published flow and its run contract again. */
@@ -166,7 +167,7 @@ function unsupported(accepted: string[] | undefined): Problem {
 }
 
 /** Whether the flow's input step takes this file, said in plain words when it does not. */
-export function fileProblem(
+function fileProblem(
   file: { name: string; type: string; size: number },
   step: RunContractStepInput | null,
 ): Problem | null {
@@ -179,7 +180,7 @@ export function fileProblem(
 }
 
 /** A failed send in the product's words, with the next step. */
-export function submitProblem(
+function submitProblem(
   error: unknown,
   step: RunContractStepInput | null,
   inputKind: "recording" | "file" | null,
@@ -205,8 +206,10 @@ export function submitProblem(
   return { title: friendlyError(error) };
 }
 
-export interface SessionSnapshot {
+interface SessionSnapshot {
   modes: InputMode[];
+  /** Why a way the flow takes is missing here (missingModesNote), or null. */
+  modesNote: string | null;
   mode: InputMode | null;
   phase: SessionPhase;
   details: Record<string, DetailValue>;
@@ -228,6 +231,8 @@ export interface SessionSnapshot {
   live: LiveSession | null;
   /** Strömma's final text may still let the run use the streamed text: Skapa dokument waits for it, briefly. */
   finishing: boolean;
+  /** Skapa dokument was pressed while the final text is being finished: it sends once that is done. */
+  finishQueued: boolean;
   problem: Problem | null;
 }
 
@@ -244,6 +249,24 @@ export function availableModes(
   if (canRecord) modes.push("spela-in");
   modes.push("ladda-upp");
   return modes;
+}
+
+/**
+ * Why a way of giving the audio that this flow takes is not offered, when the reason is the browser's or a passing one
+ * of Eneo's: said under the choice rather than left out silently. Nothing for a flow that never streams or records.
+ */
+export function missingModesNote(
+  contract: RunContract | null,
+  { canRecord, liveClient }: { canRecord: boolean; liveClient: boolean },
+): string | null {
+  const step = selectRuntimeInputStep(contract);
+  if (step?.input_format?.toLowerCase() !== "audio") return null;
+  if (!canRecord) return "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.";
+  const live = contract?.transcription?.live;
+  if ((live?.available && !liveClient) || live?.reason === "model_unavailable") {
+    return "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.";
+  }
+  return null;
 }
 
 /** The flow's own default in every mode, Strömma included, until the person chooses. */
@@ -281,7 +304,7 @@ export const MAX_SPEAKER_COUNT = 20;
 
 /**
  * A speaker count as the run gets it: nothing when not asked or left empty (Eneo decides), else a whole number from 1
- * to `ceiling` (this module's own Antal talare stops at 20; a flow's own field has no ceiling).
+ * to `ceiling` (this module's own Antal talare stops at MAX_SPEAKER_COUNT; a flow's own field has no ceiling).
  */
 export function readSpeakerCount(text: string | null, ceiling = MAX_SPEAKER_COUNT): number | undefined | "invalid" {
   const trimmed = text?.trim() ?? "";
@@ -399,7 +422,7 @@ export function filledValue(value: unknown): boolean {
 }
 
 /** The details as the run's input_payload_json; empty ones are left out. */
-export function detailsPayload(
+function detailsPayload(
   fields: FormField[],
   details: Record<string, DetailValue>,
 ): Record<string, unknown> {
@@ -439,7 +462,7 @@ const FINISHING_WAIT_MS = 20_000;
 
 /** Live text that could not be set up at all, as the sheet shows it; a continued recording keeps its earlier draft. */
 const unavailableLive = (earlier: LivePiece[] = []): LiveSession => {
-  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false, complete: false };
+  const snapshot: LiveSnapshot = { status: "unavailable", pieces: earlier, pending: "", started: false };
   return {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
@@ -468,7 +491,7 @@ const isSpeakerChoices = (value: unknown): value is Partial<SpeakerChoices> =>
   (value.count === undefined || typeof value.count === "string") &&
   (value.edited === undefined || typeof value.edited === "boolean");
 
-export interface FlowSessionOptions {
+interface FlowSessionOptions {
   flowId: string;
   flowName: string;
   ownerId: string;
@@ -490,6 +513,7 @@ export class FlowSession {
   private flowName: string;
   private contract: RunContract | null = null;
   private modes: InputMode[] = [];
+  private modesNote: string | null = null;
   private mode: InputMode | null = null;
   private details: Record<string, DetailValue> = {};
   private explicitSpeakerLabels: boolean | null = null;
@@ -498,6 +522,8 @@ export class FlowSession {
   // only, since a bound from a list that misses someone would merge voices.
   private countFollowsNames = true;
   private starting = false;
+  /** Which start the page is waiting for; a cancelled one is no longer it. */
+  private startAttempt = 0;
   private ready: StoredRecording | null = null;
   // The file shown: the latest pick, while its length is read, else the last one that fitted (`accepted`).
   private file: ChosenFile | null = null;
@@ -506,7 +532,7 @@ export class FlowSession {
   private problem: Problem | null = null;
   private handlers: SessionHandlers | null = null;
   // Bumped when the page goes away: a document prepared before that is not sent. A page set up
-  // again (React Strict Mode runs a cleanup between two setups) makes documents as before.
+  // again (React Strict Mode runs a cleanup between two setups) sends documents again.
   private generation = 0;
   private probeDuration: ((file: Blob) => Promise<number | null>) | null = null;
   // Strömma: the live session, the stream it hears and what it was last told.
@@ -516,11 +542,14 @@ export class FlowSession {
   // Whether live text names the recording, so its final text may bring a transcript, and whether that is awaited.
   private liveNamed = false;
   private finishing = false;
+  /** A press of Skapa dokument made during the wait, sent when the wait ends. */
+  private sendQueued = false;
   private finishingTimer: ReturnType<typeof setTimeout> | null = null;
   // Keeps a named session's transcript once there is one and the stopped capture has let the recording go.
   private keepTranscript: (() => void) | null = null;
   // A transcript being written to the device holds the store's queue: a send meanwhile says so instead of waiting.
   private keepInFlight = false;
+  private creating = false;
   // The browser's reason the microphone was refused, for the problem shown.
   private microphoneError: string | null = null;
   private snapshot: SessionSnapshot;
@@ -537,10 +566,11 @@ export class FlowSession {
     this.capture = new RecordingCapture(options.openStore, {
       ...options.captureDeps,
       getStream: async (constraints) => {
+        const attempt = this.startAttempt;
         try {
           return await options.captureDeps.getStream(constraints);
         } catch (error) {
-          this.microphoneError = error instanceof DOMException ? error.name : null;
+          if (attempt === this.startAttempt) this.microphoneError = error instanceof DOMException ? error.name : null;
           throw error;
         }
       },
@@ -559,10 +589,12 @@ export class FlowSession {
   /** The run contract, first or refreshed: the modes, and the details that still fit. */
   setContract(contract: RunContract | null): void {
     this.contract = contract;
-    this.modes = availableModes(contract, {
+    const capabilities = {
       canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
       liveClient: this.options.live != null,
-    });
+    };
+    this.modes = availableModes(contract, capabilities);
+    this.modesNote = missingModesNote(contract, capabilities);
     const remembered = this.read(modeKey(this.options.flowId));
     this.mode =
       this.modes.find((mode) => mode === this.mode) ??
@@ -634,6 +666,7 @@ export class FlowSession {
     this.problem = null;
     this.microphoneError = null;
     this.starting = true;
+    const attempt = ++this.startAttempt;
     this.write(lastFlowKey(this.options.ownerId), this.options.flowId);
     // Named ahead, so live text names the recording to Eneo from its first sample.
     const recordingId = crypto.randomUUID();
@@ -654,12 +687,27 @@ export class FlowSession {
         this.limits(),
       );
     } finally {
-      this.starting = false;
+      if (attempt === this.startAttempt) this.starting = false;
     }
+    // Cancelled meanwhile (`cancelStart`): its answer is nobody's to wait for.
+    if (attempt !== this.startAttempt) return;
     if (this.capture.getSnapshot().status !== "recording") {
       this.problem = microphoneProblem(this.microphoneError);
       this.closeLive();
     }
+    this.emit();
+  }
+
+  /**
+   * Avbryt while the browser still asks for the microphone: the page stops waiting at once (the question is the
+   * browser's, and may never be answered). An answer that comes later starts no recording and says nothing.
+   */
+  cancelStart(): void {
+    if (!this.starting) return;
+    this.startAttempt += 1;
+    this.starting = false;
+    void this.capture.stop();
+    this.closeLive();
     this.emit();
   }
 
@@ -685,6 +733,7 @@ export class FlowSession {
       const chosen: ChosenFile = { blob, filename: file.name, durationMs: null };
       this.file = chosen;
       const check = this.probeDuration?.(file)
+        .catch(() => null)
         .then((durationMs) => {
           if (this.file !== chosen) return;
           const maxSeconds = this.inputStep()?.max_duration_seconds;
@@ -696,8 +745,7 @@ export class FlowSession {
             this.file = this.accepted = durationMs == null ? chosen : { ...chosen, durationMs };
           }
           this.emit();
-        })
-        .catch(() => undefined);
+        });
       if (!check) this.accepted = chosen;
     }
     this.emit();
@@ -737,8 +785,23 @@ export class FlowSession {
    * A send that fails keeps the recording, the file and the details.
    */
   async createDocument(): Promise<boolean> {
-    // The button says it waits; a press meanwhile sends nothing and leaves nothing to send later.
-    if (this.finishing) return false;
+    // A second press while the first is still checking or sending asks for no second run.
+    if (this.creating) return false;
+    this.creating = true;
+    try {
+      return await this.send();
+    } finally {
+      this.creating = false;
+    }
+  }
+
+  private async send(): Promise<boolean> {
+    // The button says it waits; a press meanwhile is kept, and sends when the text is in.
+    if (this.finishing) {
+      this.sendQueued = true;
+      this.emit();
+      return false;
+    }
     if (this.keepInFlight && this.snapshot.phase === "ready") {
       this.problem = { title: "Texten sparas fortfarande.", detail: "Försök igen om en stund." };
       this.emit();
@@ -1019,8 +1082,10 @@ export class FlowSession {
     let kept = false;
     const done = () => {
       if (this.live !== live || !this.finishing) return;
+      const queued = this.sendQueued;
       this.clearFinishing();
       this.emit();
+      if (queued) void this.createDocument();
     };
     // The capture holds the recording's lease until its stop is stored: the keep runs once both are there.
     const keep = (this.keepTranscript = () => {
@@ -1056,6 +1121,7 @@ export class FlowSession {
     if (this.finishingTimer !== null) clearTimeout(this.finishingTimer);
     this.finishingTimer = null;
     this.finishing = false;
+    this.sendQueued = false;
   }
 
   private onCapture = () => {
@@ -1081,6 +1147,7 @@ export class FlowSession {
     const own = this.ownCountField();
     return {
       modes: this.modes,
+      modesNote: this.modesNote,
       mode: this.mode,
       phase: capturing
         ? (capture.status as "recording" | "paused" | "interrupted")
@@ -1102,6 +1169,7 @@ export class FlowSession {
       fileChecking: this.file !== null && this.file !== this.accepted,
       live: this.live,
       finishing: this.finishing,
+      finishQueued: this.sendQueued,
       problem: this.problem,
     };
   }

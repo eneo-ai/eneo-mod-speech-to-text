@@ -25,19 +25,19 @@ from fastapi import (
 from fastapi.requests import HTTPConnection
 from fastapi.responses import RedirectResponse
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 
-from app.config import AuthMode, Settings
-from app.upstream import SMALL_ANSWER
+from app.config import Settings
+from app.upstream import SMALL_ANSWER, SMALL_CALL_TIMEOUT
 
 logger = logging.getLogger("eneo_module_auth")
 
+# The session cookie lives at most Settings.session_max_age_seconds (SESSION_MAX_AGE_MINUTES); the session also ends at
+# Eneo's session ceiling (module_auth_max_session_hours), and the shorter-lived module token is refreshed through Eneo
+# until then.
 SESSION_COOKIE = "eneo_module_session"
 STATE_COOKIE = "eneo_module_login_state"
-# The browser session cookie's upper bound is Settings.session_max_age_seconds
-# (SESSION_MAX_AGE_MINUTES). In SSO mode the session also ends at Eneo's
-# session ceiling (module_auth_max_session_hours); the shorter-lived module
-# token is refreshed through Eneo until then.
+# How long the login state cookie, which binds a callback to the browser that started the login, is valid.
 STATE_MAX_AGE = 5 * 60
 CALLBACK_PATH = "/api/auth/callback"
 # After Eneo fails to answer a token refresh, wait this long before asking
@@ -69,7 +69,6 @@ class ModuleResourceSessionResponse(BaseModel):
 
 
 class EneoSsoSession(BaseModel):
-    auth_mode: Literal["eneo_sso"] = "eneo_sso"
     access_token: str
     # When the current token expires; the store drops the session then,
     # because Eneo refuses to refresh an expired token.
@@ -95,18 +94,6 @@ class EneoSsoSession(BaseModel):
 
     def refresh_due(self) -> bool:
         return self.refresh_in() == 0
-
-
-class AccessCodeSession(BaseModel):
-    auth_mode: Literal["access_code"] = "access_code"
-    expires_at: int
-
-
-ModuleSession = EneoSsoSession | AccessCodeSession
-
-
-class AccessCodeLoginRequest(BaseModel):
-    access_code: str = Field(min_length=1, max_length=256)
 
 
 class PendingLogin(BaseModel):
@@ -138,19 +125,19 @@ class ModuleSessionStore:
     """
 
     def __init__(self) -> None:
-        self._sessions: dict[str, ModuleSession] = {}
+        self._sessions: dict[str, EneoSsoSession] = {}
         self._lock = threading.Lock()
         # Who is waiting for a session to end (a live socket), by session id: the loop to wake and its event.
         self._watchers: dict[str, list[tuple[asyncio.AbstractEventLoop, asyncio.Event]]] = {}
 
-    def create(self, session: ModuleSession) -> str:
+    def create(self, session: EneoSsoSession) -> str:
         session_id = secrets.token_urlsafe(32)
         with self._lock:
             self._delete_expired_locked(time.time())
             self._sessions[session_id] = session
         return session_id
 
-    def get(self, session_id: str | None) -> ModuleSession | None:
+    def get(self, session_id: str | None) -> EneoSsoSession | None:
         if session_id is None:
             return None
         with self._lock:
@@ -163,7 +150,7 @@ class ModuleSessionStore:
                 return None
             return session
 
-    def replace(self, session_id: str, session: ModuleSession) -> None:
+    def replace(self, session_id: str, session: EneoSsoSession) -> None:
         # Only a live session: a logout during a token refresh stays a logout.
         with self._lock:
             if session_id in self._sessions:
@@ -259,18 +246,9 @@ class ModuleAuth:
         self._refreshes: dict[str, asyncio.Task[None]] = {}
         self.router = APIRouter()
         self.router.add_api_route("/login", self.login, methods=["GET"])
-        self.router.add_api_route(
-            "/login",
-            self.login_with_access_code,
-            methods=["POST"],
-        )
         self.router.add_api_route("/callback", self.callback, methods=["GET"])
         self.router.add_api_route("/logout", self.logout, methods=["POST"])
         self.router.add_api_route("/status", self.status, methods=["GET"])
-        if settings.auth_mode == "access_code":
-            logger.warning(
-                "AUTH_MODE=access_code is enabled; use only as a temporary test gate"
-            )
 
     @property
     def callback_url(self) -> str:
@@ -282,14 +260,11 @@ class ModuleAuth:
         renew: Annotated[bool, Query()] = False,
         session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
-        self._require_auth_mode("eneo_sso")
-        if self.settings.eneo_public_url is None:
-            raise RuntimeError("ENEO_PUBLIC_URL is required for Eneo SSO")
         state = secrets.token_urlsafe(32)
         # A login in a separate window (before the session ends) returns to a page that closes it, and is
         # bound to the user signed in now, so the page's work never passes to someone else.
         current = self.sessions.get(session_id) if renew else None
-        if renew and not isinstance(current, EneoSsoSession):
+        if renew and current is None:
             # Nobody left to bind to: refused, not an ordinary login that anyone could finish under this page.
             refused = RedirectResponse(url=with_query(module_path(next_path), "fel=utgangen"), status_code=303)
             refused.headers["Cache-Control"] = "no-store"
@@ -298,8 +273,8 @@ class ModuleAuth:
             PendingLogin(
                 state=state,
                 next=module_path(next_path),
-                renew_user_id=current.user.id if isinstance(current, EneoSsoSession) else None,
-                renew_tenant_id=current.tenant_id if isinstance(current, EneoSsoSession) else None,
+                renew_user_id=current.user.id if current else None,
+                renew_tenant_id=current.tenant_id if current else None,
             ).model_dump()
         )
         query = urlencode(
@@ -325,35 +300,6 @@ class ModuleAuth:
         response.headers["Cache-Control"] = "no-store"
         return response
 
-    async def login_with_access_code(
-        self,
-        payload: AccessCodeLoginRequest,
-        request: Request,
-        response: Response,
-        replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
-    ) -> dict[str, bool]:
-        self._require_auth_mode("access_code")
-        self.require_same_origin(request)
-        configured_code = self.settings.app_access_code
-        if configured_code is None:
-            raise RuntimeError("APP_ACCESS_CODE is required for access-code auth")
-        if not secrets.compare_digest(
-            payload.access_code.encode("utf-8"),
-            configured_code.get_secret_value().encode("utf-8"),
-        ):
-            raise HTTPException(
-                status_code=401,
-                detail="Invalid access code",
-                headers={"Cache-Control": "no-store"},
-            )
-
-        max_age = self.settings.session_max_age_seconds
-        session = AccessCodeSession(expires_at=int(time.time()) + max_age)
-        self._set_session_cookie(response, session=session, max_age=max_age)
-        self.sessions.delete(replaced_session_id)  # the one the browser had is over
-        response.headers["Cache-Control"] = "no-store"
-        return {"ok": True}
-
     async def callback(
         self,
         ticket: Annotated[str | None, Query()] = None,
@@ -364,7 +310,6 @@ class ModuleAuth:
         ] = None,
         replaced_session_id: Annotated[str | None, Cookie(alias=SESSION_COOKIE)] = None,
     ) -> RedirectResponse:
-        self._require_auth_mode("eneo_sso")
         pending = self._load_pending_login(pending_cookie)
         if (
             ticket is None
@@ -378,11 +323,9 @@ class ModuleAuth:
         try:
             upstream = await self.http_client.post(
                 f"{self.settings.eneo_backend_url}/api/v1/module-auth/token/",
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key
-                },
+                headers=self._eneo_headers(),
                 json={"ticket": ticket},
-                timeout=httpx.Timeout(10.0),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
@@ -423,11 +366,8 @@ class ModuleAuth:
                     f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
                     f"{quote(self.settings.module_key, safe='')}/session/"
                 ),
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-                    "Authorization": f"Bearer {token.access_token}",
-                },
-                timeout=httpx.Timeout(10.0),
+                headers=self._eneo_headers(token.access_token),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
@@ -513,26 +453,21 @@ class ModuleAuth:
         response.headers["Cache-Control"] = "no-store"
         session = await self._live_session(session_id)
         if session is None:
-            return {
-                "authenticated": False,
-                "auth_mode": self.settings.auth_mode,
-                "user": None,
-            }
+            return {"authenticated": False, "user": None}
         status: dict[str, object] = {
             "authenticated": True,
-            "auth_mode": self.settings.auth_mode,
-            "user": None,
+            "user": session.user.model_dump(exclude_none=True),
+            # The login's fixed end (Eneo's ceiling or the module's own), so the page can warn before it.
+            "session_ends_in": max(0, session.session_expires_at - int(time.time())),
+            # What the page may send in one upload (the whole request, so a file takes a little less): a larger one is
+            # refused with a 413 while it is still being sent, which a proxy in front may turn into a 502. Not a secret.
+            "max_upload_bytes": self.settings.max_upload_bytes,
         }
-        # The login's fixed end (Eneo's ceiling or the module's own), so the page can warn before it.
-        ends_at = session.session_expires_at if isinstance(session, EneoSsoSession) else session.expires_at
-        status["session_ends_in"] = max(0, ends_at - int(time.time()))
-        if isinstance(session, EneoSsoSession):
-            status["user"] = session.user.model_dump(exclude_none=True)
-            refresh_in = session.refresh_in()
-            if refresh_in is not None:
-                # The page asks again then, so even a session that sends no
-                # other request (a recording) is refreshed before it expires.
-                status["refresh_in"] = refresh_in
+        refresh_in = session.refresh_in()
+        if refresh_in is not None:
+            # The page asks again then, so even a session that sends no
+            # other request (a recording) is refreshed before it expires.
+            status["refresh_in"] = refresh_in
         return status
 
     async def require_session(
@@ -542,7 +477,7 @@ class ModuleAuth:
             str | None,
             Cookie(alias=SESSION_COOKIE),
         ] = None,
-    ) -> ModuleSession:
+    ) -> EneoSsoSession:
         session = await self._live_session(session_id)
         if session is None:
             raise _refusal(
@@ -556,14 +491,14 @@ class ModuleAuth:
         connection.state.module_session = session
         return session
 
-    async def _live_session(self, session_id: str | None) -> ModuleSession | None:
+    async def _live_session(self, session_id: str | None) -> EneoSsoSession | None:
         """The caller's session, with its module token refreshed once due."""
         if session_id is None:
             return None
         session = self.sessions.get(session_id)
-        if session is None or session.auth_mode != self.settings.auth_mode:
+        if session is None:
             return None
-        if isinstance(session, EneoSsoSession) and session.refresh_due():
+        if session.refresh_due():
             # One refresh per session: concurrent requests wait for the same
             # one, and a request that goes away does not cancel it for them.
             refresh = self._refreshes.get(session_id)
@@ -598,11 +533,8 @@ class ModuleAuth:
                     f"{self.settings.eneo_backend_url}/api/v1/module-auth/"
                     f"{quote(self.settings.module_key, safe='')}/token/refresh/"
                 ),
-                headers={
-                    self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-                    "Authorization": f"Bearer {session.access_token}",
-                },
-                timeout=httpx.Timeout(10.0),
+                headers=self._eneo_headers(session.access_token),
+                timeout=SMALL_CALL_TIMEOUT,
                 extensions=SMALL_ANSWER,
             )
         except httpx.RequestError:
@@ -660,7 +592,7 @@ class ModuleAuth:
 
     @staticmethod
     def is_another_user(
-        session: ModuleSession,
+        session: EneoSsoSession,
         expected_user: str | None,
         expected_tenant: str | None = None,
         *,
@@ -672,10 +604,8 @@ class ModuleAuth:
         page would go on sending audio, or anything else it changes, under the new person's session. The page names
         the user (and the tenant, if it knows it) it was opened for, and the module compares: ids, not secrets. Where
         ``required``, a page that names nobody is refused too: a tab still running a page from before the check sends
-        no name. A session without a user (the access code) has nobody to compare and is always accepted.
+        no name.
         """
-        if not isinstance(session, EneoSsoSession):
-            return False
         if expected_user is None and required:
             return True
         return (expected_user is not None and expected_user != session.user.id) or (
@@ -700,33 +630,28 @@ class ModuleAuth:
             raise HTTPException(status_code=409, detail="user_changed")
 
     @staticmethod
-    def session_from_request(connection: HTTPConnection) -> ModuleSession:
+    def session_from_request(connection: HTTPConnection) -> EneoSsoSession:
         session = getattr(connection.state, "module_session", None)
-        if not isinstance(session, (EneoSsoSession, AccessCodeSession)):
+        if not isinstance(session, EneoSsoSession):
             raise RuntimeError("Module session dependency did not run")
         return session
 
-    def upstream_auth_headers(self, connection: HTTPConnection) -> dict[str, str]:
-        session = self.session_from_request(connection)
-        headers = {
-            self.settings.eneo_api_key_header_name: self.settings.eneo_api_key,
-        }
-        if isinstance(session, EneoSsoSession):
-            headers["Authorization"] = f"Bearer {session.access_token}"
+    def _eneo_headers(self, access_token: str | None = None) -> dict[str, str]:
+        """Eneo's credentials: the module's key, and a user's token once there is one."""
+        headers = {self.settings.eneo_api_key_header_name: self.settings.eneo_api_key}
+        if access_token is not None:
+            headers["Authorization"] = f"Bearer {access_token}"
         return headers
 
-    def _require_auth_mode(self, expected: AuthMode) -> None:
-        if self.settings.auth_mode != expected:
-            raise HTTPException(
-                status_code=404,
-                detail="Authentication route is not available",
-            )
+    def upstream_auth_headers(self, connection: HTTPConnection) -> dict[str, str]:
+        """Eneo's credentials for a call made for this session: the module's key and the user's own token."""
+        return self._eneo_headers(self.session_from_request(connection).access_token)
 
     def _set_session_cookie(
         self,
         response: Response,
         *,
-        session: ModuleSession,
+        session: EneoSsoSession,
         max_age: int,
     ) -> None:
         session_id = self.sessions.create(session)

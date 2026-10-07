@@ -1,6 +1,4 @@
-"use client";
-
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,6 +10,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import type { CorrectionsSaveState } from "@/components/TranscriptPlayer";
 import type { FlowRunPublic } from "@/lib/api";
 import { regenerate, type RegenerationRequest } from "@/lib/regenerate";
+import { LeaveContext } from "./useLeaveQuestion";
 
 /**
  * Says, without alarm, that the document was made from the transcript before
@@ -34,6 +33,7 @@ export function RegenerateNotice({
   /** What the run makes, as the notice names it: "dokumentet", "texten" or "resultatet" (`outputWords`). */
   thing?: string;
 }) {
+  const { leaveFirst } = useContext(LeaveContext);
   const [working, setWorking] = useState(false);
   const [refusal, setRefusal] = useState<{ message: string; reload: boolean } | null>(null);
   const saving = saveState === "saving";
@@ -56,18 +56,18 @@ export function RegenerateNotice({
       role="note"
       collapsible={false}
       title={`${thing[0].toUpperCase() + thing.slice(1)} skapades före dina rättningar`}
-      description="Den nya versionen görs från det rättade transkriptet."
+      description="Den nya versionen görs från den rättade transkriberingen."
     >
       <VStack gap={3} hAlign="start">
         <Button
           icon={working ? <Spinner size="sm" aria-hidden /> : <Icon icon={RotateCcw} />}
           isDisabled={working || saving || unsaved}
           label={working ? `Skapar ${thing} igen…` : saving ? "Sparar rättningarna…" : `Skapa ${thing} igen med rättningarna`}
-          onClick={() => void start()}
+          onClick={() => leaveFirst(start)}
         />
         {unsaved && (
           <Text as="p" color="secondary">
-            Den senaste rättningen är inte sparad. Spara den igen i transkriptet innan {thing} skapas på nytt.
+            Den senaste rättningen är inte sparad. Spara den igen i transkriberingen innan {thing} skapas på nytt.
           </Text>
         )}
         {refusal && (

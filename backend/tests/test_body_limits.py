@@ -8,20 +8,17 @@ import os
 import tempfile
 import time
 import unittest
-import warnings
 
 import httpx
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
-from pydantic import SecretStr  # noqa: E402
 
 from app import main  # noqa: E402
 from app.module_auth import SESSION_COOKIE, EneoSsoSession, ModuleUser  # noqa: E402
@@ -132,11 +129,18 @@ class Case(unittest.IsolatedAsyncioTestCase):
 
 
 class JsonBodyTests(Case):
+    # A route that reads its JSON body: the proxy's. (Only a body that something reads is counted as it arrives; one that
+    # declares its length is refused before any route, so that part of the cap needs no session.)
+    ROUTE = "/api/eneo/flows/flow-1/runs/"
+
+    async def send(self, body: Lazy, *, authenticated: bool = True, declare_length: bool = True, headers: dict | None = None):
+        return await self.post(self.ROUTE, body, authenticated=authenticated, declare_length=declare_length, headers={"Origin": ORIGIN, **(headers or {})})
+
     async def test_a_body_over_the_cap_is_413_before_the_route_reads_it(self) -> None:
         declared, chunked = Lazy(OVER), Lazy(OVER)
 
-        first = await self.post("/api/auth/login", declared, authenticated=False)
-        second = await self.post("/api/auth/login", chunked, authenticated=False, declare_length=False)
+        first = await self.send(declared)
+        second = await self.send(chunked, declare_length=False)
 
         self.assertEqual((first.status_code, second.status_code), (413, 413))
         self.assertEqual(first.json(), {"detail": "Request body too large", "max_body_bytes": CAP})
@@ -144,50 +148,34 @@ class JsonBodyTests(Case):
         self.assertEqual(first.headers["connection"], "close")
         self.assertEqual(declared.taken, 0)
         self.assertLessEqual(chunked.taken, CAP // MiB + 2, "the rest of the body was never taken")
+        self.assertEqual(self.eneo.calls, [])
 
     async def test_a_length_that_lies_buys_nothing(self) -> None:
         # Declares 1 MiB, under the cap, and sends 64: the cap counts what arrives, not what was said.
         body = Lazy(OVER)
 
-        response = await self.post("/api/auth/login", body, declare_length=False, headers={"Content-Length": str(MiB)})
+        response = await self.send(body, declare_length=False, headers={"Content-Length": str(MiB)})
 
         self.assertEqual(response.status_code, 413)
         self.assertLessEqual(body.taken, CAP // MiB + 2)
 
-    async def test_the_cap_needs_no_session(self) -> None:
+    async def test_the_declared_cap_needs_no_session(self) -> None:
         for authenticated in (False, True):
             with self.subTest(authenticated=authenticated):
                 body = Lazy(OVER)
 
-                response = await self.post("/api/auth/login", body, authenticated=authenticated, declare_length=False)
+                response = await self.send(body, authenticated=authenticated)
 
                 self.assertEqual(response.status_code, 413)
-                self.assertLessEqual(body.taken, CAP // MiB + 2)
-
-    async def test_the_public_login_still_works_and_is_capped_without_a_session(self) -> None:
-        self.addCleanup(setattr, main.settings, "auth_mode", main.settings.auth_mode)
-        self.addCleanup(setattr, main.settings, "app_access_code", main.settings.app_access_code)
-        main.settings.auth_mode = "access_code"
-        main.settings.app_access_code = SecretStr("test-access-code-1234")
-        headers = {"Origin": ORIGIN}
-
-        wrong = await self.post("/api/auth/login", Lazy(0, head=b'{"access_code": "wrong"}'), authenticated=False, headers=headers)
-        right = await self.post("/api/auth/login", Lazy(0, head=b'{"access_code": "test-access-code-1234"}'), authenticated=False, headers=headers)
-        big_body = Lazy(OVER)
-        big = await self.post("/api/auth/login", big_body, authenticated=False, declare_length=False, headers=headers)
-
-        self.assertEqual((wrong.status_code, right.status_code), (401, 200))
-        self.assertEqual(right.json(), {"ok": True})
-        self.assertEqual(big.status_code, 413)
-        self.assertLessEqual(big_body.taken, CAP // MiB + 2)
+                self.assertEqual(body.taken, 0)
 
     async def test_a_body_under_the_cap_reaches_the_route_unchanged(self) -> None:
-        payload = Lazy(0, head=b'{"access_code": "' + b"a" * (3 * MiB) + b'"}')
+        payload = Lazy(0, head=b'{"note": "' + b"a" * (3 * MiB) + b'"}')
 
-        response = await self.post("/api/auth/login", payload, authenticated=False)
+        response = await self.send(payload)
 
-        # Past the cap's check, and into the route: it is the route that finds the body invalid (max_length 256).
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(self.eneo.calls[0]["content"]), payload.length)
 
     async def test_a_request_that_has_no_body_is_not_counted(self) -> None:
         transport = httpx.ASGITransport(app=main.app)
@@ -199,7 +187,7 @@ class JsonBodyTests(Case):
 class MalformedLengthTests(Case):
     """A Content-Length that is not a plain number is a 400, never a 500 and never a body read on trust."""
 
-    PATHS = ("/api/auth/login", "/api/eneo/flows/flow-1/runs/", "/api/eneo/flows/flow-1/files/")
+    PATHS = ("/api/auth/logout", "/api/eneo/flows/flow-1/runs/", "/api/eneo/flows/flow-1/steps/step-1/runtime-files/")
     VALUES = {
         "5001 digits (int() refuses more than 4300)": "9" * 5001,
         "5001 zeros then a 1": "0" * 5000 + "1",
@@ -287,7 +275,7 @@ class ProxyBodyTests(Case):
 
 
 class UploadTests(Case):
-    PATH = "/api/eneo/flows/flow-1/files/"
+    PATH = "/api/eneo/flows/flow-1/steps/step-1/runtime-files/"
 
     def setUp(self) -> None:
         super().setUp()
@@ -369,29 +357,37 @@ class UploadTests(Case):
         self.assertEqual(response.json(), {"ok": True})
         self.assertEqual(self.eneo.calls[-1]["size"], 6 * MiB)
         self.assertEqual(self.eneo.calls[-1]["filename"], "a.bin")
-        self.assertEqual(self.eneo.calls[-1]["url"], "https://eneo.example.test/api/v1/flows/flow-1/files/")
+        self.assertEqual(self.eneo.calls[-1]["url"], "https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/")
         self.assertEqual(os.listdir(self.temporary), [])
         self.assertEqual(self.open_files(), files_before)
 
-    async def test_each_upload_route_answers_on_both_paths_and_forwards_to_its_own_eneo_route(self) -> None:
+    async def test_each_upload_route_answers_on_the_path_the_page_sends_and_forwards_to_its_own_eneo_route(self) -> None:
         routes = {
-            "/api/eneo/flows/f1/files": "flows/f1/files/",
-            "/api/eneo/flows/f1/steps/s1/runtime-files": "flows/f1/steps/s1/runtime-files/",
-            "/api/eneo/flows/f1/template-files": "flows/f1/template-files/",
+            "/api/eneo/flows/f1/steps/s1/runtime-files/": "flows/f1/steps/s1/runtime-files/",
         }
         for path, upstream in routes.items():
-            for suffix in ("", "/"):
-                with self.subTest(path=path + suffix):
-                    response = await self.post(path + suffix, multipart_of(1), headers=MULTIPART)
+            with self.subTest(path=path):
+                response = await self.post(path, multipart_of(1), headers=MULTIPART)
 
-                    self.assertEqual(response.status_code, 200)
-                    self.assertEqual(self.eneo.calls[-1]["url"], f"https://eneo.example.test/api/v1/{upstream}")
-                    self.assertEqual(self.eneo.calls[-1]["size"], MiB)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(self.eneo.calls[-1]["url"], f"https://eneo.example.test/api/v1/{upstream}")
+                self.assertEqual(self.eneo.calls[-1]["size"], MiB)
+
+    async def test_the_slashless_twin_of_an_upload_route_is_not_a_route_and_sends_nothing_to_eneo(self) -> None:
+        for path in ("/api/eneo/flows/f1/steps/s1/runtime-files",):
+            with self.subTest(path=path):
+                calls = len(self.eneo.calls)
+
+                response = await self.post(path, multipart_of(1), headers=MULTIPART)
+
+                self.assertEqual(response.status_code, 403)
+                self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
+                self.assertEqual(len(self.eneo.calls), calls)
 
     async def test_a_flow_id_that_leaves_its_route_is_403_before_the_body_is_read(self) -> None:
         body = multipart_of(6)
 
-        response = await self.post("/api/eneo/flows/%2E%2E/files/", body, headers=MULTIPART)
+        response = await self.post("/api/eneo/flows/%2E%2E/steps/s1/runtime-files/", body, headers=MULTIPART)
 
         self.assertEqual(response.status_code, 403)
         self.assertEqual(body.taken, 0)
@@ -421,17 +417,15 @@ class UploadTests(Case):
         self.assertEqual(os.listdir(self.temporary), [])
 
     async def test_a_multipart_content_type_does_not_lift_the_cap_on_a_json_route(self) -> None:
-        for authenticated in (False, True):
-            with self.subTest(authenticated=authenticated):
-                body = Lazy(OVER)
+        body = Lazy(OVER)
 
-                response = await self.post(
-                    "/api/auth/login", body, authenticated=authenticated, declare_length=False,
-                    headers={"Content-Type": f"multipart/form-data; boundary={BOUNDARY}"},
-                )
+        response = await self.post(
+            JsonBodyTests.ROUTE, body, declare_length=False,
+            headers={"Origin": ORIGIN, "Content-Type": f"multipart/form-data; boundary={BOUNDARY}"},
+        )
 
-                self.assertEqual(response.status_code, 413)
-                self.assertLessEqual(body.taken, CAP // MiB + 2, "FastAPI reads a body whatever its content type says")
+        self.assertEqual(response.status_code, 413)
+        self.assertLessEqual(body.taken, CAP // MiB + 2, "a body is read whatever its content type says")
 
     async def test_a_text_field_beside_the_file_is_a_400_and_the_rest_is_not_read(self) -> None:
         field = f'--{BOUNDARY}\r\nContent-Disposition: form-data; name="note"\r\n\r\nhello\r\n'.encode()
@@ -473,18 +467,19 @@ class UploadTests(Case):
         self.assertEqual(os.listdir(self.temporary), [])
 
     async def test_a_file_part_that_never_ends_is_a_400_and_leaves_nothing_behind(self) -> None:
-        files_before = self.open_files()
+        cases = {
+            "unfinished file part": b"",
+            "finished file part without the final boundary": f"\r\n--{BOUNDARY}\r\n".encode(),
+        }
+        for label, tail in cases.items():
+            with self.subTest(label):
+                files_before = self.open_files()
+                response = await self.upload(Lazy(4, multipart_head(), tail))
 
-        with warnings.catch_warnings():
-            # Starlette leaves the file of a part that never ends to be closed when its parser is collected, which
-            # CPython does at once; what the app is held to is that nothing is left open or on disk.
-            warnings.simplefilter("ignore", ResourceWarning)
-            response = await self.upload(Lazy(4, multipart_head(), b""))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertEqual(self.eneo.calls, [])
-        self.assertEqual(os.listdir(self.temporary), [])
-        self.assertEqual(self.open_files(), files_before)
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(self.eneo.calls, [])
+                self.assertEqual(os.listdir(self.temporary), [])
+                self.assertEqual(self.open_files(), files_before)
 
     async def test_a_control_character_in_the_file_name_or_content_type_is_a_400_and_is_never_forwarded(self) -> None:
         # What a browser cannot send but an attacker can, and what Starlette hands on: a line break in the quoted

@@ -51,6 +51,11 @@ export function formatDuration(ms: number): string {
   const minutes = Math.round(seconds / 60);
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
+  // A day and more in days and hours ("10 dygn 23 h"), never in hundreds of hours.
+  if (hours >= 24) {
+    const days = Math.floor(hours / 24);
+    return hours % 24 === 0 ? `${days} dygn` : `${days} dygn ${hours % 24} h`;
+  }
   const rest = minutes % 60;
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
 }

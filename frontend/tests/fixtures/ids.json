@@ -1,0 +1,46 @@
+{
+  "flows": {
+    "flow1": "000dd5fc-6a9e-4a42-918b-0c183f171a78",
+    "flow2": "e05f8fd7-95fd-44e5-aa1d-2597881e71b9",
+    "flow3": "cab8a4d0-94d2-4186-b558-00324919a8c1",
+    "flow4": "fe496050-3984-4f8c-a8ef-d86ee8e36201",
+    "flow5": "c1d04a4b-55f4-4e86-9cd0-7e2cee233e10"
+  },
+  "steps": {
+    "audio": "00000000-0000-0000-0000-00000000a001",
+    "review": "00000000-0000-0000-0000-00000000b002",
+    "report": "24f34fb6-5dba-46c4-bd5c-384a247000f6"
+  },
+  "runs": {
+    "done": "7e6e01f7-5322-41a6-881f-ce336baba569",
+    "plain": "78d61878-90bc-422f-9e33-e6b2bdd9e71e",
+    "failed": "6593b12e-183d-4bce-8de0-6eee071cdc2f",
+    "running": "26a13967-2675-4195-a8d4-3f430dd633ba",
+    "beforeReview": "548211af-8c85-4ce6-acb6-2d2e2484e08b",
+    "review": "825173ab-5cc4-4404-8a05-34274414d71b",
+    "reviewText": "4177edbe-47f7-4612-85b4-8f6bd1fe9ca4",
+    "reviewApproved": "a2ead1d0-fdc4-47d0-8888-82dab5b7ca62",
+    "reviewTextApproved": "dda0c595-e6b5-4727-b1f5-e0721f155484",
+    "corrected": "a3771df2-42d1-4151-8416-edad90eff651",
+    "pdf": "4b7c4b22-3657-442f-8bdd-fbc395182eaf",
+    "pdfLong": "062dde6c-b4a1-4066-8675-4f7cdb8fca9e",
+    "table": "1fef2b78-5d86-42cb-8979-64050a1c9ec8",
+    "fileText": "41e9474a-0608-4f09-b1bd-97803a1b327a"
+  },
+  "files": {
+    "audioA": "3348dbc3-c2bd-4ae2-987d-82cc3666d819",
+    "audioB": "721d1d6e-22e3-4dd7-9e33-0af3a9809820",
+    "pdf": "9ffa0ee9-2436-422a-8f0f-e6e09f972daf",
+    "docx": "126f349f-46fc-461a-8876-bf8e8603767e",
+    "audioLarge": "f9b60e4d-9fcb-4622-89fe-4c32a045ff69",
+    "text": "1b6a8e14-d090-4ca8-a6ab-9e264599b252"
+  },
+  "checkpoints": {
+    "review": "84994bbd-9b12-4bbf-98ac-e1ccd4979b37",
+    "reviewText": "866d3167-ed3f-44a1-ab18-02928eb46176"
+  },
+  "results": {
+    "transcribe": "48e020d1-5059-4835-9807-961edf83c286",
+    "report": "80abad84-6ff7-4e73-b6f3-5b96a3f4459e"
+  }
+}

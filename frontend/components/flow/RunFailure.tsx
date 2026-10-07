@@ -1,6 +1,4 @@
-"use client";
-
-import { useState } from "react";
+import { useContext, useState } from "react";
 import { Plus, RotateCcw, Upload } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
@@ -15,7 +13,7 @@ import { Text } from "@astryxdesign/core/Text";
 import type { FlowRunPublic, FlowRunStep, RunContract } from "@/lib/api";
 import { formatRelativeDate } from "@/lib/format";
 import { transcriptFileName, type ResultFileView } from "@/lib/run-files";
-import type { StepView } from "@/lib/run-progress";
+import { runOutcome, type StepView } from "@/lib/run-progress";
 import { outputWords, runOutput, type RunErrorView } from "@/lib/run-result";
 import { CopyButton } from "./CopyButton";
 import { ResultFiles } from "./ResultFiles";
@@ -23,6 +21,7 @@ import { RunTranscript } from "./RunTranscript";
 import { StepList } from "./StepList";
 import { StateCard } from "./StateCard";
 import { usePhaseHeading } from "./usePhaseHeading";
+import { LeaveContext } from "./useLeaveQuestion";
 
 /**
  * A run that did not finish: which step stopped and why, what never ran,
@@ -65,7 +64,8 @@ export function RunFailure({
   /** The flow's run contract: what a run of its version without a result makes (`runOutput`). */
   contract?: RunContract | null;
 }) {
-  const cancelled = run.status.toLowerCase() === "cancelled";
+  const { leaveFirst } = useContext(LeaveContext);
+  const cancelled = runOutcome(run.status) === "cancelled";
   // A refusal that a new run answers leaves no point in asking Eneo again.
   const offerRetry = Boolean(onRetry) && !refusal?.startAgain;
   const offerStartAgain = Boolean(onStartAgain) && (cancelled || Boolean(refusal?.startAgain));
@@ -87,7 +87,7 @@ export function RunFailure({
       {/* What happened and what can be done, in the card; what the run left behind follows it. */}
       <StateCard>
         <VStack gap={6}>
-          <VStack as="header" gap={1}>
+          <VStack gap={1}>
             <Heading level={1} ref={heading} tabIndex={-1}>
               {cancelled ? "Körningen avbröts" : outputWords(runOutput(run, contract)).failed}
             </Heading>
@@ -116,7 +116,7 @@ export function RunFailure({
             {/* The page offers one of these at most, filled unless Eneo marks a retry as not safe; the way back sits beside the card. */}
             <HStack gap={3} wrap="wrap">
               {offerChooseInput && (
-                <Button label="Välj en annan fil" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={onChooseInput} />
+                <Button label="Välj nytt ljud" variant="primary" icon={<Icon icon={Upload} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onChooseInput?.())} />
               )}
               {offerRetry && (
                 // Secondary when Eneo marks the retry as not safe: the advice says to check what was done first.
@@ -125,11 +125,11 @@ export function RunFailure({
                   variant={run.error?.retryable ? "primary" : "secondary"}
                   isLoading={retrying}
                   icon={<Icon icon={RotateCcw} size="sm" color="inherit" />}
-                  onClick={() => void retry()}
+                  onClick={() => leaveFirst(retry)}
                 />
               )}
               {offerStartAgain && (
-                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => void onStartAgain?.()} />
+                <Button label="Starta en ny körning" variant="primary" icon={<Icon icon={Plus} size="sm" color="inherit" />} onClick={() => leaveFirst(() => onStartAgain?.())} />
               )}
             </HStack>
             {offerRetry && (

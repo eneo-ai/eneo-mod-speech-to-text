@@ -17,16 +17,14 @@ const rows = [row("SPEAKER_00", "Anna Berg", 12), row("SPEAKER_01", null, 9)];
 /** Mounts what the page mounts it in: the design system's words are Swedish (Stäng) only inside the providers. */
 async function mountInProviders(element: import("react").ReactElement) {
   const { createElement } = await import("react");
-  const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("../kit/ModuleProviders");
-  return mount(createElement(ThemeProvider, { attribute: "class", children: createElement(ModuleProviders, { children: element }) }));
+  return mount(createElement(ModuleProviders, { children: element }));
 }
 
 async function dialog(props: Record<string, unknown> = {}) {
   const { createElement } = await import("react");
   const { SpeakerNamingDialog } = await import("../components/SpeakerNamingDialog");
   const saved: SpeakerMappingRow[][] = [];
-  const continued: SpeakerMappingRow[][] = [];
   const listened: string[] = [];
   const view = await mountInProviders(
     createElement(SpeakerNamingDialog, {
@@ -39,17 +37,20 @@ async function dialog(props: Record<string, unknown> = {}) {
         saved.push(next);
         return null;
       },
-      onSaveAndContinue: async (next: SpeakerMappingRow[]) => {
-        continued.push(next);
-        return null;
-      },
       children: createElement("button", { type: "button" }, "Namnge talarna"),
       ...props,
     }),
   );
   const trigger = button(view.container, "Namnge talarna")!;
   await view.act(async () => trigger.click());
-  return { view, trigger, field: nameFieldOf, saved, continued, listened };
+  return { view, trigger, field: nameFieldOf, saved, listened };
+}
+
+/** The dialog's footer actions as [label, variant]: the last buttons in the open dialog, after the rows' own. */
+function footerActions(count: number): [string | undefined, string | null][] {
+  return [...document.querySelectorAll<HTMLButtonElement>("dialog[open] button")]
+    .slice(-count)
+    .map((action) => [action.textContent?.trim(), action.getAttribute("data-variant")]);
 }
 
 /** The name field of a speaker, found as a screen reader names it, in the dialog that is open. */
@@ -103,7 +104,7 @@ test("opening a filled name field by click and pressing Enter keeps its name", a
   assert.equal(active?.textContent?.startsWith("Erik Lund"), true, "the list opens on the field's own name");
   await view.act(async () => erik.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
   assert.equal(field("Talare 2").value, "Erik Lund");
-  await view.act(async () => button(document.body, "Spara")!.click());
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.deepEqual(saved.at(-1)?.map((r) => r.name), ["Anna Berg", "Erik Lund"]);
 });
 
@@ -113,7 +114,7 @@ async function nameField(value: string | null, options: string[]) {
   const { NameCombobox } = await import("../components/NameCombobox");
   function Field() {
     const [name, setName] = useState<string | null>(value);
-    return createElement(NameCombobox, { value: name, options, onChange: setName, label: "Vem är Talare 2?" });
+    return createElement(NameCombobox, { value: name, options, onChange: setName, label: "Vem är Talare 2?", placeholder: "Välj eller skriv ett namn", noneLabel: "Ingen (behåll etiketten)" });
   }
   const view = await mount(createElement(Field));
   const input = view.container.querySelector("input")!;
@@ -221,28 +222,19 @@ test("a name given to another speaker is said quietly, and only the row's own na
   assert.ok(own.querySelector("svg"), "the row's own choice is checked");
 });
 
-test("Spara och fortsätt saves the names and lets the flow go on, in one action", async () => {
-  const { view, field, saved, continued } = await dialog();
-  await view.act(async () => type(field("Talare 2"), "  Erik Lund  "));
-  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
-  assert.deepEqual(continued.map((next) => next.map((r) => [r.label, r.name])), [[["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]]);
-  assert.equal(saved.length, 0, "not saved a second time on the side");
+test("the dialog saves names only: its footer is Avbryt and a primary Spara namnen, and approving stays the page's", async () => {
+  await dialog();
+  assert.deepEqual(footerActions(2), [["Avbryt", "ghost"], ["Spara namnen", "primary"]]);
+  assert.ok(
+    ![...document.querySelectorAll("dialog[open] button")].some((action) => /fortsätt/i.test(action.textContent ?? "")),
+    "nothing in the dialog lets the flow go on",
+  );
 });
 
-test("a refused Spara och fortsätt stays open, with the names kept and the reason", async () => {
-  const { view, field } = await dialog({ onSaveAndContinue: async () => "Flödet kunde inte fortsätta. Försök igen." });
-  await view.act(async () => type(field("Talare 2"), "Erik Lund"));
-  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
-  assert.ok(document.querySelector("dialog[open]"), "still open");
-  assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /Flödet kunde inte fortsätta/);
-  assert.equal(field("Talare 2").value, "Erik Lund");
-});
-
-test("Spara, for someone who stops here, saves trimmed names, closes and gives the focus back", async () => {
-  const { view, trigger, field, saved, continued } = await dialog();
+test("Spara namnen saves trimmed names, closes and gives the focus back", async () => {
+  const { view, trigger, field, saved } = await dialog();
   await view.act(async () => type(field("Talare 2"), "  Erik Lund  "));
-  await view.act(async () => button(document.body, "Spara")!.click());
-  assert.equal(continued.length, 0);
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.deepEqual(saved[0].map((r) => [r.label, r.name]), [["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", "Erik Lund"]]);
   assert.ok(!document.querySelector("dialog[open]"), "closed");
   // The focus goes back in an effect after closing; wait a turn. Compare as a boolean: a failed
@@ -252,10 +244,10 @@ test("Spara, for someone who stops here, saves trimmed names, closes and gives t
 });
 
 test("a name with a line break or a tab is not saved, and says why", async () => {
-  const { view, field, saved, continued } = await dialog();
+  const { view, field, saved } = await dialog();
   await view.act(async () => type(field("Talare 2"), "Erik\tLund"));
-  await view.act(async () => button(document.body, "Spara och fortsätt")!.click());
-  assert.equal(saved.length + continued.length, 0);
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
+  assert.equal(saved.length, 0);
   assert.match(document.querySelector("dialog[open]")?.textContent ?? "", /Ett namn är en rad/);
   assert.equal(field("Talare 2").getAttribute("aria-invalid"), "true", "the field says it is refused");
 });
@@ -263,9 +255,10 @@ test("a name with a line break or a tab is not saved, and says why", async () =>
 test("a refused save stays open with Eneo's reason", async () => {
   const { view, field } = await dialog({ onSave: async () => "Granskningen har ändrats sedan du laddade sidan." });
   await view.act(async () => type(field("Talare 2"), "Erik Lund"));
-  await view.act(async () => button(document.body, "Spara")!.click());
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.ok(document.querySelector("dialog[open]"), "still open");
   assert.match(document.querySelector('dialog[open] [role="alert"]')?.textContent ?? "", /Granskningen har ändrats/);
+  assert.equal(field("Talare 2").value, "Erik Lund", "with the names kept");
 });
 
 test("a speaker split off in the review can be named; it is sent only with a name", () => {
@@ -285,6 +278,7 @@ test("speaker names with spaces and punctuation produce valid unique option IDs,
   const view = await mount(
     createElement(NameCombobox, {
       value: null, options: ["Anna Andersson", "Bo / Carl", "none", "add"], onChange: () => undefined, label: "Namn för Talare 1",
+      placeholder: "Välj eller skriv ett namn", noneLabel: "Ingen (behåll etiketten)",
     }),
   );
   const input = view.container.querySelector("input")!;
@@ -339,12 +333,12 @@ test("Esc, Stäng or a click beside only close: the typed names are there when t
   assert.equal(field("Talare 2").value, "", "Avbryt threw the typed name away");
 });
 
-test("names typed but not saved come back after a reload, in the open dialog; Spara or Avbryt ends them", async (t) => {
+test("names typed but not saved come back after a reload, in the open dialog; Spara namnen or Avbryt ends them", async (t) => {
   t.after(() => window.sessionStorage.clear());
   const draftKey = { ownerId: "user-1", name: "names:run-1:cp-1" };
   const first = await dialog({ draftKey });
   await first.view.act(async () => type(first.field("Talare 2"), "Erik Lund"));
-  await first.view.unmount(); // the page reloaded before Spara
+  await first.view.unmount(); // the page reloaded before Spara namnen
 
   const reloaded = async () => {
     const { createElement } = await import("react");
@@ -356,7 +350,6 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
         passages: () => 1,
         quote: () => null,
         onSave: async () => null,
-        onSaveAndContinue: async () => null,
         draftKey,
         children: createElement("button", { type: "button" }, "Namnge talarna"),
       }),
@@ -374,7 +367,7 @@ test("names typed but not saved come back after a reload, in the open dialog; Sp
 
   const typed = await dialog({ draftKey });
   await typed.view.act(async () => type(typed.field("Talare 2"), "Sara Holm"));
-  await typed.view.act(async () => button(document.body, "Spara")!.click());
+  await typed.view.act(async () => button(document.body, "Spara namnen")!.click());
   await typed.view.unmount();
   const saved = await reloaded();
   assert.equal(field("Talare 2"), null, "saved names are the review's, not a draft");
@@ -396,7 +389,6 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
       passages: () => 1,
       quote: () => null,
       onSave: async () => null,
-      onSaveAndContinue: async () => null,
       draftKey,
       children: createElement("button", { type: "button" }, "Namnge talarna"),
     }),
@@ -406,16 +398,19 @@ test("a name removed but not saved stays removed after a reload", async (t) => {
   await again.unmount();
 });
 
-test("once the pause is approved the dialog shows the saved names read-only, and its one action is Fortsätt", async () => {
-  const { view, field, saved, continued } = await dialog({ decided: true });
+test("once the pause is approved the dialog shows the saved names read-only, and its one action is Stäng", async () => {
+  const { view, field, saved } = await dialog({ decided: true });
   const content = document.querySelector("dialog[open]")!;
   assert.match(content.textContent ?? "", /Namnen är redan sparade\./);
   assert.equal(field("Talare 1").value, "Anna Berg");
   assert.ok(field("Talare 1").disabled && field("Talare 2").disabled, "nothing to change any more");
-  assert.equal(button(document.body, "Spara"), null);
-  assert.equal(button(document.body, "Spara och fortsätt"), null);
-  await view.act(async () => button(document.body, "Fortsätt")!.click());
-  assert.deepEqual(continued.map((next) => next.map((r) => [r.label, r.name])), [[["SPEAKER_00", "Anna Berg"], ["SPEAKER_01", null]]]);
+  // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
+  assert.ok(!button(document.body, "Spara namnen") && !button(document.body, "Avbryt"), "nothing to save or cancel");
+  assert.ok(!button(document.body, "Fortsätt"), "the page's Fortsätt goes on, not the dialog");
+  // The footer's Stäng, after the header's own.
+  assert.deepEqual(footerActions(1), [["Stäng", "secondary"]]);
+  await view.act(async () => [...content.querySelectorAll("button")].at(-1)!.click());
+  assert.ok(!document.querySelector("dialog[open]"), "closed");
   assert.equal(saved.length, 0);
 });
 
@@ -431,7 +426,7 @@ test("while the login has ended the dialog is closed, and it is back with its ty
   assert.ok(!document.querySelector("dialog[open]"), "closed while the login is ended");
   assert.equal(document.querySelector("dialog[open] input"), null, "its fields leave with it");
   assert.deepEqual(listened, [], "nothing plays because of it");
-  await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+  await view.act(async () => loginState.observe({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }));
   assert.ok(document.querySelector("dialog[open]"), "back after the new login");
   assert.equal(field("Talare 2").value, "Erik Lund", "with the typed name");
   assert.ok(trigger.isConnected);
@@ -457,7 +452,7 @@ test("with no storage to keep drafts in (a private window), the dialog works and
   const { view, field, saved } = await dialog({ draftKey: { ownerId: "user-1", name: "names:run-1:cp-9" } });
   await view.act(async () => type(field("Talare 2"), "Erik Lund"));
   assert.equal(field("Talare 2").value, "Erik Lund", "typing works");
-  await view.act(async () => button(document.body, "Spara")!.click());
+  await view.act(async () => button(document.body, "Spara namnen")!.click());
   assert.deepEqual(saved[0].map((r) => r.name), ["Anna Berg", "Erik Lund"]);
 });
 
@@ -475,7 +470,6 @@ test("names kept through a reload come back only as a list of speakers with thei
         passages: () => 1,
         quote: () => null,
         onSave: async () => null,
-        onSaveAndContinue: async () => null,
         draftKey,
         children: createElement("button", { type: "button" }, "Namnge talarna"),
       }),

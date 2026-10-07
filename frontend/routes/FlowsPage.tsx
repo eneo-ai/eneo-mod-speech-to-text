@@ -1,0 +1,129 @@
+import { useNavigate } from "react-router";
+import { useCallback, useEffect, useState } from "react";
+import { EmptyState } from "@astryxdesign/core/EmptyState";
+import { Heading } from "@astryxdesign/core/Heading";
+import { Layout, LayoutContent } from "@astryxdesign/core/Layout";
+import { Text } from "@astryxdesign/core/Text";
+import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
+import { VStack } from "@astryxdesign/core/VStack";
+import { AccountMenu } from "@/components/AccountMenu";
+import { HeaderBrand } from "@/components/HeaderBrand";
+import { AuthGate, useAuthenticatedUser } from "@/components/AuthGate";
+import { FlowList, FlowListSkeleton } from "@/components/FlowList";
+import { ProblemAlert } from "@/components/flow/ProblemAlert";
+import { SlowWait } from "@/components/SlowWait";
+import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
+import { ModuleShell } from "@/kit/ModuleShell";
+import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
+import {
+  DISCOVERY_PAGE_CAP,
+  DISCOVERY_PAGE_SIZE,
+  discoverFlows,
+  listCreateLabels,
+  type FlowSpaceGroup,
+} from "@/lib/flow-discovery";
+import { browserStorage } from "@/lib/browser-storage";
+import { sendRecordingAddress } from "@/lib/flow-address";
+import { lastUsedFlow } from "@/lib/last-used-flow";
+import { useRouteReady } from "@/routes/RouteEffects";
+import { PRODUCT_NAME } from "@/lib/product";
+
+export default function FlowsPage() {
+  return (
+    <AuthGate>
+      <FlowsListPage />
+    </AuthGate>
+  );
+}
+
+function FlowsListPage() {
+  const navigate = useNavigate();
+  const user = useAuthenticatedUser();
+  const unsent = useUnsentRecordings(user.id);
+  const evictable = useEvictable();
+  const [lastFlowId, setLastFlowId] = useState<string | null>(null);
+  useEffect(() => setLastFlowId(lastUsedFlow(browserStorage(), user.id)), [user.id]);
+  const [groups, setGroups] = useState<FlowSpaceGroup[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
+  const [problem, setProblem] = useState<ErrorAdvice | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => {
+    setProblem(null);
+    setAttempt((n) => n + 1);
+  }, []);
+
+  // One read of the published flows in all the user's spaces, page by page;
+  // no spaces calls and no run contract per flow. The contract is fetched
+  // when a flow is opened.
+  useEffect(() => {
+    let cancelled = false;
+    setGroups(null);
+    discoverFlows()
+      .then(({ groups: found, truncated: cut }) => {
+        if (cancelled) return;
+        setTruncated(cut);
+        setGroups(found);
+      })
+      .catch((error) => !cancelled && setProblem(errorAdvice(error)));
+    return () => {
+      cancelled = true;
+    };
+  }, [attempt]);
+
+  useRouteReady(groups !== null || problem !== null);
+
+  const empty = groups !== null && groups.every((group) => group.flows.length === 0);
+  const createLabel = listCreateLabels(groups);
+
+  return (
+    <ModuleShell label={PRODUCT_NAME} heading={<HeaderBrand />} end={<AccountMenu />}>
+      {/* The page's column in the shell's gutter, so the list starts where the bar's brand and a flow's page do; the list
+          at a reading width in it. */}
+      <Layout height="auto" contentWidth="calc(var(--module-page-width) + var(--spacing-8))" padding={4}>
+        <LayoutContent isScrollable={false}>
+          <VStack gap={8} paddingBlockStart={4} maxWidth={960}>
+            <Heading level={1}>Välj ett flöde</Heading>
+
+            <UnsentRecordings
+              list={unsent}
+              withFlowName
+              evictable={evictable}
+              sendLabel={(recording) => createLabel(recording.flowId)}
+              onSend={(recording) => void navigate(sendRecordingAddress(recording.flowId, recording.id))}
+            />
+
+            {problem ? (
+              <ProblemAlert
+                problem={{ title: "Flödena kunde inte visas.", detail: problem.message, retry: problem.retry }}
+                onRetry={retry}
+                focusRetry={attempt > 0}
+              />
+            ) : groups === null ? (
+              <>
+                <VisuallyHidden as="p" role="status">
+                  Laddar flödena…
+                </VisuallyHidden>
+                <SlowWait flows={false} onRetry={retry} />
+                <FlowListSkeleton />
+              </>
+            ) : empty ? (
+              <EmptyState
+                headingLevel={2}
+                title="Det finns inga publicerade flöden som du kan använda än."
+                description="När ett flöde publiceras i Eneo visas det här."
+              />
+            ) : (
+              <FlowList groups={groups} lastFlowId={lastFlowId} />
+            )}
+
+            {truncated && (
+              <Text as="p" type="supporting">
+                Visar de första {(DISCOVERY_PAGE_SIZE * DISCOVERY_PAGE_CAP).toLocaleString("sv-SE")} flödena.
+              </Text>
+            )}
+          </VStack>
+        </LayoutContent>
+      </Layout>
+    </ModuleShell>
+  );
+}

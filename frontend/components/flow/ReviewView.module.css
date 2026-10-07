@@ -13,11 +13,17 @@
   max-inline-size: 42rem;
 }
 
+/* The editing field and its focus frame fit short and zoomed windows. */
+.reviewText textarea {
+  max-block-size: 50dvh;
+  scroll-margin-block: var(--spacing-3);
+}
+
 /* A section with its own box: what the text review and its rejection are held in. */
 .card {
   margin-block-end: var(--spacing-5);
   padding: var(--spacing-4);
-  border: 1px solid var(--color-border);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
   background: var(--color-background-card);
 }
@@ -67,36 +73,6 @@
   }
 }
 
-/* Who is who at a glance. */
-.speakers {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.speaker {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-3);
-  padding-block: calc(var(--spacing-2) + var(--spacing-0-5));
-  border-block-end: 1px solid var(--color-border);
-}
-
-.speaker:first-child {
-  padding-block-start: 0;
-}
-
-.speaker:last-child {
-  border-block-end: 0;
-}
-
-.speakerLabel {
-  inline-size: 4.5rem;
-  flex-shrink: 0;
-}
-
 .selfStart {
   align-self: flex-start;
 }
@@ -105,20 +81,20 @@
 .decision {
   margin-block-start: var(--spacing-4);
   padding-block-start: var(--spacing-4);
-  border-block-start: 1px solid var(--color-border);
+  border-block-start: var(--border-width) solid var(--color-border);
 }
 
 /* The transcript's card. From a laptop's width it has a height of its own, within the screen's, and scrolls inside. */
 .transcriptCard {
-  border: 1px solid var(--color-border);
+  border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-container);
   background: var(--color-background-card);
 }
 
 @media (min-width: 1024px) {
   .transcriptCard {
-    min-block-size: 28rem;
-    max-block-size: calc(100vh - 14rem);
+    min-block-size: var(--module-transcript-min-height);
+    max-block-size: calc(100dvh - 14rem);
     overflow: hidden;
   }
 }

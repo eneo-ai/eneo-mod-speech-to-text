@@ -1,0 +1,84 @@
+{
+  "source": "The measurements the image is held to: the Next, Node and uvicorn image `stt-before` at feat/one-process 246033e, measured on 2026-10-02 (macOS arm64, OrbStack, Docker 29.4.0, linux/arm64). checks.py reads this file for check 14 (and prints the upload baselines beside check 9); change it only by measuring again.",
+  "image_bytes": 393607417,
+  "start_seconds": {
+    "first_health_200": [
+      2.33,
+      2.04,
+      2.22
+    ],
+    "docker_healthy": [
+      5.45,
+      5.45,
+      5.44
+    ]
+  },
+  "idle_rss_mb": {
+    "note": "median of three fresh containers, 40 s after start; frontend is next-server, backend is uvicorn",
+    "frontend_and_backend": 128.6,
+    "all": 157.9
+  },
+  "loaded_rss_mb": {
+    "note": "after /flows was loaded 20 times in a signed-in Chromium, networkidle each",
+    "frontend_and_backend": 196.5
+  },
+  "polling": {
+    "note": "10 signed-in browsers on /flows/<flow>?run=<a run that never ends>, a 60 s window; CPU is a share of one core",
+    "cpu_percent": {
+      "all": 8.4
+    },
+    "rss_mb": {
+      "all": {
+        "max": 201.3
+      }
+    }
+  },
+  "pages": {
+    "note": "deploy/acceptance/page-cost.cjs, signed in (auth-preload.cjs), median of three runs; KB are compressed bytes with headers. LCP and TBT move with the machine's load: compare them against a run of stt-before made in the same session, not against these. The sizes and request counts do not move. CLS was 0 on every page.",
+    "flows": {
+      "js_kb": 318.7,
+      "css_kb": 43.3,
+      "requests": 34,
+      "desktop": {
+        "lcp_ms": 144,
+        "tbt_ms": 0
+      },
+      "phone_4x_cpu": {
+        "lcp_ms": 3024,
+        "tbt_ms": 115
+      }
+    },
+    "flow": {
+      "js_kb": 413.0,
+      "css_kb": 43.3,
+      "requests": 29,
+      "desktop": {
+        "lcp_ms": 192,
+        "tbt_ms": 0
+      },
+      "phone_4x_cpu": {
+        "lcp_ms": 3292,
+        "tbt_ms": 123
+      }
+    }
+  },
+  "uploads": {
+    "note": "Next's growth in resident memory, in MB, by case (the backend behind it grew 0 to 2 MB in every case); a fresh container per case; MAX_UPLOAD_BYTES 3 GiB. Next held the memory 8 s after.",
+    "curl_300MB": [
+      306,
+      310,
+      309
+    ],
+    "curl_1GB": [
+      1041,
+      1040,
+      1039
+    ],
+    "curl_2x300MB": [
+      619,
+      609,
+      609
+    ],
+    "over_2GiB": "the client sends everything and gets no answer (no 413); Next +2111 MB; with Next alone the upstream got 2147418341 of 2200000212 bytes"
+  }
+}

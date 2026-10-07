@@ -2,15 +2,15 @@ import assert from "node:assert/strict";
 import test, { afterEach, type TestContext } from "node:test";
 
 import { cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
   await cleanup();
   window.localStorage.clear();
-  document.documentElement.className = "";
+  document.documentElement.removeAttribute("data-theme");
 });
 
-type Router = import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
 type User = import("./api").AuthenticatedUser;
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
@@ -22,13 +22,10 @@ async function openAccountMenu(
   options: { user?: User; leaveFirst?: (goOn: () => void) => void; logout?: () => Promise<Response> } = {},
 ) {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
-  const { ThemeProvider } = await import("next-themes");
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const { LeaveContext } = await import("../components/flow/useLeaveQuestion");
   const { AccountMenu } = await import("../components/AccountMenu");
-  const replaced: string[] = [];
   const requests: string[] = [];
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string, init?: RequestInit) => {
@@ -38,30 +35,27 @@ async function openAccountMenu(
   t.after(() => {
     globalThis.fetch = browserFetch;
   });
-  const router = { push() {}, replace: (to: string) => replaced.push(to), prefetch() {}, back() {}, forward() {}, refresh() {} } as unknown as Router;
-  const leave = { onLeave() {}, leaveFirst: options.leaveFirst ?? ((goOn: () => void) => goOn()) };
-  const view = await mount(
+  const leave = {
+    leaveFirst: options.leaveFirst ?? ((goOn: () => void) => goOn()),
+    holdUnsavedCorrections: () => () => undefined,
+  };
+  // The page is the flow list; signing out leaves it for the sign-in page ("/").
+  const { router, tree } = withRouter(
     createElement(
-      AppRouterContext.Provider,
-      { value: router },
+      ModuleProviders,
+      null,
       createElement(
-        ThemeProvider,
-        { attribute: "class", defaultTheme: "system", enableSystem: true },
-        createElement(
-          ModuleProviders,
-          null,
-          createElement(
-            AuthenticatedUserContext.Provider,
-            { value: options.user ?? ANNA },
-            createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
-          ),
-        ),
+        AuthenticatedUserContext.Provider,
+        { value: options.user ?? ANNA },
+        createElement(LeaveContext.Provider, { value: leave }, createElement("p", { id: "page" }, "Sidan"), createElement(AccountMenu)),
       ),
     ),
+    { path: "/flows" },
   );
+  const view = await mount(tree);
   const trigger = () => [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
   const menu = () => document.body.querySelector<HTMLElement>('[role="menu"]');
-  /** Opens it as a pointer does: the press, then the click (Radix opens on the press, the design system on the click). */
+  /** Opens it as a pointer does: the press, then the click. */
   const open = () =>
     view.act(async () => {
       trigger().dispatchEvent(new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse" }));
@@ -70,7 +64,7 @@ async function openAccountMenu(
     });
   const item = (name: string) =>
     [...document.body.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((element) => element.textContent?.trim() === name || element.textContent?.includes(name))!;
-  return { ...view, replaced, requests, trigger, menu, open, item };
+  return { ...view, router, requests, trigger, menu, open, item };
 }
 
 test("the trigger is named by who is signed in, and opens a menu", async (t) => {
@@ -108,12 +102,6 @@ test("the name is shown at the top, and the e-mail when it says more; neither is
   assert.equal(bare.trigger().getAttribute("aria-label"), "Öppna konto för erik@example.se");
   assert.equal((bare.menu()!.textContent ?? "").split("erik@example.se").length - 1, 1, "said once");
   await bare.unmount();
-
-  // The access code's shared sign-in has a name and no e-mail: no empty line for it.
-  const shared = await openAccountMenu(t, { user: { id: "access-code", email: "", username: "Testläge" } });
-  await shared.open();
-  assert.match(shared.menu()!.textContent ?? "", /Testläge/);
-  assert.doesNotMatch(shared.menu()!.textContent ?? "", /@/);
 });
 
 test("Ljust, Mörkt and System are one group named Tema, with the stored choice marked", async (t) => {
@@ -127,27 +115,30 @@ test("Ljust, Mörkt and System are one group named Tema, with the stored choice 
   assert.deepEqual(radios.map((radio) => radio.getAttribute("aria-checked")), ["false", "true", "false"]);
 });
 
-test("choosing a colour mode sets next-themes' mode: the class of the page, kept for the next visit", async (t) => {
+test("choosing a colour mode sets the page's mode: data-theme on <html> for light and dark, none for the system's, kept for the next visit", async (t) => {
   const { open, item, act } = await openAccountMenu(t);
-  await open();
-  await act(async () => {
-    item("Mörkt").click();
-    await settle();
-  });
-  assert.equal(document.documentElement.classList.contains("dark"), true);
+  const dataTheme = () => document.documentElement.getAttribute("data-theme");
+  const choose = async (name: string) => {
+    await open();
+    await act(async () => {
+      item(name).click();
+      await settle();
+    });
+  };
+  await choose("Mörkt");
+  assert.equal(dataTheme(), "dark");
   assert.equal(window.localStorage.getItem("theme"), "dark");
-  await open();
-  await act(async () => {
-    item("Ljust").click();
-    await settle();
-  });
-  assert.equal(document.documentElement.classList.contains("dark"), false);
+  await choose("Ljust");
+  assert.equal(dataTheme(), "light");
   assert.equal(window.localStorage.getItem("theme"), "light");
+  await choose("System");
+  assert.equal(dataTheme(), null, "the system's own preference paints it");
+  assert.equal(window.localStorage.getItem("theme"), "system");
 });
 
 test("Logga ut asks the page's leave question first, and does nothing until the answer is to go on", async (t) => {
   const asked: (() => void)[] = [];
-  const { open, item, act, requests, replaced } = await openAccountMenu(t, { leaveFirst: (goOn) => asked.push(goOn) });
+  const { open, item, act, requests, router } = await openAccountMenu(t, { leaveFirst: (goOn) => asked.push(goOn) });
   await open();
   await act(async () => {
     item("Logga ut").click();
@@ -155,39 +146,65 @@ test("Logga ut asks the page's leave question first, and does nothing until the 
   });
   assert.equal(asked.length, 1, "asked once");
   assert.deepEqual(requests, [], "not signed out yet");
-  assert.deepEqual(replaced, []);
+  assert.equal(router.state.location.pathname, "/flows");
   await act(async () => {
     asked[0]();
     await settle();
   });
   assert.deepEqual(requests, ["POST /api/auth/logout"]);
-  assert.deepEqual(replaced, ["/"]);
+  assert.equal(router.state.location.pathname, "/", "gone to the sign-in page");
+  assert.deepEqual(router.state.location.state, { signedOut: true }, "the sign-in page can explain what remains on the device");
+  assert.equal(router.state.historyAction, "REPLACE", "in place of the page, not on top of it");
 });
 
-test("while signing out it says so, cannot be pressed again, and the page is left however the answer came", async (t) => {
-  for (const answer of [() => Promise.resolve(new Response("{}", { status: 200 })), () => Promise.reject(new TypeError("Failed to fetch")), () => Promise.resolve(new Response("{}", { status: 500 }))]) {
-    let finish: () => void = () => {};
-    const gate = new Promise<void>((resolve) => (finish = resolve));
-    const { open, item, act, requests, replaced, unmount } = await openAccountMenu(t, { logout: () => gate.then(answer) });
+test("while signing out it says so and cannot be pressed again, and the page is left when the session has ended", async (t) => {
+  let finish: () => void = () => {};
+  const gate = new Promise<void>((resolve) => (finish = resolve));
+  const { open, item, act, requests, router } = await openAccountMenu(t, { logout: () => gate.then(() => new Response("{}", { status: 200 })) });
+  await open();
+  await act(async () => {
+    item("Logga ut").click();
+    await settle();
+  });
+  const running = item("Loggar ut…");
+  assert.ok(running, "says so on the item, which the menu stays open to show");
+  assert.ok(running.getAttribute("aria-disabled") === "true" || running.hasAttribute("disabled"), "cannot be chosen again");
+  await act(async () => {
+    running.click();
+    await settle();
+  });
+  assert.deepEqual(requests, ["POST /api/auth/logout"], "one request");
+  assert.equal(router.state.location.pathname, "/flows", "still here while it runs");
+  await act(async () => {
+    finish();
+    await settle();
+  });
+  assert.equal(router.state.location.pathname, "/", "and gone to the sign-in page when it ended");
+  assert.equal(router.state.historyAction, "REPLACE");
+});
+
+test("a sign-out that did not go through leaves the person here, says so, and can be tried again: the session is still the backend's", async (t) => {
+  // The sign-in page sends someone who is still signed in on to the flows, so going there would hide the failure.
+  for (const failure of [() => Promise.reject(new TypeError("Failed to fetch")), () => Promise.resolve(new Response("{}", { status: 500 })), () => Promise.resolve(new Response("{}", { status: 403 }))]) {
+    let answer: () => Promise<Response> = failure;
+    const { open, item, act, requests, router, unmount } = await openAccountMenu(t, { logout: () => answer() });
     await open();
     await act(async () => {
       item("Logga ut").click();
       await settle();
     });
-    const running = item("Loggar ut…");
-    assert.ok(running, "says so on the item, which the menu stays open to show");
-    assert.ok(running.getAttribute("aria-disabled") === "true" || running.hasAttribute("disabled"), "cannot be chosen again");
+    assert.equal(router.state.location.pathname, "/flows", "not gone anywhere");
+    const failed = item("Det gick inte att logga ut. Försök igen.");
+    assert.ok(failed, "the item says what happened");
+    assert.ok(failed.getAttribute("aria-disabled") !== "true" && !failed.hasAttribute("disabled"), "and can be chosen again");
+
+    answer = () => Promise.resolve(new Response("{}", { status: 200 }));
     await act(async () => {
-      running.click();
+      failed.click();
       await settle();
     });
-    assert.deepEqual(requests, ["POST /api/auth/logout"], "one request");
-    assert.deepEqual(replaced, [], "still here while it runs");
-    await act(async () => {
-      finish();
-      await settle();
-    });
-    assert.deepEqual(replaced, ["/"], "and gone to the sign-in page when it ended");
+    assert.deepEqual(requests, ["POST /api/auth/logout", "POST /api/auth/logout"], "tried again");
+    assert.equal(router.state.location.pathname, "/", "and when it went through, the person is gone to the sign-in page");
     await unmount();
   }
 });

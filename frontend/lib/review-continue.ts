@@ -1,6 +1,6 @@
 /**
  * Going on from a review pause: save the edit, approve, resume, with Eneo's lost answers read back. The one path
- * for the review's Godkänn / Spara och fortsätt and the naming dialog's Spara och fortsätt.
+ * for the review's Godkänn och fortsätt, Spara och fortsätt and Fortsätt.
  */
 
 import {

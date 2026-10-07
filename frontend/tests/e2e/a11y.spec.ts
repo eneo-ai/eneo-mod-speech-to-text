@@ -2,22 +2,20 @@
  * Every state at every width and theme: axe (no WCAG violation at any impact,
  * no serious or critical best practice; what axe cannot decide is listed as a
  * manual check), every control named in Chromium's own tree, placeholder text at 4.5:1, target sizes
- * (24 px, WCAG 2.5.8; 44 px under pointer: coarse), reflow at 320 px and 200 % zoom (WCAG
- * 1.4.10, and 1.4.12 text spacing), and no endless motion with reduced
+ * (24 px, WCAG 2.5.8; 44 px under pointer: coarse), nothing past an edge or cut off at every width (WCAG
+ * 1.4.10), 1.4.12 text spacing, and no endless motion with reduced
  * motion. The measurements go to findings.json in each test's output folder.
  */
 import { writeFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
-import { TEXT_SPACING, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
+import { expect, test } from "./gate";
+import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, placeholderContrast, reflow, targetSizes, unnamedControls } from "./checks";
 import { STATES } from "./screens";
 
 for (const state of STATES) {
   test(state.name, async ({ page }, info) => {
     test.skip(state.only ? !state.only(info) : false, "not on this width");
     const project = info.project.name;
-    // Content fits the narrowest widths, a small laptop and the widest screens alike.
     const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
-    const edges = project.startsWith("phone-320") || project === "zoom-200" || desktop;
     await state.go(page, info);
     // SHOTS=1: a picture of every state, for review (test-results/shots/<project>/<state>.png).
     if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
@@ -29,14 +27,15 @@ for (const state of STATES) {
     // A mouse gets the WCAG minimum; a finger gets the house bar of 44 px.
     const coarse = await page.evaluate(() => matchMedia("(pointer: coarse)").matches);
     const touchTargets = coarse ? await targetSizes(page, 44, false) : [];
-    const layout = edges ? await reflow(page) : null;
+    // Nothing past an edge or cut off, at every width the gate has: a layout can break between its breakpoints too.
+    const layout = await reflow(page);
     let spaced = null;
     // Added text spacing is checked on both phone widths, the 1280 laptop and the widest screens: a 1280 x 800
     // laptop clipped the recording's warnings as surely as a phone.
     if (project === "phone-320-light" || project === "phone-390-light" || desktop) {
-      const style = await page.addStyleTag({ content: TEXT_SPACING });
+      const remove = await addStyles(page, TEXT_SPACING);
       spaced = await reflow(page);
-      await style.evaluate((element) => (element as Element).remove());
+      await remove();
     }
     const motion = info.project.use.reducedMotion === "reduce" ? await endlessAnimations(page) : [];
 
@@ -56,10 +55,8 @@ for (const state of STATES) {
     expect.soft(placeholders, "placeholder text under 4.5:1, which axe does not measure (WCAG 1.4.3)").toEqual([]);
     expect.soft(targets, `targets under 24 px (WCAG 2.5.8):${list(targets)}`).toEqual([]);
     expect.soft(touchTargets, `targets under 44 px on a coarse pointer (house bar):${list(touchTargets)}`).toEqual([]);
-    if (layout) {
-      expect.soft(layout.horizontalScroll, "horizontal scroll (WCAG 1.4.10)").toBe(false);
-      expect.soft([...layout.beyond, ...layout.clipped], "content past the edge or cut off (WCAG 1.4.10)").toEqual([]);
-    }
+    expect.soft(layout.horizontalScroll, "horizontal scroll (WCAG 1.4.10)").toBe(false);
+    expect.soft([...layout.beyond, ...layout.clipped], "content past the edge or cut off (WCAG 1.4.10)").toEqual([]);
     if (spaced) {
       expect.soft(spaced.horizontalScroll, "horizontal scroll with increased text spacing (WCAG 1.4.12)").toBe(false);
       expect.soft([...spaced.beyond, ...spaced.clipped], "content past the edge or cut off with increased text spacing (WCAG 1.4.12)").toEqual([]);

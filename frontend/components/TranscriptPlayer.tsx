@@ -1,5 +1,3 @@
-"use client";
-
 import { AlertTriangle, Check, ChevronDown, ChevronUp, Download, Pencil, RotateCcw, RotateCw } from "lucide-react";
 import {
   type ComponentProps,
@@ -13,10 +11,11 @@ import {
 } from "react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Dialog, DialogHeader } from "@astryxdesign/core/Dialog";
 import { Divider } from "@astryxdesign/core/Divider";
 import { HStack } from "@astryxdesign/core/HStack";
 import { IconButton } from "@astryxdesign/core/IconButton";
-import { Popover, type PopoverTriggerRenderProps } from "@astryxdesign/core/Popover";
+import { Layout, LayoutContent, LayoutFooter } from "@astryxdesign/core/Layout";
 import { RadioList, RadioListItem } from "@astryxdesign/core/RadioList";
 import { Selector } from "@astryxdesign/core/Selector";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
@@ -30,6 +29,11 @@ import type { TranscriptEditor } from "@/components/TranscriptEditor";
 import { AudioPlayer, usePlayback, usePlaybackState } from "@/components/flow/AudioPlayer";
 import styles from "@/components/TranscriptPlayer.module.css";
 import { useDock } from "@/lib/dock";
+import { downloadBlob } from "@/lib/download";
+import { scrollBehavior } from "@/lib/motion";
+import { LoadFailure } from "@/components/LoadFailure";
+import { useSignedOut } from "@/components/AuthGate";
+import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 import { formatClock } from "@/lib/format";
 import type { Playback, PlayerSource } from "@/lib/playback";
 import { SPEAKER_REVIEW_ENABLED, type FileSpeakerReview } from "@/lib/speaker-review";
@@ -45,7 +49,7 @@ import {
   paragraphTurns,
   pendingSpeakerReview,
   speakerColorIndex,
-  speakerDisplayLabel,
+  speakerName,
   speakerInitial,
   speakerSummaries,
   type SearchHit,
@@ -64,6 +68,7 @@ import {
   correctionWriteProblem,
   MAX_SPEAKER_EDITS,
   renderReviewedTranscript,
+  sameCorrections,
   type CorrectedRange,
   type CorrectionSet,
 } from "@/lib/transcript-corrections";
@@ -73,10 +78,10 @@ export type CorrectionsSaveState = "idle" | "saving" | "saved" | "error";
 const RATES = [0.75, 1, 1.25, 1.5, 2];
 const NO_SOURCES: readonly PlayerSource[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
-const NONE_LIT: ReadonlySet<number> = new Set();
 const SKIP_SECONDS = 10;
 /** The picker's value for "the speaker cannot be told". */
 const UNRESOLVED = "__unresolved";
+type SpeakerPickerTrigger = Pick<ComponentProps<typeof Button>, "ref" | "onClick" | "aria-haspopup" | "aria-expanded" | "aria-controls">;
 /** The filter value for the passages Eneo asks someone to check: a to-do, not a speaker. */
 const TO_CHECK = "__check";
 /** Above this many speakers a phone picks one from a list instead of scrolling chips. */
@@ -114,40 +119,20 @@ function rateLabel(rate: number): string {
 type EditorProps = ComponentProps<typeof TranscriptEditor>;
 
 // The editor is the review's largest part, shown only where its setting is on: its code loads when it is first shown (a
-// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place,
-// and the server and the browser's first render agree, since neither has the code yet.
-let loadedEditor: ComponentType<EditorProps> | null = null;
+// page that never shows it never loads it), and is kept for the next. Until it has arrived a placeholder holds its place.
+const editor = lazyLoader<ComponentType<EditorProps>>(() => import("@/components/TranscriptEditor").then((module) => module.TranscriptEditor));
 /** Loads the editor ahead of its being shown: a test that renders it as markup waits for this first. */
-export const preloadTranscriptEditor = () => import("@/components/TranscriptEditor").then((module) => (loadedEditor = module.TranscriptEditor));
+export const preloadTranscriptEditor = () => editor.load();
 
 function LazyTranscriptEditor(props: EditorProps) {
-  const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(() => loadedEditor);
-  const [attempt, setAttempt] = useState(0);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => {
-    if (Editor) return;
-    let current = true;
-    setFailed(false);
-    preloadTranscriptEditor().then(
-      (component) => current && setEditor(() => component),
-      () => current && setFailed(true),
-    );
-    return () => {
-      current = false;
-    };
-  }, [Editor, attempt]);
+  const { value: Editor, failed } = useLoaded(editor);
   if (Editor) return <Editor {...props} />;
-  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and a
-  // press tries again: the page is not reloaded, since it may hold a recording or an edit that is not saved.
+  // If its code cannot be fetched (a tab older than the deploy that replaced its files) the placeholder says so and
+  // offers the person's reload, which gives back the review's draft; the page does not reload by itself.
   if (failed) {
     return (
       <div className={styles.editorPending}>
-        <HStack vAlign="center" wrap="wrap" gap={2}>
-          <Text as="p" type="supporting" role="status">
-            Granskningsverktygen kunde inte läsas in.
-          </Text>
-          <Button size="sm" label="Försök igen" onClick={() => setAttempt(attempt + 1)} />
-        </HStack>
+        <LoadFailure keeps="Det du har skrivit finns kvar.">Granskningsverktygen kunde inte läsas in.</LoadFailure>
       </div>
     );
   }
@@ -177,7 +162,7 @@ type Piece = {
   text: string;
   word: TranscriptWord | null;
   wordIndex: number;
-  /** Ursprunglig text när biten är ett rättat spann. */
+  /** The original text, when the piece is a corrected span. */
   correctedFrom: string | null;
   /** A search hit: "current" is the one the arrows are on. */
   hit: "match" | "current" | null;
@@ -185,10 +170,7 @@ type Piece = {
 
 type Hit = { start: number; end: number; current: boolean };
 
-/**
- * Segmentets text uppdelad vid varje ord-, rättnings- och sökgräns, så att en
- * bit är antingen vanlig text, ett tidsatt ord eller ett rättat spann.
- */
+/** The segment's text divided at every word, correction and search boundary, so a piece is plain text, a timed word or a corrected span. */
 function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[], hits: readonly Hit[] = []): Piece[] {
   const text = segment.text;
   const words = (segment.words ?? [])
@@ -220,7 +202,7 @@ function pieces(segment: TranscriptSegment, ranges: readonly CorrectedRange[], h
       hit: hit ? (hit.current ? "current" : "match") : null,
     });
   }
-  // En ren radering lämnar inget spann att peka på; visa en smal markör.
+  // A plain deletion leaves no span to point at: a narrow marker stands in its place.
   for (const r of ranges) {
     if (r.end === r.start) {
       const at = out.findIndex((_, idx) => bounds[idx] >= r.start);
@@ -272,33 +254,33 @@ export function TranscriptPlayer(
     downloadable = true,
     playback: shared,
   }: {
-    /** Råa segment; korrigeringar läggs på vid visning. */
+    /** The raw segments; corrections are laid over them when shown. */
     segments: readonly TranscriptSegment[];
     speakerReviews?: readonly FileSpeakerReview[];
     reviewEnabled?: boolean;
     correctionProblem?: string | null;
-    /** Antal ljudfiler; 0 = inget ljud, bara läsbart transkript. */
+    /** The number of audio files; 0 is no audio, a transcript to read only. */
     fileCount: number;
     audioSrcFor: (fileIndex: number) => string;
-    /** Rå etikett → namn som granskaren valt, läggs ovanpå segmentens etiketter. */
+    /** A raw label to the name the reviewer chose, laid over the segments' labels. */
     speakerNames: Readonly<Record<string, string>>;
-    /** Visas när segment saknas helt. */
+    /** Shown when there are no segments at all. */
     textFallback: string;
     audioPending?: boolean;
     className?: string;
-    /** Sparade/osparade korrigeringar som ska visas ovanpå råtexten. */
+    /** The saved and unsaved corrections to show over the raw text. */
     corrections?: CorrectionSet;
-    /** Tillåt rättning av repliker och talarbyte. Kräver `onCorrectionsChange`. */
+    /** Allows correcting a turn and changing its speaker. Needs `onCorrectionsChange`. */
     editable?: boolean;
     onCorrectionsChange?: (next: CorrectionSet) => void;
-    /** Etiketter en replik kan tilldelas (SPEAKER_NN). */
+    /** The labels a turn can be given (SPEAKER_NN). */
     speakerOptions?: readonly string[];
     saveState?: CorrectionsSaveState;
-    /** Osäkra ord som granskaren lyssnat på och bekräftat (se lib/confirmed-words). */
+    /** The uncertain words the reviewer has listened to and confirmed (lib/confirmed-words). */
     confirmedWords?: ReadonlySet<string>;
-    /** Gör det möjligt att bekräfta/ångra ett osäkert ord. */
+    /** Makes it possible to confirm, or take back, an uncertain word. */
     onToggleConfirmed?: (key: string) => void;
-    /** Egen länk för att hämta det granskade transkriptet; av när sidan har egna åtgärder. */
+    /** Its own link to download the reviewed transcript; off when the page has actions of its own. */
     downloadable?: boolean;
     /**
      * The page's own playback of these parts, when the page shows it elsewhere too
@@ -309,11 +291,10 @@ export function TranscriptPlayer(
 ) {
   const listRef = useRef<HTMLDivElement | null>(null);
   const programmaticScrollUntil = useRef(0);
-  const searchId = useId();
   const pastId = useId();
 
   const [follow, setFollow] = useState(true);
-  const [, dockRef] = useDock();
+  const [dock, dockRef] = useDock();
   const [editingIndex, setEditingIndex] = useState(-1);
   const [editError, setEditError] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
@@ -362,8 +343,7 @@ export function TranscriptPlayer(
   const displayName = useCallback(
     (label: string | null) => {
       if (!label) return "Okänd talare";
-      const name = speakerNames[label];
-      return name && name.trim() ? name.trim() : speakerDisplayLabel(label);
+      return speakerName(label, speakerNames);
     },
     [speakerNames],
   );
@@ -416,6 +396,15 @@ export function TranscriptPlayer(
     playback.setRate(RATES[(RATES.indexOf(rate) + 1) % RATES.length]);
   }
 
+  function skipFromControl(milliseconds: number, trigger: HTMLElement) {
+    playback.skip(milliseconds);
+    const next = playback.getSnapshot();
+    // The pressed control becomes disabled at a boundary. Keep keyboard focus in the player, on its position.
+    if (document.activeElement === trigger && (next.atMs === 0 || next.atEnd)) {
+      dock?.querySelector<HTMLElement>('[role="slider"]')?.focus();
+    }
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
     const action = shortcut(e.key);
     if (!action) return;
@@ -428,7 +417,6 @@ export function TranscriptPlayer(
     else playback.skip(action.skipMs);
   }
 
-  // Följ uppspelningen: rulla den aktiva repliken till mitten.
   useEffect(() => {
     if (!follow || activeIndex < 0 || !listRef.current || editingIndex >= 0) return;
     const el = listRef.current.querySelector<HTMLElement>(
@@ -437,7 +425,7 @@ export function TranscriptPlayer(
     const block = el?.closest<HTMLElement>("[data-turn-index]") ?? el;
     if (!block) return;
     programmaticScrollUntil.current = Date.now() + 800;
-    block.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    block.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [activeIndex, follow, editingIndex]);
 
   // The search's current hit is brought into view, and playback stops pulling the text away from it.
@@ -447,7 +435,7 @@ export function TranscriptPlayer(
     if (!el) return;
     programmaticScrollUntil.current = Date.now() + 800;
     setFollow(false);
-    el.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+    el.scrollIntoView({ block: "center", behavior: scrollBehavior() });
   }, [currentHit, query]);
 
   function onUserScroll() {
@@ -530,9 +518,11 @@ export function TranscriptPlayer(
     } catch (e) {
       return e instanceof Error ? e.message : "Talaren kunde inte ändras.";
     }
+    // A passage with no speaker of Eneo's has nothing to move: say so rather than save a set that changes nothing.
+    if (sameCorrections(next, corrections)) return "Talaren kan inte ändras för det här inlägget.";
     // Eneo refuses a set with more speaker edits than it holds; say so before sending.
     if (next.speaker_edits.length > MAX_SPEAKER_EDITS) {
-      return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriptet, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
+      return `Det blir fler än ${MAX_SPEAKER_EDITS.toLocaleString("sv-SE")} talarändringar i transkriberingen, mer än Eneo sparar. Ändra färre inlägg åt gången.`;
     }
     setEditError(null);
     onCorrectionsChange?.(next);
@@ -543,9 +533,9 @@ export function TranscriptPlayer(
     // Still being read: its shape, not the raw text and a warning that would flash by for a moment.
     if (audioPending) {
       return (
-        <section className={join(styles.loading, className)} aria-label="Transkript" aria-busy="true">
+        <section className={join(styles.loading, className)} aria-label="Transkribering" aria-busy="true">
           <VisuallyHidden as="p" role="status">
-            Hämtar transkriptet…
+            Hämtar transkriberingen…
           </VisuallyHidden>
           {[0, 1, 2].map((row) => (
             <HStack key={row} gap={3} vAlign="start">
@@ -561,23 +551,22 @@ export function TranscriptPlayer(
       );
     }
     return (
-      <section className={join(styles.fallback, className)} aria-label="Transkript">
+      <section className={join(styles.fallback, className)} aria-label="Transkribering">
         <Text as="p" type="supporting">
-          Transkriptet saknar tidsmarkeringar och kan inte följas i ljudet.
+          Transkriberingen saknar tidsmarkeringar och kan inte följas i ljudet.
         </Text>
         <pre className={styles.fallbackText}>{textFallback}</pre>
       </section>
     );
   }
 
-  // Parts are read in order, each under its own heading when the recording has more than one.
   const parts: { fileIndex: number; turns: TranscriptTurn[] }[] = [];
   for (const turn of visibleTurns) {
     const last = parts[parts.length - 1];
     if (last && last.fileIndex === turn.fileIndex) last.turns.push(turn);
     else parts.push({ fileIndex: turn.fileIndex, turns: [turn] });
   }
-  // Search works on any transcript; the speaker row only where the flow labelled speakers.
+  // The search and the speaker row show on a transcript with segments, while the review's own view is off.
   const tools = !reviewEnabled && hasSegments;
   const saveText = saveState === "saving" ? "Sparar…" : saveState === "saved" ? "Rättningar sparade" : saveState === "error" ? "Kunde inte spara" : "";
   // No count until there is something to look for; then "1 av 3".
@@ -587,7 +576,7 @@ export function TranscriptPlayer(
     <section
       className={join(styles.player, className)}
       role="region"
-      aria-label="Inspelning och transkript"
+      aria-label="Inspelning och transkribering"
       tabIndex={0}
       onKeyDown={onKeyDown}
     >
@@ -636,11 +625,11 @@ export function TranscriptPlayer(
           <HStack gap={2} vAlign="center">
             <div className={styles.search}>
               <TextInput
-                label="Sök i transkriptet"
+                label="Sök i transkriberingen"
                 isLabelHidden
                 startIcon="search"
                 hasClear
-                placeholder="Sök i transkriptet"
+                placeholder="Sök i transkriberingen"
                 value={query}
                 onChange={(next) => {
                   setQuery(next);
@@ -656,8 +645,8 @@ export function TranscriptPlayer(
             {query.trim() && (
               <>
                 <Text type="supporting" className={styles.hitCount}>{hitStatus}</Text>
-                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(-1)} />
-                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length === 0} onClick={() => stepHit(1)} />
+                <IconButton label="Föregående träff" icon={<ChevronUp aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(-1)} />
+                <IconButton label="Nästa träff" icon={<ChevronDown aria-hidden />} isDisabled={hits.length < 2} onClick={() => stepHit(1)} />
               </>
             )}
           </HStack>
@@ -671,7 +660,6 @@ export function TranscriptPlayer(
         {saveText}
       </VisuallyHidden>
       {(audioPending ||
-        audioUnavailable ||
         fileCount === 0 ||
         uncertainWords > 0 ||
         saveState !== "idle") && (
@@ -680,12 +668,6 @@ export function TranscriptPlayer(
             {audioPending && <Text as="p" type="supporting">Hämtar ljud…</Text>}
             {!audioPending && fileCount === 0 && (
               <Text as="p" type="supporting">Ljudet är inte tillgängligt för den här körningen.</Text>
-            )}
-            {audioUnavailable && (
-              <p className={styles.error}>
-                Ljudet kunde inte spelas.{" "}
-                <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
-              </p>
             )}
             {uncertainWords > 0 && (
               <Text as="p" type="supporting">
@@ -731,13 +713,9 @@ export function TranscriptPlayer(
           variant="ghost"
           size="sm"
           icon={<Download aria-hidden />}
-          label="Hämta granskat transkript"
+          label="Hämta granskad transkribering"
           className={styles.download}
-          onClick={() => {
-            const url = URL.createObjectURL(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }));
-            const link = document.createElement("a"); link.href = url; link.download = "granskat-transkript.txt"; link.click();
-            setTimeout(() => URL.revokeObjectURL(url), 1000);
-          }}
+          onClick={() => downloadBlob(new Blob([renderReviewedTranscript(segments, corrections, speakerNames)], { type: "text/plain;charset=utf-8" }), "granskad-transkribering.txt")}
         />
       )}
 
@@ -754,9 +732,9 @@ export function TranscriptPlayer(
         }}
         className={styles.skipLink}
       >
-        Hoppa förbi transkriptet
+        Hoppa förbi transkriberingen
       </a>
-      {/* Transkript: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
+      {/* Transkribering: on a phone it is part of the page, from a laptop it scrolls inside its card. */}
       <div
         ref={listRef}
         onWheel={onUserScroll}
@@ -777,7 +755,7 @@ export function TranscriptPlayer(
             {totalFiles > 1 && (
               <h3 className={styles.partHeading}>Del {part.fileIndex + 1}</h3>
             )}
-            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriptet"}>
+            <ol className={styles.turns} aria-label={totalFiles > 1 ? `Del ${part.fileIndex + 1}` : "Transkriberingen"}>
               {part.turns.map((turn) => {
                 // A decision, or a span of a shared sentence, needs Eneo's newer format; a whole passage does not.
                 const editableTurn =
@@ -795,8 +773,7 @@ export function TranscriptPlayer(
                     correctedRanges={correctedRanges}
                     hitsBySegment={hitsBySegment}
                     partLabel={totalFiles > 1 ? ` i del ${turn.fileIndex + 1}` : ""}
-                    // A passage is lit only while it plays; a paused recording lights nothing.
-                    activeIndices={paused ? NONE_LIT : activeIndices}
+                    activeIndices={activeIndices}
                     currentTime={playhead}
                     labelled={labelled}
                     displayName={displayName}
@@ -819,7 +796,8 @@ export function TranscriptPlayer(
                     onCommitLine={commitLine}
                     onRevertLine={revertLine}
                     onReassign={(speaker, all) => reassign(turn, speaker, all)}
-                    onSeekTurn={() => seekTo(turn.fileIndex, turn.start, !paused)}
+                    // "Spela från": it plays, also from a pause.
+                    onSeekTurn={() => seekTo(turn.fileIndex, turn.start, true)}
                     onPartClick={onPartClick}
                   />
                 );
@@ -844,22 +822,29 @@ export function TranscriptPlayer(
               {rateLabel(rate)}
             </Button>
           </div>
+          {/* Beside the controls it is about, and announced: the press that asked for the audio is answered here. */}
+          {audioUnavailable && (
+            <p role="alert" className={styles.error}>
+              Ljudet kunde inte spelas.{" "}
+              <Button variant="ghost" size="sm" label="Försök igen" onClick={() => playback.reload()} />
+            </p>
+          )}
           <AudioPlayer playback={playback} label="Inspelningen">
             <IconButton
               variant="ghost"
               className={styles.skip}
-              isDisabled={audioUnavailable}
+              isDisabled={audioUnavailable || position.atMs === 0}
               label={`Bakåt ${SKIP_SECONDS} sekunder`}
               icon={<RotateCcw aria-hidden />}
-              onClick={() => playback.skip(-SKIP_SECONDS * 1_000)}
+              onClick={(event) => skipFromControl(-SKIP_SECONDS * 1_000, event.currentTarget)}
             />
             <IconButton
               variant="ghost"
               className={styles.skip}
-              isDisabled={audioUnavailable}
+              isDisabled={audioUnavailable || position.atEnd}
               label={`Framåt ${SKIP_SECONDS} sekunder`}
               icon={<RotateCw aria-hidden />}
-              onClick={() => playback.skip(SKIP_SECONDS * 1_000)}
+              onClick={(event) => skipFromControl(SKIP_SECONDS * 1_000, event.currentTarget)}
             />
             <Button variant="ghost" size="sm" label={`Hastighet ${rateLabel(rate)}`} className={styles.rate} onClick={cycleRate}>
               {rateLabel(rate)}
@@ -954,7 +939,7 @@ function TurnBlock({
     wasEditing.current = editingHere;
   }, [editingHere]);
 
-  const picker = (trigger: (props: PopoverTriggerRenderProps) => React.ReactNode) => (
+  const picker = (trigger: (props: SpeakerPickerTrigger) => React.ReactNode) => (
     <SpeakerPicker
       current={toCheck || decision === "unresolved" ? null : turn.speaker}
       suggested={toCheck ? turn.speaker : null}
@@ -1062,7 +1047,7 @@ function TurnBlock({
                     const flagged = Boolean(piece.word?.uncertain) && !confirmed;
                     const isWordActive =
                       Boolean(piece.word) && partActive && piece.wordIndex === findActiveWordIndex(part.segment.words ?? [], currentTime);
-                    // Bekräftelseknappen sitter efter ordets sista bit.
+                    // The confirm button sits after the word's last piece.
                     const lastOfWord =
                       Boolean(piece.word?.uncertain) &&
                       all[k + 1]?.wordIndex !== piece.wordIndex;
@@ -1071,13 +1056,15 @@ function TurnBlock({
                       <span key={k}>
                         <Word
                           data-word-start={piece.word ? piece.word.start : undefined}
+                          aria-current={isWordActive ? "true" : undefined}
                           data-hit={piece.hit ?? undefined}
                           className={join(
                             styles.word,
                             flagged && styles.flagged,
                             confirmed && styles.confirmed,
                             piece.hit === "match" && styles.match,
-                            (piece.hit === "current" || isWordActive) && styles.lit,
+                            piece.hit === "current" && styles.currentMatch,
+                            isWordActive && styles.lit,
                             piece.correctedFrom !== null && styles.corrected,
                           )}
                           title={
@@ -1178,88 +1165,105 @@ function SpeakerPicker({
   /** Saves the choice; returns why it was not saved, or null. */
   onPick: (speaker: string, all: boolean) => string | null;
   /** The button that opens it: the design system's own props for it go on the button. */
-  children: (trigger: PopoverTriggerRenderProps) => React.ReactNode;
+  children: (trigger: SpeakerPickerTrigger) => React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [choice, setChoice] = useState<string>(current ?? "");
   const [scope, setScope] = useState<"one" | "all">("one");
   const [problem, setProblem] = useState<string | null>(null);
   const others = suggested ? options.filter((label) => label !== suggested) : options;
+  const trigger = useRef<HTMLButtonElement>(null);
+  const dialogId = useId();
+  const covered = useSignedOut();
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus({ preventScroll: true });
+    wasOpen.current = open;
+  }, [open]);
+  const close = () => setOpen(false);
+  const submit = () => {
+    if (!choice) return;
+    const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
+    setProblem(refused);
+    if (!refused) close();
+  };
 
   return (
-    <Popover
-      isOpen={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        if (next) {
-          // Every opening starts from this passage alone; all of a speaker's passages is a deliberate choice.
+    <>
+      {children({
+        ref: trigger,
+        "aria-haspopup": "dialog",
+        "aria-expanded": open,
+        "aria-controls": dialogId,
+        onClick: () => {
           setChoice(current ?? "");
           setScope("one");
           setProblem(null);
-        }
-      }}
-      label="Ändra talare"
-      width="22rem"
-      placement="below"
-      alignment="start"
-      isModal={false}
-      hasCloseButton={false}
-      content={
-        // Only while it is open: a long meeting has hundreds of passages, none of them with a form of its own in the page.
-        open ? (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!choice) return;
-              const refused = onPick(choice, choice !== UNRESOLVED && scope === "all" && passages > 1);
-              setProblem(refused);
-              if (!refused) setOpen(false);
-            }}
-          >
-            <div className={styles.pickerHead}>
-              <Text as="p" weight="semibold">Ändra talare</Text>
-              <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
-            </div>
-            <div className={styles.pickerList}>
-              <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
-                {suggested && (
-                  <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
+          setOpen(true);
+        },
+      })}
+      <Dialog
+        id={dialogId}
+        aria-label="Ändra talare"
+        isOpen={open && !covered}
+        onOpenChange={(next) => !next && close()}
+        width="22rem"
+        maxHeight="calc(100dvh - 2 * var(--spacing-4))"
+        purpose="form"
+      >
+        {/* A long meeting has hundreds of passages; only the open dialog needs its controls. */}
+        {open && (
+          <Layout
+            header={<DialogHeader title="Ändra talare" onOpenChange={close} />}
+            content={
+              <LayoutContent padding={0}>
+                <div className={styles.pickerHead}>
+                  <Text as="p" type="supporting" maxLines={2} hasTruncateTooltip={false}>{quote}</Text>
+                </div>
+                <div className={styles.pickerList}>
+                  <RadioList label="Ändra talare" isLabelHidden value={choice} onChange={setChoice}>
+                    {suggested && (
+                      <PickerOption value={suggested} label={suggested} name={`Det stämmer: ${displayName(suggested)}`} markName={displayName(suggested)} />
+                    )}
+                    {others.map((label) => (
+                      <PickerOption
+                        key={label}
+                        value={label}
+                        label={label}
+                        name={displayName(label)}
+                        note={label === stored && !toCheck ? "ursprunglig" : undefined}
+                      />
+                    ))}
+                    {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
+                  </RadioList>
+                </div>
+                {passages > 1 && choice !== UNRESOLVED && (
+                  <div className={styles.pickerSection}>
+                    <RadioList label="Gäller" value={scope} onChange={(value) => setScope(value as "one" | "all")}>
+                      <RadioListItem value="one" label="Bara det här inlägget" />
+                      <RadioListItem value="all" label={`Alla ${passages} inlägg från ${fromName}`} />
+                    </RadioList>
+                  </div>
                 )}
-                {others.map((label) => (
-                  <PickerOption
-                    key={label}
-                    value={label}
-                    label={label}
-                    name={displayName(label)}
-                    note={label === stored && !toCheck ? "ursprunglig" : undefined}
-                  />
-                ))}
-                {toCheck && <PickerOption value={UNRESOLVED} label={null} name="Går inte att avgöra" />}
-              </RadioList>
-            </div>
-            {passages > 1 && choice !== UNRESOLVED && (
-              <div className={styles.pickerSection}>
-                <RadioList label="Gäller" value={scope} onChange={(value) => setScope(value as "one" | "all")}>
-                  <RadioListItem value="one" label="Bara det här inlägget" />
-                  <RadioListItem value="all" label={`Alla ${passages} inlägg från ${fromName}`} />
-                </RadioList>
-              </div>
-            )}
-            {problem && (
-              <div className={styles.pickerSection}>
-                <Banner status="error" title={problem} collapsible={false} />
-              </div>
-            )}
-            <HStack gap={2} hAlign="end" className={styles.pickerSection}>
-              <Button variant="ghost" size="sm" label="Avbryt" onClick={() => setOpen(false)} />
-              <Button type="submit" variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} />
-            </HStack>
-          </form>
-        ) : null
-      }
-    >
-      {children}
-    </Popover>
+                {problem && (
+                  <div className={styles.pickerSection}>
+                    <Banner status="error" title={problem} collapsible={false} />
+                  </div>
+                )}
+              </LayoutContent>
+            }
+            footer={
+              <LayoutFooter hasDivider>
+                <HStack gap={2} hAlign="end">
+                  <Button variant="ghost" size="sm" label="Avbryt" onClick={close} />
+                  <Button variant="primary" size="sm" label="Spara" isDisabled={!choice || choice === current} onClick={submit} />
+                </HStack>
+              </LayoutFooter>
+            }
+          />
+        )}
+      </Dialog>
+    </>
   );
 }
 
@@ -1267,9 +1271,13 @@ function PickerOption({ value, label, name, markName = name, note }: { value: st
   return (
     <RadioListItem
       value={value}
-      label={name}
-      startContent={<SpeakerMark label={label} name={markName} size="sm" />}
-      endContent={note ? <Text type="supporting">{note}</Text> : undefined}
+      label={
+        <HStack as="span" gap={2} align="center">
+          <SpeakerMark label={label} name={markName} size="sm" />
+          {name}
+        </HStack>
+      }
+      description={note}
     />
   );
 }
@@ -1306,8 +1314,9 @@ function LineEditor({
     fit(el);
   }, []);
   return (
-    <div
+    <VStack
       className={styles.lineEditor}
+      gap={3}
       // Focus moving between the text and its buttons stays in the editor; leaving it all saves or closes.
       onBlur={(e) => {
         if (locked || e.currentTarget.contains(e.relatedTarget as Node | null)) return;
@@ -1341,12 +1350,12 @@ function LineEditor({
         }}
       />
       {locked ? (
-        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
+        <HStack gap={3} wrap="wrap" vAlign="center">
           <Text type="supporting">Rättningen kan inte sparas längre. Kopiera texten om du vill behålla den.</Text>
           <Button size="sm" variant="ghost" label="Stäng" onClick={onCancel} />
         </HStack>
       ) : (
-        <HStack gap={3} wrap="wrap" vAlign="center" className={styles.editorActions}>
+        <HStack gap={3} wrap="wrap" vAlign="center">
           {/* Pressed without taking the focus, so leaving the field does not save first. */}
           <Button size="sm" variant="primary" label="Spara" onMouseDown={(e) => e.preventDefault()} onClick={() => onCommit(value)} />
           <Button size="sm" variant="ghost" label="Avbryt" onMouseDown={(e) => e.preventDefault()} onClick={onCancel} />
@@ -1356,6 +1365,6 @@ function LineEditor({
           )}
         </HStack>
       )}
-    </div>
+    </VStack>
   );
 }

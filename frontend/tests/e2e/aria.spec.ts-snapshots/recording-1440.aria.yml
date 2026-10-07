@@ -2,24 +2,27 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - link "Tal till text – Sundsvalls kommun":
-      - /url: /flows
-      - img "Sundsvalls kommun"
-      - text: ""
-    - text: "Läge: Spela in"
-- main:
-  - link "Alla flöden":
-    - /url: /flows
+    - img "Sundsvalls kommun"
     - text: ""
-    - status
+    - link "Alla flöden":
+      - /url: /flows
+      - text: ""
+      - status
+    - button "Öppna konto för Erik Lund":
+      - img "Erik Lund": EL
+      - status
+- main:
   - heading "Nämndmöte till rapport" [level=1]
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
-  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma. 1 namn tillagt.
+  - text: Deltagare Valfritt Skriv ett namn och välj Lägg till. Skilj flera namn med komma.
   - group "Deltagare Valfritt":
     - text: Lägg till namn
     - textbox "Deltagare Valfritt Lägg till namn":
       - /placeholder: Lägg till namn
+    - button "Lägg till" [disabled]:
+      - text: ""
+      - status
   - list "Tillagda namn":
     - listitem:
       - text: Anna Berg
@@ -30,12 +33,13 @@
     - status
     - heading "Inspelning" [level=2]
     - text: /Spelar in 0:\d+/
-    - paragraph: Texten skapas när du stoppar inspelningen. Inspelningen sparas på enheten medan du spelar in, men webbläsaren kan rensa den om den ligger kvar osänd för länge.
-    - button "Pausa":
-      - text: ""
-      - status
-    - button "Stoppa":
-      - text: ""
-      - status
+    - paragraph: Texten skapas när du stoppar inspelningen.
+    - toolbar "Inspelningen":
+      - button "Pausa":
+        - text: ""
+        - status
+      - button "Stoppa":
+        - text: ""
+        - status
     - status
     - paragraph: Stoppa avslutar inspelningen. Sedan kan du skapa dokumentet.

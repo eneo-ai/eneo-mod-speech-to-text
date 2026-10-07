@@ -65,7 +65,7 @@ test("the bar keeps Pausa and Stoppa in place, says Fortsätt while paused, and 
   assert.ok(alert.compareDocumentPosition(pause) & Node.DOCUMENT_POSITION_FOLLOWING, "above the controls");
   assert.match(alert.textContent ?? "", /Vi hör inget från mikrofonen\./);
 
-  const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null, storageNote: null }));
+  const recorder = await mount(createElement(FocusedRecorder, { capture, phase: "recording", stream: null }));
   for (const view of [running, recorder]) {
     // Everything inside a live region is checked for the timer, and the timer itself is on the page.
     assert.ok(text(view.container, "span", "0:00"), "the timer is shown");
@@ -88,7 +88,6 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const container = await sheet({
     status: "reconnecting",
     started: true,
-    complete: false,
     pieces: [
       { text: "Välkomna till nämndens möte.", opensParagraph: true },
       { text: "Första punkten.", opensParagraph: false },
@@ -105,26 +104,45 @@ test("the live sheet is a named log of committed text; words still arriving are 
   const pending = log.querySelector('[aria-hidden="true"]');
   assert.equal(pending?.textContent?.trim(), "Ramen höjs", "words still arriving are shown, and not read");
   assert.ok(!log.querySelector('[role="status"]')?.textContent, "nothing of them in a live region");
-  const status = log.nextElementSibling;
-  assert.equal(status?.getAttribute("role"), "status", "the status line follows the log");
+  const status = log.parentElement?.nextElementSibling;
+  assert.equal(status?.getAttribute("role"), "status", "the status line follows the log and its jump button");
   assert.equal(status?.textContent, "Livetexten pausades. Inspelningen fortsätter.");
   assert.ok(!container.textContent?.includes("Visa senaste"), "following the text: no jump button");
 
-  const empty = await sheet({ status: "connecting", started: false, complete: false, pieces: [], pending: "" });
+  const empty = await sheet({ status: "connecting", started: false, pieces: [], pending: "" });
   assert.match(empty.textContent ?? "", /Texten visas här när du börjar prata\./);
-  const emptyStatus = empty.querySelector('[role="log"]')?.nextElementSibling;
+  const emptyStatus = empty.querySelector('[role="log"]')?.parentElement?.nextElementSibling;
   assert.equal(emptyStatus?.getAttribute("role"), "status", "the status region is there before anything is said");
   assert.equal(emptyStatus?.textContent, "", "and says nothing");
-  const refused = await sheet({ status: "unavailable", started: false, complete: false, pieces: [], pending: "" });
+  const refused = await sheet({ status: "unavailable", started: false, pieces: [], pending: "" });
   assert.ok(!refused.textContent?.includes("Texten visas här"), "no promise of text that will not come");
   assert.match(refused.textContent ?? "", /Livetexten kunde inte starta\./);
+});
+
+test("the live sheet shows the relay's final text where a session's deltas were, also when the paragraph keeps its length", async () => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const first = { text: "Hej alla.", opensParagraph: true };
+  let snapshot: LiveSnapshot = { status: "live", started: true, pieces: [first, { text: "Vi börjar", opensParagraph: false }], pending: "" };
+  const listeners = new Set<() => void>();
+  const live: LiveSession = {
+    ...liveOf(snapshot),
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
+  };
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const log = () => view.container.querySelector('[role="log"]')!.textContent;
+  assert.match(log() ?? "", /Hej alla\. Vi börjar/);
+  snapshot = { ...snapshot, pieces: [first, { text: "Vi börjar nu.", opensParagraph: false }] };
+  await view.act(async () => listeners.forEach((listener) => listener()));
+  assert.match(log() ?? "", /Hej alla\. Vi börjar nu\./);
 });
 
 test("the live sheet's jump button shows when the reader has scrolled up, and gives the focus to the text it scrolls to", async () => {
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
   const pieces = [{ text: "Välkomna till nämndens möte.", opensParagraph: true }];
-  const view = await mount(createElement(LiveSheet, { live: liveOf({ status: "live", started: true, complete: false, pieces, pending: "" }), recorder: "recording" }));
+  const view = await mount(createElement(LiveSheet, { live: liveOf({ status: "live", started: true, pieces, pending: "" }), recorder: "recording" }));
   const log = view.container.querySelector<HTMLElement>('[role="log"]')!;
   // A text taller than its box, read from the top: jsdom has no layout, so the log says how tall it is.
   let top = 0;
@@ -151,10 +169,112 @@ test("the live sheet's jump button shows when the reader has scrolled up, and gi
 test("the live sheet says the speakers come when you are done, only when the flow labels speakers", async () => {
   const { createElement } = await import("react");
   const { LiveSheet } = await import("../components/flow/LiveSheet");
-  const { labelsSpeakers } = await import("./flow-session");
-  const live = liveOf({ status: "live", started: true, complete: false, pieces: [], pending: "" });
+  const live = liveOf({ status: "live", started: true, pieces: [], pending: "" });
   const heading = async (speakers: boolean) =>
     (await mount(createElement(LiveSheet, { live, recorder: "recording", speakers }))).container.querySelector("h2")?.textContent;
   assert.equal(await heading(true), "Preliminär text. Talare och den slutliga texten kommer när du är klar.");
   assert.equal(await heading(false), "Preliminär text, den slutliga skapas när du är klar");
+});
+
+
+/** A live session whose status the test moves. */
+function movingLive(first: LiveSnapshot) {
+  let snapshot = first;
+  const listeners = new Set<() => void>();
+  const live: LiveSession = {
+    ...liveOf(first),
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => (listeners.add(listener), () => void listeners.delete(listener)),
+  };
+  return {
+    live,
+    move: (next: Partial<LiveSnapshot>) => {
+      snapshot = { ...snapshot, ...next };
+      listeners.forEach((listener) => listener());
+    },
+  };
+}
+
+const PAUSED = "Livetexten pausades. Inspelningen fortsätter.";
+
+test("a break in live text is said only once it has lasted 5 seconds, once, however often the connection flaps, and taken back after 5 seconds up", async (t) => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  const { LIVE_SETTLE_MS } = await import("../components/flow/recording-hooks");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { live, move } = movingLive({ status: "live", started: true, pieces: [{ text: "Hej.", opensParagraph: true }], pending: "" });
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const region = view.container.querySelector('[role="log"]')!.parentElement!.nextElementSibling!;
+  assert.equal(region.getAttribute("role"), "status");
+  // Everything the region is told, as a screen reader would hear it.
+  const heard: string[] = [];
+  new window.MutationObserver(() => void heard.push(region.textContent ?? "")).observe(region, { childList: true, characterData: true, subtree: true });
+  const at = async (ms: number) => view.act(async () => t.mock.timers.tick(ms));
+  const change = (status: LiveSnapshot["status"]) => view.act(async () => move({ status }));
+
+  // A break that mends within the time is never said.
+  await change("reconnecting");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, "", "not yet");
+  await change("live");
+  await at(2 * LIVE_SETTLE_MS);
+  assert.deepEqual(heard, [], "a short break is not news");
+
+  // One that lasts is said when it has lasted.
+  await change("reconnecting");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, "");
+  await at(1);
+  assert.equal(region.textContent, PAUSED);
+  assert.deepEqual(heard, [PAUSED]);
+
+  // A connection that flaps does not take it back and say it again at every break.
+  for (let flap = 0; flap < 5; flap += 1) {
+    await change("live");
+    await at(1_000);
+    await change("reconnecting");
+    await at(1_000);
+  }
+  assert.equal(region.textContent, PAUSED);
+  assert.deepEqual(heard, [PAUSED], "said once");
+
+  // Up for as long as it took to be said, it is taken back.
+  await change("live");
+  await at(LIVE_SETTLE_MS - 1);
+  assert.equal(region.textContent, PAUSED);
+  await at(1);
+  assert.equal(region.textContent, "");
+});
+
+test("live text that cannot go on is said at once, also while a break has not yet been said", async (t) => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { live, move } = movingLive({ status: "live", started: true, pieces: [{ text: "Hej.", opensParagraph: true }], pending: "" });
+  const view = await mount(createElement(LiveSheet, { live, recorder: "recording" }));
+  const region = () => view.container.querySelector('[role="log"]')!.parentElement!.nextElementSibling!.textContent;
+  await view.act(async () => move({ status: "reconnecting" }));
+  assert.equal(region(), "");
+  await view.act(async () => move({ status: "stopped" }));
+  assert.equal(region(), "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar.");
+});
+
+test("with no text yet, the sheet says why in place of the promise of text, and only the failure's sentence is said", async () => {
+  const { createElement } = await import("react");
+  const { LiveSheet } = await import("../components/flow/LiveSheet");
+  for (const [status, started, sentence] of [
+    ["reconnecting", false, "Livetexten kan inte starta just nu. Inspelningen fortsätter."],
+    ["unavailable", false, "Livetexten kunde inte starta. Inspelningen fortsätter, och texten skapas när du stoppar."],
+    ["stopped", true, "Livetexten stannade. Inspelningen fortsätter, och texten skapas när du stoppar."],
+  ] as const) {
+    const view = await mount(createElement(LiveSheet, { live: liveOf({ status, started, pieces: [], pending: "" }), recorder: "recording" }));
+    const log = view.container.querySelector('[role="log"]')!;
+    assert.equal(log.textContent, sentence, `${status}: the sentence is where the promise was`);
+    assert.ok(!view.container.textContent?.includes("Texten visas här"), `${status}: no promise of text that will not come`);
+    assert.equal(log.querySelector("p")!.getAttribute("aria-hidden"), "true", "read once, from the status region");
+    const region = log.parentElement!.nextElementSibling!;
+    assert.equal(region.getAttribute("role"), "status");
+    assert.equal(region.textContent, sentence, "the status region still says it");
+    await view.unmount();
+  }
 });

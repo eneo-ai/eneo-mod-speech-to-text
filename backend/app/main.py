@@ -3,12 +3,13 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import enum
+import json
 import logging
 import math
 import re
 import time
 import unicodedata
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator, AsyncIterator
 from email.message import Message
 from email.utils import collapse_rfc2231_value
 from typing import Literal, NamedTuple
@@ -21,14 +22,19 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Header,
     Request,
     Response,
     WebSocket,
     WebSocketDisconnect,
 )
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
-from starlette.datastructures import UploadFile
+from python_multipart.multipart import parse_options_header
+from starlette.datastructures import FormData, UploadFile
+from starlette.formparsers import MultiPartException, MultiPartParser
+from starlette.routing import compile_path
 from starlette.types import Receive, Scope, Send
 from websockets.asyncio.client import ClientConnection, connect
 from websockets.exceptions import (
@@ -40,9 +46,11 @@ from websockets.exceptions import (
 
 from app.accent import etag, theme_css
 from app.config import load_settings
-from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, declared_length, too_large
+from app.limits import UPLOAD_ENVELOPE_BYTES, BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, capacity_slot, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
-from app.upstream import SMALL_ANSWER, SMALL_ANSWER_BYTES, STREAMED, UnboundedAnswer, make_client
+from app.resumable import CHUNK_BYTES, IncomingUpload, UploadFailure, UploadMetadata, UploadStatus, UploadStore
+from app.upstream import CONNECT_TIMEOUT_SECONDS, SMALL_ANSWER, SMALL_ANSWER_BYTES, SMALL_CALL_TIMEOUT, STREAMED, UnboundedAnswer, make_client
+from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
 logger = logging.getLogger("eneo_proxy")
 logging.basicConfig(level=logging.INFO)
@@ -62,17 +70,47 @@ MIN_UPLOAD_PROXY_TIMEOUT_SECONDS = 60.0
 
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await http_client.aclose()
+    janitor = asyncio.create_task(app.state.uploads.sweep(), name="upload-expiry")
+    try:
+        yield
+    finally:
+        janitor.cancel()
+        await asyncio.gather(janitor, return_exceptions=True)
+        await app.state.uploads.close()
+        await http_client.aclose()
 
 
-app = FastAPI(title="Eneo Speech-to-Text Module Backend", lifespan=lifespan)
+# No documentation routes: the schema describes a surface that is not for browsers, and /docs and /openapi.json are not
+# something to leave open on the module's origin (an ordinary unknown path answers instead).
+app = FastAPI(
+    title="Eneo Speech-to-Text Module Backend",
+    lifespan=lifespan,
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
+    # A slash twin of a route is a 404, never a 307 whose Location says http:// behind a proxy that ends TLS (a fetch on
+    # an https page refuses it as mixed content). The page sends the exact path and the backend matches it as spelled.
+    redirect_slashes=False,
+)
 app.add_middleware(BodyLimitMiddleware, settings=settings)
 app.add_exception_handler(BodyTooLarge, body_too_large_handler)
+app.state.upload_slots = anyio.CapacityLimiter(settings.max_concurrent_uploads)
+app.state.heavy_io_slots = anyio.CapacityLimiter(settings.max_concurrent_heavy_io)
+app.state.uploads = UploadStore()
+# Last of the middleware, so the outermost: the 413 above and every answer below carry the security headers.
+add_security_headers(app)
 
 http_client = make_client(settings)
 module_auth = ModuleAuth(settings=settings, http_client=http_client)
 app.include_router(module_auth.router, prefix="/api/auth")
+
+# What a request under /api/eneo that changes something passes before its body is read, in this order: a session, the
+# module's own origin (a read is exempt) and a page that names the session's user (a read may name nobody).
+_SESSION_ORIGIN_AND_USER = [
+    Depends(module_auth.require_session),
+    Depends(module_auth.require_same_origin),
+    Depends(module_auth.require_expected_user),
+]
 
 
 def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
@@ -83,7 +121,7 @@ def _upload_timeout(timeout_seconds: float | None = None) -> httpx.Timeout:
             max(MIN_UPLOAD_PROXY_TIMEOUT_SECONDS, timeout_seconds),
         )
     return httpx.Timeout(
-        connect=10.0,
+        connect=CONNECT_TIMEOUT_SECONDS,
         read=effective_timeout,
         write=effective_timeout,
         pool=30.0,
@@ -101,18 +139,12 @@ def _requested_upload_timeout_seconds(request: Request) -> float | None:
     return value if value > 0 else None
 
 
-@app.get("/api/healthz")
+# One handler for both paths, and HEAD too: the image's health probe (/health) and the module's own (/api/healthz) are
+# real routes, so a broken build of the UI cannot answer them with a page.
+@app.api_route("/health", methods=["GET", "HEAD"])
+@app.api_route("/api/healthz", methods=["GET", "HEAD"])
 async def healthz():
     return {"ok": True}
-
-
-@app.get(
-    "/api/config",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def get_config():
-    # The flow list's scope, decided by the auth mode in one place (Settings.flow_list_scope).
-    return {"flow_list": settings.flow_list_scope}
 
 
 # ---------- Branding ----------
@@ -120,9 +152,13 @@ async def get_config():
 # Settings.accent). No branding route asks for a session: the login page shows the organisation before there is one.
 
 
+def _branding() -> dict[str, object]:
+    return {"organization": settings.organization}
+
+
 @app.get("/api/branding")
 async def get_branding():
-    return {"organization": settings.organization}
+    return _branding()
 
 
 @app.get("/api/branding/logo/{variant}")
@@ -143,13 +179,6 @@ async def get_branding_logo(variant: Literal["light", "dark"]) -> Response:
     )
 
 
-def _etag_matches(if_none_match: str | None, current: str) -> bool:
-    if if_none_match is None:
-        return False
-    listed = {value.strip().removeprefix("W/") for value in if_none_match.split(",")}
-    return "*" in listed or current in listed
-
-
 @app.get("/api/branding/theme.css")
 async def get_branding_theme(request: Request) -> Response:
     """The accent override the page links after its built theme; empty (a comment) without ORGANIZATION_ACCENT."""
@@ -159,7 +188,7 @@ async def get_branding_theme(request: Request) -> Response:
         "ETag": etag(css),
         "X-Content-Type-Options": "nosniff",
     }
-    if _etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
+    if etag_matches(request.headers.get("if-none-match"), headers["ETag"]):
         return Response(status_code=304, headers=headers)
     return Response(content=css, media_type="text/css", headers=headers)
 
@@ -171,9 +200,9 @@ async def get_branding_theme(request: Request) -> Response:
 # so a browser's Transfer-Encoding, Forwarded, X-Forwarded-For or X-Real-IP must not arrive: a header a browser, a
 # proxy or a script adds is not Eneo's to receive. The credentials are set by the module from the session, never
 # taken from the browser. The frontend sends Accept, Content-Type (a JSON body) and Idempotency-Key through
-# /api/eneo/*; the rest is the kit's list (Accept-Language, If-Match, If-None-Match). X-Upload-Timeout-Seconds is
-# read by the upload routes and never forwarded; the signed-file routes forward Range, If-Range and Accept on their
-# own (_STREAM_FORWARD_REQUEST_HEADERS).
+# /api/eneo/*, with Accept-Language, If-Match and If-None-Match. X-Upload-Timeout-Seconds is read by the upload route
+# and never forwarded; the signed-file routes forward Range, If-Range and Accept on their own
+# (_STREAM_FORWARD_REQUEST_HEADERS).
 _FORWARDED_REQUEST_HEADERS = frozenset(
     {"accept", "accept-language", "content-type", "idempotency-key", "if-match", "if-none-match"}
 )
@@ -187,7 +216,9 @@ def _ascii_only(headers: dict[str, str]) -> dict[str, str]:
 
 # Headers we should not forward from upstream response back to client. Eneo's cookies are not the browser's:
 # several would be merged into one line, and one named like the module's session would replace it. Its Location
-# names Eneo's own host, which the browser cannot reach and which says how the network is laid out.
+# names Eneo's own host, which the browser cannot reach and which says how the network is laid out. The module's
+# own security headers are not Eneo's to replace (they are added only where an answer lacks them), and neither is its
+# caching policy: the module decides what its own origin lets a browser store (nothing under /api).
 _UNFORWARDED_RESPONSE_HEADERS = {
     "content-encoding",
     "transfer-encoding",
@@ -196,6 +227,11 @@ _UNFORWARDED_RESPONSE_HEADERS = {
     "content-length",
     "set-cookie",
     "location",
+    "content-security-policy",
+    "x-frame-options",
+    "permissions-policy",
+    "referrer-policy",
+    "cache-control",
 }
 
 # The module never follows a redirect, and no route of it is expected to redirect, so one from Eneo is an error,
@@ -222,125 +258,52 @@ def _upstream_redirect() -> JSONResponse:
         },
     )
 
-_RESOURCE_ID = r"[^/]+"
-_PROXY_ROUTE_RULES: tuple[tuple[frozenset[str], re.Pattern[str]], ...] = (
-    (frozenset({"GET"}), re.compile(r"flows/$")),
+
+def _upstream_unreachable() -> JSONResponse:
+    return JSONResponse(
+        status_code=502,
+        content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
+    )
+
+
+# What the module forwards to Eneo under /api/eneo, deny by default: one entry per path template, with the methods allowed
+# for it. A path matches as the page spells it, trailing slash included (Eneo's routes carry one), and a {name} is
+# exactly one segment. The names are distinct, which compile_path requires. Only what the page calls is listed.
+# docs/backend.md lists these entries and docs/api/openapi.json describes them.
+PROXY_ROUTES: tuple[tuple[frozenset[str], str], ...] = (
+    (frozenset({"GET"}), "/api/eneo/flows/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/published/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/run-contract/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/graph/"),
+    (frozenset({"GET", "POST"}), "/api/eneo/flows/{flow_id}/runs/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/status/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-words/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/transcript-corrections/"),
     (
         frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/(?:published|run-contract|graph)/$"),
+        "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/attempts/{attempt_id}/transcript-source/",
     ),
-    (frozenset({"GET", "POST"}), re.compile(rf"flows/{_RESOURCE_ID}/runs/$")),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:status/)?$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-words/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/transcript-corrections/$"),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/{_RESOURCE_ID}/"
-            rf"attempts/{_RESOURCE_ID}/transcript-source/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-corrections/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/(?:cancel|redispatch|retry)/$"
-        ),
-    ),
-    (
-        # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/transcript-regenerations/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/steps/"
-            rf"{_RESOURCE_ID}/rerun/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/evidence/(?:export)?$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/"
-            r"review-checkpoints/active/$"
-        ),
-    ),
-    (
-        frozenset({"PATCH"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/$"
-        ),
-    ),
-    (
-        frozenset({"POST"}),
-        re.compile(
-            rf"flows/{_RESOURCE_ID}/runs/{_RESOURCE_ID}/review-checkpoints/"
-            rf"{_RESOURCE_ID}/(?:approve|reject|resume)/$"
-        ),
-    ),
-    (
-        frozenset({"GET"}),
-        re.compile(rf"flows/{_RESOURCE_ID}/template-files/$"),
-    ),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-corrections/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/cancel/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/retry/"),
+    # A new run from the reviewed transcript ("Skapa dokumentet igen med rättningarna").
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/steps/{step_id}/transcript-regenerations/"),
+    (frozenset({"GET"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/active/"),
+    (frozenset({"PATCH"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/approve/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/reject/"),
+    (frozenset({"POST"}), "/api/eneo/flows/{flow_id}/runs/{run_id}/review-checkpoints/{checkpoint_id}/resume/"),
 )
+_PROXY_PATTERNS = tuple((methods, compile_path(template)[0]) for methods, template in PROXY_ROUTES)
 
 
 def _proxy_route_is_allowed(method: str, path: str) -> bool:
     return any(
-        method in methods and pattern.fullmatch(path) is not None
-        for methods, pattern in _PROXY_ROUTE_RULES
+        method in methods and pattern.fullmatch(f"/api/eneo/{path}") is not None
+        for methods, pattern in _PROXY_PATTERNS
     )
-
-
-def _resolve_proxy_path(method: str, path: str) -> str | None:
-    """Return the allowlisted upstream path for ``path`` or None if not exposed.
-
-    Eneo's routes carry a trailing slash, and the allowlist spells them that
-    way. Next.js strips the trailing slash from rewritten paths in ``next
-    dev`` (the dedicated upload routes already register both variants for the
-    same reason), so a slash-stripped path is accepted when — and only when —
-    its slash-suffixed form is allowlisted. Sending the canonical form upstream
-    also avoids Eneo answering with a redirect the proxy would not follow.
-    """
-    if _proxy_route_is_allowed(method, path):
-        return path
-    canonical = f"{path}/"
-    if not path.endswith("/") and _proxy_route_is_allowed(method, canonical):
-        return canonical
-    return None
 
 
 _UNSAFE_CHARACTER = re.compile(r"[\x00-\x1f\x7f\\]")
@@ -388,9 +351,55 @@ def _has_control_character(value: str | None) -> bool:
     return value is not None and any(character < " " or character == "\x7f" for character in value)
 
 
-# Dedicated upload routes — bypass the catch-all proxy because forwarding
+# The dedicated upload route bypasses the catch-all proxy because forwarding
 # the browser's raw multipart bytes triggers ReadError from Eneo's load balancer.
 # We re-parse and rebuild the multipart with httpx instead.
+class _UploadParser(MultiPartParser):
+    def __init__(self, request: Request) -> None:
+        self._complete = False
+        super().__init__(request.headers, self._complete_stream(request.stream()), max_files=1, max_fields=0)
+
+    def on_end(self) -> None:
+        self._complete = True
+        super().on_end()
+
+    async def _complete_stream(self, stream: AsyncGenerator[bytes, None]) -> AsyncGenerator[bytes, None]:
+        iterator = aiter(stream)
+        while True:
+            try:
+                with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
+                    chunk = await anext(iterator)
+            except StopAsyncIteration:
+                break
+            yield chunk
+        # python-multipart's finalize() does not validate EOF. Raising while Starlette is still parsing makes its
+        # error cleanup close every allocated file, including a part that never reached FormData.
+        if not self._complete:
+            raise MultiPartException("Incomplete multipart body")
+
+
+@contextlib.asynccontextmanager
+async def _upload_form(request: Request) -> AsyncIterator[FormData]:
+    if parse_options_header(request.headers.get("Content-Type"))[0] != b"multipart/form-data":
+        raise HTTPException(status_code=400, detail="Expected multipart/form-data")
+    try:
+        with anyio.fail_after(settings.upload_receive_timeout_seconds):
+            form = await _UploadParser(request).parse()
+    except MultiPartException as exc:
+        raise HTTPException(status_code=400, detail=exc.message) from exc
+    except TimeoutError:
+        raise HTTPException(
+            status_code=408,
+            detail={"error": "upload_receive_timeout", "detail": "The upload body did not arrive before its deadline."},
+            headers={"Connection": "close"},
+        ) from None
+    try:
+        yield form
+    finally:
+        with anyio.CancelScope(shield=True):
+            await form.close()
+
+
 async def _forward_upload(request: Request, path: str) -> Response:
     """Re-post the one file of the request's multipart body to Eneo's ``/api/v1/{path}``.
 
@@ -411,12 +420,28 @@ async def _forward_upload(request: Request, path: str) -> Response:
         raise HTTPException(status_code=411, detail="Content-Length required")
     if declared > settings.max_upload_bytes:
         raise too_large(settings, upload=True)
+    with contextlib.ExitStack() as slots:
+        if not slots.enter_context(capacity_slot(app.state.upload_slots)) or not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
+            return JSONResponse(
+                status_code=503,
+                content={"error": "uploads_busy", "detail": "Too many heavy operations are running. Try again shortly."},
+                headers={"Retry-After": "2"},
+            )
+        try:
+            return await _receive_upload(request, upstream_url)
+        except HTTPException as error:
+            if error.status_code == 408:
+                return JSONResponse(status_code=408, content=error.detail, headers=error.headers)
+            raise
+
+
+async def _receive_upload(request: Request, upstream_url: str) -> Response:
     # Only now, after the route's dependencies and these checks, is the body allowed to be as big as an upload; the
     # limit counts the bytes that arrive, so a Content-Length that lies gets no further than max_upload_bytes.
     allow_upload(request, settings.max_upload_bytes)
-    # max_fields=0: no text field beside the file. The files are closed when the block ends, and by Starlette
-    # if the parse fails.
-    async with request.form(max_files=1, max_fields=0) as form:
+    # No text field beside the file. Parsing also requires the final boundary; every temporary file is closed
+    # before an incomplete body is refused or forwarding finishes.
+    async with _upload_form(request) as form:
         parts = form.multi_items()
         if len(parts) != 1 or parts[0][0] != "upload_file" or not isinstance(parts[0][1], UploadFile):
             raise HTTPException(status_code=400, detail="Exactly one file, named upload_file, is required")
@@ -476,13 +501,7 @@ async def _proxy_multipart_upload(
         )
     except httpx.RequestError:
         logger.exception("Upload failed: url=%s", upstream_url)
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error("Upload was answered with a redirect: url=%s status=%s", upstream_url, upstream.status_code)
@@ -496,63 +515,171 @@ async def _proxy_multipart_upload(
 
 
 @app.post(
-    "/api/eneo/flows/{flow_id}/files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
-    "/api/eneo/flows/{flow_id}/files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-async def eneo_upload_file(flow_id: str, request: Request) -> Response:
-    return await _forward_upload(request, f"flows/{flow_id}/files/")
-
-
-@app.post(
-    "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
     "/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
 
 
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-@app.post(
-    "/api/eneo/flows/{flow_id}/template-files/",
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
-)
-async def eneo_upload_template_file(flow_id: str, request: Request) -> Response:
-    return await _forward_upload(request, f"flows/{flow_id}/template-files/")
+def _upload_owner(request: Request) -> tuple[str, str]:
+    session = module_auth.session_from_request(request)
+    return session.user.id, session.tenant_id
+
+
+async def _incoming(request: Request, flow_id: UUID, step_id: UUID, upload_id: UUID) -> IncomingUpload:
+    await app.state.uploads.expire()
+    return app.state.uploads.get(upload_id, _upload_owner(request), flow_id, step_id)
+
+
+async def _check_upload_contract(request: Request, flow_id: UUID, step_id: UUID, metadata: UploadMetadata) -> None:
+    if metadata.size > settings.max_upload_bytes - UPLOAD_ENVELOPE_BYTES:
+        raise too_large(settings, upload=True)
+    try:
+        async with asyncio.timeout(SMALL_CALL_TIMEOUT.read):
+            response = await http_client.request(method="GET", url=_upstream_url(f"flows/{flow_id}/run-contract/"),
+                headers=module_auth.upstream_auth_headers(request), timeout=SMALL_CALL_TIMEOUT, extensions=SMALL_ANSWER)
+    except (httpx.RequestError, TimeoutError):
+        raise HTTPException(502, "The run contract could not be read") from None
+    if response.status_code != 200:
+        raise HTTPException(502, "The run contract could not be read")
+    try:
+        contract = response.json()
+        step = next(s for s in contract["steps_requiring_input"] if s["step_id"] == str(step_id))
+        limit = step["max_file_size_bytes"]
+        if type(limit) is not int or limit <= 0:
+            raise ValueError()
+    except StopIteration:
+        raise HTTPException(422, "The step has no file input contract") from None
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(502, "The run contract could not be read") from None
+    if metadata.size > limit:
+        raise HTTPException(413, "The file exceeds the step limit")
+    # Eneo owns MIME aliases and content sniffing; do not duplicate its file-type policy here.
+
+
+@app.put("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def create_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, metadata: UploadMetadata, request: Request) -> UploadStatus:
+    await app.state.uploads.expire()
+    entry = app.state.uploads.find(upload_id, _upload_owner(request), flow_id, step_id, metadata)
+    if entry is not None:
+        return entry.status()
+    with contextlib.ExitStack() as slots:
+        if not slots.enter_context(capacity_slot(app.state.upload_slots)):
+            raise HTTPException(503, "Upload capacity reached", headers={"Retry-After": "2"})
+        await _check_upload_contract(request, flow_id, step_id, metadata)
+        if await request.is_disconnected():
+            raise HTTPException(400, "The client disconnected before allocation")
+        # Another request for the same UUID may have completed its contract check while this one waited.
+        entry = app.state.uploads.find(upload_id, _upload_owner(request), flow_id, step_id, metadata)
+        if entry is not None:
+            return entry.status()
+        entry = app.state.uploads.create(upload_id, _upload_owner(request), flow_id, step_id, metadata,
+            settings.upload_receive_timeout_seconds, settings.upload_resume_idle_timeout_seconds,
+            min(CHUNK_BYTES, settings.max_body_bytes), slots)
+        entry.slots = slots.pop_all()
+        return entry.status()
+
+
+@app.get("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def upload_status(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
+    return (await _incoming(request, flow_id, step_id, upload_id)).status()
+
+
+@app.patch("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request,
+                      upload_offset: int = Header(ge=0)) -> UploadStatus:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    if request.headers.get("content-type") != "application/octet-stream":
+        raise HTTPException(415, "A part must be application/octet-stream")
+    length = declared_length(request.headers)
+    if length is None:
+        raise HTTPException(411, "Content-Length required")
+    if length <= 0 or length > min(entry.chunk_size, entry.metadata.size - entry.offset):
+        raise HTTPException(413, "The part exceeds the remaining file or part limit")
+    with entry.exclusive():
+        if entry.state != "receiving" or upload_offset != entry.offset:
+            raise HTTPException(409, "Upload offset or state differs; read its status")
+        with capacity_slot(app.state.heavy_io_slots) as admitted:
+            if not admitted:
+                raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
+            received = 0
+            try:
+                remaining = max(0, entry.expires_at - time.monotonic())
+                with anyio.fail_after(remaining):
+                    iterator = aiter(request.stream())
+                    while True:
+                        try:
+                            with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
+                                chunk = await anext(iterator)
+                        except StopAsyncIteration:
+                            break
+                        received += len(chunk)
+                        if received > length:
+                            raise HTTPException(413, "The part exceeds its declared length")
+                        await entry.file.write(chunk)
+                if received != length:
+                    raise HTTPException(400, "The part is incomplete")
+            except BaseException as error:
+                with anyio.CancelScope(shield=True):
+                    await entry.file.seek(entry.offset)
+                    await anyio.to_thread.run_sync(entry.file.file.truncate, entry.offset)
+                if isinstance(error, TimeoutError):
+                    raise HTTPException(408, "The upload part timed out") from None
+                raise
+            entry.offset += received
+            entry.touch()
+            return entry.status()
+
+
+@app.post("/api/uploads/{flow_id}/{step_id}/{upload_id}/complete", dependencies=_SESSION_ORIGIN_AND_USER)
+async def complete_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    with entry.exclusive():
+        if entry.state != "receiving":
+            return entry.status()
+        if entry.offset != entry.metadata.size:
+            raise HTTPException(409, "The file is not complete")
+        try:
+            await _check_upload_contract(request, flow_id, step_id, entry.metadata)
+        except HTTPException as error:
+            if error.status_code in {413, 422}:
+                await app.state.uploads.remove(upload_id, entry)
+            raise
+        slots = contextlib.ExitStack()
+        if not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
+            slots.close()
+            raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
+
+        entry.slots.callback(slots.close)
+
+        async def forward() -> tuple[str | None, UploadFailure | None]:
+            response = await _proxy_multipart_upload(_upstream_url(f"flows/{flow_id}/steps/{step_id}/runtime-files/"),
+                entry.file, request, _requested_upload_timeout_seconds(request))
+            try:
+                result = json.loads(response.body)
+            except (ValueError, TypeError):
+                result = {}
+            file_id = result.get("id") if isinstance(result, dict) else None
+            if 200 <= response.status_code < 300 and isinstance(file_id, str) and 0 < len(file_id) <= 128:
+                return file_id, None
+            detail = result.get("detail") if isinstance(result, dict) else None
+            return None, UploadFailure(status=response.status_code if response.status_code >= 400 else 502,
+                detail=detail[:2048] if isinstance(detail, str) else "Eneo could not confirm the uploaded file.",
+                code=str(result.get("code", result.get("error", "")))[:128] if isinstance(result, dict) else None)
+
+        entry.start(forward)
+        return entry.status()
+
+
+@app.delete("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER, status_code=204)
+async def cancel_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> Response:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    with entry.exclusive():
+        if entry.state != "receiving":
+            raise HTTPException(409, "Forwarding has already started; read the upload status")
+        await app.state.uploads.remove(upload_id, entry)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------
@@ -635,6 +762,10 @@ class _InvalidMintAnswer(Exception):
     """Eneo answered the mint request with something the module cannot use."""
 
 
+class _MintUnreachable(Exception):
+    """The mint request did not reach Eneo."""
+
+
 def _read_mint_answer(upstream: httpx.Response, base_url: str, now: float) -> tuple[str, float]:
     """The signed URL (on the host the module reaches Eneo on) and when it expires, from Eneo's answer.
 
@@ -686,7 +817,7 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
         raise _InvalidMintAnswer from None
     except httpx.RequestError:
         logger.exception("Signed URL request failed: path=%s", mint_path)
-        raise HTTPException(status_code=502, detail="Eneo could not be reached.")
+        raise _MintUnreachable from None
     if upstream.status_code >= 400:
         try:
             detail = upstream.json()
@@ -707,15 +838,12 @@ async def _signed_url(request: Request, key: tuple[str, str], unavailable: str) 
 
 
 async def _read_small(upstream: httpx.Response) -> bytes:
-    """The body of a streamed answer that is an error, closed; empty if it is longer than an error is."""
+    """Read a bounded error body; the caller closes its upstream response."""
     body = bytearray()
-    try:
-        async for chunk in upstream.aiter_raw():
-            body += chunk
-            if len(body) > SMALL_ANSWER_BYTES:
-                return b""
-    finally:
-        await upstream.aclose()
+    async for chunk in upstream.aiter_raw():
+        body += chunk
+        if len(body) > SMALL_ANSWER_BYTES:
+            return b""
     return bytes(body)
 
 
@@ -729,19 +857,27 @@ class _FileResponse(StreamingResponse):
     is resumed (it is left at its ``yield`` when a send fails or the response is cancelled), so the closing belongs to
     the response's whole lifetime. It is shielded from the cancellation that may be ending that lifetime, and bounded."""
 
-    def __init__(self, upstream: httpx.Response, headers: dict[str, str]) -> None:
+    def __init__(self, upstream: httpx.Response, headers: dict[str, str], slots: contextlib.ExitStack) -> None:
         super().__init__(upstream.aiter_raw(), status_code=upstream.status_code, headers=headers)
         self.upstream = upstream
+        self.slots = slots
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         try:
             await super().__call__(scope, receive, send)
         finally:
-            with anyio.move_on_after(_STREAM_CLOSE_TIMEOUT_SECONDS, shield=True):
-                try:
-                    await self.upstream.aclose()
-                except Exception:
-                    logger.warning("File stream: closing Eneo's answer failed", exc_info=True)
+            try:
+                await _close_file(self.upstream)
+            finally:
+                self.slots.close()
+
+
+async def _close_file(upstream: httpx.Response) -> None:
+    with anyio.move_on_after(_STREAM_CLOSE_TIMEOUT_SECONDS, shield=True):
+        try:
+            await upstream.aclose()
+        except Exception:
+            logger.warning("File stream: closing Eneo's answer failed", exc_info=True)
 
 
 async def _stream_signed(
@@ -751,6 +887,27 @@ async def _stream_signed(
     if any(_leaves_route(part) for part in resource):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
 
+    slots = contextlib.ExitStack()
+    if not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
+        slots.close()
+        return JSONResponse(
+            status_code=503,
+            content={"error": "streams_busy", "detail": "Too many heavy operations are running. Try again shortly."},
+            headers={"Retry-After": "2"},
+        )
+    response: Response | None = None
+    try:
+        response = await _stream_file(request, slots, mint_path=mint_path, unavailable=unavailable)
+        return response
+    finally:
+        # A streaming response owns admission through its final upstream close.
+        if not isinstance(response, _FileResponse):
+            slots.close()
+
+
+async def _stream_file(
+    request: Request, slots: contextlib.ExitStack, *, mint_path: str, unavailable: str
+) -> Response:
     fwd_headers = _ascii_only(
         {
             name: value
@@ -761,6 +918,8 @@ async def _stream_signed(
     key = (request.cookies.get(SESSION_COOKIE) or "", mint_path)
     try:
         url = await _signed_url(request, key, unavailable)
+    except _MintUnreachable:
+        return _upstream_unreachable()
     except _InvalidMintAnswer:
         return JSONResponse(
             status_code=502,
@@ -772,51 +931,54 @@ async def _stream_signed(
         upstream = await http_client.send(upstream_request, stream=True)
     except httpx.RequestError:
         logger.exception("File stream request failed: path=%s", mint_path)
-        return JSONResponse(
-            status_code=502,
-            content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-        )
+        return _upstream_unreachable()
 
-    if upstream.status_code in _REDIRECT_STATUSES:
-        # Not a file: the URL is not worth keeping either, and the stream is closed unread.
-        _signed_urls.pop(key, None)
-        await upstream.aclose()
-        logger.error("File stream was answered with a redirect: path=%s status=%s", mint_path, upstream.status_code)
-        return _upstream_redirect()
+    response: _FileResponse | None = None
+    try:
+        if upstream.status_code in _REDIRECT_STATUSES:
+            # Not a file: the URL is not worth keeping either, and the stream is closed unread.
+            _signed_urls.pop(key, None)
+            logger.error("File stream was answered with a redirect: path=%s status=%s", mint_path, upstream.status_code)
+            return _upstream_redirect()
 
-    if upstream.status_code >= 400:
-        # A rejected token is not worth keeping around; the next request mints anew.
-        _signed_urls.pop(key, None)
-        try:
-            body = await _read_small(upstream)
-        except httpx.RequestError:  # the error's own body broke off, or stalled
-            logger.exception("File stream error body failed: path=%s", mint_path)
-            return JSONResponse(
-                status_code=502,
-                content={"error": "upstream_unreachable", "detail": "Eneo could not be reached."},
-            )
-        detail: object = unavailable
-        if upstream.headers.get("content-type", "").startswith("application/json"):
+        if upstream.status_code >= 400:
+            # A rejected token is not worth keeping around; the next request mints anew.
+            _signed_urls.pop(key, None)
             try:
-                detail = httpx.Response(200, content=body).json()
-            except ValueError:
-                pass
-        raise HTTPException(status_code=upstream.status_code, detail=detail)
+                body = await _read_small(upstream)
+            except httpx.RequestError:  # the error's own body broke off, or stalled
+                logger.exception("File stream error body failed: path=%s", mint_path)
+                return _upstream_unreachable()
+            detail: object = unavailable
+            if upstream.headers.get("content-type", "").startswith("application/json"):
+                try:
+                    detail = httpx.Response(200, content=body).json()
+                except ValueError:
+                    pass
+            raise HTTPException(status_code=upstream.status_code, detail=detail)
 
-    resp_headers = {
-        k.lower(): v
-        for k, v in upstream.headers.items()
-        if k.lower() in _STREAM_FORWARD_RESPONSE_HEADERS
-    }
-    media_type = resp_headers.get("content-type", "").split(";")[0].strip().lower()
-    if not _may_be_shown_inline(media_type):
-        resp_headers["content-disposition"] = _attachment(resp_headers.get("content-disposition"))
-    resp_headers["x-content-type-options"] = "nosniff"
-    resp_headers["Cache-Control"] = "private, no-store"
-    return _FileResponse(upstream, resp_headers)
+        resp_headers = {
+            k.lower(): v
+            for k, v in upstream.headers.items()
+            if k.lower() in _STREAM_FORWARD_RESPONSE_HEADERS
+        }
+        media_type = resp_headers.get("content-type", "").split(";")[0].strip().lower()
+        if not _may_be_shown_inline(media_type):
+            resp_headers["content-disposition"] = _attachment(resp_headers.get("content-disposition"))
+        resp_headers["x-content-type-options"] = "nosniff"
+        resp_headers["Cache-Control"] = "private, no-store"
+        response = _FileResponse(upstream, resp_headers, slots)
+        return response
+    finally:
+        if response is None:
+            await _close_file(upstream)
 
 
-async def _stream_input_file_audio(
+@app.get(
+    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
+    dependencies=[Depends(module_auth.require_session)],
+)
+async def eneo_input_file_audio(
     flow_id: str, run_id: str, file_id: str, request: Request
 ) -> Response:
     return await _stream_signed(
@@ -827,26 +989,6 @@ async def _stream_input_file_audio(
         mint_path=f"flows/{flow_id}/runs/{run_id}/input-files/{file_id}/signed-url/",
         unavailable="Audio is not available for this run.",
     )
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
-
-
-@app.get(
-    "/api/eneo/flows/{flow_id}/runs/{run_id}/input-files/{file_id}/audio/",
-    dependencies=[Depends(module_auth.require_session)],
-)
-async def eneo_input_file_audio_slash(
-    flow_id: str, run_id: str, file_id: str, request: Request
-) -> Response:
-    return await _stream_input_file_audio(flow_id, run_id, file_id, request)
 
 
 _UNSAFE_FILENAME = re.compile(r'[\x00-\x1f\x7f"\\/]+')
@@ -914,19 +1056,14 @@ async def eneo_run_artifact_content(
 @app.api_route(
     "/api/eneo/{path:path}",
     methods=["GET", "POST", "PATCH"],
-    dependencies=[
-        Depends(module_auth.require_session),
-        Depends(module_auth.require_same_origin),
-        Depends(module_auth.require_expected_user),
-    ],
+    dependencies=_SESSION_ORIGIN_AND_USER,
 )
 async def eneo_proxy(path: str, request: Request) -> Response:
-    resolved_path = (
-        None if _leaves_route(path) else _resolve_proxy_path(request.method, path)
-    )
-    if resolved_path is None:
+    # The path as the browser spelled it: Eneo's routes carry a trailing slash and so does the allowlist, so the
+    # slashless form of a listed path is not on the list either.
+    if _leaves_route(path) or not _proxy_route_is_allowed(request.method, path):
         raise HTTPException(status_code=403, detail="Eneo resource is not exposed")
-    upstream_url = _upstream_url(resolved_path)
+    upstream_url = _upstream_url(path)
     # Forward request headers, but replace browser-controlled credentials with
     # the credentials owned by the configured module-auth session.
     # The header that carries the service key is configured, so it is excluded here by its name.
@@ -959,13 +1096,7 @@ async def eneo_proxy(path: str, request: Request) -> Response:
             request.method,
             upstream_url,
         )
-        return JSONResponse(
-            status_code=502,
-            content={
-                "error": "upstream_unreachable",
-                "detail": "Eneo could not be reached.",
-            },
-        )
+        return _upstream_unreachable()
 
     if upstream.status_code in _REDIRECT_STATUSES:
         logger.error(
@@ -982,8 +1113,9 @@ async def eneo_proxy(path: str, request: Request) -> Response:
         if k.lower() not in _UNFORWARDED_RESPONSE_HEADERS
     }
 
+    content = await compress_json(request, upstream, resp_headers)
     return Response(
-        content=upstream.content,
+        content=content,
         status_code=upstream.status_code,
         headers=resp_headers,
         media_type=upstream.headers.get("content-type"),
@@ -1078,7 +1210,7 @@ async def _open_live_session(
                 if _LIVE_RECORDING_ID.fullmatch(recording_id)
                 else None
             ),
-            timeout=httpx.Timeout(10.0),
+            timeout=SMALL_CALL_TIMEOUT,
             extensions=SMALL_ANSWER,
         )
     except httpx.RequestError:  # also an answer past its bound (UnboundedAnswer)
@@ -1238,13 +1370,26 @@ async def live_transcription(websocket: WebSocket, flow_id: UUID, step_id: UUID)
         logger.info("A live socket was refused: its page is for another user than the session's, or for none")
         await _close_browser_socket(websocket, code=1008, reason="user_changed")
         return
-    try:
-        eneo = await _open_live_session(websocket, flow_id, step_id)
-    except _LiveRefused as refused:
-        await _close_browser_socket(websocket, event=refused.event)
-        return
-    try:
-        code, reason = await _relay_live_session(websocket, eneo)
-    finally:
-        await _close_eneo_socket(eneo)
-    await _close_browser_socket(websocket, code=code, reason=reason)
+    with capacity_slot(app.state.heavy_io_slots) as admitted:
+        if not admitted:
+            await _close_browser_socket(websocket, event={
+                "type": "error", "code": "live_busy", "retryable": True,
+                "message": "Too many heavy operations are running. Try again shortly.",
+            })
+            return
+        try:
+            eneo = await _open_live_session(websocket, flow_id, step_id)
+        except _LiveRefused as refused:
+            await _close_browser_socket(websocket, event=refused.event)
+            return
+        try:
+            code, reason = await _relay_live_session(websocket, eneo)
+        finally:
+            await _close_eneo_socket(eneo)
+        await _close_browser_socket(websocket, code=code, reason=reason)
+
+
+# Last, after every route: the built UI, its files, and the page for every address of the app.
+if settings.static_dir is not None:
+    # The page holds the organisation, as GET /api/branding answers it (the same JSON, rendered the same way).
+    serve_web(app, settings.static_dir, branding=JSONResponse(jsonable_encoder(_branding())).body.decode())

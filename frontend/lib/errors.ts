@@ -20,13 +20,17 @@ const OWNER_FIX = "Flödet har ett fel som den som ansvarar för det behöver r�
 const RELOAD = "Flödet har ändrats. Ladda om sidan och försök igen.";
 const FIELDS = "En uppgift har fel format. Kontrollera uppgifterna och försök igen.";
 const REQUIRED_FIELD = "Fyll i uppgifterna som krävs och försök igen.";
-const TOO_LARGE = "Filen är större än flödet tar emot.";
+const TOO_LARGE = "Det som skickades är större än flödet tar emot.";
 const TOO_MANY_FILES = "Det är fler filer än flödet tar emot.";
 const WRONG_TYPE = "Filtypen stöds inte.";
 const FILE_UNUSABLE = "Filen kunde inte användas. Ladda upp den igen.";
-const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för flödet om du behöver det.";
+const NO_ACCESS = "Du har inte behörighet till det här. Kontakta den som ansvarar för Eneo i din verksamhet om du behöver det.";
 const MODULE_ACCESS = "Tal till text har inte behörighet till det här flödet. Kontakta den som ansvarar för Tal till text.";
 const REVIEW_CHANGED = "Granskningen har ändrats. Ladda om sidan och försök igen.";
+/** What a refused request and a finished run say alike of a review and of a busy server. */
+export const REVIEW_REJECTED = "Resultatet avvisades i granskningen och körningen avslutades.";
+export const REVIEW_EXPIRED = "Tiden för granskningen har gått ut och körningen har avbrutits.";
+export const TOO_MANY_RUNS = "För många körningar pågår just nu. Försök igen om en stund.";
 
 // The one responsible for the flow fixes these; trying again cannot help.
 const OWNER_CODES: Record<string, string> = {
@@ -86,7 +90,7 @@ const CODES: Record<string, string> = {
   flow_input_invalid_list_type: FIELDS,
   flow_run_idempotency_conflict: "Inspelningen har redan skickats med andra uppgifter. Ladda om sidan för att se körningen.",
   flow_run_invalid_idempotency_key: "Dokumentet kunde inte skapas. Ladda om sidan och försök igen.",
-  flow_run_concurrency_limit_reached: "För många körningar pågår just nu. Försök igen om en stund.",
+  flow_run_concurrency_limit_reached: TOO_MANY_RUNS,
   flow_dispatch_failed: "Körningen kunde inte startas just nu. Försök igen om en stund.",
   flow_live_transcription_unavailable: "Livetexten är inte tillgänglig. Spela in som vanligt, texten skapas när du är klar.",
   flow_run_input_file_not_found: "Ljudfilen för den här körningen kunde inte hittas.",
@@ -100,7 +104,7 @@ const CODES: Record<string, string> = {
   // Review pauses (among them, confirming who is who).
   flow_review_stale_revision:
     "Granskningen har ändrats sedan du laddade sidan. Formuläret har uppdaterats — kontrollera och försök igen.",
-  flow_review_expired: "Tiden för granskningen har gått ut och körningen har avbrutits.",
+  flow_review_expired: REVIEW_EXPIRED,
   flow_review_not_active: "Granskningen är inte längre aktiv.",
   flow_review_already_resumed: "Flödet har redan återupptagits.",
   flow_review_edit_not_allowed: "Det här steget kan bara godkännas, inte redigeras.",
@@ -114,16 +118,16 @@ const CODES: Record<string, string> = {
   flow_review_not_approved: "Godkänn granskningen innan flödet kan fortsätta.",
   flow_review_reject_reason_required: "Skriv varför du avvisar resultatet.",
   flow_review_reject_reason_too_long: "Motiveringen är för lång. Korta den och försök igen.",
-  flow_review_rejected: "Resultatet avvisades i granskningen och körningen avslutades.",
+  flow_review_rejected: REVIEW_REJECTED,
   typed_io_contract_violation: "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
   typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget.",
   // Correcting a transcript.
   flow_transcript_corrections_stale_revision:
-    "Transkriptet har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
+    "Transkriberingen har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
   flow_transcript_corrections_invalid_occurrence:
-    "Rättningen kunde inte förankras i transkriptet. Ladda om sidan och försök igen.",
+    "Rättningen kunde inte förankras i transkriberingen. Ladda om sidan och försök igen.",
   flow_transcript_corrections_invalid_speaker_edit: "Talarbytet kunde inte sparas. Ladda om sidan och försök igen.",
-  flow_transcript_corrections_segments_unavailable: "Det här transkriptet saknar lagrade repliker och kan inte rättas.",
+  flow_transcript_corrections_segments_unavailable: "Den här transkriberingen saknar lagrade repliker och kan inte rättas.",
 };
 
 // Busy or briefly unreachable: the same request may go through a moment later.
@@ -139,9 +143,11 @@ const RETRY_CODES = new Set([
 const OWN_CODES = new Set([
   "network_error",
   "upload_aborted",
+  "upload_forward_failed",
   "not_started",
   "stalled",
   "server_not_responding",
+  "request_timed_out",
 ]);
 
 // "Failed to fetch" in Chromium, "NetworkError when attempting to fetch resource." in Firefox, "Load failed" in Safari.
@@ -171,12 +177,12 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     if (err.status === 401) return err.code ? advice(MODULE_ACCESS) : advice("Inloggningen hade gått ut och det här skickades inte. Försök igen.", true);
     if (err.status === 403) return advice(NO_ACCESS);
     if (err.status === 404) return advice("Det du letade efter finns inte längre.");
-    if (err.status === 408 || err.status === 429) return advice("Eneo hann inte svara. Försök igen om en stund.", true);
+    if (err.status === 408) return advice("Eneo svarade inte i tid. Försök igen om en stund.", true);
+    if (err.status === 429) return advice("Eneo har många förfrågningar just nu. Försök igen om en stund.", true);
     if (err.status === 413) return advice(TOO_LARGE);
     if (err.status === 415) return advice(WRONG_TYPE);
-    if (err.status === 502 || err.status === 503 || err.status === 504) {
-      return advice("Servern kunde inte nås just nu. Försök igen om en stund.", true);
-    }
+    if (err.status === 504) return advice("Servern svarade inte i tid. Försök igen om en stund.", true);
+    if (err.status === 502 || err.status === 503) return advice("Servern kunde inte nås just nu. Försök igen om en stund.", true);
     if (err.status >= 500) return advice("Tjänsten svarade med ett fel. Försök igen om en stund.", true);
     if ((err.body as { retryable?: unknown } | null)?.retryable === true) {
       return advice("Det gick inte just nu. Försök igen om en stund.", true);
@@ -184,12 +190,11 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     return advice("Det gick inte att genomföra. Kontakta den som ansvarar för Tal till text om det fortsätter.");
   }
   if (err instanceof Error) {
-    if (err.name === "AbortError") return advice("Uppladdningen avbröts (tog för lång tid eller stannade upp).", true);
     if (looksLikeNetworkError(err.message)) {
       return advice("Anslutningen avbröts. Kontrollera nätverket och försök igen.", true);
     }
-    // This app's own errors, in Swedish.
-    return advice(err.message);
+    // This app's own errors are in Swedish; what the browser raised (a full device, an aborted request) is not shown.
+    if (err.name === "Error") return advice(err.message);
   }
   return advice("Ett okänt fel uppstod.");
 }
@@ -197,4 +202,25 @@ export function errorAdvice(err: unknown): ErrorAdvice {
 /** What happened and what to do next, in plain Swedish. */
 export function friendlyError(err: unknown): string {
   return errorAdvice(err).message;
+}
+
+// Eneo's answers that say the pause is over, whatever was asked of it: trying the same again can only fail.
+const REVIEW_OVER = new Set([
+  "flow_review_expired",
+  "flow_review_not_active",
+  "flow_review_already_resumed",
+  "flow_review_cancelled",
+  "flow_review_rejected",
+]);
+
+/** The pause is over: it ran out, was decided or resumed elsewhere, or the run ended. The run is what to look at then. */
+export function reviewPauseEnded(err: unknown): boolean {
+  return err instanceof ApiError && err.code !== undefined && REVIEW_OVER.has(err.code);
+}
+
+export const FILE_GONE = "Filen finns inte kvar hos Eneo.";
+
+/** What a file that could not be fetched says: gone from Eneo, or whatever the failure is; trying again is always offered. */
+export function fileProblem(err: unknown): string {
+  return err instanceof ApiError && (err.status === 404 || err.status === 410) ? FILE_GONE : friendlyError(err);
 }

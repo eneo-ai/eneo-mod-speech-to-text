@@ -1,5 +1,3 @@
-"use client";
-
 import { CheckCircle2, Clock, MinusCircle, XCircle, type LucideIcon } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button } from "@astryxdesign/core/Button";
@@ -12,10 +10,10 @@ import type { EarlierRunsSnapshot } from "@/lib/earlier-runs";
 import { formatRelativeDate } from "@/lib/format";
 import { runOutcome, runStatusLabel } from "@/lib/run-progress";
 
-const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary", string]> = {
-  succeeded: [CheckCircle2, "success", "Öppna"],
-  failed: [XCircle, "error", "Öppna"],
-  cancelled: [MinusCircle, "secondary", "Öppna"],
+const OUTCOME: Record<string, [LucideIcon, "success" | "error" | "secondary"]> = {
+  succeeded: [CheckCircle2, "success"],
+  failed: [XCircle, "error"],
+  cancelled: [MinusCircle, "secondary"],
 };
 
 /** This flow's latest runs, so yesterday's document is one tap away, and more a page at a time. */
@@ -52,7 +50,7 @@ export function EarlierRuns({
         {shown.map((run) => {
           const outcome = runOutcome(run.status);
           const [glyph, color, action] = outcome
-            ? OUTCOME[outcome]
+            ? [...OUTCOME[outcome], "Öppna"]
             : ([Clock, "accent", run.status === "awaiting_review" ? "Granska" : "Följ"] as const);
           const when = run.created_at ? formatRelativeDate(run.created_at) : "";
           return (

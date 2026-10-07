@@ -1,13 +1,9 @@
-"use client";
-
 import { useTranscriptCorrections } from "@/components/useTranscriptCorrections";
 
 import { CheckCircle2, UsersRound } from "lucide-react";
 import { SPEAKER_REVIEW_ENABLED } from "@/lib/speaker-review";
 import {
-  use,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -20,6 +16,8 @@ import { Card } from "@astryxdesign/core/Card";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
 import { HStack } from "@astryxdesign/core/HStack";
+import { List, ListItem } from "@astryxdesign/core/List";
+import { StackItem } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { TextArea } from "@astryxdesign/core/TextArea";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
@@ -29,13 +27,11 @@ import { usePlayback } from "@/components/flow/AudioPlayer";
 import { usePhaseHeading } from "@/components/flow/usePhaseHeading";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { Markdown } from "@/components/flow/Markdown";
-import documentStyles from "@/components/flow/ResultDocument.module.css";
 import { holds } from "@/lib/review-continue";
 import { useReviewDraft } from "@/components/useReviewDraft";
 import {
   inputFileAudioUrl,
   isReviewCheckpointApproved,
-  type FlowPublished,
   type FlowRunPublic,
   type FlowRunReviewCheckpointPublic,
   type FlowRunStep,
@@ -45,7 +41,6 @@ import {
 import {
   buildEditedMapping,
   buildSpeakerRows,
-  getSpeakerMappingInferNames,
   getSpeakerMappingParticipants,
   getSpeakerMappingSourceStep,
   isSpeakerMappingCheckpoint,
@@ -63,7 +58,7 @@ import { SpeakerMark, TranscriptPlayer } from "@/components/TranscriptPlayer";
 import { useTranscriptContext } from "@/components/useTranscriptContext";
 import { useConfirmedWords } from "@/components/useConfirmedWords";
 import { confirmedWordsStorageKey } from "@/lib/confirmed-words";
-import { isRecord } from "@/lib/drafts";
+import { isRecord } from "@/lib/is-record";
 import { formatDeadline } from "@/lib/format";
 import styles from "./ReviewView.module.css";
 
@@ -87,10 +82,11 @@ const isReviewEdit = (value: unknown): value is ReviewEdit =>
   (value.text === undefined || typeof value.text === "string") &&
   (value.speakerRows === undefined || (Array.isArray(value.speakerRows) && value.speakerRows.every(isSpeakerRow)));
 
+const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
+
 /** A review pause: the step's output (the speakers' names, or text) to look over, change and approve, or reject. */
 export function ReviewView({
   flowId,
-  published,
   checkpoint,
   runState,
   runError,
@@ -99,7 +95,6 @@ export function ReviewView({
   onReject,
 }: {
   flowId: string;
-  published: FlowPublished;
   checkpoint: FlowRunReviewCheckpointPublic;
   runState: { run: FlowRunPublic; steps: FlowRunStep[] };
   runError: string | null;
@@ -120,17 +115,18 @@ export function ReviewView({
   const isSpeakerMapping = isSpeakerMappingCheckpoint(payload);
   const title = isSpeakerMapping
     ? SPEAKER_REVIEW_ENABLED
-      ? "Granska transkriptet"
+      ? "Granska transkriberingen"
       : "Vem är vem?"
     : (checkpoint.step_label ?? "Granska resultatet");
   const heading = usePhaseHeading(title);
   // Eneo ends an unanswered review at this time. Saying so does not meet WCAG 2.2.1 by itself: only a review window
   // longer than 20 hours does (Eneo's default is 14 days; a flow can set less).
   const deadline = checkpoint.expires_at ? (
-    <> Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.</>
+    <Text as="p" type="supporting">
+      Granska senast {formatDeadline(checkpoint.expires_at)}. Därefter avbryts körningen.
+    </Text>
   ) : null;
   const participants = getSpeakerMappingParticipants(payload);
-  const inferNames = getSpeakerMappingInferNames(payload);
   const proposals = useMemo(() => buildSpeakerRows(payload), [payload]);
   // The mapping step's own proposal (name, confidence, evidence), before anyone edited it.
   const modelProposals = useMemo(
@@ -154,7 +150,6 @@ export function ReviewView({
   const saving = working === "save";
   const [showReject, setShowReject] = useState<boolean>(false);
   const [rejectReason, setRejectReason] = useState<string>("");
-  const fieldId = useId();
 
   // A control that removes or disables itself hands the focus on once the view has changed, never to the page
   // (WCAG 2.4.3): Avvisa to the reason, its Avbryt back to Avvisa, Redigera to the text, and Spara ändring or the
@@ -211,7 +206,7 @@ export function ReviewView({
   // korrigeringar för spelaren.
   const runId = runState.run.id;
   const reverseNames = useMemo(() => proposalNameToLabel(proposals), [proposals]);
-  const [transcript] = useTranscriptContext({
+  const [transcript, reloadTranscript] = useTranscriptContext({
     flowId,
     runId,
     enabled: isSpeakerMapping,
@@ -221,7 +216,7 @@ export function ReviewView({
   });
   // Bekräftade osäkra ord lagras lokalt per steg (ryms inte i Eneos modell).
   const [confirmedWords, toggleConfirmed] = useConfirmedWords(
-    transcript.stepId ? confirmedWordsStorageKey(flowId, runId, transcript.stepId) : null,
+    transcript.stepId ? confirmedWordsStorageKey(user.id, flowId, runId, transcript.stepId) : null,
   );
 
   // One playback for the page: the transcript's player, and the speakers' samples in "Namnge talarna".
@@ -239,14 +234,14 @@ export function ReviewView({
   const [sample, setSample] = useState<string | null>(null);
   const listening = sounds ? sample : null;
 
-  const { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections } = useTranscriptCorrections(flowId, runId, transcript);
+  const { corrections, saveState, localError, hasDropped, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped } = useTranscriptCorrections(flowId, runId, transcript, reloadTranscript);
 
   // Fritextredigering är bara giltig för text-steg: Eneo kräver en sträng
   // som edited_value för `text` och ett JSON-värde för `json`. Speaker
   // mapping är json-steget vi redigerar strukturerat via talarrader.
   // Approved (and the resume still to go through): the saved decision is final, shown read-only, and the one
   // thing left is to go on.
-  const decided = Boolean(isReviewCheckpointApproved(checkpoint));
+  const decided = isReviewCheckpointApproved(checkpoint);
   const editable =
     !decided &&
     checkpoint.review_mode === "edit" &&
@@ -317,8 +312,6 @@ export function ReviewView({
       setWorking(null);
     }
   }
-  const STILL_SENDING = "Något skickas redan till Eneo. Vänta tills det är klart och försök igen.";
-
   function saveNames(rows: SpeakerMappingRow[]): Promise<string | null> {
     return exclusively("save", async () => {
       const sent = keepNames(rows);
@@ -330,23 +323,22 @@ export function ReviewView({
   }
 
   /**
-   * Godkänn / Spara och fortsätt, from the page or the naming dialog: the page's edit or the names, saved when the
-   * pause does not hold them yet, then approved and resumed (onContinue). Returns why it did not go on, or null.
+   * Godkänn och fortsätt / Spara och fortsätt / Fortsätt: the page's edit, saved when the pause does not hold it yet,
+   * then approved and resumed (onContinue). Returns why it did not go on, or null.
    */
-  function saveAndApprove(names?: SpeakerMappingRow[]): Promise<string | null> {
+  function saveAndApprove(): Promise<string | null> {
     return exclusively("approve", async () => {
       // Pågående korrigeringssparningar måste landa före godkännandet, som
-      // viker in dem i transkriptet. Misslyckades senaste sparningen: stanna.
+      // viker in dem i transkriberingen. Misslyckades senaste sparningen: stanna.
       const correctionsSaved = await saveQueue.current;
       if (!correctionsSaved || (isSpeakerMapping && (transcript.pending || transcript.correctionProblem))) {
-        return "Ändringarna i transkriptet är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
+        return "Ändringarna i transkriberingen är inte sparade än, så flödet kan inte fortsätta. Försök igen om en stund.";
       }
       // Approved already: nothing is saved any more, the run is only resumed.
-      const edit = decided ? null : names ? buildEditedMapping(names) : dirty ? pendingEditedValue() : null;
+      const edit = decided ? null : dirty ? pendingEditedValue() : null;
       // The version sent, as its draft holds it: only that is dropped once Eneo has it.
-      const sent: ReviewEdit = names && !decided ? keepNames(names) : isSpeakerMapping ? { speakerRows } : { text };
+      const sent: ReviewEdit = isSpeakerMapping ? { speakerRows } : { text };
       return onContinue(checkpoint, edit, {
-        describe: names ? (err) => namingRefusal(err, names) : undefined,
         // Saved now or held already, whether or not this view is shown again before the run goes on.
         onSaved: () => draft.drop(sent),
       });
@@ -369,17 +361,20 @@ export function ReviewView({
   function submitReject() {
     // Approved, the pause is final: only resuming is left, never a rejection typed before it.
     if (decided || !rejectReason.trim()) return;
-    void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()).catch(() => undefined), undefined);
+    void exclusively("reject", () => onReject(checkpoint, rejectReason.trim()), undefined);
   }
 
-  const busy = working !== null || saving;
+  const busy = working !== null;
   // The transcript's own changes must be saved before the flow goes on.
-  const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem));
+  const continueBlocked = isSpeakerMapping && (transcript.pending || Boolean(transcript.correctionProblem) || saveState === "error" || hasDropped);
   // Approval folded the transcript's corrections in; a correction made after it would never reach the document.
   const canCorrect =
     isSpeakerMapping && transcript.fromMetadata && transcript.stepId !== null && !busy && !decided;
 
-  const rejectSection = showReject && !decided ? (
+  // While the reason form is open it is the decision, with its own Avbryt and Bekräfta avvisning: Avvisa and Godkänn
+  // are not shown beside it.
+  const rejecting = showReject && !decided;
+  const rejectSection = rejecting ? (
     <VStack as="section" gap={3} className={isSpeakerMapping ? undefined : styles.card}>
       <TextArea
         ref={reasonField}
@@ -401,23 +396,27 @@ export function ReviewView({
             setRejectReason("");
           }}
         />
-        <Button variant="primary" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
+        <Button variant="destructive" label="Bekräfta avvisning" isLoading={working === "reject"} isDisabled={!rejectReason.trim() || busy} onClick={submitReject} />
       </HStack>
     </VStack>
   ) : null;
 
-  const actions = (
-    <HStack gap={3} hAlign="between" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
+  // The choice as a pair at the end of the bar, of one height: Avvisa, then the action the page exists for.
+  const actions = rejecting ? null : (
+    <HStack gap={3} hAlign="end" vAlign="center" wrap="wrap" className={isSpeakerMapping ? undefined : styles.textActions}>
       {decided ? (
-        <Text as="p" type="supporting">
-          {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
-        </Text>
+        <StackItem size="fill">
+          <Text as="p" type="supporting">
+            {isSpeakerMapping ? "Namnen är redan sparade." : "Granskningen är redan godkänd."} Välj Fortsätt så går flödet vidare.
+          </Text>
+        </StackItem>
       ) : (
         <Button
           ref={rejectButton}
-          variant="ghost"
+          variant="secondary"
+          size="lg"
           label="Avvisa"
-          isDisabled={busy || showReject}
+          isDisabled={busy}
           onClick={() => {
             handOff.current = reasonField;
             setShowReject(true);
@@ -426,6 +425,7 @@ export function ReviewView({
       )}
       <Button
         variant="primary"
+        size="lg"
         icon={<CheckCircle2 aria-hidden />}
         label={decided ? "Fortsätt" : dirty ? "Spara och fortsätt" : "Godkänn och fortsätt"}
         isLoading={working === "approve"}
@@ -440,6 +440,7 @@ export function ReviewView({
   const decision = (
     <VStack gap={4} className={styles.decision}>
       {(runError || localError) && <Banner status="error" title={(runError ?? localError)!} collapsible={false} />}
+      {hasDropped && <Button variant="secondary" size="sm" label="Hämta dina rättningar" onClick={downloadDropped} />}
       {saveState === "error" && (
         <HStack gap={2} wrap="wrap">
           <Button variant="secondary" size="sm" label="Försök spara igen" onClick={retryCorrections} />
@@ -453,7 +454,7 @@ export function ReviewView({
 
   const paused = (
     <Text as="p" type="supporting">
-      Pausat i steg {checkpoint.step_order}
+      Väntar på din granskning
     </Text>
   );
 
@@ -462,21 +463,20 @@ export function ReviewView({
     const speakers =
       speakerRows.length === 0 ? (
         <Text as="p" type="supporting">
-          Inga talare kunde urskiljas i transkriptet. Du kan fortsätta utan att namnge någon.
+          Inga talare kunde urskiljas i transkriberingen. Du kan fortsätta utan att namnge någon.
         </Text>
       ) : (
         <VStack gap={3}>
-          <ul className={styles.speakers}>
+          <List aria-label="Talare" density="compact" hasDividers>
             {namingRows.map((row) => (
-              <li key={row.label} className={styles.speaker}>
-                <SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />
-                <Text weight="medium" className={styles.speakerLabel}>{speakerDisplayLabel(row.label)}</Text>
-                <Text maxLines={1} hasTruncateTooltip={false} color={row.name ? undefined : "secondary"}>
-                  {row.name ?? "Inget namn"}
-                </Text>
-              </li>
+              <ListItem
+                key={row.label}
+                label={speakerDisplayLabel(row.label)}
+                startContent={<SpeakerMark label={row.label} name={row.name ?? speakerDisplayLabel(row.label)} />}
+                description={<Text color={row.name ? undefined : "secondary"}>{row.name ?? "Inget namn"}</Text>}
+              />
             ))}
-          </ul>
+          </List>
           <SpeakerNamingDialog
             rows={namingRows}
             proposals={modelProposals}
@@ -493,8 +493,6 @@ export function ReviewView({
             onStopListening={stopListening}
             listenUnavailableReason={(label) => !firstSegmentForSpeaker(shownSegments, label) ? "Det finns inget tilldelat exempel utan överlappande tal." : null}
             onSave={saveNames}
-            onSaveAndContinue={saveAndApprove}
-            continueDisabled={continueBlocked}
             decided={decided}
             draftKey={namesDraftKey}
           >
@@ -504,7 +502,7 @@ export function ReviewView({
       );
     const unmappedNote = unmapped.length > 0 && speakerRows.length > 0 && (
       <Text as="p" type="supporting">
-        Talare utan namn behåller sin etikett i transkriptet.
+        Talare utan namn behåller sin etikett i transkriberingen.
       </Text>
     );
 
@@ -516,9 +514,9 @@ export function ReviewView({
             {title}
           </Heading>
           <Text as="p" type="supporting" className={styles.description}>
-            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriptet när du fortsätter."}
-            {deadline}
+            {SPEAKER_REVIEW_ENABLED ? "Lyssna, markera ord och välj vem som säger dem. Du kan också rätta texten." : "Lyssna och sätt namn på talarna. Namnen skrivs in i transkriberingen när du fortsätter."}
           </Text>
+          {deadline}
         </VStack>
 
         {/* One column that may shrink below its content: the speaker chips scroll instead of widening the page. */}
@@ -536,7 +534,7 @@ export function ReviewView({
                 }
               >
                 <VStack gap={3} paddingBlockStart={3}>
-                  <Text as="p" type="supporting">Namn gäller för talaren i hela transkriptet. För att byta vem som säger vissa ord, markera orden nedan.</Text>
+                  <Text as="p" type="supporting">Namn gäller för talaren i hela transkriberingen. För att byta vem som säger vissa ord, markera orden nedan.</Text>
                   {speakers}
                   {unmappedNote}
                 </VStack>
@@ -555,7 +553,7 @@ export function ReviewView({
           {SPEAKER_REVIEW_ENABLED && decision}
 
           {/* The card shows no title, but its parts ("Del 1") are h3s under this one. */}
-          <VisuallyHidden as="h2">Transkript</VisuallyHidden>
+          <VisuallyHidden as="h2">Transkribering</VisuallyHidden>
           <TranscriptPlayer
             className={styles.transcriptCard}
             segments={transcript.segments}
@@ -593,8 +591,8 @@ export function ReviewView({
           {editable
             ? "Du kan ändra texten innan du godkänner och fortsätter."
             : "Granska innehållet och välj om flödet ska fortsätta."}
-          {deadline}
         </Text>
+        {deadline}
       </VStack>
 
       <VStack as="section" gap={3} className={styles.card}>
@@ -606,15 +604,17 @@ export function ReviewView({
         {editable && editing ? (
           <TextArea
             ref={textField}
+            className={styles.reviewText}
             label="Innehåll för granskning"
             isLabelHidden
             value={text}
             isReadOnly={busy}
             onChange={editText}
+            onFocus={(event) => event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
             rows={Math.min(24, Math.max(8, text.split("\n").length + 1))}
           />
         ) : (
-          <article className={documentStyles.prose}>
+          <article>
             {/* Approved, the decision is what the pause holds, whatever the page had in hand. */}
             <Markdown>{decided ? initialText : text}</Markdown>
           </article>
@@ -681,7 +681,7 @@ export function ReviewView({
             collapsible={false}
           >
             <HStack gap={2} wrap="wrap">
-              <Button size="sm" variant="primary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
+              <Button size="sm" variant="secondary" label="Använd din version" isDisabled={busy} onClick={takeYours} />
               <Button size="sm" variant="ghost" label="Behåll den senaste" isDisabled={busy} onClick={() => draft.dropYours()} />
             </HStack>
           </Banner>
@@ -699,9 +699,5 @@ function extractCheckpointText(payload: Json | null | undefined): string {
   const text = (payload as { text?: unknown }).text;
   if (typeof text === "string") return text;
   // Fallback: visa payloaden som JSON så användaren ändå kan granska.
-  try {
-    return "```json\n" + JSON.stringify(payload, null, 2) + "\n```";
-  } catch {
-    return "";
-  }
+  return "```json\n" + JSON.stringify(payload, null, 2) + "\n```";
 }

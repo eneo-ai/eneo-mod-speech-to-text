@@ -107,7 +107,7 @@ test("actual player begins with a quiet transcript and direct selection", () => 
     segments: [raw], speakerReviews: [], reviewEnabled: true, fileCount: 0, audioSrcFor: () => "", speakerNames: {}, textFallback: "",
     corrections: base, editable: true, onCorrectionsChange: () => {}, speakerOptions: ["SPEAKER_00", "SPEAKER_01"],
   }));
-  assert.match(html, /aria-label="Transkript, markera ord för att redigera"/);
+  assert.match(html, /aria-label="Transkribering, markera ord för att redigera"/);
   assert.match(html, /aria-readonly="false"/);
   assert.match(html, /Nästa passage som behöver talarbeslut/);
   assert.ok(!html.includes("Välj en del av passagen"));

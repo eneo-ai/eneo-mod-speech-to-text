@@ -8,11 +8,7 @@ from app.accent import (
     LIGHT,
     NO_ACCENT_CSS,
     Accent,
-    _blend,
     _hex,
-    _legacy,
-    _legacy_holds,
-    _on_accent,
     _problem,
     _swedish,
     contrast,
@@ -160,65 +156,20 @@ class ThemeCssTests(unittest.TestCase):
             '[data-astryx-theme="eneo"] {\n'
             "  --color-accent: light-dark(#1E7B34, #2AAE4A);\n"
             "  --color-on-accent: light-dark(#FFFFFF, #0B1118);\n"
-            "}\n"
-            ":root {\n"
-            "  --primary: 134 60.3% 27.6%;\n"
-            "  --primary-foreground: 0 0.0% 100.0%;\n"
-            "  --primary-soft: 134 45% 83.3%;\n"
-            "}\n"
-            ":root.dark {\n"
-            "  --primary: 135 61.1% 42.4%;\n"
-            "  --primary-foreground: 212 37.1% 6.9%;\n"
-            "  --primary-soft: 135 45% 16.9%;\n"
             "}\n",
         )
 
     def test_whatever_is_resolved_formats_to_nothing_but_the_template(self) -> None:
         line = re.compile(
             r"/\* Organisationens accentfärg: #[0-9A-F]{6}, mörkt läge #[0-9A-F]{6}\. Skapad av modulens backend\. \*/"
-            r'|\[data-astryx-theme="eneo"\] \{|:root \{|:root\.dark \{|\}'
+            r'|\[data-astryx-theme="eneo"\] \{|\}'
             r"|  --color-accent: light-dark\(#[0-9A-F]{6}, #[0-9A-F]{6}\);"
             r"|  --color-on-accent: light-dark\(#[0-9A-F]{6}, #[0-9A-F]{6}\);"
-            r"|  --primary(-foreground|-soft)?: \d{1,3} [\d.]+% [\d.]+%;"
         )
         for light in ("#004595", "#1E7B34", "#B3261E", "#6B1EFD", "#00695C", "#5E6B00", "#0000FF", "#000000", "#1e7b34"):
             css = theme_css(resolve_accent(light, None))
             for text in css.splitlines():
                 self.assertRegex(text, line)
-
-    def test_the_old_selected_tint_keeps_the_luminance_its_text_was_tuned_for(self) -> None:
-        # app/globals.css: the selected tint is hsl(205 43% 87%) in light mode and hsl(209 45% 22%) in dark.
-        def tint_luminance(triplet: str) -> float:
-            hue, saturation, lightness = (float(part.rstrip("%")) for part in triplet.split())
-            red, green, blue = colorsys.hls_to_rgb(hue / 360, lightness / 100, saturation / 100)
-            return luminance((round(red * 255), round(green * 255), round(blue * 255)))
-
-        light_goal, dark_goal = tint_luminance("205 43% 87%"), tint_luminance("209 45% 22%")
-        for light in ("#1E7B34", "#B3261E", "#6B1EFD", "#00695C", "#5E6B00"):
-            css = theme_css(resolve_accent(light, None))
-            light_soft, dark_soft = re.findall(r"--primary-soft: ([^;]+);", css)
-            # On the safe side of the goal (lighter in light mode, darker in dark), and close to it.
-            self.assertGreaterEqual(tint_luminance(light_soft), light_goal * 0.995, light)
-            self.assertLess(tint_luminance(light_soft), light_goal * 1.03, light)
-            self.assertLessEqual(tint_luminance(dark_soft), dark_goal * 1.005, light)
-            self.assertGreater(tint_luminance(dark_soft), dark_goal * 0.9, light)
-
-    def test_the_old_components_hover_states_stay_readable(self) -> None:
-        # The default accent is already readable there: it is left as it is.
-        self.assertEqual(_legacy(_hex("#004595"), LIGHT), _hex("#004595"))
-        self.assertEqual(_legacy(_hex("#52B1FF"), DARK), _hex("#52B1FF"))
-        # An accent whose bg-primary/90 under white text falls to 4.41:1 is darkened until it holds (the gate's finding).
-        green = _hex("#1E7B34")
-        self.assertFalse(_legacy_holds(green, LIGHT))
-        shade = _legacy(green, LIGHT)
-        self.assertTrue(_legacy_holds(shade, LIGHT))
-        self.assertGreater(contrast(_on_accent(shade), _blend(shade, _hex(LIGHT.behind), 0.9)), 4.5)
-        self.assertLess(luminance(shade), luminance(green))
-        for light in ("#1E7B34", "#B3261E", "#6B1EFD", "#00695C", "#5E6B00", "#0000FF", "#000000"):
-            accent = resolve_accent(light, None)
-            assert accent is not None
-            self.assertTrue(_legacy_holds(_legacy(_hex(accent.light), LIGHT), LIGHT), light)
-            self.assertTrue(_legacy_holds(_legacy(_hex(accent.dark), DARK), DARK), light)
 
     def test_the_etag_follows_the_content(self) -> None:
         self.assertRegex(etag(theme_css(GREEN)), r'\A"[0-9a-f]{16}"\Z')

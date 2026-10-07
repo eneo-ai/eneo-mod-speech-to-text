@@ -4,12 +4,11 @@ import unittest
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -133,7 +132,7 @@ class ArtifactProxyTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["content-disposition"], ENEO_DISPOSITION)
-        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(response.headers["x-frame-options"], "DENY")  # no exception to the app-wide default: it is no inline PDF
 
     def test_eneo_names_the_file_and_the_page_cannot_rename_it(self) -> None:
         self.fake.disposition = 'attachment; filename="step_4_output.pdf"'
@@ -157,7 +156,7 @@ class ArtifactProxyTests(unittest.TestCase):
         response = self.client.get(CONTENT, params={"disposition": "inline"})
 
         self.assertTrue(response.headers["content-disposition"].startswith("attachment;"))
-        self.assertNotIn("x-frame-options", response.headers)
+        self.assertEqual(response.headers["x-frame-options"], "DENY")  # no exception to the app-wide default: it is no inline PDF
         self.assertEqual(response.headers["x-content-type-options"], "nosniff")
 
     def test_a_file_name_cannot_break_out_of_the_header(self) -> None:
@@ -190,11 +189,11 @@ class ArtifactProxyTests(unittest.TestCase):
         self.assertEqual(response.status_code, 410)
         self.assertEqual(self.fake.stream_requests, [])
 
-    def test_the_browser_can_no_longer_mint_a_signed_url_itself(self) -> None:
-        # The URL is a bearer credential for the file; only the module backend mints it now.
+    def test_the_browser_cannot_mint_a_signed_url_itself(self) -> None:
+        # The URL is a bearer credential for the file; only the module backend mints it.
         response = self.client.post(
             "/api/eneo/flows/flow-1/runs/run-1/artifacts/file-1/signed-url/",
-            headers={"Origin": "https://module.example.test"},
+            headers={"Origin": "http://localhost:3002"},
             json={"expires_in": 3600},
         )
         self.assertEqual(response.status_code, 403)

@@ -4,30 +4,31 @@
   "private": true,
   "license": "AGPL-3.0-only",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3002",
-    "build": "next build --webpack",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/finish-build.mjs dist",
+    "build:check": "tsc --noEmit && vite build --mode check && node scripts/finish-build.mjs dist-check",
     "test": "rm -rf .test-build && tsc -p tsconfig.test.json && node --require ./tests/register.cjs --test .test-build/lib/*.test.js",
-    "start": "next start -H 0.0.0.0 -p 3000",
     "lint": "tsc --noEmit",
     "test:a11y": "playwright test",
+    "test:a11y:real": "npm run build:check && GATE_TARGET=real playwright test",
     "astryx": "node node_modules/@astryxdesign/cli/clients/cli/bin/astryx.mjs",
     "theme:build": "npm run astryx -- theme build kit/theme/eneo.theme.ts -o kit/theme/built/eneo.css",
-    "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py ${A11Y_STUB_PORT:-8401} & trap \"kill $!\" EXIT; INTERNAL_API_BASE=http://127.0.0.1:${A11Y_STUB_PORT:-8401} next dev -H 127.0.0.1 -p ${A11Y_APP_PORT:-3401}'",
+    "dev:stub": "sh -c 'python3 tests/e2e/stub-server.py ${A11Y_STUB_PORT:-8401} & trap \"kill $!\" EXIT; DEV_API_BASE=http://127.0.0.1:${A11Y_STUB_PORT:-8401} vite --host 127.0.0.1 --port ${A11Y_APP_PORT:-3401} --strictPort'",
     "state": "playwright test a11y.spec.ts --project=laptop-1440-light --headed -g",
     "test:a11y:branding": "STUB_BRANDING=custom playwright test --config playwright.branding.config.ts && STUB_BRANDING=name playwright test --config playwright.branding.config.ts",
-    "test:a11y:review": "NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
-    "test:prod": "playwright test --config playwright.prod.config.ts"
+    "test:a11y:review": "SPEAKER_REVIEW_ENABLED=true playwright test --config playwright.review.config.ts",
+    "test:prod": "npm run build && npm run build:check && playwright test --config playwright.prod.config.ts",
+    "test:image": "../deploy/acceptance.sh",
+    "ux:shots": "node scripts/ux-shots.mjs",
+    "verify:candidate": "node scripts/verify-candidate.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "0.6.3",
     "@stylexjs/stylex": "0.19.1",
     "lucide-react": "1.49.0",
-    "next": "^16.3.8",
-    "next-themes": "^0.4.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1"
+    "react-router": "8.4.0"
   },
   "devDependencies": {
     "@astryxdesign/cli": "0.6.3",
@@ -37,12 +38,14 @@
     "@types/node": "22.20.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
     "dom-accessibility-api": "0.7.1",
     "fake-indexeddb": "6.2.5",
     "jsdom": "^30.1.1",
-    "typescript": "7.0.2"
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
   },
   "engines": {
-    "node": ">=22.13.0"
+    "node": ">=24.21.0"
   }
 }

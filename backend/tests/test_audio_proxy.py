@@ -6,12 +6,11 @@ import unittest
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import anyio  # noqa: E402
 import httpx  # noqa: E402
@@ -179,6 +178,25 @@ class AudioProxyTests(AudioProxyCase):
             "/api/eneo/flows/flow-1/runs/%2E%2E/input-files/file-1/audio",
         )
         self.assertEqual(response.status_code, 403)
+        self.assertEqual(self.fake.signed_url_calls, [])
+
+    def test_an_eneo_that_cannot_be_reached_for_the_signed_url_is_the_same_502_as_everywhere_else(self) -> None:
+        async def unreachable(url, **kwargs):
+            raise httpx.ConnectError("connection refused")
+
+        self.fake.post = unreachable
+
+        response = self.client.get("/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/audio")
+
+        self.assertEqual(response.status_code, 502)
+        self.assertEqual(response.json(), {"error": "upstream_unreachable", "detail": "Eneo could not be reached."})
+        self.assertEqual(self.fake.stream_requests, [])
+
+    def test_the_slash_twin_of_the_audio_route_is_not_a_route(self) -> None:
+        response = self.client.get("/api/eneo/flows/flow-1/runs/run-1/input-files/file-1/audio/")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json(), {"detail": "Eneo resource is not exposed"})
         self.assertEqual(self.fake.signed_url_calls, [])
 
     def test_audio_route_requires_session(self) -> None:

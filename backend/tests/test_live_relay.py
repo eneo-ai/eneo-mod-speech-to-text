@@ -1,5 +1,4 @@
 import asyncio
-import configparser
 import contextlib
 import json
 import os
@@ -13,31 +12,30 @@ from unittest.mock import patch
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import anyio  # noqa: E402
 import httpx  # noqa: E402
 import uvicorn  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from starlette.websockets import WebSocketDisconnect  # noqa: E402
-from uvicorn.main import main as uvicorn_cli  # noqa: E402
 from websockets.asyncio.client import connect as websocket_connect  # noqa: E402
 from websockets.asyncio.server import serve  # noqa: E402
 from websockets.exceptions import ConnectionClosed  # noqa: E402
 
-from app import main  # noqa: E402
+from app import main, serve as launcher  # noqa: E402
+from app.limits import WS_MAX_MESSAGE_BYTES  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 from test_module_auth import token_payload  # noqa: E402
 
 FLOW_ID = "0b6f1c9e-3d2a-4c55-9a51-7f0e2b1d4c10"
 STEP_ID = "5e2d8a41-9c07-4b3f-8e6a-1d2c3b4a5f60"
 LIVE_PATH = f"/api/live/{FLOW_ID}/{STEP_ID}"
-MODULE_ORIGIN = "https://module.example.test"
+MODULE_ORIGIN = "http://localhost:3002"
 TICKET = "ticket-1"
 STOP = '{"type":"stop"}'
 READY = {"type": "ready", "sample_rate": 16000, "max_seconds": 18000}
@@ -260,6 +258,25 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
         with self.assertRaises(WebSocketDisconnect) as ended:
             browser.receive_json()
         self.assertEqual(ended.exception.code, code)
+
+    def test_heavy_capacity_refuses_live_with_retryable_event_before_requesting_a_ticket(self) -> None:
+        with patch.object(main.app.state, "heavy_io_slots", anyio.CapacityLimiter(1)):
+            with self.connect() as first:
+                self.assertEqual(first.receive_json(), READY)
+                with self.connect() as excess:
+                    event = excess.receive_json()
+                    self.assertEqual(event["type"], "error")
+                    self.assertEqual(event["code"], "live_busy")
+                    self.assertTrue(event["retryable"])
+                    self.assert_closed(excess)
+                self.assertEqual(len(self.eneo_api.calls), 1)
+                first.send_bytes(b"\x01\x00" * 160)
+                self.assertEqual(first.receive_json(), {"type": "transcript.delta", "text": "320 bytes "})
+                first.send_text(STOP)
+                self.assertEqual(first.receive_json()["type"], "transcript.done")
+                self.assert_closed(first)
+            with self.connect() as next_session:
+                self.assertEqual(next_session.receive_json(), READY)
 
     def test_signed_in_user_streams_to_eneo_and_reads_its_events_in_order(self) -> None:
         with self.connect() as browser:
@@ -581,23 +598,14 @@ class LiveRelayTests(RelayFixture, unittest.TestCase):
         self.assertEqual(self.eneo_socket.frames, [b"\x00\x00"])
 
 
-def uvicorn_options(command: list[str]) -> dict[str, object]:
-    """The options uvicorn's own command line makes of a launch command."""
-    arguments = command[command.index("app.main:app") :]
-    return uvicorn_cli.make_context("uvicorn", arguments).params
-
-
 def launch_commands() -> dict[str, list[str]]:
     """Every way the repository starts the module backend."""
-    supervisord = configparser.ConfigParser(interpolation=None)
-    supervisord.read(REPOSITORY / "deploy" / "supervisord.conf")
-    dockerfile = (REPOSITORY / "backend" / "Dockerfile").read_text()
-    readme = (REPOSITORY / "README.md").read_text()
+    dockerfile = (REPOSITORY / "Dockerfile").read_text()
+    development = (REPOSITORY / "docs" / "development.md").read_text()
     return {
-        "production image": shlex.split(supervisord["program:backend"]["command"]),
-        "backend image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
-        "README dev server": shlex.split(
-            re.search(r"^\.venv/bin/python -m (uvicorn .+)$", readme, re.M)[1]
+        "production image": json.loads(re.search(r"^CMD (.+)$", dockerfile, re.M)[1]),
+        "development server": shlex.split(
+            re.search(r"^(\.venv/bin/python -m app\.serve .+)$", development, re.M)[1]
         ),
     }
 
@@ -605,9 +613,16 @@ def launch_commands() -> dict[str, list[str]]:
 @contextlib.contextmanager
 def serve_module(**options):
     """The module backend on uvicorn, as the image runs it; yields the port."""
+    with serving(main.app, **options) as (port, _):
+        yield port
+
+
+@contextlib.contextmanager
+def serving(app, **options):
+    """``app`` on uvicorn, as the image runs it; yields the port and the server."""
     server = uvicorn.Server(
         uvicorn.Config(
-            main.app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
+            app, host="127.0.0.1", port=0, lifespan="off", log_level="warning", **options
         )
     )
     thread = threading.Thread(target=server.run, daemon=True)
@@ -618,32 +633,33 @@ def serve_module(**options):
             if time.monotonic() > deadline:
                 raise RuntimeError("uvicorn did not start")
             time.sleep(0.01)
-        yield server.servers[0].sockets[0].getsockname()[1]
+        yield server.servers[0].sockets[0].getsockname()[1], server
     finally:
         server.should_exit = True
         thread.join(5)
 
 
 class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
-    def test_every_launch_path_sets_the_same_browser_limits(self) -> None:
-        limits = {
-            name: {
-                option: uvicorn_options(command)[option]
-                for option in ("ws_max_size", "ws_max_queue")
-            }
-            for name, command in launch_commands().items()
-        }
-
-        for name, limit in limits.items():
+    def test_every_launch_path_runs_the_launcher_which_sets_the_browser_limits(self) -> None:
+        # The limits live in app.limits and only app.serve passes them: a path that ran uvicorn itself could set others.
+        for name, command in launch_commands().items():
             with self.subTest(name):
-                self.assertEqual(limit, limits["production image"])
+                self.assertEqual(command[command.index("-m") + 1], "app.serve")
+                self.assertNotIn("uvicorn", " ".join(command))
+                launcher.parse_args(command[command.index("app.serve") + 1 :])  # the arguments are the launcher's own
+        # The image serves the built UI: only the development server runs the API alone.
+        self.assertNotIn("--api-only", launch_commands()["production image"])
+        with patch("uvicorn.run") as run:
+            launcher.serve("app.main:app", api_only=True)
+        self.assertEqual(
+            run.call_args.kwargs["ws_max_size"],
+            WS_MAX_MESSAGE_BYTES,
+        )
 
     def test_production_limits_refuse_an_oversized_message_before_eneo(self) -> None:
-        options = uvicorn_options(launch_commands()["production image"])
-        max_size, max_queue = options["ws_max_size"], options["ws_max_queue"]
-        # Eneo's largest audio frame fits, and a connection queues at most 2 MiB.
+        max_size = WS_MAX_MESSAGE_BYTES
+        # Eneo's largest audio frame fits.
         self.assertGreaterEqual(max_size, 64 * 1024)
-        self.assertLessEqual(max_size * max_queue, 2 * 2**20)
         session_id = self.create_session(refresh_at=int(time.time()) + 30)
 
         async def stream(port: int) -> int:
@@ -661,9 +677,47 @@ class BrowserTransportLimitTests(RelayFixture, unittest.TestCase):
                     await asyncio.wait_for(browser.recv(), 5)
                 return refused.exception.rcvd.code
 
-        with serve_module(ws_max_size=max_size, ws_max_queue=max_queue) as port:
+        with serve_module(ws_max_size=max_size) as port:
             self.assertEqual(asyncio.run(stream(port)), 1009)
         self.assertEqual([len(frame) for frame in self.eneo_socket.frames], [64 * 1024])
+
+    def test_a_connection_buffers_a_message_or_two_and_the_sender_is_held_back(self) -> None:
+        """What bounds a connection's queue is not a limit of ours: uvicorn's default implementation stops reading as soon
+        as a message is queued, until the app has taken it. This pins that, with an app that takes nothing. It reads the
+        implementation's own queue, so it names what a uvicorn upgrade (pinned) must keep."""
+        release = threading.Event()
+
+        async def takes_nothing(scope, receive, send) -> None:
+            if scope["type"] == "websocket":
+                await receive()  # the connect
+                await send({"type": "websocket.accept"})
+                while not release.is_set():
+                    await asyncio.sleep(0.05)
+
+        frame = bytes(64 * 1024)  # Eneo's largest audio frame
+
+        with serving(takes_nothing, ws_max_size=WS_MAX_MESSAGE_BYTES) as (port, server):
+
+            async def flood() -> tuple[int, int]:
+                sender = await websocket_connect(f"ws://127.0.0.1:{port}", compression=None)
+                try:
+                    sent = 0
+                    with contextlib.suppress(TimeoutError):
+                        for _ in range(2000):  # 128 MiB, more than every buffer on the way
+                            await asyncio.wait_for(sender.send(frame), 1)  # the wait is also what lets the server settle
+                            sent += 1
+                    (connection,) = server.server_state.connections
+                    return sent, connection.queue.qsize()
+                finally:
+                    sender.transport.abort()  # a close would wait for a server that is not reading
+
+            try:
+                sent, queued = asyncio.run(flood())
+            finally:
+                release.set()
+
+        self.assertLess(sent, 2000, "the sender was never held back")
+        self.assertLessEqual(queued * len(frame), 2 * WS_MAX_MESSAGE_BYTES, f"{queued} messages were queued")
 
 
 if __name__ == "__main__":

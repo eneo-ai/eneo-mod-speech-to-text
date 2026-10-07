@@ -1,6 +1,3 @@
-"use client";
-
-import dynamic from "next/dynamic";
 import type { ComponentProps } from "react";
 import { FormLayout } from "@astryxdesign/core/FormLayout";
 import { Selector } from "@astryxdesign/core/Selector";
@@ -10,10 +7,13 @@ import { ParticipantsInput } from "@/components/flow/ParticipantsInput";
 import styles from "@/components/flow/DetailsForm.module.css";
 import type { FormField } from "@/lib/api";
 import { MAX_SPEAKER_COUNT, readSpeakerCount, type DetailValue, type FlowSession } from "@/lib/flow-session";
+import { LoadFailure } from "@/components/LoadFailure";
+import { lazyLoader, useLoaded } from "@/lib/lazy-component";
 
 // A calendar is rarely asked for and costs a popover: it loads when a flow has a date.
-const DateInput = dynamic(() => import("@astryxdesign/core/DateInput").then((module) => module.DateInput));
-type IsoDate = NonNullable<ComponentProps<typeof DateInput>["value"]>;
+const calendar = lazyLoader(() => import("@astryxdesign/core/DateInput").then((module) => module.DateInput));
+type DateInputType = typeof import("@astryxdesign/core/DateInput").DateInput;
+type IsoDate = NonNullable<ComponentProps<DateInputType>["value"]>;
 // What the person typed is kept as it is; the calendar shows only a whole date.
 const isoDate = (text: string) => (/^\d{4}-\d{2}-\d{2}$/.test(text) ? (text as IsoDate) : undefined);
 
@@ -25,11 +25,38 @@ const optionKey = (index: number) => `opt:${index}`;
 // Astryx's types leave out the attributes of a phone's number keyboard, but its field passes them on to the input.
 const NUMERIC = { inputMode: "numeric", pattern: "[0-9]*" } as Record<string, string>;
 
+type DateFieldProps = Pick<ComponentProps<typeof TextInput>, "label" | "description" | "isOptional" | "isRequired" | "status" | "statusVariant"> & {
+  "data-detail-field": string;
+  /** The calendar's own styling (its button at the field's height for a finger); the plain field has none to match. */
+  className: string;
+  name: string;
+  text: string;
+  onChange: (next: string) => void;
+};
+
+/**
+ * A date: the design system's calendar once its code has arrived. Until then, and if it never does (a tab older than
+ * the deploy that replaced its files), a plain text field with the same label and value, which takes a date as well
+ * (2026-09-24); if the code is gone a line says so and offers the person's reload, which gives back the details draft.
+ * No boundary and no reload by itself: nothing can unmount the form and what has been typed in it.
+ */
+function DateField({ name, text, onChange, className, ...common }: DateFieldProps) {
+  const { value: DateInput, failed } = useLoaded(calendar);
+  // A week starts on Monday here. A finger gets the platform's own picker, which keeps the device's.
+  if (DateInput) return <DateInput {...common} weekStartsOn="mon" className={className} value={isoDate(text)} onChange={(next) => onChange(next ?? "")} />;
+  return (
+    <>
+      <TextInput {...common} htmlName={name} autoComplete="off" value={text} onChange={onChange} />
+      {failed && <LoadFailure keeps="Det du har skrivit finns kvar.">Kalendern kunde inte läsas in.</LoadFailure>}
+    </>
+  );
+}
+
 /**
  * The control of a detail by its name, so a problem can move focus to it. The design system's fields own their ids,
  * so a field is found by the name it carries (`data-detail-field`), on the control or inside what holds it.
  */
-export function detailControl(name: string): HTMLElement | null {
+function detailControl(name: string): HTMLElement | null {
   const marked = document.querySelector<HTMLElement>(`[data-detail-field="${CSS.escape(name)}"]`);
   const control = "input, textarea, button, [role=combobox]";
   return marked?.matches(control) ? marked : (marked?.querySelector<HTMLElement>(control) ?? null);
@@ -69,7 +96,7 @@ export function DetailsForm({
   onChange: (name: string, value: DetailValue) => void;
   suggestions: string[];
   onNamesAdded: (names: string[]) => void;
-  /** A line under a field for now, by its name: where its value came from. */
+  /** A line under a field, by its name, until the person edits it: where its value came from. */
   notes?: Record<string, string>;
   /** The flow's own field that asks for the speaker count: a whole number, like Antal talare. */
   countField?: string | null;
@@ -158,11 +185,13 @@ export function DetailsForm({
           }
           if (field.type === "date") {
             return (
-              <DateInput
+              <DateField
                 key={field.name}
                 {...common}
-                value={isoDate(text)}
-                onChange={(next) => onChange(field.name, next ?? "")}
+                className={styles.date}
+                name={field.name}
+                text={text}
+                onChange={(next) => onChange(field.name, next)}
               />
             );
           }
@@ -186,7 +215,7 @@ export function DetailsForm({
 }
 
 /** What "Antal talare" is found by, so a refused start can move focus to it. */
-export const SPEAKER_COUNT_ID = "antal-talare";
+const SPEAKER_COUNT_ID = "antal-talare";
 
 /** Moves focus to "Antal talare". The design system's field owns its id, so it is found by its name. */
 export const focusSpeakerCount = () => detailControl(SPEAKER_COUNT_ID)?.focus();

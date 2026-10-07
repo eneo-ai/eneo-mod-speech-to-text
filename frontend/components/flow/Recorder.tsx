@@ -1,13 +1,13 @@
-"use client";
-
 import { Pause, Play } from "lucide-react";
 import { useContext, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
 import { Card } from "@astryxdesign/core/Card";
+import { Grid } from "@astryxdesign/core/Grid";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Text } from "@astryxdesign/core/Text";
+import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
 import { SignedOutSlot } from "@/components/AuthGate";
@@ -24,7 +24,7 @@ import styles from "./Recorder.module.css";
 const SETTLE_MS = 700;
 
 /** "Spelar in" with the red dot while the recorder records; "Pausad" otherwise. Never colour alone. */
-export function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
+function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase; size?: "base" | "lg" }) {
   const recording = phase === "recording";
   return (
     <HStack as="span" gap={2} align="center">
@@ -37,7 +37,7 @@ export function RecordingStatus({ phase, size = "base" }: { phase: SessionPhase;
 }
 
 /** The recorded time (paused time excluded), from the recorder itself. */
-export function Timer({
+function Timer({
   capture,
   phase,
   weight,
@@ -61,13 +61,10 @@ export function FocusedRecorder({
   capture,
   phase,
   stream,
-  storageNote,
 }: {
   capture: RecordingCapture;
   phase: SessionPhase;
   stream: MediaStream | null;
-  /** Where the recording is kept, when that is worth saying. */
-  storageNote: string | null;
 }) {
   return (
     <Card padding={6} className={styles.stage}>
@@ -84,13 +81,8 @@ export function FocusedRecorder({
           className={styles.stageMeter}
         />
         <Text as="p" color="secondary" className={styles.note}>
+          {/* Where the recording is kept was said under Starta inspelning: once per view. */}
           Texten skapas när du stoppar inspelningen.
-          {storageNote && (
-            <>
-              <br />
-              {storageNote}
-            </>
-          )}
         </Text>
       </VStack>
     </Card>
@@ -136,6 +128,27 @@ export function RecordingBar({
     if (shownAt.current !== null && Date.now() - shownAt.current >= SETTLE_MS) act();
   };
   const marker = showStatus ? "" : undefined;
+  const readout = (
+    <div className={styles.readout}>
+      <RecordingStatus phase={phase} />
+      <div className={styles.readoutLine}>
+        <Timer capture={capture} phase={phase} weight="medium" />
+        <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
+      </div>
+    </div>
+  );
+  const actions = (
+    <Grid columns={2} gap={showStatus ? 2 : 3} className={showStatus ? styles.statusActions : styles.actions}>
+      <Button
+        label={running ? "Pausa" : "Fortsätt"}
+        variant="secondary"
+        width="100%"
+        icon={<Icon icon={running ? Pause : Play} size="md" />}
+        onClick={settled(onPause)}
+      />
+      <Button label="Stoppa" variant="primary" width="100%" icon={<Icon icon="stop" size="md" />} onClick={settled(onStop)} />
+    </Grid>
+  );
   return (
     <div className={styles.bar} data-status={marker}>
       <VStack gap={3} className={styles.barStack}>
@@ -147,35 +160,16 @@ export function RecordingBar({
           </VStack>
         )}
         <VStack gap={3} className={styles.controls}>
-          <div className={styles.row} data-status={marker}>
-            {showStatus && (
-              <div className={styles.readout}>
-                <RecordingStatus phase={phase} />
-                <div className={styles.readoutLine}>
-                  <Timer capture={capture} phase={phase} weight="medium" />
-                  <LevelMeter stream={running ? stream : null} bars={8} variant="steps" className={styles.statusMeter} />
-                </div>
-              </div>
-            )}
-            <div className={styles.actions}>
-              <Button
-                label={running ? "Pausa" : "Fortsätt"}
-                variant="secondary"
-                size="lg"
-                width="100%"
-                icon={<Icon icon={running ? Pause : Play} size="md" />}
-                onClick={settled(onPause)}
-              />
-              <Button
-                label="Stoppa"
-                variant="primary"
-                size="lg"
-                width="100%"
-                icon={<Icon icon="stop" size="md" />}
-                onClick={settled(onStop)}
-              />
-            </div>
-          </div>
+          {/* One toolbar for the controls: a single Tab stop, the arrow keys between Pausa and Stoppa. */}
+          <Toolbar
+            label="Inspelningen"
+            size="lg"
+            gap={0}
+            className={styles.toolbar}
+            data-status={marker}
+            startContent={showStatus ? readout : actions}
+            endContent={showStatus ? actions : undefined}
+          />
           <VStack gap={0.5} className={styles.notes} data-status={marker}>
             {/* Always there, so a new note is said once; the fixed line under it is not said again with each. */}
             <VStack role="status" gap={0.5}>
@@ -215,6 +209,27 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
         <Button label="Stoppa" variant="primary" icon={<Icon icon="stop" size="sm" />} onClick={onStop} />
       </HStack>
     </HStack>,
+    slot,
+  );
+}
+
+/**
+ * Shown by the stopped recording's page. When it comes up under the cover (Stoppa was pressed in the sign-in dialog), the
+ * buttons that were pressed are gone with the recording's view: the dialog says the recording is stopped and kept, and
+ * the focus stays in it, on those words.
+ */
+export function StoppedWhileSignedOut() {
+  const slot = useContext(SignedOutSlot);
+  const underCover = useRef(slot !== null);
+  const line = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (underCover.current) line.current?.focus();
+  }, []);
+  if (!underCover.current || !slot) return null;
+  return createPortal(
+    <Text as="p" role="status" tabIndex={-1} ref={line}>
+      Inspelningen är stoppad och sparad.
+    </Text>,
     slot,
   );
 }

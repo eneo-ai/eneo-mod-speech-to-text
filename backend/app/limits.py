@@ -18,6 +18,10 @@ The limits are read from the settings at each request, so the settings are the o
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+
+import anyio
 from fastapi import HTTPException, Request
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
@@ -25,12 +29,36 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.config import Settings
 
+# What the browser's live socket may send the module, in every way the module is started (app.serve passes it):
+# Eneo's PCM frames are at most 64 KiB, so a message of 128 KiB fits one. A larger frame closes the socket with 1009.
+# There is no limit on a connection's queue because uvicorn's default implementation needs none: it stops reading as soon
+# as a message is queued, until the app has taken it (test_live_relay.py pins that).
+WS_MAX_MESSAGE_BYTES = 128 * 1024
+
+# Reserve multipart framing when a raw file is later forwarded to Eneo.
+UPLOAD_ENVELOPE_BYTES = 4096
+
 TOO_LARGE = "Request body too large"
 UPLOAD_TOO_LARGE = "Upload too large: the module accepts at most max_upload_bytes (MAX_UPLOAD_BYTES), which is not Eneo's own limit"
 # The scope key that holds this request's limit, once the code that handles an upload has raised it.
 BODY_LIMIT = "eneo_module.body_limit"
 # No body is as long as 10**19 bytes, and int() refuses more than 4300 digits (a ValueError, so a 500).
 _MAX_LENGTH_DIGITS = 19
+
+
+@contextmanager
+def capacity_slot(limiter: anyio.CapacityLimiter) -> Iterator[bool]:
+    """Refuse excess work without queueing; release only after the caller's resource cleanup."""
+    borrower = object()
+    try:
+        limiter.acquire_on_behalf_of_nowait(borrower)
+    except anyio.WouldBlock:
+        yield False
+        return
+    try:
+        yield True
+    finally:
+        limiter.release_on_behalf_of(borrower)
 
 
 class BodyTooLarge(HTTPException):

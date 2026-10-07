@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
  * What is docked at the bottom of a phone's window (the setup's primary action, a player) covers the page's last rows,
  * so a control that takes focus must scroll to above it (WCAG 2.4.11). Its height is not a number to write down: its
  * words, a longer note and the text spacing a reader may set all change it. Each dock reports its own, and the page
- * keeps the tallest in `--dock-block-size` on <html>, which app/globals.css reads as the scroll padding.
+ * keeps the tallest in `--dock-block-size` on <html>, which styles/globals.css reads as the scroll padding.
  */
 const docks = new Map<HTMLElement, number>();
 

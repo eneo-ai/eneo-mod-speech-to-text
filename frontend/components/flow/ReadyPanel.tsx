@@ -1,5 +1,3 @@
-"use client";
-
 import { Download, FileText, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
 import { AlertDialog } from "@astryxdesign/core/AlertDialog";
@@ -15,6 +13,7 @@ import { useSignedOut } from "@/components/AuthGate";
 import { AudioPlayer, usePlayback } from "@/components/flow/AudioPlayer";
 import { CopyButton } from "@/components/flow/CopyButton";
 import { EarlierRuns } from "@/components/flow/EarlierRuns";
+import { StoppedWhileSignedOut } from "@/components/flow/Recorder";
 import { paragraphs } from "@/components/flow/LiveSheet";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { StateCard } from "@/components/flow/StateCard";
@@ -27,9 +26,10 @@ import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
-/** Each part of the recording as something the player can play, over its known length. */
-function usePartSources(recording: StoredRecording): PlayerSource[] {
+/** Each part of the recording as something the player can play, over its known length; `unreadable` when the device could not be read. */
+function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; unreadable: boolean } {
   const [sources, setSources] = useState<PlayerSource[]>([]);
+  const [unreadable, setUnreadable] = useState(false);
   useEffect(() => {
     let cancelled = false;
     let urls: string[] = [];
@@ -38,17 +38,18 @@ function usePartSources(recording: StoredRecording): PlayerSource[] {
       .then((files) => {
         if (cancelled) return;
         urls = files.map((file) => URL.createObjectURL(file.blob));
+        setUnreadable(false);
         setSources(
           files.map((file, i) => ({ url: urls[i], durationMs: recording.parts[file.index]?.durationMs ?? 0 })),
         );
       })
-      .catch(() => undefined);
+      .catch(() => !cancelled && setUnreadable(true));
     return () => {
       cancelled = true;
       urls.forEach((url) => URL.revokeObjectURL(url));
     };
   }, [recording]);
-  return sources;
+  return { sources, unreadable };
 }
 
 /** Strömma's live text after Stoppa, to read and copy until the document brings the final text. */
@@ -92,6 +93,7 @@ export function ReadyPanel({
   problem,
   live = null,
   finishing = false,
+  finishQueued = false,
   makesText = false,
   onCreate,
   onContinue,
@@ -107,6 +109,8 @@ export function ReadyPanel({
   live?: LiveSession | null;
   /** Strömma's final text is on its way: Skapa dokument waits for it. */
   finishing?: boolean;
+  /** Skapa dokument was pressed meanwhile: it is made as soon as the final text is in. */
+  finishQueued?: boolean;
   /** The flow ends in text, not a file: the action and the lines say text. */
   makesText?: boolean;
   onCreate: () => void;
@@ -120,7 +124,7 @@ export function ReadyPanel({
 }) {
   // Eneo already has it: the run is among the earlier runs, and the copy here can go.
   const sent = problem?.sent === true;
-  const sources = usePartSources(recording);
+  const { sources, unreadable } = usePartSources(recording);
   const playback = usePlayback(sources);
   const [saveProblem, setSaveProblem] = useState<Problem | null>(null);
   // The question is the page's: it is closed while the login has ended, and back with the same state after the new one.
@@ -151,6 +155,7 @@ export function ReadyPanel({
 
   return (
     <StateCard>
+      <StoppedWhileSignedOut />
       <VStack gap={1}>
         <Heading level={2} data-phase-heading tabIndex={-1}>
           Inspelningen är klar
@@ -161,6 +166,7 @@ export function ReadyPanel({
       </VStack>
 
       {sources.length > 0 && <AudioPlayer playback={playback} label={name} />}
+      {unreadable && <ProblemAlert problem={{ title: "Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp." }} />}
       {live && <LiveDraft live={live} makesText={makesText} />}
 
       <HStack gap={4} wrap="wrap" align="center">
@@ -206,7 +212,7 @@ export function ReadyPanel({
         </Grid>
         {/* The words the button gives up for its spinner, said in a region that is there before they are. */}
         <Text as="p" type="supporting" role="status" className={finishing ? styles.finishing : undefined}>
-          {finishing ? "Slutför texten…" : ""}
+          {finishing ? (finishQueued ? "Slutför texten… Det skapas så snart den är klar." : "Slutför texten…") : ""}
         </Text>
       </VStack>
 

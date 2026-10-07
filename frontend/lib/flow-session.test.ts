@@ -11,6 +11,7 @@ import type { DraftStorage } from "./drafts";
 import {
   FlowSession,
   availableModes,
+  missingModesNote,
   acceptedFormats,
   fileAccept,
   primaryActionLabel,
@@ -121,7 +122,7 @@ function fakeLiveClient() {
   const earlier: unknown[] = [];
   const streams: unknown[] = [];
   const listeners = new Set<() => void>();
-  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false, complete: false };
+  let snapshot: LiveSnapshot = { status: "connecting", pieces: [], pending: "", started: false };
   const client: LiveClient = {
     open(stepId, recordingId, pieces) {
       opened.push(stepId);
@@ -212,6 +213,22 @@ async function setup(
   return { session, store, streams, recorders };
 }
 
+test("a way the flow would offer but this browser or Eneo cannot give is said, not silently left out", () => {
+  const withLive = audioContract();
+  const live = (reason: "model_unavailable" | "model_not_realtime") =>
+    audioContract({ transcription: { live: { available: false, reason }, speaker_labels: { selectable: true, required: false, default: true } } });
+  assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: true }), null, "every way is there");
+  assert.equal(
+    missingModesNote(withLive, { canRecord: false, liveClient: true }),
+    "Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.",
+  );
+  assert.equal(missingModesNote(withLive, { canRecord: true, liveClient: false }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");
+  assert.equal(missingModesNote(live("model_unavailable"), { canRecord: true, liveClient: true }), "Livetext är inte tillgänglig just nu. Du kan spela in som vanligt.");
+  assert.equal(missingModesNote(live("model_not_realtime"), { canRecord: true, liveClient: true }), null, "a flow that never streams has nothing missing");
+  const documentFlow = audioContract({ steps_requiring_input: [{ step_id: "step-doc", input_format: "document" }], transcription: null });
+  assert.equal(missingModesNote(documentFlow, { canRecord: false, liveClient: false }), null, "a document flow records nothing");
+});
+
 test("the flow offers Strömma only when its live text is available, Spela in only when the browser can record, and Ladda upp always", () => {
   const withLive = audioContract();
   assert.deepEqual(availableModes(withLive, { canRecord: true, liveClient: true }), ["stromma", "spela-in", "ladda-upp"]);
@@ -270,7 +287,7 @@ test("a recording keeps each file within the time the contract gives Eneo's audi
   };
   const timed = await recordFor(90 * 60);
   assert.ok(timed <= 89 * 60_000 && timed > 89 * 60_000 - 10_000, `${timed} ms: bytes alone would allow days`);
-  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide, as before");
+  assert.ok((await recordFor(null)) > 24 * 3_600_000, "no time limit: the bytes decide");
 });
 
 test("the last chosen mode is remembered per flow and used when it is still offered", async () => {
@@ -403,6 +420,34 @@ test("a count goes with the run as maxSpeakers; empty or not asked sends none, a
   session.setSpeakerLabels(false);
   assert.equal(await session.createDocument(), true);
   assert.equal(sent[2].maxSpeakers, undefined, "labels off: no count, whatever was typed");
+});
+
+test("two presses of Skapa dokument at once send the recording once", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const answers = await Promise.all([session.createDocument(), session.createDocument()]);
+  assert.equal(sent.length, 1, "one run is asked for");
+  assert.deepEqual(answers.slice().sort(), [false, true]);
+});
+
+test("a file whose length cannot be read is not left checking: its length is Eneo's to judge", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setProbeDuration(() => Promise.reject(new Error("the browser could not read it")));
+  session.setContract(audioContract());
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["audio"], "mote.mp3", { type: "audio/mpeg" }));
+  await until(() => !session.getSnapshot().fileChecking, "the check over");
+  assert.equal(await session.createDocument(), true);
+  assert.equal(sent.length, 1);
 });
 
 const PEOPLE: FormField = { name: "motesdeltagare", label: "Vilka deltar?", type: "list", required: false };
@@ -584,13 +629,13 @@ test("each mode has its own primary action", () => {
   assert.equal(primaryActionLabel("ladda-upp", true, true), "Skapa text");
 });
 
-test("the action says text exactly when Eneo gives the result back as text in the run, else a document as before", () => {
+test("the action says text exactly when Eneo gives the result back as text in the run, else a document", () => {
   const label = (finalOutput: RunContract["final_output"]) => createActionLabel(makesText(finalOutput));
   assert.equal(label({ output_type: "text", delivery: "payload" }), "Skapa text");
   assert.equal(label({ output_type: "json", delivery: "payload" }), "Skapa text", "data the result view shows as text");
   for (const type of ["pdf", "docx"]) assert.equal(label({ output_type: type, delivery: "artifact" }), "Skapa dokument", type);
-  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver: as before");
-  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how: as before");
+  assert.equal(label({ output_type: "json", delivery: "outbound_http" }), "Skapa dokument", "sent on to a receiver");
+  assert.equal(label({ output_type: "text" }), "Skapa dokument", "an Eneo that does not say how");
   assert.equal(label(null), "Skapa dokument", "a flow without steps");
   assert.equal(label(undefined), "Skapa dokument");
 });
@@ -779,6 +824,60 @@ test("an optional file never turns a send from the unsent list into an empty run
   assert.equal(sent.length, 0);
   grant(new FakeStream() as unknown as MediaStream);
   await starting;
+});
+
+test("Avbryt while the browser still asks for the microphone ends the wait at once, and an answer that comes later records nothing and says nothing", async () => {
+  let grant: (stream: MediaStream) => void = () => undefined;
+  const stream = new FakeStream();
+  const { session, store } = await setup({ getStream: () => new Promise((resolve) => (grant = resolve)) });
+  session.setContract(audioContract());
+  session.selectMode("spela-in");
+  const starting = session.start();
+  await until(() => session.getSnapshot().phase === "starting");
+
+  session.cancelStart();
+  assert.equal(session.getSnapshot().phase, "setup", "the page stops waiting: the person may start again, or choose something else");
+  grant(stream as unknown as MediaStream);
+  await starting;
+  await settle();
+  const after = session.getSnapshot();
+  assert.deepEqual([after.phase, after.problem], ["setup", null], "nothing recorded, no problem for an answer nobody waits for");
+  assert.equal(stream.track.readyState, "ended", "a microphone that was granted late is let go");
+  assert.deepEqual(await store.listUnsent("user-1"), [], "no empty recording is left");
+});
+
+test("after cancelling an unanswered microphone question, a new recording starts before the old question is answered", async () => {
+  for (const answer of ["grant", "deny"] as const) {
+    let grant: (stream: MediaStream) => void = () => undefined;
+    let deny: (error: Error) => void = () => undefined;
+    const oldStream = new FakeStream();
+    const newStream = new FakeStream();
+    let requests = 0;
+    const { session, store } = await setup({
+      getStream: () => ++requests === 1
+        ? new Promise((resolve, reject) => { grant = resolve; deny = reject; })
+        : Promise.resolve(newStream as unknown as MediaStream),
+    });
+    session.setContract(audioContract());
+    session.selectMode("spela-in");
+    const first = session.start();
+    await until(() => requests === 1);
+    session.cancelStart();
+    await settle();
+
+    await session.start();
+    assert.equal(session.getSnapshot().phase, "recording", "the unanswered question does not block the new attempt");
+    if (answer === "grant") grant(oldStream as unknown as MediaStream);
+    else deny(new DOMException("Permission denied", "NotAllowedError"));
+    await first;
+    await settle();
+    assert.equal(session.getSnapshot().phase, "recording", "the old answer does not stop the new recording");
+    assert.equal(session.getSnapshot().problem, null);
+    assert.equal(newStream.track.readyState, "live", "the new microphone stays on");
+    if (answer === "grant") assert.equal(oldStream.track.readyState, "ended", "only the old stream is released");
+    await session.stop();
+    assert.equal((await store.listUnsent("user-1")).length, 1, "only the new recording is kept");
+  }
 });
 
 test("a chosen file becomes the document's input in Ladda upp; an unsent recording from the list goes the same way", async () => {
@@ -1646,12 +1745,12 @@ test("Strömma names the new recording to live text, and a clean session's store
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
 
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1");
 });
 
-test("Skapa dokument waits while Strömma's final text is on its way, until its transcript is kept with the recording", async () => {
+test("Skapa dokument pressed while Strömma's final text is on its way is kept, and sends once its transcript is kept with the recording", async () => {
   const sent: unknown[] = [];
   const live = fakeLiveClient();
   const { session, store, recorders } = await setup({ live: live.client });
@@ -1665,14 +1764,18 @@ test("Skapa dokument waits while Strömma's final text is on its way, until its 
   await until(() => session.getSnapshot().phase === "ready");
 
   assert.equal(session.getSnapshot().finishing, true);
-  assert.equal(await session.createDocument(), false, "a press now sends nothing and leaves nothing pending");
+  assert.equal(session.getSnapshot().finishQueued, false, "nothing asked for yet");
+  assert.equal(await session.createDocument(), false, "a press now sends nothing yet");
   assert.deepEqual(sent, []);
+  assert.equal(session.getSnapshot().finishQueued, true, "but it is kept, and the page says so");
+  assert.equal(await session.createDocument(), false);
 
   live.report({ transcriptId: "transcript-1" });
   await until(() => !session.getSnapshot().finishing, "the transcript kept");
   assert.equal((await store.get(id))?.liveTranscriptId, "transcript-1", "kept before a send could seal the recording");
-  assert.equal(await session.createDocument(), true);
-  assert.equal(sent.length, 1);
+  await until(() => sent.length === 1, "the kept press sent");
+  assert.equal(session.getSnapshot().finishQueued, false);
+  assert.equal(sent.length, 1, "one document, however many presses");
 });
 
 test("the wait for Strömma's text ends after 20 s, its keeping included; after it a press never waits, says why while the text is still being kept, and nothing sends without one", async (t) => {
@@ -1744,7 +1847,7 @@ test("a final text that comes while the stopped recording is still being stored 
   live.report({ finishing: true });
   const stopping = session.stop();
   await until(() => stored !== undefined, "the stop being stored");
-  live.report({ status: "ended", finishing: false, complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", finishing: false, transcriptId: "transcript-1" });
   await settle();
   stored!();
   await stopping;
@@ -1778,7 +1881,7 @@ test("a transcript never stays with a recording of two parts, and live text for 
   await session.stop();
   await until(() => session.getSnapshot().phase === "ready");
   assert.equal(session.getSnapshot().finishing, false, "no wait for a transcript it cannot keep");
-  live.report({ status: "ended", complete: true, transcriptId: "transcript-1" });
+  live.report({ status: "ended", transcriptId: "transcript-1" });
   await settle();
   assert.equal((await store.get(id))?.liveTranscriptId, null, "the run transcribes the audio");
 

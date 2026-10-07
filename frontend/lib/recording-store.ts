@@ -12,7 +12,7 @@ import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
 
-export type RecordingState =
+type RecordingState =
   | "recording"
   | "paused"
   | "stopped"
@@ -20,10 +20,10 @@ export type RecordingState =
   | "uploaded"
   | "submitted";
 
-export type RecordingInputMode = "record" | "stream";
-export type DeviceRefusal = "full" | "failed";
+type RecordingInputMode = "record" | "stream";
+export type DeviceRefusal = "full" | "failed" | "lost";
 
-export interface RecordingPart {
+interface RecordingPart {
   index: number;
   startedAt: number;
   durationMs: number;
@@ -91,7 +91,7 @@ const DB_NAME = "tal-till-text";
 const DB_VERSION = 1;
 const RECORDINGS = "recordings";
 const CHUNKS = "chunks";
-// About three hours of speech at 64 kbit/s; below this the recorder warns.
+// 100 MiB: about 7 hours of speech at the recorder's 32 kbit/s (about 4 at the 54 kbit/s WebKit gives); below this the recorder warns.
 const LOW_SPACE_BYTES = 100 * 1024 * 1024;
 
 interface Chunk {
@@ -250,7 +250,7 @@ export function continuable(recording: StoredRecording): boolean {
 }
 
 /** `inspelning-2026-09-23-1012.webm`, with `-del-2` when there are several parts. */
-export function recordingFilename(recording: StoredRecording, index: number): string {
+function recordingFilename(recording: StoredRecording, index: number): string {
   const d = new Date(recording.startedAt);
   const pad = (n: number) => String(n).padStart(2, "0");
   const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
@@ -283,10 +283,16 @@ export class RecordingStore {
   // The recordings this tab made: without Web Locks, the only ones it may change.
   private made = new Set<string>();
   private live = new Map<string, StoredRecording>();
+  // Stopped recordings this page still shows: their lease stays with this tab between its operations, so no other tab
+  // offers or deletes one that is on this tab's screen (`hold`, until `letGo`).
+  private held = new Set<string>();
   // What the device refused to store stays here, in this tab.
   private overflow = memoryBackend();
-  // Recordings the device stopped keeping, and why: its storage is full, or it refused the write.
+  // Recordings the device stopped keeping, and why: its storage is full, it refused the write, or its copy is gone.
   private overflowed = new Map<string, DeviceRefusal>();
+  // The first chunk of the part being recorded, which holds its header: all that is left to play of a part
+  // when the device's copy goes (the browser's data is cleared), together with what is recorded after it.
+  private heads = new Map<string, { part: number; data: Blob }>();
   // What the browser says of keeping this device's storage: true when it will not delete it; null until it has said.
   private kept: boolean | null = null;
 
@@ -357,7 +363,8 @@ export class RecordingStore {
     return this.serial(async () => {
       const recording = await this.load(id);
       const current = recording?.parts[part];
-      if (!recording || !current) return;
+      if (!recording || !current) throw new Error(NOT_ON_DEVICE);
+      if (current.chunks === 0) this.heads.set(id, { part, data });
       const parts = recording.parts.map((p) =>
         p.index === part
           ? {
@@ -589,13 +596,28 @@ export class RecordingStore {
 
   release(id: string): void {
     if (!this.inUse.delete(id)) return;
-    // Part of its audio is only in this tab: no other tab may send or delete it without that part.
-    if (!this.overflowed.has(id)) {
-      this.leases.get(id)?.();
-      this.leases.delete(id);
-      this.live.delete(id);
-    }
+    // Part of its audio is only in this tab: no other tab may send or delete it without that part. A held recording is
+    // on this tab's screen.
+    if (!this.overflowed.has(id) && !this.held.has(id)) this.dropLease(id);
     this.notify();
+  }
+
+  /** A stopped recording the page shows keeps its lease through `release`, until `letGo` (or it is deleted). */
+  hold(id: string): void {
+    if (this.leases.has(id)) this.held.add(id);
+  }
+
+  /** The page no longer shows the recording: its lease ends, unless an operation is using it or part of it is only here. */
+  letGo(id: string): void {
+    if (!this.held.delete(id)) return;
+    if (!this.inUse.has(id) && !this.overflowed.has(id)) this.dropLease(id);
+    this.notify();
+  }
+
+  private dropLease(id: string): void {
+    this.leases.get(id)?.();
+    this.leases.delete(id);
+    this.live.delete(id);
   }
 
   /** What the browser already says of keeping this device's storage; nothing is asked of the user. */
@@ -674,11 +696,29 @@ export class RecordingStore {
     if (this.overflowed.has(id)) return this.overflow.get(id);
     const copy = this.live.get(id);
     if (!copy) return this.backend.get(id);
+    let stored: StoredRecording | undefined;
     try {
-      return await this.backend.get(id);
+      stored = await this.backend.get(id);
     } catch {
       return copy;
     }
+    return stored ?? this.lost(id, copy);
+  }
+
+  /**
+   * The device no longer has a recording this tab is writing (the browser's data was cleared, or it took the storage
+   * back): what came before is gone with it. The recording goes on in this tab, from the header of the part being
+   * recorded and what follows it, and is said to be kept here only.
+   */
+  private async lost(id: string, copy: StoredRecording): Promise<StoredRecording> {
+    const head = this.heads.get(id);
+    const parts = copy.parts.map((part) =>
+      head?.part === part.index ? { ...part, chunks: 1, bytes: head.data.size } : { ...part, chunks: 0, bytes: 0 },
+    );
+    const kept = { ...copy, parts };
+    this.overflowed.set(id, "lost");
+    await this.overflow.put(kept, head && { recordingId: id, part: head.part, seq: 0, data: head.data });
+    return kept;
   }
 
   private async all(): Promise<StoredRecording[]> {
@@ -713,6 +753,8 @@ export class RecordingStore {
   /** What this tab holds of the recording. */
   private async forget(id: string): Promise<void> {
     this.live.delete(id);
+    this.held.delete(id);
+    this.heads.delete(id);
     this.overflowed.delete(id);
     await this.overflow.delete(id);
   }

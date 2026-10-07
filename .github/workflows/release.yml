@@ -1,0 +1,74 @@
+name: Release
+
+# A tag vX.Y.Z on a commit of main. It gives that commit's tested image its version and `latest`, and creates the GitHub Release with the
+# compose file and the example settings attached. It builds nothing: the image is the one ci.yml tested and publish.yml pushed as
+# sha-<commit>, copied registry to registry under the new tags with its digest kept, and the digest is checked after each copy.
+# A commit CI has not passed on main has no such image, and its tag fails here: run the job again once CI has passed.
+# Every action is pinned to the commit of a release, and the image skopeo runs in to a digest (docs/operations.md has the routine).
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+# Two tags pushed together are released one after the other.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/eneo-ai/eneo-mod-speech-to-text
+  # skopeo 1.22.3 in a container pinned by digest (the same as ci.yml's and publish.yml's).
+  SKOPEO: quay.io/skopeo/stable@sha256:35f65ee53adbccedeead175ae4386b1ff06cf2b6827ed7cb7b578438471e0407
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub Release
+      packages: write # the version tags in the registry
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - id: promote
+        name: Give the tested image of this commit its version and latest
+        env:
+          CREDENTIALS: ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # The commit the tag points to, whether the tag is lightweight or annotated.
+          commit="$(git rev-parse HEAD)"
+          source="$IMAGE:sha-$commit"
+          if ! docker run --rm "$SKOPEO" inspect --raw --creds "$CREDENTIALS" "docker://$source" > /dev/null; then
+            echo "::error::cannot read $source. A commit CI has not passed on main (yet) has no tested image: tag one it has passed, or run this job again when it has. Any other cause is in the output above."
+            exit 1
+          fi
+          digest="sha256:$(docker run --rm "$SKOPEO" inspect --raw --creds "$CREDENTIALS" "docker://$source" | sha256sum | cut -d' ' -f1)"
+          for tag in "$GITHUB_REF_NAME" latest; do
+            docker run --rm "$SKOPEO" copy --all --preserve-digests --src-creds "$CREDENTIALS" --dest-creds "$CREDENTIALS" \
+              "docker://$source" "docker://$IMAGE:$tag"
+            # What the registry holds under the tag is the digest CI tested.
+            pushed="$(docker run --rm "$SKOPEO" inspect --raw --creds "$CREDENTIALS" "docker://$IMAGE:$tag" | sha256sum | cut -d' ' -f1)"
+            test "sha256:$pushed" = "$digest"
+            echo "$IMAGE:$tag $digest"
+          done
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DIGEST: ${{ steps.promote.outputs.digest }}
+        run: |
+          set -euo pipefail
+          assets="$RUNNER_TEMP/assets"
+          mkdir "$assets"
+          cp docker-compose.yml "$assets/docker-compose.yml"
+          # GitHub renames an asset whose name starts with a dot (".env.example" would be "default.env.example").
+          cp .env.example "$assets/env.example"
+          {
+            echo "Image: \`$IMAGE:$GITHUB_REF_NAME\` (\`$DIGEST\`). Samma image som CI testade för commit $(git rev-parse --short=7 HEAD); den är inte ombyggd."
+            echo
+            echo "Driftsättning med Dokploy eller Portainer: ladda ner \`docker-compose.yml\` och \`env.example\` nedan, spara den andra som \`.env\`, fyll i den och sätt \`MODULE_VERSION=$GITHUB_REF_NAME\`. Se [Driftsätt med Dokploy eller Portainer](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/operations.md#driftsätt-med-dokploy-eller-portainer)."
+          } > "$RUNNER_TEMP/notes.md"
+          gh release create "$GITHUB_REF_NAME" "$assets/docker-compose.yml" "$assets/env.example" \
+            --title "$GITHUB_REF_NAME" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes --verify-tag

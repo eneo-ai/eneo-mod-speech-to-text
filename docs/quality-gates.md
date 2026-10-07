@@ -1,219 +1,173 @@
-# Kvalitetsgrindar
+# Tester
 
-Syfte: Beskriva alla automatiska kontroller, vad var och en bevisar, hur man kör den och hur man läser ett fel.
+Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`. **Gaten** är webbläsartestet som besöker varje skärm och mäter tillgänglighet (WCAG 2.2 AA) och husets krav; "gaten" betyder det på den här sidan och i resten av dokumentationen.
 
-Läs detta när: Du ska köra kontrollerna före en push, ett test eller grinden fallerar, du lägger till en skärm eller ett överlägg (dialog, meny), eller en sida blivit för tung.
+## Profiler
 
-Hör ihop med: [Frontend](frontend.md), [Designsystem](design-system.md), [Drift](operations.md#ci-och-publicering), [Lokal utveckling](development.md), [Backend](backend.md)
-
-## Översikt
-
-Alla frontend-kommandon körs från `frontend/`, backendens från `backend/`.
-
-| Kontroll | Bevisar | Kommando | Hur lång |
+| Profil | Kommando | Vad som körs mot vad | Bevisar |
 |---|---|---|---|
-| Typer | Att koden kompilerar. | `npm run lint` | snabb |
-| Enhets- och komponenttester | Logik och komponenter i jsdom. | `npm test` | snabb |
-| Backendtester | Inloggning, proxy, uppladdning, filer, live-relä, config. | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | snabb |
-| Tillgänglighetsgrinden | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. | `npm run test:a11y` | lång |
-| Grindens branding-tillstånd | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. | `npm run test:a11y:branding` | medel |
-| Produktionssmoke och viktbudget | Det byggda bygget i tre motorer, sidvikt, att det byggda temat används. | `npm run test:prod` | medel |
-| Bygget | Att produktionsbygget går att göra. | `npm run build` | medel |
-| Designsystemets hälsa | Att Astryx är rätt uppsatt. | `npm run astryx -- doctor` | snabb |
-| Temat är aktuellt | Att de byggda temafilerna motsvarar temakällan. | `npm run theme:build && git diff --exit-code -- kit/theme/built` | snabb |
-| Compose | Att Compose-filen är giltig. | `docker compose --env-file .env.example config -q` (från roten) | snabb |
-| Imagen | Att produktionsimagen går att bygga. | `docker build -t eneo-mod-speech-to-text:test .` (från roten) | medel |
+| typer | `npm run lint` | `tsc --noEmit` | Att koden kompilerar. |
+| enhet | `npm test` | `frontend/lib/*.test.ts` i jsdom | Logik och komponenter. |
+| backend | `.venv/bin/python -m unittest discover -s tests` (från `backend/`) | backendens app i processen, med falska Eneo-svar | Inloggning, proxy, uppladdning, filer, live-relä, statisk servering, konfiguration. |
+| gaten | `npm run test:a11y` | Vites utvecklingsserver, med stubben som backend | WCAG 2.2 AA och husets krav i en riktig webbläsare, per skärm. |
+| gaten, riktigt mål | `npm run test:a11y:real` | samma lägen och specar på `dist-check/`, serverad av den riktiga backenden under den strikta policyn, stubben som Eneo | Det som levereras, med en vaktpost som stoppar policybrott, omdirigeringar och oväntade fel. |
+| gaten, granskning | `npm run test:a11y:review` | samma som gaten, startad med `SPEAKER_REVIEW_ENABLED=true` | Granskningssidan med granskningen på. |
+| gaten, branding | `npm run test:a11y:branding` | samma som gaten, med stubben som en annan organisation | Att en organisation med egen accent, långt namn och bred logga klarar samma krav och att inget behåller den blå standardfärgen. |
+| produktion | `npm run test:prod` | `dist/` och `dist-check/` serverade av den riktiga backenden, stubben som Eneo | Det byggda gränssnittet och backenden tillsammans: headers, routing, första målningen, gamla flikar, vikt. |
+| imagen | `npm run test:image` | den byggda imagen bakom Traefik, stubben som Eneo | Produktionsimagen: en process, headers, uppladdningar, WebSocket, minne, stopp. |
+| sajten | `npm test`, `npm run build`, `npm run typecheck` och `npm run check` i `docs-site/` | den byggda dokumentationssajten i en riktig webbläsare | Alla dokumentations- och API-sidor vid 390 och 1440 px, ljust och mörkt: axe, lokala länkar och resurser, svensk sökning, tangentbord, menyer, tabeller och diagram. |
 
-CI kör en delmängd (typer, enhetstester, doctor, temat, audit, bygget, smoke i tre motorer, två av grindens projekt och två av branding-tillstånden, Compose, imagen, och `pip-audit` på backends paket): se [Drift](operations.md#ci-och-publicering). Grinden i sin helhet körs lokalt före push.
+Dessutom: `npm run astryx -- doctor` (uppsättningen), `npm run theme:build && git diff --exit-code -- kit/theme/built` (temat är aktuellt) och `docker compose -f docker-compose.yml --env-file .env.example config -q` (Compose-filen, från roten). CI kör allt utom hela gaten ([Drift](operations.md#ci-och-utgåvor)).
 
-## Före en push
+Före en pull request, billigast först:
 
 ```bash
 cd frontend
 npm ci
 npm run lint
 npm test
-npm run test:a11y          # stoppa din egen npm run dev först, se Portar nedan
+npm run test:a11y          # egna portar, så din egen npm run dev (3002) kan ligga kvar
+npm run test:a11y:real     # bygger dist-check/ och kör gaten mot den riktiga backenden
 npm run test:prod
 npm run build
 cd ../backend && .venv/bin/python -m unittest discover -s tests
-cd .. && docker compose --env-file .env.example config -q
 ```
 
-Första gången: `npx playwright install chromium` för grinden och `npx playwright install chromium webkit firefox` för `test:prod`.
+Första gången: `npx playwright install chromium` för gaten och `npx playwright install chromium webkit firefox` för `test:prod`. Det riktiga målet, `test:prod` och imagens acceptans startar den riktiga backenden och behöver därför dess paket: `pip install -r backend/requirements.lock`. De startar `backend/.venv/bin/python` när den finns, annars `python3`; `BACKEND_PYTHON` pekar på en annan Python, till exempel en annan utchecknings miljö.
 
-## Enhets- och komponenttester
+## Enhetstester
 
-`npm test` kompilerar `frontend/lib/*.test.ts` med `tsc` (`tsconfig.test.json`) till `.test-build/` och kör dem med Nodes inbyggda testkörare (`node:test`) i jsdom.
+`npm test` kompilerar `frontend/lib/*.test.ts` med `tsc` (`tsconfig.test.json`) till `.test-build/` och kör dem med Nodes inbyggda testkörare i jsdom. Logiktester och komponenttester ligger tillsammans i `frontend/lib/`, bredvid logiken: en ny testfil måste ligga där för att köras. En fil efter bygget: `node --require ./tests/register.cjs --test .test-build/lib/<namn>.test.js`.
 
-- Logiktester och komponenttester ligger tillsammans i `frontend/lib/`, bredvid logiken. En ny testfil måste ligga där för att köras.
-- Köra en fil efter att `npm test` har byggt: `node --require ./tests/register.cjs --test .test-build/lib/<namn>.test.js`.
-- jsdom saknar `showModal` och Popover API. `frontend/lib/test-dom.ts` ersätter dem med attribut och händelser, men modalitet och förankring simuleras inte: de är webbläsarens och bevisas i grinden.
-- Ett CSS-modulimport i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`); stilarna är webbläsarens.
-- Testkompilatorn läser inte paketens `exports`. En ny Astryx-underväg som inte ligger under `dist/<Namn>` behöver en rad i `paths` i `frontend/tsconfig.test.json`.
-- IndexedDB i tester kommer från `fake-indexeddb`.
-- `frontend/lib/legacy-ui.test.ts` är en spärr som består: ingen modul importerar det första gränssnittssystemet (de kopierade shadcn-komponenterna, Radix, class-variance-authority, clsx, tailwind-merge, Tailwind) och ingen styr med en klasssträng som `className="…"`. Stilen kommer från designsystemets props eller en CSS-modul (`className={styles.x}`).
+- jsdom saknar `showModal` och Popover API. `frontend/lib/test-dom.ts` ersätter dem med attribut och händelser, men modalitet och förankring simuleras inte: de bevisas i gaten.
+- En CSS-modul i ett test blir ett objekt med klassnamnen som de är skrivna (`frontend/tests/register.cjs`).
+- `frontend/lib/css-tokens.test.ts` kräver att CSS-modulerna och `styles/globals.css` tar avstånd, radie, färg, teckenstorlek och kantbredd från tokens (`var(--spacing-*)`, `--radius-*`, `--color-*`, `--font-size-*`, `--border-width`). Ett rått px-, rem- eller em-värde eller en rå färg i de egenskaperna fäller testet, om det inte står i `ALLOWED` med sitt skäl eller i `TO_REPLACE` med den token som ska ta dess plats. En post som inte längre förekommer fäller också testet, så listorna bara krymper.
+- `frontend/lib/test-router.ts` ger komponenttester en data-router; IndexedDB kommer från `fake-indexeddb`.
 
-## Tillgänglighetsgrinden
+## Gaten
 
-`npm run test:a11y` startar stubbackenden (`frontend/tests/e2e/stub-server.py`, bara för test) och `next dev` (`frontend/playwright.config.ts`), och besöker varje skärm och läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Varje läge är ett namn och stegen som leder dit.
+`npm run test:a11y` startar stubben (`frontend/tests/e2e/stub-server.py`, bara för test: den låtsas vara modulens backend) och Vites utvecklingsserver (`frontend/playwright.config.ts`, som också listar projekten: telefoner, surfplattor, laptop, 200 % zoom, forcerade färger, bred skärm och reducerad rörelse), och besöker varje läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Ett läge är ett namn och stegen dit; specarna i `frontend/tests/e2e/` är döpta efter vad de bevisar.
 
-### Vad som mäts
+**Vad som mäts** (i den renderade sidan, `frontend/tests/e2e/checks.ts`; resultat per test i `findings.json`):
 
-Mätningarna körs i den renderade sidan (`frontend/tests/e2e/checks.ts`) och skrivs till `findings.json` per test.
-
-| Kontroll | Regel | Stoppar grinden när |
-|---|---|---|
-| axe | WCAG-taggarna för 2.0, 2.1 och 2.2 A och AA samt best practice | varje WCAG-överträdelse, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska |
-| Namn | Varje kontroll har ett namn i Chromiums egna tillgänglighetsträd (WCAG 4.1.2) | en kontroll saknar namn |
-| Platshållartext | Kontrast 4,5:1, vilket axe inte mäter (WCAG 1.4.3) | för låg kontrast |
-| Målstorlek | 24 px med mus (WCAG 2.5.8), 44 px med finger (`pointer: coarse`, husets krav) | ett mål är mindre |
-| Reflow | Inget innehåll utanför kanten eller avklippt, på 320 px, vid 200 % zoom och på laptop- och ultrawide-bredderna (WCAG 1.4.10) | horisontell scroll eller avklippt innehåll |
-| Textavstånd | Ökat radavstånd, teckenavstånd och ordavstånd klipper inget (WCAG 1.4.12); en rubrik får inte kapas med ellips. Mäts i de två ljusa telefonprojekten och på laptop- och ultrawide-bredderna | innehåll klipps eller en rubrik kapas |
-| Rörelse | Ingen oändlig animation med reducerad rörelse (projektet `reduced-motion`) | en animation fortsätter |
-| Tangentbordsvandringar | Fokus syns (en indikator med minst 3:1 förändring), skyms inte, lämnar sidan i slutet (ingen fälla) och ordningen läses uppifrån och ned på telefon (WCAG 2.4.7, 2.4.11, 2.1.2, 2.4.3) | fokus syns inte, skyms eller fastnar |
-| ARIA-ögonblicksbilder | Namn, roller, tillstånd och vilken text som når live-regionerna, jämfört med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/` | bilden ändras utan att den uppdaterats |
-
-### Vilka specar
-
-| Spec | Vad den bevisar |
+| Kontroll | Regel |
 |---|---|
-| `a11y.spec.ts` | Alla mätningarna ovan för varje läge, i varje projekt. |
-| `keyboard.spec.ts` | Tangentbordsvandringar och fokushantering i dialoger och kontomenyn. |
-| `aria.spec.ts` | ARIA-ögonblicksbilder och texten i live-regionerna. |
-| `names.spec.ts` | Namn och beskrivningar för kontroller som kräver mer än axe, grupper och sidtitlar. |
-| `harness.spec.ts` | Grindens egna kontroller mot sidor byggda för att fela. En kontroll som släpper igenom dem skulle släppa igenom appens fel. |
-| `color-mode.spec.ts` | Att den sparade färgläget är sidans från första målningen, utan en bildruta i fel läge. |
-| `session-cover.spec.ts` | Att inget av sidan, och ingen dialog sidan hade öppen, syns eller går att nå medan inloggningen är slut, och att allt är tillbaka efter ny inloggning. |
-| `flow-list.spec.ts` | Flödeslistan när den laddar, är tom, avklippt, lång eller trasig. |
-| `result-tabs.spec.ts` | Resultatets flikar under laptopbredd. |
-| `branding.spec.ts` | En driftsättning med egen accentfärg (grön) och egen organisation: ingenting i sidan behåller den blå standardfärgen och accenten finns från första målningen. Körs bara av `npm run test:a11y:branding` (se nedan). |
-| `header-fit.spec.ts` | Toppfältet vid 320 px med ökat textavstånd: varumärket och kontoknappen hålls isär och produktnamnet är helt. |
-| `leaks.spec.ts` | Att ett överlägg som öppnas och stängs inte lämnar något kvar, se nedan. |
-
-Specarna `color-mode`, `session-cover`, `flow-list`, `result-tabs`, `header-fit` och `leaks` väljer själva vilka projekt de gäller (överst i varje fil).
-
-### Projekt
-
-Konfigurationen (`playwright.config.ts`) har 19 projekt. `a11y.spec.ts` körs i alla; vad mer som körs styrs av `testIgnore`.
-
-| Projekt | Skärm | Särskilt | Vad som körs |
-|---|---|---|---|
-| `phone-320-light`, `phone-320-dark` | 320 × 568 | pekskärm | ljus: a11y och keyboard; mörk: a11y |
-| `phone-390-light`, `phone-390-dark` | 390 × 844 | pekskärm | ljus: alla specar; mörk: a11y |
-| `tablet-portrait`, `tablet-landscape` | 768 × 1024 och 1024 × 768 | pekskärm | a11y |
-| `laptop-1280-light`, `laptop-1280-dark` | 1280 × 800 | | ljus: a11y och keyboard; mörk: a11y |
-| `laptop-1440-light`, `laptop-1440-dark` | 1440 × 900 | | ljus: alla specar; mörk: a11y |
-| `zoom-200` | 640 × 400, skala 2 | 200 % zoom av 1280 × 800 | a11y och keyboard |
-| `forced-colors` | 1440 × 900 | tvingade färger | a11y och keyboard |
-| `ultrawide-1920-light`, `-dark` | 1920 × 1080 | | ljus: a11y och keyboard; mörk: a11y |
-| `ultrawide-2560-light`, `-dark`, `ultrawide-3440-light`, `-dark` | 2560 × 1440 och 3440 × 1440 | | a11y |
-| `reduced-motion` | 390 × 844 | reducerad rörelse, pekskärm | a11y |
-
-På 1280, 1920, 2560 och 3440 px körs alla kontroller per skärm i ljust och mörkt; tangentbordsvandringarna och dialogernas fokustester körs på 1920 px, eftersom tangentbordsordning och fokushantering inte ändras på bredare skärmar.
-
-### Branding-tillstånden
-
-`npm run test:a11y:branding` (från `frontend/`) kör samma grind mot en stub som startas som en annan organisation: en grön accent, ett långt namn och breda eller inga logotyper. Det görs i två körningar (`STUB_BRANDING=custom` och `STUB_BRANDING=name`) med `frontend/playwright.branding.config.ts`, som bara tar tillstånden som heter `branding-` i `frontend/tests/e2e/screens.ts` och projekten `phone-320-light`, `phone-390-dark`, `laptop-1440-light`, `zoom-200` och `forced-colors`. Skälet är att sidan läser organisationen från backend på servern: det är stubben som startas som organisationen, inte sidan som ändras. En stub som redan lyssnar på porten avvisas hellre än att inget testas. Steg för att kontrollera en egen organisation: [Byt organisation](branding.md#så-kontrollerar-du).
-
-### Köra delar
+| axe | Varje WCAG-överträdelse stoppar, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska. |
+| Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. |
+| Platshållartext | Kontrast 4,5:1. |
+| Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
+| Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
+| Rörelse | Inga oändliga animationer med reducerad rörelse. |
+| Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
+| ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
 
 ```bash
-# En skärm, smalast och mörkt, medan du bygger den
+# Ett läge, smalast och mörkt, medan du bygger det
 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-320-light --project=laptop-1440-dark
-# Ett läge i alla projekt
-npm run test:a11y -- -g "<läge>"
-# Grindens egna kontroller, färgläget och täckskiktet
-npm run test:a11y -- harness.spec.ts color-mode.spec.ts session-cover.spec.ts
 # Efter en avsiktlig ändring av vad skärmläsaren får, för det läget
 npm run test:a11y -- aria.spec.ts --update-snapshots -g "<läge>"
 ```
 
 Läs diffen på ögonblicksbilderna innan du behåller dem.
 
-### Vad grinden inte bevisar
+**Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus, och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
 
-- **Vad en skärmläsare faktiskt läser upp.** Grinden bevisar DOM:en och den renderade sidan: roller, namn, tillstånd, fokus, kontrast, layout och vilken text som hamnar i live-regionerna. Skärmläsaren är en manuell kontroll, liksom det axe inte kan avgöra själv (axe:s _incomplete_, listade som `manual check` i rapporten och i `findings.json`).
-- **PDF-förhandsvisningen.** Den visar PDF:en i webbläsarens egen visare, där en sida inte kan fånga Escape. Grinden kräver därför att visaren inte stänger in fokus: antingen är den inget tabbstopp och dialogen har en länk som öppnar filen i en ny flik, eller så leder Tab ut ur visaren tillbaka till dialogens kontroller och visaren visar synligt fokus. Escape ska stänga dialogen från dialogens egna kontroller; Escape inifrån visaren krävs inte.
-- **Webbläsare utan förankrade menyer** (Safari 17 till 25, Firefox före 147) och riktiga enheter: menyer och väljare öppnas och stängs men placeras inte vid sin utlösare. Kontrolleras för hand en gång per release på en riktig enhet.
-- **Tidsgränser (WCAG 2.2.1).** Se [Inloggning och session](auth-and-session.md#tidsgränser-wcag-221).
+**Regler som aldrig ändras:** sänk inte ett tröskelvärde, ta inte bort ett läge ur gaten och lägg inte till ett axe-undantag för att få den grön. Hitta orsaken; en brist i designsystemet rättas en gång i temat ([Frontend](frontend.md#rätta-en-brist-i-designsystemet)).
 
-### Regler som aldrig ändras
+`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
 
-Sänk inte ett tröskelvärde, ta inte bort ett läge ur grinden och lägg inte till ett axe-undantag för att få grinden grön. Hitta orsaken i stället; en brist i designsystemet rättas en gång i temat ([Designsystem](design-system.md#rätta-en-brist-i-designsystemet)).
+`frontend/tests/e2e/result-playback.spec.ts` kontrollerar ordklick, ljudposition, markeringen när ljudet pausas, skillnaden mellan sökträff och aktuellt ord, kontrasten i båda färglägena, tangentbordslänken förbi transkriberingen och avståndet till rättningens knappar. `field-focus.spec.ts` kräver en enda fokusram för sökfält och rättningsfält.
 
-## Produktionssmoke och viktbudget
+`frontend/tests/e2e/controls.spec.ts` trycker på varje synlig, aktiverad knapp, länk, menyval, flik, brytare, kryssruta och radioknapp i varje läge, var och en i en ny kopia av läget (en egen webbläsarkontext). Den kräver ett synligt svar (adressen, fokus, en överlagring, ett aria-tillstånd, en live-region eller innehållet ändras), inga konsol- eller nätverksfel som läget inte deklarerat och att det som öppnades går att stänga med Escape eller sin egen stängknapp. Det som inte trycks (`SKIPPED`), det som med avsikt inte svarar (`NO_RESPONSE`) och det som får ge ett fel (`EXPECTS`) står med skäl i filen; ett val som redan är gjort, eller en länk till sidan man är på, trycks inte. Den körs bara på dev-profilen, i `laptop-1440-light` och `phone-390-light`, och tar ungefär 20 minuter.
 
-`npm run test:prod` bygger produktionsbygget och serverar det som imagen gör (`frontend/tests/prod/serve.mjs`, `frontend/playwright.prod.config.ts`), mot stubbackenden, i Chromium, WebKit och Firefox. Det bevisar det som grindens `next dev` inte kan: de byggda stilarnas ordning, det byggda temat och sidan under produktions-CSP:n. Bygget görs med `FOUNDATION_CHECK=1`, så att utvecklingssidan `/dev/foundation` finns för testerna.
+### Gaten på det riktiga målet
 
-| Test | Bevisar |
+`npm run test:a11y:real` (`GATE_TARGET=real`) kör samma lägen och specar mot det byggda gränssnittet (`dist-check/`, från `npm run build:check`) serverat av `python -m app.serve` under den strikta policyn i `backend/app/security_headers.json`, med stubben som Eneo. Varje test får en egen session genom den riktiga inloggningen, och en vaktpost (`frontend/tests/e2e/sentinel.ts`) bevakar det:
+
+- Ett brott mot policyn (Content-Security-Policy) fäller testet, alltid. Ett läge kan inte deklarera det: policyn lättas aldrig för att ett test ska gå igenom.
+- En omdirigering fäller testet, utom inloggningens egna (`/api/auth/login`, `/api/auth/callback` och stubbens `/module-login`).
+- Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`) räknas inte.
+- `sentinel.spec.ts` orsakar vart och ett av dem och ser att vaktposten ser det.
+
+`REAL_EXTERNAL_URL` kör gaten mot en backend som redan är igång (imagen bakom Traefik, som imagens acceptans gör) i stället för att starta en; stubben är då den driftsättningens Eneo, på en adress webbläsaren når.
+
+## Produktionstesterna
+
+`npm run test:prod` bygger `dist/` och `dist-check/` och startar den riktiga backenden (`node tests/prod/start-backend.mjs`, alltså `python -m app.serve`) framför stubben som Eneo, med verklig inloggning genom stubbens `/module-login`. Tre backends, eftersom ett bygge innehåller det dess tester väntar sig: `shipped` på `dist/` (allt som inte är märkt `@fixture` eller `@branded`, i Chromium, WebKit och Firefox), `fixture` på `dist-check/` (utvecklingssidorna) och `branded` på `dist/` som en grön organisation. Ett test säger själv vilken det är i sin titel.
+
+| Test (`frontend/tests/prod/`) | Bevisar |
 |---|---|
-| `smoke.spec.ts` | Att designsystemet är stylat, tematiserat och fungerar i det byggda bygget, och att en inloggad sida laddar utan blockerat eller trasigt innehåll (en CSP-vägran är ett konsolfel). |
-| `weight.spec.ts` | Att en sidas komprimerade JS och CSS inte överstiger `tests/prod/weight-budget.json`, och att det byggda temat används: inget `<style data-astryx-theme*>` får finnas efter laddning (det vore runtime-generering av tema vid varje sidladdning). Bara Chromium, som rapporterar överföringsstorlek. |
+| `headers.spec.ts` | Att varje svar bär säkerhetsheadrarna i `backend/app/security_headers.json`, och att bara den inline PDF:en får ramas in, av den egna origin. |
+| `routes.spec.ts` | Att varje adress i appen är sidan, att en saknad fil eller en okänd `/api`-sökväg är ett 404 som inte är en sida, och att en vanlig build inte har utvecklingssidor. |
+| `first-paint.spec.ts` | Att de första bildrutorna har rätt färgläge och organisationens märke, med långsamt eller blockerat JavaScript. |
+| `stale-chunk.spec.ts`, `stale-chunk-recording.spec.ts` | Att en flik som stått öppen över en ny version lämnas med en rad och en omladdningsknapp, och att en pågående inspelning inte går förlorad. |
+| `upstream.spec.ts` | Vad modulen gör med en förfrågan på vägen till Eneo och tillbaka, läst ur stubben. |
+| `smoke.spec.ts`, `branding.spec.ts` | Att designsystemet är stylat och tematiserat i det byggda bygget utan blockerat eller trasigt innehåll, och att en organisations accent gäller också under strikt `style-src 'self'`. |
+| `weight.spec.ts` | Att en sidas komprimerade JS och CSS inte överstiger `weight-budget.json`, och att det byggda temat används (inget `<style data-astryx-theme*>` efter laddning). Bara Chromium, som rapporterar överföringsstorlek. |
 
-`frontend/tests/prod/branding.spec.ts` kör accentens stilmall i det byggda bygget, också under en strikt `style-src 'self'`, och körs bara när stubben är en organisation med egen accent: `STUB_BRANDING=custom npm run test:prod -- branding.spec.ts --project=chromium`.
+Budgetarna och skälen: [beslut 0007](decisions/0007-weight-budget.md).
 
-### Viktbudgeten
+## Imagens acceptans
 
-- Budgeten (`frontend/tests/prod/weight-budget.json`) ger ett tak i KB för JS och CSS per sida: den uppmätta vikten avrundad uppåt till närmaste 5 KB.
-- En ändring som höjer den motiverar det i sin pull request. Budgeten mäts på ett bygge som också innehåller utvecklingssidan, vilket flyttar delade bitar något; detaljerna står överst i `weight.spec.ts`.
-- Ladda inget sidan inte använder: importera en språkfil, ikonuppsättning eller komponent där den används, inte via en gemensam samlingsfil. Kör `weight.spec.ts` efter att ha lagt till en import från `@astryxdesign/core`.
+`npm run test:image` (`deploy/acceptance.sh`) startar `docker-compose.yml`, den riktiga tjänsten, med stubben som Eneo och en Traefik framför (`deploy/acceptance/compose.yml`) och kör kontroller av imagen: hälsa, en process och icke-root, headrarna, uppladdningar, WebSocket, stopp med en fil som strömmar, imagens storlek och minne, och live-reläets fördröjning under last. `python3 deploy/acceptance/checks.py --list` säger vad var och en bevisar; `--only 4,5,9` kör några. Behöver Docker, `npm ci` i `frontend/` och Playwright. Portarna (127.0.0.1) är `ACCEPT_TRAEFIK_PORT` 8480, `ACCEPT_ENEO_PORT` 8481 och `ACCEPT_DIRECT_PORT` 8482. Ett fel som ägaren godtagit står i `deploy/acceptance/waivers.json` och skrivs ändå ut som `FAIL (waived: ...)`.
 
-## Läckkontrollen
-
-`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums egna räknare (DOM-noder, händelselyssnare, minne) efter skräpsamling, före och efter. Ett läckage växer med varje varv och skulle synas som ungefär 40.
-
-- Fem uppvärmningsvarv räknas inte (en portal, en lat bit, en cache, webbläsarens eget).
-- Tillåten marginal för de 40 öppningarna sammanlagt: 20 noder, 20 lyssnare, 1,5 MB minne. Det höjs aldrig för att få ett test att passera; ett tal över är ett läckage att hitta.
-- Körs bara i `laptop-1440-light`, bara i Chromium, utan trace (trace lägger egna noder på sidan).
-- Chromium behåller elementet som senast låg under pekaren, och allt som togs bort med det (25 till 39 noder för en dialog), tills pekaren flyttas. Specen flyttar därför pekaren bort efter varje stängning; ett tal som överlever det är ett riktigt läckage att hitta.
-- Ett av överläggen läcker med avsikt (fixturen i `frontend/app/dev/dialog-leak/`, bara i `next dev`), så att specen visar att den kan fela.
-- Ett nytt överlägg läggs till i `OVERLAYS` i samma ändring som inför det.
-
-```bash
-npm run test:a11y -- leaks.spec.ts --project=laptop-1440-light
-```
+Kontroll 15 skiljer mättnad från ankomsttakt. Mättnadens 200 klienter återanvänder var sin HTTP-anslutning och hämtar varje svar utan cache; då begränsas inte testet av lastgeneratorns tillfälliga TCP-portar. Vid bestämd ankomsttakt öppnar varje besök fortfarande en ny anslutning. Rapporten anger metoden och skiljer HTTP-statusfel från anslutnings- och svarsfel. Alla räknas som fel; en mätning med en annan anslutningsmetod är ingen direkt före/efter-jämförelse av kapacitet.
 
 ## Portar och flera utcheckningar
 
 | Kontroll | Standardportar (app, stub) | Ändra med |
 |---|---|---|
-| `npm run test:a11y`, `npm run dev:stub` | 3401, 8401 | `A11Y_APP_PORT`, `A11Y_STUB_PORT` |
-| `npm run test:prod` | 3411, 8411 | samma två variabler |
+| gaten, `npm run test:a11y:real`, `npm run dev:stub` | 3401, 8401 | `A11Y_APP_PORT`, `A11Y_STUB_PORT` |
+| `npm run test:prod` | 3411 till 3413, 8411 | samma två variabler |
+| `npm run test:image` | 8480 till 8482 | `ACCEPT_*_PORT` |
 
-- Flera utcheckningar (git worktrees) kan köra grinden samtidigt på egna portpar, till exempel `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run test:a11y -- ...`.
-- Next tillåter en utvecklingsserver per utcheckning: stoppa din egen `npm run dev` i samma utcheckning först.
-- Grinden kör fyra arbetare mot den enda utvecklingsservern; fler svälter den på en delad maskin, och en sida som fortfarande laddar felar då en kontroll som inte handlar om tillgänglighet.
-- Döda aldrig en process du inte startat och använd aldrig `pkill -f`: stoppa det du startat via dess PID eller port.
+Flera utcheckningar (git worktrees) kan köra testerna samtidigt på egna portpar, till exempel `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run test:a11y -- ...`. Gaten kör fyra arbetare mot den enda utvecklingsservern; fler svälter den. Döda aldrig en process du inte startat och använd aldrig `pkill -f`: stoppa det du startat via dess PID eller port.
+
+### Arbeta med en rättning
+
+Gör den avgränsade granskningen av kod, beteende och bilder först. Reproducera fyndet i dess läge och profil, med ett riktat test och en skärmbild. Rätta i den komponent eller det tema som äger beteendet, kör de berörda testerna och granska bilddiffen. Kör sedan hela matrisen på en stabil kandidat: ändra inte dess källkod, testfiler eller byggda filer medan den körs. En separat kopia skyddar kandidaten när annat arbete pågår. Egna portar skyddar bara servrarna; de skyddar inte filer som ett annat bygge skriver över. Om ett nytt verifierat fel kräver en annan kandidat redovisas en stoppad körning som avbruten.
+
+Kör dokumentation och faktauppslag parallellt med verifieringen. Samordna byggsteg och begränsa antalet webbläsararbetare när flera körningar delar dator, så att ett överbelastat testsystem inte döljer resultatet. Efter en ändring av kandidaten körs kontrollerna som påverkas; en tidigare grön körning gäller den kod den faktiskt testade.
+
+`npm run verify:candidate` gör en separat kopia av aktuella källfiler, nya testfiler och installerade frontend-beroenden i en egen tillfällig katalog. Ocommittade ändringar följer med; ignorerade arbetsfiler följer inte med. Källfilerna skrivskyddas, de två byggena görs en gång och även deras filer skrivskyddas. Kontrollerna körs sedan i turordning med två arbetare och utan att återanvända befintliga servrar. Efter lint, enhets- och backendtester samt byggen körs produktionskontrakten, det byggda riktiga målet, granskning, branding, den längre dev-matrisen och bilderna. Ett snabbt fel i det som ska levereras stoppar alltså innan den dyrare dev-körningen börjar; en godkänd release kör fortfarande alla profiler. Kontrollsummor före och efter varje steg gör att ändrade, saknade eller tillagda indata och byggfiler underkänner kandidaten.
+
+```bash
+# Hela matrisen: typer, enheter, backend, dev, riktigt mål, produktion,
+# granskning, båda branding-profilerna och alla bilder i 23 storlekar.
+npm run verify:candidate
+# Bara berörda kontroller, fortfarande på en separat kandidat.
+npm run verify:candidate -- --checks lint,unit,prod --app-port 4061 --stub-port 9061
+# En detalj i dev och byggd app, i samtliga skärmprofiler.
+npm run verify:candidate -- --checks dev,real --grep "one focus frame"
+```
+
+Skriptet skriver kandidatens sökväg, källornas SHA-256 och varje stegs logg. `candidate.json` sparar urvalet, kontrollsummorna och resultaten; webbläsarrapporter och bilder ligger under kandidatens `frontend/test-results/` respektive `frontend/ux-shots/`. Kandidaten behålls även vid fel. `--status <kandidatens sökväg>` läser en kort sammanställning med stegstatus och färdiga webbläsarrapporters testantal. Den verifierar inga kontrollsummor; `--verify <kandidatens sökväg>` gör det. Ett resultat gäller kandidatens fångade filer och registrerade körmiljö. Skriptet sparar Node-version och binär, Python-version och installerade paketfiler samt Playwright-version och webbläsarfiler; miljön kontrolleras före och efter varje steg. `runtimeHash` ingår tillsammans med `sourceHash` och `assetsHash` när resultat återanvänds. Äldre kandidater utan `runtimeHash` har bara filkontrollen och ska inte betraktas som fullständiga miljöbevis. `--status` skiljer genomförda tester från verkliga skip, avbrutna tester och tester som aldrig kördes. `--workers 1` minskar belastningen och `--prepare-only` tar en kopia utan att köra tester. `BACKEND_PYTHON` väljer Python-miljö som för de vanliga testerna. Imagens acceptans och dokumentationssajten har kvar sina egna kommandon och körs separat.
+
+### Validera en förbättring
+
+Bestäm först vad ändringen ska förbättra och vilket resultat som skulle få oss att avstå. För ett fel räcker ett reproducerat misslyckande och ett test som passerar efter rättningen. För en UX-idé behövs också en jämförelse: exempelvis färre tangentbordssteg, en synlig huvudåtgärd på liten skärm eller mindre risk att förlora en rättning. De första två är indikatorer, inte bevis för att verkliga användare lyckas bättre. Mät en återkommande uppgift med målgruppen när nyttan fortfarande är osäker; gröna tester och en tilltalande bild avgör inte den frågan.
+
+Under iteration används befintliga specar direkt med `--project` och `--grep`, på de tillstånd och gränser som ägaren faktiskt påverkar. `--only-changed` kan inte avgöra vilka UI-tillstånd en ändrad appfil påverkar, eftersom de nås genom webbläsaren. Ett föreslaget smalare urval prövas mot en känd felmutation innan det används som bevis för den klassen av ändringar. Den fullständiga releasekörningen behåller alla profiler och krav.
+
+Mät kostnaden innan arbetsordningen ändras. Playwrights summerade testtider överlappar mellan arbetare; de är inte körningens väggtid. Granska kostnaden per spec och använd vid behov `test.step` för att skilja navigering, väntan och mätningar. En paus kräver ingen ny kandidatkopia om filer, körmiljö och byggda filer är oförändrade: kontrollera ett exakt urval av återstående test-ID:n med Playwrights `--list` före fortsättningen, behåll den avbrutna originalrapporten och verifiera att resultatens union täcker hela ursprungslistan.
 
 ## Läsa ett fel
 
 | Det du ser | Betyder | Gör så här |
 |---|---|---|
-| `targets under 44 px on a coarse pointer (house bar)` | Ett pekmål är för litet | Listan nämner elementet. Rätta storleken i temat, inte på ett enskilt ställe. |
-| `axe: WCAG violations …` med regel-id och selektor | En axe-överträdelse | Öppna `findings.json` för testet: den har alla noder och förklaringen. |
-| `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör samma läge i `phone-320-light` och `zoom-200`. Kontrollera långa svenska ord och långa flödesnamn. |
+| `targets under 44 px on a coarse pointer (house bar)` | Ett pekmål är för litet | Rätta storleken i temat, inte på ett enskilt ställe. |
+| `axe: WCAG violations …` med regel-id och selektor | En axe-överträdelse | `findings.json` för testet har alla noder och förklaringen. |
+| `content past the edge or cut off` | Reflow- eller textavståndsfel | Kör läget i projektet som felade (`npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=<projekt>`) och se det i alla storlekar med `npm run ux:shots -- -g "<läge>"`; leta efter en minsta bredd, en fast kolumn eller text som inte får brytas, och kontrollera långa svenska ord. |
 | `<sida> loads X KB of JS, the budget is Y KB` | Sidan blev tyngre än budgeten | Hitta importen som växte; höj budgeten bara med skäl. |
 | `a <style data-astryx-theme*> means the theme is built in the browser` | Temat byggs i webbläsaren | Importera det byggda temat, `kit/theme/built/eneo`. |
-| Knappen utan stoppning, eller annan accentfärg än blå i smoke | Ett förlorat cascade-skikt eller ett tema som inte laddats | Kontrollera importordningen i `frontend/app/layout.tsx` och `frontend/app/layers.css`. |
-| Konsolfel i `smoke.spec.ts` | Oftast en CSP-vägran | Läs felet: det anger vilket direktiv som stoppade vad. |
+| Konsolfel i ett produktionstest | Oftast en CSP-vägran | Felet anger vilket direktiv som stoppade vad. |
 
-Var resultaten finns:
+Resultaten finns i `frontend/test-results/a11y/*/findings.json` och i HTML-rapporten (`npx playwright show-report test-results/a11y-report`), där `manual check` listas. Ett spår behålls för misslyckade tester (`npx playwright show-trace <mapp>/trace.zip`). Skärmbilder: `SHOTS=1 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-390-light` skriver `test-results/shots/<projekt>/<läge>.png`. Se ett enskilt läge i en webbläsare med fönster: `npm run state -- "<läge>"`.
 
-- `frontend/test-results/a11y/*/findings.json`: mätvärden per läge och projekt.
-- `frontend/test-results/a11y-report`: HTML-rapporten (`npx playwright show-report test-results/a11y-report`), där `manual check` listas som kommentarer.
-- Ett spår behålls för misslyckade tester: `npx playwright show-trace <mapp>/trace.zip`.
-- Skärmbilder: `SHOTS=1 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-390-light --project=laptop-1440-dark` skriver `test-results/shots/<projekt>/<läge>.png`. Skärmbilder behålls också vid fel.
-- Se ett enskilt läge i en webbläsare med fönster: `npm run state -- "<läge>"`.
+Före och efter en ändring av gränssnittet: `npm run ux:shots` fotograferar varje läge i 23 storlekar (telefoner stående och liggande, surfplattor, 1000 px, laptops och breda skärmar upp till 3840 × 2160) i ljust och mörkt, till `frontend/ux-shots/<etikett>/<läge>/<bredd>x<höjd>-<färgläge>.png` med ett kontaktark, `index.html`. Etiketten är den korta commiten (`-dirty` med ändrade filer), `--name <namn>` lägger till ett namn och `--label <etikett>` sätter den. `--sizes 1000x800,390x844` och Playwrights `-g "<läge>"` smalnar av. `npm run ux:shots -- --compare <före> <efter>` skriver en rapport, `frontend/ux-shots/compare/<före>__<efter>/index.html`, med före, efter och de ändrade pixlarna i rött, de mest ändrade först. Bilderna checkas aldrig in (`ux-shots/` ignoreras).
 
-## Lägga till en skärm eller ett överlägg
+Varje storlek får också en `.first.png` av det verkliga fönstret. Alla fönsterbilder tas före helsidesbilderna, och skriptet kontrollerar att pekarläget stämmer med enheten. Chromiums helsidesinfångning kan ändra pekskärmsläget och hur fasta lager ritas. Bedöm kontrollstorlek och placering i `.first.png` och med gatens mätningar; helsidesbilden ger sammanhang för resten av sidan.
 
-1. Lägg lägen för skärmen i `frontend/tests/e2e/screens.ts` (ett namn och stegen dit). `a11y.spec.ts` besöker dem automatiskt i alla projekt.
-2. Behöver den en tangentbordsvandring eller en ARIA-ögonblicksbild, lägg den i `keyboard.spec.ts` respektive `aria.spec.ts`.
-3. Är det ett överlägg (meny, väljare, dialog, bottenark), lägg det i `OVERLAYS` i `leaks.spec.ts`.
-4. Kör läget i `phone-320-light` och `zoom-200` före hela grinden.
-5. Hur en ny skärm byggs i övrigt: [Frontend](frontend.md#lägga-till-en-skärm).
+En ny skärm eller ett nytt överlägg: [Frontend](frontend.md#lägga-till-en-skärm).
 
-## Migration (temporary, removed by bead .24)
-
-- Planens regler för grinden finns i `docs/plans/2026-10-01-astryx-port-plan.md`.
+Efter en riktad bildkörning i en befintlig bildmapp uppdaterar `npm run ux:shots -- --index <etikett>` kontaktarket utan att ta om bilderna.

@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { ApiError, authStatus, cancelRun, getConfig, getRunStatus, startRun, uploadStepRuntimeFile, type AuthenticatedUser, type AuthStatus } from "./api";
+import { ApiError, authStatus, cancelRun, checkRunArtifact, getRunStatus, logout, startRun, uploadStepRuntimeFile, type AuthStatus } from "./api";
 import { loginState } from "./login-state";
-import { ACCESS_CODE_USER } from "./user-identity";
 
 const sessionEnded = () =>
   new Response(JSON.stringify({ detail: "Session expired" }), {
@@ -14,16 +13,15 @@ const anna = { id: "user-1", email: "anna@example.se", username: "Anna Berg" };
 const erik = { id: "user-2", email: "erik@example.se", username: "Erik Lund" };
 const signedIn = (sessionEndsIn = 8 * 3600, user = anna): AuthStatus => ({
   authenticated: true,
-  auth_mode: "eneo_sso",
   user,
   session_ends_in: sessionEndsIn,
 });
-const signedOut: AuthStatus = { authenticated: false, auth_mode: "eneo_sso", user: null };
+const signedOut: AuthStatus = { authenticated: false, user: null };
 const ok = (body: unknown) =>
   new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
 
 /** A signed-in page (AuthGate) whose login ends at the first request, and whose navigations are recorded. */
-function signedInPage(t: import("node:test").TestContext, answers: Array<() => Response>, owner: AuthenticatedUser = anna) {
+function signedInPage(t: import("node:test").TestContext, answers: Array<() => Response>) {
   const calls: Array<{ url: string; method: string; headers: Headers }> = [];
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
@@ -34,7 +32,7 @@ function signedInPage(t: import("node:test").TestContext, answers: Array<() => R
   const page = globalThis as { window?: unknown };
   const browserWindow = page.window;
   page.window = { location: { pathname: "/flows/flow-1", replace: (url: string) => navigated.push(url) } };
-  const end = loginState.begin(owner);
+  const end = loginState.begin(anna);
   t.after(() => {
     end();
     globalThis.fetch = browserFetch;
@@ -91,6 +89,24 @@ test("a request sent again after the new login is sent again only once", async (
   assert.equal(calls.length, 2);
 });
 
+test("a document availability check still cancels the body after the session is renewed", async (t) => {
+  let reads = 0;
+  let cancellations = 0;
+  const { calls } = signedInPage(t, [sessionEnded, () => new Response(new ReadableStream({
+    pull() { reads += 1; },
+    cancel() { cancellations += 1; },
+  }, { highWaterMark: 0 }), { headers: { "content-type": "application/pdf" } })]);
+  const checking = checkRunArtifact("flow-1", "run-1", "file-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(loginState.signedOut, true);
+  loginState.observe(signedIn());
+  await checking;
+  assert.equal(reads, 0, "the check does not download the document");
+  assert.equal(cancellations, 1, "the renewed request releases the stream");
+  assert.deepEqual(calls.map((call) => call.method), ["GET", "GET"]);
+  assert.ok(calls.every((call) => !call.headers.has("Range")));
+});
+
 test("a run request with its Idempotency-Key goes again after the new login; a request without one is the user's to repeat", async (t) => {
   const { calls } = signedInPage(t, [sessionEnded, () => ok({ id: "run-1", flow_id: "flow-1", status: "queued" }), sessionEnded]);
   const starting = startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
@@ -124,7 +140,7 @@ test("the start page, which no signed-in page holds, never waits for a login", a
   try {
     await assert.rejects(getRunStatus("flow-1", "run-1"), (error: ApiError) => error.status === 401);
     assert.equal(loginState.signedOut, false);
-    assert.equal(calls, 1, "sent once, as before");
+    assert.equal(calls, 1, "sent once");
   } finally {
     globalThis.fetch = browserFetch;
   }
@@ -277,18 +293,12 @@ test("every request to Eneo names the page's user, and the module's own requests
   const { calls } = signedInPage(t, []);
   await getRunStatus("flow-1", "run-1");
   await startRun("flow-1", { expected_flow_version: 1 }, "flow-run:recording:r1");
-  await getConfig();
+  await logout();
   await authStatus();
   assert.deepEqual(
     calls.map((call) => call.headers.get("X-Expected-User")),
     ["user-1", "user-1", null, null],
   );
-});
-
-test("the access code has no user to name", async (t) => {
-  const { calls } = signedInPage(t, [], ACCESS_CODE_USER);
-  await getRunStatus("flow-1", "run-1");
-  assert.equal(calls[0].headers.has("X-Expected-User"), false);
 });
 
 test("an upload names the page's user", async (t) => {
@@ -567,4 +577,44 @@ test("an answer to an older status question never undoes a newer one", () => {
   } finally {
     end();
   }
+});
+
+test("an upload the module's proxy answers with a 502, or that the network loses, is no end of the login: it fails as an upload does", async (t) => {
+  signedInPage(t, []);
+  answeringXhr(t, 502, { detail: "Bad Gateway" });
+
+  const bad = await uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm").catch((error: unknown) => error);
+
+  assert.ok(bad instanceof ApiError);
+  assert.equal(bad.status, 502, "the answer as it is, for the retry rules and the advice");
+  assert.equal(loginState.signedOut, false);
+  assert.equal(loginState.otherUser, null);
+
+  class LostXhr {
+    upload = {};
+    onload = null;
+    onabort = null;
+    onerror: (() => void) | null = null;
+    withCredentials = false;
+    open() {}
+    setRequestHeader() {}
+    abort() {}
+    send() {
+      queueMicrotask(() => this.onerror?.());
+    }
+  }
+  globalThis.XMLHttpRequest = LostXhr as unknown as typeof XMLHttpRequest;
+  const lost = await uploadStepRuntimeFile("flow-1", "step-audio", new Blob(["a"]), "a.webm").catch((error: unknown) => error);
+
+  assert.ok(lost instanceof ApiError);
+  assert.equal(lost.code, "network_error");
+  assert.equal(loginState.signedOut, false);
+  assert.equal(loginState.otherUser, null);
+});
+
+test("what the status says of the module's upload limit is kept for the contracts the page reads", () => {
+  loginState.observe({ authenticated: true, user: anna, max_upload_bytes: 1024 });
+  assert.equal(loginState.maxUploadBytes, 1024);
+  loginState.observe({ authenticated: true, user: anna });
+  assert.equal(loginState.maxUploadBytes, 1024, "an answer that does not say leaves what was said");
 });

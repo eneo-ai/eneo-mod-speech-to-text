@@ -69,6 +69,10 @@ test("while Strömma's final text is on its way, Skapa dokument keeps its name a
   await view.act(async () => create.click());
   assert.equal(document.activeElement, create, "a press leaves the focus where it was");
 
+  const queuedPanel = createElement(ReadyPanel, { recording, persistent: true, problem: null, finishing: true, finishQueued: true, onCreate() {}, onDiscard() {} });
+  await view.act(async () => view.rerender(queuedPanel));
+  assert.equal(region.textContent, "Slutför texten… Det skapas så snart den är klar.", "a press meanwhile is kept, and the line says so");
+
   await view.act(async () => view.rerender(panel(false)));
   assert.equal(region.textContent, "", "the line goes when the text is in");
   assert.equal(create.hasAttribute("aria-busy"), false);
@@ -85,6 +89,7 @@ test("with nothing to play, the player is left out and the next steps are still 
   // The test document's store holds no parts of the recording: as when the device has lost them.
   const view = await ready();
   assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null, "no player for a recording it cannot read");
+  assert.doesNotMatch(view.container.textContent ?? "", /kunde inte läsas/, "a device with no parts is not an unreadable one");
   for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
 });
 
@@ -145,7 +150,7 @@ test("the delete question is covered while the login has ended, and is back, as 
     assert.ok(question()?.hasAttribute("open"), "asked");
     await view.act(async () => loginState.ended());
     assert.equal(question()?.hasAttribute("open"), false, "the login ends: nothing of the question stays open over the sign-in dialog");
-    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna }));
+    await view.act(async () => loginState.observe({ authenticated: true, user: anna }));
     assert.ok(question()?.hasAttribute("open"), "the same person signs in again: the question is back");
     // Asked again with nothing of the page focused, it still gives the focus back to Ta bort when it is answered.
     (document.activeElement as HTMLElement | null)?.blur();
@@ -155,5 +160,23 @@ test("the delete question is covered while the login has ended, and is back, as 
     assert.equal(view.calls.discard, 0);
   } finally {
     release();
+  }
+});
+
+test("a recording the device cannot read says why there is no player, and the next steps are still there", async () => {
+  const { recordingStore } = await import("./recording-store");
+  const store = await recordingStore();
+  const readParts = store.readParts;
+  store.readParts = async () => {
+    throw new Error("the database is not readable");
+  };
+  try {
+    const view = await ready();
+    await view.act(async () => undefined);
+    assert.match(view.container.textContent ?? "", /Inspelningen kunde inte läsas på den här enheten, så den kan inte spelas upp\./);
+    assert.equal(view.container.querySelector('[role="group"][aria-label^="Uppspelning"]'), null);
+    for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(named(view.container, name), name);
+  } finally {
+    store.readParts = readParts;
   }
 });

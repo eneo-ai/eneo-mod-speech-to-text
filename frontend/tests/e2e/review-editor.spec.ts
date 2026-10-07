@@ -1,17 +1,85 @@
 /**
- * The speaker-review editor (README "Granska transkriptet"), the part of the review the flag keeps out of every run and
- * the gate's states cannot work: selection with the keyboard, a speaker given to the words and taken back, a word that
- * moves the playback, and the way between the text and its tools. The development page's fixtures carry it.
+ * The speaker-review editor (docs/eneo-integration.md, "Granskning och talarmappning"), the part of the review the flag
+ * keeps out of every run and the gate's states cannot work: selection with the keyboard, a speaker given to the words
+ * and taken back, a word that moves the playback, and the way between the text and its tools. The development page's
+ * fixtures carry it.
  */
-import { expect, test, type Page } from "@playwright/test";
-import { open, pick, reviewEditor } from "./screens";
+import { type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { focusStop, stopProblems } from "./checks";
+import { pick, reviewEditor } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
 
-const transcript = (page: Page) => page.getByRole("textbox", { name: "Transkript, markera ord för att redigera" });
-const tools = (page: Page) => page.getByRole("group", { name: "Transkriptverktyg" });
+const transcript = (page: Page) => page.getByRole("textbox", { name: "Transkribering, markera ord för att redigera" });
+const tools = (page: Page) => page.getByRole("group", { name: "Verktyg för transkriberingen" });
 /** What the tools say about the last change: each design-system button holds a live region of its own, empty. */
 const said = (page: Page) => tools(page).getByRole("status").filter({ hasText: /\S/ });
+
+test("after confirming speakers, Tab brings the timestamp clear of the docked player", async ({ page }) => {
+  await reviewEditor(page);
+  await tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ }).click();
+  await expect(page.getByText("Inga väntande talarbeslut")).toBeVisible();
+  await transcript(page).focus();
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Flytta uppspelningen till 0:00", exact: true })).toBeFocused();
+  const stop = await focusStop(page);
+  expect(stop).not.toBeNull();
+  expect(stopProblems([stop!]), "the timestamp has visible focus and is fully unobscured").toEqual([]);
+});
+
+test("the review actions use arrows within one Tab stop, then Tab reaches the details", async ({ page }, info) => {
+  await reviewEditor(page);
+  const confirm = tools(page).getByRole("button", { name: /^Bekräfta alla förslag/ });
+  const previous = tools(page).getByRole("button", { name: "Föregående passage som behöver talarbeslut" });
+  const next = tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" });
+  await confirm.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(previous).toBeFocused();
+  const actionFocus = await focusStop(page);
+  expect(actionFocus).not.toBeNull();
+  await page.keyboard.press("End");
+  await expect(next).toBeFocused();
+  await page.keyboard.press("Home");
+  await expect(confirm).toBeFocused();
+  await page.keyboard.press("Tab");
+  const details = page.getByRole("button", { name: "Detaljer", exact: true });
+  await expect(details).toBeFocused();
+  const detailsFocus = await focusStop(page);
+  expect(detailsFocus).not.toBeNull();
+  const stops = [actionFocus!, detailsFocus!];
+  await info.attach("review-focus", { body: JSON.stringify(stops, null, 2), contentType: "application/json" });
+  expect(stopProblems(stops), "focus is visible and unobscured").toEqual([]);
+  await expect(details).toHaveAttribute("aria-expanded", "false");
+  await page.keyboard.press("Enter");
+  await expect(details).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("heading", { name: "Om markeringen" })).toBeVisible();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("heading", { name: "Om markeringen" })).toBeHidden();
+});
+
+test("selected-word actions keep the speaker picker's keyboard navigation and the correction field", async ({ page }) => {
+  await reviewEditor(page);
+  await tools(page).getByRole("button", { name: "Nästa passage som behöver talarbeslut" }).click();
+  const actions = page.getByRole("toolbar", { name: "Åtgärder för markerade ord" });
+  await actions.getByRole("button", { name: "Lyssna", exact: true }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(actions.getByRole("button", { name: "Bekräfta Agne", exact: true })).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  const speaker = actions.getByRole("combobox", { name: "Tilldela talare" });
+  await expect(speaker).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(speaker).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(actions.getByRole("button", { name: "Rätta text", exact: true })).toBeFocused();
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeFocused();
+  await tools(page).getByRole("button", { name: "Avbryt", exact: true }).click();
+  await expect(page.getByRole("textbox", { name: "Rätta markerad text" })).toBeHidden();
+  await expect(tools(page).getByRole("button", { name: "Avmarkera", exact: true })).toBeFocused();
+});
 
 test("words selected with Shift and the arrows are given to a speaker, and Ångra takes the speaker back", async ({ page }) => {
   await reviewEditor(page);
@@ -45,7 +113,7 @@ test("words selected with Shift and the arrows are given to a speaker, and Ångr
 });
 
 test("a click on a word moves the playback to it", async ({ page }) => {
-  await open(page, "/dev/speaker-review");
+  await page.goto("/dev/speaker-review");
   await pick(page.getByRole("combobox", { name: "Testfall" }), "operator");
   await page.getByRole("checkbox", { name: "Tillgängligt testljud" }).check();
   await expect(transcript(page)).toBeVisible();

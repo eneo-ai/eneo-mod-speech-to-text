@@ -1,50 +1,55 @@
 # Lokal utveckling
 
-Syfte: Visa hur man startar modulen lokalt, med Docker, i devcontainern eller mot en stubbackend, och vilka portar som används.
+## Kom igång
 
-Läs detta när: Du sätter upp en utvecklingsmiljö, ska köra appen mot ett lokalt Eneo, eller behöver se en skärm utan Eneo.
+1. **Du behöver ett Eneo som modulen når**, med en servicenyckel och modulen installerad ([Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo)). Har du inget kör du stubben som Eneo i stället ([utan Eneo](#den-riktiga-backenden-utan-ett-eneo)).
+2. **Hämta koden och inställningarna:**
 
-Hör ihop med: [Drift](operations.md), [Kvalitetsgrindar](quality-gates.md), [Backend](backend.md#inställningar), [Frontend](frontend.md)
+   ```bash
+   git clone https://github.com/eneo-ai/eneo-mod-speech-to-text && cd eneo-mod-speech-to-text
+   cp .env.example .env
+   ```
+
+3. **Fyll i `.env`:** ange `ENEO_BACKEND_URL`, `ENEO_PUBLIC_URL` och `ENEO_API_KEY`. Skapa en hemlighet och klistra in svaret som värde för `SESSION_SECRET`:
+
+   ```bash
+   python -c "import secrets; print(secrets.token_urlsafe(48))"
+   ```
+
+   För lokal körning lägger du också till:
+
+   ```dotenv
+   MODULE_PUBLIC_URL=http://localhost:3001
+   COOKIE_SECURE=false
+   ```
+
+   Kör Eneo på din egen dator, med API:t på port 8123 och webben på port 3000, använder du dessa adresser. Den första når datorn från containern; den andra når Eneos webb från webbläsaren.
+
+   ```dotenv
+   ENEO_BACKEND_URL=http://host.docker.internal:8123
+   ENEO_PUBLIC_URL=http://localhost:3000
+   ```
+4. **Starta:** `docker compose up --build`
+5. **Öppna** `http://localhost:3001` i webbläsaren.
+
+Mikrofonen fungerar på `localhost` men kräver HTTPS på en annan adress ([Drift](operations.md#vad-som-står-framför-modulen)).
 
 ## Portar
 
 | Port | Vad |
 |---|---|
-| 3000 | Compose: `frontend`-tjänsten (`docker-compose.override.yml` publicerar den lokalt). |
-| 3001 | Produktionsimagen: allt i en container. |
-| 3002 | `npm run dev` (Next.js utvecklingsserver). |
-| 8000 | Backend (FastAPI), internt. |
-| 3401 och 8401 | Tillgänglighetsgrinden och `npm run dev:stub`: app och stubbackend. |
-| 3411 och 8411 | `npm run test:prod`: byggd app och stubbackend. |
+| 3001 | Modulen: den publicerade imagen, eller den lokala med `docker compose up --build`. |
+| 3002 | `npm run dev`: Vites utvecklingsserver, som vidarebefordrar `/api` och `/health` till backend. |
+| 8000 | Backend i utveckling (`--api-only`, alltså utan gränssnitt). |
+| 3401 och 8401 | Gaten och `npm run dev:stub`: app och stubbackend. |
 
-Dev-servern lyssnar avsiktligt på 3002: Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Grindens portar kan flyttas med `A11Y_APP_PORT` och `A11Y_STUB_PORT`, se [Kvalitetsgrindar](quality-gates.md#portar-och-flera-utcheckningar).
+Utvecklingsservern ligger på 3002 för att Eneos egen devcontainer tar 3000 (webb) och 8123 (API), och båda körs ofta samtidigt. Testernas övriga portar och hur de flyttas: [Tester](quality-gates.md#portar-och-flera-utcheckningar).
 
-## Med Docker Compose
+## Med Docker
 
-Från repots rot:
+`docker compose up --build` bygger imagen lokalt (`docker-compose.override.yml`) och publicerar port 3001. `SESSION_SECRET` är minst 32 tecken: `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Loggar: `docker compose logs -f speech-to-text`. Granskningen av transkriberingen slås på när imagen byggs: `SPEAKER_REVIEW_ENABLED=true` i `.env`.
 
-```bash
-cp .env.example .env
-# Fyll i auth-läge, Eneo- och modul-URL:er, ENEO_API_KEY och SESSION_SECRET
-# (samt DEMO_SPACE_ID i access_code-läget). Sätt COOKIE_SECURE=false för lokal http://localhost.
-docker compose up --build
-open http://localhost:3000
-```
-
-Generera `SESSION_SECRET` (minst 32 tecken) med:
-
-```bash
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-```
-
-Följ loggarna (tjänsterna heter `speech-to-text-backend` och `frontend`):
-
-```bash
-docker compose logs -f speech-to-text-backend
-docker compose logs -f frontend
-```
-
-### Verifiera produktionsimagen lokalt
+Imagen utan Compose:
 
 ```bash
 docker build -t eneo-mod-speech-to-text:test .
@@ -52,81 +57,68 @@ docker run --rm --env-file .env -p 3001:3001 eneo-mod-speech-to-text:test
 curl -fsS http://localhost:3001/health
 ```
 
-Validera Compose-konfigurationen utan att starta något:
+## Utan Docker
+
+Backend och Vite körs var för sig. Devcontainern (`.devcontainer/devcontainer.json`) har Python 3.14 och Node 24.21.0 LTS; frontend och dokumentationssajten kräver Node 24.21.0 eller senare (`engines` i `frontend/package.json`). Miljön i `backend/.venv` skapas i devcontainern (`.devcontainer/post-create.sh`) eller med `python -m venv .venv && .venv/bin/pip install -r requirements.txt`. Läs in `.env` i båda terminalerna, med `COOKIE_SECURE=false` och `MODULE_PUBLIC_URL=http://localhost:3002`:
 
 ```bash
-docker compose --env-file .env.example config -q
+# Backend (från backend/): utan gränssnitt, startar om vid kodändringar
+set -a; source ../.env; set +a
+.venv/bin/python -m app.serve --api-only --host 0.0.0.0 --port 8000 --reload
 ```
 
-## Utan Docker: devcontainer
-
-Projektet har en devcontainer med Python 3.12 och Node 22 (`.devcontainer/devcontainer.json`).
-
-1. Öppna repot i VS Code.
-2. Kör **Dev Containers: Reopen in Container** och öppna en **ny terminal i det VS Code-fönstret**. Kommandona nedan ska köras inne i containern, där repot ligger på `/workspaces/eneo-mod-speech-to-text`.
-3. Skapa miljöfilen om den saknas: `cp .env.example .env`.
-4. Fyll i `.env`. För lokal körning i devcontainern behövs `COOKIE_SECURE=false`.
-5. Starta backend i en terminal inne i containern:
-
 ```bash
-cd /workspaces/eneo-mod-speech-to-text
-set -a
-source .env
-set +a
-cd backend
-.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --no-access-log --ws-max-size 131072 --ws-max-queue 16
-```
-
-6. Starta frontend i en annan terminal inne i containern. Läs in `.env` även här så att frontendinställningar som `NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED=true` används:
-
-```bash
-cd /workspaces/eneo-mod-speech-to-text
-set -a
-source .env
-set +a
-cd frontend
+# Frontend (från frontend/): Vite på http://localhost:3002
+set -a; source ../.env; set +a
 npm run dev
 ```
 
-Starta om frontend efter att ha ändrat `NEXT_PUBLIC_`-inställningar. Öppna sedan `http://localhost:3002`; VS Code vidarebefordrar portarna 3002 och 8000.
-
-I `next dev` proxas `/api` automatiskt till `http://127.0.0.1:8000`. Sätt `INTERNAL_API_BASE` om backend körs någon annanstans (`frontend/lib/backend-base.mjs`).
-
-Backendens startkommando ovan har samma WebSocket-gränser som produktionsimagen, och `backend/tests/test_live_relay.py` kontrollerar det genom att läsa raden i [README](../README.md). Ändra dem tillsammans.
-
-Om du får `uvicorn: command not found` efter att ha aktiverat `.venv`: kontrollera att terminalen verkligen är inne i containern. Miljön skapas där med Python 3.12; den kan inte användas från macOS även om prompten visar `(.venv)`. Från en vanlig terminal på datorn kan du gå in med `docker exec -it <containerns namn> bash` (hitta namnet med `docker ps`) och sedan köra startkommandona ovan.
+Vite vidarebefordrar `/api` (också WebSocket, som live-texten använder) och `/health` till `DEV_API_BASE` (standard `http://127.0.0.1:8000`) med webbläsarens `Origin` oförändrad, vilket är varför `MODULE_PUBLIC_URL` ska vara `http://localhost:3002`. `--api-only` behövs eftersom starten annars vägrar utan ett byggt gränssnitt. `SPEAKER_REVIEW_ENABLED=true` i miljön slår på granskningen; starta om Vite efter en ändring.
 
 ### Mot ett lokalt Eneo
 
-Mot ett lokalt Eneo i devcontainer:
+Eneos egen devcontainer lägger webben på port 3000 och API:t på 8123. Vem som når vad bestämmer adressen: en modul i Docker når din dator som `host.docker.internal`, en modul som körs direkt gör det som `localhost`, och webbläsaren når alltid Eneos webb på `localhost`.
 
-| Variabel | Värde |
-|---|---|
-| `ENEO_BACKEND_URL` | `http://host.docker.internal:8123` |
-| `ENEO_PUBLIC_URL` | `http://localhost:3000` |
-| `MODULE_PUBLIC_URL` | `http://localhost:3002` |
-| `COOKIE_SECURE` | `false` |
+| Variabel | Modulen i Docker (`docker compose up`) | Modulen utan Docker (Vite på 3002) |
+|---|---|---|
+| `ENEO_BACKEND_URL` | `http://host.docker.internal:8123` | `http://localhost:8123` |
+| `ENEO_PUBLIC_URL` | `http://localhost:3000` | `http://localhost:3000` |
+| `MODULE_PUBLIC_URL` | `http://localhost:3001` | `http://localhost:3002` |
+| `COOKIE_SECURE` | `false` | `false` |
 
-Snabbaste vägen är `AUTH_MODE=access_code` med en `sk_`-nyckel (service, `flows = write`) skapad i Eneos admin. För riktig SSO installeras modulen i Eneo med callback `http://localhost:3002/api/auth/callback`.
+Registrera modulen som i [Sätt upp modulen i Eneo](operations.md#sätt-upp-modulen-i-eneo), med callback `<MODULE_PUBLIC_URL>/api/auth/callback`: `http://localhost:3001/api/auth/callback` eller `http://localhost:3002/api/auth/callback`.
+
+### Den riktiga backenden utan ett Eneo
+
+Stubben `frontend/tests/e2e/stub-server.py` (bara för test) kan spela Eneo, inloggningen (`/module-login`) inräknad. Från repots rot, i tre terminaler:
+
+```bash
+# 1. Stubben som Eneo
+cd frontend && python3 tests/e2e/stub-server.py 8401
+
+# 2. Backend, som loggar in genom stubben
+cd backend
+ENEO_BACKEND_URL=http://127.0.0.1:8401 ENEO_PUBLIC_URL=http://127.0.0.1:8401 \
+MODULE_PUBLIC_URL=http://localhost:3002 MODULE_KEY=speech-to-text ENEO_API_KEY=stub-service-key \
+SESSION_SECRET=$(python3 -c "import secrets; print(secrets.token_urlsafe(48))") COOKIE_SECURE=false \
+.venv/bin/python -m app.serve --api-only --port 8000 --reload
+
+# 3. Vite-servern
+cd frontend && npm run dev
+```
+
+Öppna `http://localhost:3002` och välj "Logga in med Eneo": stubben loggar in Erik Lund. Stubbens flöden, körningar och filer är de som gaten använder.
 
 ## Se en skärm utan Eneo
 
-Stubbackenden `frontend/tests/e2e/stub-server.py` (bara för test, skeppas aldrig) låtsas vara modulens backend och Eneo, så att varje skärm går att nå. Från `frontend/`:
+Stubben kan också vara modulens backend, så att varje skärm går att nå utan Eneo och utan backend. Från `frontend/`:
 
 ```bash
 npm run dev:stub
 ```
 
-Det startar stubben och appen på `http://127.0.0.1:3401`. Med andra portar: `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run dev:stub`.
+Det startar stubben och appen på `http://127.0.0.1:3401` (andra portar: `A11Y_APP_PORT=3464 A11Y_STUB_PORT=8464 npm run dev:stub`). Vissa lägen går inte att nå med en vanlig adress eftersom de behöver Playwrights nätverksavlyssning eller klocka: öppna ett namngivet läge ur `frontend/tests/e2e/screens.ts` i en webbläsare med fönster med `npm run state -- "<läge>"`.
 
-Vissa lägen går inte att nå med en vanlig adress eftersom de behöver Playwrights nätverksavlyssning eller klocka. Öppna ett namngivet läge ur `frontend/tests/e2e/screens.ts` i en webbläsare med fönster:
+## Dokumentationen
 
-```bash
-npm run state -- "<läge>"
-```
-
-Skärmbilder per läge och projekt: se [Kvalitetsgrindar](quality-gates.md#läsa-ett-fel).
-
-## Designsystemets kommandon
-
-Alla går från `frontend/` och körs alltid via `npm run astryx --`, så att den fastlåsta versionen används: `build "<idé>"`, `component <Namn>`, `template <namn>`, `docs <ämne>`, `search "<fråga>"`, `doctor`. Se [Designsystem](design-system.md).
+Sidorna i `docs/` är källan till dokumentationssajten i `docs-site/` (Astro Starlight med det färdiga MD3-temat, ett eget paket som aldrig når imagen). Från `docs-site/`: `npm ci`, sedan `npm run dev` (på `http://localhost:4321/eneo-mod-speech-to-text/`). För verifiering: `npm test`, `npm run build` (misslyckas på en död länk), `npm run typecheck` och `npm run check` (webbläsarkontroll av den byggda sajten; första gången `npx playwright install chromium`). Bygget skapar de innehållstyper som typkontrollen behöver. Sidorna är vanlig Markdown med sin rubrik och utan frontmatter, så att de läses likadant på GitHub. Byggsteget skapar titelmetadata och sajtens länkar i en genererad kopia; redigera alltid originalen i `docs/`. Sidomenyn och temats inställningar står i `docs-site/astro.config.mjs`. API-anropens sidor byggs från `docs/api/openapi.json`; deras svenska gränssnittsetiketter läggs till i bygget, så använd `npm run preview` för att granska dem. Mer om sajten och dess gestaltning: `docs-site/DESIGN.md`.

@@ -1,10 +1,10 @@
 import { correctionWriteProblem } from "./transcript-corrections";
-// All requests go to same-origin /api/* — Next rewrites these to the backend.
-// The backend in turn proxies /api/eneo/* to Eneo with the module's service
-// key and, in Eneo SSO mode, the short-lived module-user token from its
-// HttpOnly session.
+// Every request goes to same-origin /api/*: the Vite dev server proxies it to the backend, and in production the backend
+// serves the page and the API. The backend proxies /api/eneo/* to Eneo with the module's service key and, in Eneo SSO
+// mode, the short-lived module-user token from its HttpOnly session.
 
 import { loginState } from "./login-state";
+import { limitedToModule } from "./upload-limit";
 import { onlineStatus } from "./online-status";
 import {
   resolveRuntimeUploadIdleTimeoutMs,
@@ -13,6 +13,9 @@ import {
 } from "./upload";
 
 export type Json = Record<string, unknown>;
+
+/** How long a request waits for the module's answer. The module's own wait for Eneo is 60 s, so this ends only what it never answers. */
+export const REQUEST_TIMEOUT_MS = 90_000;
 
 export class ApiError extends Error {
   status: number;
@@ -27,26 +30,31 @@ export class ApiError extends Error {
   }
 }
 
-async function parseError(res: Response): Promise<ApiError> {
-  let body: unknown = null;
+/**
+ * The error an answer stands for. Eneo answers `{ code, detail }`; the module's own proxy answers
+ * `{ error: "upstream_unreachable", detail }`. Both name their `code`.
+ */
+function apiErrorFrom(status: number, text: string): ApiError {
+  let body: unknown = text || null;
   let code: string | undefined;
   let detail: string | undefined;
   try {
-    body = await res.json();
+    body = text ? JSON.parse(text) : null;
     if (body && typeof body === "object") {
       const b = body as Record<string, unknown>;
       if (typeof b.code === "string") code = b.code;
-      // Vår egen proxy svarar `{ error: "upstream_unreachable", detail: "..." }`.
-      // Eneo svarar `{ code: "...", detail: "..." }`. Båda mappas till `code`.
       else if (typeof b.error === "string") code = b.error;
       if (typeof b.detail === "string") detail = b.detail;
       else if (typeof b.message === "string") detail = b.message;
     }
   } catch {
-    // ignore — body stays null
+    // Not JSON: the body stays its text.
   }
-  const msg = detail || code || `HTTP ${res.status}`;
-  return new ApiError(res.status, msg, body, code);
+  return new ApiError(status, detail || code || `HTTP ${status}`, body, code);
+}
+
+async function parseError(res: Response): Promise<ApiError> {
+  return apiErrorFrom(res.status, await res.text().catch(() => ""));
 }
 
 /** Safe to send twice: a read, or a request Eneo answers once per Idempotency-Key. */
@@ -71,21 +79,49 @@ function isUserChanged(error: ApiError): boolean {
   return error.status === 409 && (error.body as { detail?: unknown } | null)?.detail === "user_changed";
 }
 
+const requestTimedOut = () =>
+  new ApiError(408, "Det tog för lång tid att få svar. Försök igen.", null, "request_timed_out");
+
+/**
+ * fetch, ended when no answer has begun within REQUEST_TIMEOUT_MS (the module accepted the request and went quiet): a
+ * wait that would never end is a timeout the page can say and try again. The page's own signal still aborts it.
+ */
+async function fetchWithin(path: string, init: RequestInit): Promise<Response> {
+  const limit = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    limit.abort();
+  }, REQUEST_TIMEOUT_MS);
+  const cancel = () => limit.abort();
+  if (init.signal?.aborted) cancel();
+  else init.signal?.addEventListener("abort", cancel, { once: true });
+  try {
+    return await fetch(path, { ...init, signal: limit.signal });
+  } catch (error) {
+    throw timedOut ? requestTimedOut() : error;
+  } finally {
+    clearTimeout(timer);
+    init.signal?.removeEventListener("abort", cancel);
+  }
+}
+
 async function request<T>(
   path: string,
   init: RequestInit = {},
   again = false,
+  read: (response: Response) => Promise<T> = readResponse<T>,
 ): Promise<T> {
   // Signed out, or someone else signed in here: nothing leaves the page until its own user is back.
   if (loginState.signedOut && !path.startsWith("/api/auth/")) {
-    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again);
+    if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again, read);
     throw sessionEnded();
   }
   // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
   const question = loginState.ask();
   let res: Response;
   try {
-    res = await fetch(path, {
+    res = await fetchWithin(path, {
       ...init,
       credentials: "include",
       headers: {
@@ -93,7 +129,7 @@ async function request<T>(
         ...(init.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
-        ...(path.startsWith("/api/eneo/") ? expectedUserHeader() : {}),
+        ...(path.startsWith("/api/eneo/") || path.startsWith("/api/uploads/") ? expectedUserHeader() : {}),
         ...init.headers,
       },
     });
@@ -112,7 +148,7 @@ async function request<T>(
     if (res.status === 401 && res.headers.get("X-Auth-Required") === "session" && !path.startsWith("/api/auth/")) {
       loginState.ended(question);
       if (!again && replayable(init) && (await loginState.whenRenewed(init.signal))) {
-        return request<T>(path, init, true);
+        return request<T>(path, init, true, read);
       }
     } else if (isUserChanged(error)) {
       // The session is another person's. Never sent again by this page, whoever signs in next: it fails as a
@@ -123,6 +159,10 @@ async function request<T>(
     throw error;
   }
 
+  return read(res);
+}
+
+async function readResponse<T>(res: Response): Promise<T> {
   if (res.status === 204) return undefined as T;
 
   const ctype = res.headers.get("content-type") || "";
@@ -137,32 +177,6 @@ async function request<T>(
   return (await res.text()) as unknown as T;
 }
 
-// ---------- Config ----------
-
-export interface AppConfig {
-  /**
-   * Hur flödeslistan frågar Eneo, avgjort av modulens inloggningsläge: med
-   * Eneo SSO alla användarens spaces (space_id null), med åtkomstkod det
-   * konfigurerade spacet; null när åtkomstkodsläget saknar ett space.
-   */
-  flow_list: { space_id: string | null } | null;
-}
-
-export async function getConfig() {
-  return request<AppConfig>("/api/config");
-}
-
-/**
- * The organisation beside "Tal till text", a deployment setting of the
- * module's backend (GET /api/branding): the bundled default logo
- * ("default"), the deployment's own ("custom", with a dark variant when
- * `dark_logo`), or the name as text (null). No organisation shows the
- * product name alone.
- */
-export interface Branding {
-  organization: { name: string; logo: "default" | "custom" | null; dark_logo: boolean } | null;
-}
-
 // ---------- Auth ----------
 
 export interface AuthenticatedUser {
@@ -171,23 +185,15 @@ export interface AuthenticatedUser {
   username?: string;
 }
 
-export type AuthMode = "eneo_sso" | "access_code";
-
 export interface AuthStatus {
   authenticated: boolean;
-  auth_mode: AuthMode;
   user: AuthenticatedUser | null;
   /** Sekunder tills backend vill förnya Eneo-token; saknas när inget ska förnyas. */
   refresh_in?: number;
   /** Sekunder tills inloggningen tar slut (Eneos tak eller modulens eget); en ny inloggning flyttar det. */
   session_ends_in?: number;
-}
-
-export async function loginWithAccessCode(accessCode: string) {
-  return request<{ ok: true }>("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ access_code: accessCode }),
-  });
+  /** Det mesta modulen tar emot i en uppladdning; en större fil nekas medan den skickas. Bara för en inloggad sida. */
+  max_upload_bytes?: number;
 }
 
 export async function logout() {
@@ -200,7 +206,7 @@ export async function authStatus() {
 
 // ---------- Eneo ----------
 
-export interface PaginatedResponse<T> {
+interface PaginatedResponse<T> {
   items: T[];
   count?: number;
   total_count?: number;
@@ -274,7 +280,7 @@ export interface FlowReviewStepContract {
   output_contract?: Json | null;
 }
 
-export type LiveTranscriptionUnavailableReason =
+type LiveTranscriptionUnavailableReason =
   | "transcription_disabled"
   | "transcription_service_mode"
   | "model_unavailable"
@@ -341,7 +347,7 @@ export interface FlowPublished {
   published_version: number;
 }
 
-export interface FilePublic {
+interface FilePublic {
   id: string;
   filename?: string;
   mimetype?: string;
@@ -354,7 +360,6 @@ export interface ResultFile {
   mimetype?: string | null;
   size?: number;
   file_type?: FileType | string;
-  // Nya fält i den refaktorerade Eneo-specen (samtliga valfria här):
   step_id?: string;
   step_order?: number;
   attempt_no?: number;
@@ -393,7 +398,7 @@ export interface FlowRunError {
 export interface FlowRunPublic {
   id: string;
   flow_id: string;
-  status: string; // se FlowRunStatus — behåll string för forward-compat
+  status: string;
   result?: FlowRunResult | null;
   result_files?: ResultFile[];
   error?: FlowRunError | null;
@@ -401,7 +406,6 @@ export interface FlowRunPublic {
   updated_at?: string;
   started_at?: string;
   finished_at?: string;
-  // Nya fält i den refaktorerade specen:
   flow_version?: number;
   trace_id?: string;
   revision?: number;
@@ -417,10 +421,6 @@ export interface FlowRunPublic {
 export interface FlowRunStep {
   id: string;
   step_id: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_name?: string;
-  /** Saknas i ny spec — härled från GraphResponse.nodes vid behov. */
-  step_label?: string;
   step_order?: number;
   status: string; // se FlowStepResultStatus
   started_at?: string;
@@ -433,41 +433,20 @@ export interface FlowRunStep {
 
 // ---------- Nya typer för refaktorerade Eneo-flows ----------
 
-export type FlowRunStatus =
-  | "queued"
-  | "running"
-  | "awaiting_review"
-  | "completed"
-  | "failed"
-  | "cancelled";
-
-export type FlowStepResultStatus =
+type FlowStepResultStatus =
   | "pending"
   | "running"
   | "completed"
   | "failed"
   | "cancelled";
 
-export type FlowStepReviewMode = "view" | "edit";
+type FlowStepReviewMode = "view" | "edit";
 
-export type FlowTemplateAssetStatus =
-  | "ready"
-  | "needs_action"
-  | "read_only"
-  | "unavailable";
-
-export type FlowOutputType = "text" | "json" | "pdf" | "docx";
-export type FlowOutputMode =
-  | "pass_through"
-  | "http_post"
-  | "transcribe_only"
-  | "template_fill";
-export type FlowOutputDelivery = "payload" | "artifact" | "outbound_http";
-export type FlowRuntimeInputFormat = "document" | "audio" | "file";
+type FlowOutputType = "text" | "json" | "pdf" | "docx";
+type FlowRuntimeInputFormat = "document" | "audio" | "file";
 export type FileType = "text" | "image" | "audio" | "document";
-export type ContentDisposition = "attachment" | "inline";
 
-export type FlowRunReviewCheckpointState =
+type FlowRunReviewCheckpointState =
   | "awaiting_review"
   | "edited"
   | "approved"
@@ -517,29 +496,27 @@ export interface FlowRunReviewCheckpointPublic {
  */
 export type ReviewEditedValue = string | Json | unknown[];
 
-export interface ReviewEditRequest {
+interface ReviewEditRequest {
   expected_checkpoint_revision: number;
   edited_value: ReviewEditedValue;
 }
 
-export interface ReviewApproveRequest {
+interface ReviewApproveRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewRejectRequest {
+interface ReviewRejectRequest {
   expected_checkpoint_revision: number;
   reason: string;
 }
-export interface ReviewResumeRequest {
+interface ReviewResumeRequest {
   expected_checkpoint_revision: number;
 }
-export interface ReviewResumeResponse {
+interface ReviewResumeResponse {
   checkpoint: FlowRunReviewCheckpointPublic;
   run: FlowRunPublic;
 }
 
-export function isReviewCheckpointApproved(
-  checkpoint: FlowRunReviewCheckpointPublic | null | undefined,
-): checkpoint is FlowRunReviewCheckpointPublic {
+export function isReviewCheckpointApproved(checkpoint: FlowRunReviewCheckpointPublic | null | undefined): boolean {
   return checkpoint?.state === "approved" || checkpoint?.state === "resumed";
 }
 
@@ -585,74 +562,13 @@ export function speakerMappingReviewSteps(
   );
 }
 
-export interface FlowRunRedispatchResponse {
-  run: FlowRunPublic;
-  redispatched_count: number;
-}
-
-export interface FlowTemplateAssetPublic {
-  id: string;
-  flow_id: string;
-  file_id: string;
-  name: string;
-  checksum: string;
-  mimetype?: string | null;
-  placeholders: string[];
-  status: FlowTemplateAssetStatus;
-  last_updated_by_name?: string | null;
-  can_edit: boolean;
-  can_download: boolean;
-  can_select: boolean;
-  can_inspect: boolean;
-  created_at?: string;
-  updated_at?: string;
-}
-
-export interface FlowRunStepRerunRequest {
-  expected_run_revision: number;
-  reason: string;
-  input_payload_json?: Json | null;
-  step_inputs?: Json | null;
-}
-export interface FlowRunStepRerunResponse {
-  operation_id: string;
-  run: FlowRunPublic;
-  rerun_step_id: string;
-  new_attempt_no: number;
-  invalidated_step_ids: string[];
-  status: string;
-}
-
-export interface FlowRunEvidenceResponse {
-  run: FlowRunPublic;
-  definition_snapshot: Json;
-  step_results: FlowRunStep[];
-  // Övriga fält håller vi löst typade tills UI behöver dem.
-  step_attempts: Json[];
-  result_files: ResultFile[];
-  rerun_operations: Json[];
-  rerun_invalidated_steps: Json[];
-  review_checkpoints: Json[];
-  debug_export: Json;
-}
-
-export interface FlowRunEvidenceExportResponse {
-  schema_version: string;
-  generated_at: string;
-  content_hash: string;
-  manifest: Json;
-  summary: Json;
-  redaction: Json;
-  bundle: Json;
-}
-
 export interface UploadProgress {
   loaded: number;
   total: number | null;
   percent: number | null;
 }
 
-export type RuntimeUploadTimeoutReason =
+type RuntimeUploadTimeoutReason =
   | "not_started"
   | "stalled"
   | "server_not_responding";
@@ -663,39 +579,26 @@ interface UploadRequestOptions {
   runtimeUploadPolicy?: FlowRuntimeUploadPolicy | null;
 }
 
+/** An upload the page itself stopped. */
+export const uploadAborted = () => new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted");
+
 function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
   switch (reason) {
     case "not_started":
-      return "Uppladdningen startade inte i tid.";
+      return "Uppladdningen kom inte igång. Kontrollera anslutningen och försök igen.";
     case "stalled":
-      return "Uppladdningen stannade utan nätverksprogress.";
+      return "Uppladdningen stannade: inget har skickats på en stund. Kontrollera anslutningen och försök igen.";
     case "server_not_responding":
       return "Filen skickades, men servern svarade inte i tid.";
   }
 }
 
-function parseXhrError(xhr: XMLHttpRequest): ApiError {
-  let body: unknown = null;
-  let code: string | undefined;
-  let detail: string | undefined;
-  try {
-    body = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-    if (body && typeof body === "object") {
-      const b = body as Record<string, unknown>;
-      if (typeof b.code === "string") code = b.code;
-      if (typeof b.detail === "string") detail = b.detail;
-      else if (typeof b.message === "string") detail = b.message;
-    }
-  } catch {
-    body = xhr.responseText || null;
-  }
-  return new ApiError(xhr.status, detail || code || `HTTP ${xhr.status}`, body, code);
-}
+const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText);
 
-function requestMultipartWithProgress<T>(
+function requestUploadWithProgress<T>(
   path: string,
-  formData: FormData,
-  opts: UploadRequestOptions & { fileSizeBytes: number } = {
+  body: FormData | Blob,
+  opts: UploadRequestOptions & { fileSizeBytes: number; offset?: number } = {
     fileSizeBytes: 0,
   },
 ): Promise<T> {
@@ -707,6 +610,7 @@ function requestMultipartWithProgress<T>(
   const responseTimeoutMs = resolveRuntimeUploadResponseTimeoutMs(opts.fileSizeBytes, opts.runtimeUploadPolicy);
 
   // Signed out, or someone else signed in here: the upload is the user's to send again once back.
+  if (opts.signal?.aborted) return Promise.reject(uploadAborted());
   if (loginState.signedOut) return Promise.reject(sessionEnded());
   // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
   const question = loginState.ask();
@@ -715,16 +619,21 @@ function requestMultipartWithProgress<T>(
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let lastUploadedBytes = 0;
     let settled = false;
+    const cancel = () => xhr.abort();
 
     const clearScheduledTimeout = () => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = null;
     };
+    const cleanup = () => {
+      clearScheduledTimeout();
+      opts.signal?.removeEventListener("abort", cancel);
+    };
 
     const rejectOnce = (error: unknown) => {
       if (settled) return;
       settled = true;
-      clearScheduledTimeout();
+      cleanup();
       reject(error);
     };
 
@@ -765,7 +674,7 @@ function requestMultipartWithProgress<T>(
       if (changed) loginState.userChanged(question);
       if (settled) return;
       settled = true;
-      clearScheduledTimeout();
+      cleanup();
       if (xhr.status >= 200 && xhr.status < 300) {
         if (xhr.status === 204 || !xhr.responseText) {
           resolve(undefined as T);
@@ -805,30 +714,24 @@ function requestMultipartWithProgress<T>(
       );
     };
 
-    xhr.onabort = () => {
-      rejectOnce(
-        new ApiError(0, "Uppladdningen avbröts.", null, "upload_aborted"),
-      );
-    };
+    xhr.onabort = () => rejectOnce(uploadAborted());
 
-    opts.signal?.addEventListener(
-      "abort",
-      () => {
-        xhr.abort();
-      },
-      { once: true },
-    );
+    opts.signal?.addEventListener("abort", cancel, { once: true });
 
-    xhr.open("POST", path);
+    xhr.open(opts.offset === undefined ? "POST" : "PATCH", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
     for (const [name, value] of Object.entries(expectedUserHeader())) xhr.setRequestHeader(name, value);
+    if (opts.offset !== undefined) {
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.setRequestHeader("Upload-Offset", String(opts.offset));
+    }
     // The module's proxy holds Eneo's answer this long: through the upload and Eneo's measuring after it.
     xhr.setRequestHeader(
       "X-Upload-Timeout-Seconds",
       String(Math.ceil(Math.max(initialTimeoutMs, responseTimeoutMs) / 1000)),
     );
-    xhr.send(formData);
+    xhr.send(body);
   });
 }
 
@@ -856,13 +759,12 @@ async function sha256Hex(value: string): Promise<string> {
 // ---------- API-anrop ----------
 
 /**
- * One page of the published flows the user can run. Without `spaceId` Eneo
- * lists every space the user belongs to, narrowed by the module key's scope;
- * items come oldest first and `has_more` says whether another page follows.
+ * One page of the published flows the user can run, across every space they
+ * belong to; items come oldest first and `has_more` says whether another page
+ * follows.
  */
-export async function listPublishedFlows({ limit, offset, spaceId }: { limit: number; offset: number; spaceId?: string }) {
+export async function listPublishedFlows({ limit, offset }: { limit: number; offset: number }) {
   const query = new URLSearchParams({ published_only: "true", limit: String(limit), offset: String(offset) });
-  if (spaceId) query.set("space_id", spaceId);
   return request<OffsetPaginatedResponse<FlowSparsePublic>>(`/api/eneo/flows/?${query}`);
 }
 
@@ -871,7 +773,7 @@ export async function getPublishedFlow(flowId: string) {
 }
 
 export async function getRunContract(flowId: string) {
-  return request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`);
+  return limitedToModule(await request<RunContract>(`/api/eneo/flows/${flowId}/run-contract/`), loginState.maxUploadBytes);
 }
 
 // ---------- Flow graph ----------
@@ -889,7 +791,7 @@ export interface FlowGraphNode {
   run_status?: FlowStepResultStatus | string | null;
 }
 
-export interface FlowGraphEdge {
+interface FlowGraphEdge {
   source: string;
   target: string;
   kind: string; // "flow_input" | "previous_step" | "flow_output" | "input_bindings.X"
@@ -974,7 +876,7 @@ export async function getRunSteps(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-// --- Cancel / redispatch / list ---
+// --- Cancel / retry / list ---
 
 export async function cancelRun(flowId: string, runId: string) {
   return request<FlowRunPublic>(
@@ -984,7 +886,7 @@ export async function cancelRun(flowId: string, runId: string) {
 }
 
 /** Eneo's answer to a retry: the child run, and which completed steps it reuses. */
-export interface FlowRunRetryPublic {
+interface FlowRunRetryPublic {
   run: FlowRunPublic;
   /** False when the same key replays a retry Eneo already accepted. */
   created: boolean;
@@ -1005,42 +907,125 @@ export async function retryFlowRunFromFailedStep(flowId: string, runId: string, 
   });
 }
 
-export async function redispatchRun(flowId: string, runId: string) {
-  return request<FlowRunRedispatchResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/redispatch/`,
-    { method: "POST" },
-  );
-}
-
 /**
  * The caller's latest runs of a flow. `mine=true` keeps a colleague's runs
  * out, which Eneo would otherwise list for a space admin or the flow's owner;
  * a module session counts as its signed-in user.
  */
-export async function listOwnRuns(flowId: string, { limit = 10, offset = 0 }: { limit?: number; offset?: number } = {}) {
+export async function listOwnRuns(flowId: string, { limit, offset }: { limit: number; offset: number }) {
   const qs = new URLSearchParams({ mine: "true", limit: String(limit), offset: String(offset) });
   return request<OffsetPaginatedResponse<FlowRunSummary>>(
     `/api/eneo/flows/${flowId}/runs/?${qs.toString()}`,
   );
 }
 
-// --- Step rerun + step runtime-files ---
+// --- Step runtime-files ---
 
-export async function rerunStep(
-  flowId: string,
-  runId: string,
-  stepId: string,
-  body: FlowRunStepRerunRequest,
-  idempotencyKey: string,
-) {
-  return request<FlowRunStepRerunResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/rerun/`,
-    {
-      method: "POST",
-      headers: { "Idempotency-Key": idempotencyKey },
-      body: JSON.stringify(body),
-    },
-  );
+const UPLOAD_PART_BYTES = 4 * 1024 * 1024;
+interface UploadStatus {
+  offset: number;
+  chunk_size: number;
+  state: "receiving" | "forwarding" | "complete" | "failed";
+  file_id: string | null;
+  failure: { status: number; detail: string; code: string | null } | null;
+}
+// The Blob already survives submitRun's retries. Its upload id does too, without retaining discarded recordings.
+const resumableUploads = new WeakMap<Blob, Map<string, { id: string; completionRequested: boolean }>>();
+
+async function uploadInParts(flowId: string, stepId: string, file: Blob, filename: string, opts: UploadRequestOptions): Promise<FilePublic> {
+  if (opts.signal?.aborted) throw uploadAborted();
+  if (loginState.signedOut) throw sessionEnded();
+  const key = JSON.stringify([loginState.expectedUser, flowId, stepId, filename]);
+  let uploads = resumableUploads.get(file);
+  if (!uploads) {
+    uploads = new Map();
+    resumableUploads.set(file, uploads);
+  }
+  const handle = uploads.get(key) ?? { id: crypto.randomUUID(), completionRequested: false };
+  uploads.set(key, handle);
+  const { id } = handle;
+  const path = `/api/uploads/${flowId}/${stepId}/${id}`;
+  const forget = () => { if (uploads.get(key) === handle) uploads.delete(key); };
+  const cancel = async () => {
+    // A forward already started keeps its receipt. Otherwise release the partial file immediately when possible.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await request<void>(path, { method: "DELETE" });
+        forget();
+        return;
+      } catch (error) {
+        // The disconnected part may still be rolling back. No indefinite cleanup retry when the server is gone.
+        if (!(error instanceof ApiError) || error.status !== 503) return;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+  };
+  try {
+    // After completing, a missing receipt may mean Eneo already stored the file. Never recreate it automatically.
+    let status = handle.completionRequested
+      ? await request<UploadStatus>(path, { signal: opts.signal })
+      : await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
+        body: JSON.stringify({ filename, content_type: file.type || "application/octet-stream", size: file.size }) });
+    while (status.state === "receiving" && status.offset < file.size) {
+      if (!Number.isSafeInteger(status.offset) || status.offset < 0 || !Number.isSafeInteger(status.chunk_size) || status.chunk_size <= 0) {
+        throw new ApiError(502, "Servern svarade med en ogiltig uppladdningsposition.", null, "invalid_json_response");
+      }
+      const offset = status.offset;
+      opts.onProgress?.({ loaded: offset, total: file.size, percent: Math.round(offset / file.size * 100) });
+      const part = file.slice(offset, offset + Math.min(UPLOAD_PART_BYTES, status.chunk_size));
+      try {
+        status = await requestUploadWithProgress<UploadStatus>(path, part, { ...opts, offset, fileSizeBytes: part.size,
+          onProgress: ({ loaded }) => opts.onProgress?.({ loaded: offset + loaded, total: file.size,
+            percent: Math.round((offset + loaded) / file.size * 100) }) });
+        if (status.offset !== offset + part.size) {
+          throw new ApiError(502, "Servern bekräftade inte den skickade delen.", null, "invalid_json_response");
+        }
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) throw error;
+        // A lost acknowledgement may have committed the part; the server's offset is authoritative.
+        status = await request<UploadStatus>(path, { signal: opts.signal });
+        if (status.offset === offset) throw error;
+      }
+    }
+    opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+    if (status.state === "receiving") {
+      handle.completionRequested = true;
+      try {
+        status = await request<UploadStatus>(`${path}/complete`, { method: "POST", signal: opts.signal,
+          headers: { "X-Upload-Timeout-Seconds": String(Math.ceil(resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) / 1000)) } });
+      } catch (error) {
+        // A definitive contract rejection removes the resource without forwarding it to Eneo.
+        if (error instanceof ApiError && [413, 422].includes(error.status)) forget();
+        throw error;
+      }
+    }
+    const pollUntil = Date.now() + resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) + REQUEST_TIMEOUT_MS;
+    while (status.state === "forwarding") {
+      if (Date.now() >= pollUntil) throw new ApiError(408, "Servern svarade inte i tid. Försök igen.", null, "server_not_responding");
+      await new Promise<void>((resolve, reject) => {
+        const stop = () => { clearTimeout(timer); reject(uploadAborted()); };
+        const timer = setTimeout(() => { opts.signal?.removeEventListener("abort", stop); resolve(); }, 1000);
+        opts.signal?.addEventListener("abort", stop, { once: true });
+        if (opts.signal?.aborted) stop();
+      });
+      status = await request<UploadStatus>(path, { signal: opts.signal });
+    }
+    if (status.state === "complete" && status.file_id) return { id: status.file_id };
+    forget();
+    const failure = status.failure;
+    if (failure && failure.status < 500 && failure.status !== 408) throw new ApiError(failure.status, failure.detail, failure, failure.code ?? undefined);
+    // Eneo may already have stored the file. Only an explicit new send starts another resource.
+    throw new ApiError(failure?.status ?? 502,
+      "Det gick inte att bekräfta att Eneo tog emot filen. Inget flöde har startats. Försök igen när du vill.",
+      failure, "upload_forward_failed");
+  } catch (error) {
+    if (!(handle.completionRequested && error instanceof ApiError && error.status === 404)) throw error;
+    forget();
+    throw new ApiError(502, "Uppladdningens kvittens finns inte kvar. Inget flöde har startats. Försök igen när du vill.",
+      null, "upload_forward_failed");
+  } finally {
+    if (opts.signal?.aborted) void cancel();
+  }
 }
 
 export async function uploadStepRuntimeFile(
@@ -1050,18 +1035,19 @@ export async function uploadStepRuntimeFile(
   filename: string,
   opts: UploadRequestOptions = {},
 ) {
+  if (file.size > UPLOAD_PART_BYTES) return uploadInParts(flowId, stepId, file, filename, opts);
   const fd = new FormData();
   fd.append("upload_file", file, filename);
-  return requestMultipartWithProgress<FilePublic>(
+  return requestUploadWithProgress<FilePublic>(
     `/api/eneo/flows/${flowId}/steps/${stepId}/runtime-files/`,
     fd,
     { ...opts, fileSizeBytes: file.size },
   );
 }
 
-// --- Transkript: ordtider och ljud ---
+// --- Transkribering: ordtider och ljud ---
 
-export interface TranscriptWordsResponse {
+interface TranscriptWordsResponse {
   flow_run_id: string;
   step_id: string;
   segments_hash: string;
@@ -1096,7 +1082,7 @@ export async function getRunArtifactText(flowId: string, runId: string, fileId: 
  * (the step's text is then the transcript). Unavailable: written before Eneo
  * kept sources.
  */
-export type TranscriptSourcePage =
+type TranscriptSourcePage =
   | {
       status: "present";
       source_hash: string;
@@ -1133,6 +1119,12 @@ export function inputFileAudioUrl(
   return `/api/eneo/flows/${flowId}/runs/${runId}/input-files/${fileId}/audio`;
 }
 
+/** Older Eneo document routes reject Range; check availability without consuming the file's body. */
+export async function checkRunArtifact(flowId: string, runId: string, fileId: string): Promise<void> {
+  await request<void>(runArtifactUrl(flowId, runId, fileId), { headers: { Accept: "*/*" } }, false,
+    async (response) => { await response.body?.cancel(); });
+}
+
 /**
  * Same-origin address of a file the run generated. The module backend streams
  * it from Eneo the same way, under the name Eneo gave it; a PDF can open
@@ -1145,7 +1137,7 @@ export function runArtifactUrl(flowId: string, runId: string, fileId: string, in
 
 // --- Transkriptkorrigeringar ---
 
-export interface TranscriptCorrectionsPublic {
+interface TranscriptCorrectionsPublic {
   schema_version?: number;
   segments_hash?: string | null;
   flow_run_id: string;
@@ -1182,7 +1174,7 @@ export async function listTranscriptCorrections(flowId: string, runId: string) {
   return res.items ?? [];
 }
 
-export interface TranscriptCorrectionsEditRequest {
+interface TranscriptCorrectionsEditRequest {
   schema_version?: 2 | 3;
   segments_hash?: string;
   /** null skapar den första uppsättningen; annars senast kända revision. */
@@ -1206,7 +1198,7 @@ export async function saveTranscriptCorrections(
   );
 }
 
-export interface FlowTranscriptRegenerationPublic {
+interface FlowTranscriptRegenerationPublic {
   /** The new run: the source run, its document and files stay as they were. */
   run: FlowRunPublic;
   /** False when the same request and key replayed an accepted run. */
@@ -1233,20 +1225,6 @@ export async function regenerateTranscript(
   return request<FlowTranscriptRegenerationPublic>(
     `/api/eneo/flows/${flowId}/runs/${runId}/steps/${stepId}/transcript-regenerations/`,
     { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify(body) },
-  );
-}
-
-// --- Evidence ---
-
-export async function getRunEvidence(flowId: string, runId: string) {
-  return request<FlowRunEvidenceResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/evidence/`,
-  );
-}
-
-export async function exportRunEvidence(flowId: string, runId: string) {
-  return request<FlowRunEvidenceExportResponse>(
-    `/api/eneo/flows/${flowId}/runs/${runId}/evidence/export`,
   );
 }
 
@@ -1308,31 +1286,5 @@ export async function resumeReviewCheckpoint(
       headers: { "Idempotency-Key": idempotencyKey },
       body: JSON.stringify(body),
     },
-  );
-}
-
-// --- DOCX templates ---
-
-export async function listFlowTemplateFiles(flowId: string) {
-  // Eneo kan returnera antingen bare array eller paginerat wrapper.
-  const res = await request<
-    | FlowTemplateAssetPublic[]
-    | PaginatedResponse<FlowTemplateAssetPublic>
-    | OffsetPaginatedResponse<FlowTemplateAssetPublic>
-  >(`/api/eneo/flows/${flowId}/template-files/`);
-  if (Array.isArray(res)) return res;
-  return res.items ?? [];
-}
-
-export async function uploadFlowTemplateFile(
-  flowId: string,
-  file: Blob,
-  filename: string,
-) {
-  const fd = new FormData();
-  fd.append("upload_file", file, filename);
-  return request<FlowTemplateAssetPublic>(
-    `/api/eneo/flows/${flowId}/template-files/`,
-    { method: "POST", body: fd },
   );
 }

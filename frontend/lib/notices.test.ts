@@ -5,9 +5,10 @@ import { createElement } from "react";
 import { OfflineBanner, type OfflineWaiting } from "../components/OfflineBanner";
 import { RetryNotice } from "../components/RetryNotice";
 import { ProblemAlert } from "../components/flow/ProblemAlert";
-import { onlineStatus } from "./online-status";
+import { createOnlineStatus, onlineStatus, type OnlineTarget } from "./online-status";
 import type { Problem } from "./flow-session";
 import { button, cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
@@ -57,24 +58,20 @@ test("a long reason with no way to retry is shown whole", async () => {
 });
 
 test("the way back to the flows is offered when the problem asks for it", async () => {
-  const { container } = await mount(createElement(ProblemAlert, { problem: { title: "Flödet finns inte längre.", back: true } }));
+  const { container } = await mount(withRouter(createElement(ProblemAlert, { problem: { title: "Flödet finns inte längre.", back: true } })).tree);
   const back = [...container.querySelectorAll("a")].find((link) => link.textContent?.trim() === "Alla flöden");
   assert.equal(back?.getAttribute("href"), "/flows");
 });
 
-/** What the alert is asked to scroll into view, and with which motion. */
-function scrolled(t: TestContext, reduceMotion = false) {
+/** What the alert is asked to scroll into view, and how. */
+function scrolled(t: TestContext) {
   const calls: { element: Element; options: unknown }[] = [];
   const original = window.Element.prototype.scrollIntoView;
   window.Element.prototype.scrollIntoView = function (this: Element, options?: boolean | ScrollIntoViewOptions) {
     calls.push({ element: this, options });
   };
-  const matchMedia = window.matchMedia;
-  const reduced = (query: string) => ({ ...matchMedia(query), matches: reduceMotion && query === "(prefers-reduced-motion: reduce)" });
-  Object.defineProperty(window, "matchMedia", { value: reduced, configurable: true, writable: true });
   t.after(() => {
     window.Element.prototype.scrollIntoView = original;
-    Object.defineProperty(window, "matchMedia", { value: matchMedia, configurable: true, writable: true });
   });
   return calls;
 }
@@ -93,12 +90,12 @@ async function host(t: TestContext) {
   return { container: element, render: (ui: ReturnType<typeof createElement>) => act(async () => root.render(ui)) };
 }
 
-test("an alert that is to be revealed scrolls into view once per problem, gently", async (t) => {
+test("an alert that is to be revealed scrolls into view once per problem, with a jump", async (t) => {
   const calls = scrolled(t);
   const { container, render } = await host(t);
   const first: Problem = { title: "Det gick inte att skapa dokumentet." };
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
-  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "smooth" }]);
+  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
   assert.ok(calls[0].element.contains(alerts(container)[0]), "the alert itself");
   await render(createElement(ProblemAlert, { problem: first, reveal: true }));
   assert.equal(calls.length, 1, "the same problem drawn again is not scrolled to again");
@@ -106,17 +103,17 @@ test("an alert that is to be revealed scrolls into view once per problem, gently
   assert.equal(calls.length, 2, "another problem is");
 });
 
-test("an alert that need not be revealed stays where it is, and reduced motion scrolls without animation", async (t) => {
-  const calls = scrolled(t, true);
+test("an alert that need not be revealed stays where it is", async (t) => {
+  const calls = scrolled(t);
   const quiet = await host(t);
   await quiet.render(createElement(ProblemAlert, { problem: { title: "Ingen scroll." } }));
   assert.equal(calls.length, 0);
   const revealed = await host(t);
   await revealed.render(createElement(ProblemAlert, { problem: { title: "Scrolla." }, reveal: true }));
-  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "auto" }]);
+  assert.deepEqual(calls.map((call) => call.options), [{ block: "nearest", behavior: "instant" }]);
 });
 
-const wait = (retryAt: number, retryNow = () => {}) => ({ retryAt, retryNow });
+const wait = (retryAt: number | null, retryNow = () => {}) => ({ retryAt, retryNow });
 
 test("without a wait the notice is only an empty status region, there for the change to be announced in", async () => {
   const { container } = await mount(createElement(RetryNotice, { wait: null }));
@@ -146,6 +143,17 @@ test("a waiting send says it in one sentence in the live region, and the countdo
   assert.equal(now, 1, "Försök nu tries at once");
 });
 
+test("a send that has stopped trying by itself says so, with no countdown, and Försök igen tries at once", async () => {
+  let tried = 0;
+  const { container, act } = await mount(createElement(RetryNotice, { wait: wait(null, () => void tried++) }));
+  const [status] = container.querySelectorAll('[role="status"]');
+  assert.equal(status.textContent, "Det går fortfarande inte att skicka.");
+  assert.match(container.textContent ?? "", /Det går fortfarande inte att skicka\. Försök igen när du vill\./);
+  assert.doesNotMatch(container.textContent ?? "", / s\./, "no countdown");
+  await act(async () => button(container, "Försök igen")!.click());
+  assert.equal(tried, 1);
+});
+
 test("the countdown's timer is stopped when the notice goes", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "Date"], now: 1_000_000 });
   const live = new Set<unknown>();
@@ -166,36 +174,80 @@ test("the countdown's timer is stopped when the notice goes", async (t) => {
   assert.equal(live.size, 0, "none after");
 });
 
-const MESSAGES: [OfflineWaiting, string][] = [
+/** A browser window whose network the test switches, and the status that listens to it. */
+function device() {
+  const target = Object.assign(new window.EventTarget(), { navigator: { onLine: true } });
+  const status = createOnlineStatus(target as OnlineTarget);
+  return {
+    status,
+    network(on: boolean) {
+      target.navigator.onLine = on;
+      target.dispatchEvent(new Event(on ? "online" : "offline"));
+    },
+  };
+}
+
+// What waits, said for a device with no network, and for a module that does not answer.
+const OFFLINE: [OfflineWaiting, string][] = [
   ["recording", "Ingen anslutning. Inspelningen fortsätter."],
   ["upload", "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka."],
   ["run", "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka."],
   [null, "Ingen anslutning."],
 ];
+const UNREACHABLE: [OfflineWaiting, string][] = [
+  ["recording", "Tal till text svarar inte just nu. Inspelningen fortsätter."],
+  ["upload", "Tal till text svarar inte just nu. Uppladdningen fortsätter när det svarar igen."],
+  ["run", "Tal till text svarar inte just nu. Körningen fortsätter i Eneo och visas här när det svarar igen."],
+  [null, "Tal till text svarar inte just nu."],
+];
 
 test("while online the offline notice is an empty status region; offline it says what waits, in the same region", async () => {
-  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "run" }));
-  const status = container.querySelector('[role="status"]')!;
+  const { status, network } = device();
+  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "run", status }));
+  const region = container.querySelector('[role="status"]')!;
   assert.equal(container.querySelectorAll('[role="status"]').length, 1);
-  assert.equal(status.textContent, "");
-  assert.equal(status.getAttribute("aria-label"), null, "no name");
-  assert.equal(status.children.length, 0, "no children");
+  assert.equal(region.textContent, "");
+  assert.equal(region.getAttribute("aria-label"), null, "no name");
+  assert.equal(region.children.length, 0, "no children");
 
-  await act(async () => onlineStatus.reportNetworkFailure());
-  assert.equal(container.querySelector('[role="status"]'), status, "the region was there before, so the change is announced");
-  assert.equal(status.textContent, "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.");
+  await act(async () => network(false));
+  assert.equal(container.querySelector('[role="status"]'), region, "the region was there before, so the change is announced");
+  assert.equal(region.textContent, "Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.");
 
-  await act(async () => onlineStatus.reportReachable());
-  assert.equal(status.textContent, "");
-  assert.equal(status.children.length, 0);
+  await act(async () => network(true));
+  assert.equal(region.textContent, "");
+  assert.equal(region.children.length, 0);
 });
 
 test("the offline notice says what waits for each thing that can", async () => {
-  for (const [waiting, words] of MESSAGES) {
-    onlineStatus.reportNetworkFailure();
-    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting }));
+  for (const [waiting, words] of OFFLINE) {
+    const { status, network } = device();
+    network(false);
+    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting, status }));
     assert.equal(container.querySelector('[role="status"]')?.textContent, words, `${waiting}`);
     await unmount();
-    onlineStatus.reportReachable();
   }
+});
+
+test("a module that does not answer, on a device with a network, is not called a lost connection", async () => {
+  for (const [waiting, words] of UNREACHABLE) {
+    const { status } = device();
+    status.reportNetworkFailure();
+    const { container, unmount } = await mount(createElement(OfflineBanner, { waiting, status }));
+    assert.equal(container.querySelector('[role="status"]')?.textContent, words, `${waiting}`);
+    await unmount();
+  }
+});
+
+test("the notice follows the cause in the one region: the module not answering, then the device losing its network", async () => {
+  const { status, network } = device();
+  const { container, act } = await mount(createElement(OfflineBanner, { waiting: "upload", status }));
+  const region = container.querySelector('[role="status"]')!;
+
+  await act(async () => status.reportNetworkFailure());
+  assert.equal(region.textContent, "Tal till text svarar inte just nu. Uppladdningen fortsätter när det svarar igen.");
+  await act(async () => network(false));
+  assert.equal(region.textContent, "Ingen anslutning. Uppladdningen fortsätter när anslutningen är tillbaka.");
+  await act(async () => network(true));
+  assert.equal(region.textContent, "");
 });

@@ -1,6 +1,10 @@
+# En modul, en image, en process: tjänsten kör den publicerade imagen, som serverar både gränssnittet och API:t på port 3001.
+# Filen hämtar och kör: klistra in den tillsammans med variablerna i Dokploy eller Portainer. Versionen väljs med MODULE_VERSION
+# (en tagg vX.Y.Z eller latest). docker-compose.override.yml bygger imagen lokalt i stället; den filen är utvecklarens och används inte där.
+# Containern är låst så långt modulen tillåter: skrivskyddad rotfilsystem, inga Linux-capabilities, inga nya privilegier.
 services:
-  speech-to-text-backend:
-    build: ./backend
+  speech-to-text:
+    image: ghcr.io/eneo-ai/eneo-mod-speech-to-text:${MODULE_VERSION:-latest}
     environment:
       ENEO_BACKEND_URL: ${ENEO_BACKEND_URL}
       ENEO_PUBLIC_URL: ${ENEO_PUBLIC_URL}
@@ -9,11 +13,14 @@ services:
       ENEO_API_KEY: ${ENEO_API_KEY}
       ENEO_API_KEY_HEADER_NAME: ${ENEO_API_KEY_HEADER_NAME:-X-API-Key}
       SESSION_SECRET: ${SESSION_SECRET}
-      AUTH_MODE: ${AUTH_MODE:-eneo_sso}
-      APP_ACCESS_CODE: ${APP_ACCESS_CODE:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
-      DEMO_SPACE_ID: ${DEMO_SPACE_ID:-}
+      SESSION_MAX_AGE_MINUTES: ${SESSION_MAX_AGE_MINUTES:-480}
       UPLOAD_PROXY_TIMEOUT_SECONDS: ${UPLOAD_PROXY_TIMEOUT_SECONDS:-1800}
+      UPLOAD_RECEIVE_TIMEOUT_SECONDS: ${UPLOAD_RECEIVE_TIMEOUT_SECONDS:-1800}
+      UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS: ${UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS:-30}
+      UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS: ${UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS:-300}
+      MAX_CONCURRENT_UPLOADS: ${MAX_CONCURRENT_UPLOADS:-1}
+      MAX_CONCURRENT_HEAVY_IO: ${MAX_CONCURRENT_HEAVY_IO:-64}
       MAX_BODY_BYTES: ${MAX_BODY_BYTES:-10485760}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-1073741824}
       MAX_RESPONSE_BYTES: ${MAX_RESPONSE_BYTES:-33554432}
@@ -25,40 +32,30 @@ services:
       # Accentfärgen (#RRGGBB); tomt behåller modulens standardfärg. Mörkt läge härleds om den mörka utelämnas.
       ORGANIZATION_ACCENT: ${ORGANIZATION_ACCENT:-}
       ORGANIZATION_ACCENT_DARK: ${ORGANIZATION_ACCENT_DARK:-}
-    # En egen logga monteras in och ORGANIZATION_LOGO pekar dit, till exempel:
-    # volumes:
-    #   - ./branding:/branding:ro
+    volumes:
+      # Det enda skrivbara stället: här mellanlagras en uppladdning (på disk, inte i minnet; en tmpfs skulle hålla varje
+      # uppladdning i RAM). Disken ska rymma samtidiga uppladdningar × MAX_UPLOAD_BYTES (docs/operations.md).
+      - spool:/tmp
+      # En egen logga monteras in skrivskyddad och ORGANIZATION_LOGO pekar dit, till exempel:
+      #   - ./branding:/branding:ro
     expose:
-      - "8000"
+      - "3001"
     healthcheck:
       test:
-        - CMD-SHELL
-        - "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/healthz', timeout=2).status==200 else 1)\""
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=2)"
       interval: 15s
       timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 15s
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED: ${NEXT_PUBLIC_SPEAKER_REVIEW_ENABLED:-false}
-    environment:
-      INTERNAL_API_BASE: http://speech-to-text-backend:8000
-      NODE_ENV: production
-    expose:
-      - "3000"
-    depends_on:
-      speech-to-text-backend:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - "node -e \"require('http').get('http://127.0.0.1:3000/api/healthz', r => process.exit(r.statusCode===200?0:1)).on('error', () => process.exit(1))\""
-      interval: 15s
-      timeout: 3s
-      retries: 5
-      start_period: 30s
-    restart: unless-stopped
+volumes:
+  spool:

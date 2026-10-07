@@ -7,6 +7,7 @@ import {
   atBottom,
   detailsSummary,
   keepDetailsOpen,
+  leaveKeepsWork,
   leaveWarning,
   liveStatusLine,
   pageTitle,
@@ -14,7 +15,6 @@ import {
   recordingNotices,
   stopLine,
 } from "./recording-view";
-import { guardHistory } from "./leave-guard";
 import { FlowSession } from "./flow-session";
 import { openRecordingStore } from "./recording-store";
 
@@ -107,6 +107,12 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
   });
   assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "failed" }).warnings, [
     { title: "Enheten kan inte spara mer av inspelningen.", detail: "Inspelningen fortsätter, men välj Spara som fil när du stoppar." },
+  ]);
+  assert.deepEqual(recordingNotices({ ...base, persistent: false, refused: "lost" }).warnings, [
+    {
+      title: "Inspelningen kan inte längre sparas på enheten.",
+      detail: "Det som spelats in tidigare kan ha försvunnit. Inspelningen fortsätter, men välj Spara som fil när du stoppar.",
+    },
   ]);
   const minutes = (count: number) => count * 60_000;
   const notes = (options: Partial<Parameters<typeof recordingNotices>[0]>) =>
@@ -203,100 +209,6 @@ test("pause excludes time: the timer counts only recorded time", async () => {
   assert.equal(session.capture.elapsedMs(), 8_000);
 });
 
-/** A window with history, as far as the guard uses it. */
-function fakeWindow() {
-  // The flow list, then the flow page.
-  const entries: unknown[] = [{ page: "list" }, { page: "flow" }];
-  const urls = ["/flows", "/flows/flow-1"];
-  let index = 1;
-  const target = new EventTarget();
-  const history = {
-    get state() {
-      return entries[index];
-    },
-    pushState(state: unknown, _title: string, url?: string) {
-      entries.splice(index + 1);
-      urls.splice(index + 1);
-      entries.push(state);
-      urls.push(url ?? urls[index]);
-      index += 1;
-    },
-    replaceState(state: unknown, _title: string, url?: string) {
-      entries[index] = state;
-      urls[index] = url ?? urls[index];
-    },
-    go(delta: number) {
-      const next = Math.max(0, Math.min(entries.length - 1, index + delta));
-      if (next === index) return;
-      index = next;
-      queueMicrotask(() => target.dispatchEvent(Object.assign(new Event("popstate"), { state: entries[index] })));
-    },
-    back() {
-      history.go(-1);
-    },
-  };
-  return {
-    win: Object.assign(target, {
-      history,
-      location: {
-        get href() {
-          return urls[index];
-        },
-      },
-    }) as unknown as Pick<Window, "history" | "location" | "addEventListener" | "removeEventListener">,
-    entries,
-    get index() {
-      return index;
-    },
-    /** The browser's back button. */
-    pressBack: () => history.back(),
-  };
-}
-
-const settleEvents = async () => {
-  for (let i = 0; i < 3; i += 1) await new Promise((resolve) => setImmediate(resolve));
-};
-
-test("browser back during a recording keeps the page and asks; staying needs nothing, leaving goes on back", async () => {
-  const browser = fakeWindow();
-  const attempts: Array<() => void> = [];
-  const release = guardHistory(browser.win, (leave) => attempts.push(leave));
-  assert.equal(browser.index, 2, "a guard entry is added");
-
-  browser.pressBack();
-  await settleEvents();
-  assert.equal(attempts.length, 1, "the page asks");
-  assert.equal(browser.index, 2, "the page stays guarded while the question is open, and after Stanna kvar");
-
-  browser.pressBack();
-  await settleEvents();
-  assert.equal(attempts.length, 2);
-  attempts[1]();
-  await settleEvents();
-  assert.equal(browser.index, 0, "Lämna sidan goes on back to the list");
-  release();
-});
-
-test("an address the page writes while guarded, a started run's, stays once the guard takes its entry back", async () => {
-  const browser = fakeWindow();
-  const release = guardHistory(browser.win, () => undefined);
-  // The run started while Back still asked: the page writes its address onto the guard's entry.
-  browser.win.history.replaceState(browser.win.history.state, "", "/flows/flow-1?run=run-1");
-  release();
-  await settleEvents();
-  assert.equal(browser.index, 1, "back on the flow page's own entry, so Back from the run goes to the list");
-  assert.equal(browser.win.location.href, "/flows/flow-1?run=run-1", "which now has the run's address");
-});
-
-test("when the recording is done with, the guard takes its history entry back", async () => {
-  const browser = fakeWindow();
-  const release = guardHistory(browser.win, () => undefined);
-  assert.equal(browser.index, 2);
-  release();
-  await settleEvents();
-  assert.equal(browser.index, 1, "back on the flow page's own entry");
-});
-
 test("a recording is named for people", () => {
   assert.equal(recordingName(new Date(2026, 8, 23, 16, 13).getTime()), "Inspelning 23 sep 16:13");
   assert.equal(recordingName(new Date(2026, 4, 2, 9, 5).getTime()), "Inspelning 2 maj 09:05");
@@ -380,3 +292,12 @@ test("a flow labels speakers when it says so: switched on, off, required, or not
   assert.equal(labelsSpeakers(undefined, null), false, "a flow that says nothing");
 });
 
+
+test("leaving keeps everything only for audio the device keeps, with nothing being sent and nothing typed that it could not keep", () => {
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: false, unstored: false }), true);
+  assert.equal(leaveKeepsWork({ persistent: false, holdsAudio: true, sending: false, unstored: false }), false, "only in this tab");
+  assert.equal(leaveKeepsWork({ persistent: null, holdsAudio: true, sending: false, unstored: false }), false, "unknown is never claimed");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: true, unstored: false }), false, "a sending is aborted");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: true, sending: false, unstored: true }), false, "typed work is lost");
+  assert.equal(leaveKeepsWork({ persistent: true, holdsAudio: false, sending: false, unstored: true }), false);
+});

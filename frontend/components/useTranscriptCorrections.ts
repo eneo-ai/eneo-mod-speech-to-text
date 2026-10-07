@@ -1,25 +1,52 @@
-"use client";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import type { TranscriptContext } from "@/lib/transcript-context";
 import type { CorrectionsSaveState } from "./TranscriptPlayer";
-import { saveTranscriptCorrections } from "@/lib/api";
+import { ApiError, saveTranscriptCorrections } from "@/lib/api";
+import { downloadBlob } from "@/lib/download";
 import { friendlyError } from "@/lib/errors";
 import { EMPTY_CORRECTIONS, appendCorrectionSave, correctionRequest, correctionsFromResponse, correctionWriteProblem, sameCorrections, type CorrectionSet } from "@/lib/transcript-corrections";
+import { LeaveContext } from "./flow/useLeaveQuestion";
 
-export function useTranscriptCorrections(flowId: string, runId: string, transcript: TranscriptContext) {
+const STALE_REVISION = "flow_transcript_corrections_stale_revision";
+
+/** `reload` reads the transcript and its saved corrections again. */
+export function useTranscriptCorrections(flowId: string, runId: string, transcript: TranscriptContext, reload: () => void) {
   const [corrections, setCorrections] = useState<CorrectionSet>(EMPTY_CORRECTIONS);
   const [saveState, setSaveState] = useState<CorrectionsSaveState>("idle");
   const [localError, setLocalError] = useState<string | null>(null);
   const revisionRef = useRef<number | null>(null);
   const saveQueue = useRef<Promise<boolean>>(Promise.resolve(true));
   const generation = useRef(0);
+  // What a refused, stale save says, kept through the reload that answers it.
+  const staleNotice = useRef<string | null>(null);
+  // The corrections a stale save could not keep: the person's own, taken from the screen by the others' that are read
+  // again. Kept for the person to take with them (`downloadDropped`) until they have, or another save succeeds.
+  const [dropped, setDropped] = useState<CorrectionSet | null>(null);
+
+  // What is not saved is lost with the page: closing it asks first.
+  const unsaved = saveState === "saving" || saveState === "error" || dropped !== null;
+  const { holdUnsavedCorrections } = useContext(LeaveContext);
+  useEffect(() => {
+    if (unsaved) return holdUnsavedCorrections();
+  }, [unsaved, holdUnsavedCorrections]);
+  useEffect(() => {
+    if (!unsaved) return;
+    const ask = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [unsaved]);
   useEffect(() => {
     if (transcript.pending) return;
     setCorrections(transcript.corrections);
     revisionRef.current = transcript.corrections.revision;
     saveQueue.current = Promise.resolve(true);
     generation.current++;
-    setSaveState("idle"); setLocalError(null);
+    setSaveState("idle");
+    setLocalError(staleNotice.current);
+    staleNotice.current = null;
   }, [transcript.pending, transcript.corrections]);
 
   function onCorrectionsChange(next: CorrectionSet) {
@@ -36,9 +63,16 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
         revisionRef.current = saved.revision;
         setCorrections((prev) => sameCorrections(prev, next) ? { ...prev, revision: saved.revision, updatedAt: saved.updated_at } : prev);
         if (requestGeneration === generation.current) { setSaveState("saved"); setLocalError(null); }
+        setDropped(null);
         return true;
       } catch (err) {
-        setSaveState("error");
+        if (err instanceof ApiError && err.code === STALE_REVISION) {
+          // Someone else saved first: their corrections are read again and replace these, which could never be saved.
+          staleNotice.current = friendlyError(err);
+          setDropped(next);
+          reload();
+          return false;
+        }
         setLocalError(`${friendlyError(err)} Dina osparade rättningar finns kvar.`);
         return false;
       }
@@ -50,9 +84,18 @@ export function useTranscriptCorrections(flowId: string, runId: string, transcri
     onCorrectionsChange(corrections);
   }
   function downloadUnsavedCorrections() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify({ flowId, runId, stepId: transcript.stepId, ...corrections, revision: revisionRef.current }, null, 2)], { type: "application/json" }));
-    const link = document.createElement("a"); link.href = url; link.download = "osparade-rattningar.json"; link.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    saveCorrectionsFile(corrections, revisionRef.current);
   }
-  return { corrections, saveState, localError, saveQueue, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections };
+  function downloadDropped() {
+    if (!dropped) return;
+    saveCorrectionsFile(dropped, dropped.revision);
+    setDropped(null);
+  }
+  function saveCorrectionsFile(set: CorrectionSet, revision: number | null) {
+    downloadBlob(
+      new Blob([JSON.stringify({ flowId, runId, stepId: transcript.stepId, ...set, revision }, null, 2)], { type: "application/json" }),
+      "osparade-rattningar.json",
+    );
+  }
+  return { corrections, saveState, localError, saveQueue, hasDropped: dropped !== null, onCorrectionsChange, retryCorrections, downloadUnsavedCorrections, downloadDropped };
 }

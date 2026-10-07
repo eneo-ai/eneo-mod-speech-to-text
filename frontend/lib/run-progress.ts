@@ -29,7 +29,7 @@ export interface StepView {
   note: string | null;
 }
 
-export type RunOutcome = "succeeded" | "failed" | "cancelled";
+type RunOutcome = "succeeded" | "failed" | "cancelled";
 
 const OUTCOMES: Record<string, RunOutcome> = {
   completed: "succeeded",
@@ -158,6 +158,17 @@ export function runSteps(
 export function runElapsed(createdAt: string | null | undefined, now: number): string | null {
   const minutes = Math.floor((now - Date.parse(createdAt ?? "")) / 60_000);
   return minutes >= 1 ? `Har pågått i ${formatDuration(minutes * 60_000)}` : null;
+}
+
+/** A run that has gone on this long is taking longer than such a run usually does. */
+const LONGER_THAN_USUAL_MINUTES = 30;
+
+/** The line under the run's stage: how long it has gone on, and whether that is still the few minutes a run takes. */
+export function runWait(createdAt: string | null | undefined, now: number): string {
+  const elapsed = runElapsed(createdAt, now);
+  if (!elapsed) return "Det kan ta några minuter.";
+  const minutes = Math.floor((now - Date.parse(createdAt ?? "")) / 60_000);
+  return `${elapsed}. ${minutes >= LONGER_THAN_USUAL_MINUTES ? "Det tar längre tid än vanligt." : "Det kan ta några minuter."}`;
 }
 
 /**

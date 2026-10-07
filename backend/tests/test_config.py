@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.accent import Accent
-from app.config import FlowListScope, Organization, load_settings
+from app.config import LogoSize, LogoSizes, Organization, Settings, load_settings
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000b49444154789c6360000200000500017a5eab3f0000000049454e44ae426082")  # a real 1x1 PNG
 SVG = b'<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 4"></svg>'
@@ -24,7 +24,31 @@ def valid_environment() -> dict[str, str]:
     }
 
 
+def example_environment() -> dict[str, str]:
+    """The variables of .env.example as they stand, comments aside: what a copy of it that nobody edits runs."""
+    lines = (Path(__file__).resolve().parents[2] / ".env.example").read_text().splitlines()
+    return dict(line.split("=", 1) for line in lines if line.strip() and not line.startswith("#"))
+
+
 class SettingsTests(unittest.TestCase):
+    def test_a_secret_the_example_file_shows_does_not_start_the_module(self) -> None:
+        shown = (("SESSION_SECRET", "replace-with-long-random-string-now"), ("ENEO_API_KEY", "sk_replace_me"))
+        for name, value in shown:
+            with self.subTest(name=name):
+                with patch.dict(os.environ, {**valid_environment(), name: value}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, f"{name} .*placeholder"):
+                        load_settings()
+
+    def test_the_example_file_cannot_start_the_module_as_it_is(self) -> None:
+        example = example_environment()
+
+        for name in ("SESSION_SECRET", "ENEO_API_KEY"):
+            with self.subTest(name=name):
+                # Everything else is a good value, so it is this variable of the example that stops the start.
+                with patch.dict(os.environ, {**valid_environment(), name: example[name]}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
+
     def test_loads_module_contract(self) -> None:
         with patch.dict(os.environ, valid_environment(), clear=True):
             settings = load_settings()
@@ -32,55 +56,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(settings.eneo_backend_url, "http://backend:8000")
         self.assertEqual(settings.module_key, "speech-to-text")
         self.assertEqual(settings.eneo_api_key_header_name, "X-API-Key")
-        self.assertEqual(settings.auth_mode, "eneo_sso")
-        self.assertIsNone(settings.app_access_code)
         self.assertTrue(settings.cookie_secure)
-
-    def test_loads_access_code_mode_without_eneo_public_url(self) -> None:
-        environment = valid_environment()
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-
-        with patch.dict(os.environ, environment, clear=True):
-            settings = load_settings()
-
-        self.assertEqual(settings.auth_mode, "access_code")
-        self.assertIsNone(settings.eneo_public_url)
-        assert settings.app_access_code is not None
-        self.assertEqual(
-            settings.app_access_code.get_secret_value(),
-            "test-access-code-1234",
-        )
-
-    def test_the_auth_mode_decides_whether_the_flow_list_names_a_space(self) -> None:
-        environment = valid_environment()
-        environment["DEMO_SPACE_ID"] = "space-demo"
-        with patch.dict(os.environ, environment, clear=True):
-            sso = load_settings()
-        # An SSO user's list covers every space they belong to, even with a space configured.
-        self.assertEqual(sso.flow_list_scope, FlowListScope(space_id=None))
-
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-        with patch.dict(os.environ, environment, clear=True):
-            access_code = load_settings()
-        # The module key alone must name its space, from the first request.
-        self.assertEqual(access_code.flow_list_scope, FlowListScope(space_id="space-demo"))
-
-    def test_access_code_without_a_space_says_so_at_configuration(self) -> None:
-        environment = valid_environment()
-        environment.pop("ENEO_PUBLIC_URL")
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "test-access-code-1234"
-
-        with patch.dict(os.environ, environment, clear=True), self.assertLogs("eneo_config", level="ERROR") as logs:
-            settings = load_settings()
-
-        self.assertIsNone(settings.flow_list_scope)
-        self.assertEqual(len(logs.output), 1)
-        self.assertIn("DEMO_SPACE_ID", logs.output[0])
 
     def test_session_max_age_defaults_to_eight_hours(self) -> None:
         with patch.dict(os.environ, valid_environment(), clear=True):
@@ -148,38 +124,41 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, valid_environment(), clear=True):
             self.assertEqual(load_settings().upload_proxy_timeout_seconds, 1800.0)
 
-    def test_rejects_unknown_auth_mode(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "automatic"
-
+    def test_heavy_operation_limits_and_receive_deadlines_are_operator_settings(self) -> None:
+        environment = valid_environment() | {
+            "MAX_CONCURRENT_UPLOADS": "3", "MAX_CONCURRENT_HEAVY_IO": "8",
+            "UPLOAD_RECEIVE_TIMEOUT_SECONDS": "600", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS": "20.5",
+            "UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS": "120",
+        }
         with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "AUTH_MODE"):
+            settings = load_settings()
+        self.assertEqual(settings.upload_resume_idle_timeout_seconds, 120)
+        self.assertEqual((settings.max_concurrent_uploads, settings.max_concurrent_heavy_io), (3, 8))
+        self.assertEqual((settings.upload_receive_timeout_seconds, settings.upload_receive_idle_timeout_seconds), (600, 20.5))
+
+    def test_heavy_limits_cannot_take_the_connections_reserved_for_auth(self) -> None:
+        for name in ("MAX_CONCURRENT_UPLOADS", "MAX_CONCURRENT_HEAVY_IO"):
+            for raw in ("0", "-1", "1.5", "97", "999999999999999999999999999999"):
+                with self.subTest(name=name, raw=raw), patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
+        with patch.dict(os.environ, valid_environment() | {"MAX_CONCURRENT_UPLOADS": "9", "MAX_CONCURRENT_HEAVY_IO": "8"}, clear=True):
+            with self.assertRaisesRegex(ValueError, "MAX_CONCURRENT_UPLOADS"):
                 load_settings()
 
-    def test_access_code_mode_requires_access_code(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "access_code"
+    def test_receive_deadlines_cannot_be_disabled_with_nonfinite_or_unbounded_values(self) -> None:
+        for name in ("UPLOAD_RECEIVE_TIMEOUT_SECONDS", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS", "UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS"):
+            for raw in ("0", "-1", "inf", "nan", "", "86401"):
+                with self.subTest(name=name, raw=raw), patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
+                    with self.assertRaisesRegex(RuntimeError, name):
+                        load_settings()
 
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "APP_ACCESS_CODE"):
-                load_settings()
-
-    def test_rejects_short_access_code(self) -> None:
-        environment = valid_environment()
-        environment["AUTH_MODE"] = "access_code"
-        environment["APP_ACCESS_CODE"] = "abc"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "between 16 and 256"):
-                load_settings()
-
-    def test_sso_mode_rejects_access_code(self) -> None:
-        environment = valid_environment()
-        environment["APP_ACCESS_CODE"] = "unused-access-code"
-
-        with patch.dict(os.environ, environment, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "only be set"):
-                load_settings()
+    def test_static_dir_is_the_folder_of_the_built_ui_or_nothing(self) -> None:
+        for raw, expected in ((None, None), ("", None), ("/app/frontend/dist", Path("/app/frontend/dist"))):
+            with self.subTest(raw=raw):
+                environment = valid_environment() | ({} if raw is None else {"STATIC_DIR": raw})
+                with patch.dict(os.environ, environment, clear=True):
+                    self.assertEqual(load_settings().static_dir, expected)
 
     def test_loads_custom_api_key_header_name(self) -> None:
         environment = valid_environment()
@@ -213,6 +192,74 @@ class SettingsTests(unittest.TestCase):
         with patch.dict(os.environ, environment, clear=True):
             with self.assertRaisesRegex(RuntimeError, "query string or fragment"):
                 load_settings()
+
+    def test_there_is_one_way_to_sign_in_and_nothing_to_choose(self) -> None:
+        # The access code is gone: no mode, no code, no space the module key alone would have to name.
+        for name in ("auth_mode", "app_access_code", "demo_space_id", "flow_list_scope"):
+            self.assertNotIn(name, Settings.model_fields)
+            self.assertFalse(hasattr(Settings, name), name)
+
+    def test_eneo_public_url_is_required(self) -> None:
+        environment = valid_environment()
+        environment.pop("ENEO_PUBLIC_URL")
+
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "ENEO_PUBLIC_URL"):
+                load_settings()
+
+    LOOPBACK = ("http://localhost", "http://localhost:3002", "http://127.0.0.1:3002", "http://[::1]:3002", "http://LOCALHOST:3002")
+    NOT_LOOPBACK = (
+        "http://module.example.test",
+        "http://localhost.evil.test",
+        "http://127.0.0.1.evil.test",
+        "http://localhost@evil.test",
+        "http://127.0.0.1:80@evil.test",
+        "http://localhost.:3002",
+        "http://0.0.0.0:3002",
+        "http://127.1",
+        "http://[::ffff:127.0.0.1]:3002",
+        "http://[::2]",
+        "http://192.168.1.10:3002",
+    )
+
+    def test_an_http_public_url_is_accepted_only_for_a_loopback_host(self) -> None:
+        for name in ("MODULE_PUBLIC_URL", "ENEO_PUBLIC_URL"):
+            for url in self.LOOPBACK:
+                with self.subTest(name=name, url=url):
+                    with patch.dict(os.environ, valid_environment() | {name: url}, clear=True):
+                        self.assertEqual(getattr(load_settings(), name.lower()), url.rstrip("/"))
+            for url in self.NOT_LOOPBACK:
+                with self.subTest(name=name, url=url):
+                    with patch.dict(os.environ, valid_environment() | {name: url}, clear=True):
+                        with self.assertRaisesRegex(RuntimeError, rf"{name} must be an https URL.*localhost, 127\.0\.0\.1 or \[::1\]"):
+                            load_settings()
+
+    def test_an_https_public_url_is_accepted_for_any_host(self) -> None:
+        for url in ("https://module.example.test", "https://localhost:3002", "https://192.168.1.10"):
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": url}, clear=True):
+                self.assertEqual(load_settings().module_public_url, url)
+
+    def test_the_backend_url_may_be_http_on_the_service_network(self) -> None:
+        for url in ("http://backend:8000", "http://eneo-backend.internal:8000", "http://host.docker.internal:8123"):
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"ENEO_BACKEND_URL": url}, clear=True):
+                self.assertEqual(load_settings().eneo_backend_url, url)
+
+    def test_the_cookie_may_leave_secure_only_for_a_loopback_module(self) -> None:
+        for url in self.LOOPBACK:
+            with self.subTest(url=url), patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": url, "COOKIE_SECURE": "false"}, clear=True):
+                self.assertFalse(load_settings().cookie_secure)
+        for url in ("https://module.example.test", *self.NOT_LOOPBACK):
+            with self.subTest(url=url):
+                environment = valid_environment() | {"MODULE_PUBLIC_URL": url, "COOKIE_SECURE": "false"}
+                with patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaises(RuntimeError) as refused:
+                        load_settings()
+                if url.startswith("https://"):  # the URL is fine, the cookie setting is what is refused
+                    self.assertRegex(str(refused.exception), r"COOKIE_SECURE=false.*MODULE_PUBLIC_URL.*localhost, 127\.0\.0\.1 or \[::1\]")
+
+    def test_a_loopback_module_may_keep_the_cookie_secure(self) -> None:
+        with patch.dict(os.environ, valid_environment() | {"MODULE_PUBLIC_URL": "http://localhost:3002"}, clear=True):
+            self.assertTrue(load_settings().cookie_secure)
 
     def test_rejects_ambiguous_cookie_secure_value(self) -> None:
         environment = valid_environment()
@@ -252,7 +299,15 @@ class OrganizationTests(unittest.TestCase):
             ORGANIZATION_LOGO=self.file("umea.svg", SVG),
             ORGANIZATION_LOGO_DARK=self.file("umea-dark.png", PNG),
         )
-        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=True))
+        self.assertEqual(
+            settings.organization,
+            Organization(
+                name="Umeå kommun",
+                logo="custom",
+                dark_logo=True,
+                logo_sizes=LogoSizes(light=LogoSize(width=10, height=4), dark=LogoSize(width=1, height=1)),
+            ),
+        )
         assert settings.organization_logo and settings.organization_logo_dark
         self.assertEqual(settings.organization_logo.media_type, "image/svg+xml")
         self.assertEqual(settings.organization_logo.content, SVG)
@@ -315,7 +370,80 @@ class OrganizationTests(unittest.TestCase):
                 ORGANIZATION_LOGO=self.file("umea.svg", SVG),
                 ORGANIZATION_LOGO_DARK=str(self.folder / "saknas.svg"),
             )
-        self.assertEqual(settings.organization, Organization(name="Umeå kommun", logo="custom", dark_logo=False))
+        self.assertEqual(
+            settings.organization,
+            Organization(name="Umeå kommun", logo="custom", logo_sizes=LogoSizes(light=LogoSize(width=10, height=4))),
+        )
+
+    def sizes_of(self, name: str, content: bytes):
+        return self.load(ORGANIZATION_NAME="Umeå kommun", ORGANIZATION_LOGO=self.file(name, content)).organization
+
+    def test_a_logo_carries_its_proportions_so_the_page_can_reserve_its_room(self) -> None:
+        svg = lambda attributes: b'<svg xmlns="http://www.w3.org/2000/svg" ' + attributes + b"></svg>"  # noqa: E731
+        for what, content, expected in (
+            ("a viewBox", svg(b'viewBox="0 0 160 40"'), (160, 40)),
+            ("a viewBox that does not start at zero", svg(b'viewBox="-5 -5, 160,40"'), (160, 40)),
+            ("a width and a height, unitless", svg(b'width="300" height="75"'), (300, 75)),
+            ("a width and a height in px, which win over the viewBox", svg(b'width="300px" height="60px" viewBox="0 0 10 10"'), (300, 60)),
+            ("single quotes", svg(b"width='300' height='75'"), (300, 75)),
+            ("a width and the viewBox's proportions", svg(b'width="200" viewBox="0 0 10 5"'), (200, 100)),
+            ("a height and the viewBox's proportions", svg(b'height="50" viewBox="0 0 10 5"'), (100, 50)),
+            ("a percentage, which says nothing, and a viewBox", svg(b'width="100%" height="100%" viewBox="0 0 90 30"'), (90, 30)),
+            ("fractions, scaled so the proportions survive a whole number", svg(b'viewBox="0 0 10.5 4.5"'), (1000, 429)),
+            ("Illustrator's decimals", svg(b'width="277.4px" height="110.3px"'), (1000, 398)),
+            ("a root tag that holds a > in a value", svg(b'data-x="a>b" viewBox="0 0 8 2"'), (8, 2)),
+        ):
+            with self.subTest(what):
+                organization = self.sizes_of("logo.svg", content)
+                assert organization is not None and organization.logo_sizes is not None
+                self.assertEqual((organization.logo_sizes.light.width, organization.logo_sizes.light.height), expected)
+                self.assertIsNone(organization.logo_sizes.dark)
+
+    def test_a_comment_before_the_svg_tag_is_not_its_size(self) -> None:
+        organization = self.sizes_of("logo.svg", b'<!-- <svg width="1" height="1"> -->\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 3"></svg>')
+        assert organization is not None and organization.logo_sizes is not None
+        self.assertEqual(organization.logo_sizes.light, LogoSize(width=12, height=3))
+
+    def test_a_png_is_as_large_as_its_header_says(self) -> None:
+        png = bytearray(PNG)
+        png[16:24] = (640).to_bytes(4, "big") + (96).to_bytes(4, "big")
+        organization = self.sizes_of("logo.png", bytes(png))
+        assert organization is not None and organization.logo_sizes is not None
+        self.assertEqual(organization.logo_sizes.light, LogoSize(width=640, height=96))
+
+    def test_a_logo_without_a_readable_size_says_so_once_and_the_name_stands_in(self) -> None:
+        svg = lambda attributes: b'<svg xmlns="http://www.w3.org/2000/svg" ' + attributes + b"></svg>"  # noqa: E731
+        truncated_png = PNG[:20]
+        zero_png = bytearray(PNG)
+        zero_png[16:20] = (0).to_bytes(4, "big")
+        for name, content in (
+            ("logo.svg", svg(b"")),
+            ("logo.svg", svg(b'width="100%" height="50%"')),
+            ("logo.svg", svg(b'viewBox="0 0 0 40"')),
+            ("logo.svg", svg(b'viewBox="0 0 160"')),
+            ("logo.svg", svg(b'viewBox="0 0 -160 40"')),
+            ("logo.svg", svg(b'viewBox="0 0 1e999 40"')),
+            ("logo.png", truncated_png),
+            ("logo.png", bytes(zero_png)),
+        ):
+            with self.subTest(name=name, content=content[:60]), self.assertLogs("eneo_config", level="ERROR") as logs:
+                organization = self.sizes_of(name, content)
+            self.assertEqual(organization, Organization(name="Umeå kommun", logo=None))
+            self.assertEqual(len(logs.output), 1)
+            self.assertIn("ORGANIZATION_LOGO", logs.output[0])
+            self.assertIn("size", logs.output[0])
+
+    def test_an_organisation_names_its_logos_sizes_exactly_when_it_has_logos(self) -> None:
+        size = LogoSize(width=2, height=1)
+        for attributes in (
+            {"logo": "custom"},  # no sizes
+            {"logo": "custom", "logo_sizes": LogoSizes(light=size), "dark_logo": True},  # a dark logo with no size
+            {"logo": "custom", "logo_sizes": LogoSizes(light=size, dark=size), "dark_logo": False},  # a size for no logo
+            {"logo": "default", "logo_sizes": LogoSizes(light=size)},
+            {"logo": None, "logo_sizes": LogoSizes(light=size)},
+        ):
+            with self.subTest(attributes), self.assertRaises(ValueError):
+                Organization(name="Umeå kommun", **attributes)
 
     def test_a_logo_needs_the_name_it_stands_for(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "ORGANIZATION_NAME"):

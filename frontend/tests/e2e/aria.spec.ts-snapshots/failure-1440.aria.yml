@@ -1,6 +1,4 @@
 - main:
-  - link "Alla flöden":
-    - /url: /flows
   - paragraph: Nämndmöte till rapport
   - paragraph: Transkriberar mötet och skapar en PDF-rapport med beslut och sammanfattning.
   - note: Öppen information Använd bara information som får lämnas ut till vem som helst.
@@ -14,15 +12,14 @@
   - paragraph: Försök igen fortsätter där körningen stannade. Det som redan blev klart görs inte om.
   - region "Stegen":
     - heading "Stegen" [level=2]
-    - list:
-      - listitem: Transkribera Klar
+    - list "Flödets steg":
+      - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
-  - region "Transkript":
-    - heading "Transkript" [level=2]
-    - button "Kopiera transkriptet"
-    - status
-    - button "Ladda ner som text, transkriptet"
-    - region "Inspelning och transkript":
+  - region "Transkribering":
+    - heading "Transkribering" [level=2]
+    - button "Kopiera transkriberingen"
+    - button "Ladda ner som text, transkriberingen"
+    - region "Inspelning och transkribering":
       - group "Visa talare":
         - button "Alla" [pressed]:
           - text: ""
@@ -33,11 +30,11 @@
         - button "Talare 2":
           - text: ""
           - status
-      - text: Sök i transkriptet
-      - textbox "Sök i transkriptet"
+      - text: Sök i transkriberingen
+      - textbox "Sök i transkriberingen"
       - status
       - status
-      - link "Hoppa förbi transkriptet":
+      - link "Hoppa förbi transkriberingen":
         - /url: /#.+/
       - heading "Del 1" [level=3]
       - list "Del 1":
@@ -72,7 +69,7 @@
         - button "Spela upp"
         - slider "Position i inspelningen"
         - text: /0:\d+ \/ 0:\d+/
-        - button /Bakåt \d+ sekunder/:
+        - button /Bakåt \d+ sekunder/ [disabled]:
           - status
         - button /Framåt \d+ sekunder/:
           - status
@@ -82,9 +79,8 @@
   - region "Kontakta support":
     - heading "Kontakta support" [level=2]
     - text: Körnings-ID
-    - code: run-failed
+    - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
     - button "Kopiera körnings-ID"
-    - status
     - button "Dölj teknisk information" [expanded]
     - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
     - paragraph: flow_step_failed

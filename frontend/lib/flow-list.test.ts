@@ -6,6 +6,7 @@ import { FileText, Mic, Paperclip, PenLine } from "lucide-react";
 import { FlowList, inputIcon } from "../components/FlowList";
 import type { FlowSparsePublic } from "./api";
 import { cleanup, installDom, mount } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(cleanup);
@@ -78,21 +79,16 @@ test("each space is a named region with a plain heading over its own rows", asyn
   assert.equal(container.querySelectorAll("ul[role=list]").length, 2);
 });
 
-test("a row's link is Next's, so opening a flow is the router's push and not a page load (tests/e2e/flow-list.spec.ts proves it in the app)", async () => {
-  // Under node `next/link` is Next's pages Link, which reads this context where the app's reads another: both are Next's.
-  const { RouterContext } = await import("next/dist/shared/lib/router-context.shared-runtime");
+test("a row's link is the router's, so opening a flow is a client navigation and not a page load (tests/e2e/flow-list.spec.ts proves it in the app)", async () => {
   const { ModuleProviders } = await import("@/kit/ModuleProviders");
-  const pushed: string[] = [];
-  const router = { push: (to: string) => pushed.push(to), replace() {}, prefetch: async () => {}, beforePopState() {}, events: {} } as never;
-  const { container, act } = await mount(
-    createElement(
-      RouterContext.Provider,
-      { value: router },
-      createElement(ModuleProviders, null, createElement(FlowList, { lastFlowId: null, groups: groupOf(flow("rapport", "Nämndmöte till rapport")) })),
-    ),
+  const { router, tree } = withRouter(
+    createElement(ModuleProviders, null, createElement(FlowList, { lastFlowId: null, groups: groupOf(flow("rapport", "Nämndmöte till rapport")) })),
+    { path: "/flows" },
   );
+  const { container, act } = await mount(tree);
   const link = container.querySelector("a")!;
   assert.equal(link.hasAttribute("to"), false, "the design system's `to` is not put on the link");
   await act(async () => link.click());
-  assert.deepEqual(pushed, ["/flows/rapport"]);
+  assert.equal(router.state.location.pathname, "/flows/rapport");
+  assert.equal(router.state.historyAction, "PUSH", "a step forward: Back returns to the list");
 });

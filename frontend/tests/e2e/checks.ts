@@ -10,7 +10,26 @@ import type { Locator, Page } from "@playwright/test";
 export const TEXT_SPACING =
   "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
 
-export const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+/**
+ * Adds a stylesheet to the page the way the strict `style-src 'self'` allows: a constructable one, adopted by the
+ * document. `page.addStyleTag` makes a <style> element, which the policy blocks, and a block is a violation. Returns what
+ * takes it away again.
+ */
+export async function addStyles(page: Page, css: string) {
+  await page.evaluate((css) => {
+    const sheet = new CSSStyleSheet();
+    sheet.replaceSync(css);
+    document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    (window as unknown as { __addedStyles: CSSStyleSheet[] }).__addedStyles = [...((window as unknown as { __addedStyles?: CSSStyleSheet[] }).__addedStyles ?? []), sheet];
+  }, css);
+  return () =>
+    page.evaluate(() => {
+      const added = (window as unknown as { __addedStyles?: CSSStyleSheet[] }).__addedStyles ?? [];
+      document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => !added.includes(sheet));
+    });
+}
+
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
 
 /** Waits for opening animations (a dialog fading in) and colour transitions to end, so colours are measured at rest. */
 export async function settle(page: Page) {
@@ -32,7 +51,7 @@ export async function settle(page: Page) {
 
 export async function axe(page: Page) {
   await settle(page);
-  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).exclude("nextjs-portal").analyze();
+  const result = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
   return {
     violations: result.violations.map((v) => ({
       id: v.id,
@@ -88,15 +107,17 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
           });
         }
         // A field's box takes the click for the control inside it (the design system's inputs and pickers).
+        // The date field's box does too on a touch device: a tap inside it above the input focuses the input (measured on the
+        // stub's date flow, 390 px wide), so the 44 px box, not the 24 px input line, is what a finger meets.
         const fieldBox = el.matches('input, textarea, [role="combobox"]')
-          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
+          ? el.closest('.astryx-text-input, .astryx-text-area, .astryx-number-input, .astryx-date-input, .astryx-selector, .astryx-typeahead, .astryx-tokenizer')
           : null;
         if (fieldBox) out.push(box(fieldBox.getBoundingClientRect()));
         const labels = (el as HTMLInputElement).labels;
         if (labels) for (const label of Array.from(labels)) out.push(box(label.getBoundingClientRect()));
         if (el.getAttribute("role") === "slider") {
-          // The thumb is small by design; a press anywhere on the slider's control moves it. The design system's control
-          // is the box (its rail is 4 px and hidden from the tree); Radix's root, still on the old widgets, is the other.
+          // The thumb is small by design; a press anywhere on the slider's control moves it. The control is the box
+          // (its rail is 4 px and hidden from the tree).
           const control = el.parentElement?.closest(".astryx-slider-control, [data-orientation]");
           if (control) out.push(box(control.getBoundingClientRect()));
         }
@@ -166,7 +187,7 @@ const TOGGLES = ["checked", "pressed", "expanded", "selected"];
 const FLAGS = ["disabled", "invalid", "required", "readonly", "busy"];
 
 /** The states a screen reader reads out, from Chromium's properties: "checked=true", "expanded=false" and so on. */
-export function axState(properties: AxProperty[] = []): string {
+function axState(properties: AxProperty[] = []): string {
   return properties
     .filter((p) => p.value.value !== undefined && (TOGGLES.includes(p.name) || (FLAGS.includes(p.name) && ![false, "false"].includes(p.value.value as string))))
     .map((p) => `${p.name}=${String(p.value.value)}`)
@@ -194,7 +215,10 @@ export async function axNode(locator: Locator) {
   }
 }
 
-/** WCAG 1.4.10: no horizontal scroll, nothing past the right edge, nothing cut off; ellipsis is listed apart. */
+/**
+ * WCAG 1.4.10: no horizontal scroll, no text or control past the window's left or right edge, nothing cut off by a box that
+ * clips it (wider or taller than its overflow-hidden ancestor); ellipsis is listed apart.
+ */
 export function reflow(page: Page) {
   return page.evaluate(() => {
     const width = document.documentElement.clientWidth;
@@ -206,13 +230,14 @@ export function reflow(page: Page) {
     for (const el of Array.from(document.body.querySelectorAll("*"))) {
       const s = getComputedStyle(el);
       const r = el.getBoundingClientRect();
-      if (r.width < 2 || r.height < 2 || s.visibility === "hidden" || el.closest('[aria-hidden="true"], nextjs-portal')) continue;
+      if (r.width < 2 || r.height < 2 || s.visibility === "hidden" || el.closest('[aria-hidden="true"]')) continue;
       // Visually hidden text for screen readers is meant to be clipped.
       if (s.position === "absolute" && (s.clip !== "auto" || r.width <= 1)) continue;
       const scrollsX = (e: Element | null): boolean =>
         !!e && e !== document.body && (["auto", "scroll"].includes(getComputedStyle(e).overflowX) || scrollsX(e.parentElement));
       const text = Array.from(el.childNodes).some((n) => n.nodeType === Node.TEXT_NODE && n.textContent!.trim());
-      if (r.right > width + 1 && (text || el.matches("button, a, input, select, textarea, img, svg")) && !scrollsX(el.parentElement)) {
+      const outside = r.right > width + 1 || r.left < -1;
+      if (outside && (text || el.matches("button, a, input, select, textarea, img, svg")) && !scrollsX(el.parentElement)) {
         beyond.push(describe(el));
       }
       const cutX = ["hidden", "clip"].includes(s.overflowX) && el.scrollWidth > el.clientWidth + 1;
@@ -349,9 +374,8 @@ export function changedArea(page: Page, a: string, b: string, clipWidth: number)
   return page.evaluate(
     async ([a, b, clipWidth]) => {
       const pixels = async (base64: string) => {
-        const image = new Image();
-        image.src = `data:image/png;base64,${base64}`;
-        await image.decode();
+        // Decoded from its bytes: a data: URL would be an image the page's policy does not allow.
+        const image = await createImageBitmap(new Blob([Uint8Array.from(atob(base64), (character) => character.charCodeAt(0))], { type: "image/png" }));
         const canvas = document.createElement("canvas");
         canvas.width = image.width;
         canvas.height = image.height;
@@ -379,7 +403,6 @@ function probeFocus(page: Page) {
   return page.evaluate(async () => {
     const el = document.activeElement as HTMLElement | null;
     if (!el || el === document.body || el === document.documentElement) return null;
-    if (el.closest("nextjs-portal")) return null;
     el.dataset.a11yStop ??= String(Math.random()).slice(2);
     document.querySelectorAll("[data-a11y-current]").forEach((e) => e.removeAttribute("data-a11y-current"));
     el.setAttribute("data-a11y-current", "");
@@ -389,12 +412,6 @@ function probeFocus(page: Page) {
       return [n[0] ?? 0, n[1] ?? 0, n[2] ?? 0, n[3] ?? 1];
     };
     const over = ([r, g, b, a]: Rgba, [R, G, B]: Rgba): Rgba => [r * a + R * (1 - a), g * a + G * (1 - a), b * a + B * (1 - a), 1];
-    const luminance = ([r, g, b]: Rgba) =>
-      [r, g, b].map((v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4)).reduce((sum, v, i) => sum + v * [0.2126, 0.7152, 0.0722][i], 0);
-    const contrast = (a: Rgba, b: Rgba) => {
-      const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-      return (hi + 0.05) / (lo + 0.05);
-    };
     // The colour a box shows: its own background over those behind it.
     const background = (e: Element | null): Rgba => {
       if (!e) return [255, 255, 255, 1];

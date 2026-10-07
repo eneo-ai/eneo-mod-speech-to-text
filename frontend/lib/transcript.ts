@@ -1,4 +1,4 @@
-// Transkript med tidsmarkeringar för uppspelning.
+// Transkribering med tidsmarkeringar för uppspelning.
 //
 // Eneo lagrar ett transkriberingssteg i två lager:
 //   1. `input_payload_json.transcription.segments` på steget — en rad per
@@ -25,7 +25,7 @@ export interface TranscriptWord {
   uncertain: boolean;
 }
 
-export type SpeakerAttribution = "assigned" | "provisional" | "unassigned";
+type SpeakerAttribution = "assigned" | "provisional" | "unassigned";
 export type SpeakerDecision = "confirmed" | "unresolved";
 
 export interface TranscriptSegment {
@@ -62,14 +62,14 @@ export interface TranscriptTurn {
   parts: TranscriptTurnPart[];
 }
 
-export interface RawTranscriptWord {
+interface RawTranscriptWord {
   word: string;
   start: number;
   end: number;
   probability?: number | null;
 }
 
-export interface TranscriptWordsPayload {
+interface TranscriptWordsPayload {
   alignment?: string | null;
   stale?: boolean;
   segments?: {
@@ -181,10 +181,10 @@ export function parseTranscriptText(
       fileIndex,
       start: hms(h1, m1, s1),
       end: hms(h2, m2, s2),
-      speaker: speaker?.includes("Överlappande tal") || speaker?.includes("Talare går inte att avgöra") ? null : speaker ? labelFor(speaker.trim()) : null,
+      speaker: speaker?.includes("Överlappande tal") || speaker?.includes(UNDECIDED_SPEAKER) ? null : speaker ? labelFor(speaker.trim()) : null,
       text: body,
       ...(speaker?.includes("Överlappande tal") ? { speakerAttribution: "provisional" as const } : {}),
-      ...(speaker?.includes("Talare går inte att avgöra") ? { decision: "unresolved" as const } : {}),
+      ...(speaker?.includes(UNDECIDED_SPEAKER) ? { decision: "unresolved" as const } : {}),
     });
   }
   return segments;
@@ -293,9 +293,18 @@ export function needsSpeakerReview(segment: TranscriptSegment): boolean {
   return segment.speakerAttribution === "provisional" || Boolean(segment.overlapIds?.length);
 }
 
+/** Who Eneo's model said spoke the passage: its own attribution when it gave one, else the speaker the passage has. */
+export function modelSpeakerOf(segment: Pick<TranscriptSegment, "speaker" | "modelSpeaker">): string | null {
+  return segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker;
+}
+
+/** What a passage says in place of a speaker when the review decided it cannot be told, and while it is still to check. */
+export const UNDECIDED_SPEAKER = "Talare går inte att avgöra";
+export const OVERLAP_SPEAKER = "Överlappande tal – osäker talare";
+
 export function effectiveSpeakerLabel(segment: TranscriptSegment, name: (label: string | null) => string): string {
-  if (segment.decision === "unresolved") return "Talare går inte att avgöra";
-  if (segment.decision !== "confirmed" && needsSpeakerReview(segment)) return "Överlappande tal – osäker talare";
+  if (segment.decision === "unresolved") return UNDECIDED_SPEAKER;
+  if (segment.decision !== "confirmed" && needsSpeakerReview(segment)) return OVERLAP_SPEAKER;
   return name(segment.speaker);
 }
 
@@ -378,15 +387,7 @@ export function firstSegmentForSpeaker(
   return null;
 }
 
-export function countUncertainWords(segments: readonly TranscriptSegment[]): number {
-  let n = 0;
-  for (const s of segments) {
-    for (const w of s.words ?? []) if (w.uncertain) n++;
-  }
-  return n;
-}
-
-export const SPEAKER_COLOR_COUNT = 6;
+const SPEAKER_COLOR_COUNT = 6;
 
 /** Stabil färgplats per etikett: SPEAKER_03 → 3 mod 6, annars en enkel hash. */
 export function speakerColorIndex(label: string): number {
@@ -401,6 +402,11 @@ export function speakerColorIndex(label: string): number {
 export function speakerDisplayLabel(label: string): string {
   const m = /^SPEAKER_(\d+)$/.exec(label);
   return m ? `Talare ${Number(m[1]) + 1}` : label;
+}
+
+/** What the page calls a speaker: the confirmed name, else "Talare N". */
+export function speakerName(label: string, names: Readonly<Record<string, string>>): string {
+  return names[label]?.trim() || speakerDisplayLabel(label);
 }
 
 /** A transcript without speaker labels reads as paragraphs: one block per timed segment, never one merged block. */
@@ -421,7 +427,7 @@ export function pendingSpeakerReview(turn: TranscriptTurn): boolean {
   return Boolean(first) && needsSpeakerReview(first) && !first.decision;
 }
 
-export interface SpeakerSummary {
+interface SpeakerSummary {
   label: string;
   /** Passages (turns) the speaker has; passages still to check count for no one. */
   passages: number;

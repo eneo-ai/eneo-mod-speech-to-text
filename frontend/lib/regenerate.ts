@@ -7,7 +7,7 @@
 
 import { ApiError, regenerateTranscript, type FlowRunPublic } from "./api";
 import { friendlyError } from "./errors";
-import type { CorrectionSet } from "./transcript-corrections";
+import { isSegmentsHash, type CorrectionSet } from "./transcript-corrections";
 
 export interface RegenerationRequest {
   flowId: string;
@@ -40,7 +40,7 @@ export function regenerationOffer({
   hasDocument: boolean;
 }): RegenerationRequest | null {
   if (!hasDocument || !fromMetadata || !stepId || typeof run.revision !== "number") return null;
-  if (corrections.schemaVersion !== 3 || !/^[0-9a-f]{64}$/.test(corrections.segmentsHash ?? "")) return null;
+  if (corrections.schemaVersion !== 3 || !isSegmentsHash(corrections.segmentsHash)) return null;
   if (corrections.revision === null || !corrections.updatedAt || !run.finished_at) return null;
   if (Date.parse(corrections.updatedAt) <= Date.parse(run.finished_at)) return null;
   return {
@@ -53,7 +53,7 @@ export function regenerationOffer({
   };
 }
 
-export type RegenerationOutcome =
+type RegenerationOutcome =
   | { kind: "started"; run: FlowRunPublic }
   | { kind: "refused"; message: string; reload: boolean };
 
@@ -87,19 +87,19 @@ export function regenerationRefusal(err: unknown, thing = "dokumentet"): { messa
       case "flow_transcript_corrections_stale_revision":
       case "flow_run_idempotency_conflict":
         return {
-          message: "Transkriptet eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
+          message: "Transkriberingen eller rättningarna har ändrats sedan sidan lästes in. Läs in igen och försök sedan.",
           reload: true,
         };
       case "flow_run_stale_version":
         return {
           message:
-            `Flödet har ändrats sedan ${thing} skapades, så ${thing} kan inte skapas igen på samma sätt. Ladda ner det rättade transkriptet i stället.`,
+            `Flödet har ändrats sedan ${thing} skapades, så ${thing} kan inte skapas igen på samma sätt. Ladda ner den rättade transkriberingen i stället.`,
           reload: false,
         };
       case "flow_transcript_corrections_invalid_occurrence":
         return {
           message:
-            `Det här flödet kan inte skapa ${thing} igen från ett rättat transkript. Ladda ner det rättade transkriptet i stället.`,
+            `Det här flödet kan inte skapa ${thing} igen från en rättad transkribering. Ladda ner den rättade transkriberingen i stället.`,
           reload: false,
         };
       case "flow_run_access_denied":

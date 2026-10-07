@@ -3,9 +3,11 @@
  * checks: names and descriptions as Chromium's own tree gives them, the
  * groups around them, and the page titles.
  */
-import { expect, test, type Route } from "@playwright/test";
+import { type Route } from "@playwright/test";
+import { expect, test } from "./gate";
 import { axNode } from "./checks";
-import { addParticipants, backLink, chooseMode, isLaptop, open, result, run, sending, setup, STATES } from "./screens";
+import { addParticipants, backLink, chooseMode, isLaptop, result, run, sending, setup, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
 
 test("the input modes are named by their title, described by their line, and say which is chosen", async ({ page }) => {
   await setup(page);
@@ -28,12 +30,13 @@ test("a field is not an unnamed group", async ({ page }) => {
   await expect(page.getByRole("main").getByRole("group", { name: /^Deltagare/ })).toHaveCount(1);
 });
 
-test("the added names are a named list the field points to", async ({ page }) => {
+test("the added names are a named list, the field's status says each one, and its help text holds no count", async ({ page }) => {
   await setup(page);
   await addParticipants(page, ["Anna Berg", "Erik Lund"]);
   await expect(page.getByRole("list", { name: "Tillagda namn" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Erik Lund har lagts till." })).toBeAttached();
   const field = await axNode(page.getByRole("textbox", { name: /^Deltagare/ }));
-  expect(field.description).toContain("2 namn tillagda");
+  expect(field.description).toBe("Skriv ett namn och välj Lägg till. Skilj flera namn med komma.");
 });
 
 test("the sending view is a page with a heading that takes focus, a named progress bar and a spoken stage", async ({ page }) => {
@@ -47,7 +50,7 @@ test("the sending view is a page with a heading that takes focus, a named progre
 });
 
 test("a run opened while it runs keeps the flow's page: the way back, and the details it was started with", async ({ page }, info) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeFocused();
   await expect(backLink(page)).toBeVisible();
   if (isLaptop(info)) {
@@ -61,8 +64,8 @@ test("a run opened while it runs keeps the flow's page: the way back, and the de
 });
 
 test("a step that will stop for the person says what it asks while it is ahead, and not once it is done", async ({ page }) => {
-  await run(page, "run-before-review", "flow-2");
-  // flow-2 gives its result back in the run (delivery "payload"): it makes text, not a document.
+  await run(page, ids.runs.beforeReview, ids.flows.flow2);
+  // Flow 2 gives its result back in the run (delivery "payload"): it makes text, not a document.
   await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
   const review = page.getByRole("listitem").filter({ hasText: "Talare" });
   await expect(review).toContainText("Väntar");
@@ -70,7 +73,7 @@ test("a step that will stop for the person says what it asks while it is ahead, 
   await expect(page.getByRole("listitem").filter({ hasText: "Transkribera" })).not.toContainText("Här ");
 });
 
-test("naming the speakers and going on is one action: a changed name is saved, then the run goes on", async ({ page }, info) => {
+test("the dialog saves the names; the page's Godkänn och fortsätt then lets the run go on with them", async ({ page }, info) => {
   await STATES.find((s) => s.name === "naming-dialog")!.go(page, info);
   const saved: { edited_value: { speakers: { label: string; name: string | null }[] } }[] = [];
   page.on("request", (request) => {
@@ -78,10 +81,16 @@ test("naming the speakers and going on is one action: a changed name is saved, t
   });
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await dialog.getByRole("combobox", { name: "Vem är Talare 2?" }).fill("Sara Holm");
-  await dialog.getByRole("button", { name: "Spara och fortsätt" }).click();
-  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
-  expect(saved, "the changed name was saved before the run went on").toHaveLength(1);
+  // Typing opens the name list over what is below the field, as a list does: a press outside it closes it first.
+  await dialog.getByRole("heading", { name: "Namnge talarna" }).click();
+  await dialog.getByRole("button", { name: "Spara namnen" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("listitem").filter({ hasText: "Talare 2" }), "the page shows the saved name").toContainText("Sara Holm");
+  expect(saved, "the changed name was saved").toHaveLength(1);
   expect(saved[0].edited_value.speakers.find((s) => s.label === "SPEAKER_01")?.name).toBe("Sara Holm");
+  await page.getByRole("button", { name: "Godkänn och fortsätt" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: "Texten skapas" })).toBeVisible();
+  expect(saved, "approving saves nothing again").toHaveLength(1);
 });
 
 test("the name list opens with its chevron and closes with it again; a press outside closes it and leaves the dialog", async ({ page }, info) => {
@@ -107,22 +116,31 @@ test("the name list opens with its chevron and closes with it again; a press out
   await expect(field).toBeFocused();
 });
 
-test("audio that cannot be played says so, and Försök igen tries it again", async ({ page }) => {
+test("audio that cannot be played says so, and Försök igen tries it again", async ({ page, sentinel }) => {
+  sentinel.expect({ console: /status of 404.*\/input-files\/.*\/audio/ });
   await page.route("**/input-files/*/audio", (route) => route.fulfill({ status: 404, body: "" }));
-  await run(page, "run-review", "flow-2");
+  await run(page, ids.runs.review, ids.flows.flow2);
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeVisible();
+  // The press that asked for the audio is not left spinning, and the message is an alert beside the player's controls.
+  const player = page.locator("[data-docked-player]");
+  await player.getByRole("button", { name: "Spela upp", exact: true }).click();
+  await expect(player.getByRole("alert").filter({ hasText: "Ljudet kunde inte spelas." })).toBeVisible();
+  await expect(player.getByRole("button", { name: "Spela upp", exact: true }), "no spinner labelled as playing").toBeVisible();
   await page.unroute("**/input-files/*/audio");
-  await page.getByRole("button", { name: "Försök igen" }).click();
+  await player.getByRole("button", { name: "Försök igen" }).click();
   await expect(page.getByText("Ljudet kunde inte spelas.")).toBeHidden();
 });
 
-test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page }, info) => {
+test("a correction that cannot be saved says so, and offers another try and the unsaved corrections", async ({ page, sentinel }, info) => {
+  sentinel.expect({ console: /net::ERR_FAILED.*\/transcript-corrections/ }, { requestFailed: /PATCH .*\/transcript-corrections.*: net::ERR_FAILED/ });
   await STATES.find((s) => s.name === "review")!.go(page, info);
   // Eneo cannot be reached for the corrections (the browser is offline): reading them was fine, writing them fails.
   await page.route("**/transcript-corrections**", (route) => (route.request().method() === "GET" ? route.fallback() : route.abort()));
   await page.getByRole("button", { name: "Anna Berg, ändra talare" }).first().click();
   const picker = page.getByRole("dialog", { name: "Ändra talare" });
-  await picker.getByText("Erik Lund", { exact: true }).click();
+  const speaker = picker.getByRole("radio", { name: /^Erik Lund\b/ });
+  await speaker.click();
+  await expect(speaker).toBeChecked();
   await picker.getByRole("button", { name: "Spara" }).click();
   await expect(page.getByRole("button", { name: "Försök spara igen" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Hämta osparade rättningar" })).toBeVisible();
@@ -132,20 +150,20 @@ test("the player's row keeps the position slider a usable width on a phone, with
   test.skip(info.project.name !== "phone-390-light", "a phone: names.spec.ts does not run on the 320 px project");
   await STATES.find((s) => s.name === "review")!.go(page, info);
   // Looking for a word stops the transcript following the playback: Följ is offered.
-  await page.getByRole("textbox", { name: "Sök i transkriptet" }).fill("punkten");
+  await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("punkten");
   await expect(page.getByRole("button", { name: "Följ" })).toBeVisible();
   const slider = await page.getByRole("slider", { name: "Position i inspelningen" }).evaluate((thumb) => {
     const track = thumb.parentElement?.closest("[data-orientation]") ?? thumb;
     return track.getBoundingClientRect().width;
   });
   expect(slider, "the track of the position slider").toBeGreaterThanOrEqual(120);
-  const player = await page.getByRole("region", { name: "Inspelning och transkript" }).boundingBox();
+  const player = await page.getByRole("region", { name: "Inspelning och transkribering" }).boundingBox();
   const follow = await page.getByRole("button", { name: "Följ" }).boundingBox();
   expect(follow!.x + follow!.width, "Följ stays inside the card").toBeLessThanOrEqual(player!.x + player!.width);
 });
 
 test("an approved pause whose resume did not go through shows the saved names read-only; Fortsätt only resumes", async ({ page }) => {
-  await run(page, "run-review-approved", "flow-2");
+  await run(page, ids.runs.reviewApproved, ids.flows.flow2);
   await expect(page.getByText("Namnen är redan sparade. Välj Fortsätt så går flödet vidare.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Avvisa" })).toHaveCount(0);
   // Approval has folded the transcript's corrections in; nothing corrected now would reach the document.
@@ -156,7 +174,10 @@ test("an approved pause whose resume did not go through shows the saved names re
   const dialog = page.getByRole("dialog", { name: "Namnge talarna" });
   await expect(dialog.getByRole("combobox", { name: "Vem är Talare 2?" })).toBeDisabled();
   await expect(dialog.getByRole("button", { name: /^Spara/ })).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Avbryt" }).click();
+  // The page's Fortsätt goes on; the dialog's one action closes it (the footer's Stäng, after the header's own).
+  await expect(dialog.getByRole("button", { name: /Fortsätt|Avbryt/ })).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Stäng", exact: true }).last().click();
+  await expect(dialog).toBeHidden();
 
   const writes: string[] = [];
   page.on("request", (request) => {
@@ -169,11 +190,14 @@ test("an approved pause whose resume did not go through shows the saved names re
 
 test("an approved text review shows the saved decision; a draft from before it is only a note, and Fortsätt only resumes", async ({ page }) => {
   const draft = "Kommunstyrelsen beslutade att sänka budgetramen.";
-  await page.addInitScript((text) => {
-    const key = "tal-till-text:draft:user-1:review:run-review-text-approved:cp-2";
-    if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify({ revision: 2, edit: { text } }));
-  }, draft);
-  await run(page, "run-review-text-approved");
+  const key = `tal-till-text:draft:user-1:review:${ids.runs.reviewTextApproved}:${ids.checkpoints.reviewText}`;
+  await page.addInitScript(
+    ({ text, key }) => {
+      if (!sessionStorage.getItem(key)) sessionStorage.setItem(key, JSON.stringify({ revision: 2, edit: { text } }));
+    },
+    { text: draft, key },
+  );
+  await run(page, ids.runs.reviewTextApproved);
   await expect(page.getByText("Granskningen är redan godkänd. Välj Fortsätt så går flödet vidare.")).toBeVisible();
   await expect(page.getByRole("article")).toHaveText("Kommunstyrelsen beslutade att höja budgetramen med två procent.");
   await expect(page.getByRole("button", { name: "Använd din version" })).toHaveCount(0);
@@ -187,6 +211,23 @@ test("an approved text review shows the saved decision; a draft from before it i
   await page.getByRole("button", { name: "Fortsätt", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Dokumentet skapas" })).toBeVisible();
   expect(writes).toEqual(["resume"]);
+});
+
+test("the decision is a pair at the end of its bar, Avvisa then Godkänn och fortsätt, of one height of at least 48 px", async ({ page }, info) => {
+  for (const state of ["review", "review-text-edit"]) {
+    await STATES.find((s) => s.name === state)!.go(page, info);
+    const avvisa = page.getByRole("button", { name: "Avvisa" });
+    const [reject, approve, bar] = await Promise.all([
+      avvisa.boundingBox(),
+      page.getByRole("button", { name: "Godkänn och fortsätt" }).boundingBox(),
+      avvisa.locator("..").boundingBox(),
+    ]);
+    expect(reject!.height, `${state}: one height`).toBe(approve!.height);
+    expect(approve!.height, `${state}: the height of the action a screen exists for`).toBeGreaterThanOrEqual(48);
+    expect(approve!.x + approve!.width, `${state}: Godkänn och fortsätt ends the bar`).toBeCloseTo(bar!.x + bar!.width, 0);
+    // Beside it, or above it where the bar wraps: never at the bar's other end.
+    expect(approve!.x - (reject!.x + reject!.width), `${state}: Avvisa stands next to it`).toBeLessThanOrEqual(16);
+  }
 });
 
 test("the review's text fields are labelled", async ({ page }, info) => {
@@ -210,10 +251,12 @@ test("a page that is still loading says so, under the page's heading", async ({ 
   }
 });
 
-test("while recording, the top bar names the mode and the folded details say what they are", async ({ page }, info) => {
+test("while recording, the top bar is the one every state has and the folded details say what they are", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-390-light", "the phone's top bar and folded details");
   await STATES.find((s) => s.name === "recording")!.go(page, info);
-  await expect(page.getByRole("banner")).toContainText("Läge: Spela in");
+  const bar = page.getByRole("banner");
+  await expect(bar.getByRole("link", { name: "Alla flöden" })).toBeVisible();
+  await expect(bar.getByRole("button", { name: /^Öppna konto för/ })).toBeVisible();
   expect(await axNode(page.getByRole("button", { name: /Deltagare: Anna Berg/ }))).toMatchObject({
     name: "Uppgifter, Deltagare: Anna Berg",
   });
@@ -229,15 +272,10 @@ test("the folded panels keep their content out of sight until their trigger is p
   await expect(page.getByText("Flödets version 3")).toBeHidden();
   await page.getByRole("button", { name: /^Hur resultatet togs fram/ }).click();
   await expect(page.getByText("Flödets version 3")).toBeVisible();
-  await run(page, "run-failed");
+  await run(page, ids.runs.failed);
   await expect(page.getByText(/^Step 2 failed/)).toBeHidden();
   await page.getByRole("button", { name: "Visa teknisk information" }).click();
   await expect(page.getByText(/^Step 2 failed/)).toBeVisible();
-});
-
-test("the access code can be filled in by a password manager", async ({ page }, info) => {
-  await STATES.find((s) => s.name === "signin-access-code")!.go(page, info);
-  await expect(page.getByLabel("Åtkomstkod")).toHaveAttribute("autocomplete", "current-password");
 });
 
 for (const [state, title] of [
@@ -276,7 +314,6 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
     return route.fulfill({
       json: {
         authenticated: true,
-        auth_mode: "eneo_sso",
         user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" },
         session_ends_in: endsIn,
         ...(refreshIn === undefined ? {} : { refresh_in: refreshIn }),
@@ -290,7 +327,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
     logins.push(url);
     return route.fulfill({ status: 303, headers: { location: url.searchParams.get("next") ?? "/flows" } });
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible();
   await expect(warning).toContainText(/Inloggningen upphör kl\. \d\d:\d\d/);
@@ -310,7 +347,7 @@ test("the login's end is warned of five minutes ahead, and renewed in a new wind
 });
 
 test("an old status answer that arrives after the renewal's moves neither the end nor the keepalive", async ({ page }) => {
-  const signedIn = { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
+  const signedIn = { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" } };
   const before = { ...signedIn, session_ends_in: 200 };
   const renewed = { ...signedIn, session_ends_in: 8 * 60 * 60, refresh_in: 1 };
   let answer: object = before;
@@ -326,7 +363,7 @@ test("an old status answer that arrives after the renewal's moves neither the en
     }
     return route.fulfill({ json: answer });
   });
-  await open(page, "/flows");
+  await page.goto("/flows");
   const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
   await expect(warning).toBeVisible();
 
@@ -353,14 +390,16 @@ test("below a laptop's width the document's PDF opens in a new tab, and says so"
   await expect(link).toHaveAttribute("href", /disposition=inline/);
 });
 
-test("a review says when it must be done by, with the time, in the next year too", async ({ page }, info) => {
+test("a review says it waits for the person and, on a line of its own, when it must be done by, with the time, in the next year too", async ({ page }, info) => {
   for (const [state, now, deadline] of [
     ["review", "2026-09-24T12:00:00+02:00", "8 okt 11:01"],
     ["review-text-edit", "2026-12-28T12:00:00+01:00", "3 jan 2027 09:01"],
   ]) {
     await page.clock.setFixedTime(new Date(now));
     await STATES.find((s) => s.name === state)!.go(page, info);
-    await expect(page.getByRole("main")).toContainText(`Granska senast ${deadline}. Därefter avbryts körningen.`);
+    const main = page.getByRole("main");
+    await expect.soft(main.getByText("Väntar på din granskning", { exact: true })).toBeVisible();
+    await expect.soft(main.getByText(`Granska senast ${deadline}. Därefter avbryts körningen.`, { exact: true })).toBeVisible();
   }
 });
 
@@ -371,7 +410,7 @@ test("on a phone the docked primary action is part of the page's main content", 
 });
 
 test("a renewal that signed in someone else says so and keeps the page's login", async ({ page }) => {
-  await open(page, "/inloggad?fel=annan-anvandare");
+  await page.goto("/inloggad?fel=annan-anvandare");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Du loggade in som en annan användare");
   await expect(page.getByRole("main")).toContainText("Stäng fönstret och logga in som Erik Lund för att fortsätta.");
 });
@@ -382,7 +421,7 @@ test("a renewal after the login ended is refused: the window says so, stays, and
     (window as unknown as { said: unknown[] }).said = said;
     new BroadcastChannel("tal-till-text:session").addEventListener("message", (event) => said.push(event.data));
   });
-  await open(page, "/inloggad?fel=utgangen");
+  await page.goto("/inloggad?fel=utgangen");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Inloggningen har redan gått ut");
   // The window cannot know whether the other tab's recording is on the device, so it promises nothing and says how to keep it.
   await expect(page.getByRole("main")).toContainText(
@@ -391,27 +430,6 @@ test("a renewal after the login ended is refused: the window says so, stays, and
   await expect(page.getByRole("main")).not.toContainText("finns kvar");
   await expect(page).toHaveTitle("Inloggningen har gått ut · Tal till text");
   expect(await page.evaluate(() => (window as unknown as { said: unknown[] }).said)).toEqual([]);
-});
-
-test("with the access code, the warning renews the login by the code, on the page", async ({ page }) => {
-  let endsIn = 200;
-  await page.route("**/api/auth/status", (route) =>
-    route.fulfill({ json: { authenticated: true, auth_mode: "access_code", user: null, session_ends_in: endsIn } }),
-  );
-  const codes: string[] = [];
-  await page.route("**/api/auth/login", (route) => {
-    codes.push((route.request().postDataJSON() as { access_code: string }).access_code);
-    endsIn = 90 * 60;
-    return route.fulfill({ json: { ok: true } });
-  });
-  await open(page, "/flows");
-  const warning = page.getByRole("alertdialog", { name: "Du loggas snart ut" });
-  await expect(warning).toBeVisible();
-  await warning.getByLabel("Åtkomstkod").fill("test-access-code-1234");
-  await warning.getByRole("button", { name: "Fortsätt arbeta" }).click();
-  await expect(warning).toBeHidden();
-  expect(codes).toEqual(["test-access-code-1234"]);
-  await expect(page).toHaveURL(/\/flows$/);
 });
 
 test("while a chosen file's length is read, the wait is said, not only written on the button", async ({ page }) => {
@@ -426,6 +444,22 @@ test("while a chosen file's length is read, the wait is said, not only written o
   await expect(page.getByRole("status").filter({ hasText: "Kontrollerar filen…" })).toBeAttached();
 });
 
+test("a file above what the module takes is refused before it is sent, in the words of a flow's own limit", async ({ page }) => {
+  // The status says the module takes one MiB (and the envelope's room); the flow takes 200.
+  await page.route("**/api/auth/status", (route) =>
+    route.fulfill({
+      json: { authenticated: true, user: { id: "user-1", email: "erik.lund@sundsvall.se", username: "Erik Lund" }, session_ends_in: 3600, max_upload_bytes: 1024 * 1024 + 4096 },
+    }),
+  );
+  const uploads: string[] = [];
+  page.on("request", (request) => request.method() === "POST" && uploads.push(request.url()));
+  await setup(page);
+  await chooseMode(page, "Ladda upp");
+  await page.locator('input[type="file"]').setInputFiles({ name: "stor-inspelning.wav", mimeType: "audio/wav", buffer: Buffer.alloc(2 * 1024 * 1024) });
+  await expect(page.getByText(/Filen är större än flödet tar emot \(högst 1\s+MB\)\./)).toBeVisible();
+  expect(uploads, "nothing was sent").toEqual([]);
+});
+
 test("a correction's save is said from its first word: the live region waits in the page before it", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the transcript waits in its tab");
   // The stub keeps no corrections: the save is answered here, as Eneo would, one revision on.
@@ -434,7 +468,7 @@ test("a correction's save is said from its first word: the live region waits in 
     await new Promise((resolve) => setTimeout(resolve, 300));
     return route.fulfill({
       json: {
-        flow_run_id: "run-done", step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
+        flow_run_id: ids.runs.done, step_id: route.request().url().split("/steps/")[1].split("/")[0], schema_version: body.schema_version,
         segments_hash: body.segments_hash, occurrences: body.occurrences ?? [], speaker_edits: body.speaker_edits ?? [],
         revision: (body.expected_revision ?? 0) + 1, stale: false, updated_at: "2026-09-25T20:00:00Z",
       },

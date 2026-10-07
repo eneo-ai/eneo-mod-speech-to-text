@@ -48,7 +48,7 @@ export const eneoTheme = {
     "--font-size-3xs": "0.5rem",
     "--font-size-2xs": "0.5625rem",
     "--font-size-xs": "0.6875rem",
-    "--font-size-sm": "0.8125rem",
+    "--font-size-sm": "0.875rem",
     "--font-size-base": "1rem",
     "--font-size-lg": "1.1875rem",
     "--font-size-xl": "1.4375rem",
@@ -214,7 +214,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -222,7 +223,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -230,7 +232,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -238,7 +241,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -246,7 +250,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -254,7 +259,8 @@ export const eneoTheme = {
       "base": {
         ":focus-within": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
-          "outlineOffset": "var(--focus-outline-offset)"
+          "outlineOffset": "calc(var(--border-width) * -1)",
+          "boxShadow": "none"
         }
       }
     },
@@ -271,11 +277,41 @@ export const eneoTheme = {
         "overflowWrap": "anywhere"
       }
     },
+    "markdown": {
+      "base": {
+        "overflowWrap": "anywhere"
+      }
+    },
+    "table-header-cell": {
+      "base": {
+        "whiteSpace": "normal",
+        "textOverflow": "clip",
+        "overflowWrap": "break-word",
+        "wordBreak": "break-word"
+      }
+    },
+    "table-scroll-wrapper": {
+      "base": {
+        "backgroundImage": "linear-gradient(to right, var(--color-background-card), transparent), linear-gradient(to left, var(--color-background-card), transparent), radial-gradient(farthest-side at 0 50%, var(--color-border), transparent), radial-gradient(farthest-side at 100% 50%, var(--color-border), transparent)",
+        "backgroundPosition": "left center, right center, left center, right center",
+        "backgroundSize": "var(--spacing-6) 100%, var(--spacing-6) 100%, var(--spacing-2) 100%, var(--spacing-2) 100%",
+        "backgroundRepeat": "no-repeat",
+        "backgroundAttachment": "local, local, scroll, scroll"
+      }
+    },
+    "step-label": {
+      "base": {
+        "whiteSpace": "normal",
+        "overflow": "visible",
+        "textOverflow": "clip",
+        "overflowWrap": "anywhere"
+      }
+    },
     "token": {
       "base": {
         "overflow": "visible",
         "height": "auto",
-        "minHeight": "calc(var(--size-element-md) - 8px)"
+        "minHeight": "calc(var(--size-element-md) - var(--spacing-2))"
       },
       "color:blue": {
         "backgroundColor": "var(--color-accent-muted)",
@@ -292,12 +328,22 @@ export const eneoTheme = {
         "flexWrap": "wrap"
       }
     },
-    "dialog-header-title-block": {
+    "radio-list-item": {
       "base": {
+        "boxSizing": "border-box",
+        "paddingBlock": "var(--spacing-2)",
+        "paddingInline": "var(--spacing-3)",
+        "border": "var(--border-width) solid var(--color-border-emphasized)",
+        "borderRadius": "var(--radius-container)",
         ":has(:focus-visible)": {
           "outline": "var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color)",
           "outlineOffset": "var(--focus-outline-offset)"
         }
+      },
+      "selected": {
+        "borderColor": "var(--color-accent)",
+        "backgroundColor": "color-mix(in srgb, var(--color-accent) 8%, transparent)",
+        "boxShadow": "inset 0 0 0 var(--border-width) var(--color-accent)"
       }
     },
     "button": {
@@ -305,7 +351,11 @@ export const eneoTheme = {
         "whiteSpace": "normal",
         "height": "auto",
         "minHeight": "var(--size-element-md)",
-        "paddingBlock": "var(--spacing-0-5)"
+        "paddingBlock": "var(--spacing-0-5)",
+        ":is(.astryx-input-group > :not(:first-child))": {
+          "borderStartStartRadius": "0",
+          "borderEndStartRadius": "0"
+        }
       },
       "size:sm": {
         "minHeight": "var(--size-element-sm)"
@@ -319,9 +369,16 @@ export const eneoTheme = {
         "color": "var(--color-text-primary)"
       }
     },
+    "switch": {
+      "base": {
+        "--color-background-gray": "var(--color-border-emphasized)"
+      }
+    },
     "collapsible-trigger": {
       "base": {
-        "minHeight": "24px"
+        "minHeight": "24px",
+        "fontSize": "var(--font-size-base)",
+        "fontWeight": "var(--font-weight-medium)"
       }
     }
   },
@@ -394,6 +451,11 @@ export const eneoTheme = {
             "radio-list-item": {
               "base": {
                 "minHeight": "44px"
+              }
+            },
+            "text-area-control": {
+              "base": {
+                "minBlockSize": "44px"
               }
             }
           }

@@ -1,0 +1,21 @@
+# The acceptance stack's Traefik (compose.yml): the ingress the module sits behind in production, reduced to what the module's contracts
+# depend on. Traefik v3, one HTTP entrypoint, the routes in traefik-routes.yml. No TLS (checked by hand where TLS ends), no dashboard, and no access log
+# (the sign-in callback's URL carries a one-time ticket).
+#
+# The entrypoint's timeouts are the ones docs/operations.md tells an operator to set and docker-compose.traefik.yml sets, not Traefik's defaults:
+# a read deadline of 60 s cuts every upload whose body takes longer to send (the browser gets a 499), so the read deadline is sized for
+# MAX_UPLOAD_BYTES on a slow link (1 GiB at 5 Mbit/s is under 1800 s). A live WebSocket is not subject to them: an upgraded connection has no deadline
+# (check 16 keeps one open for 200 s). backend/tests/test_deployment_compose.py requires the same three values in docker-compose.traefik.yml.
+entryPoints:
+  web:
+    address: ":80"
+    transport:
+      respondingTimeouts:
+        readTimeout: 1800s
+        writeTimeout: 0s
+        idleTimeout: 180s
+providers:
+  file:
+    filename: /etc/traefik/traefik-routes.yml
+log:
+  level: WARN

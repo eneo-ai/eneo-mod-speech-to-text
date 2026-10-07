@@ -6,12 +6,27 @@
  * Dialogs and the account menu keep focus inside and give it back on Escape.
  */
 import { writeFileSync } from "node:fs";
-import { expect, test, type Locator, type Page } from "@playwright/test";
-import { axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, isLaptop, isPhone, open, run, setup, signIn, STATES } from "./screens";
+import { type Locator, type Page } from "@playwright/test";
+import { expect, test } from "./gate";
+import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
+import { backLink, isLaptop, isPhone, run, setup, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
+
+test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
+  test.skip(!info.project.name.startsWith("phone-320-"), "the width where this table overflows");
+  await STATES.find((state) => state.name === "result-table")!.go(page, info);
+  const scroll = page.locator(".astryx-table-scroll-wrapper");
+  await scroll.focus();
+  await scroll.press("ArrowRight");
+  await scroll.press("ArrowRight");
+  await expect.poll(() => scroll.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const last = element.querySelector("th:last-child")!.getBoundingClientRect();
+    return last.left >= box.left - 1 && last.right <= box.right + 1 && element.scrollLeft > 0;
+  }), "the full header and amounts are reachable").toBe(true);
+});
 
 const WALKS = [
-  "signin-access-code",
   "flow-list",
   "unsent-recordings",
   "setup-participants",
@@ -50,13 +65,23 @@ for (const name of WALKS) {
   });
 }
 
+// A page with nothing but its message has two stops, and the second is the way on.
+test("tab through flows-unreachable: the skip link, then Försök igen, each with focus visible", async ({ page }, info) => {
+  await STATES.find((s) => s.name === "flows-unreachable")!.go(page, info);
+  const { stops, left } = await tabWalk(page);
+  writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
+  expect(stops.map((stop) => stop.label)).toEqual(['a "Hoppa till innehåll"', 'button "Försök igen"']);
+  expect.soft(left, "focus leaves the page after the second stop (WCAG 2.1.2)").toBe(true);
+  expect.soft(stopProblems(stops), "focus visible and unobscured").toEqual([]);
+});
+
 // The docked action of a phone grows with its words and with the spacing a reader may set (WCAG 1.4.12): focus must
 // still stop above it, whatever its height is.
 for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
   test(`tab through ${name} with the text spacing a reader may set`, async ({ page }, info) => {
     test.skip(!isPhone(info), "the docked action is a phone's");
     await STATES.find((s) => s.name === name)!.go(page, info);
-    await page.addStyleTag({ content: TEXT_SPACING });
+    await addStyles(page, TEXT_SPACING);
     const { stops, left } = await tabWalk(page);
     writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
     expect(stops.length, "something to focus").toBeGreaterThan(0);
@@ -70,6 +95,13 @@ for (const name of ["setup", "setup-participants", "setup-microphone-check"]) {
  * do that, as a trap would break WCAG 2.1.2; it never lets Tab reach the page behind it.
  */
 const inBrowser = (page: Page) => page.evaluate(() => !document.hasFocus());
+
+// APG permits initial focus on the static title to announce a dialog's beginning. It is not a keyboard control.
+const focusedTitle = (popup: Locator) => popup.evaluate((element) => {
+  const focused = document.activeElement;
+  return focused instanceof HTMLElement && /^H[1-6]$/.test(focused.tagName) && focused.tabIndex === -1
+    && element.getAttribute("aria-labelledby")?.split(/\s+/).includes(focused.id);
+});
 
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
@@ -88,7 +120,10 @@ async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4
       const stop = await focusStop(page);
       const inside = await popup.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the ${await popup.getAttribute("role")}`);
-      else problems.push(...stopProblems([stop]));
+      else {
+        const startsOnTitle = i === 0 && await focusedTitle(popup);
+        problems.push(...stopProblems([startsOnTitle ? { ...stop, indicator: true } : stop]));
+      }
     }
     if (keys[i]) await page.keyboard.press(keys[i]);
   }
@@ -109,7 +144,7 @@ test("the leave question holds focus and gives it back", async ({ page }, info) 
 });
 
 test("the cancel question holds focus and gives it back", async ({ page }) => {
-  await run(page, "run-running");
+  await run(page, ids.runs.running);
   await holdsFocus(page, page.getByRole("button", { name: "Avbryt körningen" }), page.getByRole("alertdialog", { name: "Avbryta körningen?" }));
 });
 
@@ -118,7 +153,7 @@ test("the cancel question holds focus and gives it back", async ({ page }) => {
 // 2.1.2). From those controls, Escape closes the dialog.
 test("the PDF preview holds focus, never traps it in the viewer, and Escape closes it from the dialog", async ({ page }, info) => {
   test.skip(!isLaptop(info), "below a laptop's width the PDF opens in a new tab");
-  await run(page, "run-done");
+  await run(page, ids.runs.done);
   const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
   const dialog = page.getByRole("dialog");
   await trigger.focus();
@@ -149,7 +184,10 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
       const stop = await focusStop(page);
       const inside = await dialog.evaluate((element) => element.contains(document.activeElement));
       if (!stop || !inside) problems.push(`${stop?.label ?? "the page"} is outside the dialog`);
-      else problems.push(...stopProblems([stop]));
+      else {
+        const startsOnTitle = presses === 0 && await focusedTitle(dialog);
+        problems.push(...stopProblems([startsOnTitle ? { ...stop, indicator: true } : stop]));
+      }
       leftFrame = frame !== null;
       // Back at a stop already met, without meeting the viewer: Tab goes round the dialog's own controls.
       const key = stop ? `${stop.label}@${stop.left},${stop.top}` : "";
@@ -250,10 +288,10 @@ test("the account menu holds focus and gives it back", async ({ page }) => {
 test("the warning before the login ends takes focus, holds it, and gives it back on Escape", async ({ page }) => {
   await page.route("**/api/auth/status", (route) =>
     route.fulfill({
-      json: { authenticated: true, auth_mode: "eneo_sso", user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
+      json: { authenticated: true, user: { id: "user-1", email: "e@x.se" }, session_ends_in: 305 },
     }),
   );
-  await open(page, "/flows");
+  await page.goto("/flows");
   // Focus somewhere on the page before the warning opens (at five minutes before the end).
   const link = page.getByRole("link", { name: /Nämndmöte till rapport/ });
   await link.focus();
@@ -321,10 +359,7 @@ test("the input modes change with the arrow keys", async ({ page }) => {
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  await page.keyboard.down("ArrowDown");
-  await page.waitForTimeout(60);
-  await page.keyboard.up("ArrowDown");
+  await page.keyboard.press("ArrowDown");
   await expect(cards.nth(1)).toBeFocused();
   await expect(cards.nth(1), "the arrow key chooses the mode it moves to").toBeChecked();
 });
@@ -340,30 +375,12 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeVisible();
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
-  // The names follow the field, and "Lägg till" is only there while a name is typed: Tab reaches the first name's button.
+  // The names follow the field, and "Lägg till" is off while nothing is typed: Tab passes it to the first name's button.
   await page.keyboard.press("Tab");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
-});
-
-test("a wrong access code is said, and focus stays in the field to type it again", async ({ page }) => {
-  await page.route("**/api/auth/login", (route) => route.fulfill({ status: 401, json: { detail: "Felaktig åtkomstkod" } }));
-  await signIn(page, "access_code");
-  const field = page.getByLabel("Åtkomstkod");
-  await field.fill("fel-kod");
-  await field.press("Enter");
-  await expect(page.getByText("Felaktig åtkomstkod.")).toBeVisible();
-  // The field is locked while the code is checked, which drops focus; the answer gives it back (WCAG 2.4.3, 3.3.1).
-  await expect(field).toBeFocused();
-  // The field in error names its message, which is the one alert that said it.
-  await expect(field).toHaveAttribute("aria-invalid", "true");
-  const message = await field.getAttribute("aria-errormessage");
-  expect(message, "the field names its error message").toBeTruthy();
-  const alert = page.locator(`[id="${message}"]`);
-  await expect(alert).toHaveAttribute("role", "alert");
-  await expect(alert).toHaveText("Felaktig åtkomstkod.");
 });
 
 test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {
@@ -393,14 +410,8 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
   await page.keyboard.press("Tab");
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
-  // Held like a finger holds a key: Radix moves focus after the key goes down and checks while it is held.
-  const arrow = async (key: string) => {
-    await page.keyboard.down(key);
-    await page.waitForTimeout(60);
-    await page.keyboard.up(key);
-  };
   for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
-    await arrow(key);
+    await page.keyboard.press(key);
     await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
     await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
     await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);

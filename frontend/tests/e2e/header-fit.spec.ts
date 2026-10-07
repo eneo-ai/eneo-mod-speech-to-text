@@ -3,8 +3,8 @@
  * never shrinks the brand, so a brand that is too wide runs into the account button beside it: the product's name is
  * then covered, or cut to "Tal till …". They keep a gap's width between them.
  */
-import { expect, test } from "@playwright/test";
-import { TEXT_SPACING } from "./checks";
+import { expect, test } from "./gate";
+import { addStyles, TEXT_SPACING } from "./checks";
 import { flows } from "./screens";
 
 const GAP = 8;
@@ -12,7 +12,7 @@ const GAP = 8;
 test("at 320 px with text spacing the brand and the account button keep apart, and the name is whole", async ({ page }, info) => {
   test.skip(info.project.name !== "phone-320-light", "the narrowest width");
   await flows(page);
-  await page.addStyleTag({ content: TEXT_SPACING });
+  await addStyles(page, TEXT_SPACING);
   const brand = page.getByRole("link", { name: /^Tal till text –/ });
   const account = page.getByRole("button", { name: /^Öppna konto för/ });
   const [brandBox, accountBox] = [await brand.boundingBox(), await account.boundingBox()];

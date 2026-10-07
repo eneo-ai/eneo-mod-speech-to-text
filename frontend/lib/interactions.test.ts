@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { button, installDom, mount, type } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 
@@ -15,10 +16,11 @@ test("participants: moving from the field to Lägg till and on keeps the typed n
     createElement(ParticipantsInput, { label: "Deltagare", fieldName: "namn", names: [], onChange: (names: string[]) => changes.push(names), suggestions: [] }),
   );
   const field = view.container.querySelector<HTMLInputElement>('[data-detail-field="namn"]')!;
+  assert.equal(button(view.container, "Lägg till")?.disabled, true, "Lägg till is there, and off, while nothing is typed");
   await view.act(async () => field.focus());
   await view.act(async () => type(field, "Anna Berg"));
   const add = button(view.container, "Lägg till")!;
-  assert.ok(add, "Lägg till shows while a name is typed");
+  assert.equal(add.disabled, false, "and on while a name is typed");
   // Tab to the button: not yet added, the button adds it.
   await view.act(async () => add.focus());
   assert.deepEqual(changes, []);
@@ -44,6 +46,7 @@ test("participants: Tab to Lägg till and Enter adds the name, and focus goes ba
   await view.act(async () => add.click());
   assert.deepEqual(changes, [["Erik Lund"]], "added once");
   assert.equal(document.activeElement, field);
+  assert.equal(add.disabled, true, "and Lägg till is off again, beside the empty field");
   await view.unmount();
 });
 
@@ -503,15 +506,13 @@ test("upload: a file dropped on the zone is chosen, the first of several; someth
   await view.unmount();
 });
 
-/** A page's router and signed-in user, as the app gives them. */
-async function signedIn(element: import("react").ReactElement, navigated: string[]) {
+/** A page's router, colour mode and signed-in user, as the app gives them; `visited` is where the router went. */
+async function signedIn(element: import("react").ReactElement, where?: { path?: string; entries?: string[] }) {
   const { createElement } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
-  const go = (href: string) => void navigated.push(href);
-  const router = { push: go, replace: go, prefetch: () => undefined, back: () => undefined, forward: () => undefined, refresh: () => undefined } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
+  const { ColorModeProvider } = await import("@/kit/ColorModeProvider");
   const user = { id: "user-1", email: "anna@example.se", username: "Anna" };
-  return createElement(AppRouterContext.Provider, { value: router }, createElement(AuthenticatedUserContext.Provider, { value: user }, element));
+  return withRouter(createElement(ColorModeProvider, null, createElement(AuthenticatedUserContext.Provider, { value: user }, element)), where);
 }
 
 const exits = (container: HTMLElement) => ({
@@ -540,18 +541,20 @@ test("a run's states keep the flow's page: the way back, the flow, and the detai
   const { createElement } = await import("react");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
   const view = await mount(
-    await signedIn(
-      createElement(
-        FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" }, version: 2 },
-        createElement("h1", null, "Dokumentet skapas"),
-      ),
-      [],
-    ),
+    (
+      await signedIn(
+        createElement(
+          FlowRunPage,
+          { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max", "Alexander"], talare: "4", okand: "x" }, version: 2 },
+          createElement("h1", null, "Dokumentet skapas"),
+        ),
+      )
+    ).tree,
   );
   // The shell's one main region: a div with the role, not a <main> element.
   const main = view.container.querySelector('[role="main"]')!;
-  assert.ok([...main.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "a way back beside the run");
+  const bar = view.container.querySelector('[role="banner"]')!;
+  assert.ok([...bar.querySelectorAll('a[href="/flows"]')].some((a) => a.textContent?.trim() === "Alla flöden"), "the way back is the bar's");
   assert.match(main.textContent ?? "", /Genomförandeplan IBIC/);
   assert.match(main.textContent ?? "", /Skapar en genomförandeplan ur en utredning\./);
   const rows = [...main.querySelectorAll("dt")].map((dt) => `${dt.textContent}: ${dt.nextElementSibling?.textContent}`);
@@ -579,13 +582,12 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
       earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
       onOpenRun: () => undefined,
       onMoreRuns: () => undefined,
-      unsentRecordings: [],
-      onLeave: () => undefined,
+      unsent: { recordings: [], unreadable: false, retry: () => undefined },
       afterRun,
     });
   }
   for (const afterRun of [false, true]) {
-    const view = await mount(await signedIn(createElement(Setup, { afterRun }), []));
+    const view = await mount((await signedIn(createElement(Setup, { afterRun }))).tree);
     const focused = document.activeElement;
     const where = `${focused?.tagName} "${focused?.textContent?.slice(0, 40)}"`;
     if (afterRun) assert.ok(focused?.matches("h2[data-phase-heading]") && focused.textContent === "Ladda upp", `after a run: focus on ${where}`);
@@ -696,7 +698,7 @@ test("the cancel question is closed while the login has ended and asked again af
     assert.equal(question().hasAttribute("open"), true);
     await view.act(async () => loginState.ended());
     assert.equal(question().hasAttribute("open"), false, "a native dialog would stay above the covered page");
-    await view.act(async () => loginState.observe({ authenticated: true, auth_mode: "eneo_sso", user: anna, session_ends_in: 8 * 3600 }));
+    await view.act(async () => loginState.observe({ authenticated: true, user: anna, session_ends_in: 8 * 3600 }));
     assert.equal(question().hasAttribute("open"), true, "back, as it was asked");
   } finally {
     end();
@@ -742,10 +744,7 @@ test("a run of an earlier version of the flow shows no details labelled by today
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
   for (const version of [1, null]) {
     const view = await mount(
-      await signedIn(
-        createElement(FlowRunPage, { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max"], talare: "4" }, version }),
-        [],
-      ),
+      (await signedIn(createElement(FlowRunPage, { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Max"], talare: "4" }, version }))).tree,
     );
     assert.equal(view.container.querySelectorAll("dt").length, 0, `version ${version}: the form may have changed since`);
     assert.ok(!(view.container.textContent ?? "").includes("Max"), "nor the values, unlabelled");
@@ -757,96 +756,150 @@ test("upload under way: the header offers no way off the page, which would abort
   const { createElement } = await import("react");
   const { SubmittingView } = await import("../components/flow/SubmittingView");
   const { FlowRunPage } = await import("../components/flow/FlowRunPage");
-  const navigated: string[] = [];
   let cancelled = 0;
   const submission = { kind: "uploading", filename: "underlag.pdf", loaded: 0, total: 2048, percent: 0, wait: null } as const;
-  const view = await mount(
-    await signedIn(
-      createElement(
-        FlowRunPage,
-        { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, version: 2, locked: true },
-        createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
-      ),
-      navigated,
+  const { tree, visited } = await signedIn(
+    createElement(
+      FlowRunPage,
+      { published: IBIC, contract: IBIC_CONTRACT, input: { deltagare: ["Anna Berg"] }, version: 2, locked: true },
+      createElement(SubmittingView, { submission, onCancelSubmission: () => (cancelled += 1) }),
     ),
   );
+  const view = await mount(tree);
   assert.deepEqual(exits(view.container), { links: 0, account: 0 }, "no back link, no brand link, no sign-out while it uploads");
 
   await view.act(async () => button(view.container, "Avbryt")!.click());
   assert.equal(cancelled, 1);
-  assert.deepEqual(navigated, []);
+  assert.deepEqual(visited, []);
   await view.unmount();
 });
 
-test("recording: the account menu steps aside for the mode on every width, so sign-out cannot drop the recording", async () => {
+test("every state of the flow's page keeps the same bar: the way back and the account (signing out asks first while something would be lost)", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount(await signedIn(createElement(FlowFrame, { trailing: "Spelar in", children: null }), []));
-  assert.deepEqual(exits(view.container), { links: 2, account: 0 }, "the links stay (the arrow below a laptop, the brand from it), asked through onLeave");
+  const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
+  assert.deepEqual(exits(view.container), { links: 1, account: 1 });
   await view.unmount();
 });
 
-test("the way back: a link to the flow list named Alla flöden, and a leave guard still decides first", async () => {
+test("the way back: a link to the flow list named Alla flöden, a router link", async () => {
   const { createElement } = await import("react");
   const { BackToFlows } = await import("../components/flow/BackToFlows");
-  const asked: boolean[] = [];
-  const view = await mount(
-    await signedIn(
-      createElement(BackToFlows, {
-        onLeave: (event: import("react").MouseEvent) => {
-          event.preventDefault();
-          asked.push(true);
-        },
-      }),
-      [],
-    ),
-  );
+  const { router, tree } = await signedIn(createElement(BackToFlows));
+  const view = await mount(tree);
   const links = [...view.container.querySelectorAll("a")];
   assert.equal(links.length, 1);
   assert.equal(links[0].getAttribute("href"), "/flows");
   assert.equal(links[0].textContent?.trim(), "Alla flöden");
-
-  const click = new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
-  await view.act(async () => void links[0].dispatchEvent(click));
-  assert.deepEqual(asked, [true], "the guard is asked");
-  assert.equal(click.defaultPrevented, true, "and can keep the page");
+  await view.act(async () => void links[0].dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true, button: 0 })));
+  assert.equal(router.state.location.pathname, "/flows", "a navigation of the router, not a page load");
   await view.unmount();
 });
 
 test("the phone top bar's back chevron is named like every other way back", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
-  const view = await mount(await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }), []));
+  const view = await mount((await signedIn(createElement(FlowFrame, { title: "Nämndmöte", children: null }))).tree);
   const chevron = view.container.querySelector('[role="banner"] a[aria-label="Alla flöden"]');
   assert.ok(chevron, "the arrow in the bar is named like every other way back");
   assert.equal(chevron.getAttribute("href"), "/flows");
   await view.unmount();
 });
 
-test("Back during an upload asks first and says what leaving stops", async () => {
+test("a sign-out that was answered but did not go through leaves no way off the page unasked: the next departure asks", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  function Page() {
+    const leaving = useLeaveQuestion(true, "Det du har skrivit försvinner om du lämnar sidan.");
+    // A sign-out whose request fails: it goes on, and no navigation follows.
+    return createElement("div", null, createElement("button", { onClick: () => leaving.leaveFirst(async () => undefined) }, "Logga ut"), leaving.question);
+  }
+  const { tree, router } = await signedIn(createElement(Page), { path: "/flows/f1", entries: ["/flows/f1"] });
+  const view = await mount(tree);
+  const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
+  await view.act(async () => button(view.container, "Logga ut")!.click());
+  assert.ok(dialog(), "Logga ut asks");
+  await view.act(async () => {
+    button(dialog()!, "Lämna sidan")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  });
+  assert.ok(!dialog(), "answered");
+  await view.act(async () => void router.navigate("/flows"));
+  assert.ok(dialog(), "a way off the page right after is asked about too");
+  assert.equal(router.state.location.pathname, "/flows/f1", "and the page is still here");
+  await view.unmount();
+});
+
+test("Back during an upload asks first and says what leaving stops; Stanna kvar stays, Lämna sidan goes on", async () => {
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { leaveWarning } = await import("./recording-view");
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   function Page() {
     // A file on its way: the page holds no audio.
     return useLeaveQuestion(true, leaveWarning(true, "setup", true)).question;
   }
-  const view = await mount(await signedIn(createElement(Page), []));
+  const { tree, router } = await signedIn(createElement(Page), { entries: ["/flows", "/"] });
+  const view = await mount(tree);
   // A native dialog stays in the tree while it is closed: open is its open attribute.
   const dialog = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
-  await view.act(async () => {
-    window.history.back();
-    await settle();
-  });
+  await view.act(async () => void router.navigate(-1));
   assert.match(dialog()?.textContent ?? "", /Lämna sidan\?/);
   assert.match(dialog()?.textContent ?? "", /Sändningen avbryts/);
   // The design system's convention: a native alert dialog, and the answer that loses nothing has the focus.
   assert.equal(dialog()!.tagName, "DIALOG", "a native dialog: it needs no portal and stacks above the sign-in dialog");
   assert.ok(button(dialog()!, "Lämna sidan"), "leaving is the other answer");
   assert.ok(document.activeElement === button(dialog()!, "Stanna kvar"), "staying has the focus");
+  assert.equal(router.state.location.pathname, "/", "the page is still here while it is asked");
   await view.act(async () => button(dialog()!, "Stanna kvar")!.click());
   assert.ok(!dialog(), "answered: closed");
+  assert.equal(router.state.location.pathname, "/", "and stayed");
+
+  await view.act(async () => void router.navigate(-1));
+  assert.ok(dialog(), "asked again for the next Back");
+  await view.act(async () => button(dialog()!, "Lämna sidan")!.click());
+  assert.equal(router.state.location.pathname, "/flows", "Lämna sidan goes on back");
+  await view.unmount();
+});
+
+test("repeated Back while the question is open leaves one question, and Stanna kvar stays", async () => {
+  const { createElement } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  function Page() {
+    return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  const { tree, router } = await signedIn(createElement(Page), { entries: ["/start", "/flows", "/"] });
+  const view = await mount(tree);
+  const dialogs = () => document.body.querySelectorAll('[role="alertdialog"][open]').length;
+  for (let press = 0; press < 3; press += 1) await view.act(async () => void router.navigate(-1));
+  assert.equal(dialogs(), 1, "one question, nothing stacked");
+  await view.act(async () => button(document.body.querySelector<HTMLElement>('[role="alertdialog"][open]')!, "Stanna kvar")!.click());
+  assert.equal(dialogs(), 0);
+  assert.equal(router.state.location.pathname, "/", "still on the page");
+  await view.unmount();
+});
+
+test("an address the page writes that keeps the page is no departure, and a page that is not asking is left without a question", async () => {
+  const { createElement, useState } = await import("react");
+  const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
+  let setActive: (active: boolean) => void = () => {};
+  function Page() {
+    const [active, set] = useState(true);
+    setActive = set;
+    return useLeaveQuestion(active, "Det som spelats in finns kvar bland osända inspelningar.").question;
+  }
+  const { tree, router } = await signedIn(createElement(Page), { path: "/flows/:id", entries: ["/flows", "/flows/f1"] });
+  const view = await mount(tree);
+  const dialogs = () => document.body.querySelectorAll('[role="alertdialog"][open]').length;
+  await view.act(async () => void router.navigate({ search: "?run=r1" }, { replace: true }));
+  assert.equal(dialogs(), 0, "the page writing its own address asks nothing");
+  assert.equal(router.state.location.search, "?run=r1");
+  await view.act(async () => void router.navigate("/flows"));
+  assert.equal(dialogs(), 1, "another page asks");
+  await view.act(async () => button(document.body.querySelector<HTMLElement>('[role="alertdialog"][open]')!, "Stanna kvar")!.click());
+  await view.act(async () => setActive(false));
+  await view.act(async () => void router.navigate("/flows"));
+  assert.equal(dialogs(), 0, "nothing to lose, nothing asked");
+  assert.equal(router.state.location.pathname, "/flows");
   await view.unmount();
 });
 
@@ -854,16 +907,12 @@ test("signed out, Back still asks in a native dialog that is open, focused and a
   const { createElement } = await import("react");
   const { useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { SignedOutCover } = await import("../components/AuthGate");
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
   function Recording() {
     return useLeaveQuestion(true, "Det som spelats in finns kvar bland osända inspelningar.").question;
   }
-  await settle(); // the history step the last test's guard took back
-  const view = await mount(await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), []));
-  await view.act(async () => {
-    window.history.back();
-    await settle();
-  });
+  const { tree, router } = await signedIn(createElement(SignedOutCover, { signedOut: true, children: createElement(Recording) }), { entries: ["/flows", "/"] });
+  const view = await mount(tree);
+  await view.act(async () => void router.navigate(-1));
   const dialog = document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
   assert.ok(dialog, "asked");
   // Booleans only: a failed comparison of DOM nodes makes node print them, which takes minutes under jsdom.
@@ -882,7 +931,6 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
   const { LeaveContext, useLeaveQuestion } = await import("../components/flow/useLeaveQuestion");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
-  const navigated: string[] = [];
   let loggedOut = 0;
   const browserFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
@@ -901,13 +949,13 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
       leaving.question,
     );
   }
-  await settle(); // the history step the last test's guard took back
-  const view = await mount(await signedIn(createElement(Review), navigated));
+  const { tree, visited, router } = await signedIn(createElement(Review), { path: "/flows/f1", entries: ["/flows/f1"] });
+  const view = await mount(tree);
   const asked = () => document.body.querySelector<HTMLElement>('[role="alertdialog"][open]');
 
   await view.act(async () => view.container.querySelector<HTMLAnchorElement>('a[aria-label="Alla flöden"]')!.click());
   assert.ok(asked(), "Alla flöden asks");
-  assert.deepEqual(navigated, []);
+  assert.deepEqual(visited, [], "and the page is still here");
   await view.act(async () => button(asked()!, "Stanna kvar")!.click());
 
   const account = [...view.container.querySelectorAll("button")].find((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto"))!;
@@ -927,6 +975,8 @@ test("while leaving would lose typed work, the top bar's links and Logga ut ask 
     await settle();
   });
   assert.equal(loggedOut, 1, "signed out once the user chose to leave");
+  assert.equal(router.state.location.pathname, "/", "and gone to the start");
+  assert.ok(!asked(), "which the question did not ask about a second time");
   await view.unmount();
 });
 

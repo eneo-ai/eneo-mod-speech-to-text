@@ -1,5 +1,3 @@
-"use client";
-
 import type { ReactNode } from "react";
 import { AppShell } from "@astryxdesign/core/AppShell";
 import { TopNav } from "@astryxdesign/core/TopNav";
@@ -29,7 +27,7 @@ export function ModuleShell({
   /** A notice for the whole page, above the bar. */
   banner?: ReactNode;
   /**
-   * "auto": the page grows and the window scrolls, the bar with it (app/globals.css lets it scroll away). "fill": the
+   * "auto": the page grows and the window scrolls, the bar with it (styles/globals.css lets it scroll away). "fill": the
    * shell is the window's height, the bar stays and the main region scrolls itself, for a page whose panes scroll on
    * their own (a recording).
    */

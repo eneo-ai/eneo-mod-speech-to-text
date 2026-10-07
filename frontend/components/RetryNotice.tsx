@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useState } from "react";
 import { Button } from "@astryxdesign/core/Button";
 import { HStack } from "@astryxdesign/core/HStack";
@@ -20,19 +18,21 @@ export function RetryNotice({ wait }: { wait: RetryWait | null }) {
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [wait]);
-  const seconds = wait ? Math.max(0, Math.ceil((wait.retryAt - now) / 1_000)) : 0;
+  const seconds = wait?.retryAt != null ? Math.max(0, Math.ceil((wait.retryAt - now) / 1_000)) : 0;
 
   return (
     <VStack gap={3}>
       <VisuallyHidden as="p" role="status">
-        {wait ? "Det gick inte att skicka just nu. Försöker igen automatiskt." : ""}
+        {wait ? (wait.retryAt === null ? "Det går fortfarande inte att skicka." : "Det gick inte att skicka just nu. Försöker igen automatiskt.") : ""}
       </VisuallyHidden>
       {wait && (
         <HStack gap={3} wrap="wrap" align="center" justify="between">
           <Text as="p" type="supporting">
-            Det gick inte att skicka just nu. Försöker igen om {seconds} s.
+            {wait.retryAt === null
+              ? "Det går fortfarande inte att skicka. Försök igen när du vill."
+              : `Det gick inte att skicka just nu. Försöker igen om ${seconds} s.`}
           </Text>
-          <Button label="Försök nu" size="sm" onClick={wait.retryNow} />
+          <Button label={wait.retryAt === null ? "Försök igen" : "Försök nu"} size="sm" onClick={wait.retryNow} />
         </HStack>
       )}
     </VStack>

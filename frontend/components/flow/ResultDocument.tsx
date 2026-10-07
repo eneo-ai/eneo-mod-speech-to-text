@@ -1,5 +1,3 @@
-"use client";
-
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronUp, Download, Share2 } from "lucide-react";
 import { Button } from "@astryxdesign/core/Button";
@@ -13,13 +11,11 @@ import { Text } from "@astryxdesign/core/Text";
 import { VStack } from "@astryxdesign/core/VStack";
 import { runArtifactUrl } from "@/lib/api";
 import type { ResultFileView } from "@/lib/run-files";
-import { CopyStatus, useCopy } from "./CopyButton";
+import { useCopy } from "./CopyButton";
 import { Markdown } from "./Markdown";
-import styles from "./ResultDocument.module.css";
+import { ProblemAlert } from "./ProblemAlert";
 import { DownloadLink, FILE_ICONS, LAPTOP, OpenFile, useMediaMatch } from "./ResultFiles";
-
-// A result's headings go under the page's h1; the review's text does the same (ReviewView).
-export { remarkResultHeadings } from "./Markdown";
+import { pressing, useFileAccess } from "./useFileAccess";
 
 // The first part of a long text: whole blocks up to the first blank line past this many characters,
 const LEAD_CHARS = 700;
@@ -80,7 +76,7 @@ function FilePreview({ text }: { text: string }) {
       <Text as="p" id={`${id}-name`} type="supporting">
         Förhandsvisning av texten i filen
       </Text>
-      <article id={`${id}-text`} className={styles.prose}>
+      <article id={`${id}-text`}>
         <Markdown>{whole || !first ? text : first}</Markdown>
       </article>
       {first && (
@@ -114,19 +110,23 @@ type Share = { kind: "file"; file: File } | { kind: "text" };
  */
 function useShare(file: ResultFileView | null, url: string | null, text: string | null): Share | null {
   const [share, setShare] = useState<Share | null>(null);
+  // The file's own facts, not the object: the page builds its file views anew at every draw, and the read must not start over for them.
+  const name = file?.name ?? null;
+  const mimeType = file?.mimeType ?? "";
+  const sizeBytes = file?.sizeBytes ?? null;
   useEffect(() => {
-    if (typeof navigator === "undefined" || typeof navigator.share !== "function") return;
+    if (typeof navigator.share !== "function") return;
     const controller = new AbortController();
     const instead: Share | null = text ? { kind: "text" } : null;
-    const probe = file ? new File([""], file.name, { type: file.mimeType }) : null;
+    const probe = name !== null ? new File([""], name, { type: mimeType }) : null;
     const fileShareable =
-      file && url && probe && file.sizeBytes !== null && file.sizeBytes <= SHARE_LIMIT_BYTES &&
+      name !== null && url && probe && sizeBytes !== null && sizeBytes <= SHARE_LIMIT_BYTES &&
       typeof navigator.canShare === "function" && navigator.canShare({ files: [probe] });
     if (fileShareable) {
       fetch(url, { signal: controller.signal })
         .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
         .then((blob) => {
-          if (!controller.signal.aborted) setShare({ kind: "file", file: new File([blob], file.name, { type: blob.type || file.mimeType }) });
+          if (!controller.signal.aborted) setShare({ kind: "file", file: new File([blob], name, { type: blob.type || mimeType }) });
         })
         .catch(() => {
           if (!controller.signal.aborted) setShare(instead);
@@ -135,7 +135,7 @@ function useShare(file: ResultFileView | null, url: string | null, text: string 
       setShare(instead);
     }
     return () => controller.abort();
-  }, [file, url, text]);
+  }, [name, mimeType, sizeBytes, url, text]);
   return share;
 }
 
@@ -159,6 +159,7 @@ export function ResultDocument({
   file,
   title,
   preview = null,
+  textIsPreview = false,
   label = "Dokumentet",
 }: {
   flowId: string;
@@ -171,33 +172,42 @@ export function ResultDocument({
   title: string;
   /** Where there is no text: what the file says, see fileText. */
   preview?: string | null;
+  /** The text is only the beginning of the file-backed result. */
+  textIsPreview?: boolean;
   /** What the run makes, named ("Dokumentet", "Texten"; `outputWords`). */
   label?: string;
 }) {
   const download = file ? runArtifactUrl(flowId, runId, file.fileId) : null;
   const inline = file ? runArtifactUrl(flowId, runId, file.fileId, true) : null;
   const share = useShare(file, download, text);
+  const access = useFileAccess(flowId, runId);
   const [copyState, copy] = useCopy(text ?? "");
   const Kind = file ? FILE_ICONS[file.kind] : null;
   // The wide bar sits on the document's top edge; narrower, the actions come above it. One of them at a time.
   const wide = useMediaMatch(LAPTOP);
 
+  const downloadLabel = file ? `Ladda ner ${file.typeLabel === "Text" ? "textfilen" : file.typeLabel}` : null;
   const primaryDownload = file && download && (
     <Button
       as={DownloadLink}
       href={download}
       variant="primary"
       icon={<Icon icon={Download} />}
-      label={`Ladda ner ${file.typeLabel}, ${file.name}`}
+      label={`${downloadLabel}, ${file.name}`}
+      onClick={pressing(access, file.fileId, "download")}
     >
-      {`Ladda ner ${file.typeLabel}`}
+      {downloadLabel}
     </Button>
   );
   const copyLabel = copyState === "copied" ? "Kopierat" : copyState === "failed" ? "Kunde inte kopiera" : null;
+  const copyName = textIsPreview ? "Kopiera början" : "Kopiera texten";
+  const shareName = textIsPreview && share?.kind === "text" ? "Dela början" : "Dela";
+  // Copying the text is one of the more actions when the file is the filled one above it.
+  const copyMore = Boolean(text && file);
 
   return (
     <>
-      {/* Narrower: above the document, the download first, opening the file beside it, the rest under Fler alternativ. */}
+      {/* Narrower: above the document, the download first, opening the file beside it, then the more actions. */}
       {!wide && (
         <HStack wrap="wrap" vAlign="center" gap={2}>
           {primaryDownload}
@@ -208,25 +218,33 @@ export function ResultDocument({
               rel="noopener noreferrer"
               icon={<Icon icon="externalLink" />}
               label={`Öppna ${file.typeLabel} i en ny flik`}
+              onClick={pressing(access, file.fileId, "tab")}
             >
               {`Öppna ${file.typeLabel}`}
             </Button>
           )}
           {text && !file && (
-            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? "Kopiera texten"} onClick={copy} />
+            <Button variant="primary" icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           )}
-          {((text && file) || share) && (
+          {/* Two more actions fold into a menu; one is a button of its own, not a menu of one. */}
+          {copyMore && share ? (
             <DropdownMenu
               button={{ label: "Fler alternativ", isIconOnly: true, variant: "ghost", icon: <Icon icon="moreHorizontal" /> }}
               hasChevron={false}
               alignment="end"
             >
-              {text && file && <DropdownMenuItem icon="copy" label="Kopiera texten" onClick={() => void copy()} />}
-              {share && <DropdownMenuItem icon={Share2} label="Dela" onClick={() => void runShare(share, title, text)} />}
+              <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
+              <DropdownMenuItem icon={Share2} label={shareName} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
+          ) : copyMore ? (
+            <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
+          ) : (
+            share && <Button icon={<Icon icon={Share2} />} label={shareName} onClick={() => void runShare(share, title, text)} />
           )}
         </HStack>
       )}
+
+      {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
         {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
@@ -237,10 +255,10 @@ export function ResultDocument({
                 <Button
                   variant={file ? "ghost" : "primary"}
                   icon={<Icon icon="copy" />}
-                  label={copyLabel ?? "Kopiera texten"}
+                  label={copyLabel ?? copyName}
                   onClick={copy}
                 >
-                  {copyLabel ?? (file ? "Kopiera" : "Kopiera texten")}
+                  {copyLabel ?? (file && !textIsPreview ? "Kopiera" : copyName)}
                 </Button>
               )}
               {primaryDownload}
@@ -250,7 +268,7 @@ export function ResultDocument({
         )}
 
         {text && (
-          <VStack as="article" padding={6} className={styles.prose}>
+          <VStack as="article" padding={6}>
             <Markdown>{text}</Markdown>
           </VStack>
         )}
@@ -263,7 +281,7 @@ export function ResultDocument({
             <Item
               data-file-row
               startContent={<Icon icon={Kind} />}
-              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name /> : <Text>{file.name}</Text>}
+              label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
               description={file.meta}
             />
           </>
@@ -274,7 +292,6 @@ export function ResultDocument({
             <FilePreview text={preview} />
           </>
         )}
-        <CopyStatus state={copyState} />
       </Card>
     </>
   );

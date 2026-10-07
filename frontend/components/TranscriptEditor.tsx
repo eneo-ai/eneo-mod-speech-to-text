@@ -1,16 +1,19 @@
-"use client";
-
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Check, CheckCheck, ChevronDown, Play, Undo2, X } from "lucide-react";
+import { Check, CheckCheck, Play, Undo2, X } from "lucide-react";
 import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
+import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Icon } from "@astryxdesign/core/Icon";
+import { Section } from "@astryxdesign/core/Section";
 import { Selector } from "@astryxdesign/core/Selector";
+import { HStack, VStack } from "@astryxdesign/core/Stack";
 import { TextArea } from "@astryxdesign/core/TextArea";
+import { Toolbar } from "@astryxdesign/core/Toolbar";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { wordKey } from "@/lib/confirmed-words";
 import { formatClock } from "@/lib/format";
-import { playbackWordHighlights, needsSpeakerReview, speakerColorIndex, type TranscriptSegment } from "@/lib/transcript";
+import { modelSpeakerOf, playbackWordHighlights, needsSpeakerReview, speakerColorIndex, UNDECIDED_SPEAKER, type TranscriptSegment } from "@/lib/transcript";
+import { scrollBehavior } from "@/lib/motion";
 import { reviewPassages, type FileSpeakerReview } from "@/lib/speaker-review";
 import { applyCorrections, correctedSegmentText, EMPTY_CORRECTIONS, occurrencesForLine, withLineCorrection, type CorrectionSet } from "@/lib/transcript-corrections";
 import { confirmSpeakerSuggestions, pendingSpeakerSuggestions, displayedSourceOffset, replaceTranscriptText, anchorTextSelection, selectionSpeakerSuggestion, wholePassageSelection, assignTextSelection, displayedSelectionBounds, selectedTranscriptText, transcriptParagraphs, type DisplaySelectionSpan, type TextSelectionSpan } from "@/lib/transcript-selection";
@@ -30,7 +33,6 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
   onSeek: (file: number, time: number, autoplay?: boolean, end?: number) => void; onInteract: () => void;
 }) {
   const helpId = useId();
-  const detailsId = useId();
   const confirmAllNote = useId();
   const confirmSelectionNote = useId();
   const editorRoot = useRef<HTMLDivElement>(null);
@@ -65,7 +67,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     if (focus) requestAnimationFrame(() => {
       const first = next[0];
       const index = shown.findIndex((s, i) => first && displayedSelectionBounds(first, s, i, corrections));
-      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
+      body.current?.querySelector(`[data-text-span="${index}"]`)?.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     });
   }
   function captureSelection() {
@@ -252,7 +254,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     const words = (segment.words ?? []).filter((w) => w.charStart >= 0);
     const cuts = [...new Set([0, segment.text.length, ...bounds.flatMap((b) => [b.start, b.end]), ...words.flatMap((w) => [w.charStart, w.charEnd])])].filter((n) => n >= 0 && n <= segment.text.length).sort((a, b) => a - b);
     const uncertain = needsSpeakerReview(segment) && !segment.decision;
-    const label = !labelled ? "" : segment.decision === "unresolved" ? "Talare går inte att avgöra" : uncertain ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)} · Inte granskat` : displayName(segment.speaker);
+    const label = !labelled ? "" : segment.decision === "unresolved" ? UNDECIDED_SPEAKER : uncertain ? `Förslag: ${displayName(modelSpeakerOf(segment))} · Inte granskat` : displayName(segment.speaker);
     const said = label ? ` ${label}` : "";
     return <span key={index} data-text-span={index} data-segment-index={index}
       role="button" tabIndex={0} aria-disabled={!uncertain && !audioAvailable ? true : undefined}
@@ -297,46 +299,45 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
     </span>;
   }
   const speakerName = (segment: TranscriptSegment) =>
-    segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(segment.modelSpeaker === undefined ? segment.speaker : segment.modelSpeaker)}` : displayName(segment.speaker);
+    segment.decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(segment) && !segment.decision ? `Förslag: ${displayName(modelSpeakerOf(segment))}` : displayName(segment.speaker);
   return <div ref={editorRoot} className={styles.editor}>
-    <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Transkriptverktyg">
-      <div className={styles.row}>
+    <div ref={toolbar} className={styles.toolbar} role="group" aria-label="Verktyg för transkriberingen">
+      <HStack justify="between" align="center" wrap="wrap" gap={1}>
         <span aria-live="polite" className={styles.quiet}>{pending.length ? `${pending.length} ${pending.length === 1 ? "ställe" : "ställen"} att granska` : "Inga väntande talarbeslut"}</span>
-        <div className={styles.actions}>
-          <VisuallyHidden id={confirmAllNote}>Bekräfta återstående talarförslag i hela transkriptet. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
-          <Button size="sm" variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable || !allSuggestions.length}
+        <Toolbar label="Granska talarförslag" size="sm" className={styles.actionBar} startContent={<HStack wrap="wrap" gap={1} className={styles.actions}>
+          <VisuallyHidden id={confirmAllNote}>Bekräfta återstående talarförslag i hela transkriberingen. Varje passage behåller sin föreslagna talare. Dina tidigare beslut bevaras.</VisuallyHidden>
+          <Button variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable || !allSuggestions.length}
             label={`Bekräfta alla förslag${allSuggestions.length > 0 ? ` (${allSuggestions.length})` : ""}`} aria-describedby={confirmAllNote}
             onClick={() => confirmSuggestions(allSuggestions)} />
-          <Button size="sm" variant="ghost" isDisabled={!pending.length} onClick={() => navigate(-1)} label="Föregående passage som behöver talarbeslut">Föregående</Button>
-          <Button size="sm" variant="ghost" isDisabled={!pending.length} onClick={() => navigate(1)} label="Nästa passage som behöver talarbeslut">Nästa</Button>
-          <Button size="sm" variant="ghost" aria-expanded={details} aria-controls={detailsId} onClick={() => setDetails(!details)} label="Detaljer" endContent={<Icon icon={ChevronDown} />} />
-        </div>
-      </div>
+          <Button variant="ghost" isDisabled={!pending.length} onClick={() => navigate(-1)} label="Föregående passage som behöver talarbeslut">Föregående</Button>
+          <Button variant="ghost" isDisabled={!pending.length} onClick={() => navigate(1)} label="Nästa passage som behöver talarbeslut">Nästa</Button>
+        </HStack>} />
+      </HStack>
       {selection.length > 0 && <div className={styles.marked} role="group" aria-label="Markerade ord">
         <div className={styles.selected}><span className={styles.quote} title={selectedText}>“{selectedText}”</span><span className={styles.count}>{wordCount} ord</span>
           <Button size="sm" variant="ghost" isIconOnly icon={<Icon icon={X} />} label="Avmarkera" onClick={() => { setSelection([]); setEditing(false); window.getSelection()?.removeAllRanges(); body.current?.focus({ preventScroll: true }); }} /></div>
-        <div className={styles.tools}>
-          <Button size="sm" variant="ghost" icon={<Icon icon={Play} />} isDisabled={!audioAvailable} onClick={replay} label="Lyssna" />
-          {suggestion && <Button size="sm" variant="secondary" icon={<Icon icon={Check} />}
+        <Toolbar label="Åtgärder för markerade ord" size="sm" className={styles.actionBar} startContent={<HStack wrap="wrap" gap={1} className={styles.tools}>
+          <Button variant="ghost" icon={<Icon icon={Play} />} isDisabled={!audioAvailable} onClick={replay} label="Lyssna" />
+          {suggestion && <Button variant="secondary" icon={<Icon icon={Check} />}
             isDisabled={!editable || !audioAvailable || suggestionConfirmed}
             label={`${suggestionConfirmed ? "Bekräftad:" : "Bekräfta"} ${displayName(suggestion)}`}
             onClick={() => assign(suggestion)} />}
           {!suggestion && selectedSuggestions.length > 0 && <>
             <VisuallyHidden id={confirmSelectionNote}>Bekräfta talarförslagen i markeringen, var och en med sin föreslagna talare.</VisuallyHidden>
-            <Button size="sm" variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable} aria-describedby={confirmSelectionNote}
+            <Button variant="secondary" icon={<Icon icon={CheckCheck} />} isDisabled={!editable || !audioAvailable} aria-describedby={confirmSelectionNote}
               label={`Bekräfta förslagen i markeringen (${selectedSuggestions.length})`}
               onClick={() => confirmSuggestions(selectedSuggestions)} />
           </>}
-          <Selector className={styles.speakers} size="sm" variant="ghost" width="12rem" label="Tilldela talare" isLabelHidden placeholder="Tilldela talare…" value="" isDisabled={!editable}
+          <Selector className={styles.speakers} variant="ghost" width="12rem" label="Tilldela talare" isLabelHidden placeholder="Tilldela talare…" value="" isDisabled={!editable}
             options={[
               ...speakerOptions.map((speaker) => ({ value: speaker, disabled: !audioAvailable,
                 label: `${displayName(speaker)}${selectedSpans.length && selectedSpans.every((s) => s.speaker === speaker) ? " – bekräfta" : ""}` })),
               { value: "unresolved", label: "Går inte att avgöra" },
             ]}
             onChange={(value) => { if (value) assign(value === "unresolved" ? null : value); }} />
-          <Button size="sm" variant="ghost" isDisabled={!textEditable} onClick={() => { setDraft(selectedText); setEditing(true); onInteract(); }} label="Rätta text" />
-          <Button size="sm" variant="ghost" isDisabled={!editable || !hasDecision} onClick={() => assign(null, true)} label="Återställ talare" />
-        </div>
+          <Button variant="ghost" isDisabled={!textEditable} onClick={() => { setDraft(selectedText); setEditing(true); onInteract(); }} label="Rätta text" />
+          <Button variant="ghost" isDisabled={!editable || !hasDecision} onClick={() => assign(null, true)} label="Återställ talare" />
+        </HStack>} />
         {!audioAvailable && <p className={styles.quiet}>Ljudet saknas. Talarbeslut kan återställas eller lämnas oavgjorda.</p>}
         {!editable && <p className={styles.quiet}>Talargranskningen är skrivskyddad.</p>}
         {editing && <form onSubmit={(e) => { e.preventDefault(); saveText(); }} className={styles.correction}>
@@ -352,11 +353,13 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
       }} />}</div>
       {error && <Banner status="error" title={error} collapsible={false} />}
     </div>
-    <section id={detailsId} hidden={!details} aria-label="Talargranskning" className={styles.details}>
+    <Section variant="transparent" padding={4} paddingBlock={2} dividers={["bottom"]}>
+    <Collapsible trigger="Detaljer" isOpen={details} onOpenChange={setDetails}>
+    <VStack as="section" aria-label="Talargranskning" className={styles.details} gap={2}>
       <h2>Om markeringen</h2>
-      {wordless && <p>Inga transkriptord finns för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className={styles.inline} disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
+      {wordless && <p>Transkriberingen saknar ord för intervallet {formatClock(wordless.start * 1_000)}–{formatClock(wordless.end * 1_000)} i del {wordless.fileIndex + 1}. <button type="button" className={styles.inline} disabled={!audioAvailable} onClick={replay}>Lyssna på intervallet</button></p>}
       {new Set(selectedSources.map((s) => s.fileIndex)).size > 1 && <p>Markeringen omfattar flera ljudfiler. Lyssna spelar den första delen.</p>}
-      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(s.modelSpeaker === undefined ? s.speaker : s.modelSpeaker)))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriptet för att se talarförslag och granskningsstatus.</p>}
+      {selectedSources.length ? [...new Set(selectedSources.map((s) => displayName(modelSpeakerOf(s))))].map((name) => <p key={name}>Modellens förslag: {name}</p>) : !wordless && <p>Markera ord i transkriberingen för att se talarförslag och granskningsstatus.</p>}
       {selectedSpans.some(needsSpeakerReview) && <p>Överlappande tal har markerats här. {selectedSpans.some((s) => !s.decision) ? "Talaren behöver granskas." : "Talarbeslutet ändrar inte den ursprungliga överlappsmarkeringen."}</p>}
       {selectedSpans.some((s) => s.decision === "unresolved") && <p>Granskad: talare går inte att avgöra.</p>}
       {reviews.some((r) => r.overlapDetection === "unavailable") && <p>Överlappningsanalys saknas för del {reviews.filter((r) => r.overlapDetection === "unavailable").map((r) => r.fileIndex + 1).join(", ")}.</p>}
@@ -367,14 +370,16 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
           return <p key={key}>Ordet “{w.word}” kunde inte hittas säkert i ljudet. {onToggleConfirmed && <button type="button" className={styles.inline} onClick={() => onToggleConfirmed(key)}>{confirmedWords.has(key) ? "Ångra ordbekräftelse" : "Bekräfta att ordet stämmer"}</button>}</p>;
         }))}
       <details><summary>Överlapp i inspelningen</summary><ul>{reviews.flatMap((r) => r.overlaps).map((o) => <li key={`${o.fileIndex}:${o.id}`}><button type="button" className={styles.inline} disabled={!audioAvailable} onClick={() => { onSeek(o.fileIndex, Math.max(0, o.start - 1.5), true); onInteract(); }}>Del {o.fileIndex + 1}, {formatClock(o.start * 1_000)}–{formatClock(o.end * 1_000)}</button> · {o.detectedSpeakerCount} modellröster</li>)}</ul></details>
-    </section>
-    <p className={styles.note} id={helpId}><span className={styles.focusLabel}>Transkript</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<VisuallyHidden> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</VisuallyHidden></p>
-    {!shown.length && <p className={styles.empty}>Inga transkriptord finns. Använd Nästa för att lyssna på markerade överlapp.</p>}
+    </VStack>
+    </Collapsible>
+    </Section>
+    <p className={styles.note} id={helpId}><span className={styles.focusLabel}>Transkribering</span>. Klicka på ett understruket ord för att flytta uppspelningen. Starta med playknappen. {textEditable && "Skriv direkt i texten för att rätta den. "}Prickade passager markeras för granskning. Dra över ord för att markera en del.<VisuallyHidden> Använd Skift och piltangenter för att markera ord. Alt+T flyttar fokus till verktygen. Tab går vidare och Escape avmarkerar. Rätta text med knappen Rätta text.</VisuallyHidden></p>
+    {!shown.length && <p className={styles.empty}>Transkriberingen saknar ord. Använd Nästa för att lyssna på markerade överlapp.</p>}
     {reviews.some((r) => r.overlapDetection === "unavailable") && <p className={styles.note}>Överlappningsanalys saknas. Se Detaljer.</p>}
     {reviews.some((r) => r.detailsOmitted) && <p className={styles.note}>Överlappsdetaljer har utelämnats eftersom underlaget är för stort.</p>}
     <div ref={body} className={styles.text} onMouseUp={captureSelection} onTouchEnd={captureSelection} onKeyUp={captureSelection}
       onFocusCapture={(e) => { if (e.target !== body.current) { const target = e.target; requestAnimationFrame(() => target.scrollIntoView({ block: "nearest", behavior: "instant" })); } }}
-      contentEditable suppressContentEditableWarning role="textbox" aria-label="Transkript, markera ord för att redigera" aria-multiline="true" aria-readonly={!textEditable} aria-describedby={helpId} aria-keyshortcuts="Alt+T" tabIndex={0}
+      contentEditable suppressContentEditableWarning role="textbox" aria-label="Transkribering, markera ord för att redigera" aria-multiline="true" aria-readonly={!textEditable} aria-describedby={helpId} aria-keyshortcuts="Alt+T" tabIndex={0}
       onCopy={(e) => { if (selection.length && window.getSelection()?.isCollapsed) { e.preventDefault(); e.clipboardData.setData("text/plain", selectedText); } }}
       onPaste={(e) => { e.preventDefault(); typeText(e.clipboardData.getData("text/plain")); }}
       onCut={(e) => { e.preventDefault(); const native = window.getSelection(); if (native && !native.isCollapsed) { e.clipboardData.setData("text/plain", native.toString()); typeText(""); } }} onDrop={(e) => e.preventDefault()}
@@ -390,7 +395,7 @@ export function TranscriptEditor({ raw, shown, corrections = EMPTY_CORRECTIONS, 
         const textIndices = indices.filter((i) => shown[i].text.trim());
         if (!textIndices.length) return null;
         const first = shown[textIndices[0]];
-        const suggested = first.modelSpeaker === undefined ? first.speaker : first.modelSpeaker;
+        const suggested = modelSpeakerOf(first);
         const same = textIndices.every((i) => shown[i].speaker === first.speaker && shown[i].decision !== "unresolved");
         const certain = same && textIndices.every((i) => !needsSpeakerReview(shown[i]) || shown[i].decision === "confirmed");
         const name = certain ? displayName(first.speaker) : same && suggested ? `Förslag: ${displayName(suggested)}` : [...new Set(textIndices.map((i) => shown[i].decision === "unresolved" ? "Oavgjord" : needsSpeakerReview(shown[i]) && !shown[i].decision ? `Förslag: ${displayName(shown[i].speaker)}` : displayName(shown[i].speaker)))].join(", ");

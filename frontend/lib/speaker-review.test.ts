@@ -54,7 +54,7 @@ test("file-scoped collisions and completely wordless intervals survive", () => {
   assert.notEqual(passages[0].key, passages[1].key);
   assert.notEqual(overlapKey(0, "x"), overlapKey(1, "x"));
   const html = render(meta);
-  assert.ok(html.includes("Inga transkriptord finns"));
+  assert.ok(html.includes("Transkriberingen saknar ord"));
   assert.ok(html.includes("2 ställen att granska"));
 });
 
@@ -135,7 +135,7 @@ test("all intersecting rows stay active, including spans without word timings", 
 
 test("stale and unsupported versions fail closed; v2 reads remain compatible", () => {
   const response = { ...EMPTY_CORRECTIONS, revision: 1, stale: false };
-  assert.throws(() => correctionsFromResponse({ ...response, stale: true }, [raw]), /äldre transkript/);
+  assert.throws(() => correctionsFromResponse({ ...response, stale: true }, [raw]), /äldre transkribering/);
   assert.throws(() => correctionsFromResponse({ ...response, schema_version: 4 }, [raw]), /stöds inte/);
   const v2 = withSpeakerEdit(EMPTY_CORRECTIONS, 0, "SPEAKER_00", "SPEAKER_01");
   const set = correctionsFromResponse({ ...v2, stale: false, revision: 1 }, [raw]);

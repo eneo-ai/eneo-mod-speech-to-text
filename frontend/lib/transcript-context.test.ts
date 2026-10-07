@@ -6,14 +6,14 @@ import type { FlowRunStep } from "./api";
 import { finishedRun } from "./run-progress";
 import { loadTranscriptContext } from "./transcript-context";
 
-const FLOW = "5c9d1a27-836a-4a37-a8b6-9180e5eb9aae";
-const RUN = "13fc3e4f-5182-44ea-996b-4c08a2f16c42";
-const STEP = "5d5dc851-8aec-4c81-8cab-cebdbdbb4a92";
+const FLOW = "00000000-0000-4000-8000-000000000001";
+const RUN = "00000000-0000-4000-8000-000000000002";
+const STEP = "00000000-0000-4000-8000-000000000005";
 const HASH = "a".repeat(64);
 const realSteps = fixture.steps as unknown as FlowRunStep[];
 
 /** Eneo behind the module's proxy: `pages` answers the transcript source by start index; the rest is quiet. */
-function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, unknown> = {}, files: Record<string, string> = {}) {
+function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, unknown> = {}, files: Record<string, string> = {}, wordsStatus = 404) {
   const original = globalThis.fetch;
   const urls: string[] = [];
   const json = (body: unknown, status = 200) =>
@@ -26,6 +26,7 @@ function stubEneo(t: { after: (fn: () => void) => void }, pages: Record<number, 
       return page ? json(page) : json({ detail: "fel" }, 500);
     }
     if (address.pathname.endsWith("/transcript-corrections/")) return json([]);
+    if (address.pathname.endsWith("/transcript-words/")) return json({ detail: "fel" }, wordsStatus);
     const artifact = /\/artifacts\/([^/]+)\/content$/.exec(address.pathname);
     if (artifact) {
       const content = files[artifact[1]];
@@ -47,7 +48,7 @@ test("a real transcription without segments reaches the result page: its text, i
 
   assert.equal(ctx.correctionProblem, null);
   assert.equal(ctx.stepId, STEP);
-  assert.deepEqual(ctx.fileIds, ["606abea0-e4fe-4e2a-9d33-0a6a03928cdc"], "the recording to play along");
+  assert.deepEqual(ctx.fileIds, ["00000000-0000-4000-8000-000000000007"], "the recording to play along");
   assert.deepEqual(
     ctx.segments.map((segment) => [segment.fileIndex, segment.start, segment.end]),
     [[0, 0, 24]],
@@ -97,6 +98,22 @@ test("segments come from Eneo's transcript source, page by page, with its hash f
   );
 });
 
+test("a step with no word times is normal, and word times that cannot be read are said, so nothing is approved without the uncertain words", async (t) => {
+  const step = structuredClone(realSteps[0]);
+  const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
+    .transcription;
+  Object.assign(transcription.source.bounds, { segments_count: 1, segments_omitted_reason: null });
+  const pages = {
+    0: { status: "present", source_hash: HASH, next_segment_index: null, segments: [{ segment_index: 0, file_index: 0, start: 0, end: 2, speaker: "SPEAKER_00", text: "Välkomna." }] },
+  };
+  stubEneo(t, pages, {}, 404);
+  assert.equal((await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] })).correctionProblem, null, "Eneo stored no word times: the transcript is as it is");
+  stubEneo(t, pages, {}, 500);
+  const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] });
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriberingens ordtider/);
+  assert.equal(ctx.segments.length, 1, "the text is still there to read");
+});
+
 test("a transcript source that cannot be read shows the text and says so", async (t) => {
   const step = structuredClone(realSteps[0]);
   const transcription = (step.input_payload_json as { transcription: { source: { bounds: Record<string, unknown> } } })
@@ -106,7 +123,7 @@ test("a transcript source that cannot be read shows the text and says so", async
 
   const ctx = await loadTranscriptContext({ flowId: FLOW, runId: RUN, steps: [step] });
 
-  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriptets underlag/, "so its exports stay off (F1)");
+  assert.match(ctx.correctionProblem ?? "", /^Kunde inte läsa transkriberingens underlag/, "so its exports stay off (F1)");
   assert.equal(ctx.segments.length, 1, "the step's own text is still there to read");
 });
 

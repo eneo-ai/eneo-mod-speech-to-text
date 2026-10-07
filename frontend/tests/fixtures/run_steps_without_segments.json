@@ -1,14 +1,14 @@
 {
- "_comment": "GET /api/v1/flows/5c9d1a27-836a-4a37-a8b6-9180e5eb9aae/runs/13fc3e4f-5182-44ea-996b-4c08a2f16c42/steps/ on the review Eneo, 2026-09-23: a transcription without segments (source omitted, reason 2). The second step is trimmed to what the page reads.",
+ "_comment": "The shape of GET /api/v1/flows/<flow>/runs/<run>/steps/ for a transcription without segments (source omitted, reason 2). The second step is trimmed to what the page reads. The ids are made up.",
  "steps": [
   {
-   "id": "1a463453-e8fc-400f-949d-de24151c21c8",
-   "flow_run_id": "13fc3e4f-5182-44ea-996b-4c08a2f16c42",
-   "flow_id": "5c9d1a27-836a-4a37-a8b6-9180e5eb9aae",
-   "tenant_id": "7a4a6b6b-9e7a-40d9-876a-87c870760565",
-   "step_id": "5d5dc851-8aec-4c81-8cab-cebdbdbb4a92",
+   "id": "00000000-0000-4000-8000-000000000003",
+   "flow_run_id": "00000000-0000-4000-8000-000000000002",
+   "flow_id": "00000000-0000-4000-8000-000000000001",
+   "tenant_id": "00000000-0000-4000-8000-000000000004",
+   "step_id": "00000000-0000-4000-8000-000000000005",
    "step_order": 1,
-   "assistant_id": "5618c951-d43e-4aa5-99c1-6118f7a19311",
+   "assistant_id": "00000000-0000-4000-8000-000000000006",
    "status": "completed",
    "input_payload_json": {
     "rag": {
@@ -39,10 +39,10 @@
      "text": "### 0:00 - 0:24\n\nVälkomna till nämndens möte den 23 september. Närvarande är ordföranden Anna Berg och ledamöterna Erik Lund och Sara Holm. Första punkten gäller budgeten för nästa år. Ekonomichefen föreslår att ramen höjs med 2 Nämnden beslutar att godpunkten gäller den nya cykelbanan vid skolan. Nämnden beslutar att skicka ärendet på remiss.",
      "files": [
       {
-       "id": "606abea0-e4fe-4e2a-9d33-0a6a03928cdc",
+       "id": "00000000-0000-4000-8000-000000000007",
        "name": "inspelning-2026-09-23-1956.webm",
        "size": 91977,
-       "checksum": "99f6c6d9be81d6c694e9b7ce88958c5075f05bdff0f9487e2e331b7a2c59efc1",
+       "checksum": "0000000000000000000000000000000000000000000000000000000000000001",
        "has_text": false,
        "mimetype": "audio/webm",
        "file_type": "audio",
@@ -52,14 +52,14 @@
       }
      ],
      "file_ids": [
-      "606abea0-e4fe-4e2a-9d33-0a6a03928cdc"
+      "00000000-0000-4000-8000-000000000007"
      ],
      "files_count": 1,
      "capture_mode": "runtime_input",
      "input_format": "audio",
      "source_headers": [
       {
-       "file_id": "606abea0-e4fe-4e2a-9d33-0a6a03928cdc",
+       "file_id": "00000000-0000-4000-8000-000000000007",
        "has_text": false,
        "file_name": "inspelning-2026-09-23-1956.webm",
        "text_length": null,
@@ -86,17 +86,17 @@
        "detail_omitted_reason": null,
        "segments_omitted_reason": 2
       },
-      "run_id": "13fc3e4f-5182-44ea-996b-4c08a2f16c42",
-      "step_id": "5d5dc851-8aec-4c81-8cab-cebdbdbb4a92",
+      "run_id": "00000000-0000-4000-8000-000000000002",
+      "step_id": "00000000-0000-4000-8000-000000000005",
       "version": 1,
       "attempt_no": 1,
       "source_hash": null
      },
      "file_ids": [
-      "606abea0-e4fe-4e2a-9d33-0a6a03928cdc"
+      "00000000-0000-4000-8000-000000000007"
      ],
      "language": "auto",
-     "model_id": "fdba254c-abae-43e5-9e03-a3248b0c1b1f",
+     "model_id": "00000000-0000-4000-8000-000000000008",
      "speakers": [],
      "alignment": null,
      "elapsed_ms": 1775,
@@ -116,7 +116,7 @@
     "effective_prompt_truncated": false
    },
    "runtime_input_file_ids": [
-    "606abea0-e4fe-4e2a-9d33-0a6a03928cdc"
+    "00000000-0000-4000-8000-000000000007"
    ],
    "output_payload_json": {
     "text": "### 0:00 - 0:24\n\nVälkomna till nämndens möte den 23 september. Närvarande är ordföranden Anna Berg och ledamöterna Erik Lund och Sara Holm. Första punkten gäller budgeten för nästa år. Ekonomichefen föreslår att ramen höjs med 2 Nämnden beslutar att godpunkten gäller den nya cykelbanan vid skolan. Nämnden beslutar att skicka ärendet på remiss.",
@@ -140,7 +140,7 @@
    "num_tokens_output": 0,
    "error_code": null,
    "error_message": null,
-   "flow_step_execution_hash": "e11ab8d6e9a3043d19854c40897ecb213d282612a6ba71138a3136d182c42ea0",
+   "flow_step_execution_hash": "0000000000000000000000000000000000000000000000000000000000000002",
    "diagnostics": [
     {
      "code": "flow_underlag_summary",
@@ -160,10 +160,10 @@
    "input_text_aliases": []
   },
   {
-   "id": "2f2bb761-38ef-42c3-95ef-c0e2925fabb6",
-   "flow_run_id": "13fc3e4f-5182-44ea-996b-4c08a2f16c42",
-   "flow_id": "5c9d1a27-836a-4a37-a8b6-9180e5eb9aae",
-   "step_id": "9889239d-bd07-416b-9485-d5c08774e33f",
+   "id": "00000000-0000-4000-8000-000000000009",
+   "flow_run_id": "00000000-0000-4000-8000-000000000002",
+   "flow_id": "00000000-0000-4000-8000-000000000001",
+   "step_id": "00000000-0000-4000-8000-000000000010",
    "step_order": 2,
    "status": "completed",
    "started_at": "2026-09-23T17:57:30.463357Z",

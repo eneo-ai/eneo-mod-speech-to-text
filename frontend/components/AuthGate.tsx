@@ -1,18 +1,16 @@
-"use client";
-
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Center } from "@astryxdesign/core/Center";
-import { Spinner } from "@astryxdesign/core/Spinner";
-import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { useRouter } from "next/navigation";
-import { Brand } from "@/components/Brand";
+import { useNavigate } from "react-router";
+import { LoadingShell } from "@/components/LoadingShell";
+import { ModuleUnreachable } from "@/components/ModuleUnreachable";
 import { SESSION_CHANNEL, SessionEndWarning } from "@/components/SessionEndWarning";
 import styles from "@/components/AuthGate.module.css";
-import { ModuleShell } from "@/kit/ModuleShell";
-import { authStatus, type AuthMode, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { authStatus, type AuthStatus, type AuthenticatedUser } from "@/lib/api";
+import { browserStorage } from "@/lib/browser-storage";
+import { keepOnlyConfirmedWordsOf } from "@/lib/confirmed-words";
 import { browserDrafts, keepOnlyDraftsOf } from "@/lib/drafts";
 import { loginState, type Question } from "@/lib/login-state";
 import { keepSessionAlive } from "@/lib/session-keepalive";
+import { PHASE_HEADING } from "@/routes/RouteEffects";
 import { sessionUser } from "@/lib/user-identity";
 
 // Exported for component tests; pages get the user through AuthGate.
@@ -24,8 +22,8 @@ export const SignedOutSlot = createContext<HTMLElement | null>(null);
 /**
  * Whether the page's login has ended. A native dialog of the page is in the top layer and escapes the cover's inert,
  * hidden wrapper: it stays visible and focusable above the page. So each page dialog closes itself while this holds
- * and opens again after the new login, with its state kept above it (design decision D6, point 3). Taking this away
- * fails the cover specs of every dialog (tests/e2e/session-cover.spec.ts), measured on the merged tip.
+ * and opens again after the new login, with its state kept above it. Taking this away fails the cover specs of every
+ * dialog (tests/e2e/session-cover.spec.ts).
  */
 export function useSignedOut(): boolean {
   return useSyncExternalStore(loginState.subscribe, () => loginState.signedOut, () => false);
@@ -73,7 +71,7 @@ export function SignedOutCover({
       const from = lost.current?.from ?? null;
       lost.current = null;
       const onPage = (element: HTMLElement | null) => !!element?.isConnected && !!container?.contains(element);
-      const heading = container?.querySelector<HTMLElement>("[data-phase-heading], h1[tabindex]") ?? null;
+      const heading = container?.querySelector<HTMLElement>(PHASE_HEADING) ?? null;
       (onPage(from) ? from : onPage(before) ? before : heading)?.focus();
     };
   }
@@ -85,15 +83,16 @@ export function SignedOutCover({
 }
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [user, setUser] = useState<AuthenticatedUser | null>(null);
   // When the login ends, and how a new login moves that.
   const [endsAt, setEndsAt] = useState<number | null>(null);
-  const [mode, setMode] = useState<AuthMode | null>(null);
-  const renewedRef = useRef(() => {});
   const signedOut = useSignedOut();
   const otherUser = useSyncExternalStore(loginState.subscribe, () => loginState.otherUser, () => null);
   const [controls, setControls] = useState<HTMLElement | null>(null);
+  // The first read did not come back: neither signed in nor out is known, so the address stays.
+  const [unreachable, setUnreachable] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const focusBack = useRef<((before: HTMLElement | null) => void) | null>(null);
 
   useEffect(() => {
@@ -111,7 +110,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         const next = Date.now() + s.session_ends_in * 1000;
         // The same end read again moves by the request's second or so; only a new login moves it far.
         setEndsAt((current) => (current !== null && Math.abs(next - current) < 60_000 ? current : next));
-        setMode(s.auth_mode);
       }
       return true;
     };
@@ -134,29 +132,27 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         (s) => s && keepAlive(s),
         () => undefined,
       );
-    // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel), or an
-    // access code was entered in the dialog: a new login is announced, also when the page was never covered, so what
-    // went out on the old session is obsolete at once, and the status read that follows decides.
+    // A login window of the module says it is done (the page it lands on, /inloggad, tells the session channel): a new
+    // login is announced, also when the page was never covered, so what went out on the old session is obsolete at
+    // once, and the status read that follows decides.
     const renewed = () => {
       loginState.loginWindowDone();
       recheck();
     };
-    renewedRef.current = renewed;
     const onVisible = () => document.visibilityState === "visible" && recheck();
 
     read()
       .then((s) => {
         if (!s) return;
-        // I access_code-läget saknar sessionen användare; sessionUser ger då
-        // en platshållare så vi inte studsar tillbaka till loginsidan i en loop.
         const sessionIdentity = sessionUser(s);
         if (!sessionIdentity) {
-          router.replace("/");
+          void navigate("/", { replace: true });
           return;
         }
         setUser(sessionIdentity);
         // Someone else's unsent details and edits are not this person's to see.
         keepOnlyDraftsOf(browserDrafts(), sessionIdentity.id);
+        keepOnlyConfirmedWordsOf(browserStorage(), sessionIdentity.id);
         endPage = loginState.begin(sessionIdentity, recheck);
         keepAlive(s);
         // From here a login renewed in its own window (or another tab) moves the end for this page too.
@@ -165,7 +161,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
         document.addEventListener("visibilitychange", onVisible);
       })
       .catch(() => {
-        if (!cancelled) router.replace("/");
+        if (!cancelled) setUnreachable(true);
       });
 
     return () => {
@@ -175,18 +171,20 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       channel?.close();
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [router]);
+  }, [navigate, attempt]);
 
-  if (!user) {
+  if (unreachable) {
     return (
-      <ModuleShell label="Tal till text" heading={<Brand />}>
-        <VisuallyHidden as="h1">Tal till text</VisuallyHidden>
-        <Center minHeight="60dvh">
-          <Spinner size="lg" aria-label="Laddar" />
-        </Center>
-      </ModuleShell>
+      <ModuleUnreachable
+        retried={attempt > 0}
+        onRetry={() => {
+          setUnreachable(false);
+          setAttempt((count) => count + 1);
+        }}
+      />
     );
   }
+  if (!user) return <LoadingShell />;
 
   return (
     <AuthenticatedUserContext.Provider value={user}>
@@ -197,13 +195,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
       </SignedOutSlot.Provider>
       <SessionEndWarning
         endsAt={endsAt}
-        mode={mode}
         signedOut={signedOut}
         owner={user}
         otherUser={otherUser}
         controlsRef={setControls}
         onFocusBack={(before) => focusBack.current?.(before)}
-        onRenewed={() => renewedRef.current()}
       />
     </AuthenticatedUserContext.Provider>
   );

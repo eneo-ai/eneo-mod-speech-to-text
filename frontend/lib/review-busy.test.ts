@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
-import type { FlowPublished, FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
+import type { FlowRunPublic, FlowRunReviewCheckpointPublic, ReviewEditedValue } from "./api";
 import { button, cleanup, installDom, mount, type } from "./test-dom";
+import { withRouter } from "./test-router";
 
 installDom();
 afterEach(async () => {
@@ -81,22 +82,22 @@ const speakers: FlowRunReviewCheckpointPublic = {
 
 const rejected: string[] = [];
 
+/** A newer state of the pause reaching the page, as the page's reading of Eneo brings one (another tab approved it). */
+let showPause: (checkpoint: FlowRunReviewCheckpointPublic) => void = () => undefined;
+
 /** The review on the page; with `saves`, Spara ändring goes through and the page holds the saved text. */
 async function review(start = pause, { saves = false } = {}) {
   const { createElement, useState } = await import("react");
-  const { AppRouterContext } = await import("next/dist/shared/lib/app-router-context.shared-runtime");
   const { AuthenticatedUserContext } = await import("../components/AuthGate");
   const { ReviewView } = await import("../components/flow/ReviewView");
   const { continueFromPause } = await import("./review-continue");
-  const router = { push: () => undefined, replace: () => undefined, prefetch: () => undefined, back: () => undefined, forward: () => undefined, refresh: () => undefined } as unknown as import("next/dist/shared/lib/app-router-context.shared-runtime").AppRouterInstance;
   const run = { id: "run-1", flow_id: "flow-1", status: "awaiting_review" } as FlowRunPublic;
-  const published = { id: "flow-1", name: "Nämndmöte till rapport", published_version: 3 } as FlowPublished;
   // The page's own wiring: the pause's newer states reach the view, a failure says why.
   function Page() {
     const [checkpoint, setCheckpoint] = useState(start);
+    showPause = setCheckpoint;
     return createElement(ReviewView, {
       flowId: "flow-1",
-      published,
       checkpoint,
       runState: { run, steps: [] },
       runError: null,
@@ -121,13 +122,21 @@ async function review(start = pause, { saves = false } = {}) {
     });
   }
   return mount(
-    createElement(
-      AppRouterContext.Provider,
-      { value: router },
-      createElement(AuthenticatedUserContext.Provider, { value: { id: "user-1", email: "anna@example.se" } }, createElement(Page)),
-    ),
+    withRouter(createElement(AuthenticatedUserContext.Provider, { value: { id: "user-1", email: "anna@example.se" } }, createElement(Page))).tree,
   );
 }
+
+test("speaker review exposes a named, readable list without adding keyboard stops", async (t) => {
+  eneo(t);
+  const view = await review(speakers);
+  const list = view.container.querySelector('ul[aria-label="Talare"]');
+  assert.ok(list, "the speaker collection has an accessible name");
+  const entries = Array.from(list.querySelectorAll("li"));
+  assert.equal(entries.length, 2);
+  assert.match(entries[0]!.textContent ?? "", /Talare 1.*Anna Berg/);
+  assert.match(entries[1]!.textContent ?? "", /Talare 2.*Inget namn/);
+  assert.equal(list.querySelectorAll('button, a, input, [tabindex="0"]').length, 0);
+});
 
 test("while Spara och fortsätt is under way the text cannot change, so nothing typed then is lost when the save's answer drops the draft", async (t) => {
   const server = eneo(t);
@@ -180,21 +189,19 @@ test("a rejection cannot start while Spara och fortsätt is under way, nor end i
   await view.act(async () => button(view.container, "Redigera")!.click());
   const field = () => view.container.querySelector("textarea")!;
   await view.act(async () => type(field(), "First edit"));
-  await view.act(async () => button(view.container, "Avvisa")!.click());
-  const reason = () => [...view.container.querySelectorAll("textarea")].find((el) => el !== field())!;
-  await view.act(async () => type(reason(), "Fel möte."));
 
   await view.act(async () => {
     button(view.container, "Spara och fortsätt")!.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
   assert.deepEqual(server.calls, ["edit"], "the save is under way");
-  const confirm = button(view.container, "Bekräfta avvisning")!;
-  assert.equal(confirm.disabled, true, "no second mutation while one is in flight");
+  const avvisa = button(view.container, "Avvisa")!;
+  assert.equal(avvisa.disabled, true, "no second mutation while one is in flight");
   await view.act(async () => {
-    confirm.click();
+    avvisa.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+  assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form opens");
   assert.deepEqual(rejected, [], "the rejection did not start");
   assert.equal(field().readOnly, true, "still locked: only the save's own end unlocks it");
   await view.act(async () => type(field(), "Newer text."));
@@ -255,28 +262,46 @@ test("who is who: Avvisa and Godkänn och fortsätt sit in the speaker card unde
   const approve = button(view.container, "Godkänn och fortsätt")!;
   assert.ok(card.contains(approve) && card.contains(button(view.container, "Avvisa")));
   assert.equal(approve.closest(".sticky"), null, "not docked over the transcript");
+  const transcript = view.container.querySelector('section[aria-label="Transkribering"], section[aria-label="Inspelning och transkribering"]')!;
+  assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
   await view.act(async () => button(view.container, "Avvisa")!.click());
   assert.ok(card.contains(button(view.container, "Bekräfta avvisning")), "the reason form opens there too");
-  const transcript = view.container.querySelector('section[aria-label="Transkript"], section[aria-label="Inspelning och transkript"]')!;
-  assert.ok(approve.compareDocumentPosition(transcript) & window.Node.DOCUMENT_POSITION_FOLLOWING, "before the transcript");
 });
 
-test("an approved pause is final: a reason typed before approving cannot reject it, also when the resume failed", async (t) => {
+test("the decision is a pair, Avvisa secondary then Godkänn och fortsätt primary, both large; the reason form takes its place, with a destructive confirm", async (t) => {
+  eneo(t);
+  const view = await review();
+  const looks = (action: HTMLButtonElement | null) => [action?.getAttribute("data-variant"), action?.getAttribute("data-size")];
+  const avvisa = button(view.container, "Avvisa")!;
+  const approve = button(view.container, "Godkänn och fortsätt")!;
+  assert.deepEqual([looks(avvisa), looks(approve)], [["secondary", "lg"], ["primary", "lg"]]);
+  assert.ok(avvisa.nextElementSibling === approve, "side by side, Avvisa first");
+  await view.act(async () => avvisa.click());
+  // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
+  assert.ok(!button(view.container, "Avvisa") && !button(view.container, "Godkänn och fortsätt"), "the open form is the one choice on screen");
+  assert.deepEqual(looks(button(view.container, "Bekräfta avvisning")), ["destructive", "md"]);
+  await view.act(async () => button(view.container, "Avbryt")!.click());
+  assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"), "Avbryt brings the pair back");
+});
+
+test("an approved pause is final: a reason typed before the approval reached the page cannot reject it, also when the resume failed", async (t) => {
   rejected.length = 0;
   const server = eneo(t, { approves: true });
   const view = await review();
   await view.act(async () => button(view.container, "Avvisa")!.click());
   await view.act(async () => type(view.container.querySelector<HTMLTextAreaElement>('textarea[placeholder="Skäl …"]')!, "Fel möte."));
-  await view.act(async () => {
-    button(view.container, "Godkänn och fortsätt")!.click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
-  });
-  assert.deepEqual(server.calls, ["approve", "resume"], "approved, then the resume failed");
-  assert.ok(button(view.container, "Fortsätt"), "the one way on is Fortsätt");
+  await view.act(async () => showPause({ ...pause, state: "approved", revision: 2 }));
   // Booleans: a failed comparison of a DOM node makes node print it, which takes minutes under jsdom.
   assert.ok(!button(view.container, "Bekräfta avvisning"), "no rejection of an approved pause");
   assert.ok(!view.container.querySelector('textarea[placeholder="Skäl …"]'), "no reason form");
   assert.ok(!button(view.container, "Avvisa"), "no Avvisa");
+  await view.act(async () => {
+    button(view.container, "Fortsätt")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+  assert.deepEqual(server.calls, ["resume"], "only resumed, and the resume failed");
+  assert.ok(button(view.container, "Fortsätt"), "the one way on is still Fortsätt");
+  assert.ok(!button(view.container, "Avvisa") && !button(view.container, "Bekräfta avvisning"));
   assert.deepEqual(rejected, []);
 });
 
@@ -294,7 +319,7 @@ test("a pause whose payload holds no text shows what it holds, and one with no p
 test("who is who with no speaker says so, and the decision is still shown", async (t) => {
   eneo(t);
   const view = await review({ ...speakers, current_payload_json: { speaker_mapping: { inventory: [] }, structured: { speakers: [] } } });
-  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriptet/);
+  assert.match(view.container.textContent ?? "", /Inga talare kunde urskiljas i transkriberingen/);
   assert.equal(button(view.container, "Namnge talarna"), null, "nobody to name");
   assert.ok(button(view.container, "Avvisa") && button(view.container, "Godkänn och fortsätt"));
 });

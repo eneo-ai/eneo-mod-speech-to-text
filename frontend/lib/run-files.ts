@@ -1,7 +1,6 @@
 /**
- * A run's generated files as people see them: the name Eneo gave each file
- * (eneo-ewq1 makes it readable at the source), its type and size in Swedish,
- * and whether the browser's own viewer can show it. The page names nothing.
+ * A run's generated files as people see them: the name Eneo gave each file, its type and size in Swedish, and whether
+ * the browser's own viewer can show it.
  */
 
 import type { FlowRunStep, ResultFile } from "./api";
@@ -81,7 +80,7 @@ export function transcriptFileName(flowName: string, createdAt?: string): string
   const created = createdAt ? new Date(createdAt) : null;
   const day = created && !Number.isNaN(created.getTime()) ? created.toISOString().slice(0, 10) : "";
   const base = [name, day].filter(Boolean).join(" ");
-  return base ? `${base} transkript.txt` : "transkript.txt";
+  return base ? `${base} transkribering.txt` : "transkribering.txt";
 }
 
 /**

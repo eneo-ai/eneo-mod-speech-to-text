@@ -16,12 +16,11 @@ from datetime import datetime, timedelta, timezone
 
 os.environ.setdefault("ENEO_BACKEND_URL", "https://eneo.example.test")
 os.environ.setdefault("ENEO_PUBLIC_URL", "https://eneo.example.test")
-os.environ.setdefault("MODULE_PUBLIC_URL", "https://module.example.test")
+os.environ.setdefault("MODULE_PUBLIC_URL", "http://localhost:3002")
 os.environ.setdefault("MODULE_KEY", "speech-to-text")
 os.environ.setdefault("ENEO_API_KEY", "test-key")
 os.environ.setdefault("SESSION_SECRET", "x" * 48)
 os.environ.setdefault("COOKIE_SECURE", "false")
-os.environ.setdefault("AUTH_MODE", "eneo_sso")
 
 import httpx  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -31,7 +30,7 @@ from websockets.exceptions import InvalidStatus  # noqa: E402
 from app import main  # noqa: E402
 from app.module_auth import EneoSsoSession, ModuleUser, SESSION_COOKIE  # noqa: E402
 
-ORIGIN = "https://module.example.test"
+ORIGIN = "http://localhost:3002"
 FLOW, STEP = "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222"
 # One distinct dummy per secret that is on the wire, so a hit says which one leaked.
 FILE_TOKEN = "SENTINEL-signed-file-token"
@@ -224,8 +223,8 @@ class LogTests(unittest.TestCase):
         cases = {
             "succeeds": (lambda request: httpx.Response(200, json={"id": "file-1"}), 200, None),
             "is refused": (lambda request: httpx.Response(422, json={"detail": f"bad {ACCESS}"}), 422, None),
-            "times out": (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")), 504, "Upload timed out: url=https://eneo.example.test/api/v1/flows/flow-1/files/"),
-            "is unreachable": (lambda request: (_ for _ in ()).throw(httpx.ConnectError("connection refused")), 502, "Upload failed: url=https://eneo.example.test/api/v1/flows/flow-1/files/"),
+            "times out": (lambda request: (_ for _ in ()).throw(httpx.ReadTimeout("read timed out")), 504, "Upload timed out: url=https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/"),
+            "is unreachable": (lambda request: (_ for _ in ()).throw(httpx.ConnectError("connection refused")), 502, "Upload failed: url=https://eneo.example.test/api/v1/flows/flow-1/steps/step-1/runtime-files/"),
         }
         for label, (answer, status, diagnosis) in cases.items():
             with self.subTest(label):
@@ -234,7 +233,7 @@ class LogTests(unittest.TestCase):
                 self.sign_in()
 
                 response = self.client.post(
-                    "/api/eneo/flows/flow-1/files",
+                    "/api/eneo/flows/flow-1/steps/step-1/runtime-files/",
                     headers={"Origin": ORIGIN},
                     files={"upload_file": (f"{SESSION_ID_NOTE}.webm", b"audio", "audio/webm")},
                 )
