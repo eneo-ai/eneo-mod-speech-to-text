@@ -175,9 +175,10 @@ def wait_healthy(seconds: float = 120) -> None:
     wait_until(lambda: health_status() == "healthy" and direct_health_ok(), seconds, "the image is healthy")
 
 
-def fresh_module(max_upload_bytes: int | None = None) -> None:
+def fresh_module(max_upload_bytes: int | None = None, *, uploads: int = 1) -> None:
     """Recreate the image (a fresh process, no sessions, an empty /tmp), optionally with another MAX_UPLOAD_BYTES; wait until healthy."""
     env = dict(os.environ)
+    env["MAX_CONCURRENT_UPLOADS"] = str(uploads)
     if max_upload_bytes is not None:
         env["MAX_UPLOAD_BYTES"] = str(max_upload_bytes)
     else:
@@ -432,10 +433,10 @@ def grew_mb(row: dict) -> tuple[int, int]:
     return sum(m["growth_MB"] for m in memory), sum(m["peak_MB"] for m in memory)
 
 
-def measure(case: str, base: str, *, fresh: bool = True) -> dict:
+def measure(case: str, base: str, *, fresh: bool = True, uploads: int = 1) -> dict:
     """upload/measure.py for one case, in a fresh container unless the image already runs as the check needs it; returns its row."""
     if fresh:
-        fresh_module()
+        fresh_module(uploads=uploads)
     env = {**os.environ, "UPLOAD_PATH": UPLOAD_PATH, "UPLOAD_ORIGIN": STACK.module, "EXPECTED_USER": sign_in(base).user}
     r = subprocess.run([sys.executable, str(HERE / "upload/measure.py"), STACK.container, base, STACK.eneo, case], capture_output=True, text=True, env=env, timeout=1800)
     rows = [line for line in r.stdout.splitlines() if line.startswith("{")]
@@ -444,14 +445,14 @@ def measure(case: str, base: str, *, fresh: bool = True) -> dict:
 
 
 def upload_row(case: str, base: str, file_bytes: int, files: int, growth_limit_mb: int) -> str:
-    row = measure(case, base)
+    row = measure(case, base, uploads=files)
     client = row["client"]
     expect(all("http=201" in c for c in client), f"{case}: the client got {client}")
     got = [s["bytes_received"] for s in row["sink"]]
     expect(len(got) == files and all(file_bytes <= g <= file_bytes + 4096 for g in got), f"{case}: the stub received {got} bytes for {files} file(s) of {file_bytes}")
     grew, peak = grew_mb(row)
     expect(grew <= growth_limit_mb, f"{case}: the image's resident memory grew {grew} MB (limit {growth_limit_mb}), peak {peak}")
-    return f"{case}: 201, the stub got every byte, memory +{grew} MB (peak {peak}, {row['seconds']} s)"
+    return f"{case}: MAX_CONCURRENT_UPLOADS={files}, 201, the stub got every byte, memory +{grew} MB (peak {peak}, {row['seconds']} s)"
 
 
 SIZES = {"300MB": 300 * MB, "1GB": 1024 * MB}
