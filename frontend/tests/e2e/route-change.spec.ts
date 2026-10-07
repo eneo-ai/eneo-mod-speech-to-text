@@ -135,7 +135,7 @@ test("signing out: the sign-in page's title, announcement and heading, not the s
   expect((await focused(page)).heading, "no focus in the spinner's heading").toBe(false);
   await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeVisible();
   await expect.poll(() => said(page), { timeout: 1_000 }).toEqual([LOGIN_TITLE]);
-  await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true, text: "Gör samtal och filer till text och dokument." });
+  await expect.poll(() => focused(page), { timeout: 1_000 }).toMatchObject({ heading: true, inMain: true, text: "Du är utloggad" });
   expect(blocking((await axe(page)).violations), "axe passes on the sign-in page").toEqual([]);
 });
 
