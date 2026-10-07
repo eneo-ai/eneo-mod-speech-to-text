@@ -267,7 +267,8 @@ class AppCase(unittest.TestCase):
             headers["Origin"] = origin
         if user is not None:
             headers["X-Expected-User"] = user
-        url = re.sub(r"\{(\w+)\}", lambda match: "light" if match[1] == "variant" else "x", path)
+        value = "00000000-0000-4000-8000-000000000001" if path.startswith("/api/uploads/") else "x"
+        url = re.sub(r"\{(\w+)\}", lambda match: "light" if match[1] == "variant" else value, path)
         return client.request(method, url, headers=headers, files=files)
 
     def resolve(self, node: dict) -> dict:
@@ -378,7 +379,10 @@ class WhoMayCallTests(AppCase):
                     self.assertEqual(response.status_code, 409)
                     self.assertEqual(response.json(), {"detail": "user_changed"})
                     self.assertIn("409", operation["responses"])
-                    self.assertEqual(self.call(method, path).status_code, 200)
+                    allowed = self.call(method, path)
+                    self.assertEqual(allowed.status_code, 404 if path.startswith("/api/uploads/") else 200)
+                    if path.startswith("/api/uploads/"):
+                        self.assertEqual(allowed.json(), {"detail": "Upload not found or expired"})
 
 
 class AnswerTests(AppCase):

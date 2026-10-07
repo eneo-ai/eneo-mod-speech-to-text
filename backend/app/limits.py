@@ -35,6 +35,9 @@ from app.config import Settings
 # as a message is queued, until the app has taken it (test_live_relay.py pins that).
 WS_MAX_MESSAGE_BYTES = 128 * 1024
 
+# Reserve multipart framing when a raw file is later forwarded to Eneo.
+UPLOAD_ENVELOPE_BYTES = 4096
+
 TOO_LARGE = "Request body too large"
 UPLOAD_TOO_LARGE = "Upload too large: the module accepts at most max_upload_bytes (MAX_UPLOAD_BYTES), which is not Eneo's own limit"
 # The scope key that holds this request's limit, once the code that handles an upload has raised it.

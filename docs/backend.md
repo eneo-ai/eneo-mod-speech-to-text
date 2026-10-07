@@ -8,6 +8,7 @@ Modulens backend är en FastAPI-app i en process. Den håller inloggningen, slä
 |---|---|
 | `backend/app/serve.py` | Starten: `python -m app.serve`. |
 | `backend/app/main.py` | Appen: rutterna, tillåtelselistan mot Eneo (`PROXY_ROUTES`), uppladdningarna, filströmmarna, live-reläet. |
+| `backend/app/resumable.py` | Tillfälliga filer för återupptagbar uppladdning: bekräftad position, ägare, utgångstid och kvittens efter vidarebefordran. |
 | `backend/app/web.py`, `backend/app/security_headers.json` | Säkerhetsheaders på varje svar och serveringen av det byggda gränssnittet. |
 | `backend/app/module_auth.py` | Inloggning, sessionslager, kontroll av session, origin och sidans användare. |
 | `backend/app/upstream.py` | Den enda HTTP-klienten mot Eneo. |
@@ -59,6 +60,10 @@ Taket för request-body sitter först i kedjan (`backend/app/limits.py`), före 
 ## Uppladdningar
 
 Ljud laddas upp genom en egen rutt, `/api/eneo/flows/{flow_id}/steps/{step_id}/runtime-files/`, i stället för den allmänna proxyn: Eneos lastbalanserare avvisade webbläsarens råa multipart-bytes, så BFF:en tar emot filen på disk och bygger om anropet. Session, origin och sidans användare kontrolleras innan en enda byte av bodyn läses, och bodyn måste vara exakt en fil, `upload_file`. En fil som blivit hel skickas klart även om webbläsaren går, eftersom ett avbrott mitt i kunde lämna Eneo med en del av filen. Svaren och felkoderna: [API-referens](api-referens.md).
+
+Webbläsaren använder den rutten för filer upp till 4 MiB. Större filer skickas genom `/api/uploads/{flow_id}/{step_id}/{upload_id}`: `PUT` skapar eller hittar resursen, `PATCH` lägger till en del och `GET` visar senast bekräftade position. En del är högst 4 MiB eller `MAX_BODY_BYTES`, om det är mindre. Bara hela delar bekräftas. `POST …/complete` kontrollerar körningskontraktet igen och lämnar den sammansatta filen vidare i ett enda multipart-anrop till Eneo. Ett upprepat färdigställande ger samma kvittens så länge den finns kvar. `DELETE` städar en fil vars vidarebefordran inte har börjat.
+
+Varje resurs tillhör användaren och organisationen i sessionen samt det angivna flödet och steget. Filstorlek och stegets filinmatning kontrolleras mot Eneos körningskontrakt före mellanlagring och vidarebefordran. Eneo äger kontrollen av filtyp, inklusive formatens alternativa MIME-namn och kontroll av filinnehållet. Klienten finns i `frontend/lib/api.ts`; tillstånd och städning finns i `backend/app/resumable.py`. [Driftguiden](operations.md#uppladdningens-tillfälliga-lagring) beskriver livslängd och lagringsgränser.
 
 ## Svar från Eneo
 

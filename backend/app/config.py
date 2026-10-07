@@ -77,6 +77,7 @@ class Settings(BaseModel):
     upload_proxy_timeout_seconds: float = 1800.0
     upload_receive_timeout_seconds: float = Field(default=1800.0, gt=0, le=86400, allow_inf_nan=False)
     upload_receive_idle_timeout_seconds: float = Field(default=30.0, gt=0, le=86400, allow_inf_nan=False)
+    upload_resume_idle_timeout_seconds: float = Field(default=300.0, gt=0, le=86400, allow_inf_nan=False)
     max_concurrent_uploads: int = Field(default=1, gt=0, le=MAX_HEAVY_IO_LIMIT, strict=True)
     max_concurrent_heavy_io: int = Field(default=64, gt=0, le=MAX_HEAVY_IO_LIMIT, strict=True)
     # No request body is read past max_body_bytes; only an upload's is read up to max_upload_bytes (app/limits.py).
@@ -408,6 +409,7 @@ def load_settings() -> Settings:
         upload_proxy_timeout_seconds=upload_timeout,
         upload_receive_timeout_seconds=_positive_seconds("UPLOAD_RECEIVE_TIMEOUT_SECONDS", _default("upload_receive_timeout_seconds")),
         upload_receive_idle_timeout_seconds=_positive_seconds("UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS", _default("upload_receive_idle_timeout_seconds")),
+        upload_resume_idle_timeout_seconds=_positive_seconds("UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS", _default("upload_resume_idle_timeout_seconds")),
         max_concurrent_uploads=_positive_int("MAX_CONCURRENT_UPLOADS", _default("max_concurrent_uploads"), maximum=MAX_HEAVY_IO_LIMIT),
         max_concurrent_heavy_io=_positive_int("MAX_CONCURRENT_HEAVY_IO", _default("max_concurrent_heavy_io"), maximum=MAX_HEAVY_IO_LIMIT),
         max_body_bytes=_positive_int("MAX_BODY_BYTES", _default("max_body_bytes")),

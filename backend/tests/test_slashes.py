@@ -60,7 +60,7 @@ def frontend_paths() -> set[str]:
     paths = set()
     for literal in re.findall(r"[`\"'](/api/[^`\"']*)[`\"']", source):
         path = re.sub(r"\$\{[^}]*\}", "x", literal).split("?")[0]
-        if path not in {"/api/", "/api/auth/", "/api/eneo/"}:  # prefixes the page tests for, not paths it requests
+        if path not in {"/api/", "/api/auth/", "/api/eneo/", "/api/uploads/"}:  # prefixes, not requested paths
             paths.add(path)
     return paths
 
@@ -162,6 +162,7 @@ class FrontendPathTests(SlashCase):
         self.assertNotIn("/api/config", paths, "the module has no such route")
         self.assertIn("/api/eneo/flows/x/runs/x/artifacts/x/content", paths)
         self.assertIn("/api/eneo/flows/x/runs/", paths)
+        self.assertIn("/api/uploads/x/x/x", paths)
         self.assertGreaterEqual(len(paths), 25)  # what the frontend builds: a path taken out of it lowers this on purpose
 
     def test_each_one_reaches_its_handler_as_written(self) -> None:

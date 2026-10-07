@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import enum
+import json
 import logging
 import math
 import re
@@ -21,6 +22,7 @@ from fastapi import (
     Depends,
     FastAPI,
     HTTPException,
+    Header,
     Request,
     Response,
     WebSocket,
@@ -44,8 +46,9 @@ from websockets.exceptions import (
 
 from app.accent import etag, theme_css
 from app.config import load_settings
-from app.limits import BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, capacity_slot, declared_length, too_large
+from app.limits import UPLOAD_ENVELOPE_BYTES, BodyLimitMiddleware, BodyTooLarge, allow_upload, body_too_large_handler, capacity_slot, declared_length, too_large
 from app.module_auth import SESSION_COOKIE, ModuleAuth, eneo_is_unavailable
+from app.resumable import CHUNK_BYTES, IncomingUpload, UploadFailure, UploadMetadata, UploadStatus, UploadStore
 from app.upstream import CONNECT_TIMEOUT_SECONDS, SMALL_ANSWER, SMALL_ANSWER_BYTES, SMALL_CALL_TIMEOUT, STREAMED, UnboundedAnswer, make_client
 from app.web import add_security_headers, compress_json, etag_matches, serve_web
 
@@ -67,8 +70,14 @@ MIN_UPLOAD_PROXY_TIMEOUT_SECONDS = 60.0
 
 @contextlib.asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    yield
-    await http_client.aclose()
+    janitor = asyncio.create_task(app.state.uploads.sweep(), name="upload-expiry")
+    try:
+        yield
+    finally:
+        janitor.cancel()
+        await asyncio.gather(janitor, return_exceptions=True)
+        await app.state.uploads.close()
+        await http_client.aclose()
 
 
 # No documentation routes: the schema describes a surface that is not for browsers, and /docs and /openapi.json are not
@@ -87,6 +96,7 @@ app.add_middleware(BodyLimitMiddleware, settings=settings)
 app.add_exception_handler(BodyTooLarge, body_too_large_handler)
 app.state.upload_slots = anyio.CapacityLimiter(settings.max_concurrent_uploads)
 app.state.heavy_io_slots = anyio.CapacityLimiter(settings.max_concurrent_heavy_io)
+app.state.uploads = UploadStore()
 # Last of the middleware, so the outermost: the 413 above and every answer below carry the security headers.
 add_security_headers(app)
 
@@ -510,6 +520,166 @@ async def _proxy_multipart_upload(
 )
 async def eneo_upload_step_runtime_file(flow_id: str, step_id: str, request: Request) -> Response:
     return await _forward_upload(request, f"flows/{flow_id}/steps/{step_id}/runtime-files/")
+
+
+def _upload_owner(request: Request) -> tuple[str, str]:
+    session = module_auth.session_from_request(request)
+    return session.user.id, session.tenant_id
+
+
+async def _incoming(request: Request, flow_id: UUID, step_id: UUID, upload_id: UUID) -> IncomingUpload:
+    await app.state.uploads.expire()
+    return app.state.uploads.get(upload_id, _upload_owner(request), flow_id, step_id)
+
+
+async def _check_upload_contract(request: Request, flow_id: UUID, step_id: UUID, metadata: UploadMetadata) -> None:
+    if metadata.size > settings.max_upload_bytes - UPLOAD_ENVELOPE_BYTES:
+        raise too_large(settings, upload=True)
+    try:
+        async with asyncio.timeout(SMALL_CALL_TIMEOUT.read):
+            response = await http_client.request(method="GET", url=_upstream_url(f"flows/{flow_id}/run-contract/"),
+                headers=module_auth.upstream_auth_headers(request), timeout=SMALL_CALL_TIMEOUT, extensions=SMALL_ANSWER)
+    except (httpx.RequestError, TimeoutError):
+        raise HTTPException(502, "The run contract could not be read") from None
+    if response.status_code != 200:
+        raise HTTPException(502, "The run contract could not be read")
+    try:
+        contract = response.json()
+        step = next(s for s in contract["steps_requiring_input"] if s["step_id"] == str(step_id))
+        limit = step["max_file_size_bytes"]
+        if type(limit) is not int or limit <= 0:
+            raise ValueError()
+    except StopIteration:
+        raise HTTPException(422, "The step has no file input contract") from None
+    except (ValueError, KeyError, TypeError):
+        raise HTTPException(502, "The run contract could not be read") from None
+    if metadata.size > limit:
+        raise HTTPException(413, "The file exceeds the step limit")
+    # Eneo owns MIME aliases and content sniffing; do not duplicate its file-type policy here.
+
+
+@app.put("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def create_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, metadata: UploadMetadata, request: Request) -> UploadStatus:
+    await app.state.uploads.expire()
+    entry = app.state.uploads.find(upload_id, _upload_owner(request), flow_id, step_id, metadata)
+    if entry is not None:
+        return entry.status()
+    with contextlib.ExitStack() as slots:
+        if not slots.enter_context(capacity_slot(app.state.upload_slots)):
+            raise HTTPException(503, "Upload capacity reached", headers={"Retry-After": "2"})
+        await _check_upload_contract(request, flow_id, step_id, metadata)
+        if await request.is_disconnected():
+            raise HTTPException(400, "The client disconnected before allocation")
+        # Another request for the same UUID may have completed its contract check while this one waited.
+        entry = app.state.uploads.find(upload_id, _upload_owner(request), flow_id, step_id, metadata)
+        if entry is not None:
+            return entry.status()
+        entry = app.state.uploads.create(upload_id, _upload_owner(request), flow_id, step_id, metadata,
+            settings.upload_receive_timeout_seconds, settings.upload_resume_idle_timeout_seconds,
+            min(CHUNK_BYTES, settings.max_body_bytes), slots)
+        entry.slots = slots.pop_all()
+        return entry.status()
+
+
+@app.get("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def upload_status(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
+    return (await _incoming(request, flow_id, step_id, upload_id)).status()
+
+
+@app.patch("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER)
+async def upload_part(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request,
+                      upload_offset: int = Header(ge=0)) -> UploadStatus:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    if request.headers.get("content-type") != "application/octet-stream":
+        raise HTTPException(415, "A part must be application/octet-stream")
+    length = declared_length(request.headers)
+    if length is None:
+        raise HTTPException(411, "Content-Length required")
+    if length <= 0 or length > min(entry.chunk_size, entry.metadata.size - entry.offset):
+        raise HTTPException(413, "The part exceeds the remaining file or part limit")
+    with entry.exclusive():
+        if entry.state != "receiving" or upload_offset != entry.offset:
+            raise HTTPException(409, "Upload offset or state differs; read its status")
+        with capacity_slot(app.state.heavy_io_slots) as admitted:
+            if not admitted:
+                raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
+            received = 0
+            try:
+                remaining = max(0, entry.expires_at - time.monotonic())
+                with anyio.fail_after(remaining):
+                    iterator = aiter(request.stream())
+                    while True:
+                        try:
+                            with anyio.fail_after(settings.upload_receive_idle_timeout_seconds):
+                                chunk = await anext(iterator)
+                        except StopAsyncIteration:
+                            break
+                        received += len(chunk)
+                        if received > length:
+                            raise HTTPException(413, "The part exceeds its declared length")
+                        await entry.file.write(chunk)
+                if received != length:
+                    raise HTTPException(400, "The part is incomplete")
+            except BaseException as error:
+                with anyio.CancelScope(shield=True):
+                    await entry.file.seek(entry.offset)
+                    await anyio.to_thread.run_sync(entry.file.file.truncate, entry.offset)
+                if isinstance(error, TimeoutError):
+                    raise HTTPException(408, "The upload part timed out") from None
+                raise
+            entry.offset += received
+            entry.touch()
+            return entry.status()
+
+
+@app.post("/api/uploads/{flow_id}/{step_id}/{upload_id}/complete", dependencies=_SESSION_ORIGIN_AND_USER)
+async def complete_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> UploadStatus:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    with entry.exclusive():
+        if entry.state != "receiving":
+            return entry.status()
+        if entry.offset != entry.metadata.size:
+            raise HTTPException(409, "The file is not complete")
+        try:
+            await _check_upload_contract(request, flow_id, step_id, entry.metadata)
+        except HTTPException as error:
+            if error.status_code in {413, 422}:
+                await app.state.uploads.remove(upload_id, entry)
+            raise
+        slots = contextlib.ExitStack()
+        if not slots.enter_context(capacity_slot(app.state.heavy_io_slots)):
+            slots.close()
+            raise HTTPException(503, "Heavy operation capacity reached", headers={"Retry-After": "2"})
+
+        entry.slots.callback(slots.close)
+
+        async def forward() -> tuple[str | None, UploadFailure | None]:
+            response = await _proxy_multipart_upload(_upstream_url(f"flows/{flow_id}/steps/{step_id}/runtime-files/"),
+                entry.file, request, _requested_upload_timeout_seconds(request))
+            try:
+                result = json.loads(response.body)
+            except (ValueError, TypeError):
+                result = {}
+            file_id = result.get("id") if isinstance(result, dict) else None
+            if 200 <= response.status_code < 300 and isinstance(file_id, str) and 0 < len(file_id) <= 128:
+                return file_id, None
+            detail = result.get("detail") if isinstance(result, dict) else None
+            return None, UploadFailure(status=response.status_code if response.status_code >= 400 else 502,
+                detail=detail[:2048] if isinstance(detail, str) else "Eneo could not confirm the uploaded file.",
+                code=str(result.get("code", result.get("error", "")))[:128] if isinstance(result, dict) else None)
+
+        entry.start(forward)
+        return entry.status()
+
+
+@app.delete("/api/uploads/{flow_id}/{step_id}/{upload_id}", dependencies=_SESSION_ORIGIN_AND_USER, status_code=204)
+async def cancel_upload(flow_id: UUID, step_id: UUID, upload_id: UUID, request: Request) -> Response:
+    entry = await _incoming(request, flow_id, step_id, upload_id)
+    with entry.exclusive():
+        if entry.state != "receiving":
+            raise HTTPException(409, "Forwarding has already started; read the upload status")
+        await app.state.uploads.remove(upload_id, entry)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

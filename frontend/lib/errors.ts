@@ -143,6 +143,7 @@ const RETRY_CODES = new Set([
 const OWN_CODES = new Set([
   "network_error",
   "upload_aborted",
+  "upload_forward_failed",
   "not_started",
   "stalled",
   "server_not_responding",

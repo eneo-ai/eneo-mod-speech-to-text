@@ -35,6 +35,8 @@ Uppladdning och start av körning försöker igen vid tillfälliga fel (nätverk
 
 Under uppladdningen väntas nätavbrott ut tills anslutningen är tillbaka eller användaren väljer **Avbryt**. Efter fyra uppladdningsförsök som ger 408 eller 5xx visas ett fel. Inspelningen ligger kvar och kan skickas igen med **Försök igen**.
 
+Filer över 4 MiB skickas i delar. Efter ett nätavbrott fortsätter överföringen från senast bekräftade del så länge samma sida och backendprocess finns kvar och gränserna för mottagning och uppehåll inte har passerats. [Driftguiden](operations.md#uppladdningens-tillfälliga-lagring) beskriver tidsgränserna. Mindre filer skickas om hela. Om Eneo har fått den färdiga filen men dess svar eller modulens kvittens saknas gör appen inget automatiskt nytt försök: den visar att mottagandet inte kunde bekräftas och låter användaren välja **Försök igen**. Inget flöde startas utan ett bekräftat fil-id. Beteendet finns i `frontend/lib/api.ts` och `frontend/lib/submit-run.ts`.
+
 När filen är uppladdad visas **Startar flödet**. **Avbryt** finns från början och behåller filen för ett nytt försök. Starten får tio automatiska försök under ungefär fem minuter. Därefter visas **Försök igen** och **Avbryt**. Ett nytt försök använder den redan uppladdade filen och samma idempotensnyckel, så att det inte skapar dubbla körningar. För inspelningar finns också **Spara som fil**.
 
 En vald fil behöver väljas igen om sidan laddas om under **Startar flödet**. Filen finns kvar på datorn.

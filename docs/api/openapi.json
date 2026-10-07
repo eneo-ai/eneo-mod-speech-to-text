@@ -42,6 +42,703 @@
     }
   ],
   "paths": {
+    "/api/uploads/{flow_id}/{step_id}/{upload_id}": {
+      "put": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Börja eller återuppta en stor fil",
+        "operationId": "put_api_uploads_flow_id_step_id_upload_id",
+        "description": "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. Resursen försvinner efter UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS utan anrop från ägaren, efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UploadMetadata"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uppladdningens bekräftade position.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Id finns för en annan ägare eller ett annat steg.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooLarge"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Ingen uppladdningsplats eller kvittensplats är ledig. Försök igen efter två sekunder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Läs uppladdningens position eller resultat",
+        "operationId": "get_api_uploads_flow_id_step_id_upload_id",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning."
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUserOptional"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Tillstånd och bekräftade byte. En färdig fil har file_id; ett misslyckande har failure. Kvittensen sparas högst 30 minuter och kan tas bort tidigare när nya uppladdningar behöver plats.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Uppladdningen saknas, har gått ut eller tillhör någon annan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Skicka nästa fildel",
+        "operationId": "patch_api_uploads_flow_id_step_id_upload_id",
+        "description": "En binär del, högst chunk_size byte, med Content-Length och Upload-Offset. Bara en hel del ändrar offset. En avbruten del skrivs om från senast bekräftade byte. Kapaciteten räknas även under städning.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning."
+          },
+          {
+            "name": "upload-offset",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "description": "Antal byte som servern redan har bekräftat. Måste stämma med uppladdningens offset."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Den nya bekräftade positionen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Delen är ofullständig.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Uppladdningen saknas eller tillhör någon annan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "408": {
+            "description": "Delens mottagning eller uppladdningens totaltid har gått ut.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "411": {
+            "description": "Content-Length saknas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Kroppen är större än modulens tak; det som står i svaret är det tak som blev passerat.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TooLarge"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Innehållstypen måste vara application/octet-stream.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "En annan del behandlas eller kapaciteten är upptagen. Försök igen efter två sekunder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Avbryt en ofärdig uppladdning",
+        "operationId": "delete_api_uploads_flow_id_step_id_upload_id",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Temporärfilen är stängd och platsen är ledig."
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Uppladdningen saknas eller tillhör någon annan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "En del behandlas fortfarande. Försök igen efter två sekunder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/uploads/{flow_id}/{step_id}/{upload_id}/complete": {
+      "post": {
+        "tags": [
+          "Uppladdning"
+        ],
+        "summary": "Lämna den färdiga filen till Eneo",
+        "operationId": "post_api_uploads_flow_id_step_id_upload_id_complete",
+        "description": "Kontrollerar körningskontraktet igen och startar en enda vidarebefordran. Svaret kommer genast; läs GET tills state är complete eller failed. Upprepade anrop startar ingen ny vidarebefordran. Kvittensen behålls i högst 30 minuter och kan tas bort tidigare när nya uppladdningar behöver plats. Högst 256 resurser finns totalt. Om Eneos svar saknas kan modulen inte avgöra om filen lagrades.",
+        "parameters": [
+          {
+            "name": "flow_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Flödets id i Eneo."
+          },
+          {
+            "name": "step_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Stegets id i Eneo."
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning."
+          },
+          {
+            "$ref": "#/components/parameters/Origin"
+          },
+          {
+            "$ref": "#/components/parameters/ExpectedUser"
+          },
+          {
+            "name": "X-Upload-Timeout-Seconds",
+            "in": "header",
+            "required": false,
+            "description": "Hur länge modulen väntar på Eneo, i sekunder. Ett värde under 60 räknas som 60, och inget går över `UPLOAD_PROXY_TIMEOUT_SECONDS`. Läses av modulen och skickas inte vidare.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "security": [
+          {
+            "sessionCookie": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pågående eller färdig vidarebefordran.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Ingen giltig session. Sidan går till inloggningen.",
+            "headers": {
+              "X-Auth-Required": {
+                "description": "Alltid `session`.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin är inte modulens egen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Uppladdningen saknas eller tillhör någon annan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Sidan är öppnad för en annan användare än sessionens (detail är user_changed).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Filen är större än modulens eller stegets aktuella gräns.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Steget tar inte längre emot filtypen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Kapaciteten är upptagen. Försök igen efter två sekunder.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -4002,6 +4699,107 @@
         ],
         "type": "object",
         "description": "Användaren som är inloggad."
+      },
+      "UploadMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "filename": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "content_type": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "size": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filename",
+          "content_type",
+          "size"
+        ],
+        "type": "object",
+        "description": "Filnamn, MIME-typ och filens storlek i byte. Styrtecken tillåts inte."
+      },
+      "UploadFailure": {
+        "properties": {
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "status",
+          "detail"
+        ],
+        "type": "object",
+        "description": "Eneos felstatus och felkod när de finns. Ett saknat svar kan innebära att Eneo tog emot filen."
+      },
+      "UploadStatus": {
+        "properties": {
+          "offset": {
+            "type": "integer"
+          },
+          "chunk_size": {
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "receiving",
+              "forwarding",
+              "complete",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "file_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UploadFailure"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "offset",
+          "chunk_size",
+          "state"
+        ],
+        "type": "object",
+        "description": "Bekräftad position och delstorlek i byte, tillstånd, fil-id efter framgång eller ett fel."
       },
       "HTTPValidationError": {
         "properties": {

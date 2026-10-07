@@ -15,6 +15,7 @@ const APP = Number(process.env.A11Y_APP_PORT ?? 3401);
 const STUB = Number(process.env.A11Y_STUB_PORT ?? 8401);
 const REAL = process.env.GATE_TARGET === "real";
 const EXTERNAL = process.env.REAL_EXTERNAL_URL;
+const WORKERS = 4;
 // Specs that need what only the dev server has, or that replace the live socket in the browser and so would skip the relay
 // they are meant to exercise: the dialog-leak fixture (leaks), routeWebSocket (live-sheet, recording-short), the review
 // build (review-flag), another deployment (branding) and browser contexts of its own, which the real target does not sign in
@@ -51,7 +52,7 @@ export default defineConfig({
   fullyParallel: true,
   // One dev server serves every worker: more than four starve it on a shared host, and a page
   // still loading then fails a check that is not about accessibility.
-  workers: 4,
+  workers: WORKERS,
   reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/a11y-report" }]],
   use: {
     baseURL: REAL ? (EXTERNAL ?? `http://127.0.0.1:${APP}`) : `http://127.0.0.1:${APP}`,
@@ -105,7 +106,8 @@ export default defineConfig({
               // The real backend on the built UI, as the image runs it, with the stub as its Eneo.
               command: "node tests/prod/start-backend.mjs",
               url: `http://127.0.0.1:${APP}/health`,
-              env: { BACKEND_PORT: String(APP), STUB_URL: `http://127.0.0.1:${STUB}` },
+              // Concurrent UI tests need separate upload slots. Backend tests exercise saturation at the production default.
+              env: { BACKEND_PORT: String(APP), STUB_URL: `http://127.0.0.1:${STUB}`, MAX_CONCURRENT_UPLOADS: String(WORKERS) },
               timeout: 60_000,
               reuseExistingServer: !process.env.CI,
             },

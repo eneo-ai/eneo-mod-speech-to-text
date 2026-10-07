@@ -129,7 +129,7 @@ async function request<T>(
         ...(init.body && !(init.body instanceof FormData)
           ? { "Content-Type": "application/json" }
           : {}),
-        ...(path.startsWith("/api/eneo/") ? expectedUserHeader() : {}),
+        ...(path.startsWith("/api/eneo/") || path.startsWith("/api/uploads/") ? expectedUserHeader() : {}),
         ...init.headers,
       },
     });
@@ -595,10 +595,10 @@ function formatTimeoutReason(reason: RuntimeUploadTimeoutReason): string {
 
 const parseXhrError = (xhr: XMLHttpRequest) => apiErrorFrom(xhr.status, xhr.responseText);
 
-function requestMultipartWithProgress<T>(
+function requestUploadWithProgress<T>(
   path: string,
-  formData: FormData,
-  opts: UploadRequestOptions & { fileSizeBytes: number } = {
+  body: FormData | Blob,
+  opts: UploadRequestOptions & { fileSizeBytes: number; offset?: number } = {
     fileSizeBytes: 0,
   },
 ): Promise<T> {
@@ -610,6 +610,7 @@ function requestMultipartWithProgress<T>(
   const responseTimeoutMs = resolveRuntimeUploadResponseTimeoutMs(opts.fileSizeBytes, opts.runtimeUploadPolicy);
 
   // Signed out, or someone else signed in here: the upload is the user's to send again once back.
+  if (opts.signal?.aborted) return Promise.reject(uploadAborted());
   if (loginState.signedOut) return Promise.reject(sessionEnded());
   // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
   const question = loginState.ask();
@@ -618,16 +619,21 @@ function requestMultipartWithProgress<T>(
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let lastUploadedBytes = 0;
     let settled = false;
+    const cancel = () => xhr.abort();
 
     const clearScheduledTimeout = () => {
       if (timeoutId) clearTimeout(timeoutId);
       timeoutId = null;
     };
+    const cleanup = () => {
+      clearScheduledTimeout();
+      opts.signal?.removeEventListener("abort", cancel);
+    };
 
     const rejectOnce = (error: unknown) => {
       if (settled) return;
       settled = true;
-      clearScheduledTimeout();
+      cleanup();
       reject(error);
     };
 
@@ -668,7 +674,7 @@ function requestMultipartWithProgress<T>(
       if (changed) loginState.userChanged(question);
       if (settled) return;
       settled = true;
-      clearScheduledTimeout();
+      cleanup();
       if (xhr.status >= 200 && xhr.status < 300) {
         if (xhr.status === 204 || !xhr.responseText) {
           resolve(undefined as T);
@@ -710,24 +716,22 @@ function requestMultipartWithProgress<T>(
 
     xhr.onabort = () => rejectOnce(uploadAborted());
 
-    opts.signal?.addEventListener(
-      "abort",
-      () => {
-        xhr.abort();
-      },
-      { once: true },
-    );
+    opts.signal?.addEventListener("abort", cancel, { once: true });
 
-    xhr.open("POST", path);
+    xhr.open(opts.offset === undefined ? "POST" : "PATCH", path);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Accept", "application/json");
     for (const [name, value] of Object.entries(expectedUserHeader())) xhr.setRequestHeader(name, value);
+    if (opts.offset !== undefined) {
+      xhr.setRequestHeader("Content-Type", "application/octet-stream");
+      xhr.setRequestHeader("Upload-Offset", String(opts.offset));
+    }
     // The module's proxy holds Eneo's answer this long: through the upload and Eneo's measuring after it.
     xhr.setRequestHeader(
       "X-Upload-Timeout-Seconds",
       String(Math.ceil(Math.max(initialTimeoutMs, responseTimeoutMs) / 1000)),
     );
-    xhr.send(formData);
+    xhr.send(body);
   });
 }
 
@@ -917,6 +921,113 @@ export async function listOwnRuns(flowId: string, { limit, offset }: { limit: nu
 
 // --- Step runtime-files ---
 
+const UPLOAD_PART_BYTES = 4 * 1024 * 1024;
+interface UploadStatus {
+  offset: number;
+  chunk_size: number;
+  state: "receiving" | "forwarding" | "complete" | "failed";
+  file_id: string | null;
+  failure: { status: number; detail: string; code: string | null } | null;
+}
+// The Blob already survives submitRun's retries. Its upload id does too, without retaining discarded recordings.
+const resumableUploads = new WeakMap<Blob, Map<string, { id: string; completionRequested: boolean }>>();
+
+async function uploadInParts(flowId: string, stepId: string, file: Blob, filename: string, opts: UploadRequestOptions): Promise<FilePublic> {
+  if (opts.signal?.aborted) throw uploadAborted();
+  if (loginState.signedOut) throw sessionEnded();
+  const key = JSON.stringify([loginState.expectedUser, flowId, stepId, filename]);
+  let uploads = resumableUploads.get(file);
+  if (!uploads) {
+    uploads = new Map();
+    resumableUploads.set(file, uploads);
+  }
+  const handle = uploads.get(key) ?? { id: crypto.randomUUID(), completionRequested: false };
+  uploads.set(key, handle);
+  const { id } = handle;
+  const path = `/api/uploads/${flowId}/${stepId}/${id}`;
+  const forget = () => { if (uploads.get(key) === handle) uploads.delete(key); };
+  const cancel = async () => {
+    // A forward already started keeps its receipt. Otherwise release the partial file immediately when possible.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await request<void>(path, { method: "DELETE" });
+        forget();
+        return;
+      } catch (error) {
+        // The disconnected part may still be rolling back. No indefinite cleanup retry when the server is gone.
+        if (!(error instanceof ApiError) || error.status !== 503) return;
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+  };
+  try {
+    // After completing, a missing receipt may mean Eneo already stored the file. Never recreate it automatically.
+    let status = handle.completionRequested
+      ? await request<UploadStatus>(path, { signal: opts.signal })
+      : await request<UploadStatus>(path, { method: "PUT", signal: opts.signal,
+        body: JSON.stringify({ filename, content_type: file.type || "application/octet-stream", size: file.size }) });
+    while (status.state === "receiving" && status.offset < file.size) {
+      if (!Number.isSafeInteger(status.offset) || status.offset < 0 || !Number.isSafeInteger(status.chunk_size) || status.chunk_size <= 0) {
+        throw new ApiError(502, "Servern svarade med en ogiltig uppladdningsposition.", null, "invalid_json_response");
+      }
+      const offset = status.offset;
+      opts.onProgress?.({ loaded: offset, total: file.size, percent: Math.round(offset / file.size * 100) });
+      const part = file.slice(offset, offset + Math.min(UPLOAD_PART_BYTES, status.chunk_size));
+      try {
+        status = await requestUploadWithProgress<UploadStatus>(path, part, { ...opts, offset, fileSizeBytes: part.size,
+          onProgress: ({ loaded }) => opts.onProgress?.({ loaded: offset + loaded, total: file.size,
+            percent: Math.round((offset + loaded) / file.size * 100) }) });
+        if (status.offset !== offset + part.size) {
+          throw new ApiError(502, "Servern bekräftade inte den skickade delen.", null, "invalid_json_response");
+        }
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) throw error;
+        // A lost acknowledgement may have committed the part; the server's offset is authoritative.
+        status = await request<UploadStatus>(path, { signal: opts.signal });
+        if (status.offset === offset) throw error;
+      }
+    }
+    opts.onProgress?.({ loaded: file.size, total: file.size, percent: 100 });
+    if (status.state === "receiving") {
+      handle.completionRequested = true;
+      try {
+        status = await request<UploadStatus>(`${path}/complete`, { method: "POST", signal: opts.signal,
+          headers: { "X-Upload-Timeout-Seconds": String(Math.ceil(resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) / 1000)) } });
+      } catch (error) {
+        // A definitive contract rejection removes the resource without forwarding it to Eneo.
+        if (error instanceof ApiError && [413, 422].includes(error.status)) forget();
+        throw error;
+      }
+    }
+    const pollUntil = Date.now() + resolveRuntimeUploadResponseTimeoutMs(file.size, opts.runtimeUploadPolicy) + REQUEST_TIMEOUT_MS;
+    while (status.state === "forwarding") {
+      if (Date.now() >= pollUntil) throw new ApiError(408, "Servern svarade inte i tid. Försök igen.", null, "server_not_responding");
+      await new Promise<void>((resolve, reject) => {
+        const stop = () => { clearTimeout(timer); reject(uploadAborted()); };
+        const timer = setTimeout(() => { opts.signal?.removeEventListener("abort", stop); resolve(); }, 1000);
+        opts.signal?.addEventListener("abort", stop, { once: true });
+        if (opts.signal?.aborted) stop();
+      });
+      status = await request<UploadStatus>(path, { signal: opts.signal });
+    }
+    if (status.state === "complete" && status.file_id) return { id: status.file_id };
+    forget();
+    const failure = status.failure;
+    if (failure && failure.status < 500 && failure.status !== 408) throw new ApiError(failure.status, failure.detail, failure, failure.code ?? undefined);
+    // Eneo may already have stored the file. Only an explicit new send starts another resource.
+    throw new ApiError(failure?.status ?? 502,
+      "Det gick inte att bekräfta att Eneo tog emot filen. Inget flöde har startats. Försök igen när du vill.",
+      failure, "upload_forward_failed");
+  } catch (error) {
+    if (!(handle.completionRequested && error instanceof ApiError && error.status === 404)) throw error;
+    forget();
+    throw new ApiError(502, "Uppladdningens kvittens finns inte kvar. Inget flöde har startats. Försök igen när du vill.",
+      null, "upload_forward_failed");
+  } finally {
+    if (opts.signal?.aborted) void cancel();
+  }
+}
+
 export async function uploadStepRuntimeFile(
   flowId: string,
   stepId: string,
@@ -924,9 +1035,10 @@ export async function uploadStepRuntimeFile(
   filename: string,
   opts: UploadRequestOptions = {},
 ) {
+  if (file.size > UPLOAD_PART_BYTES) return uploadInParts(flowId, stepId, file, filename, opts);
   const fd = new FormData();
   fd.append("upload_file", file, filename);
-  return requestMultipartWithProgress<FilePublic>(
+  return requestUploadWithProgress<FilePublic>(
     `/api/eneo/flows/${flowId}/steps/${stepId}/runtime-files/`,
     fd,
     { ...opts, fileSizeBytes: file.size },

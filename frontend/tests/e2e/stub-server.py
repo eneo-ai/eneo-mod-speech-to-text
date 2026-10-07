@@ -395,6 +395,7 @@ class State:
     def reset(self):
         with self.lock:
             self.log = []  # upstream.py's records, one per upload
+            self.incoming_uploads = {}
             self.stats = {"file_streams_open": 0, "live_sockets_open": 0, "live_frames": 0, "live_bytes": 0, "live_tickets": 0,
                           "live_sessions": {}, "uploads": 0, "last_upload_bytes": 0}  # live_sessions: per recording, so specs can run side by side
 
@@ -596,6 +597,9 @@ class Handler(BaseHTTPRequestHandler):
         # The body is read before anything is answered, so a refusal never leaves it on a connection that is kept alive;
         # an upload's is drained by upload() as it arrives.
         self.raw = None if is_upload(path.strip("/").split("/")) else self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        if path.startswith("/api/uploads/"):
+            self.resumable_upload(path, method)
+            return True
         if path in ("/__log", "/__log/"):
             with STATE.lock:
                 self.send(200, STATE.log)
@@ -771,6 +775,43 @@ class Handler(BaseHTTPRequestHandler):
         return received, head
 
     # ---- the BFF role ----
+
+    def resumable_upload(self, path, method):
+        parts = path.strip("/").split("/")
+        key = "/".join(parts[:5])
+        with STATE.lock:
+            upload = STATE.incoming_uploads.get(key)
+            if method == "PUT" and upload is None:
+                metadata = self.json_body()
+                upload = {"metadata": metadata, "offset": 0, "chunk_size": 4 * 1024 * 1024,
+                          "state": "receiving", "file_id": None, "failure": None}
+                STATE.incoming_uploads[key] = upload
+            if upload is None:
+                return self.send(404, {"detail": "Upload not found"})
+            if method == "PATCH":
+                if int(self.headers.get("Upload-Offset", "-1")) != upload["offset"]:
+                    return self.send(409, {"detail": "Upload offset differs"})
+                if len(self.raw) > min(upload["chunk_size"], upload["metadata"]["size"] - upload["offset"]):
+                    return self.send(413, {"detail": "Part too large"})
+                upload["offset"] += len(self.raw)
+            if method == "POST" and parts[5:] == ["complete"] and upload["state"] == "receiving":
+                if upload["offset"] != upload["metadata"]["size"]:
+                    return self.send(409, {"detail": "Upload is incomplete"})
+                upload.update(state="complete", file_id=new_file_id(upload["offset"]))
+                STATE.stats["uploads"] += 1
+                STATE.stats["last_upload_bytes"] = upload["offset"]
+            if method == "DELETE":
+                del STATE.incoming_uploads[key]
+                return self.send(204, b"")
+            return self.send(200, {k: v for k, v in upload.items() if k != "metadata"})
+
+    def do_PUT(self):
+        if not self.eneo_route():
+            self.send(404, {"detail": "stub: " + self.path})
+
+    def do_DELETE(self):
+        if not self.eneo_route():
+            self.send(404, {"detail": "stub: " + self.path})
 
     def do_GET(self):
         if self.eneo_route():

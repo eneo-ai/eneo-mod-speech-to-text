@@ -13,6 +13,7 @@ import {
   type RunContract,
 } from "./api";
 import { fakeWebLocks } from "./fake-web-locks";
+import { loginState } from "./login-state";
 import { createOnlineStatus, type OnlineTarget } from "./online-status";
 import { INCOMPLETE_ON_DEVICE, openRecordingStore, type NewRecording, type RecordingStore, type StoredRecording } from "./recording-store";
 import {
@@ -349,14 +350,17 @@ class FakeXhr {
   headers: Record<string, string> = {};
   status = 0;
   responseText = "";
+  method = "";
+  path = "";
+  body?: FormData | Blob;
   constructor() {
     FakeXhr.made.push(this);
   }
-  open() {}
+  open(method: string, path: string) { this.method = method; this.path = path; }
   setRequestHeader(name: string, value: string) {
     this.headers[name] = value;
   }
-  send() {}
+  send(body: FormData | Blob) { this.body = body; }
   getResponseHeader(name: string) {
     return name.toLowerCase() === "content-type" ? "application/json" : null;
   }
@@ -369,6 +373,121 @@ class FakeXhr {
     this.onload?.();
   }
 }
+
+test("large uploads resume after lost part and completion acknowledgements without sending bytes twice", async (t) => {
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const end = loginState.begin({ id: "upload-user", email: "upload@example.test" });
+  t.after(end);
+  const partSize = 4 * 1024 * 1024;
+  const file = new Blob([new Uint8Array(partSize + 16)], { type: "audio/webm" });
+  const status = { offset: 0, chunk_size: partSize, state: "receiving", file_id: null as string | null, failure: null };
+  const paths: string[] = [];
+  let completes = 0;
+  t.mock.method(globalThis, "fetch", async (url: string, init: RequestInit) => {
+    assert.equal(new Headers(init.headers).get("X-Expected-User"), "upload-user");
+    paths.push(url.replace(/\/complete$/, ""));
+    if (init.method === "POST") {
+      completes += 1;
+      status.state = "complete";
+      status.file_id = "file-confirmed";
+      throw fetchFailed(); // Eneo finished, but the browser lost the acknowledgement.
+    }
+    return Response.json(status);
+  });
+  const first = uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm");
+  const failed = assert.rejects(first, { code: "network_error" });
+  await until(() => FakeXhr.made.length === 1);
+  const chunk = FakeXhr.made[0];
+  assert.equal(chunk.method, "PATCH");
+  assert.equal(chunk.headers["X-Expected-User"], "upload-user");
+  assert.equal(chunk.headers["Upload-Offset"], "0");
+  assert.equal((chunk.body as Blob).size, partSize);
+  status.offset = partSize;
+  chunk.onerror?.();
+  await failed;
+  const resumed = uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm");
+  const lostComplete = assert.rejects(resumed, TypeError);
+  await until(() => FakeXhr.made.length === 2);
+  assert.equal(FakeXhr.made[1].headers["Upload-Offset"], String(partSize));
+  assert.equal((FakeXhr.made[1].body as Blob).size, 16);
+  status.offset = file.size;
+  FakeXhr.made[1].answer(200, status);
+  await lostComplete;
+  assert.deepEqual(await uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { id: "file-confirmed" });
+  assert.equal(new Set(paths).size, 1, "the same Blob keeps its resource across retries");
+  assert.equal(FakeXhr.made.length, 2);
+  assert.equal(completes, 1);
+});
+
+test("a lost completion receipt never silently starts another upload", async (t) => {
+  const file = new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+  const methods: string[] = [];
+  let finished = false;
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    methods.push(init.method ?? "GET");
+    if (init.method === "POST") { finished = true; throw fetchFailed(); }
+    if (finished) return Response.json({ detail: "Receipt expired" }, { status: 404 });
+    return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
+  });
+  await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), TypeError);
+  await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { code: "upload_forward_failed" });
+  assert.deepEqual(methods, ["PUT", "POST", "GET"]);
+});
+
+test("a definitive completion rejection releases the handle for a fresh contract check", async (t) => {
+  for (const status of [413, 422]) {
+    const file = new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+    const methods: string[] = [];
+    t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+      methods.push(init.method ?? "GET");
+      if (init.method === "POST") return Response.json({ detail: "Contract rejects file" }, { status });
+      return Response.json({ offset: file.size, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm"), { status });
+    }
+    assert.deepEqual(methods, ["PUT", "POST", "PUT", "POST"]);
+  }
+});
+
+test("an uncertain Eneo upload result requires an explicit new send, not an automatic duplicate", async () => {
+  let attempts = 0;
+  await assert.rejects(withRetry(async () => {
+    attempts += 1;
+    throw apiError(504, "upload_forward_failed");
+  }, { online: createOnlineStatus(fakeBrowser(true).target) }), { code: "upload_forward_failed" });
+  assert.equal(attempts, 1);
+});
+
+test("cancelling a large upload stops the part and releases its resource after rollback", async (t) => {
+  const originalXhr = globalThis.XMLHttpRequest;
+  globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest;
+  t.after(() => { globalThis.XMLHttpRequest = originalXhr; });
+  FakeXhr.made = [];
+  const file = new Blob([new Uint8Array(4 * 1024 * 1024 + 1)], { type: "audio/webm" });
+  let removed = 0;
+  t.mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    if (init.method === "DELETE") {
+      removed += 1;
+      return removed === 1 ? Response.json({ detail: "Part rolling back" }, { status: 503 }) : new Response(null, { status: 204 });
+    }
+    return Response.json({ offset: 0, chunk_size: 4 * 1024 * 1024, state: "receiving", file_id: null, failure: null });
+  });
+  const controller = new AbortController();
+  const sending = uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm", { signal: controller.signal });
+  const stopped = assert.rejects(sending, { code: "upload_aborted" });
+  await until(() => FakeXhr.made.length === 1);
+  controller.abort();
+  await stopped;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  assert.equal(removed, 2);
+  assert.equal(FakeXhr.made.length, 1);
+  await assert.rejects(uploadStepRuntimeFile("flow-1", "step-audio", file, "inspelning.webm", { signal: controller.signal }), { code: "upload_aborted" });
+  assert.equal(FakeXhr.made.length, 1, "an already cancelled send creates no request");
+});
 
 test("a refused upload names the code the module's proxy gave it, as any other request does", async () => {
   const browserXhr = globalThis.XMLHttpRequest;

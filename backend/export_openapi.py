@@ -57,7 +57,11 @@ PATH_PARAMETERS = {
     "attempt_id": "Försökets nummer i Eneo.",
     "checkpoint_id": "Granskningspunktens id i Eneo.",
     "file_id": "Filens id i Eneo.",
+    "upload_id": "Webbläsarens slumpmässiga UUID för en återupptagbar uppladdning.",
     "variant": "Vilken logotyp: den för ljust eller för mörkt läge.",
+}
+HEADER_PARAMETERS = {
+    "upload-offset": "Antal byte som servern redan har bekräftat. Måste stämma med uppladdningens offset.",
 }
 QUERY_PARAMETERS = {
     "next": "Sida i modulen att återvända till efter inloggningen: en sökväg som börjar med ett enda snedstreck, "
@@ -197,6 +201,56 @@ def file_answer(what: str) -> dict[str, Any]:
 
 
 OPERATIONS: dict[tuple[str, str], Op] = {
+    ("PUT", "/api/uploads/{flow_id}/{step_id}/{upload_id}"): Op(
+        "Uppladdning", "Börja eller återuppta en stor fil",
+        "Samma id och metadata ger samma uppladdning, bunden till användare, organisation, flöde och steg. Filstorlek "
+        "kontrolleras mot flödets aktuella körningskontrakt; Eneo validerar filtypen vid vidarebefordran. "
+        "Resursen försvinner efter UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS utan anrop från ägaren, "
+        "efter UPLOAD_RECEIVE_TIMEOUT_SECONDS totalt eller vid omstart av processen.",
+        session=True, origin=True, user="required", too_large="max_body_bytes",
+        body={"required": True, "content": json_of({"$ref": "#/components/schemas/UploadMetadata"})},
+        success={"200": reply("Uppladdningens bekräftade position.", json_of({"$ref": "#/components/schemas/UploadStatus"})),
+                 "404": reply("Id finns för en annan ägare eller ett annat steg.", json_of(ERROR)),
+                 "409": reply("Metadata för samma id skiljer sig.", json_of(ERROR)),
+                 "503": reply("Ingen uppladdningsplats eller kvittensplats är ledig. Försök igen efter två sekunder.", json_of(ERROR))}),
+    ("GET", "/api/uploads/{flow_id}/{step_id}/{upload_id}"): Op(
+        "Uppladdning", "Läs uppladdningens position eller resultat", session=True, user="optional",
+        success={"200": reply("Tillstånd och bekräftade byte. En färdig fil har file_id; ett misslyckande har failure. "
+                              "Kvittensen sparas högst 30 minuter och kan tas bort tidigare när nya uppladdningar behöver plats.",
+                              json_of({"$ref": "#/components/schemas/UploadStatus"})),
+                 "404": reply("Uppladdningen saknas, har gått ut eller tillhör någon annan.", json_of(ERROR))}),
+    ("PATCH", "/api/uploads/{flow_id}/{step_id}/{upload_id}"): Op(
+        "Uppladdning", "Skicka nästa fildel",
+        "En binär del, högst chunk_size byte, med Content-Length och Upload-Offset. Bara en hel del ändrar offset. "
+        "En avbruten del skrivs om från senast bekräftade byte. Kapaciteten räknas även under städning.",
+        session=True, origin=True, user="required", too_large="max_body_bytes",
+        body={"required": True, "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}}},
+        success={"200": reply("Den nya bekräftade positionen.", json_of({"$ref": "#/components/schemas/UploadStatus"})),
+                 "400": reply("Delen är ofullständig.", json_of(ERROR)),
+                 "404": reply("Uppladdningen saknas eller tillhör någon annan.", json_of(ERROR)),
+                 "408": reply("Delens mottagning eller uppladdningens totaltid har gått ut.", json_of(ERROR)),
+                 "409": reply("Positionen eller tillståndet skiljer sig. Läs status innan nästa del.", json_of(ERROR)),
+                 "411": reply("Content-Length saknas.", json_of(ERROR)),
+                 "415": reply("Innehållstypen måste vara application/octet-stream.", json_of(ERROR)),
+                 "503": reply("En annan del behandlas eller kapaciteten är upptagen. Försök igen efter två sekunder.", json_of(ERROR))}),
+    ("POST", "/api/uploads/{flow_id}/{step_id}/{upload_id}/complete"): Op(
+        "Uppladdning", "Lämna den färdiga filen till Eneo",
+        "Kontrollerar körningskontraktet igen och startar en enda vidarebefordran. Svaret kommer genast; läs GET tills "
+        "state är complete eller failed. Upprepade anrop startar ingen ny vidarebefordran. Kvittensen behålls i högst 30 "
+        "minuter och kan tas bort tidigare när nya uppladdningar behöver plats. Högst 256 resurser finns totalt. Om Eneos svar saknas kan modulen inte avgöra om filen lagrades.",
+        session=True, origin=True, user="required", parameters=(UPLOAD_TIMEOUT,),
+        success={"200": reply("Pågående eller färdig vidarebefordran.", json_of({"$ref": "#/components/schemas/UploadStatus"})),
+                 "404": reply("Uppladdningen saknas eller tillhör någon annan.", json_of(ERROR)),
+                 "409": reply("Filen är inte komplett.", json_of(ERROR)),
+                 "413": reply("Filen är större än modulens eller stegets aktuella gräns.", json_of(ERROR)),
+                 "415": reply("Steget tar inte längre emot filtypen.", json_of(ERROR)),
+                 "503": reply("Kapaciteten är upptagen. Försök igen efter två sekunder.", json_of(ERROR))}),
+    ("DELETE", "/api/uploads/{flow_id}/{step_id}/{upload_id}"): Op(
+        "Uppladdning", "Avbryt en ofärdig uppladdning", session=True, origin=True, user="required",
+        success={"204": reply("Temporärfilen är stängd och platsen är ledig."),
+                 "404": reply("Uppladdningen saknas eller tillhör någon annan.", json_of(ERROR)),
+                 "409": reply("Vidarebefordran har redan börjat. Läs status för resultatet.", json_of(ERROR)),
+                 "503": reply("En del behandlas fortfarande. Försök igen efter två sekunder.", json_of(ERROR))}),
     ("GET", "/health"): Op(
         "Hälsa",
         "Hälsokontroll (/health)",
@@ -377,7 +431,7 @@ def describe_generated(parameters: list[dict[str, Any]]) -> list[dict[str, Any]]
         if parameter["in"] == "cookie":
             continue
         schema = {key: value for key, value in parameter["schema"].items() if key != "title"}
-        texts = PATH_PARAMETERS if parameter["in"] == "path" else QUERY_PARAMETERS
+        texts = {"path": PATH_PARAMETERS, "query": QUERY_PARAMETERS, "header": HEADER_PARAMETERS}[parameter["in"]]
         if parameter["name"] not in texts:
             raise SystemExit(f"export_openapi.py: no text for the {parameter['in']} parameter {parameter['name']}")
         described.append({**parameter, "schema": schema, "description": texts[parameter["name"]]})
@@ -595,6 +649,9 @@ COMPONENTS: dict[str, Any] = {
 
 
 MODEL_TEXT = {
+    "UploadMetadata": "Filnamn, MIME-typ och filens storlek i byte. Styrtecken tillåts inte.",
+    "UploadStatus": "Bekräftad position och delstorlek i byte, tillstånd, fil-id efter framgång eller ett fel.",
+    "UploadFailure": "Eneos felstatus och felkod när de finns. Ett saknat svar kan innebära att Eneo tog emot filen.",
     "Organization": 'Organisationen bredvid "Tal till text": namnet och logotypen. `logo` är `default` för den '
     "medföljande logotypen, `custom` för driftsättningens egen (hämtas från "
     "`/api/branding/logo/{variant}`) och null för bara namnet som text.",
@@ -662,7 +719,7 @@ def build() -> dict[str, Any]:
             paths.setdefault(template, {})[method.lower()] = eneo_operation(method, template)
 
     components = deepcopy(COMPONENTS)
-    components["schemas"].update(model_schemas(Organization, ModuleUser))
+    components["schemas"].update(model_schemas(Organization, ModuleUser, main.UploadMetadata, main.UploadStatus))
     components["schemas"]["HTTPValidationError"] = generated["components"]["schemas"]["HTTPValidationError"]
     components["schemas"]["ValidationError"] = generated["components"]["schemas"]["ValidationError"]
     return {

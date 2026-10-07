@@ -19,7 +19,7 @@ Modulen visar de publicerade flöden som användaren har tillgång till. Ett fl�
 ## Driftsätt med Dokploy eller Portainer
 
 > [!WARNING]
-> **Traefik kapar uppladdningar efter 60 s.** I Traefik v3.7 är `readTimeout` 60 s som standard och gäller hela requesten. Sätt den till minst `1800s` (räcker för 1 GiB över 5 Mbit/s) på `websecure`: [så gör du, fil för fil](#vad-som-står-framför-modulen).
+> **Anpassa proxyn för långsamma anslutningar.** Webbläsaren skickar stora filer i delar om högst 4 MiB. Traefiks `readTimeout` måste räcka för en sådan del, eller hela filen för en klient som använder multipart-rutten direkt: [så ändrar du inställningen](#vad-som-står-framför-modulen).
 
 Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-mod-speech-to-text/releases): `docker-compose.yml` och `env.example`, som du fyller i och använder som `.env`.
 
@@ -50,8 +50,9 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 | `COOKIE_SECURE` | `true` | `false` godtas bara när `MODULE_PUBLIC_URL` är `localhost`, `127.0.0.1` eller `[::1]` (lokal utveckling). |
 | `SESSION_MAX_AGE_MINUTES` | `480` | Heltal över 0. Övre gräns för en inloggning; det tidigaste av detta och Eneos sessionstak (`MODULE_AUTH_MAX_SESSION_HOURS`) gäller. |
 | `UPLOAD_PROXY_TIMEOUT_SECONDS` | `1800` | Över 0 och högst 86400: tidsgräns för hela vidarebefordran av en uppladdning. |
-| `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Hela mottagningen från webbläsaren, över 0 och högst 86400 sekunder. 408 när tiden tar slut. |
+| `UPLOAD_RECEIVE_TIMEOUT_SECONDS` | `1800` | Hela mottagningen, inklusive mellanrummen mellan delarna i en återupptagbar uppladdning. Över 0 och högst 86400 sekunder. |
 | `UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS` | `30` | Längsta väntan utan nya byte från webbläsaren, över 0 och högst 86400 sekunder. |
+| `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` | `300` | Längsta uppehåll mellan anrop till en återupptagbar uppladdning. Över 0 och högst 86400 sekunder. |
 | `MAX_CONCURRENT_UPLOADS` | `1` | Samtidiga uppladdningar, från mottagning till städad temporärfil. Heltal 1–96, högst det gemensamma taket nedan. |
 | `MAX_CONCURRENT_HEAVY_IO` | `64` | Gemensamt tak för uppladdningar, filhämtningar och livetext. Heltal 1–96; minst fyra av HTTP-poolens 100 anslutningar lämnas för korta API- och inloggningsanrop. |
 | `MAX_BODY_BYTES` | `10485760` (10 MiB) | Tak för varje request-body utom uppladdningar; 413 över taket. |
@@ -68,7 +69,7 @@ Modulen svarar på vanlig HTTP och litar inte på något `X-Forwarded-*`: den l�
 
 - **HTTPS och HSTS.** Proxyn avslutar TLS och sätter `Strict-Transport-Security`; modulen sätter ingen HSTS. Sessionscookien är `Secure`, och webbläsaren skickar den bara över HTTPS: hela vägen från webbläsaren till proxyn måste vara HTTPS (proxyn talar vanlig HTTP med modulen). Samma krav gäller mikrofonen: webbläsaren ger bara sidor i en säker kontext, alltså HTTPS eller `localhost`, tillgång till den. Hur HSTS sätts i Dokploy och i en annan Traefik: [nedan](#hsts-i-traefik). Kedjan TLS, cookie och inloggning kontrolleras för hand vid driftsättningen.
 - **Storlek och tid för uppladdningar.** Gäller Traefik v3.7: varje ingångspunkt har `readTimeout` 60 s, `writeTimeout` 0 (ingen gräns) och `idleTimeout` 180 s. `readTimeout` gäller hela requesten inklusive bodyn, så en uppladdning som tar längre än 60 s att skicka kapas av proxyn, hur snabbt modulen än svarar. Hur du höjer den: [nedan](#höj-readtimeout-i-traefik).
-  - Värdet: minst den tid det tar att skicka `MAX_UPLOAD_BYTES` över den långsammaste uppkoppling du räknar med. 1 GiB på 20 Mbit/s tar omkring 7 minuter, och 1800 s räcker för 1 GiB över 5 Mbit/s.
+  - Webbläsaren skickar högst 4 MiB per request (`frontend/lib/api.ts`). 60 s räcker vid ungefär 0,6 Mbit/s; höj tiden om användarnas anslutningar är långsammare. Klienter som använder multipart-rutten direkt behöver tid för hela filen: exempelkonfigurationens 1800 s räcker för 1 GiB över 5 Mbit/s.
   - `UPLOAD_PROXY_TIMEOUT_SECONDS` är nästa steg och en egen tid: när hela filen är hos modulen får den högst så länge på sig att skicka den vidare till Eneo. Proxyns `writeTimeout` på 0 gör att inget i proxyn kapar den delen.
   - En eventuell `maxRequestBodyBytes` i proxyn ska rymma `MAX_UPLOAD_BYTES`. Svarar modulen 413 medan webbläsaren fortfarande skickar kan en proxy göra det till ett 502.
 - **WebSocket.** Uppgraderingen till `/api/live/...` måste släppas igenom, och webbläsarens `Origin` måste komma fram oförändrad. Traefik gör det utan extra konfiguration (v3.7); går `ENEO_BACKEND_URL` via en proxy måste den också släppa igenom uppgraderingar. Traefik v3.7 varnar vid start när `aliasHeadersStrategy` saknas; det är ofarligt för modulen.
@@ -130,7 +131,11 @@ En aktuell Chrome, Edge, Safari eller Firefox och tillstånd till mikrofonen. Fu
 
 ## Uppladdningens tillfälliga lagring
 
-En uppladdning tas emot hel av modulen innan den skickas vidare, och Starlette lägger den i en tillfällig fil så fort den är större än 1 MB. Containern är skrivskyddad, så `/tmp` är den enda skrivbara platsen, och i `docker-compose.yml` är den en volym (`spool`), alltså disk: en tmpfs skulle hålla varje uppladdning i minnet. Filerna tas bort när uppladdningen tar slut, avbryts eller överskrider någon av mottagningens tidsgränser. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, plus utrymme för systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
+En uppladdning tas emot hel av modulen innan den skickas vidare. Återupptagbara uppladdningar skrivs direkt till en temporärfil; multipart-filer större än 1 MB läggs också på disk. Containern är skrivskyddad, så `/tmp` är den enda skrivbara platsen, och i `docker-compose.yml` är den en volym (`spool`), alltså disk: en tmpfs skulle hålla varje uppladdning i minnet. Disken ska rymma `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, plus utrymme för systemets övriga temporärfiler. En full disk ger ett fel på uppladdningen.
+
+`UPLOAD_RECEIVE_TIMEOUT_SECONDS` räknas från skapandet och omfattar nätavbrott mellan delarna. En avbruten del skrivs om. En övergiven fil städas efter `UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS` utan anrop från ägaren, eller när totaltiden går ut. Ett giltigt anrop förlänger uppehållstiden men aldrig totaltiden. Färdigställning behåller platsen tills filen har skickats och temporärfilen stängts. Därefter sparas bara en liten kvittens i högst 30 minuter. Högst 256 resurser får finnas samtidigt; den äldsta färdiga kvittensen tas bort om plats behövs. Aktiva filer tas aldrig bort för att ge plats åt andra.
+
+Gränser och städning ägs av `backend/app/resumable.py`. Om backendprocessen startas om försvinner positionerna och kvittenserna. Ett saknat svar från Eneo, eller en försvunnen kvittens efter begärt färdigställande, kan innebära att Eneo redan har lagrat filen. Appen startar då inget flöde och kräver ett uttryckligt nytt försök; en ny uppladdning kan lämna den tidigare filen utan en körning.
 
 Kapacitet reserveras före läsning av filen och frigörs efter städningen. När taket är nått svarar modulen 503 med `Retry-After: 2`; ingen ny fil börjar mellanlagras. Filhämtningar och livetext använder samma gemensamma tak. Livetexten får ett återförsöksbart fel så att inspelningen kan fortsätta lokalt. Inställningarna läses i `backend/app/config.py`; tilldelning och frigörande sker i `backend/app/limits.py` och `backend/app/main.py`.
 

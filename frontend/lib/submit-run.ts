@@ -48,6 +48,7 @@ interface RetryOptions {
 
 function isRetryable(error: unknown): boolean {
   if (error instanceof ApiError) {
+    if (error.code === "upload_forward_failed") return false;
     if (error.status === 0) return error.code === "network_error";
     return error.status === 408 || error.status === 429 || error.status >= 500;
   }
@@ -55,8 +56,8 @@ function isRetryable(error: unknown): boolean {
   return error instanceof TypeError;
 }
 
-// An upload's tries against a server answering with errors: each one sends the whole file
-// again. Run requests and polling keep waiting, since giving up there can lose a run or its view.
+// Bound retries against a failing server. Large uploads resume at the last confirmed byte;
+// small multipart uploads send the file again. Polling and run requests can wait longer.
 const UPLOAD_SERVER_ERROR_TRIES = 4;
 
 const serverError = (error: unknown) =>

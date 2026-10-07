@@ -128,9 +128,11 @@ class SettingsTests(unittest.TestCase):
         environment = valid_environment() | {
             "MAX_CONCURRENT_UPLOADS": "3", "MAX_CONCURRENT_HEAVY_IO": "8",
             "UPLOAD_RECEIVE_TIMEOUT_SECONDS": "600", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS": "20.5",
+            "UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS": "120",
         }
         with patch.dict(os.environ, environment, clear=True):
             settings = load_settings()
+        self.assertEqual(settings.upload_resume_idle_timeout_seconds, 120)
         self.assertEqual((settings.max_concurrent_uploads, settings.max_concurrent_heavy_io), (3, 8))
         self.assertEqual((settings.upload_receive_timeout_seconds, settings.upload_receive_idle_timeout_seconds), (600, 20.5))
 
@@ -145,7 +147,7 @@ class SettingsTests(unittest.TestCase):
                 load_settings()
 
     def test_receive_deadlines_cannot_be_disabled_with_nonfinite_or_unbounded_values(self) -> None:
-        for name in ("UPLOAD_RECEIVE_TIMEOUT_SECONDS", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS"):
+        for name in ("UPLOAD_RECEIVE_TIMEOUT_SECONDS", "UPLOAD_RECEIVE_IDLE_TIMEOUT_SECONDS", "UPLOAD_RESUME_IDLE_TIMEOUT_SECONDS"):
             for raw in ("0", "-1", "inf", "nan", "", "86401"):
                 with self.subTest(name=name, raw=raw), patch.dict(os.environ, valid_environment() | {name: raw}, clear=True):
                     with self.assertRaisesRegex(RuntimeError, name):
