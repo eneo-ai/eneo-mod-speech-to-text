@@ -111,6 +111,8 @@ Budgetarna och skälen: [beslut 0007](decisions/0007-weight-budget.md).
 
 `npm run test:image` (`deploy/acceptance.sh`) startar `docker-compose.yml`, den riktiga tjänsten, med stubben som Eneo och en Traefik framför (`deploy/acceptance/compose.yml`) och kör kontroller av imagen: hälsa, en process och icke-root, headrarna, uppladdningar, WebSocket, stopp med en fil som strömmar, imagens storlek och minne, och live-reläets fördröjning under last. `python3 deploy/acceptance/checks.py --list` säger vad var och en bevisar; `--only 4,5,9` kör några. Behöver Docker, `npm ci` i `frontend/` och Playwright. Portarna (127.0.0.1) är `ACCEPT_TRAEFIK_PORT` 8480, `ACCEPT_ENEO_PORT` 8481 och `ACCEPT_DIRECT_PORT` 8482. Ett fel som ägaren godtagit står i `deploy/acceptance/waivers.json` och skrivs ändå ut som `FAIL (waived: ...)`.
 
+Kontroll 15 skiljer mättnad från ankomsttakt. Mättnadens 200 klienter återanvänder var sin HTTP-anslutning och hämtar varje svar utan cache; då begränsas inte testet av lastgeneratorns tillfälliga TCP-portar. Vid bestämd ankomsttakt öppnar varje besök fortfarande en ny anslutning. Rapporten anger metoden och skiljer HTTP-statusfel från anslutnings- och svarsfel. Alla räknas som fel; en mätning med en annan anslutningsmetod är ingen direkt före/efter-jämförelse av kapacitet.
+
 ## Portar och flera utcheckningar
 
 | Kontroll | Standardportar (app, stub) | Ändra med |

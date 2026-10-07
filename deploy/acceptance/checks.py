@@ -831,7 +831,7 @@ def check_15() -> str:
         except live_load.Shortfall as error:
             problems.append(str(error))
         if load["errors"]:
-            problems.append(f"{name}: the load had {load['errors']} errors in {load['requests']} requests")
+            problems.append(f"{name}: the load had {load['errors']} errors in {load['requests']} requests: {load['errors_by_cause']}")
         return live_load.percentiles(trips), load
 
     # what a browser fetches on one cold visit of a flow, and what the stress test below fetches of it
@@ -844,6 +844,7 @@ def check_15() -> str:
     if stress_files - files:
         problems.append(f"the stress test fetches files the browser does not on a visit: {sorted(stress_files - files)}")
 
+    lines.append("stress clients reuse one HTTP connection each without caching; arrival-rate visits each open a fresh connection")
     # 200 clients fetching the shell and its files over and over with no pause, against the idle relay
     try:
         idle_trips = live_load.measure_round_trips(STACK.direct, path, headers, 30, 20)

@@ -9,6 +9,7 @@ never answers.
 
 import asyncio
 import base64
+import errno
 import hashlib
 import json
 import socket
@@ -252,16 +253,23 @@ class QuickWebServer(ThreadingHTTPServer):
         def do_GET(self) -> None:
             body = PAGE if self.path == "/" else b"x" * 100
             self.server.paths.append(self.path)  # type: ignore[attr-defined]
-            self.send_response(200)
+            self.send_response(self.server.status)  # type: ignore[attr-defined]
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
 
-    def __init__(self) -> None:
+    def __init__(self, status: int = 200) -> None:
         super().__init__(("127.0.0.1", 0), self.Handler)
         self.paths = []
+        self.status = status
+        self.connections = 0
         threading.Thread(target=self.serve_forever, daemon=True).start()
         self.url = f"http://127.0.0.1:{self.server_address[1]}"
+
+    def get_request(self):
+        connection = super().get_request()
+        self.connections += 1
+        return connection
 
 
 class AssetsNamedTests(unittest.TestCase):
@@ -287,6 +295,38 @@ class LoadGeneratorTests(unittest.TestCase):
         self.assertAlmostEqual(result["visits"], 40, delta=3)
         self.assertEqual(result["requests"], result["visits"] * len(visit))
         self.assertEqual((result["errors"], result["dropped"]), (0, 0))
+        self.assertEqual(server.connections, result["visits"], "arrival-rate visits keep testing fresh connections")
+
+    def test_stress_clients_reuse_connections_across_visits_without_caching_responses(self) -> None:
+        server = QuickWebServer()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        result = asyncio.run(live_load.run_load(server.url, 1, clients=2, visit=["/"]))
+
+        self.assertGreater(result["visits"], 4)
+        self.assertEqual(result["requests"], result["visits"])
+        self.assertEqual(result["errors"], 0)
+        self.assertEqual(server.connections, 2, "stress must load the server rather than exhaust the driver's ephemeral ports")
+
+    def test_connection_failures_are_counted_and_identified(self) -> None:
+        with patch.object(live_load.asyncio, "open_connection", side_effect=OSError(errno.EADDRNOTAVAIL, "no local port")):
+            result = asyncio.run(live_load.run_load("http://127.0.0.1:1", 0.1, clients=1))
+
+        self.assertGreater(result["errors"], 0)
+        self.assertEqual(result["requests"], 0)
+        self.assertEqual(result["errors_by_cause"], {f"connect:OSError:{errno.EADDRNOTAVAIL}": result["errors"]})
+
+    def test_http_errors_still_fail_the_load_and_identify_the_status(self) -> None:
+        server = QuickWebServer(status=503)
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        result = asyncio.run(live_load.run_load(server.url, 0.2, clients=1, visit=["/"]))
+
+        self.assertGreater(result["requests"], 0)
+        self.assertEqual(result["errors"], result["requests"])
+        self.assertEqual(result["errors_by_cause"], {"HTTP:503": result["errors"]})
 
     def test_without_a_visit_it_fetches_the_page_and_the_assets_it_names(self) -> None:
         server = QuickWebServer()

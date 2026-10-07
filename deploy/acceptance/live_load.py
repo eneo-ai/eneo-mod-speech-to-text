@@ -14,7 +14,8 @@ port names the module's public address). The session is the one the cookie names
 Two ways to load it, and what each is:
 
   --clients N   a stress test of the shell and its assets: N clients that each fetch the page and the files its HTML names (no
-                script is run, so no lazy chunk, no font, no API call), over and over with no pause, so that the module is saturated.
+                script is run, so no lazy chunk, no font, no API call), over and over with no pause or cache, on one persistent
+                connection per client, so that the module is saturated without exhausting the generator's ephemeral ports.
   --rate R      an arrival rate: R visits a second, each a fresh connection and the requests of --visit in order, whatever the module
                 is doing meanwhile (open loop). --visit is a JSON list of request paths: what a browser fetched on one cold visit
                 (visit_resources.cjs records it). Without it a visit is the page and the files its HTML names, as above.
@@ -36,6 +37,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import Counter
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -202,7 +204,7 @@ def percentiles(trips: Trips) -> dict[str, float | int]:
     return report
 
 
-# ---- the load: first-time visitors ------------------------------------------------------------------------------------
+# ---- the load: uncached visits ----------------------------------------------------------------------------------------
 LOADED_LINKS = {"stylesheet", "modulepreload", "preload"}  # the rels of a <link> that a browser fetches to load the page
 
 
@@ -245,24 +247,35 @@ async def fetch(reader: asyncio.StreamReader, writer: asyncio.StreamWriter, host
     return await asyncio.wait_for(exchange(), REQUEST_DEADLINE)
 
 
-async def one_visit(host: str, port: int, visit: list[str] | None, cookie: str | None, totals: dict[str, int]) -> None:
-    """A fresh connection, then the requests of a visit: the paths of ``visit``, or the page and the files its HTML names."""
+async def one_connection(
+    host: str, port: int, visit: list[str] | None, cookie: str | None, totals: dict[str, int], errors: Counter[str], *, until: float | None = None
+) -> None:
+    """One fresh connection: a single arrival-rate visit, or uncached stress visits until ``until``."""
     writer = None
+    stage = "connect"
     try:
         reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), REQUEST_DEADLINE)
-        paths = list(visit) if visit is not None else ["/"]
-        index = 0
-        while index < len(paths):
-            status, size, body = await fetch(reader, writer, f"{host}:{port}", paths[index], cookie)
-            totals["requests"] += 1
-            totals["bytes"] += size
-            totals["errors"] += status != 200
-            if visit is None and index == 0:
-                paths += assets_named(body)
-            index += 1
-        totals["visits"] += 1
-    except (OSError, asyncio.IncompleteReadError, ValueError, asyncio.TimeoutError):
+        stage = "response"
+        while True:
+            paths = list(visit) if visit is not None else ["/"]
+            index = 0
+            while index < len(paths):
+                status, size, body = await fetch(reader, writer, f"{host}:{port}", paths[index], cookie)
+                totals["requests"] += 1
+                totals["bytes"] += size
+                if status != 200:
+                    totals["errors"] += 1
+                    errors[f"HTTP:{status}"] += 1
+                if visit is None and index == 0:
+                    paths += assets_named(body)
+                index += 1
+            totals["visits"] += 1
+            if until is None or time.monotonic() >= until:
+                break
+    except (OSError, asyncio.IncompleteReadError, ValueError, asyncio.TimeoutError) as error:
         totals["errors"] += 1
+        code = f"{stage}:{type(error).__name__}"
+        errors[code + (f":{error.errno}" if isinstance(error, OSError) and error.errno is not None else "")] += 1
         await asyncio.sleep(0.05)
     finally:
         if writer is not None:
@@ -271,18 +284,19 @@ async def one_visit(host: str, port: int, visit: list[str] | None, cookie: str |
 
 async def run_load(
     base: str, seconds: float, *, clients: int | None = None, rate: float | None = None, visit: list[str] | None = None, cookie: str | None = None
-) -> dict[str, float | int]:
-    """Load the module for ``seconds``: ``clients`` that visit over and over, or ``rate`` visits a second (open loop), each of ``visit``."""
+) -> dict[str, float | int | dict[str, int]]:
+    """Uncached visits for ``seconds``: persistent stress clients, or fresh connections at ``rate`` (open loop)."""
     url = urlsplit(base)
     if url.hostname is None:
         raise ValueError(f"no host in {base}")
     host, port = url.hostname, url.port or 80
     totals = {"requests": 0, "bytes": 0, "errors": 0, "visits": 0, "dropped": 0}
+    errors: Counter[str] = Counter()
     until = time.monotonic() + seconds
 
     async def client() -> None:
         while time.monotonic() < until:
-            await one_visit(host, port, visit, cookie, totals)
+            await one_connection(host, port, visit, cookie, totals, errors, until=until)
 
     if rate is None:
         await asyncio.gather(*(client() for _ in range(clients or 1)))
@@ -293,7 +307,7 @@ async def run_load(
             if len(running) >= MAX_IN_FLIGHT:
                 totals["dropped"] += 1
             else:
-                task = asyncio.create_task(one_visit(host, port, visit, cookie, totals))
+                task = asyncio.create_task(one_connection(host, port, visit, cookie, totals, errors))
                 running.add(task)
                 task.add_done_callback(running.discard)
             next_start += 1 / rate
@@ -303,7 +317,7 @@ async def run_load(
             for task in stuck:
                 task.cancel()
     shape: dict[str, float | int] = {"clients": clients or 1} if rate is None else {"rate": rate}
-    return {**totals, **shape, "seconds": seconds, "requests_per_second": round(totals["requests"] / seconds, 1), "mbit_per_second": round(totals["bytes"] * 8 / 1e6 / seconds, 1)}
+    return {**totals, **shape, "errors_by_cause": dict(errors), "seconds": seconds, "requests_per_second": round(totals["requests"] / seconds, 1), "mbit_per_second": round(totals["bytes"] * 8 / 1e6 / seconds, 1)}
 
 
 def measure_under_load(base: str, path: str, headers: dict[str, str], seconds: float, fps: int, load_args: list[str]) -> tuple[Trips, dict]:
