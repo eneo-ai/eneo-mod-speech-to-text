@@ -49,13 +49,13 @@ class ReleasePathTests(unittest.TestCase):
                 self.assertNotIn(building, text)
         self.assertEqual(workflow("release.yml")["permissions"], {"contents": "read"})
 
-    def test_every_action_is_a_commit_and_one_skopeo_digest_is_used_everywhere(self) -> None:
+    def test_actions_are_pinned_and_skopeo_uses_one_retained_immutable_release(self) -> None:
         for name in ("ci.yml", "publish.yml", "release.yml"):
             for use in re.findall(r"(?m)^\s*(?:-\s+)?uses:\s*(\S+)", (WORKFLOWS / name).read_text()):
                 with self.subTest(workflow=name, uses=use):
                     self.assertTrue(use.startswith("./") or re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", use), f"{use} is not pinned to a commit")
         skopeo = {
-            name: re.search(r"(?m)^\s*SKOPEO:\s*(quay\.io/skopeo/stable@sha256:[0-9a-f]{64})$", (WORKFLOWS / name).read_text())
+            name: re.search(r"(?m)^\s*SKOPEO:\s*(quay\.io/containers/skopeo:v\d+\.\d+\.\d+-immutable@sha256:[0-9a-f]{64})$", (WORKFLOWS / name).read_text())
             for name in ("ci.yml", "publish.yml", "release.yml")
         }
         self.assertTrue(all(skopeo.values()), skopeo)

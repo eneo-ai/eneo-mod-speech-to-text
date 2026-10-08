@@ -149,6 +149,8 @@ test("the mark does not move when its logo arrives: the page kept its room", asy
   });
   await page.route("**/api/auth/status", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  // The initial auth check replaces the loading header. Measure the sign-in header while the logo is still held.
+  await expect(page.getByRole("button", { name: "Logga in med Eneo" })).toBeEnabled();
   const name = page.getByRole("navigation", { name: "Tal till text" }).getByText("Tal till text", { exact: true });
   const logo = page.locator("img[data-brand-logo]:visible");
   await expect(name).toBeVisible();

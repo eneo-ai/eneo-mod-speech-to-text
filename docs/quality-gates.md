@@ -151,6 +151,8 @@ Under iteration används befintliga specar direkt med `--project` och `--grep`, 
 
 Mät kostnaden innan arbetsordningen ändras. Playwrights summerade testtider överlappar mellan arbetare; de är inte körningens väggtid. Granska kostnaden per spec och använd vid behov `test.step` för att skilja navigering, väntan och mätningar. En paus kräver ingen ny kandidatkopia om filer, körmiljö och byggda filer är oförändrade: kontrollera ett exakt urval av återstående test-ID:n med Playwrights `--list` före fortsättningen, behåll den avbrutna originalrapporten och verifiera att resultatens union täcker hela ursprungslistan.
 
+CI delar kontrollernas tester i fyra delar och övriga tester mot utvecklingsservern i två delar. Produktionsbygget, den riktiga backendens gate och branding körs i egna jobb. Varje jobb har en egen server och två Playwright-arbetare; publiceringen väntar på alla jobb. Testurvalet finns i `.github/workflows/ci.yml`. Vid ändrad uppdelning ska testlistornas union vara oförändrad, utan bortfall eller dubbletter. Artefakterna `frontend-browser-timings-*` innehåller Playwrights JSON-resultat med status och tid per test även när allt lyckas. Bilder och spår från fel finns i `frontend-browser-results-*`.
+
 ## Läsa ett fel
 
 | Det du ser | Betyder | Gör så här |
