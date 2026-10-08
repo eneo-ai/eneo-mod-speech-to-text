@@ -70,7 +70,23 @@ jobs:
         run: npm run build
 
   frontend-browser:
+    name: frontend-browser (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { suite: controls, shard: 1, total: 4 }
+          - { suite: controls, shard: 2, total: 4 }
+          - { suite: controls, shard: 3, total: 4 }
+          - { suite: controls, shard: 4, total: 4 }
+          - { suite: accessibility, shard: 1, total: 2 }
+          - { suite: accessibility, shard: 2, total: 2 }
+          - { suite: production, shard: 1, total: 1 }
+          - { suite: real-backend, shard: 1, total: 1 }
+          - { suite: branding, shard: 1, total: 1 }
+    env:
+      PLAYWRIGHT_JSON_OUTPUT_NAME: test-results/results.json
     defaults:
       run:
         working-directory: frontend
@@ -81,28 +97,45 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      # The production tests start the real backend (python -m app.serve) in front of the fake Eneo: it needs its packages.
+      # Each runner has its own app and stub. Only built-app suites need the backend's dependencies.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14.8"
           cache: pip
           cache-dependency-path: backend/requirements.lock
       - name: Install backend dependencies
+        if: matrix.suite == 'production' || matrix.suite == 'real-backend'
         run: python -m pip install --require-hashes --no-deps -r ${{ github.workspace }}/backend/requirements.lock
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit firefox
+      - name: Install browsers
+        run: npx playwright install --with-deps ${{ matrix.suite == 'production' && 'chromium webkit firefox' || 'chromium' }}
       - name: Production build in three engines
-        run: npm run test:prod
+        if: matrix.suite == 'production'
+        run: npm run test:prod -- --workers=2 --add-reporter=json
+      # Controls account for most browser time. Shard them separately so a shard of short scans does not wait for them.
+      - name: Every control, one phone and one laptop
+        if: matrix.suite == 'controls'
+        run: npx playwright test controls.spec.ts --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
       - name: Accessibility gate, one phone and one laptop
-        run: npx playwright test --project=phone-390-light --project=laptop-1440-light --workers=2
+        if: matrix.suite == 'accessibility'
+        run: npx playwright test --grep-invert='controls\.spec\.ts' --project=phone-390-light --project=laptop-1440-light --workers=2 --shard=${{ matrix.shard }}/${{ matrix.total }} --add-reporter=json
       - name: Accessibility gate through the real backend under the strict policy, one phone and one laptop
-        run: npm run build:check && GATE_TARGET=real npx playwright test --project=phone-390-light --project=laptop-1440-dark --workers=2
+        if: matrix.suite == 'real-backend'
+        run: npm run build:check && GATE_TARGET=real npx playwright test --project=phone-390-light --project=laptop-1440-dark --workers=2 --add-reporter=json
       - name: Branding gate, a deployment with its own organisation and accent
-        run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark
+        if: matrix.suite == 'branding'
+        run: STUB_BRANDING=custom npx playwright test --config playwright.branding.config.ts --project=laptop-1440-light --project=phone-390-dark --workers=2 --add-reporter=json
+      - name: Keep test results and timings
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: ${{ !cancelled() }}
+        with:
+          name: frontend-browser-timings-${{ matrix.suite }}-${{ matrix.shard }}
+          path: frontend/test-results/results.json
+          retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
-          name: frontend-browser-results
+          name: frontend-browser-results-${{ matrix.suite }}-${{ matrix.shard }}
           path: frontend/test-results
 
   compose:
