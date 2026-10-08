@@ -157,7 +157,11 @@ Modulen loggar till containerns stdout och stderr (`docker logs <container>`, `d
 
 ## CI och utgåvor
 
-`.github/workflows/ci.yml` körs vid pull request och vid push till `main`; arbetsflödena är källan till vad som körs. `docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll, och en push till `main` publicerar sajten till GitHub Pages på `https://eneo-ai.github.io/eneo-mod-speech-to-text/`. Pages måste vara påslaget i repots inställningar, med GitHub Actions som källa.
+`.github/workflows/ci.yml` körs vid pull request och vid push till `main`; arbetsflödena är källan till vad som körs. `docs.yml` bygger `docs-site/` och kör dess webbläsarkontroll. Ändringar i dokumentationen på `main` publicerar sajten på [GitHub Pages](https://eneo-ai.github.io/eneo-mod-speech-to-text/).
+
+Inför första publiceringen behöver en repoadministratör välja **Settings → Pages → Build and deployment → Source: GitHub Actions**. Arbetsflödets vanliga token kan publicera till en aktiverad sajt, men kan inte aktivera Pages. Steget **Check GitHub Pages configuration** kontrollerar inställningen före publicering.
+
+Om bygget lyckas men publiceringen svarar med `404 Not Found`, kontrollera Pages-inställningen. Kör sedan det misslyckade jobbet igen, eller välj **Actions → Docs → Run workflow → main** för att bygga, kontrollera och publicera på nytt. Manuella körningar på andra grenar bygger och kontrollerar sajten utan att publicera den.
 
 `release.yml` körs när en tagg `vX.Y.Z` pushas. Den bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest` med samma digest och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart.
 
