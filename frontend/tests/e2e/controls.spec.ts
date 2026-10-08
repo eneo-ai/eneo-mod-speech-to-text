@@ -29,7 +29,7 @@ const SKIPPED: Record<string, string> = {};
 const EXPECTS: Record<string, { reason: string; expects: Expectation[] }> = {};
 
 // The flow that must be republished answers 409 to the page that opens it (the state flow-republish-required declares the same).
-for (const state of ["flow-list", "unsent-recordings", "unsent-recording-delete-question"]) {
+for (const state of ["flow-list", "branding-custom-flow-list", "branding-name-flow-list", "unsent-recordings", "unsent-recording-delete-question"]) {
   EXPECTS[`${state} | link "Nämndmöte till strukturerat protokoll med beslut, reservatio"`] = {
     reason: "its flow must be republished: Eneo answers 409 to the page that opens it, and the page says so",
     expects: [{ console: /status of 409.*\/published\// }, { console: /status of 409.*\/run-contract\// }],
