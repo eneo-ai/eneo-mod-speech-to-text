@@ -107,7 +107,8 @@ export function UnsentRecordings({
   evictable = false,
 }: {
   list: UnsentList;
-  onSend: (recording: StoredRecording) => void;
+  /** Absent where the flow cannot run now: the recordings are then only saved as files or deleted. */
+  onSend?: (recording: StoredRecording) => void;
   onContinue?: (recording: StoredRecording) => void;
   /** False once the person has chosen another way on the page (a file): the page's own action is then the filled one. */
   filled?: boolean;
@@ -180,7 +181,7 @@ function UnsentRecordingRow({
   recording: UnsentRecording;
   withFlowName: boolean;
   sendLabel: string;
-  onSend: (recording: StoredRecording) => void;
+  onSend?: (recording: StoredRecording) => void;
   /** Given for a recording whose capture was cut off, where a recorder can take it over. */
   onContinue?: (recording: StoredRecording) => void;
   /** Its "Fortsätt spela in" is the page's filled action. */
@@ -268,7 +269,7 @@ function UnsentRecordingRow({
                     onClick={() => onContinue(recording)}
                   />
                 )}
-                <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />
+                {onSend && <Button label={sendLabel} aria-describedby={summaryId} onClick={() => onSend(recording)} />}
                 <Button label="Spara som fil" aria-describedby={summaryId} onClick={() => void save()} />
               </HStack>
               <Button

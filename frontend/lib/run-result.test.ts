@@ -139,6 +139,22 @@ test("an input the flow cannot use says how to change it, and retry advice still
   assert.equal(runErrorView(runError({ code: "flow_task_timeout" })).inputMustChange, false);
 });
 
+test("a run whose speakers could not be labelled says which of the two it was, and the same audio is offered again", () => {
+  // The text is there and only the labelling failed: Eneo marks it retryable, and the advice follows that.
+  const failed = runErrorView(runError({ code: "typed_io_speaker_identification_failed", retryable: true }));
+  assert.equal(failed.summary, "Transkriberingen blev klar, men talarna kunde inte märkas upp. Det går bra att köra flödet igen om en stund.");
+  // No service the flow can use: one sentence whatever the gap, and who can put it right.
+  for (const speaker_service_gap of ["no_service", "none_usable", "picked_unavailable", undefined]) {
+    const unavailable = runErrorView(runError({ code: "typed_io_speaker_service_unavailable", details: { speaker_service_gap } }));
+    assert.match(
+      unavailable.summary,
+      /^Flödet behöver märka upp talare, men tjänsten som gör det gick inte att använda\. Bara den som ansvarar för flödet kan rätta det\. /,
+    );
+    assert.equal(unavailable.inputMustChange, false, "the audio is not what has to change");
+  }
+  assert.equal(failed.inputMustChange, false);
+});
+
 test("the failed step is named from Eneo's description, else the flow graph", () => {
   assert.equal(
     runErrorView(

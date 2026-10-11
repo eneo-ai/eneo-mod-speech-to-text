@@ -2,11 +2,14 @@ import { FileText } from "lucide-react";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { Button } from "@astryxdesign/core/Button";
+import { Heading } from "@astryxdesign/core/Heading";
+import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { Switch } from "@astryxdesign/core/Switch";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
 import { VStack } from "@astryxdesign/core/VStack";
+import { BackToFlows } from "@/components/flow/BackToFlows";
 import { FlowAside } from "@/components/flow/FlowAside";
 import {
   COUNT_FROM_NAMES,
@@ -34,6 +37,8 @@ import {
   labelsSpeakers,
   primaryActionLabel,
   readSpeakerCount,
+  speakerLabelsGap,
+  SPEAKERS_UNAVAILABLE,
   storageLine,
   type SessionPhase,
 } from "@/lib/flow-session";
@@ -129,6 +134,9 @@ export function FlowInput({
   const ownCountField = contract.transcription?.max_speakers?.form_field;
   // What the run makes, which the actions and the lines about it say: text, or a document.
   const text = makesText(contract.final_output);
+  // A flow that cannot run now: the session takes no way on, so none is offered, in the setup or over a recording
+  // that was ready before.
+  const blocked = speakerLabelsGap(contract.transcription?.speaker_labels) === "blocked";
 
   useEffect(() => setSuggestions(recentNames(browserStorage(), ownerId)), [ownerId]);
 
@@ -167,7 +175,9 @@ export function FlowInput({
             published={published}
             classification={contract.security_classification}
             compact={holdsAudio}
-            details={details}
+            // The blocked setup asks for nothing: its details would be filled in for no run, and on a phone they stand
+            // above the reason. What was typed before stays with the session.
+            details={blocked && group === "setup" ? null : details}
             summary={fields.length > 0 ? detailsSummary(fields, snapshot.details) : null}
             open={openDetails}
             onOpenChange={setDetailsOpen}
@@ -208,8 +218,10 @@ export function FlowInput({
               finishing={snapshot.finishing}
               finishQueued={snapshot.finishQueued}
               makesText={text}
-              onCreate={() => void createDocument(session)}
-              onContinue={input.continueStopped}
+              // Blocked since the recording was made: neither way on would do anything, so the panel has the reason
+              // (the session's problem), saving as a file and deleting.
+              onCreate={blocked ? undefined : () => void createDocument(session)}
+              onContinue={blocked ? undefined : input.continueStopped}
               onDiscard={() => void session.discard()}
               earlierRuns={earlierRuns}
               onOpenRun={onOpenRun}
@@ -352,8 +364,38 @@ function SetupWorkspace({
     else void createDocument(session);
   }
 
+  // Said apart from the setup's own action, which sends a chosen file or a new recording.
+  const sendLabel = () => `${create} av inspelningen`;
+  const speakerGap = speakerLabelsGap(speakerOption);
+
+  // The flow cannot run now: its reason and the way to another flow stand where the ways in would, so nothing is
+  // recorded, chosen or sent. The page's own content from its first paint, so a heading and a paragraph, not an alert.
+  // A recording made earlier stays listed under the reason it cannot be sent, to save as a file.
+  if (speakerGap === "blocked") {
+    return (
+      <VStack gap={6}>
+        <VStack gap={4}>
+          <Heading level={2} data-phase-heading tabIndex={-1}>
+            {SPEAKERS_UNAVAILABLE.title}
+          </Heading>
+          <Text as="p">{SPEAKERS_UNAVAILABLE.detail}</Text>
+          <HStack>
+            <BackToFlows variant="primary" size="md" />
+          </HStack>
+        </VStack>
+        <UnsentRecordings list={unsent} sendLabel={sendLabel} evictable={input.evictable} />
+        <EarlierRuns list={earlierRuns} onOpen={onOpenRun} onMore={onMoreRuns} className={styles.earlier} />
+      </VStack>
+    );
+  }
+
   const speakerChoice =
-    speakerOption?.selectable && snapshot.speakerLabels !== null ? (
+    speakerGap === "unlabelled" ? (
+      // In the switch's place: it could not be kept, and nothing else about the run changes.
+      <Text as="p" color="secondary">
+        Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.
+      </Text>
+    ) : speakerOption?.selectable && snapshot.speakerLabels !== null ? (
       <Switch
         label="Märk upp talare"
         description={`Tar längre tid efter ${mode === "ladda-upp" ? "uppladdningen" : "inspelningen"}.`}
@@ -374,8 +416,7 @@ function SetupWorkspace({
     <VStack gap={6}>
       <UnsentRecordings
         list={unsent}
-        // Said apart from the setup's own action, which sends a chosen file or a new recording.
-        sendLabel={() => `${create} av inspelningen`}
+        sendLabel={sendLabel}
         filled={resuming}
         evictable={input.evictable}
         onSend={(recording) => {

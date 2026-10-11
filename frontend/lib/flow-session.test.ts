@@ -19,6 +19,8 @@ import {
   oneRecordingLimitSeconds,
   captureLimits,
   speakerLabelsFor,
+  speakerLabelsGap,
+  SPEAKERS_UNAVAILABLE,
   storageLine,
   type DetailValue,
   type LiveClient,
@@ -375,6 +377,88 @@ test("Antal talare is asked only when the flow's form asks no count and the run 
   assert.equal(session.getSnapshot().speakerCount, null, "an Eneo that offers no max_speakers");
   session.setContract(countContract({ speaker_labels: { selectable: false, required: true, default: true } }));
   assert.equal(session.getSnapshot().speakerCount, "4", "a flow that requires labels asks too, with what was typed");
+});
+
+test("speaker labels Eneo cannot make now block a flow that requires them and leave another unlabelled; no reason says nothing", () => {
+  const required = { selectable: false, required: true, default: true };
+  const optional = { selectable: true, required: false, default: true };
+  for (const reason of ["no_service", "none_usable", "picked_unavailable", "a_reason_from_a_newer_eneo"]) {
+    assert.equal(speakerLabelsGap({ ...required, unavailable_reason: reason }), "blocked", reason);
+    assert.equal(speakerLabelsGap({ ...optional, unavailable_reason: reason }), "unlabelled", reason);
+  }
+  assert.equal(speakerLabelsGap(required), null, "an older Eneo, which does not say");
+  assert.equal(speakerLabelsGap({ ...required, unavailable_reason: null }), null, "nothing is in the way");
+  assert.equal(speakerLabelsGap({ ...optional, unavailable_reason: null }), null);
+  assert.equal(speakerLabelsGap(null), null, "a flow that transcribes nothing");
+});
+
+test("optional speaker labels Eneo cannot make now leave the run as it is: no choice and no count are asked or sent, and the person's are back with the labels", async () => {
+  const sent: SubmitRequest[] = [];
+  const { session } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  const unlabelled = countContract({ speaker_labels: { selectable: true, required: false, default: true, unavailable_reason: "none_usable" } });
+  const choices = () => [session.getSnapshot().speakerLabels, session.getSnapshot().speakerCount];
+  session.setContract(countContract());
+  session.setSpeakerLabels(true);
+  session.setSpeakerCount("4");
+  session.setContract(unlabelled);
+  assert.deepEqual(choices(), [null, null], "a switch that could not be kept is not offered");
+  session.setContract(countContract());
+  assert.deepEqual(choices(), [true, "4"], "what the person chose, once it can be done");
+  session.setContract(unlabelled);
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await session.createDocument(), true, "nothing is in the run's way");
+  assert.deepEqual([sent[0].speakerLabels, sent[0].maxSpeakers], [undefined, undefined]);
+  assert.equal(session.getSnapshot().problem, null);
+});
+
+test("a flow that requires speaker labels Eneo cannot make now takes no way in, and a recording made ready before stays and says why", async () => {
+  const blocked = countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "no_service" } });
+  const sent: SubmitRequest[] = [];
+  const { session, store, streams, recorders } = await setup();
+  session.setHandlers({ submit: async (request) => void sent.push(request) });
+  session.setContract(blocked);
+  assert.deepEqual(session.getSnapshot().problem, SPEAKERS_UNAVAILABLE);
+  session.selectMode("spela-in");
+  await session.start();
+  assert.equal(streams.length, 0, "the microphone is not asked for");
+  session.selectMode("ladda-upp");
+  session.chooseFile(new File(["x"], "mote.webm", { type: "audio/webm" }));
+  assert.equal(await session.createDocument(), false, "a file is not sent");
+  const earlier = await store.create({
+    ownerId: "user-1",
+    flowId: "flow-1",
+    flowName: "Nämndmöte till rapport",
+    stepId: "step-audio",
+    inputMode: "record",
+    mimeType: "audio/webm",
+  });
+  await store.startPart(earlier.id);
+  await store.append(earlier.id, 0, new Blob(["before the reload"]), 60_000);
+  store.release(earlier.id); // the tab that recorded it is gone
+  await session.continueCutOff((await store.get(earlier.id))!);
+  assert.equal(streams.length, 0, "nor is a recording a reload cut off recorded on");
+  session.adopt(earlier);
+  assert.equal(await session.createDocument(), false);
+  assert.equal(session.getSnapshot().phase, "setup", "a recording made earlier stays in its list");
+  assert.equal(sent.length, 0);
+
+  // Recorded while the flow could run, and the flow changed before the send.
+  session.setContract(countContract());
+  assert.equal(session.getSnapshot().problem, null, "usable again: nothing left to say");
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  const recording = session.getSnapshot().recording;
+  session.setContract(blocked);
+  assert.equal(await session.createDocument(), false);
+  await session.continueStopped();
+  assert.deepEqual([session.getSnapshot().phase, session.getSnapshot().recording], ["ready", recording], "kept, and not recorded on");
+  assert.equal(session.getSnapshot().problem?.title, "Flödet kan inte användas just nu.");
+  assert.equal(sent.length, 0);
 });
 
 test("Antal talare takes a whole number from 1 to 20, or nothing", () => {

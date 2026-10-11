@@ -103,6 +103,15 @@ async function limitAudio(page: Page, seconds: number, files: number) {
   });
 }
 
+/** Eneo cannot make the speaker labels the flow asks for now: its run contract says why (`unavailable_reason`). */
+async function speakerLabelsUnavailable(page: Page) {
+  await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
+    const contract = await (await route.fetch()).json();
+    contract.transcription.speaker_labels.unavailable_reason = "none_usable";
+    return route.fulfill({ json: contract });
+  });
+}
+
 /** A recording with a line in the recording bar, `line`, once `start` has set the scene. */
 async function recordingSays(page: Page, line: string | RegExp, start?: () => Promise<unknown>) {
   await setup(page);
@@ -597,6 +606,24 @@ export const STATES: State[] = [
       }
       await page.getByRole("button", { name: "Öppna kalender" }).click();
       await expect(page.getByRole("dialog", { name: "Välj datum" })).toBeVisible();
+    },
+  },
+  {
+    // A flow that requires speaker labels Eneo cannot make now: the reason stands in place of every way in.
+    name: "setup-speakers-blocked",
+    go: async (page) => {
+      await speakerLabelsUnavailable(page);
+      await page.goto(`/flows/${ids.flows.flow2}`);
+      await heading(page, "Flödet kan inte användas just nu.");
+    },
+  },
+  {
+    // A flow that only offers them: a line in the switch's place, and every way in as usual.
+    name: "setup-speakers-unlabelled",
+    go: async (page) => {
+      await speakerLabelsUnavailable(page);
+      await setup(page);
+      await expect(page.getByText("Talare kan inte märkas upp just nu.")).toBeVisible();
     },
   },
   {
