@@ -269,12 +269,37 @@ export function missingModesNote(
   return null;
 }
 
-/** The flow's own default in every mode, Strömma included, until the person chooses. */
+/**
+ * What it means for a run that Eneo cannot make the speaker labels the flow asks for (`unavailable_reason`): "blocked"
+ * where the flow requires them, since the run would fail at its transcription, and "unlabelled" where it runs without
+ * them. Any reason counts, also one this module does not know; an Eneo that gives none has nothing in the way.
+ */
+export function speakerLabelsGap(
+  option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
+): "blocked" | "unlabelled" | null {
+  if (!option?.unavailable_reason) return null;
+  return option.required ? "blocked" : "unlabelled";
+}
+
+/**
+ * What the page says of a flow that is blocked (speakerLabelsGap): in place of the setup's ways in, and over a
+ * recording that was made ready before.
+ */
+export const SPEAKERS_UNAVAILABLE: Problem = {
+  title: "Flödet kan inte användas just nu.",
+  detail: "Flödet behöver märka upp talare, men tjänsten som gör det går inte att använda. Kontakta den som ansvarar för flödet.",
+  back: true,
+};
+
+/**
+ * The flow's own default in every mode, Strömma included, until the person chooses. No choice while the labels
+ * cannot be made: the run then says nothing of them, and the person's choice is back when they can.
+ */
 export function speakerLabelsFor(
   option: FlowTranscriptionContract["speaker_labels"] | null | undefined,
   explicit: boolean | null,
 ): boolean | null {
-  if (!option?.selectable) return null;
+  if (!option?.selectable || speakerLabelsGap(option)) return null;
   return explicit ?? option.default;
 }
 
@@ -588,7 +613,11 @@ export class FlowSession {
 
   /** The run contract, first or refreshed: the modes, and the details that still fit. */
   setContract(contract: RunContract | null): void {
+    const wasBlocked = this.blocked();
     this.contract = contract;
+    // The flow became blocked: what an earlier press was answered (check and try again, after a newer version) names
+    // an action that is no longer there, so it gives way to the standing reason. What is answered from here on is kept.
+    if (this.blocked() && !wasBlocked) this.problem = null;
     const capabilities = {
       canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
       liveClient: this.options.live != null,
@@ -652,7 +681,7 @@ export class FlowSession {
   /** "Starta inspelning" / "Starta strömning": the microphone is asked for here. */
   async start(): Promise<void> {
     const { phase, mode } = this.snapshot;
-    if (phase !== "setup" || (mode !== "spela-in" && mode !== "stromma") || this.countInvalid()) return;
+    if (phase !== "setup" || (mode !== "spela-in" && mode !== "stromma") || this.countInvalid() || this.blocked()) return;
     const step = this.inputStep();
     const mimeType = this.options.pickMimeType(step?.accepted_mimetypes);
     if (!step || !mimeType) {
@@ -774,7 +803,7 @@ export class FlowSession {
 
   /** An unsent recording from the list, made ready to become a document. */
   adopt(recording: StoredRecording): void {
-    if ((this.snapshot.phase !== "setup" && this.snapshot.phase !== "ready") || this.countInvalid()) return;
+    if ((this.snapshot.phase !== "setup" && this.snapshot.phase !== "ready") || this.countInvalid() || this.blocked()) return;
     this.ready = recording;
     this.problem = null;
     this.emit();
@@ -796,6 +825,8 @@ export class FlowSession {
   }
 
   private async send(): Promise<boolean> {
+    // A run would fail at its transcription: none is asked for, and what was recorded or chosen stays.
+    if (this.blocked()) return false;
     // The button says it waits; a press meanwhile is kept, and sends when the text is in.
     if (this.finishing) {
       this.sendQueued = true;
@@ -847,13 +878,14 @@ export class FlowSession {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
       if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
       const createLabel = createActionLabel(makesText(this.contract?.final_output));
-      this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel);
+      // This send's own answer: the newer contract read below may take it away again (setContract).
+      const problem = (this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel));
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.
         await this.handlers.reloadFlow?.().catch(() => undefined);
       }
       // The run Eneo has is among the earlier runs, which may have been read before it existed.
-      if (this.problem.sent) this.handlers.refreshEarlierRuns?.();
+      if (problem.sent) this.handlers.refreshEarlierRuns?.();
       this.emit();
       return false;
     }
@@ -875,14 +907,14 @@ export class FlowSession {
    * over and records on in a new part, so the meeting still becomes one run.
    */
   async continueCutOff(recording: StoredRecording): Promise<void> {
-    if (this.snapshot.phase !== "setup" || this.countInvalid()) return;
+    if (this.snapshot.phase !== "setup" || this.countInvalid() || this.blocked()) return;
     await this.recordOn(recording, (id, limits) => this.capture.adopt(id, limits));
   }
 
   /** "Fortsätt spela in" after Stoppa: a new part of the same recording, until a send of it has begun. */
   async continueStopped(): Promise<void> {
     const recording = this.ready;
-    if (this.snapshot.phase !== "ready" || !recording) return;
+    if (this.snapshot.phase !== "ready" || !recording || this.blocked()) return;
     await this.recordOn(recording, (id, limits) => this.capture.continueStopped(id, limits));
   }
 
@@ -926,6 +958,14 @@ export class FlowSession {
    */
   private countInvalid() {
     return readSpeakerCount(this.snapshot.speakerCount) === "invalid";
+  }
+
+  /**
+   * The flow cannot run now (speakerLabelsGap): the setup offers no way in, and the session takes none either, since
+   * a recording from the flow list is sent without the setup.
+   */
+  private blocked() {
+    return speakerLabelsGap(this.contract?.transcription?.speaker_labels) === "blocked";
   }
 
   /**
@@ -1170,7 +1210,9 @@ export class FlowSession {
       live: this.live,
       finishing: this.finishing,
       finishQueued: this.sendQueued,
-      problem: this.problem,
+      // What a press just answered comes first (a deletion the device refused). Blocked, with nothing else to say, the
+      // reason stands for as long as it holds: over a recording made ready before, in place of its ways on.
+      problem: this.problem ?? (this.blocked() ? SPEAKERS_UNAVAILABLE : null),
     };
   }
 

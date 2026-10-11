@@ -596,6 +596,144 @@ test("setup in place of a run's view focuses its heading, also for a flow that t
   }
 });
 
+/**
+ * The setup of a flow that takes audio, as the page mounts it in place of a run's view, with one recording made earlier
+ * on the device. This browser cannot record, so the flow's one way in is a file. `publish` is Eneo saying something
+ * else of the speaker labels while the page is open, and `makeReady` the earlier recording taken up to become a document.
+ */
+async function mountAudioSetup(speaker_labels: Record<string, unknown>) {
+  const { createElement, useState } = await import("react");
+  const { FlowInput } = await import("../components/flow/FlowInput");
+  const { useFlowSession } = await import("../components/flow/useFlowSession");
+  const contractWith = (labels: Record<string, unknown>) =>
+    ({
+      ...IBIC_CONTRACT,
+      steps_requiring_input: [{ step_id: "step-audio", input_format: "audio" }],
+      transcription: { live: { available: false, reason: null }, speaker_labels: labels },
+    }) as unknown as import("./api").RunContract;
+  const earlier = { id: "rec-1", ownerId: "user-1", flowId: "flow-6", flowName: IBIC.name, stepId: "step-audio", inputMode: "record", mimeType: "audio/webm", startedAt: 0, durationMs: 60_000, state: "stopped", parts: [], runId: null } as import("./recording-store").StoredRecording;
+  let publish: (labels: Record<string, unknown>) => void = () => undefined;
+  let makeReady = () => {};
+  function Setup() {
+    const [contract, setContract] = useState(() => contractWith(speaker_labels));
+    const input = useFlowSession({ flowId: "flow-6", flowName: IBIC.name, ownerId: "user-1", contract });
+    publish = (labels) => setContract(contractWith(labels));
+    makeReady = () => input.session.adopt(earlier);
+    return createElement(FlowInput, {
+      published: IBIC,
+      contract,
+      input,
+      ownerId: "user-1",
+      notice: null,
+      earlierRuns: { runs: [], hasMore: false, loading: false, failed: null },
+      onOpenRun: () => undefined,
+      onMoreRuns: () => undefined,
+      unsent: { recordings: [earlier], unreadable: false, retry: () => undefined },
+      afterRun: true,
+    });
+  }
+  const view = await mount((await signedIn(createElement(Setup))).tree);
+  const audio = view.container.querySelector('section[aria-label="Ljudet"]')!;
+  /** What the person can act on beside the details: each button, link and field by its words; a closed question's are not there. */
+  const offered = () =>
+    [...audio.querySelectorAll("button, a, input")].filter((el) => !el.closest("dialog:not([open])")).map((el) => el.textContent?.trim() || el.getAttribute("type"));
+  /** The details the flow asks for, by their field names. */
+  const details = () => [...view.container.querySelectorAll("[data-detail-field]")].map((el) => el.getAttribute("data-detail-field"));
+  return { view, audio, offered, details, publish: (labels: Record<string, unknown>) => publish(labels), makeReady: () => makeReady() };
+}
+
+test("a flow that requires speaker labels Eneo cannot make now says so in place of every way in, and keeps an earlier recording to save", async () => {
+  const usable = await mountAudioSetup({ selectable: false, required: true, default: true });
+  const usual = { ways: usable.offered(), details: usable.details() };
+  await usable.view.unmount();
+  assert.deepEqual(usual.ways, ["Skapa dokument av inspelningen", "Spara som fil", "Ta bort", "file", "Välj ljudfil"], "the flow as it is when the labels can be made");
+  assert.ok(usual.details.includes("arende"), "with the details it asks for");
+
+  const { view, audio, offered, details } = await mountAudioSetup({ selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" });
+  try {
+    assert.deepEqual(offered(), ["Alla flöden", "Spara som fil", "Ta bort"], "nothing to record, choose or send: the way to another flow, and the recording to save");
+    assert.deepEqual(details(), [], "and no details to fill in for a run that cannot be made");
+    const heading = audio.querySelector("h2[data-phase-heading]");
+    assert.equal(heading?.textContent, "Flödet kan inte användas just nu.");
+    assert.equal(document.activeElement, heading, "the state's heading takes the focus a run's view had");
+    assert.equal(
+      heading?.nextElementSibling?.textContent,
+      "Flödet behöver märka upp talare, men tjänsten som gör det går inte att använda. Kontakta den som ansvarar för flödet.",
+    );
+    assert.equal(audio.querySelector('[role="alert"]'), null, "the page's own content, not an interruption");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("optional speaker labels Eneo cannot make now are one line where the switch would be, and the flow's ways in stay", async () => {
+  const line = "Talare kan inte märkas upp just nu. Transkriberingen fungerar som vanligt.";
+  const usable = await mountAudioSetup({ selectable: true, required: false, default: true });
+  const usual = { switch: usable.audio.querySelector('[role="switch"]') !== null, text: usable.audio.textContent ?? "", ways: usable.offered() };
+  await usable.view.unmount();
+  assert.equal(usual.switch, true, "Märk upp talare, while the labels can be made");
+  assert.ok(!usual.text.includes(line));
+  // The switch is the one thing that goes.
+  const ways = usual.ways.filter((name) => name !== "checkbox");
+
+  const { view, audio, offered } = await mountAudioSetup({ selectable: true, required: false, default: true, unavailable_reason: "picked_unavailable" });
+  try {
+    assert.equal(audio.querySelector('[role="switch"]'), null, "no switch that could not be kept");
+    assert.equal([...audio.querySelectorAll("p")].filter((p) => p.textContent === line).length, 1);
+    assert.deepEqual(offered(), ways, "every way in is still there");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("a recording that was ready when the flow became blocked keeps Spara som fil and Ta bort under the reason and neither way on, and a deletion the device refuses says so", async () => {
+  // A browser that records, so the ready state has "Fortsätt spela in" to offer as well.
+  const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
+  Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
+  const recorder = { isTypeSupported: () => true };
+  Object.assign(window, { MediaRecorder: recorder });
+  Object.assign(globalThis, { MediaRecorder: recorder });
+  const required = { selectable: false, required: true, default: true };
+  const store = await (await import("./recording-store")).recordingStore();
+  const remove = store.remove;
+  const { view, audio, offered, makeReady, publish } = await mountAudioSetup(required);
+  try {
+    await view.act(async () => makeReady());
+    const before = offered();
+    assert.deepEqual(before, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"], "ready, while the labels can be made");
+
+    await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
+    assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
+    // Neither press could do anything: the session takes no run and no new part of a flow that cannot run.
+    assert.deepEqual(offered(), ["Spara som fil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");
+    const reasons = [...audio.querySelectorAll('[role="alert"]')].filter((alert) => alert.textContent?.includes("Flödet kan inte användas just nu."));
+    assert.equal(reasons.length, 1, "the reason, as the answer to the flow's change");
+    assert.match(reasons[0].textContent ?? "", /tjänsten som gör det går inte att använda\. Kontakta den som ansvarar för flödet\./);
+
+    // Ta bort is still the person's, and its answer is theirs to read: the device refuses the deletion.
+    store.remove = async () => {
+      throw new Error("the device refused");
+    };
+    await view.act(async () => button(audio, "Ta bort")!.click());
+    await view.act(async () => button(audio.querySelector('dialog[role="alertdialog"]')!, "Ta bort")!.click());
+    await view.act(async () => undefined);
+    const said = [...audio.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+    assert.ok(said.some((text) => text?.includes("Inspelningen kunde inte tas bort.") && text.includes("Försök igen.")), `the deletion's own answer, as outside a blocked flow: ${said.join(" | ")}`);
+    assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "and the recording is still there");
+    assert.deepEqual(offered(), ["Spara som fil", "Ta bort"], "to save or to delete again, and still neither way on");
+
+    await view.act(async () => publish(required));
+    assert.deepEqual(offered(), before, "and both are back when the flow can run again");
+  } finally {
+    store.remove = remove;
+    await view.unmount();
+    delete (window as { MediaRecorder?: unknown }).MediaRecorder;
+    delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
+    if (microphones) Object.defineProperty(navigator, "mediaDevices", microphones);
+    else delete (navigator as { mediaDevices?: unknown }).mediaDevices;
+  }
+});
+
 test("a run's tab title names its state and its flow, so tabs and history entries of different flows differ", async () => {
   const { createElement } = await import("react");
   const { RunProgress } = await import("../components/flow/RunProgress");

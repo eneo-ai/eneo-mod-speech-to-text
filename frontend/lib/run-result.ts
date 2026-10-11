@@ -105,6 +105,11 @@ const RUN_ERROR_EXPLANATIONS: Record<string, string> = {
     "Körningen väntade för länge på att fortsätta och avslutades.",
   typed_io_transcription_failed: "Transkriberingen av ljudet misslyckades.",
   typed_io_transcription_empty: "Transkriberingen gav ingen text.",
+  // The text is there and only the labelling failed; whether running again can help is Eneo's `retryable`.
+  typed_io_speaker_identification_failed: "Transkriberingen blev klar, men talarna kunde inte märkas upp.",
+  // One sentence whichever service is missing (`details.speaker_service_gap`): the way on is the same.
+  typed_io_speaker_service_unavailable:
+    "Flödet behöver märka upp talare, men tjänsten som gör det gick inte att använda. Bara den som ansvarar för flödet kan rätta det.",
   typed_io_empty_extraction: "Ingen text kunde läsas ur filen.",
   typed_io_audio_exceeds_limit: TOO_LONG,
   typed_io_transcript_too_large: TOO_LARGE,

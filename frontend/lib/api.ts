@@ -294,7 +294,18 @@ type LiveTranscriptionUnavailableReason =
  */
 export interface FlowTranscriptionContract {
   live: { available: boolean; reason: LiveTranscriptionUnavailableReason | null };
-  speaker_labels: { selectable: boolean; required: boolean; default: boolean };
+  speaker_labels: {
+    selectable: boolean;
+    required: boolean;
+    default: boolean;
+    /**
+     * Why the labels the flow asks for cannot be made now: its space has no service for them, none of its services
+     * can be used, or the one the flow chose cannot. A run of a flow that requires them then fails at its
+     * transcription; any other runs without them. An older Eneo does not say, and a newer one may give a reason not
+     * listed here, so only whether there is one is read (lib/flow-session speakerLabelsGap).
+     */
+    unavailable_reason?: "not_chosen" | "picked_unavailable" | string | null;
+  };
   /**
    * Finns när en transkriptionstjänst märker upp talare: körningen får skicka `max_speakers`, ett heltal ≥ 1
    * som övre gräns. `form_field` namnger flödets eget fält som redan frågar efter antalet; då frågar appen inte igen.
