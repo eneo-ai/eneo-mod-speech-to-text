@@ -461,6 +461,37 @@ test("a flow that requires speaker labels Eneo cannot make now takes no way in, 
   assert.equal(sent.length, 0);
 });
 
+test("advice from before the flow became blocked gives way to the reason, and what a press answers while it is blocked is said and kept", async () => {
+  const blocked = () => countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "none_usable" } });
+  const { session, store, recorders } = await setup();
+  session.setContract(countContract());
+  session.setHandlers({
+    submit: async () => {
+      throw new ApiError(409, "The flow has a newer published version.", null, "flow_run_stale_version");
+    },
+    // The newer version requires speaker labels that cannot be made now.
+    reloadFlow: async () => session.setContract(blocked()),
+  });
+  session.selectMode("spela-in");
+  await session.start();
+  recorders[0].emit("audio");
+  await session.stop();
+  await until(() => session.getSnapshot().phase === "ready");
+  assert.equal(await session.createDocument(), false);
+  // "Kontrollera uppgifterna och välj Skapa dokument igen" would send the person to an action that is no longer there.
+  assert.deepEqual(session.getSnapshot().problem, SPEAKERS_UNAVAILABLE, "nothing can be tried again, so the reason stands");
+
+  store.remove = async () => {
+    throw new Error("the device refused");
+  };
+  await session.discard();
+  const refused = { title: "Inspelningen kunde inte tas bort.", detail: "Försök igen." };
+  assert.deepEqual(session.getSnapshot().problem, refused, "the deletion's own answer, not the flow's standing reason");
+  session.setContract(blocked());
+  assert.deepEqual(session.getSnapshot().problem, refused, "kept through a newer contract that is blocked too");
+  assert.equal(session.getSnapshot().phase, "ready", "and the recording is kept");
+});
+
 test("Antal talare takes a whole number from 1 to 20, or nothing", () => {
   for (const [text, count] of [["", undefined], ["  ", undefined], ["1", 1], [" 4 ", 4], ["20", 20]] as const) {
     assert.equal(readSpeakerCount(text), count, JSON.stringify(text));

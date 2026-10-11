@@ -613,7 +613,11 @@ export class FlowSession {
 
   /** The run contract, first or refreshed: the modes, and the details that still fit. */
   setContract(contract: RunContract | null): void {
+    const wasBlocked = this.blocked();
     this.contract = contract;
+    // The flow became blocked: what an earlier press was answered (check and try again, after a newer version) names
+    // an action that is no longer there, so it gives way to the standing reason. What is answered from here on is kept.
+    if (this.blocked() && !wasBlocked) this.problem = null;
     const capabilities = {
       canRecord: this.options.pickMimeType(this.inputStep()?.accepted_mimetypes) != null,
       liveClient: this.options.live != null,
@@ -874,13 +878,14 @@ export class FlowSession {
       // The input and the details stay for the next try; a recording as the send left it, sealed.
       if (input?.kind === "recording") this.ready = (await this.stored(input.recording.id)) ?? this.ready;
       const createLabel = createActionLabel(makesText(this.contract?.final_output));
-      this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel);
+      // This send's own answer: the newer contract read below may take it away again (setContract).
+      const problem = (this.problem = submitProblem(error, this.inputStep(), input?.kind ?? null, createLabel));
       if (error instanceof ApiError && error.code === "flow_run_stale_version") {
         // The newer version's contract decides which details still fit.
         await this.handlers.reloadFlow?.().catch(() => undefined);
       }
       // The run Eneo has is among the earlier runs, which may have been read before it existed.
-      if (this.problem.sent) this.handlers.refreshEarlierRuns?.();
+      if (problem.sent) this.handlers.refreshEarlierRuns?.();
       this.emit();
       return false;
     }
@@ -1205,8 +1210,9 @@ export class FlowSession {
       live: this.live,
       finishing: this.finishing,
       finishQueued: this.sendQueued,
-      // Blocked, the reason stands for as long as it holds: over a recording made ready before, in place of its ways on.
-      problem: this.blocked() ? SPEAKERS_UNAVAILABLE : this.problem,
+      // What a press just answered comes first (a deletion the device refused). Blocked, with nothing else to say, the
+      // reason stands for as long as it holds: over a recording made ready before, in place of its ways on.
+      problem: this.problem ?? (this.blocked() ? SPEAKERS_UNAVAILABLE : null),
     };
   }
 

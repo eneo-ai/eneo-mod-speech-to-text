@@ -686,7 +686,7 @@ test("optional speaker labels Eneo cannot make now are one line where the switch
   }
 });
 
-test("a recording that was ready when the flow became blocked keeps Spara som fil and Ta bort under the reason, and neither way on", async () => {
+test("a recording that was ready when the flow became blocked keeps Spara som fil and Ta bort under the reason and neither way on, and a deletion the device refuses says so", async () => {
   // A browser that records, so the ready state has "Fortsätt spela in" to offer as well.
   const microphones = Object.getOwnPropertyDescriptor(navigator, "mediaDevices");
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { addEventListener() {}, removeEventListener() {}, enumerateDevices: async () => [] } });
@@ -694,6 +694,8 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
   Object.assign(window, { MediaRecorder: recorder });
   Object.assign(globalThis, { MediaRecorder: recorder });
   const required = { selectable: false, required: true, default: true };
+  const store = await (await import("./recording-store")).recordingStore();
+  const remove = store.remove;
   const { view, audio, offered, makeReady, publish } = await mountAudioSetup(required);
   try {
     await view.act(async () => makeReady());
@@ -708,9 +710,22 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
     assert.equal(reasons.length, 1, "the reason, as the answer to the flow's change");
     assert.match(reasons[0].textContent ?? "", /tjänsten som gör det går inte att använda\. Kontakta den som ansvarar för flödet\./);
 
+    // Ta bort is still the person's, and its answer is theirs to read: the device refuses the deletion.
+    store.remove = async () => {
+      throw new Error("the device refused");
+    };
+    await view.act(async () => button(audio, "Ta bort")!.click());
+    await view.act(async () => button(audio.querySelector('dialog[role="alertdialog"]')!, "Ta bort")!.click());
+    await view.act(async () => undefined);
+    const said = [...audio.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+    assert.ok(said.some((text) => text?.includes("Inspelningen kunde inte tas bort.") && text.includes("Försök igen.")), `the deletion's own answer, as outside a blocked flow: ${said.join(" | ")}`);
+    assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "and the recording is still there");
+    assert.deepEqual(offered(), ["Spara som fil", "Ta bort"], "to save or to delete again, and still neither way on");
+
     await view.act(async () => publish(required));
     assert.deepEqual(offered(), before, "and both are back when the flow can run again");
   } finally {
+    store.remove = remove;
     await view.unmount();
     delete (window as { MediaRecorder?: unknown }).MediaRecorder;
     delete (globalThis as { MediaRecorder?: unknown }).MediaRecorder;
