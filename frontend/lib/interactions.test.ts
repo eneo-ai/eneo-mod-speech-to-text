@@ -676,7 +676,7 @@ test("optional speaker labels Eneo cannot make now are one line where the switch
   // The switch is the one thing that goes.
   const ways = usual.ways.filter((name) => name !== "checkbox");
 
-  const { view, audio, offered } = await mountAudioSetup({ selectable: true, required: false, default: true, unavailable_reason: "no_service" });
+  const { view, audio, offered } = await mountAudioSetup({ selectable: true, required: false, default: true, unavailable_reason: "picked_unavailable" });
   try {
     assert.equal(audio.querySelector('[role="switch"]'), null, "no switch that could not be kept");
     assert.equal([...audio.querySelectorAll("p")].filter((p) => p.textContent === line).length, 1);
@@ -702,7 +702,7 @@ test("a recording that was ready when the flow became blocked keeps Spara som fi
     const before = offered();
     assert.deepEqual(before, ["Spara som fil", "Skapa dokument", "Fortsätt spela in", "Ta bort"], "ready, while the labels can be made");
 
-    await view.act(async () => publish({ ...required, unavailable_reason: "none_usable" }));
+    await view.act(async () => publish({ ...required, unavailable_reason: "picked_unavailable" }));
     assert.equal(audio.querySelector("h2")?.textContent, "Inspelningen är klar", "the recording keeps its place");
     // Neither press could do anything: the session takes no run and no new part of a flow that cannot run.
     assert.deepEqual(offered(), ["Spara som fil", "Alla flöden", "Ta bort"], "saved or deleted, or on to another flow");

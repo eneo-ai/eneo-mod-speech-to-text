@@ -304,7 +304,7 @@ export interface FlowTranscriptionContract {
      * transcription; any other runs without them. An older Eneo does not say, and a newer one may give a reason not
      * listed here, so only whether there is one is read (lib/flow-session speakerLabelsGap).
      */
-    unavailable_reason?: "no_service" | "none_usable" | "picked_unavailable" | string | null;
+    unavailable_reason?: "not_chosen" | "picked_unavailable" | string | null;
   };
   /**
    * Finns när en transkriptionstjänst märker upp talare: körningen får skicka `max_speakers`, ett heltal ≥ 1

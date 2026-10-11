@@ -382,7 +382,7 @@ test("Antal talare is asked only when the flow's form asks no count and the run 
 test("speaker labels Eneo cannot make now block a flow that requires them and leave another unlabelled; no reason says nothing", () => {
   const required = { selectable: false, required: true, default: true };
   const optional = { selectable: true, required: false, default: true };
-  for (const reason of ["no_service", "none_usable", "picked_unavailable", "a_reason_from_a_newer_eneo"]) {
+  for (const reason of ["not_chosen", "picked_unavailable", "a_reason_from_a_newer_eneo"]) {
     assert.equal(speakerLabelsGap({ ...required, unavailable_reason: reason }), "blocked", reason);
     assert.equal(speakerLabelsGap({ ...optional, unavailable_reason: reason }), "unlabelled", reason);
   }
@@ -396,7 +396,7 @@ test("optional speaker labels Eneo cannot make now leave the run as it is: no ch
   const sent: SubmitRequest[] = [];
   const { session } = await setup();
   session.setHandlers({ submit: async (request) => void sent.push(request) });
-  const unlabelled = countContract({ speaker_labels: { selectable: true, required: false, default: true, unavailable_reason: "none_usable" } });
+  const unlabelled = countContract({ speaker_labels: { selectable: true, required: false, default: true, unavailable_reason: "picked_unavailable" } });
   const choices = () => [session.getSnapshot().speakerLabels, session.getSnapshot().speakerCount];
   session.setContract(countContract());
   session.setSpeakerLabels(true);
@@ -414,7 +414,7 @@ test("optional speaker labels Eneo cannot make now leave the run as it is: no ch
 });
 
 test("a flow that requires speaker labels Eneo cannot make now takes no way in, and a recording made ready before stays and says why", async () => {
-  const blocked = countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "no_service" } });
+  const blocked = countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "not_chosen" } });
   const sent: SubmitRequest[] = [];
   const { session, store, streams, recorders } = await setup();
   session.setHandlers({ submit: async (request) => void sent.push(request) });
@@ -462,7 +462,7 @@ test("a flow that requires speaker labels Eneo cannot make now takes no way in, 
 });
 
 test("advice from before the flow became blocked gives way to the reason, and what a press answers while it is blocked is said and kept", async () => {
-  const blocked = () => countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "none_usable" } });
+  const blocked = () => countContract({ speaker_labels: { selectable: false, required: true, default: true, unavailable_reason: "picked_unavailable" } });
   const { session, store, recorders } = await setup();
   session.setContract(countContract());
   session.setHandlers({

@@ -107,7 +107,7 @@ async function limitAudio(page: Page, seconds: number, files: number) {
 async function speakerLabelsUnavailable(page: Page) {
   await page.route(/\/run-contract\/?(\?|$)/, async (route) => {
     const contract = await (await route.fetch()).json();
-    contract.transcription.speaker_labels.unavailable_reason = "none_usable";
+    contract.transcription.speaker_labels.unavailable_reason = "picked_unavailable";
     return route.fulfill({ json: contract });
   });
 }

@@ -144,7 +144,7 @@ test("a run whose speakers could not be labelled says which of the two it was, a
   const failed = runErrorView(runError({ code: "typed_io_speaker_identification_failed", retryable: true }));
   assert.equal(failed.summary, "Transkriberingen blev klar, men talarna kunde inte märkas upp. Det går bra att köra flödet igen om en stund.");
   // No service the flow can use: one sentence whatever the gap, and who can put it right.
-  for (const speaker_service_gap of ["no_service", "none_usable", "picked_unavailable", undefined]) {
+  for (const speaker_service_gap of ["not_chosen", "picked_unavailable", undefined]) {
     const unavailable = runErrorView(runError({ code: "typed_io_speaker_service_unavailable", details: { speaker_service_gap } }));
     assert.match(
       unavailable.summary,
