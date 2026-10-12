@@ -127,8 +127,8 @@ worktrees can run them at once on their own ports: `A11Y_APP_PORT` and `A11Y_STU
 
 ## Migration (temporary, removed by bead .24)
 
-The Astryx port and single-process runtime are implemented on `feat/one-process`. This section, `.beads/` and
-`docs/plans/` remain until kit adoption and final acceptance are complete (bead `stt-plan-a-astryx-port-57a.24`).
+The Astryx port and single-process runtime are merged to `main` (pull requests 20 and 21). This section, `.beads/` and
+`docs/plans/` remain until the first deployment's acceptance is complete (bead `stt-plan-a-astryx-port-57a.24`).
 Keep permanent product guidance in `docs/`, not in these planning files.
 Plan: `docs/plans/2026-10-01-astryx-port-plan.md`. Design: `docs/plans/2026-10-01-module-platform-design.md`.
 
