@@ -118,7 +118,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           value={value || STANDARD}
           onChange={(next) => choose(next === STANDARD ? "" : next)}
           description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
-          width="var(--microphone-picker-width)"
+          width="var(--microphone-picker-width, min(100%, 24rem))"
         />
         <Button
           label={stream ? "Sluta testa" : "Testa mikrofonen"}

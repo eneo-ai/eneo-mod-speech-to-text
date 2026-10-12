@@ -48,14 +48,20 @@
   }
 }
 
-/* The microphone picker fills its row on a phone, where the test button stands under it, and is a field's width
-   beside the button where the row has room for both (MicrophoneCheck reads the variable into the Selector's width). */
+/* The microphone picker and its test button: beside each other where the row has room for a field's width (24 rem)
+   and the button, the picker filling the row where it has not, so that on a phone, upright or on its side, it ends
+   where the fields above it end and the button stands under it. The row measures itself; MicrophoneCheck reads the
+   variable into the Selector's width. */
 .microphoneRow {
+  container-type: inline-size;
+}
+
+.microphoneRow > * {
   --microphone-picker-width: 100%;
 }
 
-@media (min-width: 768px) {
-  .microphoneRow {
+@container (min-width: 36rem) {
+  .microphoneRow > * {
     --microphone-picker-width: min(100%, 24rem);
   }
 }
