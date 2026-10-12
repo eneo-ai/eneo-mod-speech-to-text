@@ -86,6 +86,14 @@
   }
 }
 
+/* A phone on its side has the room: the flow's column holds its name and the details' folded line whole, and the
+   stage still has twice the column beside it. */
+@media (min-width: 744px) and (max-height: 480px) {
+  .fill.columns {
+    grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
+  }
+}
+
 /* A wrapper that takes no box of its own, so what it holds stays a flex item of the bar. */
 .bare {
   display: contents;
