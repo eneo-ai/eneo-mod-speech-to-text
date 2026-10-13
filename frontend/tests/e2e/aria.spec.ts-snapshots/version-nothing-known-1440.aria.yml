@@ -1,0 +1,8 @@
+- main:
+  - heading "Välj ett flöde" [level=1]
+  - button "Version" [expanded]
+  - term: Commit
+  - definition: Okänd
+  - term: Byggd
+  - definition: Okänd
+  - button "Kopiera supportinformation"

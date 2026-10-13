@@ -1,0 +1,13 @@
+- main:
+  - heading "Välj ett flöde" [level=1]
+  - button "Version" [expanded]
+  - term: Utgåva
+  - definition: v0.1.0
+  - term: Commit
+  - definition:
+    - code: c5d5460
+  - term: Byggd
+  - definition: 8 okt 2026 10:04
+  - button "Kopiera supportinformation"
+  - link "Visa commiten på GitHub i en ny flik":
+    - /url: https://github.com/eneo-ai/eneo-mod-speech-to-text/commit/c5d54608d5833737677157bde44b95b969e67bbb

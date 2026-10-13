@@ -479,6 +479,14 @@ class DevProfileTests(Stack):
                 self.assertEqual(status, 200)
                 self.assertTrue(check(json.loads(body)))
 
+    def test_the_bff_role_answers_which_build_runs_with_the_backends_own_fields(self) -> None:
+        # The backend in this stack is a checkout's, so all three of its values are null; the stub's are a release's.
+        (stub_status, _, stub, _), (_, _, backend, _) = (call(port, "GET", "/api/healthz") for port in (self.stub, self.backend))
+
+        self.assertEqual(stub_status, 200)
+        self.assertEqual(json.loads(stub).keys(), json.loads(backend).keys())
+        self.assertEqual(json.loads(stub)["release"], "v0.1.0")
+
     def test_the_bff_role_streams_audio_with_ranges_and_serves_the_pdf(self) -> None:
         audio = f"/api/eneo/flows/{FLOW}/runs/{DONE}/input-files/{AUDIO_FILE}/audio"
         partial = call(self.stub, "GET", audio, headers={"Range": "bytes=0-9"})

@@ -28,6 +28,8 @@ const NOW = new Date("2026-09-24T12:00:00+02:00");
  */
 const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean; waysIn?: true }[] = [
   { state: "flow-list", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
+  { state: "version", region: (page) => page.getByRole("main") },
+  { state: "version-nothing-known", region: (page) => page.getByRole("main") },
   { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
   { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true, waysIn: true },
   { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true, waysIn: true },

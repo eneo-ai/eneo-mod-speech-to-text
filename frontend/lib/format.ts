@@ -41,6 +41,13 @@ export function formatDeadline(value: string | Date, now: Date = new Date()): st
   return `${date.getDate()} ${MONTHS[date.getMonth()]}${year} ${time}`;
 }
 
+/** A moment whole, the same whatever day it is now: "8 okt 2026 10:04"; empty for an invalid date. */
+export function formatDateTime(value: string | Date): string {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()} ${two(date.getHours())}:${two(date.getMinutes())}`;
+}
+
 /**
  * "22 s", "32 min", "1 h 5 min". Whole elapsed seconds, as the timer and the player count them: 7.6 s reads
  * "7 s", never "8 s" beside "0:07"; minutes and hours are rounded to the unit shown.

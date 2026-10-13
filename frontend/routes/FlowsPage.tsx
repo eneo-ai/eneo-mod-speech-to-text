@@ -13,6 +13,7 @@ import { FlowList, FlowListSkeleton } from "@/components/FlowList";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { SlowWait } from "@/components/SlowWait";
 import { UnsentRecordings, useEvictable, useUnsentRecordings } from "@/components/UnsentRecordings";
+import { VersionInfo } from "@/components/VersionInfo";
 import { ModuleShell } from "@/kit/ModuleShell";
 import { errorAdvice, type ErrorAdvice } from "@/lib/errors";
 import {
@@ -121,6 +122,9 @@ function FlowsListPage() {
                 Visar de första {(DISCOVERY_PAGE_SIZE * DISCOVERY_PAGE_CAP).toLocaleString("sv-SE")} flödena.
               </Text>
             )}
+
+            {/* Last, and drawn with the list's answer: drawn before it, the list would push it down when it arrives. */}
+            {(groups !== null || problem !== null) && <VersionInfo />}
           </VStack>
         </LayoutContent>
       </Layout>

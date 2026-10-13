@@ -64,6 +64,20 @@ export async function flows(page: Page) {
   await expect(page.getByRole("link", { name: /Nämndmöte till rapport/ })).toBeVisible();
 }
 
+/** Release v0.1.0's commit, as the stub answers which build runs. */
+const REVISION = "c5d54608d5833737677157bde44b95b969e67bbb";
+
+/**
+ * The flow list with Version open, for the build `build` names: the module's own answer with these three values. Made
+ * here, not in the stub, because on the gate's real target the backend answers, and its checkout knows none of them.
+ */
+async function version(page: Page, build: { release: string | null; revision: string | null; build_date: string | null }) {
+  await page.route("**/api/healthz", async (route) => route.fulfill({ json: { ...(await (await route.fetch()).json()), ...build } }));
+  await flows(page);
+  await page.getByRole("button", { name: "Version" }).click();
+  await expect(page.getByRole("button", { name: "Kopiera supportinformation" })).toBeVisible();
+}
+
 export async function setup(page: Page, flow = ids.flows.flow1) {
   await page.goto(`/flows/${flow}`);
   await setupShown(page);
@@ -515,6 +529,11 @@ export const STATES: State[] = [
         .toEqual({ scrolls: false, insideMenu: true, inView: true });
     },
   },
+  // Version at the end of the flow list, opened: a release; a build no release names (a deployment of `latest` or of a
+  // commit's tag); a build with nothing known (a checkout's own).
+  { name: "version", go: (page) => version(page, { release: "v0.1.0", revision: REVISION, build_date: "2026-10-08T08:04:12Z" }) },
+  { name: "version-commit-only", go: (page) => version(page, { release: null, revision: REVISION, build_date: "2026-10-08T08:04:12Z" }) },
+  { name: "version-nothing-known", go: (page) => version(page, { release: null, revision: null, build_date: null }) },
   { name: "unsent-recordings", go: leaveRecording },
   {
     name: "unsent-recording-delete-question",
