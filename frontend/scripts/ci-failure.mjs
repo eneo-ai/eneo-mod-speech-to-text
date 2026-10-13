@@ -74,9 +74,10 @@ for (const job of failed) {
   for (const { spec, test, result } of found) {
     const outcome = test.status === "flaky" ? "flaky" : result.status === "passed" ? "passed, and was marked to fail" : result.status;
     console.log(`\n   [${test.projectName}] ${spec.file}:${spec.line} › ${spec.title} (${outcome})`);
-    // Every error of the last attempt (a soft assertion leaves several), each at its first lines.
+    // Every error of the last attempt (a soft assertion leaves several), each at its first lines: enough for the
+    // message a check wrote and the first of what it received.
     for (const error of result.errors?.length ? result.errors : [result.error ?? {}]) {
-      const message = plain(error.message ?? "").split("\n").filter((line) => line.trim()).slice(0, 6);
+      const message = plain(error.message ?? "").split("\n").filter((line) => line.trim()).slice(0, 14);
       for (const line of message) console.log(`     ${line.trim()}`);
     }
     for (const attachment of result.attachments ?? []) {

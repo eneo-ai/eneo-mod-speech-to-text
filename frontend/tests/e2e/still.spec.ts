@@ -82,7 +82,7 @@ const KNOWN: { page: string; when: RegExp; why: string }[] = [
   },
 ];
 
-type Anchor = { id: number; name: string; x: number; y: number; onScreen: boolean };
+type Anchor = { id: number; name: string; x: number; y: number; height: number; onScreen: boolean };
 type Measure = { anchors: Anchor[]; presses: number };
 type Still = { measure: () => Measure; quiet: () => Promise<void> };
 
@@ -138,6 +138,7 @@ function watch() {
           name: (element.getAttribute("aria-label") ?? element.textContent ?? "").trim().replace(/\s+/g, " ").slice(0, 50) || element.tagName.toLowerCase(),
           x: Math.round(box.x),
           y: Math.round(box.y),
+          height: Math.round(box.height),
           onScreen: box.bottom > 0 && box.top < window.innerHeight && box.right > 0 && box.left < window.innerWidth,
         });
       }
@@ -180,6 +181,7 @@ for (const arrival of ARRIVALS) {
     });
 
     const moves: string[] = [];
+    const why: string[] = [];
     let pressed = false;
     let before: Measure | null = null;
     const compare = (after: Measure | null, cause: string) => {
@@ -187,11 +189,23 @@ for (const arrival of ARRIVALS) {
       before = after;
       if (after && after.presses > 0) pressed = true;
       if (!was || !after) return;
-      for (const now of after.anchors) {
+      const moved = after.anchors.flatMap((now) => {
         const then = was.anchors.find((anchor) => anchor.id === now.id);
-        if (!then?.onScreen || (Math.abs(now.y - then.y) < MOVED_PX && Math.abs(now.x - then.x) < MOVED_PX)) continue;
-        moves.push(`"${now.name}" moved ${now.y - then.y} px down and ${now.x - then.x} px right ${cause}`);
-      }
+        if (!then?.onScreen || (Math.abs(now.y - then.y) < MOVED_PX && Math.abs(now.x - then.x) < MOVED_PX)) return [];
+        return [`"${now.name}" moved ${now.y - then.y} px down and ${now.x - then.x} px right ${cause}`];
+      });
+      if (moved.length === 0) return;
+      // What took or gave the room: what appeared, went or changed its height in the same step.
+      const room = [
+        ...after.anchors.flatMap((now) => {
+          const then = was.anchors.find((anchor) => anchor.id === now.id);
+          if (!then) return now.onScreen ? [`"${now.name}" appeared, ${now.height} px high`] : [];
+          return Math.abs(now.height - then.height) >= MOVED_PX ? [`"${now.name}" went from ${then.height} to ${now.height} px high`] : [];
+        }),
+        ...was.anchors.flatMap((then) => (then.onScreen && !after.anchors.some((now) => now.id === then.id) ? [`"${then.name}" went away, ${then.height} px high`] : [])),
+      ];
+      moves.push(...moved);
+      if (room.length > 0) why.push(`${cause}: ${room.slice(0, 4).join("; ")}`);
     };
 
     let arrived = false;
@@ -221,6 +235,6 @@ for (const arrival of ARRIVALS) {
       expect(moves.some((move) => known.when.test(move)), `listed as still moving (${known.why}), and it stood still: take it off the list`).toBe(true);
     }
     const unknown = [...new Set(moves)].filter((move) => !declared.some((known) => known.when.test(move)));
-    expect(unknown.slice(0, 6), "what moved on screen when no one pressed anything").toEqual([]);
+    expect(unknown.slice(0, 6), `what moved on screen when no one pressed anything\n  what took or gave the room: ${why.join("\n  ") || "nothing that is measured"}`).toEqual([]);
   });
 }
