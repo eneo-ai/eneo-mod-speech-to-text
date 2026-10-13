@@ -15,8 +15,8 @@ const ADD_NAME = "Lägg till namn";
 const NAMES = new Intl.ListFormat("sv", { type: "conjunction" });
 
 // Astryx's types leave out the attributes a phone's keyboard and the browser's suggestions read, but its field passes
-// them on to the input.
-const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter" } as Record<string, string>;
+// them on to the input. A name is no word of the dictionary: the spelling check would underline most of them.
+const NAME_HINTS = { autoCapitalize: "words", enterKeyHint: "enter", spellCheck: "false" } as Record<string, string>;
 
 /**
  * A `list` field as chips. "Lägg till" stands beside the input, off until a

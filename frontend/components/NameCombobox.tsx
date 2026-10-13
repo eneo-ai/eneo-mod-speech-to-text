@@ -9,6 +9,10 @@ const NONE_ID = "none";
 const ADD_ID = "add";
 const WRITE_ID = "write";
 
+// A name, as the participants' field takes one: each word starts with a capital on a phone's keyboard, and no spelling
+// check underlines it. Astryx's types leave these attributes out, but its field passes them on to the input.
+const NAME_HINTS = { autoCapitalize: "words", spellCheck: "false" } as Record<string, string>;
+
 type Option =
   | { id: string; kind: "name"; name: string }
   | { id: typeof ADD_ID; kind: "add"; name: string }
@@ -161,6 +165,7 @@ export function NameCombobox({
         aria-autocomplete="list"
         aria-activedescendant={activeId}
         autoComplete="off"
+        {...NAME_HINTS}
         value={text}
         placeholder={placeholder}
         isDisabled={disabled}
