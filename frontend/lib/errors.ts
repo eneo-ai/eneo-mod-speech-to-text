@@ -120,7 +120,7 @@ const CODES: Record<string, string> = {
   flow_review_reject_reason_too_long: "Motiveringen är för lång. Korta den och försök igen.",
   flow_review_rejected: REVIEW_REJECTED,
   typed_io_contract_violation: "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
-  typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget.",
+  typed_io_validation_failed: "Det redigerade värdet har fel format för det här steget. Rätta det och försök igen.",
   // Correcting a transcript.
   flow_transcript_corrections_stale_revision:
     "Transkriberingen har ändrats av någon annan. Ändringarna har laddats om — gör om din rättning.",
@@ -196,7 +196,8 @@ export function errorAdvice(err: unknown): ErrorAdvice {
     // This app's own errors are in Swedish; what the browser raised (a full device, an aborted request) is not shown.
     if (err.name === "Error") return advice(err.message);
   }
-  return advice("Ett okänt fel uppstod.");
+  // Nothing tells what it was, so nothing rules out that trying again helps: a page that can, offers it.
+  return advice("Ett okänt fel uppstod. Försök igen. Kontakta den som ansvarar för Tal till text om det fortsätter.", true);
 }
 
 /** What happened and what to do next, in plain Swedish. */

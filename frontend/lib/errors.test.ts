@@ -116,6 +116,10 @@ test("access and output-shape refusals claim no narrower cause than Eneo gives",
     friendlyError(eneo(422, "typed_io_contract_violation", "x")),
     "Det du ändrade har fel form för det här steget. Rätta det och försök igen.",
   );
+  assert.equal(
+    friendlyError(eneo(422, "typed_io_validation_failed", "x")),
+    "Det redigerade värdet har fel format för det här steget. Rätta det och försök igen.",
+  );
 });
 
 test("an answer that is not the JSON it claims to be is said in Swedish, and trying again can help", async (t) => {
@@ -165,8 +169,13 @@ test("audio Eneo cannot take says why in Swedish; a server busy measuring is one
 test("the app's own errors are shown as they are; what the browser raised is not shown in English", () => {
   assert.equal(friendlyError(new Error("Inspelningen finns inte längre på enheten.")), "Inspelningen finns inte längre på enheten.");
   assert.equal(friendlyError(new TypeError("Failed to fetch")), "Anslutningen avbröts. Kontrollera nätverket och försök igen.");
-  for (const raised of [new DOMException("The quota has been exceeded.", "QuotaExceededError"), new DOMException("The operation was aborted.", "AbortError")]) {
-    assert.equal(friendlyError(raised), "Ett okänt fel uppstod.", raised.name);
+  for (const raised of [new DOMException("The quota has been exceeded.", "QuotaExceededError"), new DOMException("The operation was aborted.", "AbortError"), "not an error"]) {
+    // Not a dead end: the words say what to do, and a page that can try again offers it.
+    assert.deepEqual(
+      errorAdvice(raised),
+      { message: "Ett okänt fel uppstod. Försök igen. Kontakta den som ansvarar för Tal till text om det fortsätter.", retry: true, ownerMustFix: false },
+      String(raised),
+    );
   }
 });
 
