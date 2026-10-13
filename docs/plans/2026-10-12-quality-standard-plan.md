@@ -105,8 +105,26 @@ offline-krav; ingen Lighthouse-grind (PWA-kategorin är borttagen).
 
 ## 4. Standard för kommande moduler (kitet)
 
-Kitets beslut står: K1 (mallen kopierar, paketen importeras), K12 (`AGENTS.md`, pinnad Astryx-CLI, inga egna
-MCP-servrar). Kitplanens fas 3 kopierar redan gaten till mallen; det som ändras:
+Kitets läge (`origin/main` `8432c0b`, läst 2026-10-13): båda paketen (`packages/bff`, `packages/ui` med skal,
+branding, färgläge, sessionsklient och täckningen vid utgången inloggning), mallen med egen gate
+(`template/web/tests/e2e`: a11y, tangentbord, harness, header-fit, session-cover, tema och flöde; åtta
+Chromium-projekt och flöde plus session-cover i WebKit och Firefox; alltid den byggda appen på riktig BFF över en
+stubbe), en skill (`template/.agents/skills/eneo-module`, beslut K17 ersätter K12:s "ingen skill") och CI. Version
+0.1.0 är inte släppt; publicering kräver ägarens go och registeråtkomst. UI-paketet har ingen onlinestatus,
+offline-notis eller navigeringsspärr.
+
+Kitets gate är en äldre delmängd av modulens. Överföringen görs i två delar:
+
+- **Del 1** (kit-ärende `kit-module-kit-ojs.29`, gren `feat/quality-tools`), oberoende av motorarbetet: CI sparar
+  JSON-rapport och testresultat vid fel, `ci:failure`, `GATE_CPU`, modal dialog före Escape (kitets tre
+  Escape-tryckningar väntar inte på det, och en går igenom av fel skäl), `still.spec.ts` för mallens sidor,
+  `docs/guides/quality.md`.
+- **Del 2**, när modulens gate är fryst (PR 29 och `test/gate-engines` inne): rättelserna i `checks.ts`,
+  harnessens självtester, vaktposten utöver konsol och CSP, svepet över alla kontroller, ARIA-bilder med skyddet
+  mot överskrivning, surfplatta och liggande telefon, `ux:shots`.
+
+Beslut som står: K1 (mallen kopierar, paketen importeras), K12 med K17 (`AGENTS.md`, pinnad Astryx-CLI, en lokal
+skill, inga egna MCP-servrar). Det som gäller för överföringen:
 
 - **Kopiera en testad delmängd, inte tre filer och inte hela harnessen.** Inventera först vad som är modul-ägt
   (ARIA-regioner och inspelningsuppläsningar i `aria.spec.ts:15`, överläggen i `leaks.spec.ts:33`, `NO_RESPONSE` i
