@@ -80,3 +80,19 @@ test("requests report whether the module can be reached", async (t) => {
   await assert.rejects(authStatus());
   assert.equal(onlineStatus.online, true, "an error response still means the module answered");
 });
+
+test("an answer from the module outweighs a browser that says there is no network", () => {
+  // Safari can go on saying offline after a device wakes, while every request reaches the module.
+  const browser = fakeBrowser(false);
+  const status = createOnlineStatus(browser.target);
+  const heard: boolean[] = [];
+  status.subscribe((online) => heard.push(online));
+  assert.equal(status.connection, "offline", "a page opened offline starts offline");
+
+  status.reportReachable();
+  assert.equal(status.connection, "online", "the module answered, so the device has a network");
+  assert.deepEqual(heard, [true], "and what waits for the connection hears it");
+
+  browser.go(false);
+  assert.equal(status.connection, "offline", "a network lost after that is still the browser's to say");
+});

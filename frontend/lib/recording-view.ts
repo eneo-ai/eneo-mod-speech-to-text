@@ -98,9 +98,11 @@ export function recordingNotices({
     warnings.push({ title: "Mikrofonen är tillfälligt borta.", detail: "Inspelningen fortsätter av sig själv när den är tillbaka." });
   }
   if ((phase === "recording" || phase === "paused") && remainingMs !== null && remainingMs <= 15 * MINUTE) {
-    // A step, not a count: the line changes twice, and never ticks.
-    const left = remainingMs <= 5 * MINUTE ? 5 : 15;
-    notes.push(`Mindre än ${left} minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.`);
+    // Two steps, never a count: a calm note from fifteen minutes, and a warning from five, when what is said after the
+    // end is close to not being recorded.
+    const stops = "Då stoppas inspelningen och det som spelats in sparas.";
+    if (remainingMs <= 5 * MINUTE) warnings.push({ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops });
+    else notes.push(`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`);
   }
   if (phase === "recording" && silent) {
     warnings.push({ title: "Vi hör inget från mikrofonen.", detail: "Kontrollera att den inte är avstängd." });

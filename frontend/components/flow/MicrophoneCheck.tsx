@@ -9,6 +9,7 @@ import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { microphoneProblem, type Problem } from "@/lib/flow-session";
 import { browserStorage } from "@/lib/browser-storage";
 import { SPEECH_RECORDING } from "@/lib/recording-session";
+import styles from "./FlowSetup.module.css";
 import {
   audioConstraints,
   listMicrophones,
@@ -106,8 +107,9 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
 
   return (
     <VStack gap={2}>
-      {/* Beside each other where there is room; the test below the picker where there is not. */}
-      <HStack gap={3} wrap="wrap" align="end">
+      {/* Beside each other where there is room; on a phone the picker fills the row and the test stands under it
+          (FlowSetup.module.css sets the width by the row's width). */}
+      <HStack gap={3} wrap="wrap" align="end" className={styles.microphoneRow}>
         {/* Its list is a popover, as the page's other overlays are covered with it when the login ends: the touch screen's
             bottom sheet is a modal dialog of its own, which would stay above the covered page. */}
         <Selector
@@ -116,7 +118,7 @@ export function MicrophoneCheck({ active }: { active: boolean }) {
           value={value || STANDARD}
           onChange={(next) => choose(next === STANDARD ? "" : next)}
           description={missing ? "Den valda mikrofonen hittades inte. Standard används." : undefined}
-          width="min(100%, 24rem)"
+          width="var(--microphone-picker-width, min(100%, 24rem))"
         />
         <Button
           label={stream ? "Sluta testa" : "Testa mikrofonen"}

@@ -34,16 +34,35 @@
 }
 
 
-/* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it),
-   and at a form's measure on every width. */
+/* The setup stands further from the details above it than its own parts stand apart (a section's heading starts it).
+   In one column it is as wide as the details above it, so the mode cards, the microphone row and the action end where
+   the participants field ends; beside the details, from a laptop's width, it keeps a form's measure. */
 .setup {
-  max-width: var(--module-form-width);
   margin-block-start: var(--spacing-4);
 }
 
 @media (min-width: 1024px) {
   .setup {
+    max-width: var(--module-form-width);
     margin-block-start: 0;
+  }
+}
+
+/* The microphone picker and its test button: beside each other where the row has room for a field's width (24 rem)
+   and the button, the picker filling the row where it has not, so that on a phone, upright or on its side, it ends
+   where the fields above it end and the button stands under it. The row measures itself; MicrophoneCheck reads the
+   variable into the Selector's width. */
+.microphoneRow {
+  container-type: inline-size;
+}
+
+.microphoneRow > * {
+  --microphone-picker-width: 100%;
+}
+
+@container (min-width: 36rem) {
+  .microphoneRow > * {
+    --microphone-picker-width: min(100%, 24rem);
   }
 }
 
