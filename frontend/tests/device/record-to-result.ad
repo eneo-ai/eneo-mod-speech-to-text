@@ -1,0 +1,20 @@
+context platform=ios
+open com.apple.mobilesafari "${ORIGIN}/"
+wait text "Välj ett flöde" 20000
+press 'label="Nämndmöte till rapport"'
+wait text "Hur vill du lägga till ljudet?" 20000
+press 'role="other" label="Spela in"'
+press 'role="button" label="Starta inspelning"'
+alert wait 10000
+alert accept
+wait 'role="button" label="Pausa"' 15000
+wait 3000
+press 'role="button" label="Pausa"'
+wait 'role="button" label="Fortsätt"'
+press 'role="button" label="Fortsätt"'
+wait 2000
+press 'role="button" label="Stoppa"'
+wait text "Inspelningen är klar" 15000
+press 'role="button" label="Skapa dokument"'
+wait text "Dokumentet är klart" 60000
+wait text "Ladda ner PDF" 10000
