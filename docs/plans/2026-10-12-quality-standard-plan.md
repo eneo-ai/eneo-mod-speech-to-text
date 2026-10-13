@@ -54,7 +54,7 @@ webbläsarnas acceptans står kvar i driftchecklistan.
 | axe, kontrast, målstorlek, reflow, textavstånd, rörelse, tangentbordsvandring | ja | ja | ja |
 | ARIA-ögonblicksbilder (`toMatchAriaSnapshot`, semantik, inte VoiceOver) | ja | ja, egna bildfiler | ja, egna |
 | Namn i webbläsarens träd, `axNode`, läckor (CDP) | ja | – | – |
-| Stilla sida: inget på skärmen flyttar sig när ett svar kommer (`still.spec.ts`) | ja | ja | ja |
+| Stilla sida: inget på skärmen flyttar sig när ett svar kommer (`still.spec.ts`) | ja | inte påslagen (tekniken är portabel) | inte påslagen |
 | Varje kontroll: `tap()` på touch-projekt, `click()` på mus, fokus + Enter bara för deklarerat tangentbordsenbara | ja | ja | ja |
 | Inspelning | ja | macOS ja, Linux nej: uppladdning-utan-inspelning är ett eget förväntat läge; saknas inspelning där den ska finnas faller testet | ja (Firefox saknar `microphone`-behörighet i Playwright: egen mediastart) |
 
