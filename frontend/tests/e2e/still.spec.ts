@@ -1,8 +1,8 @@
 /**
  * What is on screen stands still when an answer arrives. Each page is opened by its address with the module's answers
  * handed to it one at a time, in the order it asked for them: an answer is fetched at once and kept until the page has
- * stood still after the one before, and what is on screen (controls, headings, text, pictures) is measured before and
- * after each. Something that was on screen before an answer and has moved after it fails the page: what arrives late
+ * stood still after the one before, and what is on screen (every control, picture and element with words of its own) is
+ * measured before and after each. Something that was on screen before an answer and has moved after it fails the page: what arrives late
  * (a button added when its file is read, details read after the card they stand above) must have its place from the
  * first draw, or it moves what a finger is on its way to and what an eye is reading.
  *
@@ -104,9 +104,18 @@ function watch() {
   if (document.documentElement) observe();
   else document.addEventListener("readystatechange", observe, { once: true });
 
-  const controls =
-    'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="radio"], [role="switch"], [role="checkbox"], [role="menuitem"]';
-  const content = "h1, h2, h3, h4, h5, h6, p, li, dt, dd, th, td, label, img, video, canvas";
+  // What a person sees: every control, every picture, and every element that holds words of its own, whatever its tag
+  // (a product name in a bare span moves as surely as a heading).
+  const seen =
+    'a[href], button, input, select, textarea, summary, [role="button"], [role="link"], [role="tab"], [role="radio"], [role="switch"], [role="checkbox"], [role="menuitem"], img, svg, video, canvas';
+  const visible = () => {
+    const elements = new Set(document.querySelectorAll<HTMLElement>(seen));
+    const words = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = words.nextNode(); node; node = words.nextNode()) {
+      if (node.nodeValue?.trim() && node.parentElement) elements.add(node.parentElement);
+    }
+    return elements;
+  };
   const still: Still = {
     // The document has not changed for a moment (five frames' worth), or a second and a half has passed: a page that
     // never rests is measured as it is.
@@ -127,10 +136,11 @@ function watch() {
         return animation.playState === "running" && target ? [target] : [];
       });
       const anchors: Anchor[] = [];
-      for (const element of document.querySelectorAll<HTMLElement>(`${controls}, ${content}`)) {
+      for (const element of visible()) {
         if (!element.checkVisibility({ visibilityProperty: true })) continue;
         const box = element.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) continue;
+        // No box, or the one pixel of words kept for a screen reader only.
+        if (box.width <= 1 || box.height <= 1) continue;
         if (moving.some((target) => target.contains(element))) continue;
         const numbered = element as HTMLElement & { __still?: number };
         numbered.__still ??= state.next++;
