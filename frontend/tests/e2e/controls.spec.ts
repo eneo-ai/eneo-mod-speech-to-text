@@ -70,7 +70,11 @@ const CLICKED_IN_WEBKIT: Record<string, string> = {
     "the design system's clear button prevents its pointerdown to keep the field focused; Playwright's WebKit then fires no click after the tap, while Safari on iOS 27 clears the search (2026-10-13)",
 };
 
-for (const state of STATES) {
+// CI shards this file by count, in order, and the slowest states (review, result) sit together at the end of STATES: taken
+// from both ends in turn, each shard gets its share of them.
+const ORDER = STATES.map((_, i) => STATES[i % 2 ? STATES.length - 1 - (i - 1) / 2 : i / 2]);
+
+for (const state of ORDER) {
   test(`every control of ${state.name} does something`, async ({ browser }, info) => {
     test.skip(state.only ? !state.only(info) : false, "the state does not exist at this width or in this browser");
     test.setTimeout(900_000);
