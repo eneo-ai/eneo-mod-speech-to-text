@@ -206,7 +206,8 @@ export function SignedOutControls({ phase, onPause, onStop }: { phase: SessionPh
           icon={<Icon icon={phase === "recording" ? Pause : Play} size="sm" />}
           onClick={onPause}
         />
-        <Button label="Stoppa" variant="primary" icon={<Icon icon="stop" size="sm" />} onClick={onStop} />
+        {/* Not the filled button it is on the recording's own page: the dialog's one action is the new login. */}
+        <Button label="Stoppa" variant="secondary" icon={<Icon icon="stop" size="sm" />} onClick={onStop} />
       </HStack>
     </HStack>,
     slot,

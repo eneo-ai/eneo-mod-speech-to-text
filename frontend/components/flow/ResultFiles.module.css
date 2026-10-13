@@ -15,9 +15,11 @@
   padding: 0 var(--spacing-2) var(--spacing-2);
 }
 
-/* A file's name as a button: its words line up with the size under it, not with the button's padding. */
+/* A file's name as a button: its words line up with the size under it, not with the button's padding, and a name of
+   two lines starts both where the size does. */
 .name {
   margin-inline-start: calc(var(--spacing-3) * -1);
+  text-align: start;
 }
 
 /* The PDF viewer fills the dialog, which is as tall as the window allows less its header, and no taller than 56rem: past
