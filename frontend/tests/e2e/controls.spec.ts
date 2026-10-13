@@ -61,11 +61,20 @@ const KEYBOARD_ONLY: Record<string, string> = {
   'setup-date | button "Stäng kalender"': "the calendar's close for a keyboard and a screen reader, which the design system keeps out of sight: a pointer presses beside the calendar",
 };
 
+/**
+ * Controls Safari takes a tap on that Playwright's WebKit cannot tap, `<state> | <role> "<name>"`, and the evidence: on a
+ * WebKit touch project these alone are clicked. Checked in Safari on an iOS 27 simulator (agent-device).
+ */
+const CLICKED_IN_WEBKIT: Record<string, string> = {
+  'result-search-and-playhead | button "Rensa Sök i transkriberingen"':
+    "the design system's clear button prevents its pointerdown to keep the field focused; Playwright's WebKit then fires no click after the tap, while Safari on iOS 27 clears the search (2026-10-13)",
+};
+
 for (const state of STATES) {
   test(`every control of ${state.name} does something`, async ({ browser }, info) => {
     test.skip(state.only ? !state.only(info) : false, "the state does not exist at this width or in this browser");
     test.setTimeout(900_000);
-    const { controls, problems, notes } = await sweep(browser, info, state, { skipped: SKIPPED, expects: EXPECTS, noResponse: NO_RESPONSE, keyboardOnly: KEYBOARD_ONLY });
+    const { controls, problems, notes } = await sweep(browser, info, state, { skipped: SKIPPED, expects: EXPECTS, noResponse: NO_RESPONSE, clickedInWebKit: CLICKED_IN_WEBKIT, keyboardOnly: KEYBOARD_ONLY });
     if (!controls) test.skip(true, "a state with no control to activate");
     for (const note of notes) info.annotations.push({ type: "controls", description: note });
     info.annotations.push({ type: "controls", description: `${controls} controls` });

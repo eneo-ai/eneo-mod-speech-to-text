@@ -20,6 +20,11 @@ export interface Declared {
   noResponse?: Record<string, string>;
   /** Controls no pointer reaches by design: activated with focus and Enter, as a keyboard user does it. */
   keyboardOnly?: Record<string, string>;
+  /**
+   * Controls a finger presses in Safari that Playwright's WebKit cannot tap, with the evidence from Safari itself: these
+   * alone are clicked on a WebKit touch project. Never a pattern.
+   */
+  clickedInWebKit?: Record<string, string>;
 }
 
 const SELECTOR = [
@@ -289,7 +294,7 @@ async function check(browser: Browser, info: TestInfo, state: State, control: Co
   const label = `${state.name} | ${control.role} "${control.name}"`;
   const where = `${control.role} "${control.name}" (${control.index + 1} of ${of})`;
   const problems: string[] = [];
-  const finger = use.hasTouch === true;
+  const finger = use.hasTouch === true && !(info.project.use.browserName === "webkit" && label in (declared.clickedInWebKit ?? {}));
   const press = (locator: Locator, timeout: number) => (finger ? locator.tap({ timeout }) : locator.click({ timeout }));
   let copy: Copy;
   try {
@@ -399,6 +404,7 @@ export async function sweep(browser: Browser, info: TestInfo, state: State, decl
       notes.push(`current ${label}: the choice or the page it is already`);
     } else {
       if (label in (declared.keyboardOnly ?? {})) notes.push(`keyboard ${label}: ${declared.keyboardOnly![label]}`);
+      if (label in (declared.clickedInWebKit ?? {})) notes.push(`clicked in WebKit ${label}: ${declared.clickedInWebKit![label]}`);
       problems.push(...(await check(browser, info, state, control, controls.length, declared, use)));
     }
   }
