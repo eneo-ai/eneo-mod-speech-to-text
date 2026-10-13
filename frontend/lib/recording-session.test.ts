@@ -1153,7 +1153,7 @@ test("parts turn over at Eneo's part length, and the recording stops before Eneo
   recorders.at(-1)!.emit("x");
   await until(() => capture.getSnapshot().status === "stopped", "the stop before Eneo's longest recording");
   assert.equal(recorders.length, 10, "no eleventh part");
-  assert.match(capture.getSnapshot().error ?? "", /^Inspelningen nådde maxlängden 5 h och stoppades/);
+  assert.match(capture.getSnapshot().error ?? "", /^Inspelningen nådde maxlängden 5\u00a0h och stoppades/);
 });
 
 test("when the file slots run out before the time, the stop says so rather than a length", async () => {
@@ -1172,7 +1172,7 @@ test("when the file slots run out before the time, the stop says so rather than 
   assert.equal(recorders.length, 10);
   assert.equal(
     capture.getSnapshot().error,
-    "Inspelningen stoppades efter 4 h 31 min: flödet tar emot högst 10 filer. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+    "Inspelningen stoppades efter 4\u00a0h\u00a031\u00a0min: flödet tar emot högst 10 filer. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
   );
 });
 
@@ -1201,7 +1201,7 @@ test("the stop comes by the recorded clock in the last part too, with its handov
 });
 
 const OUT_OF_TIME =
-  "Inspelningen har nått flödets maxlängd 5 h. Skicka den, eller starta en ny inspelning för resten av mötet.";
+  "Inspelningen har nått flödets maxlängd 5\u00a0h. Skicka den, eller starta en ny inspelning för resten av mötet.";
 
 test("a recording with no time left is not continued, and no microphone is opened", async () => {
   let now = 0;
@@ -1379,7 +1379,7 @@ test("a limit that is not whole hours is said in the module's durations", async 
   await until(() => capture.getSnapshot().status === "stopped", "the stop");
   assert.equal(
     capture.getSnapshot().error,
-    "Inspelningen nådde maxlängden 1 h 30 min och stoppades efter 1 h 29 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+    "Inspelningen nådde maxlängden 1\u00a0h\u00a030\u00a0min och stoppades efter 1\u00a0h\u00a029\u00a0min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
   );
 });
 
@@ -1398,7 +1398,7 @@ test("when the flow's last file reaches Eneo's time the recording stops, says wh
   assert.equal(snapshot.remainingMs, 0);
   assert.equal(
     snapshot.error,
-    "Inspelningen nådde maxlängden 5 h och stoppades efter 4 h 59 min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
+    "Inspelningen nådde maxlängden 5\u00a0h och stoppades efter 4\u00a0h\u00a059\u00a0min. Den är sparad. Skicka den, eller starta en ny inspelning för resten av mötet.",
   );
   assert.equal(recorders.length, 1, "no second part");
   assert.deepEqual(await texts(await store.readParts(snapshot.recording!.id)), ["ab."], "every chunk, the last one too");

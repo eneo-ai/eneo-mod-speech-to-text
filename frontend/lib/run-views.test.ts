@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { Text } from "@astryxdesign/core/Text";
 
 import { AuthenticatedUserContext } from "../components/AuthGate";
 import { EarlierRuns } from "../components/flow/EarlierRuns";
@@ -115,8 +116,21 @@ test("an upload names its bar, shows the bytes and the percent, and keeps Avbryt
   assert.match(html, /role="progressbar"[^>]*aria-valuenow="33"|aria-valuenow="33"[^>]*role="progressbar"/);
   const words = text(html);
   assert.match(words, /möte\.wav Avbryt/);
-  assert.match(words, /512 B av 2 kB 33%/);
+  assert.match(words, /512 B av 2 kB 33 %/);
   assert.deepEqual(statuses(html).slice(0, 1), ["Laddar upp filen"], "the stage once, first");
+});
+
+test("the counting bytes and percent hold still: tabular figures, and the percent sign kept with its number", () => {
+  // What the design system draws for supporting text with tabular figures, so a digit that changes keeps its width.
+  const drawn = (html: string) => /class="([^"]*)"/.exec(html)?.[1];
+  const tabular = drawn(renderToStaticMarkup(createElement(Text, { type: "supporting", hasTabularNumbers: true, children: "0" })));
+  assert.notEqual(tabular, drawn(renderToStaticMarkup(createElement(Text, { type: "supporting", children: "0" }))));
+  const html = uploading({ percent: 33 });
+  for (const words of ["512 B av 2 kB", "33 %"]) {
+    const span = [...html.matchAll(/<span ([^>]*)>([^<]*)<\/span>/g)].find(([, , inner]) => inner === words);
+    assert.ok(span, `"${words}" is drawn as it is written`);
+    assert.equal(drawn(span[0]), tabular, `"${words}" in tabular figures`);
+  }
 });
 
 test("an upload of unknown size moves without a value and says Pågår, never a made-up percent", () => {
@@ -132,7 +146,7 @@ test("a percent outside 0 to 100 is held to it, in the bar and in the words besi
   for (const [percent, shown] of [[140, 100], [-5, 0]] as const) {
     const html = uploading({ percent });
     assert.match(html, new RegExp(`aria-valuenow="${shown}"`), `${percent} on the bar`);
-    assert.match(text(html), new RegExp(`${shown}%`), `${percent} in words`);
+    assert.match(text(html), new RegExp(`${shown} %`), `${percent} in words`);
   }
 });
 

@@ -45,11 +45,11 @@ const filled = (container: HTMLElement) =>
   [...container.querySelectorAll("button")].filter((b) => b.getAttribute("data-variant") === "primary").map((b) => b.textContent!.trim());
 
 test("an unsent recording keeps the name it was made with, then its flow and length", async () => {
-  assert.equal(recordingDetails(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }), "Nämndmöte till rapport · 42 min");
-  assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1 h 5 min");
+  assert.equal(recordingDetails(recording("a", 42 * 60_000, at(23, 10, 12)), { withFlowName: true }), "Nämndmöte till rapport · 42\u00a0min");
+  assert.equal(recordingDetails(recording("b", 65 * 60_000, at(22, 16, 40))), "1\u00a0h\u00a05\u00a0min");
   const { container } = await render({ recordings: [recording("c", 30_000, at(20, 9, 5))], withFlowName: true });
   // The name the ready panel shows (lib/format recordingName), then its flow and length.
-  assert.deepEqual([...summaryOf(rowsOf(container)[0]).children].map((line) => line.textContent), ["Inspelning 20 sep 09:05", "Nämndmöte till rapport · 30 s"]);
+  assert.deepEqual([...summaryOf(rowsOf(container)[0]).children].map((line) => line.textContent), ["Inspelning 20 sep 09:05", "Nämndmöte till rapport · 30\u00a0s"]);
 });
 
 test("one unsent recording is spoken of in the singular", async () => {

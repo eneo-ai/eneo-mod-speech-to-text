@@ -1060,7 +1060,7 @@ test("a part longer than Eneo takes is not sent, whatever the page's copy of the
   assert.equal(uploads, 0, "nothing uploaded for Eneo to take and refuse later");
   assert.equal(
     session.getSnapshot().problem?.title,
-    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1 h 30 min). Välj Spara som fil för att behålla den.",
+    "Inspelningen är för lång för en fil: en del är längre än flödet tar emot (1\u00a0h\u00a030\u00a0min). Välj Spara som fil för att behålla den.",
   );
   assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, not sealed");
 });

@@ -1,4 +1,4 @@
-/** Swedish formats for sizes, dates and durations: one owner for every view. */
+/** Swedish formats for sizes, percentages, dates and durations: one owner for every view. */
 
 const NBSP = " ";
 const oneDecimal = new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 1 });
@@ -50,9 +50,14 @@ export function formatDateTime(value: string | Date): string {
 
 /**
  * "22 s", "32 min", "1 h 5 min". Whole elapsed seconds, as the timer and the player count them: 7.6 s reads
- * "7 s", never "8 s" beside "0:07"; minutes and hours are rounded to the unit shown.
+ * "7 s", never "8 s" beside "0:07"; minutes and hours are rounded to the unit shown. One line long, as a size is: its
+ * spaces do not break, so a line never ends between a number and its unit or between the hours and the minutes.
  */
 export function formatDuration(ms: number): string {
+  return durationWords(ms).replace(/ /g, NBSP);
+}
+
+function durationWords(ms: number): string {
   const seconds = Math.floor(Math.max(0, ms) / 1000);
   if (seconds < 60) return `${seconds} s`;
   const minutes = Math.round(seconds / 60);
@@ -65,6 +70,13 @@ export function formatDuration(ms: number): string {
   }
   const rest = minutes % 60;
   return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+}
+
+const wholePercent = new Intl.NumberFormat("sv-SE", { style: "percent", maximumFractionDigits: 0 });
+
+/** "33 %": a whole percentage, 0 to 100, with the space before the sign that keeps it with its number. */
+export function formatPercent(percent: number): string {
+  return wholePercent.format(percent / 100);
 }
 
 /** The recording timer: "12:34" under an hour, "1:02:05" from an hour. */
