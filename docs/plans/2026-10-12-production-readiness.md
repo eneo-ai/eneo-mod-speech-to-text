@@ -1,29 +1,42 @@
-# Produktionsberedskap: Tal till text, kandidat a0272ad
+# Produktionsberedskap: Tal till text, kandidat b8c3804
 
-Datum: 2026-10-12. Beslutsunderlag för ägaren (bead `stt-66h`). Planeringsdokument som tas bort med byggställningen (bead `stt-plan-a-astryx-port-57a.24`); det permanenta innehållet står i `docs/operations.md` och `docs/quality-gates.md`.
+Datum: 2026-10-12, kandidaten bytt 2026-10-13. Beslutsunderlag för ägaren (bead `stt-66h`). Planeringsdokument som tas bort med byggställningen (bead `stt-plan-a-astryx-port-57a.24`); det permanenta innehållet står i `docs/operations.md` och `docs/quality-gates.md`.
 
 ## Beslut i korthet
 
-Modulen på `main` vid `a0272ad` är färdig att driftsättas för acceptans. Den är inte godkänd för verklig användning förrän kontrollerna i avsnittet "Innan verklig användning" är gjorda på den riktiga domänen, mot det riktiga Eneo, och utfallet är antecknat.
+Modulen på `main` vid `b8c3804` är färdig att driftsättas för acceptans. Den är inte godkänd för verklig användning förrän kontrollerna i avsnittet "Innan verklig användning" är gjorda på den riktiga domänen, mot det riktiga Eneo, och utfallet är antecknat.
 
-Rekommenderad kandidat: tagga `v0.1.1` på `a0272ad`. Utgåvan `v0.1.0` (`c5d5460`, 2026-10-08) saknar PR 24, som talar om före inspelningen när talare inte kan märkas upp. `release.yml` kopierar den redan testade imagen `sha-a0272ad…` till `v0.1.1` och `latest` utan att bygga om.
+Rekommenderad kandidat: tagga `v0.1.1` på `b8c3804`. Den ersätter `a0272ad` (gårdagens kandidat): samma inloggning, proxy, uppladdningar och lagring i webbläsaren, plus rättelserna som telefoner, surfplattor, Safari och Firefox visade (nedan), och `/health` som säger vilken commit och vilken utgåva som körs. `release.yml` kontrollerar först att den testade imagen `sha-b8c3804…` säger sig vara byggd från den taggade commiten, och kopierar den sedan till `v0.1.1` och `latest` utan att bygga om.
 
 ## Kandidaten och vad som är bevisat
 
 | | |
 |---|---|
-| Commit | `a0272ad69ccbbe6c23fff538e12fd1be43d5ad78`, `main`, 2026-10-11 |
-| CI | körning 38159169055, alla jobb gröna: backend, frontend, frontend-browser (controls 4 delar, accessibility 2 delar, production, real-backend, branding), compose, image, publish |
-| Image | `ghcr.io/eneo-ai/eneo-mod-speech-to-text:sha-a0272ad69ccbbe6c23fff538e12fd1be43d5ad78`, digest `sha256:b452b6291d5dd5b86ee4e943e405d457eade2b821759def2f90f5c91d1e7f489` (OCI-index, två plattformar) |
+| Commit | `b8c38040a3f6bbe5f6041e8c1b6cf4d3c85ee693`, `main`, 2026-10-13 |
+| CI | pull request 34 på `8637c7c` (samma träd som `b8c3804` utom merge-commiten): alla 19 jobb gröna, med de nya jobben `devices` (surfplattor), `webkit` och `firefox`; körningen på `main` vid `b8c3804`: [38403962814](https://github.com/eneo-ai/eneo-mod-speech-to-text/actions/runs/38403962814), grön i andra försöket (i det första fick ett av 173 Firefox-tester, `aria ready`, en inspelning utan data; hela Firefox-sviten och testet 16 gånger i CI:s Linux-image går igenom, orsaken utreds) |
+| Image | `ghcr.io/eneo-ai/eneo-mod-speech-to-text:sha-b8c38040a3f6bbe5f6041e8c1b6cf4d3c85ee693`, digest `sha256:8fb5b4084d56c3fd4186aadf3edc93652613a9741c7d9221d491b9782d302dee` (OCI-index: `linux/amd64` och en attestering; CI jämförde registrets digest med den testade); etiketten `org.opencontainers.image.revision` är `b8c3804…` |
 | Senaste utgåva | `v0.1.0` = `latest` = `c5d5460`, digest `sha256:8e66e9af8eab984058921725d5c5ffc7cf608aec00b8ce54cb46a38639f48417` |
 | Imagens acceptans | `deploy/acceptance.sh` i jobbet image: hälsa, en process och icke-root, headers, uppladdningar, WebSocket, stopp med strömmande fil, storlek och minne, reläets fördröjning under last. Kontroll 15 är villkorat godtagen av ägaren 2026-10-05 (`deploy/acceptance/waivers.json`): reläet är opåverkat upp till en tredjedel av vad modulen klarar; bara mättnad med 200 klienter utan paus tar p95 över dubbla viloläget. |
 
 Acceptansen kör med stubben som Eneo. Den bevisar imagen, inte driftsmiljön.
 
+**Ändrat sedan `a0272ad`** (pull requests 25 till 34):
+
+| Område | Ändring |
+|---|---|
+| Telefon, surfplatta, liggande telefon | Formuläret och ljudblocket slutar i samma kant; mikrofonraden mäter sig själv; en liggande telefon får en flödeskolumn som rymmer namnet; "tar längre tid" står överst när ett flöde laddar långsamt |
+| Inspelning | Under fem minuter kvar är en varning ovanför Pausa och Stoppa; "Stoppa" är sekundär i dialogen "Du behöver logga in igen" |
+| Resultat | Dokumentets nedladdning står på filens rad från 1024 px; "Dela" har sin plats från början; texten är formaterad första gången den ritas; felsidans transkribering står sist, efter "Kontakta support" |
+| Nätverk | "Ingen anslutning." visas inte längre när Safari eller Chrome felaktigt säger offline efter att enheten sovit; ett svar som redan var på väg när nätet försvann ändrar inte det |
+| Safari och Firefox | Samma fokusring på logotyplänken, uppspelningsreglaget och transkriberingens rullruta; fokus på själva PDF-dialogen går vidare till dess första kontroll; spelaren släpper ljudet innan inspelningens adresser tas bort (ett fel i Safari) |
+| Drift | `/health` svarar med `revision`, `build_date` och `release`; `MODULE_VERSION` skickas också in i containern; utgåvan kontrollerar imagens commit innan någon tagg flyttas |
+| Test och CI | Gaten på surfplattor, WebKit och Firefox; kontrollen att inget på skärmen flyttar sig när ett svar kommer; `GATE_CPU`; `ci:failure`; en enhetsresa i Safari (`npm run test:device`) |
+
 ## Säkerhet
 
 - **Granskning run-1** (`~/security-audit-skill/eneo-mod-speech-to-text/run-1`, bead `stt-p5u.1`): den fristående appen vid `70cf9f9`, 33 gränser och livscykler, 281 godkända tester i isolerad container, inga bekräftade sårbarheter och inga kandidater kvar. Utanför omfattningen: Eneos faktiska behörighet mellan användare och ytor, driftsmiljöns TLS, cookies och headers, fysisk Safari, modulkittet.
 - **Deltagranskning `70cf9f9..a0272ad`** (33 filer, gjord 2026-10-12): ingen backendkod ändrad (bara `backend/tests/test_release_workflows.py`). Frontend: flöden vars talarmärkning inte kan göras blockeras utan väg in (`flow-session.ts`, `FlowInput.tsx`, `ReadyPanel.tsx`, `UnsentRecordings.tsx`), två nya felförklaringar (`run-result.ts`), utloggningssidans text om kvarvarande inspelningar läser bara routerns state (`LoginPage.tsx`), kontraktstypen får `unavailable_reason` (`api.ts`). CI: webbläsartesterna delas på flera körare, Skopeo fäst vid en bevarad immutable utgåva och kontrolleras före bygget, docs-flödet får manuell körning och Pages-kontroll. Inga nya nätverksanrop, inga nya förtroendegränser, inget som ändrar auditens slutsats.
+- **Deltagranskning `a0272ad..b8c3804`** (gjord 2026-10-13): backenden ändras bara av pull request 31. `backend/app/config.py` läser en byggpost med fast sökväg i imagen (ingen indata från användare; en saknad eller felaktig post ger null och en loggrad, aldrig ett stopp) och `MODULE_VERSION` mot `vX.Y.Z`; `/health` svarar med tre fält till, utan session som förut. Fälten säger vilken commit och vilken utgåva som körs, och källkoden är offentlig: inget som inte redan går att läsa. Ingen ändring av inloggning, sessioner, proxy, uppladdningar eller filer. Frontend: onlinestatusen litar på ett svar från modulen bara för en förfrågan som skickades efter att webbläsaren sa offline; objektadresser för inspelningen tas bort en sekund efter att spelaren släppt dem; inga nya nätverksanrop eller förtroendegränser. Lagringen i webbläsaren är oförändrad (`frontend/lib/recording-store.ts` och `user-identity.ts` samma som i `a0272ad`). Inget som ändrar auditens slutsats.
 - **Återstår** och kan bara göras på den riktiga domänen: se "Innan verklig användning".
 
 ## Kända begränsningar (permanent beskrivna i docs)
@@ -42,6 +55,7 @@ Ordningen är: byt en gång på den riktiga domänen (stoppa den gamla, starta k
 
 | Kontroll | Vem | Hur |
 |---|---|---|
+| Rätt version körs: `/health` svarar `revision` = den taggade commiten och `release` = `v0.1.1` | agent eller ägare | `curl -s https://<domänen>/health` |
 | Inloggning via Eneo och tillbaka till flödeslistan med ren adress | ägaren | privat fönster |
 | Eneos behörighet: två testkonton i två ytor når sina egna flöden, körningar, filer, resultat, granskningar och livesessioner (positiv kontroll) och inte varandras, genom modulens adresser | ägaren med Eneo-admin | två testkonton med egna flöden och körningar |
 | TLS, HSTS, `Secure`-cookie, modulens headers | agent eller ägare | `curl -sI` mot domänen, cookie-flaggor i webbläsaren |
@@ -62,7 +76,7 @@ Ordningen är: byt en gång på den riktiga domänen (stoppa den gamla, starta k
 
 **Bytet.** En gång: stoppa det gamla projektet, starta det nya, gör acceptansen, släpp sedan in verklig användning på samma container. Två versioner samtidigt skickar personer fel (sessioner i processens minne), och en omstart till loggar ut alla igen utan att bevisa något.
 
-**Användarnas enheter.** Osända inspelningar i webbläsaren överlever bytet: IndexedDB-basen `tal-till-text` version 1 med samma objektlager i den gamla versionen (`f81a7dd`) och i `a0272ad`, och postens form är kompatibel (verifierat med `git diff f81a7dd..a0272ad -- frontend/lib/recording-store.ts`).
+**Användarnas enheter.** Osända inspelningar i webbläsaren överlever bytet: IndexedDB-basen `tal-till-text` version 1 med samma objektlager i den gamla versionen (`f81a7dd`) och i `b8c3804`, och postens form är kompatibel (verifierat med `git diff f81a7dd..a0272ad -- frontend/lib/recording-store.ts`; filen är oförändrad sedan `a0272ad`).
 
 **Inspelningar från läget access_code.** Kontrollera vilket `AUTH_MODE` den gamla driftsättningen kör. En inspelning gjord i läget `access_code` har ägaren `access-code` (`f81a7dd:frontend/lib/user-identity.ts`), och den nya versionen visar bara inspelningar vars ägare är Eneo-användarens id (`frontend/lib/recording-store.ts`). Finns osända inspelningar från det läget sparas de som fil i den gamla appen före bytet; schemat räcker inte för att de ska hittas.
 
@@ -70,14 +84,14 @@ Ordningen är: byt en gång på den riktiga domänen (stoppa den gamla, starta k
 
 ## Ägarbeslut som väntar
 
-- Kandidat: tagga `v0.1.1` på `a0272ad` (rekommenderas) eller driftsätt `v0.1.0`.
+- Kandidat: tagga `v0.1.1` på `b8c3804` (rekommenderas). Sätt `MODULE_VERSION=v0.1.1` i driftsättningen, så att imagen och `/health` säger samma utgåva.
 - Bead `stt-plan-a-astryx-port-57a.7`: sju designval som levererats med standardvärdet på `main`; bekräfta eller ändra.
 - Bead `stt-plan-a-astryx-port-57a.35`: bekräfta att designartefakten (claude.ai-länken) är det som efterfrågades, och stäng.
 - Bead `stt-plan-a-astryx-port-57a.8`: Safari-kontrollen ovan.
 
 ## Efter driftsättningen
 
-- `stt-9xi` Visa driftsatt version: källidentitet bakas in vid CI-bygget (OCI-etiketter och en byggpost ur samma indata, som backend läser), `/health` visar commit och byggdatum, uttryckligen som byggdatum. Utgåvan är ett eget, tomt-tillåtet fält: `MODULE_VERSION` skickas in i containern som driftsättningsmetadata, men `latest`, en `sha-`-tagg och ett lokalt bygge (`docker-compose.override.yml`) betyder ingen känd utgåva, och vid driftsättningen kontrolleras kedjan utgåvans tagg → digest → inbakad commit. Gränssnittet visar utgåvan när den är känd, annars bara commit. Utgåvans tagg kan inte bakas in: `release.yml` taggar om en redan testad digest.
+- `stt-9xi` Visa driftsatt version: backend, image och utgåva är gjorda (pull request 31, i kandidaten). Kvar är att visa den i gränssnittet, och kitets gemensamma kontrakt (`kit-2e6`).
 - `stt-plan-a-astryx-port-57a.24` Städning: migrationsavsnittet i `AGENTS.md`, `docs/plans/` och till sist `.beads/` efter export. `frontend/lib/legacy-ui.test.ts` är ett levande vakttest mot Next, Radix, Tailwind och klasssträngar och tas inte bort.
 - `stt-plan-c-module-kit-gwh.3` Kitet: uppskjutet. Återöppnas när kitet är släppt i 0.1.0 med både BFF- och UI-paket och antingen en andra modul börjar eller en gemensam inloggningsrättelse måste landa i båda. Tills dess är `backend/app/serve.py` en kopia från kitet och modulen referensimplementationen.
 - `stt-p5u` Slutlig säkerhetsgranskning: den fristående delen är gjord (run-1 plus deltagranskningen ovan); kvar är kontrollerna på den riktiga domänen, och kit-delen bara om kitet införs.
