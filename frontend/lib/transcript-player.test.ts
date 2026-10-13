@@ -54,7 +54,7 @@ test("an unknown audio length keeps forward skip available after moving the play
   const playback = new Playback([{ url: "/audio/0", durationMs: null }], async () => null);
   const media: MediaLike = {
     src: "", currentTime: 0, duration: Number.NaN, paused: true, playbackRate: 1,
-    play: async () => undefined, pause: () => undefined, load: () => undefined,
+    play: async () => undefined, pause: () => undefined, load: () => undefined, removeAttribute: () => undefined,
   };
   playback.attach(media);
   t.after(() => playback.attach(null));
@@ -116,7 +116,7 @@ test("the highlight follows the playhead in each part's own time, as the transcr
     playbackRate: 1,
     play: async () => undefined,
     pause: () => undefined,
-    load: () => undefined,
+    load: () => undefined, removeAttribute: () => undefined,
   };
   const playback = new Playback(
     [

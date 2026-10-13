@@ -26,10 +26,17 @@ import type { PlayerSource } from "@/lib/playback";
 import { recordingStore, type StoredRecording } from "@/lib/recording-store";
 import styles from "./ReadyPanel.module.css";
 
+/** How long a recording's addresses outlive the player that read them. */
+const RELEASE_AFTER_MS = 1_000;
+
 /** Each part of the recording as something the player can play, over its known length; `unreadable` when the device could not be read. */
 function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; unreadable: boolean } {
   const [sources, setSources] = useState<PlayerSource[]>([]);
   const [unreadable, setUnreadable] = useState(false);
+  // The audio is read again only when it changes: the stored recording is a new object whenever anything about it is
+  // written (an uploaded part's file id, the send), and an address taken away while the player still loads it is an
+  // error in Safari ("WebKitBlobResource error 1"), and a player that starts over.
+  const audio = `${recording.id}|${recording.parts.map((part) => `${part.index}:${part.durationMs}`).join(",")}`;
   useEffect(() => {
     let cancelled = false;
     let urls: string[] = [];
@@ -46,9 +53,14 @@ function usePartSources(recording: StoredRecording): { sources: PlayerSource[]; 
       .catch(() => !cancelled && setUnreadable(true));
     return () => {
       cancelled = true;
-      urls.forEach((url) => URL.revokeObjectURL(url));
+      // A moment later: Safari may still be ending the player's read of an address when the player lets it go, and an
+      // address taken away under that read is an error.
+      const used = urls;
+      setTimeout(() => used.forEach((url) => URL.revokeObjectURL(url)), RELEASE_AFTER_MS);
     };
-  }, [recording]);
+    // `audio` stands for the recording's id and parts.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audio]);
   return { sources, unreadable };
 }
 

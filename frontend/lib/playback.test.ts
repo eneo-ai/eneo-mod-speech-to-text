@@ -26,6 +26,9 @@ class FakeMedia implements MediaLike {
   pause() {
     this.paused = true;
   }
+  removeAttribute(name: "src") {
+    if (name === "src") this.src = "";
+  }
   load() {
     // As the browser: a new source starts paused at 0.
     this.loads.push(this.src);
@@ -450,4 +453,12 @@ test("a recording whose length is not known yet still has a slider that cannot g
   const thumb = view.container.querySelector<HTMLElement>('[role="slider"]')!;
   assert.equal(thumb.getAttribute("aria-valuemin"), "0");
   assert.equal(thumb.getAttribute("aria-valuemax"), "1", "a floor of one second, so the slider is never zero-wide");
+});
+
+test("a player that lets go of its element stops the element's request, so its address can be taken away", () => {
+  const { playback, media } = started();
+  playback.attach(null);
+  assert.equal(media.src, "", "no source");
+  assert.equal(media.loads.at(-1), "", "and a load, which stops what was being read");
+  assert.equal(media.paused, true);
 });
