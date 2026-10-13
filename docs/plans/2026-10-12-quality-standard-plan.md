@@ -4,7 +4,8 @@ Datum: 2026-10-12. Planeringsdokument för tal till text (epik `stt-5db`) och, i
 Tas bort med byggställningen (bead `stt-plan-a-astryx-port-57a.24`); det permanenta innehållet hamnar i
 `docs/quality-gates.md` och i kitets `docs/`. Granskad av Codex Astra (xhigh): session `stt-device-tests` pass 1 (6)
 och pass 2 (7, "fyra avgränsade rättelser, ingen fler bred runda"), session `stt-quality-standard` pass 1 (7).
-Rättelserna är inarbetade; inga fler granskningsrundor före arbetspaketen.
+Rättelserna är inarbetade; inga fler granskningsrundor före arbetspaketen. Kitöverföringen och de nya kontrollerna
+granskades 2026-10-13 av Codex (GPT-6.1-Sol, high): session `kit-carry-over` pass 1 (7); rättelserna står i avsnitt 3 och 4.
 
 Driftsättningen av `v0.1.1` på `a0272ad` (`docs/plans/2026-10-12-production-readiness.md`) villkoras inte av något
 här.
@@ -53,6 +54,7 @@ webbläsarnas acceptans står kvar i driftchecklistan.
 | axe, kontrast, målstorlek, reflow, textavstånd, rörelse, tangentbordsvandring | ja | ja | ja |
 | ARIA-ögonblicksbilder (`toMatchAriaSnapshot`, semantik, inte VoiceOver) | ja | ja, egna bildfiler | ja, egna |
 | Namn i webbläsarens träd, `axNode`, läckor (CDP) | ja | – | – |
+| Stilla sida: inget på skärmen flyttar sig när ett svar kommer (`still.spec.ts`) | ja | ja | ja |
 | Varje kontroll: `tap()` på touch-projekt, `click()` på mus, fokus + Enter bara för deklarerat tangentbordsenbara | ja | ja | ja |
 | Inspelning | ja | macOS ja, Linux nej: uppladdning-utan-inspelning är ett eget förväntat läge; saknas inspelning där den ska finnas faller testet | ja (Firefox saknar `microphone`-behörighet i Playwright: egen mediastart) |
 
@@ -65,6 +67,14 @@ webbläsarnas acceptans står kvar i driftchecklistan.
 - CI: `ci.yml` namnger projekten; varje PR kör Chromium som i dag plus `phone-390-webkit` och `laptop-1440-firefox`
   på de portabla specarna. "Hela matrisen" definieras uttryckligen (vilka projekt, vilka specar) och körs av
   `verify:candidate` på releasekandidaten; tid mäts innan ett nattjobb bestäms. Inga pixel-ögonblicksbilder i CI.
+- Stilla sida (`still.spec.ts`, PR 29): varje sida öppnas via sin adress och får modulens svar ett i taget, i den
+  ordning den bad om dem; kontroller, rubriker och text mäts före och efter varje svar på telefon, surfplatta och
+  laptop. Deterministisk: tre körningar och en med varje svar 300 ms sent gav samma resultat. Ett svep över lägen
+  som nås med tryckningar gav inte samma resultat två gånger; tryckningar får riktade tester som håller ett svar
+  (`preview-actions.spec.ts`). Kvarvarande flyttar står med skäl och ärende i specens `KNOWN`.
+- Verktyg: `GATE_CPU=<gånger>` stryper sidans CPU i Chromium så att en kapplöpning som bara CI förlorar går att
+  återskapa (läcktestets Escape före `showModal()` föll två PR:er 2026-10-12); `npm run ci:failure -- <PR>` läser
+  ett rött CI-jobb lokalt. En strypt körning är diagnostik tills dess tid och pålitlighet är mätt; ingen nattkörning.
 
 **Lager 2, per release, riktig Safari och Chrome på simulator och emulator, ett verktyg.** `agent-device` som
 `.ad`-skript i `frontend/tests/device/`, mot det byggda gränssnittet + riktig BFF + stubben som Eneo (samma stack som
@@ -111,6 +121,14 @@ MCP-servrar). Kitplanens fas 3 kopierar redan gaten till mallen; det som ändras
   behöva den; tal till text är provet.
 - **MCP:** inga inaktiva `.mcp.json`-poster. Dokumentera valfria uppsättningar (Astryx hosted MCP, `agent-device mcp`)
   i `docs/guides/local-development.md`. Impeccable-detektorn är ägarens verktyg, inget krav på en modul.
+- **Efter granskningen 2026-10-13:** `packages/ui` får bara generell presentation och sessionsbeteende.
+  Navigeringsspärren (`useLeaveQuestion` importerar React Router; kitets UI-paket är routerfritt), löften om
+  inspelningar, uppladdningar och körningar och modulens texter stannar i modulen; onlinestatusen ligger bredvid
+  sessionspaketets anropsfunktion, i en instans. Delmängden som kopieras namnger sina beroenden (`gate.ts` behöver
+  `auth.ts`, `controls.spec.ts` behöver `controls.ts`, `ux-shots.mjs` sin bildkonfiguration och spec) och tar med
+  självtesterna (`harness.spec.ts`, `sentinel.spec.ts`): en grön mall med fem lägen bevisar inte att en kontroll
+  kan falla. En sammanslagen revision fryses innan kopieringen. Rutiner står i `docs/quality.md`; skillen länkar
+  och ordnar dem. Enhetsresan är inte kitvägledning förrän det finns körbara skript och kvitton (`stt-c1d`).
 - Tal till text är referensen; modulen byter till paketet när kitet 0.1.0 är släppt och `gwh.3` öppnas igen.
 
 ## 5. QoL-paketet
@@ -133,21 +151,27 @@ nedladdning på filens egen rad när dokumentet inte har egen text, som raderna 
 läsning av koden: "Rätta" flyter avsiktligt efter repliken som ett ord (`TranscriptPlayer.tsx`, kommentaren vid
 knappen), och ett filnamn som bryts vid datumets bindestreck bryts på ett naturligt ställe.
 
-Slice 3: talargranskningens editor (bakom flagga), inloggningssidans kolumn, laddnings-spinnern. Strukna efter bild:
-deltagarchipsen står redan bredvid varandra, "Ta bort" på klar-panelen har designsystemets ghost-inset, och knapparna
-under vikningen på liggande telefon når man med en rullning.
+Stabilitet (PR 28 och 29): en modul som svarar är online även när webbläsaren säger offline (iOS Safari och Android
+Chrome efter att värddatorn sovit); "Dela" har sin plats från första ritningen och är avstängd tills filen är läst
+(dokumentet hoppade 52 px på 390 px bredd); en pågående körning som öppnas via adress väntar in sina uppgifter
+(72 px); felsidans transkribering står sist, efter "Kontakta support" (435 till 487 px).
+
+Slice 3: talargranskningens editor (bakom flagga), inloggningssidans kolumn, laddnings-spinnern; talarlistan på
+granskningssidan väntar in rättningarna (`stt-5db.1`) och notisen om äldre dokument (`stt-5db.2`). Strukna efter
+bild: deltagarchipsen står redan bredvid varandra, "Ta bort" på klar-panelen har designsystemets ghost-inset, och
+knapparna under vikningen på liggande telefon når man med en rullning.
 
 ## 6. Arbetspaket (Beads, epik `stt-5db`)
 
 | Bead | Paket | Bevis |
 |---|---|---|
-| `stt-0p3` | QoL slice 1 | före/efter, gaten, controls, detektorn |
+| `stt-0p3` | QoL slice 1 (PR 26) | före/efter, gaten, controls, detektorn |
 | `stt-tgw` | WebKit och Firefox i gaten som harness-anpassning, `tap()` på touch, mediastart per motor, CI-listor | tre motorer gröna; negativa fixturer faller i varje motor |
 | `stt-pyq` | Surfplatta tangentbord + controls, liggande telefon | nya projekt gröna, tid mätt |
 | `stt-c1d` | iOS-resan mot riktig BFF, avbrott under inspelning, MP4, standalone, filväljare, filmetadata i stubben | JUnit, spelbar inspelning med längd |
 | `stt-5ik` | Android-resan via `adb reverse` | samma påståenden |
 | `stt-daw` | Releaseregel och macOS-jobb efter en obevakad körning | ett grönt obevakat kvitto |
-| `stt-8la` | QoL slice 2 | som slice 1 |
+| `stt-8la` | QoL slice 2 (PR 27), stabilitet (PR 28), stilla sida och verktyg (PR 29) | som slice 1; `still.spec.ts` faller på båda rättelserna när de tas bort |
 | `stt-3y1` | Kitet: testad delmängd, `quality.md`, K12-ändring, tunn skill | mallens gate grön utanför arbetsytan |
 
 Ordning: `stt-0p3` → `stt-tgw`/`stt-8la` → `stt-pyq` → (första driftsättningen) → `stt-c1d` → `stt-5ik` →
