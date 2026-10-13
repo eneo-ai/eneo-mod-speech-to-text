@@ -51,6 +51,13 @@
   outline-offset: calc(var(--focus-outline-width) * -1);
 }
 
+/* Firefox stops on a box that scrolls on its own: the transcript's, from a laptop's width. Its ring is drawn inside too,
+   where the card does not clip it. */
+.scrollport:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: calc(var(--focus-outline-width) * -1);
+}
+
 .loading {
   display: flex;
   flex-direction: column;

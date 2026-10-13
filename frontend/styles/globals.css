@@ -85,6 +85,15 @@ html:has([data-docked-action], [data-docked-player]) {
    on it would only look like one. */
 [data-phase-heading]:focus { outline: none; }
 
+/* The design system's focus ring on what it leaves to the browser, so every engine draws the same one: the top bar's
+   lockup is a link Astryx does not style (Safari's own ring is a pale blue under 3:1), and WebKit draws no ring on the
+   slider's thumb from the design system's rule. */
+a.astryx-top-nav-heading:focus-visible,
+.astryx-slider-thumb:focus-visible {
+  outline: var(--focus-outline-width) var(--focus-outline-style) var(--focus-outline-color);
+  outline-offset: var(--focus-outline-offset);
+}
+
 /* Astryx draws a button as a filled box with no border, and forced colours take the fill away: the system's own edge
    gives it back, for every button the design system draws. */
 @media (forced-colors: active) {
