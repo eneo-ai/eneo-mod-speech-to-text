@@ -121,7 +121,8 @@ for (const mode of ["Spela in", "Strömma"] as const) {
     page.on("dialog", (dialog) => void dialog.accept());
     await page.getByRole("button", { name: "Ladda om sidan" }).click();
     await expect(page.getByRole("heading", { name: "En inspelning har inte skickats" })).toBeVisible();
-    const seconds = Number((await page.getByText(/Nämndmöte till rapport · \d+ s/).textContent())!.match(/· (\d+) s/)![1]);
+    // The duration's space does not break (lib/format.ts): \s is any space.
+    const seconds = Number((await page.getByText(/Nämndmöte till rapport · \d+\ss/).textContent())!.match(/· (\d+)\ss/)![1]);
     expect(seconds, "what was recorded up to the leave, not only the audio that had been handed over before it").toBeGreaterThanOrEqual(3);
     const saved = await savedFile(page);
     expect(saved.bytes.length, "nothing the device held before the leave is missing from the file").toBeGreaterThanOrEqual(stored);
