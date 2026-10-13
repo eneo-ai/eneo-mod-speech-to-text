@@ -75,6 +75,14 @@ const PROBES_AT_ONCE = 3;
 
 function ignore() {}
 
+/**
+ * Moves the element to `withinMs` unless it is there: a fresh part starts at 0 without a seek, so audio its browser
+ * cannot seek in (a WebM without Cues whose blocks are not keyframes, in Chromium) still plays from its start.
+ */
+function place(media: MediaLike, withinMs: number): void {
+  if (Math.abs(media.currentTime * 1_000 - withinMs) >= 1) media.currentTime = withinMs / 1_000;
+}
+
 export class Playback {
   private sources: readonly PlayerSource[] = [];
   private media: MediaLike | null = null;
@@ -113,6 +121,16 @@ export class Playback {
   }
 
   getSnapshot = (): PlaybackSnapshot => this.snapshot;
+
+  /**
+   * The position on the whole recording now, read from the audio itself: the snapshot moves with the element's time
+   * updates, about four a second, and a playhead drawn every frame reads this between them.
+   */
+  liveAtMs(): number {
+    const media = this.media;
+    if (!media || this.pending || media.paused) return this.atMs();
+    return this.atMs() - this.withinMs + this.clampWithin(this.part, media.currentTime * 1_000);
+  }
 
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
@@ -271,7 +289,7 @@ export class Playback {
     const next = this.pending;
     this.pending = null;
     if (next) {
-      media.currentTime = next.withinMs / 1_000;
+      place(media, next.withinMs);
       if (next.play) void media.play().catch(ignore);
     }
     this.emit();
@@ -326,7 +344,7 @@ export class Playback {
       return;
     }
     if (this.loaded === url && !this.pending) {
-      this.media.currentTime = withinMs / 1_000;
+      place(this.media, withinMs);
       if (play) void this.media.play().catch(ignore);
       return;
     }

@@ -75,6 +75,40 @@ test("the position follows the audio: the part, the place in it and on the whole
   assert.deepEqual([now.part, now.withinMs, now.atMs, now.playing, now.started], [0, 1_500, 1_500, true, true]);
 });
 
+test("a part played from its start is not sought: audio its browser cannot seek in still plays", () => {
+  const seeks: number[] = [];
+  const playback = new Playback(PARTS, async () => null);
+  const media = new FakeMedia();
+  let time = 0;
+  Object.defineProperty(media, "currentTime", { get: () => time, set: (seconds: number) => void seeks.push((time = seconds)) });
+  playback.attach(media);
+  seeks.length = 0; // the fake's own load resets it, as the browser's does
+  media.duration = 4;
+  playback.toggle();
+  playback.onLoadedMetadata();
+  assert.equal(media.paused, false, "it plays");
+  assert.deepEqual(seeks, [], "from 0, where a fresh part is, without a seek");
+  playback.seek(0, 0);
+  assert.deepEqual(seeks, [], "nor to where it is");
+  playback.seek(0, 1_500);
+  assert.deepEqual(seeks, [1.5], "elsewhere it seeks");
+});
+
+test("the live position reads the audio between its time updates, and is the snapshot's when paused", () => {
+  const { playback, media } = started();
+  playback.seek(1, 0, true);
+  media.duration = 2;
+  playback.onLoadedMetadata();
+  playTo(playback, media, 0.25);
+  media.currentTime = 0.6;
+  assert.equal(playback.getSnapshot().atMs, 4_250, "the snapshot is the last update's");
+  assert.equal(playback.liveAtMs(), 4_600, "the audio's own time, on the whole recording");
+  media.currentTime = 9;
+  assert.equal(playback.liveAtMs(), 6_000, "never past the part's end");
+  playback.pause();
+  assert.equal(playback.liveAtMs(), playback.getSnapshot().atMs);
+});
+
 test("a seek into another part loads it and lands where asked, playing on when asked to", () => {
   const { playback, media } = started();
   playback.seek(1, 500, true);
