@@ -206,6 +206,22 @@ export async function authStatus() {
   return request<AuthStatus>("/api/auth/status");
 }
 
+// ---------- The build ----------
+
+/** Which build answers: the backend's health route says it (backend/app/main.py). Each is null when it is not known. */
+export interface BuildIdentity {
+  /** The source commit, 40 hexadecimal characters. */
+  revision: string | null;
+  /** When the image was built, in UTC: "2026-01-31T12:00:00Z". */
+  build_date: string | null;
+  /** The release the deployment runs it as, "vX.Y.Z". */
+  release: string | null;
+}
+
+export async function buildIdentity() {
+  return request<BuildIdentity>("/api/healthz");
+}
+
 // ---------- Eneo ----------
 
 interface PaginatedResponse<T> {

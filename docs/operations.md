@@ -50,7 +50,7 @@ Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Med `late
 
 ## Vilken version som körs
 
-`<MODULE_PUBLIC_URL>/health` svarar utan inloggning med vilket bygge som körs. Ange `revision` i en felanmälan: den pekar ut koden exakt, också när utgåvan är okänd.
+`<MODULE_PUBLIC_URL>/health` svarar utan inloggning med vilket bygge som körs. Ange `revision` i en felanmälan: den pekar ut koden exakt, också när utgåvan är okänd. En inloggad användare hittar samma uppgifter under **Version** sist i flödeslistan, och **Kopiera supportinformation** ger dem som text, med hela commiten och modulens adress, att klistra in i en felanmälan.
 
 ```
 curl -fsS https://transkribering.example.org/health

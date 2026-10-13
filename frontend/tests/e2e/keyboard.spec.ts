@@ -28,6 +28,7 @@ test("a narrow result table scrolls with the keyboard until its last column is w
 
 const WALKS = [
   "flow-list",
+  "version",
   "unsent-recordings",
   "setup-participants",
   "setup-microphone-check",

@@ -52,6 +52,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Sessionsstatus från backend | `authStatus()` i `lib/api.ts`, hållen vid liv av `lib/session-keepalive.ts` |
 | Färgläge | `kit/ColorModeProvider.tsx` |
 | Organisationens märke | läses ur sidan före första renderingen (`lib/read-branding.ts`); accenten kommer som en stilmall ([Byt organisation](branding.md)) |
+| Vilket bygge som körs | läses ur backenden (`buildIdentity()` i `lib/api.ts`) när Version i flödeslistan först öppnas; hur det visas och kopieras: `lib/build-identity.ts` |
 | Flödessidans inmatning (läge, uppgifter, talarval, fas) | `lib/flow-session.ts`, bunden till React av `components/flow/useFlowSession.ts`; fasen läses ur inspelaren, kopieras aldrig |
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` ([Inspelaren](recording.md)) |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |

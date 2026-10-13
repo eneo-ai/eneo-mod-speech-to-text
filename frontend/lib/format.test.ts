@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatBytes, formatDeadline, formatDuration, formatRelativeDate } from "./format";
+import { formatBytes, formatDateTime, formatDeadline, formatDuration, formatRelativeDate } from "./format";
 
 const nbsp = " ";
 
@@ -35,6 +35,12 @@ test("a deadline always says its time, in another year too", () => {
   assert.equal(formatDeadline(new Date(2026, 11, 29, 9, 1), now), "29 dec 09:01");
   assert.equal(formatDeadline(new Date(2027, 0, 3, 9, 1), now), "3 jan 2027 09:01");
   assert.equal(formatDeadline("inte ett datum", now), "");
+});
+
+test("a moment reads whole, with its year and its time, whatever day it is now", () => {
+  assert.equal(formatDateTime(new Date(2026, 9, 8, 10, 4)), "8 okt 2026 10:04");
+  assert.equal(formatDateTime(new Date(2025, 2, 3, 8, 0).toISOString()), "3 mars 2025 08:00");
+  assert.equal(formatDateTime("inte ett datum"), "");
 });
 
 test("durations read as seconds under a minute, then minutes, then hours and minutes", () => {

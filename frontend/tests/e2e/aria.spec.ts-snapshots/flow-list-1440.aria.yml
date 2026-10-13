@@ -29,3 +29,4 @@
       - listitem:
         - link "Nämndmöte till strukturerat protokoll med beslut, reservationer och bilagor Behöver publiceras om.":
           - /url: /flows/fe496050-3984-4f8c-a8ef-d86ee8e36201
+  - button "Version" [expanded=false]
