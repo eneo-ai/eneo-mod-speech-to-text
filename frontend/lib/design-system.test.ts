@@ -45,6 +45,12 @@ test("the shell gives a page its skip link, its navigation landmark and one main
   assert.match(view.container.textContent ?? "", /Hoppa till innehåll/);
 });
 
+test("a heading that wraps balances its lines, so a phone does not leave one word alone on the last", () => {
+  const heading = /\.astryx-heading \{([^}]*)\}/.exec(readFileSync("kit/theme/built/eneo.css", "utf8"))?.[1] ?? "";
+  assert.match(heading, /text-wrap:\s*balance;/);
+  assert.match(heading, /overflow-wrap:\s*anywhere;/, "a word with no break point still wraps");
+});
+
 test("nothing of Next.js is left: no package, no script, no file", () => {
   const { dependencies = {}, devDependencies = {}, scripts = {} } = JSON.parse(readFileSync("package.json", "utf8"));
   const installed = Object.keys({ ...dependencies, ...devDependencies });
