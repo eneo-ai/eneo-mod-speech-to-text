@@ -12,6 +12,7 @@ import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowFrame } from "@/components/flow/FlowFrame";
+import { preloadMarkdown } from "@/components/flow/Markdown";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -345,6 +346,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
    * audit-logged read) and the detail are read once, when the run is done.
    */
   async function follow(runId: string) {
+    // The run's text is formatted when it is first drawn (components/flow/Markdown).
+    preloadMarkdown();
     followAbortRef.current?.abort();
     const controller = new AbortController();
     followAbortRef.current = controller;

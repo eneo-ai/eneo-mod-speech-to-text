@@ -10,6 +10,13 @@ type Formatted = ComponentType<{ children: string }>;
 const formatter = lazyLoader<Formatted>(() => import("./MarkdownFormatted").then((module) => module.default));
 
 /**
+ * Fetches the formatter ahead of the first text. A page that is about to show a run's text calls it while the run is
+ * read, so the text is formatted when it is first drawn: a text drawn as written and formatted a moment later changes
+ * its height, and moves what stands under it.
+ */
+export const preloadMarkdown = () => void formatter.load().catch(() => undefined);
+
+/**
  * Markdown as a page, its headings under the page's h1 (its top heading is an h2) and bare addresses as links.
  *
  * Until the code that formats it has arrived the text is there, as it was written: nothing is missing and nothing is

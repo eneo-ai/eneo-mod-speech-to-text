@@ -10,7 +10,8 @@
  * over, the page is measured when its document has stopped changing, and nothing is pressed: a fast machine and a slow
  * one take the same steps. A page reached by a press is not here, because the press and the answers would race; what
  * a press sets in motion has its own tests (preview-actions.spec.ts holds one answer and measures one region). What
- * is animating is measured when it rests.
+ * is animating is measured when it rests. Code the page fetches when it first needs it (a text's formatter) is waited
+ * for before the next answer is handed over, so its arrival belongs to the step that asked for it.
  */
 import { type Page, type TestInfo } from "@playwright/test";
 import { expect, test } from "./gate";
@@ -149,7 +150,7 @@ function watch() {
 }
 
 /** What is on screen once the document rests; null while the page is between two documents. */
-const look = (page: Page): Promise<Measure | null> =>
+const rested = (page: Page): Promise<Measure | null> =>
   page
     .evaluate(async () => {
       const still = (window as unknown as { __still?: Still }).__still;
@@ -179,6 +180,20 @@ for (const arrival of ARRIVALS) {
       const [answer] = await Promise.all([response, handed]);
       await (answer ? route.fulfill({ response: answer }) : route.fallback()).catch(() => undefined);
     });
+
+    // Code on its way to the page: nothing is measured, and no answer handed over, until it has arrived and the
+    // document has rested after it.
+    let fetching = 0;
+    page.on("request", (request) => void (request.resourceType() === "script" && (fetching += 1)));
+    page.on("requestfinished", (request) => void (request.resourceType() === "script" && (fetching -= 1)));
+    page.on("requestfailed", (request) => void (request.resourceType() === "script" && (fetching -= 1)));
+    const look = async (page_: Page) => {
+      for (;;) {
+        while (fetching > 0) await page_.waitForTimeout(20);
+        const measure = await rested(page_);
+        if (fetching === 0) return measure;
+      }
+    };
 
     const moves: string[] = [];
     const why: string[] = [];
