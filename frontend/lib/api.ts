@@ -117,8 +117,10 @@ async function request<T>(
     if (replayable(init) && (await loginState.whenRenewed(init.signal))) return request<T>(path, init, again, read);
     throw sessionEnded();
   }
-  // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask).
+  // Asked as it goes out: a late answer about an older login never changes the login (loginState.ask), and one that
+  // left before the network went never brings the network back (onlineStatus.sending).
   const question = loginState.ask();
+  const sent = onlineStatus.sending();
   let res: Response;
   try {
     res = await fetchWithin(path, {
@@ -138,7 +140,7 @@ async function request<T>(
     if (error instanceof TypeError) onlineStatus.reportNetworkFailure();
     throw error;
   }
-  onlineStatus.reportReachable();
+  onlineStatus.reportReachable(sent);
 
   if (!res.ok) {
     const error = await parseError(res);
@@ -676,8 +678,10 @@ function requestUploadWithProgress<T>(
       );
     };
 
+    // When the upload leaves (below): an answer to one that left before the network went says nothing of the network now.
+    let sent: number | undefined;
     xhr.onload = () => {
-      onlineStatus.reportReachable();
+      onlineStatus.reportReachable(sent);
       // The login ended: the dialog asks for a new one, and the send is the user's to start again.
       if (xhr.status === 401 && xhr.getResponseHeader("X-Auth-Required") === "session") loginState.ended(question);
       // The session is another person's: the upload is the user's to send again, as for a session end.
@@ -742,6 +746,7 @@ function requestUploadWithProgress<T>(
       "X-Upload-Timeout-Seconds",
       String(Math.ceil(Math.max(initialTimeoutMs, responseTimeoutMs) / 1000)),
     );
+    sent = onlineStatus.sending();
     xhr.send(body);
   });
 }

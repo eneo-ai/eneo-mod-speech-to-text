@@ -89,10 +89,32 @@ test("an answer from the module outweighs a browser that says there is no networ
   status.subscribe((online) => heard.push(online));
   assert.equal(status.connection, "offline", "a page opened offline starts offline");
 
-  status.reportReachable();
+  status.reportReachable(status.sending());
   assert.equal(status.connection, "online", "the module answered, so the device has a network");
   assert.deepEqual(heard, [true], "and what waits for the connection hears it");
 
   browser.go(false);
   assert.equal(status.connection, "offline", "a network lost after that is still the browser's to say");
+});
+
+test("an answer to a request that left before the network went does not bring it back", () => {
+  let now = 0;
+  const browser = fakeBrowser(true);
+  const status = createOnlineStatus(browser.target, () => now);
+  now = 100;
+  const early = status.sending();
+  now = 200;
+  browser.go(false);
+  now = 300;
+  status.reportReachable(early);
+  assert.equal(status.connection, "offline", "the answer was already on its way: it says nothing of the network now");
+
+  // The page's own failure meanwhile is the device's loss, and an early answer clears nothing but that.
+  status.reportNetworkFailure();
+  status.reportReachable(early);
+  assert.equal(status.connection, "offline");
+
+  now = 400;
+  status.reportReachable(status.sending());
+  assert.equal(status.connection, "online", "a request that left after the browser said so, and was answered, says the browser is wrong");
 });
