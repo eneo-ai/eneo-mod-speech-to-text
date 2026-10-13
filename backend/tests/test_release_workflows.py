@@ -58,12 +58,12 @@ class ReleasePathTests(unittest.TestCase):
         text = (WORKFLOWS / "release.yml").read_text()
         given, read = text.index('for tag in "$GITHUB_REF_NAME" latest; do'), text.index('revision="$(')
 
-        # The release tag, the digest under it (checked as each tag is given), the commit baked into that image, the tagged commit.
-        self.assertIn("""--format '{{index .Labels "org.opencontainers.image.revision"}}' "docker://$IMAGE:$GITHUB_REF_NAME")""", text)
+        # The tagged commit, the tested image of that commit, the commit baked into it; the same digest is then given the tags.
+        self.assertIn("""--format '{{index .Labels "org.opencontainers.image.revision"}}' "docker://$source")""", text)
         self.assertIn('if [ "$revision" != "$commit" ]; then', text)
-        # After the image has its tags and before the GitHub Release: a release whose image says another commit is never announced.
-        self.assertLess(given, read)
-        self.assertLess(read, text.index("gh release create"))
+        # Before any tag moves: an image that says another commit gets no version, no `latest` and no GitHub Release.
+        self.assertLess(read, given)
+        self.assertLess(given, text.index("gh release create"))
         refusal = text[text.index('if [ "$revision" != "$commit" ]; then') :]
         self.assertLess(refusal.index("exit 1"), refusal.index("fi\n"))
 

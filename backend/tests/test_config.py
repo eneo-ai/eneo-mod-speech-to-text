@@ -519,7 +519,7 @@ class BuildIdentityTests(unittest.TestCase):
     def test_a_missing_record_says_so_once_and_the_module_starts_without_an_identity(self) -> None:
         record = self.record("missing.json", None)
 
-        with self.assertLogs("eneo_config", level="WARNING") as logs:
+        with self.assertLogs("eneo_config", level="INFO") as logs:
             settings = self.load(record)
         self.assertEqual((settings.revision, settings.build_date), (None, None))
         self.assertEqual(len(logs.output), 1)
@@ -600,7 +600,7 @@ class BuildIdentityTests(unittest.TestCase):
     def test_the_release_and_the_build_record_do_not_depend_on_each_other(self) -> None:
         # release.yml gives a tested image its version without building it again: the image cannot know its release, and the
         # deployment cannot know the commit.
-        with self.assertLogs("eneo_config", level="WARNING"):
+        with self.assertLogs("eneo_config", level="INFO"):
             released = self.load(self.record("no-record.json", None), MODULE_VERSION="v0.1.1")
         built = self.load(self.record("built.json", f'{{"revision": "{COMMIT}", "build_date": "{BUILT}"}}'), MODULE_VERSION="latest")
 

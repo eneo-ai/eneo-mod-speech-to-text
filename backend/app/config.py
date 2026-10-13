@@ -343,7 +343,8 @@ def read_build_record(path: Path) -> tuple[str | None, str | None]:
         if build_date is not None and datetime.strptime(build_date, _BUILD_DATE).strftime(_BUILD_DATE) != build_date:
             raise ValueError("build_date is not a UTC time such as 2026-01-31T12:00:00Z")
     except FileNotFoundError:
-        logger.warning("There is no build record at %s, as in a run from a checkout; /health answers no revision and no build date.", path)
+        # An image always has the record, written with nulls when it was built without arguments: no record is a checkout.
+        logger.info("There is no build record at %s, as in a run from a checkout; /health answers no revision and no build date.", path)
         return None, None
     except (OSError, ValueError, LookupError, TypeError) as error:
         logger.warning(
