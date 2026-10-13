@@ -141,5 +141,7 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 - Do take every colour, size and space from a token; fix a shortfall once in the theme.
 - Do keep a control next to its label and the primary action in reach at every width.
+- Do give an action that is on its way its place from the first draw, disabled until it can be pressed: what arrives
+  late must not move what is already on screen.
 - Don't add a second accent or decorative colour; don't wrap list rows in cards.
 - Don't use Tailwind utilities, StyleX, or raw hex or pixel values in components.
