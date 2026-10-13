@@ -3,22 +3,31 @@
  * roles, states, live regions), reviewed and kept in aria.spec.ts-snapshots,
  * and the text that reaches the live regions during a recording: each status
  * change once, never the ticking timer. These are DOM text changes; what a
- * screen reader actually says is on the manual list.
+ * screen reader actually says is on the manual list. The snapshots are of the page's markup as Playwright reads it,
+ * the same in every engine unless the page itself differs there. Where it does, the engine has a file of its own for
+ * that state, `<state>-<width>-<engine>.aria.yml`, a copy that differs in that one thing: the setup names the default
+ * microphone in Chromium, whose fake device has a name, and not in WebKit and Firefox. Where there is no such file
+ * the engines share the one.
  */
+import { existsSync } from "node:fs";
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { STATES } from "./screens";
+import { needsRecording, STATES } from "./screens";
 
 // Dates the page shows are read against this time, so the snapshots stay put.
 const NOW = new Date("2026-09-24T12:00:00+02:00");
 
-const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean }[] = [
+/**
+ * `waysIn`: the region shows the setup's ways in. Where the browser cannot record (`records` in screens.ts) the setup is
+ * another page, the upload alone, so these snapshots are not taken there.
+ */
+const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locator"]>; fixedTime?: boolean; waysIn?: true }[] = [
   { state: "flow-list", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
   { state: "unsent-recordings", region: (page) => page.getByRole("region", { name: /inte skickats/ }) },
-  { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true },
-  { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true },
-  { state: "setup-required-detail", region: (page) => page.getByRole("main") },
-  { state: "setup-date", region: (page) => page.getByRole("main"), fixedTime: true },
+  { state: "setup", region: (page) => page.locator("[data-app-shell]"), fixedTime: true, waysIn: true },
+  { state: "setup-participants", region: (page) => page.getByRole("main"), fixedTime: true, waysIn: true },
+  { state: "setup-required-detail", region: (page) => page.getByRole("main"), waysIn: true },
+  { state: "setup-date", region: (page) => page.getByRole("main"), fixedTime: true, waysIn: true },
   { state: "recording", region: (page) => page.locator("[data-app-shell]") },
   { state: "stromma", region: (page) => page.getByRole("region", { name: "Ljudet" }) },
   { state: "leave-dialog", region: (page) => page.getByRole("alertdialog") },
@@ -37,14 +46,16 @@ const SNAPSHOTS: { state: string; region: (page: Page) => ReturnType<Page["locat
   { state: "flows-unreachable", region: (page) => page.locator("[data-app-shell]") },
 ];
 
-for (const { state, region, fixedTime } of SNAPSHOTS) {
-  test(`aria ${state}`, async ({ page }, info) => {
+for (const { state, region, fixedTime, waysIn } of SNAPSHOTS) {
+  test(`aria ${state}`, async ({ page, browserName }, info) => {
     const screen = STATES.find((s) => s.name === state)!;
-    test.skip(screen.only ? !screen.only(info) : false, "not on this width");
+    test.skip(screen.only ? !screen.only(info) : false, "the state does not exist at this width or in this browser");
+    if (waysIn) needsRecording();
     if (fixedTime) await page.clock.setFixedTime(NOW);
     await screen.go(page, info);
     const width = info.project.use.viewport!.width;
-    await expect(region(page)).toMatchAriaSnapshot({ name: `${state}-${width}.aria.yml` });
+    const own = `${state}-${width}-${browserName}.aria.yml`;
+    await expect(region(page)).toMatchAriaSnapshot({ name: existsSync(info.snapshotPath(own, { kind: "aria" })) ? own : `${state}-${width}.aria.yml` });
   });
 }
 

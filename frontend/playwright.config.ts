@@ -21,6 +21,8 @@ const WORKERS = 4;
 // build (review-flag), another deployment (branding) and browser contexts of its own, which the real target does not sign in
 // (controls). A file, not a skip at run time, and no title changes.
 const DEV_ONLY = /(leaks|live-sheet|recording-short|review-flag|branding|controls)\.spec\.ts/;
+// The engine a project runs in: Chromium unless it says otherwise.
+const engineOf = (project: { use?: Use }) => project.use?.browserName ?? "chromium";
 
 type Use = NonNullable<PlaywrightTestConfig["use"]>;
 // A touch screen: Chromium then matches (pointer: coarse) and (hover: none).
@@ -31,6 +33,21 @@ const touch = (width: number, height: number): Use => ({
   isMobile: true,
 });
 const laptop: Use = { viewport: { width: 1440, height: 900 } };
+// WebKit and Firefox, each with its microphone its own way (Chromium's is the shared `use` below: the permission and two
+// launch arguments). A project cannot unset the shared `channel`, so each names its engine's own build.
+// WebKit takes the permission and answers with its mock device. It records on a Mac; Playwright's WebKit for Linux has
+// no MediaRecorder, and the app's upload-only setup is what the gate expects there (`records` in tests/e2e/screens.ts).
+const webkit: Use = { browserName: "webkit", channel: "webkit", launchOptions: {} };
+// Firefox has no microphone permission to grant in Playwright: two preferences give a fake stream without the question,
+// and a third keeps what the tests play out of the speakers. WebKit's build has no such switch.
+const firefox: Use = {
+  browserName: "firefox",
+  channel: "firefox",
+  permissions: [],
+  launchOptions: {
+    firefoxUserPrefs: { "media.navigator.streams.fake": true, "media.navigator.permission.disabled": true, "media.volume_scale": "0.0" },
+  },
+};
 // A desktop screen, a mouse.
 const wide = (width: number, height: number): Use => ({ viewport: { width, height } });
 // Every project scans every state (a11y.spec). The keyboard walks, the press on every control (controls.spec, by far the
@@ -40,15 +57,24 @@ const scanOnly = specs("keyboard", "controls", "aria", "names", "harness");
 const noSnapshots = specs("controls", "aria", "names", "harness");
 // A tablet is a finger on a laptop's layout (landscape) or on the stacked one at its widest (portrait): its own walks and presses.
 const walksAndControls = specs("aria", "names", "harness");
-// The checks' own tests (harness.spec) run once.
+// The checks' own tests (harness.spec) run once in each engine, on its laptop.
 const noHarness = specs("harness");
+// What another engine can change, and so what its projects run: the scan, the keyboard walks, the press on every control
+// and the screen-reader snapshots. The behaviour specs stay Chromium's; they are about the module's logic, and several
+// need what only Chromium has (the DevTools protocol, its fake devices, going offline).
+const portable = ["a11y", "keyboard", "controls", "aria"];
 
 // The sentinel's own tests cause what it watches for, so they need it, and the real target.
 const SENTINEL_SPEC = /sentinel\.spec\.ts/;
 
-/** The projects as they run on the target: the real one leaves out the dev-only specs, the dev profile the sentinel's. */
+/**
+ * The projects as they run on the target: the real one leaves out the dev-only specs, the dev profile the sentinel's.
+ * The real target is Chromium's alone: the built app in three engines is the production tests' (playwright.prod.config.ts).
+ */
 const forTarget = (projects: NonNullable<PlaywrightTestConfig["projects"]>) =>
-  projects.map((project) => ({ ...project, testIgnore: [project.testIgnore ?? [], REAL ? DEV_ONLY : SENTINEL_SPEC].flat() }));
+  projects
+    .filter((project) => !REAL || engineOf(project) === "chromium")
+    .map((project) => ({ ...project, testIgnore: [project.testIgnore ?? [], REAL ? DEV_ONLY : SENTINEL_SPEC].flat() }));
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -67,7 +93,9 @@ export default defineConfig({
     locale: "sv-SE",
     timezoneId: "Europe/Stockholm",
     permissions: ["microphone"],
-    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] },
+    // The fake microphone records a tone, and the tests that play a recording would send it to the speakers: the output
+    // device is muted, and playback runs as it does with sound.
+    launchOptions: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--mute-audio"] },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
@@ -99,6 +127,12 @@ export default defineConfig({
     { name: "ultrawide-3440-light", use: { ...wide(3440, 1440), colorScheme: "light" }, testIgnore: scanOnly },
     { name: "ultrawide-3440-dark", use: { ...wide(3440, 1440), colorScheme: "dark" }, testIgnore: scanOnly },
     { name: "reduced-motion", use: { ...touch(390, 844), colorScheme: "light", reducedMotion: "reduce" }, testIgnore: scanOnly },
+    // The other engines, as engine checks and not as the products built on them (Playwright's WebKit is ahead of Safari):
+    // WebKit where an iPhone, an iPad and a Mac have it, Firefox on a laptop. The tablet has no snapshots, as Chromium's.
+    { name: "phone-390-webkit", use: { ...touch(390, 844), ...webkit, colorScheme: "light" }, testMatch: specs(...portable) },
+    { name: "tablet-landscape-webkit", use: { ...touch(1024, 768), isMobile: false, ...webkit, colorScheme: "light" }, testMatch: specs("a11y", "keyboard", "controls") },
+    { name: "laptop-1440-webkit", use: { ...laptop, ...webkit, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
+    { name: "laptop-1440-firefox", use: { ...laptop, ...firefox, colorScheme: "light" }, testMatch: specs(...portable, "harness") },
   ]),
   webServer: [
     {

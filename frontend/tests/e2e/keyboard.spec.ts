@@ -8,8 +8,8 @@
 import { writeFileSync } from "node:fs";
 import { type Locator, type Page } from "@playwright/test";
 import { expect, test } from "./gate";
-import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabWalk, TEXT_SPACING, type Rect } from "./checks";
-import { backLink, isLaptop, isPhone, run, setup, STATES } from "./screens";
+import { addStyles, axNode, changedArea, clippedFocus, focusStop, orderProblems, screenClip, settle, shot, stopProblems, tabKey, tabWalk, TEXT_SPACING, type Rect } from "./checks";
+import { backLink, chooseMode, isLaptop, isPhone, needsRecording, run, setup, STATES } from "./screens";
 import ids from "../fixtures/ids.json";
 
 test("a narrow result table scrolls with the keyboard until its last column is whole", async ({ page }, info) => {
@@ -52,7 +52,7 @@ const WALKS = [
 for (const name of WALKS) {
   test(`tab through ${name}`, async ({ page }, info) => {
     const state = STATES.find((s) => s.name === name)!;
-    test.skip(state.only ? !state.only(info) : false, "not on this width");
+    test.skip(state.only ? !state.only(info) : false, "the state does not exist at this width or in this browser");
     await state.go(page, info);
     const { stops, left } = await tabWalk(page);
     writeFileSync(info.outputPath("stops.json"), JSON.stringify(stops, null, 2));
@@ -103,16 +103,28 @@ const focusedTitle = (popup: Locator) => popup.evaluate((element) => {
     && element.getAttribute("aria-labelledby")?.split(/\s+/).includes(focused.id);
 });
 
+/**
+ * Puts the focus on a control as a keyboard does: there by script, then one stop back and forward again with the keys.
+ * Firefox draws the ring on the focus that a script moves next (into the dialog that opens) only when a key moved the
+ * focus last, not a script, and not the mouse that set the state up.
+ */
+async function arrive(page: Page, control: Locator) {
+  await control.focus();
+  await page.keyboard.press(tabKey(page, true));
+  await page.keyboard.press(tabKey(page));
+  await expect(control, "the keys bring the focus back to the control").toBeFocused();
+}
+
 /** Opens a dialog or menu from its trigger with Enter, keeps Tab inside it, and closes it with Escape. */
 async function holdsFocus(page: Page, trigger: Locator, popup: Locator, tabs = 4) {
-  await trigger.focus();
+  await arrive(page, trigger);
   await page.keyboard.press("Enter");
   await expect(popup).toBeVisible();
   await settle(page);
   // Escape cannot reach the dialog from inside a frame (the PDF viewer), so focus must not start there.
   expect.soft(await page.evaluate(() => document.activeElement?.tagName), "focus starts on the dialog's own controls").not.toBe("IFRAME");
   const problems: string[] = [];
-  const keys = [...Array(tabs).fill("Tab"), ...Array(Math.min(tabs, 2)).fill("Shift+Tab")];
+  const keys = [...Array(tabs).fill(tabKey(page)), ...Array(Math.min(tabs, 2)).fill(tabKey(page, true))];
   for (let i = 0; i <= keys.length; i++) {
     if (!(await inBrowser(page))) {
       // At rest: the tooltip of the control that has the focus enters over a few frames, and in them overlaps it.
@@ -156,7 +168,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
   await run(page, ids.runs.done);
   const trigger = page.getByRole("button", { name: /^Öppna Protokoll .*\.pdf$/ });
   const dialog = page.getByRole("dialog");
-  await trigger.focus();
+  await arrive(page, trigger);
   await page.keyboard.press("Enter");
   await expect(dialog).toBeVisible();
   await settle(page);
@@ -195,7 +207,7 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
       seen.add(key);
     }
     if (!leftFrame && !cycled) {
-      await page.keyboard.press("Tab");
+      await page.keyboard.press(tabKey(page));
       // The viewer runs in a process of its own: focus reaches the page a moment after the key.
       await page.waitForTimeout(150);
     }
@@ -210,6 +222,14 @@ test("the PDF preview holds focus, never traps it in the viewer, and Escape clos
     await expect(dialog.locator("iframe"), "the viewer is taken out of the Tab order").toHaveAttribute("tabindex", "-1");
     await expect(dialog.getByRole("link", { name: /ny flik/ }), "the file is a link away, in a tab of its own").toHaveAttribute("target", "_blank");
   }
+  // The walk can end on a control whose tooltip is up (the close button, where Tab has nowhere to go on to, as in
+  // Firefox): that tooltip takes the first Escape (WCAG 1.4.13), and the next one is the dialog's.
+  await settle(page);
+  const tooltip = page.getByRole("tooltip");
+  if (await tooltip.count()) {
+    await page.keyboard.press("Escape");
+    await expect(tooltip).toHaveCount(0);
+  }
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(trigger, "Escape gives focus back to what opened it").toBeFocused();
@@ -221,7 +241,7 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
   await settle(page);
   // The page's control that had focus is covered: focus moves into the dialog that appeared (WCAG 2.4.3).
   expect.soft(await dialog.evaluate((element) => element.contains(document.activeElement)), "focus moves into the sign-in dialog").toBe(true);
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   const problems: string[] = [];
   const reached = new Set<string>();
   for (let i = 0; i < 8; i++) {
@@ -236,7 +256,7 @@ test("signed out, the sign-in dialog holds focus, with the recording's Pausa and
         reached.add(stop.label);
       }
     }
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(tabKey(page));
   }
   expect.soft(problems, "focus stays inside and is visible (WCAG 2.1.2, 2.4.7)").toEqual([]);
   expect([...reached]).toEqual(expect.arrayContaining(['button "Pausa"', 'button "Stoppa"', 'button "Logga in igen"']));
@@ -272,7 +292,7 @@ test("Tab closes the name list at once, and the next control is reached and not 
   const list = page.getByRole("listbox", { name: "Förslag: Vem är Talare 2?" });
   await field.click();
   await expect(list).toBeVisible();
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   await expect(list).toBeHidden();
   const stop = await focusStop(page);
   expect(stop, "focus moved on, inside the dialog").not.toBeNull();
@@ -303,7 +323,7 @@ test("the warning before the login ends takes focus, holds it, and gives it back
   await expect(warning.getByRole("heading", { name: "Du loggas snart ut" })).toBeFocused();
   const problems: string[] = [];
   // Down to the close button, the action, back up, and down again: the walk ends on the action.
-  for (const key of ["Tab", "Tab", "Shift+Tab", "Tab"]) {
+  for (const key of [tabKey(page), tabKey(page), tabKey(page, true), tabKey(page)]) {
     await page.keyboard.press(key);
     if (await inBrowser(page)) continue;
     // A tooltip is measured at rest, as a dialog is: not on its way in.
@@ -328,8 +348,14 @@ test("the warning before the login ends takes focus, holds it, and gives it back
 // is open (a list that holds the focus itself is allowed too). The arrow keys move the active option, Enter chooses,
 // and Escape closes the list and gives the focus back to the combobox.
 test("the microphone picker is operated with the keyboard and gives the focus back", async ({ page }) => {
+  // Two named microphones, so the arrow has somewhere to go. The engines' own differ: Chromium's fake devices are three
+  // with their names, WebKit's and Firefox's one, named only once a recording has been allowed.
+  await page.addInitScript(() => {
+    MediaDevices.prototype.enumerateDevices = async () =>
+      ["Inbyggd mikrofon", "Headset"].map((label, index) => ({ kind: "audioinput", deviceId: `mikrofon-${index}`, groupId: `grupp-${index}`, label, toJSON: () => ({}) }) as MediaDeviceInfo);
+  });
   await setup(page);
-  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await chooseMode(page, "Spela in");
   const picker = page.getByRole("combobox", { name: "Mikrofon" });
   await picker.focus();
   await page.keyboard.press("Enter");
@@ -354,10 +380,11 @@ test("the microphone picker is operated with the keyboard and gives the focus ba
 });
 
 test("the input modes change with the arrow keys", async ({ page }) => {
+  needsRecording();
   await setup(page);
   const cards = page.getByRole("radio");
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   await expect(cards.first(), "Tab reaches the chosen mode").toBeFocused();
   await page.keyboard.press("ArrowDown");
   await expect(cards.nth(1)).toBeFocused();
@@ -366,7 +393,7 @@ test("the input modes change with the arrow keys", async ({ page }) => {
 
 test("participants are added and removed from the keyboard", async ({ page }) => {
   await setup(page);
-  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await chooseMode(page, "Spela in");
   const input = page.getByRole("textbox", { name: /^Deltagare/ });
   await input.focus();
   await page.keyboard.type("Anna Berg");
@@ -376,16 +403,16 @@ test("participants are added and removed from the keyboard", async ({ page }) =>
   await page.keyboard.press("Backspace");
   await expect(page.getByRole("button", { name: "Ta bort Erik Lund" })).toBeHidden();
   // The names follow the field, and "Lägg till" is off while nothing is typed: Tab passes it to the first name's button.
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page.getByRole("button", { name: "Ta bort Anna Berg" })).toBeHidden();
   await expect(input, "removing a name keeps focus in the field").toBeFocused();
 });
 
-test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page }) => {
+test("Antal talare keeps what was typed: a letter is an error the start sends focus back to", async ({ page, browserName }) => {
   await setup(page);
-  await page.getByRole("radio", { name: /^Spela in/ }).click();
+  await chooseMode(page, "Spela in");
   await page.getByRole("switch", { name: "Märk upp talare" }).click();
   const count = page.getByRole("textbox", { name: /^Antal talare/ });
   await count.focus();
@@ -393,13 +420,17 @@ test("Antal talare keeps what was typed: a letter is an error the start sends fo
   await page.keyboard.type("e");
   await expect(count).toHaveValue("e");
   await expect(count).toHaveAttribute("aria-invalid", "true");
-  expect((await axNode(count)).description).toContain("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.");
+  // The description as the browser's own tree has it, where the gate can read that tree (Chromium, over the DevTools
+  // protocol); elsewhere as the markup gives it.
+  if (browserName === "chromium") expect((await axNode(count)).description).toContain("Skriv ett heltal från 1 till 20, eller lämna fältet tomt.");
+  else await expect(count).toHaveAccessibleDescription(/Skriv ett heltal från 1 till 20, eller lämna fältet tomt\./);
   await page.getByRole("button", { name: "Starta inspelning" }).click();
   await expect(count, "the start is refused and the field takes focus").toBeFocused();
   await expect(page.getByRole("button", { name: "Stoppa" })).toHaveCount(0);
 });
 
-test("the input modes are one Tab stop: every arrow moves and chooses, round the ends, the setup follows, Tab leaves", async ({ page }) => {
+test("the input modes are one Tab stop: every arrow moves and chooses, round the ends, the setup follows, Tab leaves", async ({ page, browserName }) => {
+  needsRecording();
   await setup(page);
   const cards = page.getByRole("radio");
   await expect(cards).toHaveCount(3);
@@ -408,16 +439,20 @@ test("the input modes are one Tab stop: every arrow moves and chooses, round the
   // A chosen mode other than the first: Tab enters the group where the choice is, not at its top.
   await cards.nth(1).click();
   await page.getByRole("heading", { name: "Hur vill du lägga till ljudet?" }).focus();
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   await expect(cards.nth(1), "Tab enters at the chosen mode").toBeFocused();
-  for (const [key, to] of [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const) {
+  // The modes are native radios. Chromium and Firefox take an arrow round the ends of a radio group; in WebKit an arrow at
+  // an end stays there, as it does in every radio group of that engine, so there the walk turns back.
+  const round = [["ArrowDown", 2], ["ArrowDown", 0], ["ArrowUp", 2], ["ArrowLeft", 1], ["ArrowRight", 2], ["ArrowRight", 0]] as const;
+  const toTheEnds = [["ArrowDown", 2], ["ArrowDown", 2], ["ArrowUp", 1], ["ArrowLeft", 0], ["ArrowUp", 0], ["ArrowRight", 1], ["ArrowRight", 2], ["ArrowLeft", 1], ["ArrowUp", 0]] as const;
+  for (const [key, to] of browserName === "webkit" ? toTheEnds : round) {
     await page.keyboard.press(key);
     await expect(cards.nth(to), `${key} moves focus to mode ${to + 1}`).toBeFocused();
     await expect(cards.nth(to), `${key} chooses mode ${to + 1}`).toBeChecked();
     await expect(primary, "the start action follows the chosen mode").toHaveText(ACTION[to]);
   }
   await expect(page.getByRole("button", { name: "Testa mikrofonen" }), "Strömma's own setup shows").toBeVisible();
-  await page.keyboard.press("Tab");
+  await page.keyboard.press(tabKey(page));
   expect(await page.evaluate(() => document.activeElement?.getAttribute("role")), "the next Tab leaves the group").not.toBe("radio");
   await expect(page.getByRole("switch", { name: "Märk upp talare" })).toBeFocused();
 });

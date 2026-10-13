@@ -2,12 +2,28 @@
  * How to reach every screen and state of the app against the stub backend
  * (stub-server.py): each state is a name and the steps a user takes to get there.
  */
-import { expect, type Locator, type Page, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator, type Page, type TestInfo } from "@playwright/test";
 import ids from "../fixtures/ids.json";
 import { declare, REAL, type Expectation } from "./sentinel";
 
 export const isPhone = (info: TestInfo) => info.project.name.startsWith("phone") || info.project.name === "reduced-motion";
 export const isLaptop = (info: TestInfo) => (info.project.use.viewport?.width ?? 0) >= 1024;
+
+/**
+ * Whether a project's browser can record. Every one the gate has can, but Playwright's WebKit for Linux: it is built
+ * without MediaRecorder. The app then offers the upload alone and says why, which is right, and is what the gate expects
+ * there: the state `setup-upload-only` requires that page, `setup` and `chooseMode` take its one way in, and a test that
+ * asks for a recording is left out (`needsRecording`). Everywhere else a recording that is missing fails the test.
+ */
+export const records = (info: TestInfo) => !(process.platform === "linux" && info.project.use.browserName === "webkit");
+
+/** Leaves the running test out where the browser cannot record (`records`): called before a recording way in is asked for. */
+export const needsRecording = () =>
+  test.skip(!records(test.info()), "this browser cannot record, so the setup offers the upload alone: the state setup-upload-only is what is expected here");
+
+/** The setup has loaded: its question about the ways in or, where the upload is the only one, the heading that names it. */
+const setupShown = (page: Page) =>
+  records(test.info()) ? heading(page, "Hur vill du lägga till ljudet?") : expect(page.getByRole("heading", { name: "Ladda upp", exact: true })).toBeVisible();
 
 const heading = (page: Page, name: string | RegExp) => expect(page.getByRole("heading", { name })).toBeVisible();
 
@@ -50,7 +66,7 @@ export async function flows(page: Page) {
 
 export async function setup(page: Page, flow = ids.flows.flow1) {
   await page.goto(`/flows/${flow}`);
-  await heading(page, "Hur vill du lägga till ljudet?");
+  await setupShown(page);
 }
 
 /**
@@ -60,10 +76,13 @@ export async function setup(page: Page, flow = ids.flows.flow1) {
 export async function setupFromList(page: Page) {
   await page.goto("/flows");
   await page.getByRole("link", { name: /^Nämndmöte till rapport/ }).click();
-  await heading(page, "Hur vill du lägga till ljudet?");
+  await setupShown(page);
 }
 
 export async function chooseMode(page: Page, mode: "Strömma" | "Spela in" | "Ladda upp") {
+  if (mode !== "Ladda upp") needsRecording();
+  // Where the browser cannot record the upload is the only way in: there is nothing to choose.
+  else if (!records(test.info())) return;
   await page.getByRole("radio", { name: new RegExp(`^${mode}`) }).click();
 }
 
@@ -334,7 +353,7 @@ export async function pick(field: Locator, option: string) {
 export interface State {
   name: string;
   go: (page: Page, info: TestInfo) => Promise<void>;
-  /** Only where the state exists, e.g. the PDF dialog is a new tab on a phone. */
+  /** Only where the state exists, e.g. the PDF dialog is a new tab on a phone, the upload-only setup where the browser cannot record. */
   only?: (info: TestInfo) => boolean;
   /**
    * The console errors and failed requests the state is meant to cause (the 503 of the flow list's error, an aborted
@@ -434,7 +453,11 @@ export const STATES: State[] = [
   { name: "session-warning", go: sessionWarning },
   {
     name: "signed-in-again",
-    go: async (page) => {
+    go: async (page, info) => {
+      // The page closes its window, as the login window it is made for. Firefox lets a script close a window whose history
+      // holds this page alone (HTML's rule for a window no script opened), so there the page comes second and stays to
+      // be measured. Elsewhere it is reached by its address alone, as still.spec.ts needs.
+      if (info.project.use.browserName === "firefox") await page.goto("/flows");
       await page.goto("/inloggad");
       await heading(page, "Du är inloggad igen");
     },
@@ -506,6 +529,18 @@ export const STATES: State[] = [
     go: async (page) => {
       await setup(page);
       await expect(page.getByRole("heading", { name: "Tidigare körningar" })).toBeVisible();
+    },
+  },
+  {
+    // Where the browser cannot record (`records`): the upload alone, and the sentence that says why. The state exists only
+    // there. A browser that should record and shows this page fails the states that record instead.
+    name: "setup-upload-only",
+    only: (info) => !records(info),
+    go: async (page) => {
+      await setup(page);
+      await expect(page.getByText("Inspelning fungerar inte i den här webbläsaren (kräver https och en mikrofon). Ladda upp en fil i stället.")).toBeVisible();
+      await expect(page.getByRole("radio"), "no choice of ways in").toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Välj ljudfil" })).toBeVisible();
     },
   },
   {
@@ -773,9 +808,10 @@ export const STATES: State[] = [
   {
     name: "silent-microphone",
     go: async (page) => {
-      // A muted input: the stream carries digital silence.
+      // A muted input: the stream carries digital silence. Set on the prototype: WebKit lets go of the object that
+      // `navigator.mediaDevices` gives once nothing holds it, and a method set on that object goes with it.
       await page.addInitScript(() => {
-        navigator.mediaDevices.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
+        MediaDevices.prototype.getUserMedia = async () => new AudioContext().createMediaStreamDestination().stream;
       });
       await recordingSays(page, "Vi hör inget från mikrofonen.");
     },
@@ -798,27 +834,25 @@ export const STATES: State[] = [
   {
     name: "microphone-muted",
     go: async (page) => {
-      // Chromium's fake microphone cannot be muted: the track says it is and fires the event, as a headset's route
-      // change does. The recording goes on, and the bar says so.
+      // No engine's fake microphone can be muted: the track says it is and tells those who listen for it, as a headset's
+      // route change does. The recording goes on, and the bar says so. The listeners are kept and told directly, since
+      // Firefox does not hand an event that a script made to a listener a track got through addEventListener.
       await page.addInitScript(() => {
-        const streams: MediaStream[] = [];
-        (window as unknown as { streams: MediaStream[] }).streams = streams;
-        const open = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
-        navigator.mediaDevices.getUserMedia = async (constraints) => {
-          const stream = await open(constraints);
-          streams.push(stream);
-          return stream;
+        const listening = new Map<MediaStreamTrack, EventListener[]>();
+        const add = MediaStreamTrack.prototype.addEventListener;
+        MediaStreamTrack.prototype.addEventListener = function (this: MediaStreamTrack, ...args: Parameters<typeof add>) {
+          const [type, listener] = args;
+          if (type === "mute" && typeof listener === "function") listening.set(this, [...(listening.get(this) ?? []), listener]);
+          return add.apply(this, args);
+        };
+        (window as unknown as { muteMicrophone(): void }).muteMicrophone = () => {
+          for (const [track, listeners] of listening) {
+            Object.defineProperty(track, "muted", { configurable: true, get: () => true });
+            for (const listener of listeners) listener.call(track, new Event("mute"));
+          }
         };
       });
-      await recordingSays(page, "Mikrofonen är tillfälligt borta.", () =>
-        page.evaluate(() => {
-          for (const stream of (window as unknown as { streams: MediaStream[] }).streams)
-            for (const track of stream.getAudioTracks()) {
-              Object.defineProperty(track, "muted", { configurable: true, get: () => true });
-              track.dispatchEvent(new Event("mute"));
-            }
-        }),
-      );
+      await recordingSays(page, "Mikrofonen är tillfälligt borta.", () => page.evaluate(() => (window as unknown as { muteMicrophone(): void }).muteMicrophone()));
     },
   },
   {
