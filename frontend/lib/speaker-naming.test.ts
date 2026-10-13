@@ -124,6 +124,12 @@ async function nameField(value: string | null, options: string[]) {
   return { view, input, key, option, marked };
 }
 
+test("a speaker's name is not marked as misspelt, and a phone's keyboard starts each word with a capital, as for participants", async () => {
+  const { input } = await nameField(null, ["Anna Berg"]);
+  assert.equal(input.getAttribute("spellcheck"), "false");
+  assert.equal(input.getAttribute("autocapitalize"), "words");
+});
+
 test("the chevron reopens a name list on the field's own name, not on a row left before Escape", async () => {
   const { view, input, key } = await nameField("Erik Lund", ["Anna Berg", "Erik Lund"]);
   await view.act(async () => input.focus());

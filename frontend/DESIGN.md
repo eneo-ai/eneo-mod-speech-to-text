@@ -87,6 +87,7 @@ One accent and neutral surfaces, declared once for both colour modes with `light
 - **Supporting** (14 px, secondary colour): descriptions under labels and lines under actions.
 
 Words with no break point wrap (`overflowWrap: anywhere` on text and headings) rather than reaching past 320 px.
+A heading that wraps balances its lines (`text-wrap: balance`), so its last line does not hold one word alone.
 
 ## Layout
 

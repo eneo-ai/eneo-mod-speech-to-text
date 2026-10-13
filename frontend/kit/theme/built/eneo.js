@@ -160,6 +160,7 @@ export const eneoTheme = {
       },
       "base": {
         "overflowWrap": "anywhere",
+        "textWrap": "balance",
         ":focus-visible": {
           "outline": "none"
         }

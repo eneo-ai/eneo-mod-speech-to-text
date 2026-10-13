@@ -7,7 +7,7 @@ import { Spinner } from "@astryxdesign/core/Spinner";
 import { HStack, StackItem, VStack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
 import { VisuallyHidden } from "@astryxdesign/core/VisuallyHidden";
-import { formatBytes } from "@/lib/format";
+import { formatBytes, formatPercent } from "@/lib/format";
 import type { RetryWait } from "@/lib/submit-run";
 import { creatingHeading } from "@/lib/flow-output";
 import { StateCard } from "@/components/flow/StateCard";
@@ -110,7 +110,7 @@ function Starting({ submission, onCancel }: { submission: Extract<SubmissionStat
 
 // Every quarter of the upload is said once; the percentage beside the bar is not read as it counts.
 const uploadMilestone = (percent: number | null) =>
-  percent != null && percent >= 25 ? `${Math.floor(percent / 25) * 25} % uppladdat.` : "";
+  percent != null && percent >= 25 ? `${formatPercent(Math.floor(percent / 25) * 25)} uppladdat.` : "";
 
 function UploadProgress({
   submission,
@@ -132,12 +132,15 @@ function UploadProgress({
       </HStack>
       {/* Unknown total: the bar moves without a value, and says so only as "Pågår" beside it. */}
       <ProgressBar label="Uppladdning" isLabelHidden value={percent} isIndeterminate={submission.percent == null} />
+      {/* Tabular figures: the counting digits keep their width, so the words do not shift as they count. */}
       <HStack justify="between" gap={2}>
-        <Text type="supporting">
+        <Text type="supporting" hasTabularNumbers>
           {formatBytes(submission.loaded)}
           {submission.total ? ` av ${formatBytes(submission.total)}` : ""}
         </Text>
-        <Text type="supporting">{submission.percent != null ? `${percent}%` : "Pågår"}</Text>
+        <Text type="supporting" hasTabularNumbers>
+          {submission.percent != null ? formatPercent(percent) : "Pågår"}
+        </Text>
       </HStack>
       <VisuallyHidden as="p" role="status">
         {uploadMilestone(submission.percent)}

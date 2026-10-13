@@ -55,7 +55,7 @@ test("the ready state names the recording for people, never as a file or a type,
     createElement(ReadyPanel, { recording, persistent: true, problem: null, onCreate: noop, onDiscard: noop }),
   );
   assert.equal(parse(html).querySelector("h2")?.textContent, "Inspelningen är klar");
-  assert.match(html, /Inspelning 23 sep 16:13 · 32 min/);
+  assert.match(html, /Inspelning 23 sep 16:13 · 32\u00a0min/);
   for (const name of ["Skapa dokument", "Spara som fil", "Ta bort"]) assert.ok(hasButton(html, name), name);
   assert.match(html, /Inspelningen finns kvar på enheten tills dokumentet är skapat\./);
   assert.doesNotMatch(html, /audio\/|webm|\.webm|recording-\d|<audio[^>]*controls/i, "no MIME type, file name or native controls");
@@ -76,7 +76,7 @@ test("the ready state names the recording for people, never as a file or a type,
       onDiscard: noop,
     }),
   );
-  assert.match(short, /Inspelning 23 sep 16:13 · 7 s/, "whole seconds, as the timer showed 0:07 at Stoppa");
+  assert.match(short, /Inspelning 23 sep 16:13 · 7\u00a0s/, "whole seconds, as the timer showed 0:07 at Stoppa");
 });
 
 test("a recording of a moment says so, and makes Fortsätt spela in the one filled action", () => {
@@ -217,6 +217,6 @@ test("Ladda upp says what the flow takes in plain words, and a chosen file shows
   assert.match(chosen, />mote\.mp3</);
   assert.match(chosen, /<p[^>]*role="status"[^>]*>Vald fil: mote\.mp3<\/p>/, "the choice is announced");
   assert.match(empty, /<p[^>]*role="status"[^>]*><\/p>/, "the status is there before a file is chosen");
-  assert.match(chosen, /1,2\u00a0MB · 32 min/);
+  assert.match(chosen, /1,2\u00a0MB · 32\u00a0min/);
   assert.match(chosen, /<button[^>]*>(?:<[^>]+>)*Byt fil(?:<[^>]+>)*<\/button>/);
 });

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { formatBytes, formatDateTime, formatDeadline, formatDuration, formatRelativeDate } from "./format";
+import { formatBytes, formatDateTime, formatDeadline, formatDuration, formatPercent, formatRelativeDate } from "./format";
 
 const nbsp = " ";
 
@@ -43,21 +43,28 @@ test("a moment reads whole, with its year and its time, whatever day it is now",
   assert.equal(formatDateTime("inte ett datum"), "");
 });
 
-test("durations read as seconds under a minute, then minutes, then hours and minutes", () => {
-  assert.equal(formatDuration(0), "0 s");
-  assert.equal(formatDuration(22_400), "22 s");
-  assert.equal(formatDuration(60_000), "1 min");
-  assert.equal(formatDuration(32 * 60_000 + 10_000), "32 min");
-  assert.equal(formatDuration(25 * 3_600_000), "1 dygn 1 h", "a day and more in days and hours, not in hundreds of hours");
-  assert.equal(formatDuration((263 * 60 + 33) * 60_000), "10 dygn 23 h");
-  assert.equal(formatDuration(48 * 3_600_000), "2 dygn");
-  assert.equal(formatDuration(65 * 60_000), "1 h 5 min");
-  assert.equal(formatDuration(119 * 60_000 + 40_000), "2 h");
-  assert.equal(formatDuration(3 * 3_600_000), "3 h");
+test("durations read as seconds under a minute, then minutes, then hours and minutes, each one line long", () => {
+  // A line never ends between a number and its unit, nor between an hour and its minutes.
+  assert.equal(formatDuration(0), `0${nbsp}s`);
+  assert.equal(formatDuration(22_400), `22${nbsp}s`);
+  assert.equal(formatDuration(60_000), `1${nbsp}min`);
+  assert.equal(formatDuration(32 * 60_000 + 10_000), `32${nbsp}min`);
+  assert.equal(formatDuration(25 * 3_600_000), `1${nbsp}dygn${nbsp}1${nbsp}h`, "a day and more in days and hours, not in hundreds of hours");
+  assert.equal(formatDuration((263 * 60 + 33) * 60_000), `10${nbsp}dygn${nbsp}23${nbsp}h`);
+  assert.equal(formatDuration(48 * 3_600_000), `2${nbsp}dygn`);
+  assert.equal(formatDuration(65 * 60_000), `1${nbsp}h${nbsp}5${nbsp}min`);
+  assert.equal(formatDuration(119 * 60_000 + 40_000), `2${nbsp}h`);
+  assert.equal(formatDuration(3 * 3_600_000), `3${nbsp}h`);
 });
 
 test("a recording's length counts whole seconds, so every view shows the same one", () => {
   // The ready view and the unsent-recordings card both show this recording; the timer stopped at 0:40.
-  assert.equal(formatDuration(40_600), "40 s");
-  assert.equal(formatDuration(59_600), "59 s");
+  assert.equal(formatDuration(40_600), `40${nbsp}s`);
+  assert.equal(formatDuration(59_600), `59${nbsp}s`);
+});
+
+test("a percentage is whole and has a space before its sign, which keeps it with the number", () => {
+  assert.equal(formatPercent(0), `0${nbsp}%`);
+  assert.equal(formatPercent(33), `33${nbsp}%`);
+  assert.equal(formatPercent(100), `100${nbsp}%`);
 });

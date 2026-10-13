@@ -300,6 +300,7 @@
 
   .astryx-heading {
     overflow-wrap: anywhere;
+    text-wrap: balance;
   }
 
   .astryx-heading:focus-visible {

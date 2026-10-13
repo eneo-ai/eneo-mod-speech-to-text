@@ -34,6 +34,12 @@ test("participants: a comma adds what came before it, and Backspace in the empty
   assert.deepEqual(shown(), ["Anna Berg"]);
 });
 
+test("participants: a name is not marked as misspelt, and a phone's keyboard starts each word with a capital", async () => {
+  const { input } = await mountNames();
+  assert.equal(input().getAttribute("spellcheck"), "false");
+  assert.equal(input().getAttribute("autocapitalize"), "words");
+});
+
 test("participants: the help text holds no count, and each change is said once, by the field's one status", async () => {
   const { view, input } = await mountNames(["Anna Berg"], [], "Skilj flera namn med komma.");
   // Every text a live region of the field takes, in order.

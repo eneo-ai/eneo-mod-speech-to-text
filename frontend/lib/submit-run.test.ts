@@ -1738,7 +1738,7 @@ test("a recording sent as one is not sent past Eneo's longest recording, all par
       upload: async () => assert.fail("nothing is uploaded"),
       startRun: async () => assert.fail("no run"),
     }),
-    /Inspelningen är längre än flödet tar emot \(5 h\)/,
+    /Inspelningen är längre än flödet tar emot \(5\u00a0h\)/,
   );
   assert.equal((await store.get(recording.id))?.state, "stopped", "kept on the device, as it was");
 
