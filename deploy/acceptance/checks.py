@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The acceptance of the production image: sixteen checks on a running stack (deploy/acceptance/compose.yml).
+"""The acceptance of the production image: seventeen checks on a running stack (deploy/acceptance/compose.yml).
 
     checks.py                run every check, one report, exit 1 if one failed
     checks.py --only 4,5,9   run these
@@ -18,6 +18,8 @@ the stack and then runs this. The stack is the one the environment names; the de
     ACCEPT_ENEO_URL      http://127.0.0.1:8481   the stub as Eneo: the sign-in handshake, /__log, /__reset and /__stub/stats
     ACCEPT_IMAGE         eneo-mod-speech-to-text:acceptance        ACCEPT_REVIEW_IMAGE   eneo-mod-speech-to-text:acceptance-review (built with SPEAKER_REVIEW_ENABLED=true)
     ACCEPT_CONTAINER     stt-acceptance-module                     ACCEPT_TRAEFIK_CONTAINER   stt-acceptance-traefik
+    ACCEPT_REVISION      (not set)               the commit ACCEPT_IMAGE was built from, when its build was given one (CI's): check 17 then
+                                                 requires the image to say it; without it the image only has to agree with itself
 
 A client that acts as the page names its user: X-Expected-User on a write, ?expected_user= on the live socket. Identifiers are those of
 frontend/tests/fixtures/ids.json, which the stub serves; the headers are those of backend/app/security_headers.json; the numbers the
@@ -94,6 +96,7 @@ class Stack:
     image: str = os.environ.get("ACCEPT_IMAGE", "eneo-mod-speech-to-text:acceptance")
     container: str = os.environ.get("ACCEPT_CONTAINER", "stt-acceptance-module")
     traefik: str = os.environ.get("ACCEPT_TRAEFIK_CONTAINER", "stt-acceptance-traefik")
+    revision: str | None = os.environ.get("ACCEPT_REVISION") or None
 
     @property
     def review_image(self) -> str:
@@ -301,13 +304,18 @@ def check(number: int, title: str) -> Callable[[Callable[[], str]], Callable[[],
     return register
 
 
-@check(1, "healthy: docker says so, and /health and /api/healthz answer {\"ok\": true} on 3001")
+HEALTH_FIELDS = ["ok", "revision", "build_date", "release"]
+
+
+@check(1, "healthy: docker says so, and /health and /api/healthz answer \"ok\": true and which build it is, and nothing else, on 3001")
 def check_1() -> str:
     expect(health_status() == "healthy", f"docker health is {health_status()!r}")
     for path in ("/health", "/api/healthz"):
         r = get(STACK.direct + path)
-        expect(r.status == 200 and r.json() == {"ok": True}, f"GET {path} answered {r.status} {r.text()[:80]}")
-    return "healthy; both routes answer {\"ok\": true}"
+        answer = r.json() if r.status == 200 else None
+        # Which build it says it is, is check 17's to hold against the image's labels.
+        expect(isinstance(answer, dict) and answer.get("ok") is True and list(answer) == HEALTH_FIELDS, f"GET {path} answered {r.status} {r.text()[:120]}")
+    return f"healthy; both routes answer \"ok\": true and exactly the fields {', '.join(HEALTH_FIELDS)}"
 
 
 @check(2, "one process: one python, no node and no supervisord, and the user is not root")
@@ -710,6 +718,50 @@ def check_13() -> str:
     return f"none of {list(DEV_MARKERS)} is in the default image (the browser's view of /dev/foundation is the routes spec of check 6)"
 
 
+REVISION_LABEL, CREATED_LABEL = "org.opencontainers.image.revision", "org.opencontainers.image.created"
+ASK_HEALTH = ("python", "-c", "import urllib.request; print(urllib.request.urlopen('http://127.0.0.1:3001/health', timeout=2).read().decode())")
+
+
+def labelled(image: str) -> tuple[str | None, str | None]:
+    """The commit and the time of the build in an image's labels: None for a label that is empty or not there, which is how a build
+    without the two arguments is labelled (Dockerfile)."""
+    labels = json.loads(docker("image", "inspect", "-f", "{{json .Config.Labels}}", image).stdout) or {}
+    return labels.get(REVISION_LABEL) or None, labels.get(CREATED_LABEL) or None
+
+
+def health_inside(image: str) -> dict:
+    """What /health answers in a container of ``image``, started beside the stack with the stack's settings and asked from inside it:
+    it publishes no port and is removed again."""
+    name = f"{STACK.container}-unlabelled"
+    docker("rm", "-f", name, check=False)  # what an interrupted run left
+    try:
+        docker("run", "-d", "--name", name, "--env-file", str(HERE / "acceptance.env"), image)
+        wait_until(lambda: docker("exec", name, *ASK_HEALTH, check=False).returncode == 0, 60, f"a container of {image} answers /health")
+        return json.loads(exec_in(name, *ASK_HEALTH))
+    finally:
+        docker("rm", "-f", name, check=False)
+
+
+def says_alike(image: str, health: dict) -> tuple[str | None, str | None]:
+    """The commit and the time of the build of ``image``, which its labels and its /health (``health``) say alike."""
+    labels, answered = labelled(image), (health.get("revision"), health.get("build_date"))
+    expect(answered == labels, f"{image}: /health answers revision and build_date {answered}, and its labels say {labels}")
+    return labels
+
+
+@check(17, "the image says what it was built from: /health answers the commit and the build date of its labels, and a build that was given neither answers null")
+def check_17() -> str:
+    revision, built = says_alike(STACK.image, get(f"{STACK.direct}/health").json())  # type: ignore[arg-type]
+    if STACK.revision:
+        expect(revision == STACK.revision and built, f"{STACK.image} says it was built from {revision!r} at {built!r}, and it was built from {STACK.revision} (ACCEPT_REVISION) at a time it has to say")
+    # The review build is never given the arguments (acceptance.sh, ci.yml): it is the image that has to say nothing.
+    unlabelled = says_alike(STACK.review_image, health_inside(STACK.review_image))
+    expect(unlabelled == (None, None), f"{STACK.review_image}, built without SOURCE_REVISION and BUILD_DATE, says {unlabelled}")
+    said = f"commit {revision}, built {built}" if revision or built else "null for both: a build that was given neither"
+    told = "the commit the acceptance was told" if STACK.revision else "ACCEPT_REVISION is not set, so only that the two agree"
+    return f"{STACK.image}: labels and /health say {said} ({told}); {STACK.review_image}: no label and null for both"
+
+
 def probe(*args: str) -> str:
     docker("cp", str(HERE / "upload/container_probe.py"), f"{STACK.container}:/tmp/container_probe.py")
     return exec_in(STACK.container, "python", "/tmp/container_probe.py", *args)
@@ -991,8 +1043,9 @@ def read_waivers(path: Path, known: Iterable[int]) -> dict[int, dict[str, str]]:
 
 WAIVERS = read_waivers(HERE / "waivers.json", CHECKS)
 
-# 10 stops the image and 16 stops it again; both leave a fresh one running. Everything else only reads or recreates it.
-ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 10, 16]
+# 10 stops the image and 16 stops it again; both leave a fresh one running. Everything else only reads or recreates it (17 runs a
+# second container for a moment, before the measurements of 14 and 15).
+ORDER = [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 17, 14, 15, 10, 16]
 
 
 def main() -> int:

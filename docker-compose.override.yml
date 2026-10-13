@@ -9,5 +9,9 @@ services:
       args:
         # A build argument, not a run-time setting: a published image always has the speaker review off.
         SPEAKER_REVIEW_ENABLED: ${SPEAKER_REVIEW_ENABLED:-false}
+    environment:
+      # A local build is no release, whatever version .env names for the image this build stands in for. It is given no
+      # commit and no build date either (no build argument above), so /health answers null for all three.
+      MODULE_VERSION: ""
     ports:
       - "3001:3001"

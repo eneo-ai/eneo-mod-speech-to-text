@@ -32,6 +32,21 @@ Varje rutt, med metod, om den kräver session och origin, svar och felkoder, st�
 - Allt som ändrar något under `/api/eneo/` och live-socketen kräver att sidan namnger sessionens användare ([Sidans användare](auth-and-session.md#sidans-användare-i-en-gammal-flik)), och att `Origin` är `MODULE_PUBLIC_URL`.
 - Varje HTTP-rutt har ett tak för request-body, se [Gränser](#gränser).
 
+## Hälsokontrollen
+
+`GET` och `HEAD` på `/health` (imagens egen kontroll) och `/api/healthz` har samma hanterare i `backend/app/main.py` och kräver ingen session. Svaret säger att backenden svarar och vilket bygge det är:
+
+```json
+{"ok": true, "revision": "<commit, 40 hexadecimala tecken>", "build_date": "2026-01-31T12:00:00Z", "release": "v1.2.3"}
+```
+
+Alla fyra fälten finns alltid. Ett värde som inte är känt är `null`; inget annat värde sätts i dess ställe.
+
+- **`revision` och `build_date`** är imagens egna. `Dockerfile` skriver byggposten `backend/app/build_record.json` ur byggargumenten `SOURCE_REVISION` och `BUILD_DATE`, samma argument som ger etiketterna `org.opencontainers.image.revision` och `org.opencontainers.image.created`, så de två säger samma sak. Backenden läser posten en gång vid start. Ett bygge utan argumenten skriver `null` för båda och lämnar de två etiketterna tomma, och en start ur en utcheckning har ingen post. En post som saknas eller inte går att använda loggas med en rad och ger `null` för båda; den stoppar aldrig starten.
+- **`release`** är driftsättningens: `MODULE_VERSION` när värdet är en versionstagg (`vX.Y.Z`), annars `null`. En utgåva taggar en redan testad image utan att bygga om den, så utgåvan kan inte stå i imagen.
+
+Läsningen och reglerna finns i `backend/app/config.py`. Hur den som driftsätter läser svaret: [Drift](operations.md#vilken-version-som-körs).
+
 ## Tillåtelselistan för Eneo-anrop
 
 Webbläsarens `/api/eneo/<sökväg>` blir `{ENEO_BACKEND_URL}/api/v1/<sökväg>`. Bara metoder och sökvägar i `PROXY_ROUTES` (`backend/app/main.py`) går igenom, matchade som de stavas; allt annat får `403 Eneo resource is not exposed`. Listan med alla poster finns i [API-referens](api-referens.md) under "Eneo".

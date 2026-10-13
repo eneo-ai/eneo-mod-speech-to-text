@@ -3,6 +3,7 @@ name: Release
 # A tag vX.Y.Z on a commit of main. It gives that commit's tested image its version and `latest`, and creates the GitHub Release with the
 # compose file and the example settings attached. It builds nothing: the image is the one ci.yml tested and publish.yml pushed as
 # sha-<commit>, copied registry to registry under the new tags with its digest kept, and the digest is checked after each copy.
+# The release then checks itself: the image under the version has to say, in its revision label, the commit the tag is on.
 # A commit CI has not passed on main has no such image, and its tag fails here: run the job again once CI has passed.
 # Every action is pinned to the commit of a release, and the image skopeo runs in to a digest (docs/operations.md has the routine).
 
@@ -53,6 +54,15 @@ jobs:
             test "sha256:$pushed" = "$digest"
             echo "$IMAGE:$tag $digest"
           done
+          # The last link: the image under the version says it was made from the tagged commit. Its revision label is written by
+          # ci.yml from what its /health answer is written from, so a deployment of this version answers this commit.
+          revision="$(docker run --rm "$SKOPEO" inspect --creds "$CREDENTIALS" \
+            --format '{{index .Labels "org.opencontainers.image.revision"}}' "docker://$IMAGE:$GITHUB_REF_NAME")"
+          if [ "$revision" != "$commit" ]; then
+            echo "::error::$IMAGE:$GITHUB_REF_NAME says it was made from '$revision', and the tag is on $commit. No release is created; the tags above already name the image."
+            exit 1
+          fi
+          echo "$IMAGE:$GITHUB_REF_NAME revision $revision"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Create the GitHub Release
         env:

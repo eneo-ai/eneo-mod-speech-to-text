@@ -140,11 +140,13 @@ def _requested_upload_timeout_seconds(request: Request) -> float | None:
 
 
 # One handler for both paths, and HEAD too: the image's health probe (/health) and the module's own (/api/healthz) are
-# real routes, so a broken build of the UI cannot answer them with a page.
+# real routes, so a broken build of the UI cannot answer them with a page. Beside `ok` it says which build answers:
+# the commit and the time the image was built from and at, and the release the deployment runs it as, each null when
+# it is not known (Settings). No session is asked for.
 @app.api_route("/health", methods=["GET", "HEAD"])
 @app.api_route("/api/healthz", methods=["GET", "HEAD"])
 async def healthz():
-    return {"ok": True}
+    return {"ok": True, "revision": settings.revision, "build_date": settings.build_date, "release": settings.release}
 
 
 # ---------- Branding ----------

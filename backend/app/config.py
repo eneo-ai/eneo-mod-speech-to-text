@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import functools
+import json
 import logging
 import math
 import os
 import re
 import struct
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Self
 from urllib.parse import urlsplit
@@ -97,6 +100,12 @@ class Settings(BaseModel):
     organization_logo_dark: LogoFile | None = None
     # None keeps the theme's own accent (Sundsvall's blue): GET /api/branding/theme.css is then an empty stylesheet.
     accent: Accent | None = None
+    # Which build runs, as /health answers it. The commit and the time of the build are the image's own (its build record);
+    # the release is the deployment's (MODULE_VERSION), because a release gives a tested image its version without
+    # building it again. None is "not known", and nothing stands in for it.
+    revision: str | None = None
+    build_date: str | None = None
+    release: str | None = None
 
     @model_validator(mode="after")
     def _capacity(self) -> Self:
@@ -308,6 +317,49 @@ def _accent() -> Accent | None:
     return resolve_accent(light, dark)
 
 
+# The image's build record: the Dockerfile writes it from the build arguments it writes the image's labels from, so the
+# two say the same. A checkout has none.
+BUILD_RECORD = Path(__file__).with_name("build_record.json")
+_COMMIT = re.compile(r"[0-9a-f]{40}")
+_BUILD_DATE = "%Y-%m-%dT%H:%M:%SZ"
+# The tags release.yml takes (backend/tests/test_release_workflows.py holds the two together): only one of them is a release.
+VERSION_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
+
+
+@functools.cache
+def read_build_record(path: Path) -> tuple[str | None, str | None]:
+    """The commit and the time of the build in the record at ``path``, each None when the record says null for it (a build
+    without arguments says null for both).
+
+    A record that is missing or says anything else is logged and gives neither value: which build runs is never a reason
+    not to start. Read once for each path, so the launcher and the app, which both load the settings, log it once.
+    """
+    try:
+        record = json.loads(path.read_bytes())
+        revision, build_date = record["revision"], record["build_date"]
+        if revision is not None and not _COMMIT.fullmatch(revision):
+            raise ValueError("revision is not a commit of 40 hexadecimal characters")
+        # strptime reads "1" as a month; the time is written back and compared, so only the one spelling passes.
+        if build_date is not None and datetime.strptime(build_date, _BUILD_DATE).strftime(_BUILD_DATE) != build_date:
+            raise ValueError("build_date is not a UTC time such as 2026-01-31T12:00:00Z")
+    except FileNotFoundError:
+        logger.warning("There is no build record at %s, as in a run from a checkout; /health answers no revision and no build date.", path)
+        return None, None
+    except (OSError, ValueError, LookupError, TypeError) as error:
+        logger.warning(
+            "The build record %s cannot be used (%s: %s); /health answers no revision and no build date.", path, type(error).__name__, error
+        )
+        return None, None
+    return revision, build_date
+
+
+def _release() -> str | None:
+    """The release MODULE_VERSION names: a version tag, vX.Y.Z. ``latest``, a commit's tag, nothing and anything else say
+    which image was pulled and not which release it is, so they are no release."""
+    version = os.environ.get("MODULE_VERSION", "")
+    return version if VERSION_TAG.fullmatch(version) else None
+
+
 # The hosts that mean this machine, matched on the parsed host and nothing else: not a prefix, not a suffix, not what
 # stands before an "@", and no other spelling of the same address.
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
@@ -397,6 +449,8 @@ def load_settings() -> Settings:
     if not cookie_secure and not _is_loopback(module_public_url):
         raise RuntimeError(f"COOKIE_SECURE=false is accepted only when MODULE_PUBLIC_URL is {_LOOPBACK_SPELLING} (local development)")
 
+    revision, build_date = read_build_record(BUILD_RECORD)
+
     return Settings(
         eneo_backend_url=_required_url("ENEO_BACKEND_URL"),
         eneo_public_url=_required_url("ENEO_PUBLIC_URL", public=True),
@@ -421,4 +475,7 @@ def load_settings() -> Settings:
         organization_logo=organization_logo,
         organization_logo_dark=organization_logo_dark,
         accent=accent,
+        revision=revision,
+        build_date=build_date,
+        release=_release(),
     )

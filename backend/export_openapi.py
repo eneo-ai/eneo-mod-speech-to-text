@@ -254,15 +254,16 @@ OPERATIONS: dict[tuple[str, str], Op] = {
     ("GET", "/health"): Op(
         "Hälsa",
         "Hälsokontroll (/health)",
-        "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida.",
-        success={"200": reply("Backenden svarar.", json_of({"type": "object", "properties": {"ok": {"const": True}}}))},
+        "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida. Svaret "
+        "säger också vilket bygge som svarar, utan session.",
+        success={"200": reply("Backenden svarar.", json_of({"$ref": "#/components/schemas/Health"}))},
     ),
     ("HEAD", "/health"): Op("Hälsa", "Hälsokontroll, endast huvuden (/health)", success={"200": reply("Backenden svarar.")}),
     ("GET", "/api/healthz"): Op(
         "Hälsa",
         "Hälsokontroll (/api/healthz)",
         "Samma svar som `/health`.",
-        success={"200": reply("Backenden svarar.", json_of({"type": "object", "properties": {"ok": {"const": True}}}))},
+        success={"200": reply("Backenden svarar.", json_of({"$ref": "#/components/schemas/Health"}))},
     ),
     ("HEAD", "/api/healthz"): Op("Hälsa", "Hälsokontroll, endast huvuden (/api/healthz)", success={"200": reply("Backenden svarar.")}),
     ("GET", "/api/branding"): Op(
@@ -614,6 +615,32 @@ COMPONENTS: dict[str, Any] = {
             "type": "object",
             "required": ["detail"],
             "properties": {"detail": {"description": "Eneos svar, vilken JSON det än är."}},
+        },
+        "Health": {
+            "type": "object",
+            "required": ["ok", "revision", "build_date", "release"],
+            "properties": {
+                "ok": {"const": True},
+                "revision": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "description": "Den commit imagen byggdes från, 40 hexadecimala tecken: samma värde som imagens "
+                    "etikett `org.opencontainers.image.revision`. Null för en image som byggts utan byggargument och "
+                    "för en start ur en utcheckning.",
+                },
+                "build_date": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "description": "När imagen byggdes, i UTC (`2026-01-31T12:00:00Z`): samma värde som etiketten "
+                    "`org.opencontainers.image.created`. Det är byggets datum, inte utgåvans eller driftsättningens. "
+                    "Null som `revision`.",
+                },
+                "release": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "description": "Utgåvan driftsättningen kör: `MODULE_VERSION` när den är en versionstagg "
+                    "(`vX.Y.Z`). Null för `latest`, en `sha-`-tagg, ett tomt eller annat värde och ett lokalt bygge: "
+                    "ingen känd utgåva.",
+                },
+            },
+            "description": "Att backenden svarar, och vilket bygge som svarar.",
         },
         "Branding": {
             "type": "object",

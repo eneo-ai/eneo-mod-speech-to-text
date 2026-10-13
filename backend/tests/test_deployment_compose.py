@@ -74,6 +74,27 @@ class DeploymentComposeTests(unittest.TestCase):
                 merged = compose_config(files=(COMPOSE_FILE, OVERRIDE_FILE), **variables)["services"][SERVICE]
                 self.assertEqual(merged["build"]["args"]["SPEAKER_REVIEW_ENABLED"], expected)
 
+    def test_the_container_is_told_the_version_its_image_was_pulled_by(self) -> None:
+        # MODULE_VERSION picks the image's tag and is passed in as it is: a version tag is the release /health answers (app/config.py).
+        service = compose_config(interpolate=False)["services"][SERVICE]
+
+        self.assertEqual(service["environment"]["MODULE_VERSION"], "${MODULE_VERSION:-latest}")
+        for variables, expected in (({}, "latest"), ({"MODULE_VERSION": ""}, "latest"), ({"MODULE_VERSION": "v1.2.3"}, "v1.2.3")):
+            with self.subTest(variables=variables):
+                service = compose_config(**variables)["services"][SERVICE]
+                self.assertEqual(service["environment"]["MODULE_VERSION"], expected)
+                self.assertEqual(service["image"], f"{IMAGE}:{expected}")
+
+    def test_a_local_build_is_no_release_and_is_given_no_commit(self) -> None:
+        for variables in ({}, {"MODULE_VERSION": "v1.2.3"}):
+            with self.subTest(variables=variables):
+                service = compose_config(files=(COMPOSE_FILE, OVERRIDE_FILE), **variables)["services"][SERVICE]
+
+                # The version in the developer's .env is that of the image this build stands in for.
+                self.assertEqual(service["environment"]["MODULE_VERSION"], "")
+                # And no commit or build date is passed to the build: a working tree is not a commit.
+                self.assertEqual(list(service["build"]["args"]), ["SPEAKER_REVIEW_ENABLED"])
+
     def test_the_service_is_on_3001_checks_its_health_there_and_restarts_itself(self) -> None:
         service = compose_config()["services"][SERVICE]
 

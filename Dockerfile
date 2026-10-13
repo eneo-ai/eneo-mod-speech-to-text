@@ -4,6 +4,9 @@
 #
 #   docker build -t eneo-mod-speech-to-text .
 #   docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t eneo-mod-speech-to-text:review .
+#
+# CI's build (ci.yml) also passes SOURCE_REVISION and BUILD_DATE: the commit and the time of the build, which the image
+# then says in its labels and its /health. A build without them, as the two above, says neither.
 
 # ---- the UI, built to static files (frontend/dist). engine-strict: the base image must meet the Node floor package.json declares.
 FROM node:24.21.0-bookworm-slim@sha256:d6aa754f16b3197301076f047b5def2f02ea1dbbc2ca920407d46d7ec7f87b20 AS web
@@ -30,6 +33,15 @@ COPY --from=python-packages /opt/venv /opt/venv
 WORKDIR /app
 COPY backend/app ./backend/app
 COPY --from=web /build/frontend/dist ./web
+# What the image was built from, said twice from the same two arguments so the two cannot differ: the labels, for whoever
+# holds the image, and the build record, which the backend reads at start and answers on /health (app/config.py). Empty
+# arguments are null in the record: the release is not here either way, because a release tags this image without building it.
+ARG SOURCE_REVISION=
+ARG BUILD_DATE=
+LABEL org.opencontainers.image.source="https://github.com/eneo-ai/eneo-mod-speech-to-text" \
+      org.opencontainers.image.revision="$SOURCE_REVISION" \
+      org.opencontainers.image.created="$BUILD_DATE"
+RUN python -c "import json, sys; json.dump({'revision': sys.argv[1] or None, 'build_date': sys.argv[2] or None}, open('backend/app/build_record.json', 'w'))" "$SOURCE_REVISION" "$BUILD_DATE"
 ENV PATH=/opt/venv/bin:$PATH PYTHONPATH=/app/backend STATIC_DIR=/app/web \
     PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 USER module

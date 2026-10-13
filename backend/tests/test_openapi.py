@@ -134,6 +134,26 @@ class DocumentTests(unittest.TestCase):
         for (_, path), title in titles.items():
             self.assertIn(path, title)
 
+    def test_the_health_answer_is_the_one_the_file_describes(self) -> None:
+        schema = self.components["schemas"]["Health"]
+        nullable_text = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+
+        for path in ("/health", "/api/healthz"):
+            with self.subTest(path=path):
+                answer = TestClient(main.app).get(path).json()
+                described = self.operations[("GET", path)]["responses"]["200"]["content"]["application/json"]["schema"]
+
+                self.assertEqual(described, {"$ref": "#/components/schemas/Health"})
+                # Every field is always there, null when it is not known: none of them is optional.
+                self.assertEqual(schema["required"], list(answer))
+                self.assertEqual(list(schema["properties"]), list(answer))
+        self.assertEqual(schema["properties"]["ok"], {"const": True})
+        for name in ("revision", "build_date", "release"):
+            with self.subTest(name=name):
+                described = schema["properties"][name]
+                self.assertEqual({key: described[key] for key in described if key != "description"}, nullable_text)
+                self.assertIn("Null", described["description"])
+
     def references(self) -> list[str]:
         found = []
 
