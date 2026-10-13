@@ -247,8 +247,9 @@ export function ResultDocument({
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
-        {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
-        {wide && (
+        {/* From a laptop's width: Kopiera and the one download on the document's top edge, above its text. A file
+            without text of its own has the download on its row, as the files under it have theirs. */}
+        {wide && text && (
           <>
             <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
               {text && (
@@ -283,6 +284,7 @@ export function ResultDocument({
               startContent={<Icon icon={Kind} />}
               label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
               description={file.meta}
+              endContent={wide && !text ? primaryDownload : undefined}
             />
           </>
         )}

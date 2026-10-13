@@ -110,7 +110,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ## Components
 
 ### Buttons
-- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating.
+- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating. A dialog
+  has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back and icon actions.
 
@@ -119,6 +120,12 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
+
+### Recording notices
+- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
+
+### Files
+- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
