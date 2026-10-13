@@ -9,7 +9,7 @@
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import ids from "../fixtures/ids.json";
-import { addParticipants, backLink, chooseFile, record, setup, setupFromList, unsavedCorrections } from "./screens";
+import { addParticipants, backLink, chooseFile, isLaptop, record, setup, setupFromList, unsavedCorrections } from "./screens";
 
 test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "history and requests, at one width"));
 
@@ -122,15 +122,17 @@ test("the page writing ?run= (a run starts) asks nothing and adds no history ent
   await expect(question(page)).toHaveCount(0);
 });
 
-test("the bar's way back asks once each time; Stanna kvar stays, and the brand beside it is no second way off", async ({ page }) => {
+test("the bar's way back and the brand beside it ask each time; Stanna kvar stays", async ({ page }, info) => {
   await recordingInVisit(page);
   const before = await historyOf(page);
-  for (const _ of [1, 2]) {
-    await backLink(page).click();
+  const brand = page.getByRole("link", { name: /^Tal till text/ });
+  // The brand is in the bar from a laptop's width; below it the way back is the bar's only way off.
+  for (const way of [backLink(page), backLink(page), ...(isLaptop(info) ? [brand] : [])]) {
+    await way.click();
     await asked(page);
     await stay(page);
   }
-  await expect(page.getByRole("link", { name: /^Tal till text/ })).toHaveCount(0);
+  if (!isLaptop(info)) await expect(brand).toHaveCount(0);
   expect(await historyOf(page)).toEqual(before);
 });
 
