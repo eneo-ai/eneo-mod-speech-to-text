@@ -27,7 +27,7 @@ test("the frame is the shell's one main region, with the page's skip link and a 
   assert.ok(view.container.querySelector('[data-testid="skip-to-content"]'), "the skip link comes with the shell");
 });
 
-test("the way back is one link named Alla flöden in the bar at every width, with the account; locked, the page offers neither", async () => {
+test("the way back is one link named Alla flöden in the bar at every width, the brand a second one, with the account; locked, the page offers none", async () => {
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const exits = (container: HTMLElement) => ({
     back: [...container.querySelectorAll('[role="banner"] a[href="/flows"]')].filter((a) => a.textContent?.trim() === "Alla flöden").length,
@@ -35,7 +35,7 @@ test("the way back is one link named Alla flöden in the bar at every width, wit
     account: [...container.querySelectorAll("button")].filter((b) => b.getAttribute("aria-label")?.startsWith("Öppna konto")).length,
   });
   const open = await mount(await signedIn(createElement(FlowFrame, { children: null })));
-  assert.deepEqual(exits(open.container), { back: 1, links: 1, account: 1 }, "the brand beside it is no second link");
+  assert.deepEqual(exits(open.container), { back: 1, links: 2, account: 1 }, "the brand beside it leads to the flows too");
   await open.unmount();
   const locked = await mount(await signedIn(createElement(FlowFrame, { locked: true, children: null })));
   assert.deepEqual(exits(locked.container), { back: 0, links: 0, account: 0 });
