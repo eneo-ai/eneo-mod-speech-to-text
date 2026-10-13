@@ -4,7 +4,7 @@
 
 It plays two roles in one process, told apart by path prefix, over one set of data (every flow, run and file exists once):
 
-  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/branding*,
+  the BFF (the module backend) for the accessibility gate's dev profile: /api/auth/*, /api/branding*, /api/healthz,
       /api/eneo/*, /api/live/*, every screen of the app without Eneo and without a backend;
   Eneo for the real backend (python -m app.serve) and for the production-shaped tests: /api/v1/*, the module-login
       handshake, signed files with Range, the live ticket and an eneo-live.v1 socket, and a sink for uploads.
@@ -112,6 +112,10 @@ ORGANIZATION = (
     else {"name": "Sundsvalls kommun", "logo": "default", "dark_logo": False, "logo_sizes": None}
 )
 ACCENT = resolve_accent("#1E7B34", None) if BRANDING else None
+# Which build runs, as the backend's GET /api/healthz answers it: release v0.1.0 and its commit, so the page's link to
+# the commit opens a real one. A gate state that needs another build answers it in the browser (tests/e2e/screens.ts):
+# on the gate's real target the backend answers, not this stub.
+BUILD = {"ok": True, "revision": "c5d54608d5833737677157bde44b95b969e67bbb", "build_date": "2026-10-08T08:04:12Z", "release": "v0.1.0"}
 # Every identifier the stub hands out is one of tests/fixtures/ids.json, which the gate's specs read too: the backend's live
 # route takes UUIDs for the flow and the step, and Eneo's own ids are UUIDs.
 IDS = json.loads((Path(__file__).resolve().parents[1] / "fixtures" / "ids.json").read_text())
@@ -824,6 +828,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(200, {"authenticated": True, "user": USER, "session_ends_in": 8 * 60 * 60, "max_upload_bytes": 1024**3})
         if path == "/api/branding/":
             return self.send(200, {"organization": ORGANIZATION})
+        if path == "/api/healthz/":
+            return self.send(200, BUILD)
         if path == "/api/branding/theme.css/":
             return self.send(200, theme_css(ACCENT).encode(), "text/css; charset=utf-8")
         if path in ("/api/branding/logo/light/", "/api/branding/logo/dark/") and CUSTOM_LOGO:
