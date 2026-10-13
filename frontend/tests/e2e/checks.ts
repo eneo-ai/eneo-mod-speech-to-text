@@ -6,6 +6,17 @@
 import AxeBuilder from "@axe-core/playwright";
 import type { Locator, Page } from "@playwright/test";
 
+/** The engine a page runs in: "chromium", "webkit" or "firefox". */
+export const engine = (page: Page) => page.context().browser()!.browserType().name();
+
+/**
+ * The key that takes a keyboard user to the next control, or with `back` to the one before. Safari on a Mac gives Tab to
+ * text fields and lists only and Option+Tab to every control (its setting "Press Tab to highlight each item" swaps the
+ * two); the gate walks every control, so it presses the one that reaches them all.
+ */
+export const tabKey = (page: Page, back = false) =>
+  `${engine(page) === "webkit" && process.platform === "darwin" ? "Alt+" : ""}${back ? "Shift+" : ""}Tab`;
+
 /** WCAG 1.4.12: the spacing a reader may set. Nothing may be cut off, covered or moved out of reach by it. */
 export const TEXT_SPACING =
   "* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }";
@@ -160,7 +171,10 @@ export function targetSizes(page: Page, min: number, spacing: boolean) {
 
 const CONTROLS = new Set(["button", "link", "radio", "checkbox", "switch", "slider", "combobox", "textbox", "searchbox", "spinbutton", "menuitem", "menuitemradio", "menuitemcheckbox", "tab", "option", "listbox"]);
 
-/** Controls without a name in Chromium's own accessibility tree, the one screen readers get (WCAG 4.1.2). */
+/**
+ * Controls without a name in Chromium's own accessibility tree, the one screen readers get (WCAG 4.1.2). Read over the
+ * DevTools protocol, which only Chromium speaks: in the other engines a missing name is axe's to find.
+ */
 export async function unnamedControls(page: Page) {
   const cdp = await page.context().newCDPSession(page);
   const { nodes } = (await cdp.send("Accessibility.getFullAXTree")) as {
@@ -194,7 +208,7 @@ function axState(properties: AxProperty[] = []): string {
     .join(" ");
 }
 
-/** The role, name, description and states Chromium's own tree gives one element, the ones a screen reader reads. */
+/** The role, name, description and states Chromium's own tree gives one element, the ones a screen reader reads. Chromium only. */
 export async function axNode(locator: Locator) {
   const page = locator.page();
   await locator.evaluate((element) => element.setAttribute("data-ax-probe", ""));
@@ -498,14 +512,22 @@ function probeFocus(page: Page) {
     }
     let scrolled = scrollY;
     for (let p = el.parentElement; p; p = p.parentElement) scrolled += p.scrollTop;
+    const onScreenEdges = (box: DOMRect) => {
+      const wide = Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+      const high = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0));
+      const edges = (box.top >= 0 ? wide : 0) + (box.bottom <= innerHeight ? wide : 0) + (box.left >= 0 ? high : 0) + (box.right <= innerWidth ? high : 0);
+      return edges > 0 ? edges : 2 * (wide + high);
+    };
     const name = el.getAttribute("aria-label") ?? (el as HTMLInputElement).labels?.[0]?.textContent ?? el.getAttribute("title") ?? el.textContent ?? "";
     return {
       key: el.dataset.a11yStop!,
       label: `${el.getAttribute("role") ?? el.tagName.toLowerCase()} "${name.trim().replace(/\s+/g, " ").slice(0, 60)}"`,
       indicator: false,
       owner: box ? { x: box.left, y: box.top, width: box.width, height: box.height } : null,
-      // A one-pixel line around the element, in CSS px².
-      perimeter: 2 * (Math.min(r.width, innerWidth) + Math.min(r.height, innerHeight)),
+      // A one-pixel line along the element's edges that are on screen, in CSS px²: an edge past the window's is no ring's
+      // to draw (a region taller than the window, scrolled to show its top). With no edge on screen, a line around all
+      // of what shows: the indicator must then be inside it.
+      perimeter: onScreenEdges(r),
       focusVisible,
       obscured: (points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none") as FocusStop["obscured"],
       coveredBy,
@@ -528,18 +550,34 @@ function probeFocus(page: Page) {
  * without leaving first is a trap (WCAG 2.1.2), as is `max` stops.
  */
 export async function tabWalk(page: Page, max = 90) {
-  await page.evaluate(() => {
+  // In Chromium Tab goes on from a page's last control to the browser's own, and the document loses the focus: that is
+  // the end. A browser without a window need not have such controls: Firefox then keeps the focus where it is, as a trap
+  // would, and what WebKit does is its build's. So outside Chromium a stop of the walk's own after the page's last one
+  // stands in for them: reaching it is leaving the page, and a trap never reaches it.
+  const closed = engine(page) !== "chromium";
+  await page.evaluate((closed) => {
     const start = document.createElement("span");
     start.tabIndex = -1;
     start.id = "a11y-walk-start";
     document.body.prepend(start);
     start.focus();
-  });
+    if (!closed) return;
+    const end = document.createElement("span");
+    end.tabIndex = 0;
+    end.id = "a11y-walk-end";
+    // Out of the page's flow, so that it moves nothing.
+    end.style.position = "fixed";
+    document.body.append(end);
+  }, closed);
   const stops: FocusStop[] = [];
   let left = false;
   for (let i = 0; i < max; i++) {
-    await page.keyboard.press("Tab");
+    await page.keyboard.press(tabKey(page));
     if (i === 0) await page.evaluate(() => document.getElementById("a11y-walk-start")?.remove());
+    if (closed && (await page.evaluate(() => document.activeElement?.id === "a11y-walk-end"))) {
+      left = true;
+      break;
+    }
     const stop = await focusStop(page);
     if (!stop) {
       left = true;
@@ -549,6 +587,7 @@ export async function tabWalk(page: Page, max = 90) {
     if (stops.some((seen) => seen.key === stop.key)) break;
     stops.push(stop);
   }
+  if (closed) await page.evaluate(() => document.getElementById("a11y-walk-end")?.remove());
   return { stops, left };
 }
 

@@ -33,7 +33,7 @@ npm run build
 cd ../backend && .venv/bin/python -m unittest discover -s tests
 ```
 
-Första gången: `npx playwright install chromium` för gaten och `npx playwright install chromium webkit firefox` för `test:prod`. Det riktiga målet, `test:prod` och imagens acceptans startar den riktiga backenden och behöver därför dess paket: `pip install -r backend/requirements.lock`. De startar `backend/.venv/bin/python` när den finns, annars `python3`; `BACKEND_PYTHON` pekar på en annan Python, till exempel en annan utchecknings miljö.
+Första gången: `npx playwright install chromium webkit firefox`; både gaten och `test:prod` kör de tre motorerna. Det riktiga målet, `test:prod` och imagens acceptans startar den riktiga backenden och behöver därför dess paket: `pip install -r backend/requirements.lock`. De startar `backend/.venv/bin/python` när den finns, annars `python3`; `BACKEND_PYTHON` pekar på en annan Python, till exempel en annan utchecknings miljö.
 
 ## Enhetstester
 
@@ -46,40 +46,73 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 
 ## Gaten
 
-`npm run test:a11y` startar stubben (`frontend/tests/e2e/stub-server.py`, bara för test: den låtsas vara modulens backend) och Vites utvecklingsserver (`frontend/playwright.config.ts`, som också listar projekten: telefoner stående och liggande, surfplattor, laptop, 200 % zoom, forcerade färger, bred skärm och reducerad rörelse), och besöker varje läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Ett läge är ett namn och stegen dit; specarna i `frontend/tests/e2e/` är döpta efter vad de bevisar.
+`npm run test:a11y` startar stubben (`frontend/tests/e2e/stub-server.py`, bara för test: den låtsas vara modulens backend) och Vites utvecklingsserver (`frontend/playwright.config.ts`, som också listar projekten: telefoner stående och liggande, surfplattor, laptop, 200 % zoom, forcerade färger, bred skärm och reducerad rörelse i Chromium, och en telefon, en surfplatta och en laptop i WebKit och en laptop i Firefox), och besöker varje läge i `frontend/tests/e2e/screens.ts` med falsk mikrofon. Inget Eneo behövs. Ett läge är ett namn och stegen dit; specarna i `frontend/tests/e2e/` är döpta efter vad de bevisar.
 
 **Vad som mäts** (i den renderade sidan, `frontend/tests/e2e/checks.ts`; resultat per test i `findings.json`):
 
 | Kontroll | Regel |
 |---|---|
 | axe | Varje WCAG-överträdelse stoppar, oavsett allvarlighet; övriga regler när de är allvarliga eller kritiska. |
-| Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. |
+| Namn | Varje kontroll har ett namn i Chromiums tillgänglighetsträd. Mäts i Chromium, vars träd gaten kan läsa; i WebKit och Firefox är det axe som hittar ett saknat namn. |
 | Platshållartext | Kontrast 4,5:1. |
 | Målstorlek | 24 px med mus, 44 px med finger (`pointer: coarse`). |
 | Reflow och textavstånd | Ingen text eller kontroll utanför fönstrets kant och inget avklippt av en ruta som klipper, i varje läge på varje bredd gaten har (också 1000 px, strax under laptopens två kolumner); ökat radavstånd, teckenavstånd och ordavstånd klipper inget, och en rubrik kapas inte. |
 | Rörelse | Inga oändliga animationer med reducerad rörelse. |
-| Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
-| ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
+| Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. Kravet på 3:1 gäller också webbläsarens egen fokusram. |
+| ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. Motorerna delar en bild; där sidan med rätta skiljer sig i en motor har den en egen, `<läge>-<bredd>-<motor>.aria.yml`. |
 | Stilla sida | Inget som står på skärmen flyttar sig när ett svar kommer. Varje sida öppnas via sin adress och får modulens svar ett i taget, i den ordning den bad om dem; kontroller, rubriker och text mäts före och efter varje svar, på en telefon, en surfplatta och en laptop (`still.spec.ts`). Flyttar som är kvar står med skäl och ärende i specens `KNOWN`, och en rad där faller när sidan står still. |
 
 ```bash
 # Ett läge, smalast och mörkt, medan du bygger det
 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-320-light --project=laptop-1440-dark
-# Efter en avsiktlig ändring av vad skärmläsaren får, för det läget
+# Efter en avsiktlig ändring av vad skärmläsaren får: sidans råa träd för det läget
 npm run test:a11y -- aria.spec.ts --update-snapshots -g "<läge>"
 ```
 
-Läs diffen på ögonblicksbilderna innan du behåller dem.
+ARIA-ögonblicksbilderna är redigerade för hand: ett mönster där ett värde varierar, inga genererade id:n, bara de noder som säger något. Ingen körning skriver i `frontend/tests/e2e/aria.spec.ts-snapshots/`. Med `--update-snapshots` fälls varje test och anger var sidans råa träd ligger, i testets mapp under `frontend/test-results/a11y/`. För över det som ändrats till den granskade filen för hand, läs diffen och kör sedan utan flaggan. Ett läge som ännu saknar fil fälls på samma sätt: kopiera det råa trädet till sökvägen som felet anger och redigera det.
 
-**Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus, och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
+**Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus, vad en produktwebbläsare gör utöver sin motor (Safari, Chrome, Edge och Firefox på en riktig enhet), och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
 
 **Regler som aldrig ändras:** sänk inte ett tröskelvärde, ta inte bort ett läge ur gaten och lägg inte till ett axe-undantag för att få den grön. Hitta orsaken; en brist i designsystemet rättas en gång i temat ([Frontend](frontend.md#rätta-en-brist-i-designsystemet)).
 
-`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
+`frontend/tests/e2e/leaks.spec.ts` öppnar och stänger varje överlägg 40 gånger och jämför Chromiums räknare för DOM-noder, lyssnare och minne (bara Chromium har dem) ([beslut 0007](decisions/0007-weight-budget.md)); ett nytt överlägg läggs i `OVERLAYS` där i samma ändring som inför det.
 
 `frontend/tests/e2e/result-playback.spec.ts` kontrollerar ordklick, ljudposition, markeringen när ljudet pausas, skillnaden mellan sökträff och aktuellt ord, kontrasten i båda färglägena, tangentbordslänken förbi transkriberingen och avståndet till rättningens knappar. `field-focus.spec.ts` kräver en enda fokusram för sökfält och rättningsfält.
 
-`frontend/tests/e2e/controls.spec.ts` trycker på varje synlig, aktiverad knapp, länk, menyval, flik, brytare, kryssruta och radioknapp i varje läge, var och en i en ny kopia av läget (en egen webbläsarkontext). Den kräver ett synligt svar (adressen, fokus, en överlagring, ett aria-tillstånd, en live-region eller innehållet ändras), inga konsol- eller nätverksfel som läget inte deklarerat och att det som öppnades går att stänga med Escape eller sin egen stängknapp. Det som inte trycks (`SKIPPED`), det som med avsikt inte svarar (`NO_RESPONSE`) och det som får ge ett fel (`EXPECTS`) står med skäl i filen; ett val som redan är gjort, eller en länk till sidan man är på, trycks inte. Den körs bara på dev-profilen, i `laptop-1440-light` och `phone-390-light`, och tar ungefär 20 minuter.
+`frontend/tests/e2e/controls.spec.ts` trycker på varje synlig, aktiverad knapp, länk, menyval, flik, brytare, kryssruta och radioknapp i varje läge, var och en i en ny kopia av läget (en egen webbläsarkontext). Trycket är projektets eget: ett finger (`tap`) på en pekskärm, en mus (`click`) annars. En kontroll som pekaren inte når, för att den ligger under något eller utanför skärmen, fäller testet; bara en kontroll som står i `KEYBOARD_ONLY` med sitt skäl får fokus och Enter i stället. Den kräver ett synligt svar (adressen, fokus, en överlagring, ett aria-tillstånd, en live-region eller innehållet ändras), allt som vaktposten kräver på det riktiga målet (inga konsol- eller nätverksfel som läget inte deklarerat, ingen omdirigering, inget brott mot policyn, och varje deklarerat fel ska inträffa) och att det som öppnades går att stänga med Escape eller sin egen stängknapp. Det som inte trycks (`SKIPPED`), det som med avsikt inte svarar (`NO_RESPONSE`) och det som får ge ett fel (`EXPECTS`) står med skäl i filen; ett val som redan är gjort, eller en länk till sidan man är på, trycks inte. Själva trycket och bedömningen ligger i `frontend/tests/e2e/controls.ts`, som också kontrollernas egna tester kör mot sidor byggda för att fällas. Den körs bara på dev-profilen, i de projekt som `frontend/playwright.config.ts` ger den: `phone-390-light`, `tablet-portrait`, `tablet-landscape`, `laptop-1440-light` och de fyra motorprojekten. Ett projekt tar 10 till 15 minuter med fyra arbetare.
+
+### Projekt och motorer
+
+`frontend/playwright.config.ts` avgör vilka specar varje projekt kör:
+
+| Del | Projekt |
+|---|---|
+| Skanningen av varje läge (`a11y.spec.ts`) | alla |
+| Tangentbordet (`keyboard.spec.ts`) | `phone-320-light`, `phone-390-light`, `tablet-portrait`, `tablet-landscape`, `laptop-1280-light`, `laptop-1440-light`, `zoom-200`, `forced-colors`, `ultrawide-1920-light` och motorprojekten |
+| Trycket på varje kontroll (`controls.spec.ts`) | `phone-390-light`, `tablet-portrait`, `tablet-landscape`, `laptop-1440-light` och motorprojekten |
+| ARIA-ögonblicksbilderna (`aria.spec.ts`) | `phone-390-light`, `laptop-1440-light`, `phone-390-webkit`, `laptop-1440-webkit`, `laptop-1440-firefox` |
+| Kontrollernas egna tester (`harness.spec.ts`) | `laptop-1440-light`, `laptop-1440-webkit`, `laptop-1440-firefox`: en gång per motor |
+
+Övriga specar körs bara i Chromium: namnen (`names.spec.ts`), läckorna, stilla sida (`still.spec.ts`) och beteendespecarna. Motorprojekten tar inte med dem, och flera av dem väljer själva en eller några av Chromium-projekten.
+
+Motorprojekten är `phone-390-webkit`, `tablet-landscape-webkit`, `laptop-1440-webkit` och `laptop-1440-firefox`. De kör det en motor kan ändra och är motorkontroller, inte produktwebbläsare: Playwrights WebKit ligger före Safari, och Chromium är varken Chrome eller Edge.
+
+| Mätning | Chromium | WebKit | Firefox |
+|---|---|---|---|
+| axe, platshållarkontrast, målstorlek 24 och 44 px, reflow, textavstånd, rörelse, tangentbord | ja | ja | ja |
+| ARIA-ögonblicksbilder | ja | ja | ja |
+| Varje kontroll, med finger på pekskärm och mus annars | ja | ja | ja |
+| Namn i webbläsarens eget träd, läckräknarna (DevTools-protokollet) | ja | nej | nej |
+| Inspelning | ja | på en Mac; inte på Linux | ja |
+
+- **Val efter motor och förmåga.** Det bara Chromium kan väljs med `browserName === "chromium"`, pekbeteende med projektets `hasTouch`.
+- **Mikrofon och ljud.** Chromium får behörigheten och startargumenten för en falsk enhet. WebKit får behörigheten och svarar med sin låtsasenhet. Firefox har ingen mikrofonbehörighet i Playwright och får en falsk ström med två inställningar (`media.navigator.streams.fake` och `media.navigator.permission.disabled`). Ljudet ut är avstängt i Chromium (`--mute-audio`) och Firefox (`media.volume_scale`), och uppspelningen går som vanligt; Playwrights WebKit har ingen sådan omkopplare.
+- **WebKit på Linux spelar inte in.** Playwrights WebKit för Linux saknar MediaRecorder. Appen erbjuder då bara uppladdning och säger varför, och det är vad gaten väntar sig där: `records` i `frontend/tests/e2e/screens.ts` äger undantaget, läget `setup-upload-only` kräver den sidan, och lägen och tester som behöver en inspelning hoppas över med det skälet (`needsRecording`). I Chromium, i Firefox och i WebKit på en Mac fäller en saknad inspelning testet.
+- **Firefox på Linux behöver en ljudserver.** Utan den kör Firefox ingen Web Audio: nivåmätaren står still, tystnad hörs inte och den levande texten får inget ljud. CI startar PulseAudio med en tyst utgång i Firefox-jobbet; lokalt i en Linux-container gör `apt-get install pulseaudio` och `pulseaudio --start --exit-idle-time=-1` detsamma.
+- **Tab.** Safari på en Mac ger Tab bara till textfält och listor, så vandringen trycker Option+Tab där (`tabKey` i `frontend/tests/e2e/checks.ts`). Utanför Chromium slutar vandringen på ett eget stopp efter sidans sista: Firefox utan fönster har inga egna kontroller att lämna sidan till, och fokus står då kvar som i en fälla.
+- **Radioknappar.** En pil går runt gruppens ändar i Chromium och Firefox och stannar vid änden i WebKit; testet av lägesvalen följer motorn.
+- **Konsolfel.** Chromium skriver en resurs som inte gick att hämta till konsolen; WebKit gör det bara för en HTTP-status och Firefox inte alls. Vaktposten (`frontend/tests/e2e/sentinel.ts`) skriver raden åt dem, med Chromiums ord, så att ett läge deklarerar felet en gång och ett deklarerat fel som uteblir saknas i varje motor.
+- **Det riktiga målet** (`npm run test:a11y:real`) kör bara Chromium-projekten. Det byggda gränssnittet i tre motorer är produktionstesternas.
 
 ### Gaten på det riktiga målet
 
@@ -87,7 +120,7 @@ Läs diffen på ögonblicksbilderna innan du behåller dem.
 
 - Ett brott mot policyn (Content-Security-Policy) fäller testet, alltid. Ett läge kan inte deklarera det: policyn lättas aldrig för att ett test ska gå igenom.
 - En omdirigering fäller testet, utom inloggningens egna (`/api/auth/login`, `/api/auth/callback` och stubbens `/module-login`).
-- Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`) räknas inte.
+- Ett konsolfel, ett ofångat fel eller ett misslyckat anrop fäller testet om läget inte deklarerat det med `expects` i `screens.ts`, och ett deklarerat fel som inte inträffar fäller det också: ett läge som ska orsaka ett fel bevisar att det gör det. Ett anrop som webbläsaren eller sidan själv avbrutit (`net::ERR_ABORTED`, och WebKits och Firefox ord för samma sak) räknas inte; vaktposten bevakar också varje tryck i `controls.spec.ts`, i alla tre motorerna.
 - `sentinel.spec.ts` orsakar vart och ett av dem och ser att vaktposten ser det.
 
 `REAL_EXTERNAL_URL` kör gaten mot en backend som redan är igång (imagen bakom Traefik, som imagens acceptans gör) i stället för att starta en; stubben är då den driftsättningens Eneo, på en adress webbläsaren når.
@@ -173,7 +206,7 @@ Under iteration används befintliga specar direkt med `--project` och `--grep`, 
 
 Mät kostnaden innan arbetsordningen ändras. Playwrights summerade testtider överlappar mellan arbetare; de är inte körningens väggtid. Granska kostnaden per spec och använd vid behov `test.step` för att skilja navigering, väntan och mätningar. En paus kräver ingen ny kandidatkopia om filer, körmiljö och byggda filer är oförändrade: kontrollera ett exakt urval av återstående test-ID:n med Playwrights `--list` före fortsättningen, behåll den avbrutna originalrapporten och verifiera att resultatens union täcker hela ursprungslistan.
 
-CI delar kontrollernas tester i fyra delar och övriga tester mot utvecklingsservern i två delar. Produktionsbygget, den riktiga backendens gate och branding körs i egna jobb. Varje jobb har en egen server och två Playwright-arbetare; publiceringen väntar på alla jobb. Testurvalet finns i `.github/workflows/ci.yml`. Vid ändrad uppdelning ska testlistornas union vara oförändrad, utan bortfall eller dubbletter. Artefakterna `frontend-browser-timings-*` innehåller Playwrights JSON-resultat med status och tid per test även när allt lyckas. Bilder och spår från fel finns i `frontend-browser-results-*`.
+CI delar kontrollernas tester i fyra delar och övriga tester mot utvecklingsservern i två delar, i `phone-390-light` och `laptop-1440-light`. Tre jobb till namnger sina projekt: `devices` skannar en liggande telefon (`landscape-844`) och går med tangentbordet genom båda surfplattorna, `webkit` kör skanningen, tangentbordet och ARIA-ögonblicksbilderna i `phone-390-webkit` och kontrollernas egna tester i `laptop-1440-webkit`, och `firefox` kör detsamma i `laptop-1440-firefox`. Trycket på varje kontroll i surfplattorna och i WebKit och Firefox körs inte i en pull request: det är gatens längsta del och hör till hela matrisen (`npm run verify:candidate`). Produktionsbygget, den riktiga backendens gate och branding körs i egna jobb. Varje jobb har en egen server och två Playwright-arbetare; publiceringen väntar på alla jobb. Testurvalet finns i `.github/workflows/ci.yml`. Vid ändrad uppdelning ska testlistornas union vara oförändrad, utan bortfall eller dubbletter. Artefakterna `frontend-browser-timings-*` innehåller Playwrights JSON-resultat med status och tid per test även när allt lyckas. Bilder och spår från fel finns i `frontend-browser-results-*`.
 
 ## Läsa ett fel
 

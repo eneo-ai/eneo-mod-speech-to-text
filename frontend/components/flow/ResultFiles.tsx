@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentProps } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ComponentProps, type FocusEvent } from "react";
 import {
   Download,
   Eye,
@@ -194,7 +194,17 @@ export function OpenFile({
       {opener}
       {/* One dialog at every width, mounted while it is closed (for the focus it gives back): a window resized while it is
           open keeps it, and its viewer, as it is. The file is fetched only once it is open. */}
-      <Dialog isOpen={open && !covered} onOpenChange={setOpen} width={1024} maxHeight="85dvh">
+      {/* Safari's Tab leaves the dialog past its last control and comes back to the dialog itself, which shows no ring:
+          focus goes on to the dialog's first control, as the next Tab would have taken it. */}
+      <Dialog
+        isOpen={open && !covered}
+        onOpenChange={setOpen}
+        width={1024}
+        maxHeight="85dvh"
+        onFocus={(event: FocusEvent<HTMLDialogElement>) => {
+          if (event.target === event.currentTarget) event.currentTarget.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
+        }}
+      >
         <Layout
           header={
             <DialogHeader

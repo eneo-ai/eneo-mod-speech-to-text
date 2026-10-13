@@ -1,9 +1,9 @@
 /**
  * Every state at every width and theme: axe (no WCAG violation at any impact,
  * no serious or critical best practice; what axe cannot decide is listed as a
- * manual check), every control named in Chromium's own tree, placeholder text at 4.5:1, target sizes
- * (24 px, WCAG 2.5.8; 44 px under pointer: coarse), nothing past an edge or cut off at every width (WCAG
- * 1.4.10), 1.4.12 text spacing, and no endless motion with reduced
+ * manual check), every control named in Chromium's own tree (in Chromium, whose tree the gate can read), placeholder
+ * text at 4.5:1, target sizes (24 px, WCAG 2.5.8; 44 px under pointer: coarse), nothing past an edge or cut off at every
+ * width (WCAG 1.4.10), 1.4.12 text spacing, and no endless motion with reduced
  * motion. The measurements go to findings.json in each test's output folder.
  */
 import { writeFileSync } from "node:fs";
@@ -12,8 +12,8 @@ import { TEXT_SPACING, addStyles, axe, blocking, endlessAnimations, placeholderC
 import { STATES } from "./screens";
 
 for (const state of STATES) {
-  test(state.name, async ({ page }, info) => {
-    test.skip(state.only ? !state.only(info) : false, "not on this width");
+  test(state.name, async ({ page, browserName }, info) => {
+    test.skip(state.only ? !state.only(info) : false, "the state does not exist at this width or in this browser");
     const project = info.project.name;
     const desktop = project.startsWith("laptop-1280") || project.startsWith("ultrawide");
     await state.go(page, info);
@@ -21,7 +21,8 @@ for (const state of STATES) {
     if (process.env.SHOTS) await page.screenshot({ path: `test-results/shots/${project}/${state.name}.png`, fullPage: true });
 
     const scan = await axe(page);
-    const unnamed = await unnamedControls(page);
+    // The browser's own tree is read over the DevTools protocol, which only Chromium speaks.
+    const unnamed = browserName === "chromium" ? await unnamedControls(page) : [];
     const placeholders = await placeholderContrast(page);
     const targets = await targetSizes(page, 24, true);
     // A mouse gets the WCAG minimum; a finger gets the house bar of 44 px.
@@ -31,8 +32,9 @@ for (const state of STATES) {
     const layout = await reflow(page);
     let spaced = null;
     // Added text spacing is checked on both phone widths, the 1280 laptop and the widest screens: a 1280 x 800
-    // laptop clipped the recording's warnings as surely as a phone.
-    if (project === "phone-320-light" || project === "phone-390-light" || desktop) {
+    // laptop clipped the recording's warnings as surely as a phone. Another engine sets and breaks text its own way,
+    // so each of its projects is checked.
+    if (browserName !== "chromium" || project === "phone-320-light" || project === "phone-390-light" || desktop) {
       const remove = await addStyles(page, TEXT_SPACING);
       spaced = await reflow(page);
       await remove();

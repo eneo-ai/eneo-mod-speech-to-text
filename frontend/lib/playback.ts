@@ -21,6 +21,7 @@ export interface MediaLike {
   play(): Promise<void>;
   pause(): void;
   load(): void;
+  removeAttribute(name: "src"): void;
 }
 
 export interface PlaybackSnapshot {
@@ -147,6 +148,13 @@ export class Playback {
   /** The element React rendered, or null when it goes. */
   attach(media: MediaLike | null): void {
     if (media === this.media) return;
+    // The element let go stops reading: without a source, a load ends its request. Its address (a recording's object
+    // URL) may be taken away next, and Safari reports a read cut off that way as an error.
+    if (this.media) {
+      this.media.pause();
+      this.media.removeAttribute("src");
+      this.media.load();
+    }
     this.media = media;
     this.loaded = null;
     if (media) {
