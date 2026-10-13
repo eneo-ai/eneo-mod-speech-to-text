@@ -1,5 +1,5 @@
 import { expect, test } from "./gate";
-import { isLaptop, result, STATES } from "./screens";
+import { isLaptop, playedFromWord, result, STATES } from "./screens";
 import { type Locator } from "@playwright/test";
 
 test("the correction actions leave room for the field's focus outline", async ({ page }, info) => {
@@ -40,19 +40,21 @@ async function textContrast(target: Locator) {
   });
 }
 
-test("a word in the result seeks its audio and the highlight follows playback", async ({ page }, info) => {
+test("a word in the result plays its audio from the word, also from a pause, and the highlight follows playback", async ({ page }, info) => {
   test.skip(!["phone-390-light", "laptop-1440-light", "laptop-1440-dark", "forced-colors"].includes(info.project.name));
   await result(page);
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const audio = page.locator("audio").first();
+  await expect(page.getByRole("button", { name: "Spela upp", exact: true })).toBeVisible();
   const word = page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
   const start = Number(await word.getAttribute("data-word-start"));
   await word.click();
-  await expect.poll(() => page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeCloseTo(start, 1);
-  await expect(word).toHaveAttribute("aria-current", "true");
-  await expect(page.locator('[data-word-start][aria-current="true"]')).toHaveCount(1);
-
-  await page.getByRole("button", { name: "Spela upp", exact: true }).click();
-  await expect.poll(() => page.locator("audio").first().evaluate((audio: HTMLAudioElement) => audio.currentTime)).toBeGreaterThan(start + 0.7);
+  await expect(page.getByRole("button", { name: "Pausa uppspelningen" })).toBeVisible();
+  // From the word: not from the start of its sentence or of the recording.
+  const time = () => audio.evaluate((element: HTMLAudioElement) => element.currentTime);
+  await expect.poll(time).toBeGreaterThanOrEqual(start - 0.05);
+  expect(await time(), "played on from the word").toBeLessThan(start + 1.5);
+  await expect.poll(time).toBeGreaterThan(start + 0.7);
   await expect(word).not.toHaveAttribute("aria-current", "true");
   await expect(page.locator('[data-word-start][aria-current="true"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
@@ -62,9 +64,8 @@ test("a search hit in the result remains distinct from the word at the playhead"
   test.skip(!["phone-390-light", "laptop-1440-light", "laptop-1440-dark", "forced-colors"].includes(info.project.name));
   await result(page);
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  const word = page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
-  await word.click();
-  await expect(word).toHaveAttribute("aria-current", "true");
+  const lit = await playedFromWord(page);
+  const word = page.locator(`[data-word-start="${await lit.getAttribute("data-word-start")}"]`).first();
   await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("höjs");
   const hit = page.locator('[data-hit="current"]');
   await expect(hit).toContainText("höjs");
@@ -83,9 +84,7 @@ test("the active word and search hit have readable text in both color modes", as
   test.skip(!["phone-390-light", "phone-390-dark", "laptop-1440-light", "laptop-1440-dark"].includes(info.project.name));
   await result(page);
   if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-  const word = page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
-  await word.click();
-  await expect(word).toHaveAttribute("aria-current", "true");
+  const word = await playedFromWord(page);
   await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("höjs");
   for (const [name, target] of [["active word", word], ["search hit", page.locator('[data-hit="current"]')]] as const) {
     const pair = await textContrast(target);
@@ -147,4 +146,79 @@ test("skip controls are disabled only at the recording boundaries", async ({ pag
   await page.keyboard.press("Enter");
   await expect(forward).toBeDisabled();
   await expect(position).toBeFocused();
+});
+
+/** Safari's writer, independently of lib/webm-keyframes: every SimpleBlock's keyframe flag off, in place. */
+function asSafariWrites(bytes: Uint8Array) {
+  const vint = (at: number) => {
+    const length = Math.clz32(bytes[at]) - 23;
+    let value = bytes[at] & (0xff >> length);
+    for (let i = 1; i < length; i++) value = value * 256 + bytes[at + i];
+    return { length, value, unknown: value === 2 ** (7 * length) - 1 };
+  };
+  const skip = (at: number) => at + (Math.clz32(bytes[at]) - 23);
+  let at = skip(0);
+  at += vint(at).length + vint(at).value; // the EBML header
+  at = skip(at);
+  at += vint(at).length; // into the Segment
+  while (at < bytes.length) {
+    const id = [...bytes.subarray(at, skip(at))].reduce((n, b) => n * 256 + b, 0);
+    const size = vint(skip(at));
+    const data = skip(at) + size.length;
+    if (id === 0x1f43b675) {
+      at = data; // into the Cluster
+      continue;
+    }
+    if (id === 0xa3) bytes[data + vint(data).length + 2] &= 0x7f;
+    at = data + size.value;
+  }
+  return bytes;
+}
+
+test("a recording Safari wrote plays and seeks in Chromium once every block is a keyframe", async ({ page }, info) => {
+  test.skip(info.project.name !== "laptop-1440-light", "one Chromium is enough: the defect is its demuxer's");
+  await page.goto("/");
+  // The fake microphone's tone, recorded as the app records, in chunks.
+  const recorded = await page.evaluate(async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.start(500);
+    await new Promise((resolve) => setTimeout(resolve, 3_200));
+    await new Promise((resolve) => ((recorder.onstop = resolve), recorder.stop()));
+    stream.getTracks().forEach((track) => track.stop());
+    return Promise.all(chunks.map(async (chunk) => [...new Uint8Array(await chunk.arrayBuffer())]));
+  });
+  const safari = asSafariWrites(new Uint8Array(recorded.flat()));
+  const { withKeyframes } = await import("../../lib/webm-keyframes");
+  const chunks = recorded.map((chunk, i) => safari.slice(recorded.slice(0, i).flat().length, recorded.slice(0, i + 1).flat().length));
+  const marked = await withKeyframes(chunks, "audio/webm;codecs=opus");
+  const files = { safari: [...safari], marked: [...new Uint8Array(await new Blob(marked as BlobPart[]).arrayBuffer())] };
+
+  const played = await page.evaluate(async (files) => {
+    const results: Record<string, { seek: string; time: number; error: string | null }> = {};
+    for (const [name, bytes] of Object.entries(files)) {
+      const audio = new Audio(URL.createObjectURL(new Blob([new Uint8Array(bytes)], { type: "audio/webm" })));
+      audio.muted = true;
+      const next = (...events: string[]) =>
+        new Promise<string>((resolve) => {
+          const timer = setTimeout(() => resolve("timeout"), 5_000);
+          for (const event of events) audio.addEventListener(event, () => (clearTimeout(timer), resolve(event)), { once: true });
+        });
+      await next("loadedmetadata", "error");
+      audio.currentTime = 1.5;
+      const seek = await next("seeked", "error");
+      // Not awaited: a play() on audio that failed to seek never settles.
+      void audio.play().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      results[name] = { seek, time: audio.currentTime, error: audio.error?.message ?? null };
+      audio.pause();
+    }
+    return results;
+  }, files);
+  info.annotations.push({ type: "playback", description: JSON.stringify(played) });
+  expect(played.safari.seek, "Safari's file as written cannot seek here; if it can, Chromium has changed and the marking may go").toBe("error");
+  expect(played.marked).toMatchObject({ seek: "seeked", error: null });
+  expect(played.marked.time, "and it plays on from where it was sought").toBeGreaterThan(1.7);
 });

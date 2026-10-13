@@ -452,13 +452,11 @@ export function TranscriptPlayer(
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
     if (editingIndex >= 0) return;
+    // A word plays from where it is said, as "Spela från" plays the passage: also from a pause. Without word times, from
+    // the sentence's start.
     const wordEl = (e.target as HTMLElement).closest<HTMLElement>("[data-word-start]");
     const wordTime = wordEl ? Number(wordEl.dataset.wordStart) : Number.NaN;
-    seekTo(
-      part.segment.fileIndex,
-      Number.isFinite(wordTime) ? wordTime : part.segment.start,
-      !paused,
-    );
+    seekTo(part.segment.fileIndex, Number.isFinite(wordTime) ? wordTime : part.segment.start, true);
   }
 
   function commitLine(segmentIndex: number, newText: string) {

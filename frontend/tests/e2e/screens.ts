@@ -78,6 +78,20 @@ async function version(page: Page, build: { release: string | null; revision: st
   await expect(page.getByRole("button", { name: "Kopiera supportinformation" })).toBeVisible();
 }
 
+/**
+ * The result's playhead on a word: pressing "punkten" plays from it, and the audio is paused at once, so the state stands
+ * still with the word lit where it stopped (punkten, or one just after it) and its colours settled.
+ */
+export async function playedFromWord(page: Page) {
+  await page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first().click();
+  await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
+  await expect(page.getByRole("button", { name: "Spela upp", exact: true })).toBeVisible();
+  const lit = page.locator('[data-word-start][aria-current="true"]');
+  await expect(lit).toHaveCount(1);
+  await expect.poll(() => lit.evaluate((word) => word.getAnimations().length)).toBe(0);
+  return lit;
+}
+
 export async function setup(page: Page, flow = ids.flows.flow1) {
   await page.goto(`/flows/${flow}`);
   await setupShown(page);
@@ -985,9 +999,7 @@ export const STATES: State[] = [
     go: async (page, info) => {
       await result(page);
       if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-      const word = page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
-      await word.click();
-      await expect(word).toHaveAttribute("aria-current", "true");
+      await playedFromWord(page);
     },
   },
   {
@@ -995,7 +1007,7 @@ export const STATES: State[] = [
     go: async (page, info) => {
       await result(page);
       if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
-      await page.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first().click();
+      await playedFromWord(page);
       await page.getByRole("textbox", { name: "Sök i transkriberingen" }).fill("höjs");
       await expect(page.locator('[data-hit="current"]')).toContainText("höjs");
     },

@@ -22,6 +22,27 @@ export function usePlaybackState(playback: Playback): PlaybackSnapshot {
 }
 
 /**
+ * Where the playhead is drawn: while the audio plays, read every frame, so it glides instead of stepping with the
+ * audio's time updates (on a short recording, a second is a long jump across the slider). With reduced motion,
+ * and whenever it is paused, it is the snapshot's.
+ */
+function useLivePosition(playback: Playback, state: PlaybackSnapshot): number {
+  const [live, setLive] = useState<number | null>(null);
+  useEffect(() => {
+    if (!state.playing || globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    let frame = requestAnimationFrame(function draw() {
+      setLive(playback.liveAtMs());
+      frame = requestAnimationFrame(draw);
+    });
+    return () => {
+      cancelAnimationFrame(frame);
+      setLive(null);
+    };
+  }, [playback, state.playing]);
+  return live ?? state.atMs;
+}
+
+/**
  * Plays one or more parts as one recording: play or pause, a position slider
  * (arrow keys move a second, Page Up and Page Down ten) and "0:03 / 0:06".
  * Never the browser's own controls, whose timeline runs wrong on a WebM file
@@ -37,6 +58,7 @@ export function AudioPlayer({
   children?: ReactNode;
 }) {
   const state = usePlaybackState(playback);
+  const atMs = useLivePosition(playback, state);
   const attach = useCallback((element: HTMLAudioElement | null) => playback.attach(element), [playback]);
   // A start that waits for the audio is paused by the same button, as toggle() does.
   const pauses = state.playing || state.starting;
@@ -77,9 +99,10 @@ export function AudioPlayer({
           isLabelHidden
           width="100%"
           min={0}
-          max={Math.max(1, Math.round(state.totalMs / 1_000))}
+          // Exact, so the thumb moves with the audio; a key still moves a whole second.
+          max={Math.max(1, state.totalMs / 1_000)}
           step={1}
-          value={Math.round(state.atMs / 1_000)}
+          value={atMs / 1_000}
           // Seek on every change: a local file seeks at once, and a keyboard
           // change reports its commit before its change.
           onChange={(seconds: number) => playback.seekAt(seconds * 1_000)}
