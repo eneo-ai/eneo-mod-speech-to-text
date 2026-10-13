@@ -96,6 +96,25 @@ test("a focus outline that cannot be seen is not taken for a focus indicator", a
   expect((await focusStop(page))?.indicator, "black on white").toBe(true);
 });
 
+test("a region taller than the window is held to the ring on its edges that show, and a ring that shows nowhere fails", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.setContent(`
+    <style>
+      body { margin: 0; background: #fff; }
+      .region { box-sizing: border-box; margin: 520px 40px 40px; height: 1400px; border: 1px solid #ddd; outline: none; }
+      #ringed:focus-visible { outline: 2px solid #111; outline-offset: -2px; }
+    </style>
+    <div class="region" id="ringed" tabindex="0" role="region" aria-label="Med ring"></div>
+    <div class="region" id="bare" tabindex="0" role="region" aria-label="Utan ring"></div>`);
+  // Its top and 80 px of its sides show, as a transcript below the fold does; its bottom is far past the window's.
+  await page.keyboard.press(tabKey(page));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  expect((await focusStop(page))?.indicator, "a ring on the top and the sides that show").toBe(true);
+  await page.keyboard.press(tabKey(page));
+  await page.evaluate(() => document.getElementById("bare")!.scrollIntoView({ block: "start" }));
+  expect((await focusStop(page))?.indicator, "no ring at all").toBe(false);
+});
+
 test("a main command under another layer is caught: no pointer presses it, and the keyboard's focus on it is hidden", async ({ browser, page }, info) => {
   const covered = fixture("covered", `
     <main><h1>Prov</h1><p id="said"></p><button onclick="document.getElementById('said').textContent = 'Skapat'">Skapa dokument</button></main>

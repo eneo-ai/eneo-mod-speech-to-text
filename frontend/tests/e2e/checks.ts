@@ -512,14 +512,22 @@ function probeFocus(page: Page) {
     }
     let scrolled = scrollY;
     for (let p = el.parentElement; p; p = p.parentElement) scrolled += p.scrollTop;
+    const onScreenEdges = (box: DOMRect) => {
+      const wide = Math.max(0, Math.min(box.right, innerWidth) - Math.max(box.left, 0));
+      const high = Math.max(0, Math.min(box.bottom, innerHeight) - Math.max(box.top, 0));
+      const edges = (box.top >= 0 ? wide : 0) + (box.bottom <= innerHeight ? wide : 0) + (box.left >= 0 ? high : 0) + (box.right <= innerWidth ? high : 0);
+      return edges > 0 ? edges : 2 * (wide + high);
+    };
     const name = el.getAttribute("aria-label") ?? (el as HTMLInputElement).labels?.[0]?.textContent ?? el.getAttribute("title") ?? el.textContent ?? "";
     return {
       key: el.dataset.a11yStop!,
       label: `${el.getAttribute("role") ?? el.tagName.toLowerCase()} "${name.trim().replace(/\s+/g, " ").slice(0, 60)}"`,
       indicator: false,
       owner: box ? { x: box.left, y: box.top, width: box.width, height: box.height } : null,
-      // A one-pixel line around the element, in CSS px².
-      perimeter: 2 * (Math.min(r.width, innerWidth) + Math.min(r.height, innerHeight)),
+      // A one-pixel line along the element's edges that are on screen, in CSS px²: an edge past the window's is no ring's
+      // to draw (a region taller than the window, scrolled to show its top). With no edge on screen, a line around all
+      // of what shows: the indicator must then be inside it.
+      perimeter: onScreenEdges(r),
       focusVisible,
       obscured: (points > 0 && covered === points ? "full" : byPinned > 0 ? "partial" : "none") as FocusStop["obscured"],
       coveredBy,
