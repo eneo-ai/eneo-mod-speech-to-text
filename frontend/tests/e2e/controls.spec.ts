@@ -19,7 +19,7 @@ import { expect, test } from "./gate";
 import { Sentinel, type Expectation } from "./sentinel";
 import { STATES, type State } from "./screens";
 
-test.beforeEach(({}, info) => test.skip(!["laptop-1440-light", "phone-390-light"].includes(info.project.name), "two widths are enough"));
+// Which projects press every control is the config's to say (playwright.config.ts): a phone, both tablets and a laptop.
 test.use({ screenshot: "off", trace: "off" });
 
 /** Controls that are not activated (a press the shared fake Eneo could not take back), `<state> | <role> "<name>"`, and why. Never a pattern. None today. */

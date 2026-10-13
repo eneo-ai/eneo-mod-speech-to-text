@@ -33,9 +33,15 @@ const touch = (width: number, height: number): Use => ({
 const laptop: Use = { viewport: { width: 1440, height: 900 } };
 // A desktop screen, a mouse.
 const wide = (width: number, height: number): Use => ({ viewport: { width, height } });
-// Every project scans every state (a11y.spec); keyboard walks and screen-reader snapshots run where they differ.
-const scanOnly = /(keyboard|aria|names|harness)\.spec\.ts/;
-const noSnapshots = /(aria|names|harness)\.spec\.ts/;
+// Every project scans every state (a11y.spec). The keyboard walks, the press on every control (controls.spec, by far the
+// longest) and the screen-reader snapshots run where they differ: each list is what a project leaves out.
+const specs = (...names: string[]) => new RegExp(`(${names.join("|")})\\.spec\\.ts`);
+const scanOnly = specs("keyboard", "controls", "aria", "names", "harness");
+const noSnapshots = specs("controls", "aria", "names", "harness");
+// A tablet is a finger on a laptop's layout (landscape) or on the stacked one at its widest (portrait): its own walks and presses.
+const walksAndControls = specs("aria", "names", "harness");
+// The checks' own tests (harness.spec) run once.
+const noHarness = specs("harness");
 
 // The sentinel's own tests cause what it watches for, so they need it, and the real target.
 const SENTINEL_SPEC = /sentinel\.spec\.ts/;
@@ -68,10 +74,10 @@ export default defineConfig({
   projects: forTarget([
     { name: "phone-320-light", use: { ...touch(320, 568), colorScheme: "light" }, testIgnore: noSnapshots },
     { name: "phone-320-dark", use: { ...touch(320, 568), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "phone-390-light", use: { ...touch(390, 844), colorScheme: "light" } },
+    { name: "phone-390-light", use: { ...touch(390, 844), colorScheme: "light" }, testIgnore: noHarness },
     { name: "phone-390-dark", use: { ...touch(390, 844), colorScheme: "dark" }, testIgnore: scanOnly },
-    { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
-    { name: "tablet-landscape", use: { ...touch(1024, 768), isMobile: false, colorScheme: "light" }, testIgnore: scanOnly },
+    { name: "tablet-portrait", use: { ...touch(768, 1024), isMobile: false, colorScheme: "light" }, testIgnore: walksAndControls },
+    { name: "tablet-landscape", use: { ...touch(1024, 768), isMobile: false, colorScheme: "light" }, testIgnore: walksAndControls },
     // A phone on its side: wide as a tablet, as low as 200 % zoom; its name keeps it out of the phone-only expectations.
     { name: "landscape-844", use: { ...touch(844, 390), colorScheme: "light" }, testIgnore: scanOnly },
     // A window just narrower than the laptop layout (1024 px): one column at its widest.

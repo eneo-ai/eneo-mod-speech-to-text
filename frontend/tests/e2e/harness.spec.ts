@@ -1,12 +1,10 @@
 /**
  * The gate's own checks against pages built to fail them: a check that passes
- * these would pass the app's faults too. They run once, at one width.
+ * these would pass the app's faults too. They run once, on the project the config names (playwright.config.ts).
  */
 import { expect, test } from "./gate";
 import { axe, blocking, focusStop, tabWalk, targetSizes } from "./checks";
 import { STATES } from "./screens";
-
-test.beforeEach(({}, info) => test.skip(info.project.name !== "laptop-1440-light", "the checks' own tests run once"));
 
 test("a keyboard trap that cycles between two controls is caught", async ({ page }) => {
   await page.setContent(`
