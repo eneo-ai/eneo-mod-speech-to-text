@@ -15,6 +15,14 @@
     - list "Flödets steg":
       - listitem: Transkribera slutfört
       - listitem: Skriv rapporten Misslyckades
+  - region "Kontakta support":
+    - heading "Kontakta support" [level=2]
+    - text: Körnings-ID
+    - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
+    - button "Kopiera körnings-ID"
+    - button "Dölj teknisk information" [expanded]
+    - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
+    - paragraph: flow_step_failed
   - region "Transkribering":
     - heading "Transkribering" [level=2]
     - button "Kopiera transkriberingen"
@@ -76,11 +84,3 @@
         - button "Hastighet 1×":
           - text: ""
           - status
-  - region "Kontakta support":
-    - heading "Kontakta support" [level=2]
-    - text: Körnings-ID
-    - code: 6593b12e-183d-4bce-8de0-6eee071cdc2f
-    - button "Kopiera körnings-ID"
-    - button "Dölj teknisk information" [expanded]
-    - paragraph: "/Step 2 failed: the model provider returned \\d+ Service Unavailable\\./"
-    - paragraph: flow_step_failed

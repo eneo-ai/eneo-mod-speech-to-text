@@ -159,6 +159,10 @@ export function RunFailure({
 
       {files.length > 0 && <ResultFiles flowId={flowId} runId={run.id} files={files} />}
 
+      <SupportDetails runId={run.id} failure={failure} code={run.error?.code} />
+
+      {/* Last on the page: it is read after the rest, and is long, so it arrives under what is already on screen and
+          the run's id for support is not at the far end of it. */}
       {showTranscript && (
         <RunTranscript
           flowId={flowId}
@@ -167,8 +171,6 @@ export function RunFailure({
           fileName={transcriptFileName(flowName, run.created_at)}
         />
       )}
-
-      <SupportDetails runId={run.id} failure={failure} code={run.error?.code} />
     </>
   );
 }
