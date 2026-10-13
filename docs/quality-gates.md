@@ -65,11 +65,11 @@ Första gången: `npx playwright install chromium webkit firefox`; både gaten o
 ```bash
 # Ett läge, smalast och mörkt, medan du bygger det
 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-320-light --project=laptop-1440-dark
-# Efter en avsiktlig ändring av vad skärmläsaren får, för det läget
+# Efter en avsiktlig ändring av vad skärmläsaren får: sidans råa träd för det läget
 npm run test:a11y -- aria.spec.ts --update-snapshots -g "<läge>"
 ```
 
-Läs diffen på ögonblicksbilderna innan du behåller dem.
+ARIA-ögonblicksbilderna är redigerade för hand: ett mönster där ett värde varierar, inga genererade id:n, bara de noder som säger något. Ingen körning skriver i `frontend/tests/e2e/aria.spec.ts-snapshots/`. Med `--update-snapshots` fälls varje test och anger var sidans råa träd ligger, i testets mapp under `frontend/test-results/a11y/`. För över det som ändrats till den granskade filen för hand, läs diffen och kör sedan utan flaggan. Ett läge som ännu saknar fil fälls på samma sätt: kopiera det råa trädet till sökvägen som felet anger och redigera det.
 
 **Vad gaten inte bevisar:** vad en skärmläsare faktiskt läser upp (axe:s _incomplete_ listas som `manual check` i rapporten), PDF-visarens egna fokus, vad en produktwebbläsare gör utöver sin motor (Safari, Chrome, Edge och Firefox på en riktig enhet), och webbläsare utan förankrade menyer (Safari 17 till 25, Firefox före 147), som kontrolleras för hand en gång per release.
 

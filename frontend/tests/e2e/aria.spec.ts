@@ -8,8 +8,13 @@
  * that state, `<state>-<width>-<engine>.aria.yml`, a copy that differs in that one thing: the setup names the default
  * microphone in Chromium, whose fake device has a name, and not in WebKit and Firefox. Where there is no such file
  * the engines share the one.
+ *
+ * The files are curated by hand: a pattern where a value varies, no generated id, only the nodes that say something.
+ * Playwright's own update would write its raw tree over that, so this spec never lets it write. Run with
+ * `--update-snapshots`, or for a state that has no file yet, a test puts the page's raw tree in its results folder and
+ * fails with the two paths: carry what changed over to the curated file by hand, or copy and curate a new one.
  */
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { type Page } from "@playwright/test";
 import { expect, test } from "./gate";
 import { needsRecording, STATES } from "./screens";
@@ -55,7 +60,19 @@ for (const { state, region, fixedTime, waysIn } of SNAPSHOTS) {
     await screen.go(page, info);
     const width = info.project.use.viewport!.width;
     const own = `${state}-${width}-${browserName}.aria.yml`;
-    await expect(region(page)).toMatchAriaSnapshot({ name: existsSync(info.snapshotPath(own, { kind: "aria" })) ? own : `${state}-${width}.aria.yml` });
+    const name = existsSync(info.snapshotPath(own, { kind: "aria" })) ? own : `${state}-${width}.aria.yml`;
+    const curated = info.snapshotPath(name, { kind: "aria" });
+    const updating = info.config.updateSnapshots === "all" || info.config.updateSnapshots === "changed";
+    if (updating || !existsSync(curated)) {
+      const raw = info.outputPath(name);
+      writeFileSync(raw, await region(page).ariaSnapshot());
+      throw new Error(
+        updating
+          ? `${name} is curated by hand, so --update-snapshots does not write it. The page's raw tree is in ${raw}: carry what changed over to ${curated}, then run without the flag.`
+          : `There is no snapshot of ${state} at ${width} px. The page's raw tree is in ${raw}: copy it to ${curated}, curate it (a pattern where a value varies, no generated id), and run again.`,
+      );
+    }
+    await expect(region(page)).toMatchAriaSnapshot({ name });
   });
 }
 
