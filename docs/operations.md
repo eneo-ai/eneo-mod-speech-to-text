@@ -27,7 +27,22 @@ Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-m
 - **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
 - **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
 - **Image:** paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
-- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress.
+- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Innan verklig användning: [acceptansen](#acceptans-innan-verklig-användning).
+
+## Acceptans innan verklig användning
+
+Imagens acceptans i CI kör med stubben som Eneo och bevisar imagen, inte driftsmiljön ([Tester](quality-gates.md#imagens-acceptans)). Driftsätt därför en ny version först för acceptans med påhittat material, gör kontrollerna nedan på den riktiga domänen mot det riktiga Eneo, och släpp sedan in verklig användning med samma image.
+
+- **Inloggningen:** via Eneo och tillbaka till flödeslistan med en ren adress, i ett privat fönster.
+- **Eneos behörighet:** två testkonton i två ytor, med egna flöden och körningar: varje konto når sitt eget (den positiva kontrollen), och inget konto når det andras flöden, körningar, filer, resultat, granskningar eller livesessioner genom modulens adresser. Ett nekat anrop mot något som inte finns bevisar inget.
+- **TLS och cookies:** HTTPS och HSTS från proxyn, sessionscookien `Secure` och `HttpOnly`, modulens headers på plats (`curl -sI <MODULE_PUBLIC_URL>/`).
+- **Proxyn och uppladdningen:** `readTimeout` på ingångspunkten räcker för den långsammaste anslutningen ni lovar (se nedan) och en eventuell body-gräns rymmer `MAX_UPLOAD_BYTES`. Prova med en fil strax under `MAX_UPLOAD_BYTES` (den återupptagbara rutten reserverar 4 096 byte under taket, så en fil på exakt taket avvisas) från webbläsaren över en anslutning vid den hastigheten, med ett avbrott och en återupptagning på vägen, och se att en fil över taket avvisas med 413. Använder en klient multipart-rutten direkt är det hela filen i ett anrop som ska hinna. Höj inte produktionens gränser för att få provet att gå igenom.
+- **Volymen `spool`:** ligger på disk, rymmer `MAX_CONCURRENT_UPLOADS` × `MAX_UPLOAD_BYTES`, och ingen annan tjänst läser den.
+- **Loggarna:** proxyns logg skriver inte `/api/auth/callback?…` ([Loggar](#loggar)).
+- **En äldre Safari (17 eller 18) på en riktig enhet:** konto-menyn, väljaren och dialogerna går att använda med touch och tangentbord, mikrofonen fungerar, en avbruten inspelning kan fortsättas, och en osänd inspelning finns kvar efter utloggning och ny inloggning i samma webbläsarprofil.
+- **Ett helt varv:** en livesession, en inspelning, en uppladdning och ett resultat med PDF.
+
+Gör acceptansen innan modulen annonseras, med testkonton i egna ytor, och byt bara en gång: stoppa den gamla versionen, starta den nya, gör kontrollerna, och släpp sedan in verklig användning på samma container. En omstart till bevisar inget och loggar ut alla. Anteckna utfallet där driftsättningen följs upp. Bytet mellan versioner: [Uppgradera](#uppgradera).
 
 ## Uppgradera
 
