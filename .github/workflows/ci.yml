@@ -112,6 +112,11 @@ jobs:
       - run: npm ci
       - name: Install browsers
         run: npx playwright install --with-deps ${{ matrix.suite == 'production' && 'chromium webkit firefox' || matrix.suite == 'webkit' && 'webkit' || matrix.suite == 'firefox' && 'firefox' || 'chromium' }}
+      # Firefox runs Web Audio (the level meter, the silence it hears, the live text's capture) only with a sound server,
+      # which a runner has none of: one that plays into a sink of nothing stands in for a computer's.
+      - name: A sound server for Firefox
+        if: matrix.suite == 'firefox'
+        run: sudo apt-get install -y --no-install-recommends pulseaudio && pulseaudio --start --exit-idle-time=-1
       - name: Production build in three engines
         if: matrix.suite == 'production'
         run: npm run test:prod -- --workers=2 --add-reporter=json
