@@ -58,7 +58,7 @@ function BuildDetails({ build }: { build: BuildIdentity }) {
   return (
     <VStack gap={4}>
       <MetadataList>
-        <MetadataListItem label="Utgåva">{view.release}</MetadataListItem>
+        {view.release && <MetadataListItem label="Utgåva">{view.release}</MetadataListItem>}
         <MetadataListItem label="Commit">{view.commit ? <Code>{view.commit}</Code> : "Okänd"}</MetadataListItem>
         <MetadataListItem label="Byggd">{view.built ?? "Okänd"}</MetadataListItem>
       </MetadataList>

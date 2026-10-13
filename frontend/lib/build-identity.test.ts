@@ -19,18 +19,18 @@ test("a release shows the release, the commit's first seven characters with its 
   });
 });
 
-test("a build that no release names is a development version, known by its commit", () => {
+test("a build that no release names is known by its commit", () => {
   assert.deepEqual(buildView({ release: null, revision: REVISION, build_date: BUILT }), {
-    release: "Utvecklingsversion",
+    release: null,
     commit: "c5d5460",
     commitUrl: COMMIT_PAGE,
     built: "8 okt 2026 10:04",
   });
 });
 
-test("a build with nothing known says so: a development version with no commit, no link and no time", () => {
+test("a build with nothing known says so: no release, no commit, no link and no time", () => {
   assert.deepEqual(buildView({ release: null, revision: null, build_date: null }), {
-    release: "Utvecklingsversion",
+    release: null,
     commit: null,
     commitUrl: null,
     built: null,
@@ -44,7 +44,7 @@ test("the support text is plain lines: the product, every value whole as the bac
   );
   assert.equal(
     supportText({ release: null, revision: null, build_date: null }, "http://localhost:3002"),
-    ["Tal till text", "Utgåva: utvecklingsversion", "Commit: okänd", "Byggd: okänd", "Adress: http://localhost:3002"].join("\n"),
+    ["Tal till text", "Utgåva: okänd", "Commit: okänd", "Byggd: okänd", "Adress: http://localhost:3002"].join("\n"),
   );
 });
 

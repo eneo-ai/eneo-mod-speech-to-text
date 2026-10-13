@@ -90,11 +90,11 @@ test("the commit opens its page on GitHub in a new tab, and Kopiera supportinfor
   assert.ok(button("Kopierat"), "and says so");
 });
 
-test("a build with nothing known is a development version, says Okänd, and links to no commit", async (t) => {
+test("a build with nothing known names no release, says Okänd, and links to no commit", async (t) => {
   useFetch(t, async () => json({ ok: true, release: null, revision: null, build_date: null }));
   const { trigger, press, rows, button, container } = await versionInfo();
   await press(trigger());
-  assert.deepEqual(rows(), [["Utgåva", "Utvecklingsversion"], ["Commit", "Okänd"], ["Byggd", "Okänd"]]);
+  assert.deepEqual(rows(), [["Commit", "Okänd"], ["Byggd", "Okänd"]]);
   assert.equal(container.querySelector("a[href]"), null);
   assert.ok(button("Kopiera supportinformation"));
 });

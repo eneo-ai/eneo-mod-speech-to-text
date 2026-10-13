@@ -1,8 +1,6 @@
 - main:
   - heading "Välj ett flöde" [level=1]
   - button "Version" [expanded]
-  - term: Utgåva
-  - definition: Utvecklingsversion
   - term: Commit
   - definition: Okänd
   - term: Byggd

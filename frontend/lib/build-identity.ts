@@ -12,12 +12,12 @@ import { PRODUCT_NAME } from "./product";
 export const SOURCE_REPOSITORY = "https://github.com/eneo-ai/eneo-mod-speech-to-text";
 
 /**
- * A build as the page shows it: the release, or "Utvecklingsversion" for a build no release names; the commit's first
- * seven characters and its page on GitHub; when it was built. Null where it is not known.
+ * A build as the page shows it: the release; the commit's first seven characters and its page on GitHub; when it was
+ * built. Null where it is not known: a deployment of `latest` or of a commit's tag names no release, and is known by its commit.
  */
 export function buildView(build: BuildIdentity) {
   return {
-    release: build.release ?? "Utvecklingsversion",
+    release: build.release,
     commit: build.revision?.slice(0, 7) ?? null,
     commitUrl: build.revision ? `${SOURCE_REPOSITORY}/commit/${build.revision}` : null,
     built: build.build_date ? formatDateTime(build.build_date) : null,
@@ -28,7 +28,7 @@ export function buildView(build: BuildIdentity) {
 export function supportText(build: BuildIdentity, origin: string): string {
   return [
     PRODUCT_NAME,
-    `Utgåva: ${build.release ?? "utvecklingsversion"}`,
+    `Utgåva: ${build.release ?? "okänd"}`,
     `Commit: ${build.revision ?? "okänd"}`,
     `Byggd: ${build.build_date ?? "okänd"}`,
     `Adress: ${origin}`,
