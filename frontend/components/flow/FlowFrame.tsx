@@ -11,8 +11,8 @@ import { PRODUCT_NAME } from "@/lib/product";
 /**
  * The frame of every view of a flow's page: the top bar, the skip link, the one main region and the page's width.
  *
- * The bar is the same in every state: the way back ("Alla flöden") at every width, after the brand from a laptop's
- * width, and the account (signing out asks first while leaving would lose something). `aside` (the flow, beside the
+ * The bar is the same in every state: the way back ("Alla flöden") at every width, after the brand (a link to the
+ * flows too) from a laptop's width, and the account (signing out asks first while leaving would lose something). `aside` (the flow, beside the
  * working card from a laptop's width) says the flow's name; a view without one names the flow in the bar on a phone
  * or tablet. Locked, it offers no way off the page at all.
  */
@@ -38,9 +38,10 @@ export function FlowFrame({
 }) {
   const heading = (
     <>
-      {/* No link: the way back beside it is the one to the flows. */}
+      {/* A link to the flows as on every page, beside the way back: a lockup is where people look for home. Leaving
+          asks first while it would lose something, as the way back does; locked, neither leads off the page. */}
       <span className={[styles.bare, styles.fromLaptop].join(" ")}>
-        <HeaderBrand linked={false} />
+        <HeaderBrand linked={!locked} />
       </span>
       {!locked && <BackToFlows variant="ghost" />}
     </>

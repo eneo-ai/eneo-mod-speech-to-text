@@ -2,7 +2,9 @@
 
 ## Format
 
-Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus när flödet accepterar det (Safari: `audio/mp4`), i mono och med en bithastighet som passar tal. Den ber `MediaRecorder` om korta delar (2 sekunder), så att långa möten inte bygger upp en enda stor intern buffer: ett möte på fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
+Inspelaren använder ett komprimerat webbläsarformat, i första hand WebM/Opus när flödet accepterar det (en webbläsare utan WebM-inspelning: `audio/mp4`), i mono och med en bithastighet som passar tal. Den ber `MediaRecorder` om korta delar (2 sekunder), så att långa möten inte bygger upp en enda stor intern buffer: ett möte på fem timmar blir i Chrome ungefär 72 MB. Eneo-körningen startar först när hela ljudfilen har laddats upp och ett `file_id` finns. Strömma strömmar bara en förhandstext, se [Eneo-integration](eneo-integration.md#live-text-strömma).
+
+Innan en del laddas upp får WebM-filen det en spelare behöver. Chrome skriver ingen längd i filen, så den skrivs in (`frontend/lib/webm-duration.ts`). Safari markerar inga ljudblock som keyframes, och utan den markeringen kan Chrome och Edge inte spola i filen och spelar den inte alls. Därför markeras varje block (`frontend/lib/webm-keyframes.ts`). Ändringen är en byte per block, och resten av filen är oförändrad. Chromes och Firefox filer är redan markerade och lämnas som de är.
 
 ## Inspelningen sparas på enheten
 

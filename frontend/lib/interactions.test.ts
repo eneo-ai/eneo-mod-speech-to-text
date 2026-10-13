@@ -912,11 +912,11 @@ test("upload under way: the header offers no way off the page, which would abort
   await view.unmount();
 });
 
-test("every state of the flow's page keeps the same bar: the way back and the account (signing out asks first while something would be lost)", async () => {
+test("every state of the flow's page keeps the same bar: the way back, the brand and the account (signing out asks first while something would be lost)", async () => {
   const { createElement } = await import("react");
   const { FlowFrame } = await import("../components/flow/FlowFrame");
   const view = await mount((await signedIn(createElement(FlowFrame, { fill: true, children: null }))).tree);
-  assert.deepEqual(exits(view.container), { links: 1, account: 1 });
+  assert.deepEqual(exits(view.container), { links: 2, account: 1 });
   await view.unmount();
 });
 

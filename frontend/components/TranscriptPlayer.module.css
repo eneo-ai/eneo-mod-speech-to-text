@@ -494,6 +494,20 @@
 .word {
   border-radius: var(--radius-inner);
   box-decoration-break: clone;
+  /* The playhead's word fades in as the last fades out, a few times a second: short, and only its colours, so nothing
+     moves and reduced motion keeps it. */
+  transition:
+    background-color var(--module-duration-quick) var(--module-ease-smooth-out),
+    color var(--module-duration-quick) var(--module-ease-smooth-out);
+}
+
+/* Pressing the text plays from it: under a mouse, the word that would play shows it, or the sentence where words have no
+   times. A touch screen has no hover to show it on. */
+@media (hover: hover) and (pointer: fine) {
+  .sentence:not(.choosable) .word[data-word-start]:not(.lit):hover,
+  .sentence:not(.choosable):not(:has([data-word-start])):hover {
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+  }
 }
 
 /* An uncertain word: a tint and a wavy line (the line stays in forced colours, which drop the tint). */

@@ -90,8 +90,14 @@ const CHIP_LIMIT = 5;
 /**
  * The transcript's keys, outside its controls and text: Space or K plays and
  * pauses, the arrow keys move five seconds, J and L ten. `skipMs` 0 toggles.
+ * A key held with Ctrl, Cmd or Alt is the browser's or the system's (Alt+←
+ * goes back, Cmd+K, Ctrl+L), never the player's.
  */
-export function shortcut(key: string): { skipMs: number; preventDefault: boolean } | null {
+export function shortcut({ key, altKey, ctrlKey, metaKey }: Pick<KeyboardEvent, "key" | "altKey" | "ctrlKey" | "metaKey">): {
+  skipMs: number;
+  preventDefault: boolean;
+} | null {
+  if (altKey || ctrlKey || metaKey) return null;
   switch (key.length === 1 ? key.toLowerCase() : key) {
     case " ":
     case "k":
@@ -406,7 +412,7 @@ export function TranscriptPlayer(
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLElement>) {
-    const action = shortcut(e.key);
+    const action = shortcut(e);
     if (!action) return;
     const target = e.target as HTMLElement;
     // The position slider moves by its own keys; controls and text fields keep theirs.
@@ -452,13 +458,11 @@ export function TranscriptPlayer(
     const selection = window.getSelection();
     if (selection && !selection.isCollapsed) return;
     if (editingIndex >= 0) return;
+    // A word plays from where it is said, as "Spela från" plays the passage: also from a pause. Without word times, from
+    // the sentence's start.
     const wordEl = (e.target as HTMLElement).closest<HTMLElement>("[data-word-start]");
     const wordTime = wordEl ? Number(wordEl.dataset.wordStart) : Number.NaN;
-    seekTo(
-      part.segment.fileIndex,
-      Number.isFinite(wordTime) ? wordTime : part.segment.start,
-      !paused,
-    );
+    seekTo(part.segment.fileIndex, Number.isFinite(wordTime) ? wordTime : part.segment.start, true);
   }
 
   function commitLine(segmentIndex: number, newText: string) {

@@ -11,6 +11,7 @@
 import type { Json } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
+import { withKeyframes } from "./webm-keyframes";
 
 type RecordingState =
   | "recording"
@@ -497,8 +498,8 @@ export class RecordingStore {
         const chunks = [...bySeq.values()].sort((a, b) => a.seq - b.seq);
         const bytes = chunks.reduce((sum, { data }) => sum + (data instanceof Blob ? data.size : data.byteLength), 0);
         const whole = chunks.length === part.chunks && chunks.every((chunk, i) => chunk.seq === i) && bytes === part.bytes;
-        const data: Array<Blob | ArrayBuffer | Uint8Array<ArrayBuffer>> = chunks.map((chunk) => chunk.data);
-        // A WebM file's first chunk holds its whole header; MP4 carries its own duration.
+        // Safari's WebM is made seekable in Chromium; a WebM file's first chunk holds its whole header; MP4 carries its own duration.
+        const data = await withKeyframes(chunks.map((chunk) => chunk.data), type);
         if (data.length > 0) {
           data[0] = await withRecordedDuration(data[0], part.durationMs, type);
         }

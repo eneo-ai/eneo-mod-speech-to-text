@@ -2,8 +2,10 @@
   - /url: "#astryx-app-shell-main"
 - banner:
   - navigation "Tal till text":
-    - img "Sundsvalls kommun"
-    - text: ""
+    - link "Tal till text – Sundsvalls kommun":
+      - /url: /flows
+      - img "Sundsvalls kommun"
+      - text: ""
     - link "Alla flöden":
       - /url: /flows
       - text: ""

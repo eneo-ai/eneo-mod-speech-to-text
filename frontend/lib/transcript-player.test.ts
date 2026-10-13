@@ -146,15 +146,21 @@ test("the highlight follows the playhead in each part's own time, as the transcr
   assert.equal(highlighted(), 2, "the second part's segment, not one 5 s into the first");
 });
 
-test("the transcript's keys: Space and K play or pause, arrows move 5 s, J and L 10 s", () => {
-  assert.deepEqual(shortcut(" "), { skipMs: 0, preventDefault: true });
-  assert.deepEqual(shortcut("K"), { skipMs: 0, preventDefault: true });
-  assert.deepEqual(shortcut("ArrowLeft"), { skipMs: -5_000, preventDefault: true });
-  assert.deepEqual(shortcut("ArrowRight"), { skipMs: 5_000, preventDefault: true });
-  assert.deepEqual(shortcut("j"), { skipMs: -10_000, preventDefault: false });
-  assert.deepEqual(shortcut("l"), { skipMs: 10_000, preventDefault: false });
-  assert.equal(shortcut("a"), null);
-  assert.equal(shortcut("Enter"), null);
+test("the transcript's keys: Space and K play or pause, arrows move 5 s, J and L 10 s; held with Ctrl, Cmd or Alt they are not the player's", () => {
+  const key = (name: string, held: Partial<Record<"altKey" | "ctrlKey" | "metaKey", boolean>> = {}) =>
+    shortcut({ key: name, altKey: false, ctrlKey: false, metaKey: false, ...held });
+  assert.deepEqual(key(" "), { skipMs: 0, preventDefault: true });
+  assert.deepEqual(key("K"), { skipMs: 0, preventDefault: true });
+  assert.deepEqual(key("ArrowLeft"), { skipMs: -5_000, preventDefault: true });
+  assert.deepEqual(key("ArrowRight"), { skipMs: 5_000, preventDefault: true });
+  assert.deepEqual(key("j"), { skipMs: -10_000, preventDefault: false });
+  assert.deepEqual(key("l"), { skipMs: 10_000, preventDefault: false });
+  assert.equal(key("a"), null);
+  assert.equal(key("Enter"), null);
+  // The browser's and the system's: Alt+← goes back, Cmd+K and Ctrl+L are theirs.
+  assert.equal(key("ArrowLeft", { altKey: true }), null);
+  assert.equal(key("k", { metaKey: true }), null);
+  assert.equal(key("l", { ctrlKey: true }), null);
 });
 
 test("turn times read like the player's clock, m:ss, each in its own part's time", () => {
