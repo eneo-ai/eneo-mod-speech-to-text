@@ -37,6 +37,11 @@ ORIGIN = main.settings.module_origin
 HEADERS_FILE = Path(web.__file__).with_name("security_headers.json")
 SANDBOX = "default-src 'none'; style-src 'unsafe-inline'; sandbox"
 SIGNED = "https://eneo.example.test/api/v1/files/file-1/download/?token=abc"
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+BUILT = "2026-10-13T08:15:00Z"
+# A build that knows nothing of itself, and what /health answers for it: a checkout has no build record and names no release.
+UNKNOWN_BUILD_FIELDS = {"revision": None, "build_date": None, "release": None}
+UNKNOWN_BUILD = {"ok": True, **UNKNOWN_BUILD_FIELDS}
 
 
 def default_headers() -> dict[str, str]:
@@ -220,13 +225,75 @@ class SecurityHeadersTests(HeadersCase):
         openapi = self.client.get("/openapi.json")
         self.assertEqual((openapi.status_code, openapi.json()), (404, {"detail": "Not Found"}))
 
+
+class HealthTests(HeadersCase):
+    """/health and /api/healthz: that the backend answers, and which build it is (the settings' revision, build date and release)."""
+
+    PATHS = ("/health", "/api/healthz")
+
+    def running(self, **build: str | None) -> None:
+        for name, value in build.items():
+            self.addCleanup(setattr, main.settings, name, getattr(main.settings, name))
+            setattr(main.settings, name, value)
+
     def test_health_is_a_real_route_for_get_and_head(self) -> None:
-        for path in ("/health", "/api/healthz"):
+        self.running(**UNKNOWN_BUILD_FIELDS)
+        for path in self.PATHS:
             with self.subTest(path):
                 got, head = self.anonymous.get(path), self.anonymous.head(path)
 
-                self.assertEqual((got.status_code, got.json()), (200, {"ok": True}))
+                self.assertEqual((got.status_code, got.json()), (200, UNKNOWN_BUILD))
                 self.assertEqual((head.status_code, head.content), (200, b""))
+
+    def test_a_ci_build_answers_its_commit_and_its_build_date_and_no_release_until_the_deployment_names_one(self) -> None:
+        self.running(revision=COMMIT, build_date=BUILT, release=None)
+        for path in self.PATHS:
+            with self.subTest(path):
+                self.assertEqual(self.anonymous.get(path).content, f'{{"ok":true,"revision":"{COMMIT}","build_date":"{BUILT}","release":null}}'.encode())
+
+        self.running(release="v0.1.1")
+        for path in self.PATHS:
+            with self.subTest(path, release="v0.1.1"):
+                self.assertEqual(self.anonymous.get(path).json(), {"ok": True, "revision": COMMIT, "build_date": BUILT, "release": "v0.1.1"})
+
+    def test_a_local_build_answers_null_for_what_it_does_not_know_and_invents_nothing(self) -> None:
+        self.running(**UNKNOWN_BUILD_FIELDS)
+        for path in self.PATHS:
+            with self.subTest(path):
+                self.assertEqual(self.anonymous.get(path).content, b'{"ok":true,"revision":null,"build_date":null,"release":null}')
+
+    def test_a_release_is_answered_also_when_the_image_does_not_know_its_commit(self) -> None:
+        self.running(revision=None, build_date=None, release="v0.1.1")
+        for path in self.PATHS:
+            with self.subTest(path):
+                self.assertEqual(self.anonymous.get(path).json(), {"ok": True, "revision": None, "build_date": None, "release": "v0.1.1"})
+
+    def test_head_answers_what_get_does_without_the_body(self) -> None:
+        self.running(revision=COMMIT, build_date=BUILT, release="v0.1.1")
+        for path in self.PATHS:
+            with self.subTest(path):
+                got, head = self.anonymous.get(path), self.anonymous.head(path)
+
+                self.assertEqual((head.status_code, head.content), (200, b""))
+                self.assertEqual(dict(head.headers), dict(got.headers))
+                self.assertEqual(int(head.headers["content-length"]), len(got.content))
+
+    def test_the_answer_needs_no_session_and_carries_the_headers_it_always_did(self) -> None:
+        # The build is in the body and nowhere else: no header is added, none is lost, and no cookie is set.
+        expected = {"content-type", "content-length", *(name.lower() for name in default_headers())}
+        for build in (UNKNOWN_BUILD_FIELDS, {"revision": COMMIT, "build_date": BUILT, "release": "v0.1.1"}):
+            self.running(**build)
+            for path in self.PATHS:
+                for method in ("GET", "HEAD"):
+                    with self.subTest(path, method=method, build=build):
+                        response = self.anonymous.request(method, path)
+
+                        self.assertEqual(response.status_code, 200)
+                        self.assertEqual(response.headers["content-type"], "application/json")
+                        # Under /api every answer is no-store; /health, outside it, says nothing of caching.
+                        self.assertEqual(response.headers.get_list("cache-control"), ["no-store"] if path.startswith("/api/") else [])
+                        self.assertEqual(set(response.headers) - {"cache-control"}, expected)
+                        self.assert_default_headers(response)
 
 
 class EndpointHeadersWinTests(HeadersCase):
@@ -390,7 +457,7 @@ def load_app(static_dir: Path | None, **environment: str):
     """
     spec = importlib.util.spec_from_file_location("app_main_with_ui", Path(main.__file__))
     module = importlib.util.module_from_spec(spec)
-    variables = {key: value for key, value in os.environ.items() if key not in ("STATIC_DIR", "ORGANIZATION_NAME", "SHOW_ORGANIZATION")}
+    variables = {key: value for key, value in os.environ.items() if key not in ("STATIC_DIR", "ORGANIZATION_NAME", "SHOW_ORGANIZATION", "MODULE_VERSION")}
     if static_dir is not None:
         variables["STATIC_DIR"] = str(static_dir)
     with patch.dict(os.environ, {**variables, **environment}, clear=True):
@@ -690,7 +757,7 @@ class StaticServingTests(BuiltUiCase):
     def test_the_modules_own_routes_win_over_the_fallback(self) -> None:
         for path in ("/health", "/api/healthz"):
             with self.subTest(path=path):
-                self.assertEqual(self.client.get(path).json(), {"ok": True})
+                self.assertEqual(self.client.get(path).json(), UNKNOWN_BUILD)
         self.assertIn("organization", self.client.get("/api/branding").json())
         theme = self.client.get("/api/branding/theme.css")
         self.assertEqual((theme.status_code, theme.headers["content-type"].split(";")[0]), (200, "text/css"))
@@ -712,8 +779,8 @@ class StaticServingTests(BuiltUiCase):
         self.addCleanup(empty.cleanup)
         client = TestClient(load_app(Path(empty.name)).app, raise_server_exceptions=False)
 
-        self.assertEqual(client.get("/health").json(), {"ok": True})
-        self.assertEqual(client.get("/api/healthz").json(), {"ok": True})
+        self.assertEqual(client.get("/health").json(), UNKNOWN_BUILD)
+        self.assertEqual(client.get("/api/healthz").json(), UNKNOWN_BUILD)
         self.assertEqual(client.get("/").status_code, 404)
 
     def test_without_a_static_dir_the_app_serves_no_page_and_nothing_else_changes(self) -> None:
@@ -722,7 +789,7 @@ class StaticServingTests(BuiltUiCase):
         for path in ("/", "/flows/abc", "/index.html", "/assets/app.js"):
             with self.subTest(path=path):
                 self.assertEqual(client.get(path).status_code, 404)
-        self.assertEqual(client.get("/health").json(), {"ok": True})
+        self.assertEqual(client.get("/health").json(), UNKNOWN_BUILD)
         self.assertEqual(client.get("/api/nope").json(), {"detail": "Not Found"})
 
 

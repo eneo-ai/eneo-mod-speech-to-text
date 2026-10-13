@@ -168,6 +168,13 @@ jobs:
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
         with:
           driver-opts: network=host
+      # What the image says it was built from, in its labels and on /health (Dockerfile): the commit that is checked out, and
+      # the clock read once, so every place that says the build date says the same.
+      - name: Read the commit and the time of the build
+        id: source
+        run: |
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "built=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Build the image, with its SBOM and provenance
         id: build
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
@@ -177,7 +184,11 @@ jobs:
           tags: ${{ env.CANDIDATE }}:ci
           sbom: true
           provenance: mode=max
-      # Check 12 of the acceptance looks for the speaker review's text in a build with it on. This image is not published.
+          build-args: |
+            SOURCE_REVISION=${{ steps.source.outputs.revision }}
+            BUILD_DATE=${{ steps.source.outputs.built }}
+      # Check 12 of the acceptance looks for the speaker review's text in a build with it on, and check 17 holds it to saying
+      # no commit: it is built without the two arguments above. This image is not published.
       - name: Build the speaker-review image
         run: docker build --build-arg SPEAKER_REVIEW_ENABLED=true -t eneo-mod-speech-to-text:acceptance-review .
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -202,6 +213,8 @@ jobs:
         env:
           ACCEPT_IMAGE: ${{ env.CANDIDATE }}@${{ steps.build.outputs.digest }}
           ACCEPT_SKIP_BUILD: "1"
+          # The commit the image has to say it was built from (check 17).
+          ACCEPT_REVISION: ${{ steps.source.outputs.revision }}
         run: deploy/acceptance.sh
       - name: Keep the tested image, exactly
         run: |

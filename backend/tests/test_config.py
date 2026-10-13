@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from app import config
 from app.accent import Accent
 from app.config import LogoSize, LogoSizes, Organization, Settings, load_settings
 
@@ -472,6 +473,147 @@ class OrganizationTests(unittest.TestCase):
             with self.subTest(overrides=overrides), self.assertRaises(RuntimeError) as raised:
                 self.load(**overrides)
             self.assertIn(message, str(raised.exception))
+
+
+COMMIT = "0123456789abcdef0123456789abcdef01234567"
+BUILT = "2026-10-13T08:15:00Z"
+
+
+class BuildIdentityTests(unittest.TestCase):
+    """Which build runs: the commit and the build date of the image's build record, and the release MODULE_VERSION names."""
+
+    def setUp(self) -> None:
+        folder = tempfile.TemporaryDirectory()
+        self.addCleanup(folder.cleanup)
+        self.folder = Path(folder.name)
+
+    def record(self, name: str, content: str | bytes | None) -> Path:
+        """A build record of its own name: the record of a path is read once, so each test has its own."""
+        path = self.folder / name
+        if content is not None:
+            path.write_bytes(content.encode() if isinstance(content, str) else content)
+        return path
+
+    def load(self, record: Path, **overrides: str) -> Settings:
+        with patch.dict(os.environ, valid_environment() | overrides, clear=True), patch.object(config, "BUILD_RECORD", record):
+            return load_settings()
+
+    def test_the_record_of_a_ci_build_is_the_commit_and_the_build_date(self) -> None:
+        with self.assertNoLogs("eneo_config"):
+            settings = self.load(self.record("ci.json", f'{{"revision": "{COMMIT}", "build_date": "{BUILT}"}}'))
+
+        self.assertEqual((settings.revision, settings.build_date), (COMMIT, BUILT))
+
+    def test_the_record_of_a_build_without_arguments_says_neither_and_that_is_no_problem(self) -> None:
+        with self.assertNoLogs("eneo_config"):
+            settings = self.load(self.record("local.json", '{"revision": null, "build_date": null}'))
+
+        self.assertEqual((settings.revision, settings.build_date), (None, None))
+
+    def test_a_record_may_say_one_of_the_two(self) -> None:
+        with self.assertNoLogs("eneo_config"):
+            settings = self.load(self.record("commit-only.json", f'{{"revision": "{COMMIT}", "build_date": null}}'))
+
+        self.assertEqual((settings.revision, settings.build_date), (COMMIT, None))
+
+    def test_a_missing_record_says_so_once_and_the_module_starts_without_an_identity(self) -> None:
+        record = self.record("missing.json", None)
+
+        with self.assertLogs("eneo_config", level="INFO") as logs:
+            settings = self.load(record)
+        self.assertEqual((settings.revision, settings.build_date), (None, None))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn(str(record), logs.output[0])
+        # Read once: the launcher and the app both load the settings, and the second reading says nothing again.
+        with self.assertNoLogs("eneo_config"):
+            self.assertEqual(self.load(record).revision, None)
+
+    def test_a_record_that_cannot_be_used_says_so_once_and_gives_neither_value(self) -> None:
+        for number, content in enumerate(
+            (
+                "",
+                "not json",
+                b"\xff\xfe\x00",
+                "[]",
+                '"a string"',
+                "{}",
+                f'{{"revision": "{COMMIT}"}}',  # no build date: a record says both, with null for what it does not know
+                f'{{"build_date": "{BUILT}"}}',
+                f'{{"revision": "{COMMIT[:7]}", "build_date": "{BUILT}"}}',  # an abbreviated commit
+                f'{{"revision": "{COMMIT.upper()}", "build_date": "{BUILT}"}}',
+                f'{{"revision": "{COMMIT} ", "build_date": "{BUILT}"}}',
+                f'{{"revision": "", "build_date": "{BUILT}"}}',
+                f'{{"revision": 123, "build_date": "{BUILT}"}}',
+                f'{{"revision": "{COMMIT}", "build_date": ""}}',
+                f'{{"revision": "{COMMIT}", "build_date": "yesterday"}}',
+                f'{{"revision": "{COMMIT}", "build_date": "2026-13-45T08:15:00Z"}}',  # the shape of a time, and no time
+                f'{{"revision": "{COMMIT}", "build_date": "2026-10-13T08:15:00+02:00"}}',  # not UTC as the build writes it
+                f'{{"revision": "{COMMIT}", "build_date": "2026-10-13"}}',
+                f'{{"revision": "{COMMIT}", "build_date": 1791879300}}',
+            )
+        ):
+            with self.subTest(content=content):
+                record = self.record(f"{number}.json", content)
+
+                with self.assertLogs("eneo_config", level="WARNING") as logs:
+                    settings = self.load(record)
+
+                # Neither value, also when one of them was good: half a record is not trusted.
+                self.assertEqual((settings.revision, settings.build_date), (None, None))
+                self.assertEqual(len(logs.output), 1)
+                self.assertIn(str(record), logs.output[0])
+
+    def test_a_folder_where_the_record_should_be_does_not_stop_the_start(self) -> None:
+        record = self.folder / "a-folder.json"
+        record.mkdir()
+
+        with self.assertLogs("eneo_config", level="WARNING") as logs:
+            settings = self.load(record)
+
+        self.assertEqual((settings.revision, settings.build_date, len(logs.output)), (None, None, 1))
+
+    def test_only_a_version_tag_is_a_release(self) -> None:
+        record = self.record("release.json", '{"revision": null, "build_date": null}')
+        for raw, expected in (
+            ("v0.1.1", "v0.1.1"),
+            ("v10.20.30", "v10.20.30"),
+            (None, None),  # not set: a start outside Compose
+            ("", None),
+            ("latest", None),
+            (f"sha-{COMMIT}", None),
+            ("0.1.1", None),
+            ("V0.1.1", None),
+            ("v0.1", None),
+            ("v0.1.1.1", None),
+            ("v0.1.1-rc1", None),
+            (" v0.1.1", None),
+            ("v0.1.1\n", None),
+            ("v٠.١.١", None),  # digits of another script are not a tag release.yml takes
+            ("main", None),
+            ("release", None),
+        ):
+            with self.subTest(raw=raw):
+                settings = self.load(record, **({} if raw is None else {"MODULE_VERSION": raw}))
+
+                self.assertEqual(settings.release, expected)
+
+    def test_the_release_and_the_build_record_do_not_depend_on_each_other(self) -> None:
+        # release.yml gives a tested image its version without building it again: the image cannot know its release, and the
+        # deployment cannot know the commit.
+        with self.assertLogs("eneo_config", level="INFO"):
+            released = self.load(self.record("no-record.json", None), MODULE_VERSION="v0.1.1")
+        built = self.load(self.record("built.json", f'{{"revision": "{COMMIT}", "build_date": "{BUILT}"}}'), MODULE_VERSION="latest")
+
+        self.assertEqual((released.revision, released.build_date, released.release), (None, None, "v0.1.1"))
+        self.assertEqual((built.revision, built.build_date, built.release), (COMMIT, BUILT, None))
+
+    def test_nothing_about_the_build_is_known_unless_it_is_said(self) -> None:
+        fields = Settings.model_fields
+
+        self.assertEqual([fields[name].default for name in ("revision", "build_date", "release")], [None, None, None])
+        # A checkout has no record: the file is written by the Dockerfile, into the image.
+        self.assertEqual(config.BUILD_RECORD, Path(config.__file__).with_name("build_record.json"))
+        self.assertFalse(config.BUILD_RECORD.exists())
 
 
 if __name__ == "__main__":

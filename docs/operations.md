@@ -27,7 +27,7 @@ Du behöver två filer från [GitHub-utgåvan](https://github.com/eneo-ai/eneo-m
 - **Dokploy:** skapa ett Compose-projekt, klistra in `docker-compose.yml` och variablerna under Environment, lägg domänen på tjänsten `speech-to-text` med port 3001 och driftsätt. Dokploy och Traefik sköter HTTPS-certifikatet.
 - **Portainer:** skapa en stack med Web editor, klistra in `docker-compose.yml` och lägg variablerna under Environment variables. Tjänsten lyssnar på 3001 och publicerar ingen port på värden: en omvänd proxy på samma nätverk når den som `speech-to-text:3001`, och `ports: ["127.0.0.1:3001:3001"]` i stacken gör den nåbar från värden.
 - **Image:** paketet ska vara publikt; annars behöver Dokploy eller Portainer en inloggning mot `ghcr.io`.
-- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200, och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Innan verklig användning: [acceptansen](#acceptans-innan-verklig-användning).
+- **Verifiera:** `<MODULE_PUBLIC_URL>/health` svarar 200 med den utgåva och commit som körs ([Vilken version som körs](#vilken-version-som-körs)), och inloggningen via Eneo leder tillbaka till flödeslistan med en ren adress. Innan verklig användning: [acceptansen](#acceptans-innan-verklig-användning).
 
 ## Acceptans innan verklig användning
 
@@ -46,7 +46,33 @@ Gör acceptansen innan modulen annonseras, med testkonton i egna ytor, och byt b
 
 ## Uppgradera
 
-Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Med `latest` hämtas ingen ny image om en med det namnet redan finns på värden, så fäst en version. Driftsätt genom att stoppa den gamla containern och sedan starta den nya: sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Att gå tillbaka är att byta tillbaka.
+Byt `MODULE_VERSION` till den nya taggen (`vX.Y.Z`) och driftsätt om. Med `latest` hämtas ingen ny image om en med det namnet redan finns på värden, så fäst en version. Driftsätt genom att stoppa den gamla containern och sedan starta den nya: sessionerna ligger i processens minne, så två containrar samtidigt skickar personer fel, och alla loggar in igen efter bytet. Att gå tillbaka är att byta tillbaka. Efter bytet svarar `/health` med den nya utgåvan.
+
+## Vilken version som körs
+
+`<MODULE_PUBLIC_URL>/health` svarar utan inloggning med vilket bygge som körs. Ange `revision` i en felanmälan: den pekar ut koden exakt, också när utgåvan är okänd.
+
+```
+curl -fsS https://transkribering.example.org/health
+{"ok":true,"revision":"<commit, 40 tecken>","build_date":"2026-01-31T12:00:00Z","release":"v1.2.3"}
+```
+
+| Fält | Betydelse | `null` när |
+|---|---|---|
+| `release` | Utgåvan som körs: `MODULE_VERSION`, när värdet är en versionstagg (`vX.Y.Z`). | `MODULE_VERSION` är `latest`, en `sha-<commit>`-tagg, tom eller något annat; containern inte har fått variabeln; imagen är byggd lokalt med `docker-compose.override.yml`. |
+| `revision` | Den commit imagen byggdes från. | Imagen är byggd utan byggargument, som ett lokalt bygge. |
+| `build_date` | När imagen byggdes, i UTC. Det är byggets tid, inte utgåvans och inte driftsättningens. | Som `revision`. |
+
+- **Utgåvan kommer från driftsättningen, inte från imagen.** En utgåva ger en redan testad image sin tagg utan att bygga om den, så imagen känner inte sin egen utgåva. `docker-compose.yml` skickar därför `MODULE_VERSION` till containern, samma värde som väljer imagens tagg. Med `latest` är utgåvan okänd: fäst en version för att se den.
+- **Commiten och byggtiden kommer från imagen.** De står också som imagens etiketter och går att läsa utan att starta den:
+
+  ```
+  docker inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' ghcr.io/eneo-ai/eneo-mod-speech-to-text:v1.2.3
+  ```
+
+  Etiketterna är `org.opencontainers.image.revision`, `org.opencontainers.image.created` och `org.opencontainers.image.source`. Commiten för en utgåva är den som taggen `vX.Y.Z` står på i repot: [utgåvan kontrollerar det](#ci-och-utgåvor).
+
+Hur backenden läser värdena: [Backend](backend.md#hälsokontrollen).
 
 ## Miljövariabler
 
@@ -54,7 +80,7 @@ Backend läser miljön en gång vid start (`load_settings` i `backend/app/config
 
 | Variabel | Standard | Regel och betydelse |
 |---|---|---|
-| `MODULE_VERSION` | `latest` | Bara för `docker-compose.yml`: imagens tagg. |
+| `MODULE_VERSION` | `latest` | Imagens tagg i `docker-compose.yml`, som också skickar värdet till containern. En versionstagg (`vX.Y.Z`) är utgåvan i `/health`; alla andra värden ger ingen känd utgåva och stoppar aldrig starten ([Vilken version som körs](#vilken-version-som-körs)). |
 | `ENEO_BACKEND_URL` | | Absolut http(s)-URL utan query eller fragment: dit modulen når Eneos API (`http://backend:8000` på Eneos `module_net`). |
 | `ENEO_PUBLIC_URL` | | Eneos publika adress, dit webbläsaren skickas för att logga in. `https`; `http` bara för `localhost`, `127.0.0.1` och `[::1]`, annars stoppas starten. |
 | `MODULE_PUBLIC_URL` | | Modulens publika adress. Samma regel som `ENEO_PUBLIC_URL`. Ger callback-URL:en och den tillåtna `Origin`. |
@@ -178,7 +204,9 @@ Inför första publiceringen behöver en repoadministratör välja **Settings �
 
 Om bygget lyckas men publiceringen svarar med `404 Not Found`, kontrollera Pages-inställningen. Kör sedan det misslyckade jobbet igen, eller välj **Actions → Docs → Run workflow → main** för att bygga, kontrollera och publicera på nytt. Manuella körningar på andra grenar bygger och kontrollerar sajten utan att publicera den.
 
-`release.yml` körs när en tagg `vX.Y.Z` pushas. Den bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest` med samma digest och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart.
+När CI bygger imagen (`ci.yml`, jobbet `image`) får bygget commiten och en tidpunkt som läses en gång. `Dockerfile` skriver dem både som imagens etiketter och i byggposten som backenden svarar med på `/health`, och imagens acceptans kräver att de två säger samma sak ([Vilken version som körs](#vilken-version-som-körs)).
+
+`release.yml` körs när en tagg `vX.Y.Z` pushas. Den bygger ingenting: den kopierar imagen `sha-<commit>` som CI testade till `vX.Y.Z` och `latest` med samma digest, kontrollerar att imagen under `vX.Y.Z` är byggd från den taggade commiten (etiketten `org.opencontainers.image.revision`) och skapar en GitHub-utgåva med `docker-compose.yml` och `env.example`. En commit som CI inte gått igenom på `main` har ingen image, och taggen misslyckas då: kör jobbet igen när CI är klart. Säger imagen en annan commit skapas ingen GitHub-utgåva; taggarna i registret pekar då redan på imagen och rättas för hand.
 
 ```
 git tag v1.2.3 <commit på main>

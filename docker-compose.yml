@@ -1,11 +1,14 @@
 # En modul, en image, en process: tjänsten kör den publicerade imagen, som serverar både gränssnittet och API:t på port 3001.
 # Filen hämtar och kör: klistra in den tillsammans med variablerna i Dokploy eller Portainer. Versionen väljs med MODULE_VERSION
-# (en tagg vX.Y.Z eller latest). docker-compose.override.yml bygger imagen lokalt i stället; den filen är utvecklarens och används inte där.
+# (en tagg vX.Y.Z eller latest), som också skickas in i containern: en tagg vX.Y.Z är utgåvan som /health svarar med.
+# docker-compose.override.yml bygger imagen lokalt i stället; den filen är utvecklarens och används inte där.
 # Containern är låst så långt modulen tillåter: skrivskyddad rotfilsystem, inga Linux-capabilities, inga nya privilegier.
 services:
   speech-to-text:
     image: ghcr.io/eneo-ai/eneo-mod-speech-to-text:${MODULE_VERSION:-latest}
     environment:
+      # Samma värde som imagens tagg ovan, så att modulen kan säga vilken utgåva som körs. Bara en tagg vX.Y.Z är en utgåva.
+      MODULE_VERSION: ${MODULE_VERSION:-latest}
       ENEO_BACKEND_URL: ${ENEO_BACKEND_URL}
       ENEO_PUBLIC_URL: ${ENEO_PUBLIC_URL}
       MODULE_PUBLIC_URL: ${MODULE_PUBLIC_URL}

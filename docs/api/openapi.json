@@ -746,19 +746,14 @@
         ],
         "summary": "Hälsokontroll (/health)",
         "operationId": "get_health",
-        "description": "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida.",
+        "description": "Imagens egen kontroll. En riktig rutt: ett trasigt bygge av gränssnittet kan inte svara med en sida. Svaret säger också vilket bygge som svarar, utan session.",
         "responses": {
           "200": {
             "description": "Backenden svarar.",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    }
-                  }
+                  "$ref": "#/components/schemas/Health"
                 }
               }
             }
@@ -792,12 +787,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "ok": {
-                      "const": true
-                    }
-                  }
+                  "$ref": "#/components/schemas/Health"
                 }
               }
             }
@@ -4536,6 +4526,54 @@
             "description": "Eneos svar, vilken JSON det än är."
           }
         }
+      },
+      "Health": {
+        "type": "object",
+        "required": [
+          "ok",
+          "revision",
+          "build_date",
+          "release"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Den commit imagen byggdes från, 40 hexadecimala tecken: samma värde som imagens etikett `org.opencontainers.image.revision`. Null för en image som byggts utan byggargument och för en start ur en utcheckning."
+          },
+          "build_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "När imagen byggdes, i UTC (`2026-01-31T12:00:00Z`): samma värde som etiketten `org.opencontainers.image.created`. Det är byggets datum, inte utgåvans eller driftsättningens. Null som `revision`."
+          },
+          "release": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Utgåvan driftsättningen kör: `MODULE_VERSION` när den är en versionstagg (`vX.Y.Z`). Null för `latest`, en `sha-`-tagg, ett tomt eller annat värde och ett lokalt bygge: ingen känd utgåva."
+          }
+        },
+        "description": "Att backenden svarar, och vilket bygge som svarar."
       },
       "Branding": {
         "type": "object",

@@ -1,4 +1,5 @@
-"""What checks.py does with a failure the owner has accepted (waivers.json), and with every other one.
+"""What checks.py does with a failure the owner has accepted (waivers.json), and with every other one; and what check 17 passes
+and refuses, given what an image's labels and its /health say.
 
     python -m unittest deploy/acceptance/test_checks.py      (from the repository root; standard library only)
 
@@ -99,6 +100,85 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(checks.envelope_rate(0.35, 100), 35.0)
         self.assertEqual(checks.envelope_rate(0.35, 60.4), 21.1)
         self.assertEqual(checks.envelope_rate(0.8, 60.4), 48.3)
+
+
+COMMIT, OTHER_COMMIT = "0123456789abcdef0123456789abcdef01234567", "89abcdef0123456789abcdef0123456789abcdef"
+BUILT = "2026-10-13T08:15:00Z"
+SAYS_NOTHING = (None, None)
+
+
+def health(revision: str | None, build_date: str | None) -> dict[str, object]:
+    return {"ok": True, "revision": revision, "build_date": build_date, "release": None}
+
+
+class BuildIdentityCheckTests(unittest.TestCase):
+    """Check 17, given what the two images' labels say and what their /health answers: what it passes and what it refuses."""
+
+    def check(self, image: tuple, review: tuple = (SAYS_NOTHING, health(*SAYS_NOTHING)), *, told: str | None = None) -> str:
+        """Run it where the image under test and the review build each are (what the labels say, what /health answers) and
+        ``told`` is the commit the acceptance was told the image is built from (ACCEPT_REVISION)."""
+        labels = {checks.STACK.image: image[0], checks.STACK.review_image: review[0]}
+        with (
+            patch.object(checks, "labelled", labels.__getitem__),
+            patch.object(checks, "get", lambda url, **kw: types.SimpleNamespace(status=200, json=lambda: image[1])),
+            patch.object(checks, "health_inside", lambda _: review[1]),
+            patch.object(checks.STACK, "revision", told),
+        ):
+            return checks.check_17()
+
+    def test_an_image_ci_built_answers_the_commit_and_the_date_of_its_labels(self) -> None:
+        detail = self.check(((COMMIT, BUILT), health(COMMIT, BUILT)), told=COMMIT)
+
+        self.assertIn(COMMIT, detail)
+        self.assertIn(BUILT, detail)
+
+    def test_a_local_build_says_nothing_in_its_labels_and_answers_null(self) -> None:
+        self.assertIn("null", self.check((SAYS_NOTHING, health(*SAYS_NOTHING))))
+
+    def test_an_answer_that_is_not_what_the_labels_say_is_refused(self) -> None:
+        for name, answered in (
+            ("another commit", health(OTHER_COMMIT, BUILT)),
+            ("another date", health(COMMIT, "2026-10-13T08:15:01Z")),
+            ("no commit: the record was not read", health(None, None)),
+            ("no date", health(COMMIT, None)),
+            ("no such fields", {"ok": True}),
+        ):
+            with self.subTest(name), self.assertRaisesRegex(checks.Failed, "/health"):
+                self.check(((COMMIT, BUILT), answered))
+        with self.assertRaisesRegex(checks.Failed, "/health"):
+            self.check((SAYS_NOTHING, health(COMMIT, BUILT)))  # an answer the labels do not carry
+
+    def test_an_image_that_is_not_of_the_commit_the_acceptance_was_told_is_refused(self) -> None:
+        for name, says in (("another commit", (OTHER_COMMIT, BUILT)), ("no commit: the arguments did not reach the build", SAYS_NOTHING), ("no date", (COMMIT, None))):
+            with self.subTest(name), self.assertRaisesRegex(checks.Failed, "ACCEPT_REVISION"):
+                self.check((says, health(*says)), told=COMMIT)
+
+    def test_a_build_without_arguments_that_says_a_commit_is_refused(self) -> None:
+        image = ((COMMIT, BUILT), health(COMMIT, BUILT))
+        for name, review in (
+            ("in both places", ((COMMIT, BUILT), health(COMMIT, BUILT))),
+            ("a date alone", ((None, BUILT), health(None, BUILT))),
+            ("in its answer only", (SAYS_NOTHING, health(COMMIT, BUILT))),
+            ("in its labels only", ((COMMIT, BUILT), health(*SAYS_NOTHING))),
+        ):
+            with self.subTest(name), self.assertRaises(checks.Failed):
+                self.check(image, review, told=COMMIT)
+
+    def test_a_label_that_is_empty_or_not_there_says_nothing(self) -> None:
+        for labels, expected in (
+            ("null", SAYS_NOTHING),  # an image with no labels at all
+            ({"org.opencontainers.image.source": "https://example.test/repo"}, SAYS_NOTHING),
+            ({"org.opencontainers.image.revision": "", "org.opencontainers.image.created": ""}, SAYS_NOTHING),  # a build without the arguments
+            ({"org.opencontainers.image.revision": COMMIT, "org.opencontainers.image.created": BUILT}, (COMMIT, BUILT)),
+        ):
+            printed = labels if isinstance(labels, str) else json.dumps(labels)
+            with self.subTest(labels=labels), patch.object(checks, "docker", lambda *args, **kw: types.SimpleNamespace(stdout=printed + "\n")):
+                self.assertEqual(checks.labelled("an-image"), expected)
+
+    def test_the_check_runs_before_the_two_that_stop_the_image(self) -> None:
+        self.assertIn(17, checks.CHECKS)
+        self.assertLess(checks.ORDER.index(17), checks.ORDER.index(10))
+        self.assertEqual(sorted(checks.ORDER), sorted(checks.CHECKS))
 
 
 class WaiverFileTests(unittest.TestCase):
