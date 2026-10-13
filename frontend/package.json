@@ -20,6 +20,7 @@
     "test:prod": "npm run build && npm run build:check && playwright test --config playwright.prod.config.ts",
     "test:image": "../deploy/acceptance.sh",
     "ux:shots": "node scripts/ux-shots.mjs",
+    "ci:failure": "node scripts/ci-failure.mjs",
     "verify:candidate": "node scripts/verify-candidate.mjs"
   },
   "dependencies": {

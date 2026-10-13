@@ -60,6 +60,7 @@ Första gången: `npx playwright install chromium` för gaten och `npx playwrigh
 | Rörelse | Inga oändliga animationer med reducerad rörelse. |
 | Tangentbord | Fokus syns (minst 3:1 förändring), skyms inte, lämnar sidan i slutet och ordningen läses uppifrån och ned. |
 | ARIA-ögonblicksbilder | Namn, roller, tillstånd och texten i live-regionerna, jämförd med granskade bilder i `frontend/tests/e2e/aria.spec.ts-snapshots/`. |
+| Stilla sida | Inget som står på skärmen flyttar sig när ett svar kommer. Varje sida öppnas via sin adress och får modulens svar ett i taget, i den ordning den bad om dem; kontroller, rubriker och text mäts före och efter varje svar, på en telefon, en surfplatta och en laptop (`still.spec.ts`). Flyttar som är kvar står med skäl och ärende i specens `KNOWN`, och en rad där faller när sidan står still. |
 
 ```bash
 # Ett läge, smalast och mörkt, medan du bygger det
@@ -165,6 +166,9 @@ CI delar kontrollernas tester i fyra delar och övriga tester mot utvecklingsser
 | `<sida> loads X KB of JS, the budget is Y KB` | Sidan blev tyngre än budgeten | Hitta importen som växte; höj budgeten bara med skäl. |
 | `a <style data-astryx-theme*> means the theme is built in the browser` | Temat byggs i webbläsaren | Importera det byggda temat, `kit/theme/built/eneo`. |
 | Konsolfel i ett produktionstest | Oftast en CSP-vägran | Felet anger vilket direktiv som stoppade vad. |
+| `what moved on screen when no one pressed anything` | Något på skärmen flyttade när ett svar kom | Felet säger vad som flyttade, hur långt och efter vilket anrop. Ge det som kommer sent sin plats från första ritningen (en knapp som är avstängd tills den går att trycka på), vänta in svaret innan det som står under ritas, eller lägg det sena innehållet sist. |
+| Ett jobb är rött i CI | Ett test föll på CI:s maskin | `npm run ci:failure -- <PR-nummer>` (eller ett körnings-id, eller utan argument för den utcheckade grenen) hämtar det röda jobbets resultat och skriver ut testerna som föll, felen och sökvägarna till skärmbilden och sidans tillstånd. |
+| Ett test faller i CI men inte hos dig | Oftast en kapplöpning som bara en långsam maskin förlorar | `GATE_CPU=8 npx playwright test <spec> --project=laptop-1440-light` gör sidans huvudtråd åtta gånger långsammare i Chromium, utan att belasta datorn. Vänta på ett verkligt tillstånd i testet (en dialog är modal, en rubrik har fokus), aldrig på en tid. Kör en ny spec en gång med `GATE_CPU=8` innan du pushar den. |
 
 Resultaten finns i `frontend/test-results/a11y/*/findings.json` och i HTML-rapporten (`npx playwright show-report test-results/a11y-report`), där `manual check` listas. Ett spår behålls för misslyckade tester (`npx playwright show-trace <mapp>/trace.zip`). Skärmbilder: `SHOTS=1 npm run test:a11y -- a11y.spec.ts -g "<läge>" --project=phone-390-light` skriver `test-results/shots/<projekt>/<läge>.png`. Se ett enskilt läge i en webbläsare med fönster: `npm run state -- "<läge>"`.
 

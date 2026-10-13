@@ -35,3 +35,39 @@ test("a module that does not answer is not called a lost connection, and a lost 
   await expect(page.getByRole("status").filter({ hasText: /^Ingen anslutning/ })).toHaveCount(1);
   await expect(page.getByText(/svarar inte just nu/)).toHaveCount(0);
 });
+
+test("an answer that was on its way when the network went does not bring the network back", async ({ page, context, sentinel }) => {
+  sentinel.expect(
+    { console: /net::ERR_INTERNET_DISCONNECTED/, optional: true },
+    { requestFailed: /net::ERR_INTERNET_DISCONNECTED$/, optional: true },
+  );
+  await page.clock.install();
+  await run(page, ids.runs.running);
+  await expect(page.getByRole("heading", { name: "Dokumentet skapas" })).toBeVisible();
+
+  // The next poll's answer is fetched and kept: its request left while the device had its network.
+  let hand!: () => void;
+  const kept = new Promise<void>((resolve) => (hand = resolve));
+  let left!: () => void;
+  const leaving = new Promise<void>((resolve) => (left = resolve));
+  await page.route(/\/runs\/[^/]+\/status\//, async (route) => {
+    const response = await route.fetch();
+    left();
+    await kept;
+    await route.fulfill({ response });
+  });
+  await page.clock.fastForward(2_000);
+  await leaving;
+
+  await context.setOffline(true);
+  const notice = page.locator('[aria-hidden="true"]').getByText("Ingen anslutning. Körningen fortsätter i Eneo och visas här när anslutningen är tillbaka.", { exact: true });
+  await expect(notice).toBeVisible();
+
+  // The kept answer arrives now, after the network went. The page has read it when its response is done.
+  const read = page.waitForResponse(/\/runs\/[^/]+\/status\//);
+  hand();
+  await (await read).finished();
+  await page.evaluate(() => new Promise<void>((drawn) => requestAnimationFrame(() => requestAnimationFrame(() => drawn()))));
+  await expect(notice, "the page still says the device has no network").toBeVisible();
+  await expect(page.getByText(/svarar inte just nu/)).toHaveCount(0);
+});

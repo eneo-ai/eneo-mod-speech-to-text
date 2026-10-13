@@ -12,6 +12,7 @@ import { createDocument } from "@/components/flow/DetailsForm";
 import { FlowInput } from "@/components/flow/FlowInput";
 import { FlowSkeleton, FlowUnavailable } from "@/components/flow/FlowPageStates";
 import { FlowFrame } from "@/components/flow/FlowFrame";
+import { preloadMarkdown } from "@/components/flow/Markdown";
 import { RunFailure } from "@/components/flow/RunFailure";
 import { RunOpening, RunProgress, RunUnread } from "@/components/flow/RunProgress";
 import { RunResult } from "@/components/flow/RunResult";
@@ -160,7 +161,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
         (full) =>
           current && setStartedWith({ runId: full.id, input: full.input_payload_json ?? null, speakerLabels: full.speaker_labels }),
       )
-      .catch(() => undefined);
+      // The run goes on without its details: the page stops waiting for them.
+      .catch(() => current && setStartedWith({ runId: runningRun.id, input: null }));
     return () => {
       current = false;
     };
@@ -344,6 +346,8 @@ function FlowDetail({ flowId }: { flowId: string }) {
    * audit-logged read) and the detail are read once, when the run is done.
    */
   async function follow(runId: string) {
+    // The run's text is formatted when it is first drawn (components/flow/Markdown).
+    preloadMarkdown();
     followAbortRef.current?.abort();
     const controller = new AbortController();
     followAbortRef.current = controller;
@@ -664,6 +668,16 @@ function FlowDetail({ flowId }: { flowId: string }) {
     if (run.kind === "unread") return flowPage(<RunUnread message={run.message} onRetry={() => resumeRun(run.runId)} />);
 
     if (run.kind === "running") {
+      // What the run was started with: what the page holds for it, or the run's own where it carries it. A run opened
+      // while it runs is read once more for it (above), and the page waits for that read as it waited for the run:
+      // details that arrive above a card already drawn move the card, on a phone by the height of their line.
+      const started =
+        startedWith.runId === run.run.id
+          ? startedWith
+          : "input_payload_json" in run.run
+            ? { input: (run.run as FlowRunPublic).input_payload_json ?? null, speakerLabels: (run.run as FlowRunPublic).speaker_labels }
+            : null;
+      if (!started) return flowPage(<RunOpening retrying={pollTrouble} onRetry={() => void follow(run.run.id)} />);
       const steps = runSteps(run.graph, run.run, [], contract);
       return flowPage(
         <RunProgress
@@ -672,8 +686,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           stage={runStage(
             steps,
             run.run.status,
-            startedWith.runId === run.run.id &&
-              runLabelsSpeakers(startedWith.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
+            runLabelsSpeakers(started.speakerLabels, contract.transcription?.speaker_labels, ofContractVersion(run.run, contract)),
           )}
           startedAt={run.run.created_at}
           error={runError}
@@ -682,7 +695,7 @@ function FlowDetail({ flowId }: { flowId: string }) {
           makesText={ofContractVersion(run.run, contract) && makesText(contract.final_output)}
           onCancel={() => onCancelRun(run.run.id)}
         />,
-        { input: startedWith.runId === run.run.id ? startedWith.input : null, version: run.run.flow_version, offline: "run" },
+        { input: started.input, version: run.run.flow_version, offline: "run" },
       );
     }
 
