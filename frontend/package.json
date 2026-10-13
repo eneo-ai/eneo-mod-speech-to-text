@@ -20,6 +20,7 @@
     "test:prod": "npm run build && npm run build:check && playwright test --config playwright.prod.config.ts",
     "test:image": "../deploy/acceptance.sh",
     "ux:shots": "node scripts/ux-shots.mjs",
+    "test:device": "${AGENT_DEVICE:-npx --yes agent-device@0.21.25} test 'tests/device/*.ad' -e ORIGIN=${DEVICE_ORIGIN:-http://127.0.0.1:3002} --report-junit test-results/device/junit.xml --artifacts-dir test-results/device",
     "ci:failure": "node scripts/ci-failure.mjs",
     "verify:candidate": "node scripts/verify-candidate.mjs"
   },
