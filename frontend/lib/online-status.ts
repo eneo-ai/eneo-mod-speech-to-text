@@ -2,9 +2,11 @@
  * The one owner of "are we online". The browser's online/offline events say
  * when the device loses its network; our own requests say when a network
  * that looks connected does not reach the module. A request that reaches the
- * module, or the browser coming back online, clears an earlier failure. The two
- * causes are told apart (`connection`): a page says "no connection" only of the
- * device, and that the module does not answer of the rest.
+ * module, or the browser coming back online, clears an earlier failure. An
+ * answer from the module also outweighs a browser that says the device has no
+ * network: Safari can go on saying so after a device wakes. The two causes are
+ * told apart (`connection`): a page says "no connection" only of the device,
+ * and that the module does not answer of the rest.
  */
 
 export type Connection = "online" | "offline" | "unreachable";
@@ -55,7 +57,11 @@ export function createOnlineStatus(target?: OnlineTarget): OnlineStatus {
       return () => listeners.delete(listener);
     },
     reportNetworkFailure: () => change(() => (requestFailed = true)),
-    reportReachable: () => change(() => (requestFailed = false)),
+    reportReachable: () =>
+      change(() => {
+        requestFailed = false;
+        browserOnline = true;
+      }),
   };
 }
 

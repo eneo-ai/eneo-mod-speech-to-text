@@ -115,15 +115,15 @@ test("the bar warns of what can lose the meeting, and says calmly what else matt
     },
   ]);
   const minutes = (count: number) => count * 60_000;
-  const notes = (options: Partial<Parameters<typeof recordingNotices>[0]>) =>
-    recordingNotices({ ...base, ...options }).notes;
-  assert.deepEqual(notes({ remainingMs: minutes(16) }), [], "nothing yet");
-  const fifteen = "Mindre än 15 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
-  const five = "Mindre än 5 minuter kvar till flödets maxlängd. Då stoppas inspelningen och det som spelats in sparas.";
-  assert.deepEqual(notes({ remainingMs: minutes(15) }), [fifteen]);
-  assert.deepEqual(notes({ remainingMs: minutes(6) }), [fifteen], "a quiet line, not a count");
-  assert.deepEqual(notes({ remainingMs: minutes(5) }), [five]);
-  assert.deepEqual(notes({ phase: "paused", remainingMs: minutes(3) }), [five], "while paused too");
+  const timed = (options: Partial<Parameters<typeof recordingNotices>[0]>) => recordingNotices({ ...base, ...options });
+  assert.deepEqual(timed({ remainingMs: minutes(16) }), none, "nothing yet");
+  const stops = "Då stoppas inspelningen och det som spelats in sparas.";
+  const fifteen = { warnings: [], notes: [`Mindre än 15 minuter kvar till flödets maxlängd. ${stops}`] };
+  const five = { warnings: [{ title: "Mindre än 5 minuter kvar till flödets maxlängd.", detail: stops }], notes: [] };
+  assert.deepEqual(timed({ remainingMs: minutes(15) }), fifteen);
+  assert.deepEqual(timed({ remainingMs: minutes(6) }), fifteen, "a quiet line, not a count");
+  assert.deepEqual(timed({ remainingMs: minutes(5) }), five, "near the end it is a warning: what is said after it is not recorded");
+  assert.deepEqual(timed({ phase: "paused", remainingMs: minutes(3) }), five, "while paused too");
   const gone = { title: "Inspelningen pausades när mikrofonen försvann.", detail: "Det som spelats in finns kvar." };
   assert.deepEqual(
     recordingNotices({ ...base, phase: "interrupted", remainingMs: 0 }),

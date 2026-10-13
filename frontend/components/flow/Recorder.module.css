@@ -241,6 +241,11 @@
   text-align: center;
 }
 
+/* A note of two lines breaks them evenly, never one word alone on the second. */
+.notes p {
+  text-wrap: balance;
+}
+
 .notes[data-status] {
   text-align: start;
 }

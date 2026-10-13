@@ -92,8 +92,11 @@ Words with no break point wrap (`overflowWrap: anywhere` on text and headings) r
 
 The page column is `--module-page-width` (1180 px), centred; the shell's bar and the page share the same left edge at every width.
 Breakpoints: 768 px (the page gets its own gutter; the phone's dock ends) and 1024 px (two columns). A short screen
-(480 px high) puts the flow beside the stage. Section rhythm uses the spacing tokens: 24 px between a card's sections,
-16 px inside a group, 8 px between a label and its control.
+(480 px high) puts the flow beside the stage, in a column a third of the width up to 17 rem. In one column, a form is
+as wide as the column; beside the flow's details it keeps the form measure (`--module-form-width`, 40 rem). A row
+that holds a field and a button measures itself (a container query at 36 rem): the field fills the row below it, the
+two stand beside each other from it. Section rhythm uses the spacing tokens: 24 px between a card's sections, 16 px
+inside a group, 8 px between a label and its control.
 
 ## Elevation & Depth
 
@@ -107,7 +110,8 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 ## Components
 
 ### Buttons
-- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating.
+- **Primary:** accent fill, 48 px for the one action a screen exists for; labels wrap instead of truncating. A dialog
+  has one too: what else stays in reach in it (a recording's Pausa and Stoppa while the login is renewed) is secondary.
 - **Secondary:** muted fill for side actions (Testa mikrofonen, Öppna).
 - **Ghost:** the bar's way back and icon actions.
 
@@ -116,6 +120,12 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 ### Navigation
 - The header has one persistent “Alla flöden” link in the navigation group. It names its destination; leaving unsent work uses the existing leave question.
+
+### Recording notices
+- What can lose part of the meeting is a warning above Pausa and Stoppa (no sound, no microphone, no room on the device, less than five minutes to the flow's longest recording); what else matters now is a calm line under them.
+
+### Files
+- A file is a row: its type, name and size, and its download at the row's end. The document's own file has the one filled download; from a laptop's width it stands on that row, and above the document's text when the text comes first.
 
 ### Transcript feedback
 - A selected or played word stays highlighted at the paused playhead. The active search hit uses an underline and outline, distinct from the filled playback highlight.
@@ -131,5 +141,7 @@ Elements 8 px, containers 12 px, avatars and switches round. One-pixel borders a
 
 - Do take every colour, size and space from a token; fix a shortfall once in the theme.
 - Do keep a control next to its label and the primary action in reach at every width.
+- Do give an action that is on its way its place from the first draw, disabled until it can be pressed: what arrives
+  late must not move what is already on screen.
 - Don't add a second accent or decorative colour; don't wrap list rows in cards.
 - Don't use Tailwind utilities, StyleX, or raw hex or pixel values in components.

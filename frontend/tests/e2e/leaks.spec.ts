@@ -257,6 +257,9 @@ async function settledCounters(page: Page, cdp: CDPSession) {
 async function cycle(page: Page, overlay: Overlay) {
   await overlay.show(page);
   await expect(overlay.shown(page)).toBeVisible();
+  // A dialog is painted with its open style one moment and made modal the next (its showModal runs in an effect after
+  // the paint), and only a modal one hears Escape. A hand is slower than that moment; a slow machine's test is not.
+  await page.waitForFunction(() => [...document.querySelectorAll("dialog")].every((dialog) => !dialog.checkVisibility() || dialog.matches(":modal")));
   await overlay.hide(page);
   await expect(overlay.shown(page)).toBeHidden();
   // Chromium keeps the element last under the pointer after it is removed, and with it everything removed with it,

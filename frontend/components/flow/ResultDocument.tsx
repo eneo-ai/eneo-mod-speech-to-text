@@ -98,7 +98,18 @@ function FilePreview({ text }: { text: string }) {
 /** Files larger than this are not read ahead for Dela; they download instead. */
 const SHARE_LIMIT_BYTES = 25 * 1024 * 1024;
 
-type Share = { kind: "file"; file: File } | { kind: "text" };
+/** What Dela sends, or that the file is still being read for it. */
+type Share = { kind: "file"; file: File } | { kind: "text" } | { kind: "reading" };
+
+/** What Dela would send, known at once: the file when the device takes its type and its size is known and under the cap, else the text. */
+function shareKind(name: string | null, mimeType: string, sizeBytes: number | null, url: string | null, text: string | null): "file" | "text" | null {
+  if (typeof navigator.share !== "function") return null;
+  const probe = name !== null ? new File([""], name, { type: mimeType }) : null;
+  const fileShareable =
+    probe !== null && url && sizeBytes !== null && sizeBytes <= SHARE_LIMIT_BYTES &&
+    typeof navigator.canShare === "function" && navigator.canShare({ files: [probe] });
+  return fileShareable ? "file" : text ? "text" : null;
+}
 
 /**
  * Dela through the device's own share sheet, where there is one: the file when
@@ -107,39 +118,41 @@ type Share = { kind: "file"; file: File } | { kind: "text" };
  * when the document leaves the page); otherwise the text. Never the file's
  * link: it opens only with the owner's session. Nothing when the browser has
  * no share, or when there is no file to send and no text.
+ *
+ * Whether there is a Dela is known at once, so it has its place from the first
+ * draw and waits there while the file is read: an action that arrived with the
+ * file would move the document under a finger, seconds in on a slow line.
  */
 function useShare(file: ResultFileView | null, url: string | null, text: string | null): Share | null {
-  const [share, setShare] = useState<Share | null>(null);
   // The file's own facts, not the object: the page builds its file views anew at every draw, and the read must not start over for them.
   const name = file?.name ?? null;
   const mimeType = file?.mimeType ?? "";
   const sizeBytes = file?.sizeBytes ?? null;
+  const kind = useMemo(() => shareKind(name, mimeType, sizeBytes, url, text), [name, mimeType, sizeBytes, url, text]);
+  // The file once it is read; `file: null` when the read failed.
+  const [read, setRead] = useState<{ file: File | null } | null>(null);
   useEffect(() => {
-    if (typeof navigator.share !== "function") return;
+    if (kind !== "file" || name === null || !url) return;
     const controller = new AbortController();
-    const instead: Share | null = text ? { kind: "text" } : null;
-    const probe = name !== null ? new File([""], name, { type: mimeType }) : null;
-    const fileShareable =
-      name !== null && url && probe && sizeBytes !== null && sizeBytes <= SHARE_LIMIT_BYTES &&
-      typeof navigator.canShare === "function" && navigator.canShare({ files: [probe] });
-    if (fileShareable) {
-      fetch(url, { signal: controller.signal })
-        .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
-        .then((blob) => {
-          if (!controller.signal.aborted) setShare({ kind: "file", file: new File([blob], name, { type: blob.type || mimeType }) });
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) setShare(instead);
-        });
-    } else {
-      setShare(instead);
-    }
+    setRead(null);
+    fetch(url, { signal: controller.signal })
+      .then((response) => (response.ok ? response.blob() : Promise.reject(new Error(String(response.status)))))
+      .then((blob) => {
+        if (!controller.signal.aborted) setRead({ file: new File([blob], name, { type: blob.type || mimeType }) });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setRead({ file: null });
+      });
     return () => controller.abort();
-  }, [name, mimeType, sizeBytes, url, text]);
-  return share;
+  }, [kind, name, mimeType, url]);
+  if (kind === null) return null;
+  if (kind === "text") return { kind: "text" };
+  if (read === null) return { kind: "reading" };
+  return read.file ? { kind: "file", file: read.file } : text ? { kind: "text" } : null;
 }
 
 async function runShare(share: Share, title: string, text: string | null): Promise<void> {
+  if (share.kind === "reading") return;
   try {
     await navigator.share(share.kind === "file" ? { files: [share.file], title } : { title, text: text ?? "" });
   } catch {
@@ -234,12 +247,14 @@ export function ResultDocument({
               alignment="end"
             >
               <DropdownMenuItem icon="copy" label={copyName} onClick={() => void copy()} />
-              <DropdownMenuItem icon={Share2} label={shareName} onClick={() => void runShare(share, title, text)} />
+              <DropdownMenuItem icon={Share2} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
             </DropdownMenu>
           ) : copyMore ? (
             <Button icon={<Icon icon="copy" />} label={copyLabel ?? copyName} onClick={copy} />
           ) : (
-            share && <Button icon={<Icon icon={Share2} />} label={shareName} onClick={() => void runShare(share, title, text)} />
+            share && (
+              <Button icon={<Icon icon={Share2} />} label={shareName} isDisabled={share.kind === "reading"} onClick={() => void runShare(share, title, text)} />
+            )
           )}
         </HStack>
       )}
@@ -247,8 +262,9 @@ export function ResultDocument({
       {access.problem && <ProblemAlert problem={{ title: access.problem.message, retry: true }} onRetry={access.again} />}
 
       <Card padding={0} role="region" aria-label={label}>
-        {/* From a laptop's width: Kopiera and the one download on the document's top edge. */}
-        {wide && (
+        {/* From a laptop's width: Kopiera and the one download on the document's top edge, above its text. A file
+            without text of its own has the download on its row, as the files under it have theirs. */}
+        {wide && text && (
           <>
             <HStack hAlign="end" vAlign="center" gap={1} padding={2}>
               {text && (
@@ -283,6 +299,7 @@ export function ResultDocument({
               startContent={<Icon icon={Kind} />}
               label={file.previewable && download && inline ? <OpenFile file={file} url={inline} download={download} name access={access} /> : <Text>{file.name}</Text>}
               description={file.meta}
+              endContent={wide && !text ? primaryDownload : undefined}
             />
           </>
         )}

@@ -21,23 +21,27 @@ export function FlowSkeleton({ onRetry }: { onRetry: () => void }) {
   return (
     <FlowFrame
       aside={
-        <VStack gap={5} aria-busy="true">
-          <Skeleton width="75%" height={28} />
-          <VStack gap={2}>
-            <Skeleton width="100%" height={16} />
-            <Skeleton width="66%" height={16} />
+        // The page's name and that it loads, then the slow wait's word and ways on: first on the page, above the fold
+        // on a phone on its side too; the shape of the flow's details under them.
+        <VStack gap={5}>
+          <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
+          <VisuallyHidden as="p" role="status">
+            Laddar flödet…
+          </VisuallyHidden>
+          <SlowWait onRetry={onRetry} />
+          <VStack gap={5} aria-busy="true">
+            <Skeleton width="75%" height={28} />
+            <VStack gap={2}>
+              <Skeleton width="100%" height={16} />
+              <Skeleton width="66%" height={16} />
+            </VStack>
+            <Skeleton width="100%" height={48} />
+            <Skeleton width={128} height={16} />
+            <Skeleton width="100%" height={80} />
           </VStack>
-          <Skeleton width="100%" height={48} />
-          <Skeleton width={128} height={16} />
-          <Skeleton width="100%" height={80} />
         </VStack>
       }
     >
-      <VisuallyHidden as="h1">{PRODUCT_NAME}</VisuallyHidden>
-      <VisuallyHidden as="p" role="status">
-        Laddar flödet…
-      </VisuallyHidden>
-      <SlowWait onRetry={onRetry} />
       <VStack gap={3} aria-busy="true">
         <Skeleton width={224} height={24} />
         {[0, 1, 2].map((card) => (
