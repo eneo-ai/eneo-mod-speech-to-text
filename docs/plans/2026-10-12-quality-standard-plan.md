@@ -120,12 +120,22 @@ Regel: Astryx-props först, temat för en systembrist, CSS-modul bara i bespoke-
 förbättringar, inte varje fynd: av de första sex ströks tre som avsiktliga (hastighetsknappen ovanför spelaren på
 telefon, filnamnsbrytningen, resultatets bredd på iPad), och listradernas 8 px inset är designsystemets.
 
-Slice 1 (bead `stt-0p3`, gren `fix/qol-layout`): formulärets breddtak bara i tvåkolumnsläget så ljudblocket slutar
-där deltagarfältet slutar (768, 844, 1000); mikrofonväljaren fyller raden på telefon (bred iPhone 440 px) och står
-bredvid knappen från 768; liggande telefon får en vänsterkolumn som rymmer namnet och väljaren på en rad; "tar längre
-tid"-meddelandet står överst när ett flöde laddar långsamt. Slice 2 (bead `stt-8la`): replikrader, inspelningens
-tidsvarningar, utloggad under inspelning, resultatets verktygsfält ≥ 1024, filnamnsraden. Slice 3: talargranskningens
-editor (bakom flagga), inloggningssidans kolumn, laddnings-spinnern, deltagarchips, "Ta bort" på klar-panelen.
+Slice 1 (bead `stt-0p3`, gren `fix/qol-layout`, PR 26): formulärets breddtak bara i tvåkolumnsläget så ljudblocket
+slutar där deltagarfältet slutar (768, 844, 1000); mikrofonraden mäter sig själv (container query vid 36 rem): väljaren
+fyller raden under det och står bredvid knappen från det; liggande telefon får en vänsterkolumn på en tredjedel av
+bredden upp till 17 rem; "tar längre tid"-meddelandet står överst när ett flöde laddar långsamt; gate-projektet
+`landscape-844`.
+
+Slice 2 (bead `stt-8la`, gren `fix/qol-slice-2`): under fem minuter kvar till flödets maxlängd är en varning ovanför
+Pausa och Stoppa (femton minuter är kvar som lugn rad, och radernas brytning är balanserad); "Stoppa" är sekundär i
+dialogen "Du behöver logga in igen", så "Logga in igen" är den enda fyllda knappen; från 1024 står dokumentets
+nedladdning på filens egen rad när dokumentet inte har egen text, som raderna under "Fler filer". Lämnade efter
+läsning av koden: "Rätta" flyter avsiktligt efter repliken som ett ord (`TranscriptPlayer.tsx`, kommentaren vid
+knappen), och ett filnamn som bryts vid datumets bindestreck bryts på ett naturligt ställe.
+
+Slice 3: talargranskningens editor (bakom flagga), inloggningssidans kolumn, laddnings-spinnern. Strukna efter bild:
+deltagarchipsen står redan bredvid varandra, "Ta bort" på klar-panelen har designsystemets ghost-inset, och knapparna
+under vikningen på liggande telefon når man med en rullning.
 
 ## 6. Arbetspaket (Beads, epik `stt-5db`)
 
