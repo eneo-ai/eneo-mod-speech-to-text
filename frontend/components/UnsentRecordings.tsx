@@ -4,7 +4,7 @@ import { Banner } from "@astryxdesign/core/Banner";
 import { Button } from "@astryxdesign/core/Button";
 import { Collapsible } from "@astryxdesign/core/Collapsible";
 import { Heading } from "@astryxdesign/core/Heading";
-import { useMediaQuery } from "@astryxdesign/core/hooks";
+import { useAnnounce, useMediaQuery } from "@astryxdesign/core/hooks";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { List, ListItem } from "@astryxdesign/core/List";
@@ -14,6 +14,7 @@ import { VStack } from "@astryxdesign/core/VStack";
 import { ActionRow, STACKED } from "@/components/ActionRow";
 import { ProblemAlert } from "@/components/flow/ProblemAlert";
 import { useSaveRecording } from "@/components/save-recording";
+import { moveFocusToHeading } from "@/routes/RouteEffects";
 import { formatDuration, recordingName } from "@/lib/format";
 import {
   continuable,
@@ -128,6 +129,27 @@ export function UnsentRecordings({
   folded?: boolean;
 }) {
   const headingId = useId();
+  const heading = useRef<HTMLHeadingElement>(null);
+  const announce = useAnnounce();
+  // A removal takes the focus with its row. Once the list no longer has the recording, its heading takes the focus, saying
+  // what is left, or with none left the page's; focus the person has put elsewhere since stays there.
+  const listed = useRef(recordings);
+  listed.current = recordings;
+  const removed = useRef<string | null>(null);
+  const afterRemoval = () => {
+    const id = removed.current;
+    if (id === null || listed.current.some((recording) => recording.id === id)) return;
+    removed.current = null;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (listed.current.length > 0) heading.current?.focus();
+    else moveFocusToHeading();
+  };
+  useEffect(afterRemoval, [recordings]);
+  const onRemoved = (id: string) => {
+    announce("Inspelningen togs bort.");
+    removed.current = id;
+    afterRemoval();
+  };
   if (unreadable) {
     return (
       <ProblemAlert
@@ -149,6 +171,7 @@ export function UnsentRecordings({
       sendLabel={sendLabel(recording)}
       onSend={onSend}
       onContinue={continuable(recording) ? onContinue : undefined}
+      onRemoved={onRemoved}
       primary={filled && recording === resumable}
     />
   );
@@ -156,7 +179,7 @@ export function UnsentRecordings({
   return (
     <VStack role="region" aria-labelledby={headingId} gap={3}>
       <VStack gap={1}>
-        <Heading level={2} id={headingId}>
+        <Heading level={2} id={headingId} ref={heading} tabIndex={-1}>
           {cutOff
             ? "Inspelningen avbröts"
             : recordings.length === 1
@@ -191,6 +214,7 @@ function UnsentRecordingRow({
   sendLabel,
   onSend,
   onContinue,
+  onRemoved,
   primary,
 }: {
   recording: UnsentRecording;
@@ -199,6 +223,8 @@ function UnsentRecordingRow({
   onSend?: (recording: StoredRecording) => void;
   /** Given for a recording whose capture was cut off, where a recorder can take it over. */
   onContinue?: (recording: StoredRecording) => void;
+  /** The device no longer has it. */
+  onRemoved: (id: string) => void;
   /** Its "Fortsätt spela in" is the page's filled action. */
   primary: boolean;
 }) {
@@ -229,6 +255,7 @@ function UnsentRecordingRow({
   async function remove() {
     try {
       await (await recordingStore()).remove(recording.id);
+      onRemoved(recording.id);
     } catch (error) {
       setConfirming(false);
       setProblem(
