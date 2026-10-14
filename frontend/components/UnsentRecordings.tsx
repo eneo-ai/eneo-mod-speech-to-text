@@ -144,7 +144,7 @@ export function UnsentRecordings({
         </Heading>
         <Text as="p" color="secondary">
           {cutOff
-            ? "Välj Fortsätt spela in så fortsätter den i samma inspelning."
+            ? "Den fortsätter i samma inspelning när du väljer Fortsätt spela in."
             : recordings.length === 1
               ? evictable
                 ? "Den finns på den här enheten, men webbläsaren kan rensa den om den ligger kvar osänd för länge."

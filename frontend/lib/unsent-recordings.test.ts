@@ -138,7 +138,7 @@ test("a recording a reload cut off says so and how to go on, with Fortsätt spel
   const cutOff = (id: string) => ({ ...recording(id, 60_000, at(23, 10, 12)), state: "recording" as const });
   const one = await render({ recordings: [cutOff("a")], onContinue: () => {} });
   assert.equal(one.container.querySelector("h2")?.textContent, "Inspelningen avbröts");
-  assert.match(one.container.textContent!, /Välj Fortsätt spela in så fortsätter den i samma inspelning\./);
+  assert.match(one.container.textContent!, /Den fortsätter i samma inspelning när du väljer Fortsätt spela in\./, "the button by its whole name");
   assert.deepEqual(filled(one.container), ["Fortsätt spela in"]);
   await one.unmount();
 
