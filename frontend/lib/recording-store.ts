@@ -9,7 +9,7 @@
  * until it takes what this tab holds, and the recording is kept on it again.
  */
 
-import type { Json } from "./api";
+import type { Json, UploadHandle } from "./api";
 import { baseMimetype, extensionForAudioMime } from "./upload";
 import { withRecordedDuration } from "./webm-duration";
 import { withKeyframes } from "./webm-keyframes";
@@ -33,6 +33,8 @@ interface RecordingPart {
   chunks: number;
   /** Eneo's file id once this part is uploaded. */
   fileId: string | null;
+  /** The module's resource for this part's upload in parts, until the file id is known: a later send continues it. */
+  upload?: UploadHandle | null;
 }
 
 export interface StoredRecording {
@@ -402,7 +404,15 @@ export class RecordingStore {
   setPartFileId(id: string, part: number, fileId: string): Promise<void> {
     return this.update(id, (recording) => ({
       ...recording,
-      parts: recording.parts.map((p) => (p.index === part ? { ...p, fileId } : p)),
+      parts: recording.parts.map((p) => (p.index === part ? { ...p, fileId, upload: null } : p)),
+    }));
+  }
+
+  /** The part's upload in parts was made or asked to complete; null once it is gone. */
+  setPartUpload(id: string, part: number, upload: UploadHandle | null): Promise<void> {
+    return this.update(id, (recording) => ({
+      ...recording,
+      parts: recording.parts.map((p) => (p.index === part ? { ...p, upload } : p)),
     }));
   }
 
@@ -449,7 +459,7 @@ export class RecordingStore {
   clearFileIds(id: string): Promise<void> {
     return this.update(id, (recording) => ({
       ...recording,
-      parts: recording.parts.map((p) => ({ ...p, fileId: null })),
+      parts: recording.parts.map((p) => ({ ...p, fileId: null, upload: null })),
       submission: null,
     }));
   }
