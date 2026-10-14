@@ -344,6 +344,27 @@ test("a microphone muted while the page was away is told with how long once the 
   assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 20_000, away: false });
 });
 
+test("a muted microphone misses only recorded time: a mute within Pausa is not told, and one across it counts the recording on either side", async () => {
+  let now = 0;
+  const { capture, streams } = await setup({ now: () => now });
+  await capture.start(meeting);
+  capture.togglePause();
+  streams[0].track.lose("mute");
+  now = 20_000;
+  streams[0].track.regain();
+  assert.equal(capture.getSnapshot().mutedGap, null, "paused, nothing was missed");
+
+  capture.togglePause();
+  streams[0].track.lose("mute");
+  now = 25_000; // five recorded seconds muted
+  capture.togglePause();
+  now = 45_000;
+  capture.togglePause();
+  now = 48_000; // and three more
+  streams[0].track.regain();
+  assert.deepEqual(capture.getSnapshot().mutedGap, { ms: 8_000, away: false });
+});
+
 test("a microphone that ends, or a recorder that stops or fails by itself, pauses the recording too", async () => {
   const losses: Array<[string, (stream: FakeStream, recorder: FakeRecorder) => void]> = [
     ["the track ended", (stream) => stream.track.lose("ended")],

@@ -258,7 +258,8 @@ export class RecordingCapture {
   private watching: ReturnType<typeof setInterval> | null = null;
   private quietLooks = 0;
   private mutedLooks = 0;
-  // Since when the microphone is muted, muted time not yet told (`mutedGap`), and whether the page was away meanwhile.
+  // Since when the microphone is muted, on the recorded clock (elapsedMs: a pause misses nothing), muted time not yet told
+  // (`mutedGap`), and whether the page was away meanwhile.
   private mutedSince: number | null = null;
   private untoldMutedMs = 0;
   private mutedAway = false;
@@ -822,10 +823,10 @@ export class RecordingCapture {
     const muted = !!this.microphone?.getAudioTracks().some((track) => track.muted);
     const hidden = this.deps.page?.visibilityState === "hidden";
     if (muted && this.mutedSince === null) {
-      this.mutedSince = this.now();
+      this.mutedSince = this.elapsedMs();
       this.mutedAway ||= hidden;
     } else if (!muted && this.mutedSince !== null) {
-      this.untoldMutedMs += this.now() - this.mutedSince;
+      this.untoldMutedMs += this.elapsedMs() - this.mutedSince;
       this.mutedSince = null;
     }
     if (muted !== this.snapshot.muted) {
