@@ -1,5 +1,5 @@
 import { Pause, Play } from "lucide-react";
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { HStack } from "@astryxdesign/core/HStack";
 import { Icon } from "@astryxdesign/core/Icon";
 import { IconButton } from "@astryxdesign/core/IconButton";
@@ -19,6 +19,36 @@ export function usePlayback(sources: readonly PlayerSource[]): Playback {
 
 export function usePlaybackState(playback: Playback): PlaybackSnapshot {
   return useSyncExternalStore(playback.subscribe, playback.getSnapshot, playback.getSnapshot);
+}
+
+/** What a view around the player shows of playback, without the position, which changes a few times a second. */
+export type PlaybackFlags = Pick<PlaybackSnapshot, "part" | "playing" | "started" | "rate" | "unavailable" | "atEnd"> & {
+  atStart: boolean;
+};
+
+const flagsOf = (s: PlaybackSnapshot): PlaybackFlags => ({
+  part: s.part,
+  playing: s.playing,
+  started: s.started,
+  rate: s.rate,
+  unavailable: s.unavailable,
+  atEnd: s.atEnd,
+  atStart: s.atMs === 0,
+});
+
+/**
+ * The playback's flags, rendering again only when one changes: a transcript of an hour's meeting rendered on every
+ * time update would take most of the main thread. Its playhead is drawn by useTranscriptPlayhead instead.
+ */
+export function usePlaybackFlags(playback: Playback): PlaybackFlags {
+  const last = useRef<PlaybackFlags | null>(null);
+  const read = useCallback(() => {
+    const next = flagsOf(playback.getSnapshot());
+    const prev = last.current;
+    if (prev && (Object.keys(next) as (keyof PlaybackFlags)[]).every((k) => prev[k] === next[k])) return prev;
+    return (last.current = next);
+  }, [playback]);
+  return useSyncExternalStore(playback.subscribe, read, read);
 }
 
 /**

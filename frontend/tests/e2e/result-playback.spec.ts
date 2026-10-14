@@ -1,5 +1,6 @@
 import { expect, test } from "./gate";
-import { isLaptop, playedFromWord, result, STATES } from "./screens";
+import { isLaptop, playedFromWord, result, run, STATES } from "./screens";
+import ids from "../fixtures/ids.json";
 import { type Locator } from "@playwright/test";
 
 test("the correction actions leave room for the field's focus outline", async ({ page }, info) => {
@@ -57,6 +58,41 @@ test("a word in the result plays its audio from the word, also from a pause, and
   await expect.poll(time).toBeGreaterThan(start + 0.7);
   await expect(word).not.toHaveAttribute("aria-current", "true");
   await expect(page.locator('[data-word-start][aria-current="true"]')).toHaveCount(1);
+  await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
+});
+
+test("words timed without speakers play from the word clicked and light one after another as they are said", async ({ page }, info) => {
+  test.skip(!["phone-390-light", "laptop-1440-light", "forced-colors"].includes(info.project.name));
+  await run(page, ids.runs.timed);
+  await expect(page.getByRole("heading", { name: "Dokumentet är klart" })).toBeVisible();
+  if (!isLaptop(info)) await page.getByRole("tab", { name: "Transkribering" }).click();
+  const transcript = page.getByRole("list", { name: "Transkriberingen" });
+  // No speaker is named: the flow did not identify them.
+  await expect(transcript.getByText(/Talare|Okänd talare/)).toHaveCount(0);
+  // Forced alignment found every word but one, which is marked to check.
+  await expect(page.getByText(/1 ord kunde inte hittas i ljudet/)).toBeVisible();
+
+  const audio = page.locator("audio").first();
+  const word = transcript.locator("[data-word-start]").filter({ hasText: /^punkten$/ }).first();
+  const start = Number(await word.getAttribute("data-word-start"));
+  await word.click();
+  const time = () => audio.evaluate((element: HTMLAudioElement) => element.currentTime);
+  await expect.poll(time).toBeGreaterThanOrEqual(start - 0.05);
+  expect(await time(), "played on from the word").toBeLessThan(start + 1.5);
+  // The playhead moves word by word: each word lit is a later one, and one at a time.
+  const seen: number[] = [];
+  await expect
+    .poll(async () => {
+      const lit = transcript.locator('[data-word-start][aria-current="true"]');
+      if ((await lit.count()) === 1) {
+        const at = Number(await lit.getAttribute("data-word-start"));
+        if (seen.at(-1) !== at) seen.push(at);
+      }
+      return seen.length;
+    }, { intervals: [50] })
+    .toBeGreaterThanOrEqual(3);
+  expect(seen, "each word lit after the one before").toEqual([...seen].sort((a, b) => a - b));
+  expect(seen[0]).toBeGreaterThanOrEqual(start);
   await page.getByRole("button", { name: "Pausa uppspelningen" }).click();
 });
 

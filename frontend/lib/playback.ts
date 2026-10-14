@@ -127,9 +127,14 @@ export class Playback {
    * updates, about four a second, and a playhead drawn every frame reads this between them.
    */
   liveAtMs(): number {
+    return this.atMs() - this.withinMs + this.liveWithinMs();
+  }
+
+  /** The same, in the current part's own time, as the transcript counts it. */
+  liveWithinMs(): number {
     const media = this.media;
-    if (!media || this.pending || media.paused) return this.atMs();
-    return this.atMs() - this.withinMs + this.clampWithin(this.part, media.currentTime * 1_000);
+    if (!media || this.pending || media.paused) return this.withinMs;
+    return this.clampWithin(this.part, media.currentTime * 1_000);
   }
 
   subscribe = (listener: () => void): (() => void) => {
