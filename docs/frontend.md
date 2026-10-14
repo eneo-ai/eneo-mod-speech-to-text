@@ -57,6 +57,7 @@ Varje fråga har en fil som äger svaret, och det står överst i filen. Lägg n
 | Inspelningen (fångst) | `lib/recording-session.ts`, ägd av `FlowSession` ([Inspelaren](recording.md)) |
 | Inspelningar på enheten | `lib/recording-store.ts` (IndexedDB) |
 | Det man skrivit men inte skickat | `lib/drafts.ts` (`sessionStorage`, per person) |
+| Var uppspelningen av en körning stannade | `lib/playback-position.ts` (`localStorage`, de 50 senast lyssnade körningarna) |
 | Körningens tillstånd | `run` i `routes/FlowPage.tsx`; uppföljningen i `lib/follow-run.ts` |
 | Om vi är uppkopplade | `lib/online-status.ts` |
 | Vad ett misslyckat anrop betyder för användaren | `lib/errors.ts` |
